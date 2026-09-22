@@ -134,7 +134,7 @@ Repository mechanics that keep the above honest as the framework grows.
 - [x] Add a `Registry:Bootstrap` helper so packages stop copying the same
       bootstrap preamble. All seven Kits use it; Registry does not, because it
       publishes the facade the helper lives on.
-- [ ] Write `packages/moduleKit/docs/INTERNALS.md` describing the dependency
+- [x] Write `packages/moduleKit/docs/INTERNALS.md` describing the dependency
       graph and resolution order.
 
 ### Phase 4 — New Kits
