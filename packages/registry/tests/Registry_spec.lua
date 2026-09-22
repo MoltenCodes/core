@@ -8,7 +8,7 @@ describe("Registry bootstrap", function()
         local Registry = require("Registry")
 
         assert.are.equal(2, Registry.API)
-        assert.are.equal(5, Registry.REVISION)
+        assert.are.equal(6, Registry.REVISION)
     end)
 
     it("publishes the shared facade through the portable WoW global namespace", function()
@@ -32,6 +32,8 @@ describe("Registry bootstrap", function()
 
     it("preserves unrelated fields in an existing MoltenCodes namespace", function()
         local marker = {}
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         rawset(_G, TestEnv.NAMESPACE_KEY, { marker = marker })
 
         local Registry = require("Registry")
@@ -42,6 +44,8 @@ describe("Registry bootstrap", function()
     end)
 
     it("rejects an incompatible owner of the MoltenCodes namespace", function()
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         rawset(_G, TestEnv.NAMESPACE_KEY, "occupied")
 
         local ok, message = pcall(require, "Registry")
@@ -78,11 +82,13 @@ describe("Registry bootstrap", function()
         assert.is_not_nil(state)
         assert.are.equal(1, state.schema)
         assert.are.equal(2, state.registryApi)
-        assert.are.equal(5, state.registryRevision)
+        assert.are.equal(6, state.registryRevision)
         assert.are.equal(Registry, state.facade)
     end)
 
     it("rejects an incompatible Registry API generation in bootstrap state", function()
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 1,
@@ -99,6 +105,8 @@ describe("Registry bootstrap", function()
 
     it("takes the public alias from an older Registry API generation", function()
         local legacyRegistry = { API = 1 }
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         rawset(_G, TestEnv.NAMESPACE_KEY, {
             Registry = legacyRegistry,
         })
@@ -112,6 +120,8 @@ describe("Registry bootstrap", function()
     end)
 
     it("rejects a public alias that claims this generation but is not this facade", function()
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         rawset(_G, TestEnv.NAMESPACE_KEY, {
             Registry = { API = 2 },
         })
@@ -123,14 +133,16 @@ describe("Registry bootstrap", function()
     end)
 
     it("rejects a corrupted compatible facade instead of returning it", function()
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
-            registryRevision = 5,
+            registryRevision = 6,
             entries = {},
             facade = {
                 API = 2,
-                REVISION = 5,
+                REVISION = 6,
             },
         })
 
@@ -152,6 +164,8 @@ describe("Registry bootstrap", function()
             GetInfo = oldGetInfo,
         }
 
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
@@ -163,7 +177,7 @@ describe("Registry bootstrap", function()
         local Registry = require("Registry")
 
         assert.are.equal(oldFacade, Registry)
-        assert.are.equal(5, Registry.REVISION)
+        assert.are.equal(6, Registry.REVISION)
         assert.are_not.equal(oldRegister, Registry.Register)
         assert.are.equal(Registry, TestEnv.GetNamespace().Registry)
     end)
@@ -172,18 +186,22 @@ describe("Registry bootstrap", function()
         local register = function() end
         local get = function() end
         local getInfo = function() end
+        local bootstrapPackage = function() end
         local futureFacade = {
             API = 2,
-            REVISION = 6,
+            REVISION = 7,
             Register = register,
             Get = get,
             GetInfo = getInfo,
+            Bootstrap = bootstrapPackage,
         }
 
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
-            registryRevision = 6,
+            registryRevision = 7,
             entries = {},
             facade = futureFacade,
         })
@@ -192,7 +210,7 @@ describe("Registry bootstrap", function()
 
         assert.are.equal(futureFacade, Registry)
         assert.are.equal(register, Registry.Register)
-        assert.are.equal(6, Registry.REVISION)
+        assert.are.equal(7, Registry.REVISION)
         assert.are.equal(Registry, TestEnv.GetNamespace().Registry)
     end)
 
@@ -206,6 +224,8 @@ describe("Registry bootstrap", function()
                 facade = {},
             },
         })
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         rawset(_G, TestEnv.STATE_KEY, spoofedState)
 
         local ok, message = pcall(require, "Registry")
@@ -227,6 +247,8 @@ describe("Registry bootstrap", function()
             },
         })
 
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
@@ -254,6 +276,8 @@ describe("Registry bootstrap", function()
             end,
         })
 
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
@@ -265,12 +289,14 @@ describe("Registry bootstrap", function()
         local Registry = require("Registry")
 
         assert.are.equal(oldFacade, Registry)
-        assert.are.equal(5, rawget(Registry, "REVISION"))
+        assert.are.equal(6, rawget(Registry, "REVISION"))
         assert.are.equal(0, writes)
         assert.are.equal(Registry, TestEnv.GetNamespace().Registry)
     end)
 
     it("does not adopt retired API-1 bootstrap state", function()
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         rawset(_G, TestEnv.LEGACY_STATE_KEY, {
             schema = 1,
             registryRevision = 1,
@@ -289,6 +315,8 @@ describe("Registry bootstrap", function()
 
         assert.is_nil(Registry:Get("exampleKit", 1))
         assert.is_not_nil(TestEnv.GetState())
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         assert.is_not_nil(rawget(_G, TestEnv.LEGACY_STATE_KEY))
     end)
 end)

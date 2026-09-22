@@ -67,6 +67,11 @@ manifest `revision` must always agree; each package's `Manifest_spec` enforces
 that. A `revision` bump additionally needs an in-place upgrade path from the
 previous revision and a spec that covers it.
 
+A Kit's bootstrap is where that upgrade path is implemented. It is described in
+[`ARCHITECTURE.md`](ARCHITECTURE.md) under "How a Kit bootstraps" and carried out
+by `Registry:Bootstrap`, which reports the revision whose state the loading copy
+inherits.
+
 ## Dependency contracts
 
 A dependency names the exact API generation required by the consumer:
@@ -116,6 +121,12 @@ dependency-first. `lua-language-server --check` uses the directory it is pointed
 at as its workspace root and ignores parent configuration, so this file is what
 makes a package type-checkable on its own. Repository validation derives the
 expected list from the manifests and fails when the two disagree.
+
+A package's `tests/support/` directory is package-owned and published with it,
+but the World of Warcraft stubs it used to hold now live in the repository-wide
+fixture at `tests/support/FrameworkTestEnv.lua`. That directory is test
+scaffolding rather than a package: it has no manifest, is not discovered as one,
+and is never included in a release artifact. See [`TESTING.md`](TESTING.md).
 
 Additional package-owned documentation and internal source directories may be added without changing the manifest contract.
 

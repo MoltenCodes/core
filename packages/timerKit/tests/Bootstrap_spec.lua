@@ -77,7 +77,7 @@ describe("TimerKit bootstrap", function()
 
         local upgraded = require("TimerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(3, upgraded.REVISION)
         assert.are.equal(timerPrototype, upgraded.Timer)
 
         -- A timer object created by revision 1 gains the revision-2 user-data
@@ -106,6 +106,8 @@ describe("TimerKit bootstrap", function()
         require("SignalKit")
         require("EventKit")
         require("LifecycleKit")
+        -- The package reads this host global at load time, so the spec has to install it in the global table.
+        -- selene: allow(global_usage)
         rawset(_G, "C_Timer", {})
 
         local ok, value = pcall(require, "TimerKit")

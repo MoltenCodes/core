@@ -28,7 +28,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local REQUIRED_TIMER_API = 1
@@ -162,18 +162,22 @@ local SCHEDULING_OPTION_KEYS = {
 -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
 -- selene: allow(global_usage)
 local namespace = rawget(_G, "MoltenCodes")
-if type(namespace) ~= "table" then
-    error("MoltenCodes SchedulerKit requires Registry API 2 to be loaded first", 2)
-end
+local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
 
-local Registry = rawget(namespace, "Registry")
+-- Ask for Registry by generation and fall back to the alias. A future Registry
+-- API generation takes over `MoltenCodes.Registry`, so reading the alias first
+-- would hand this file a facade whose contract it was not written against.
+local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
+if Registry == nil and type(namespace) == "table" then
+    Registry = rawget(namespace, "Registry")
+end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
     error("MoltenCodes SchedulerKit requires Registry API 2 to be loaded first", 2)
 end
 
-local registerPackage = rawget(Registry, "Register")
+local bootstrapPackage = rawget(Registry, "Bootstrap")
 local getPackage = rawget(Registry, "Get")
-if type(registerPackage) ~= "function" or type(getPackage) ~= "function" then
+if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
     error("MoltenCodes SchedulerKit requires a valid Registry API 2 facade", 2)
 end
 
@@ -374,38 +378,21 @@ local function validateCurrentState(implementation)
         and getmetatable(defaultScope) == rawget(currentState, "scopeMetatable")
 end
 
-local existing, existingRevision = getPackage(Registry, PACKAGE_NAME, API_GENERATION)
-if existing ~= nil then
-    if type(existing) ~= "table" or rawget(existing, "API") ~= API_GENERATION then
-        error("MoltenCodes SchedulerKit package state is corrupted or incomplete", 2)
-    end
+-- `Registry:Bootstrap` owns the reconciliation every embedded package repeats:
+-- look the package up, refuse to reinterpret state owned by a newer revision,
+-- and register this one. What stays here is what only SchedulerKit can answer.
+local SchedulerKit, previousRevision, selected = bootstrapPackage(Registry, {
+    package = PACKAGE_NAME,
+    api = API_GENERATION,
+    revision = IMPLEMENTATION_REVISION,
+    label = "MoltenCodes SchedulerKit",
+    validatePublicSurface = validatePublicSurface,
+    validateState = validateCurrentState,
+})
 
-    local facadeRevision = rawget(existing, "REVISION")
-    if type(facadeRevision) ~= "number" or facadeRevision > existingRevision then
-        error("MoltenCodes SchedulerKit package state is corrupted or incomplete", 2)
-    end
-
-    if existingRevision > IMPLEMENTATION_REVISION then
-        if facadeRevision ~= existingRevision or not validatePublicSurface(existing) then
-            error("MoltenCodes SchedulerKit package state is corrupted or incomplete", 2)
-        end
-        return existing
-    elseif existingRevision == IMPLEMENTATION_REVISION then
-        if
-            facadeRevision ~= existingRevision
-            or not validatePublicSurface(existing)
-            or not validateCurrentState(existing)
-        then
-            error("MoltenCodes SchedulerKit package state is corrupted or incomplete", 2)
-        end
-        return existing
-    end
-end
-
-local SchedulerKit, previousRevision =
-    registerPackage(Registry, PACKAGE_NAME, API_GENERATION, IMPLEMENTATION_REVISION)
 if SchedulerKit == nil then
-    return existing
+    -- Equal or newer compatible revision already owns the shared package table.
+    return selected
 end
 
 local Job = rawget(SchedulerKit, "Job")
@@ -1631,7 +1618,7 @@ local function contextShouldYield(self)
         rawget(state, "currentJob") ~= job
         or (jobState ~= "running" and jobState ~= "cancelled")
     then
-        error("SchedulerKit.Context:ShouldYield may only be called while its job is running", 3)
+        error("SchedulerKit.Context:ShouldYield may only be called while its job is running", 2)
     end
     if jobState == "cancelled" then
         return true
@@ -1657,7 +1644,7 @@ local function contextYield(self)
         rawget(state, "currentJob") ~= job
         or (jobState ~= "running" and jobState ~= "cancelled")
     then
-        error("SchedulerKit.Context:Yield may only be called while its job is running", 3)
+        error("SchedulerKit.Context:Yield may only be called while its job is running", 2)
     end
 
     -- Record the intent before suspending. Lua 5.1 refuses to yield across a

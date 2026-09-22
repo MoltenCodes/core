@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 — 2026-09-22
+
+- Added `Registry:Bootstrap(request)`, the reconciliation every embedded package repeated by hand: look the package up, refuse to reinterpret private state owned by a newer revision, register this one, and report the revision whose state it inherits. A package now supplies only what it alone can answer — its identity, the label its failures carry, which fields make its public surface complete, whether a same-revision copy already finished, and optionally how to resume one that did not.
+- Documented the decision table, the `resume` hook, and the forward-compatible `Registries[2] or Registry` lookup a package uses to reach Registry before it can call `Bootstrap`, in `docs/API.md`.
+- Registry does not use the helper for itself. It publishes the facade the helper lives on, so its own bootstrap has to run before any facade method exists.
+- `Bootstrap` is part of the facade self-check, so a corrupted or incomplete facade still fails deterministically at load.
+- Implementation revision 6. The public API generation is unchanged at 2; a package calling `Bootstrap` requires a Registry at least this new, which the documented load order already guarantees.
+
 ## 0.4.1 — 2026-09-22
 
 - Normalised every LuaCATS annotation to the canonical `---@` form and completed the public surface: 40 annotation lines became 40. Every public function, method, facade table, class, field, alias and callback signature is now typed, so editors and `lua-language-server` describe the package instead of guessing.

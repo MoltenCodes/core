@@ -6,26 +6,35 @@
 
 local PACKAGE_NAME = "signalKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 
 -- Bootstrap ----------------------------------------------------------------
+--
+-- `Registry:Bootstrap` owns the reconciliation every embedded package repeats:
+-- look the package up, refuse to reinterpret state owned by a newer revision,
+-- and register this one. What stays here is what only SignalKit can answer —
+-- which fields make a SignalKit facade complete, and how to build or inherit
+-- its private state.
 
 -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
 -- selene: allow(global_usage)
 local namespace = rawget(_G, "MoltenCodes")
-if type(namespace) ~= "table" then
-    error("MoltenCodes SignalKit requires Registry API 2 to be loaded first", 2)
-end
+local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
 
-local Registry = rawget(namespace, "Registry")
+-- Ask for Registry by generation and fall back to the alias. A future Registry
+-- API generation takes over `MoltenCodes.Registry`, so reading the alias first
+-- would hand this file a facade whose contract it was not written against.
+local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
+if Registry == nil and type(namespace) == "table" then
+    Registry = rawget(namespace, "Registry")
+end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
     error("MoltenCodes SignalKit requires Registry API 2 to be loaded first", 2)
 end
 
-local register = rawget(Registry, "Register")
-local get = rawget(Registry, "Get")
-if type(register) ~= "function" or type(get) ~= "function" then
+local bootstrapPackage = rawget(Registry, "Bootstrap")
+if type(bootstrapPackage) ~= "function" then
     error("MoltenCodes SignalKit requires a valid Registry API 2 facade", 2)
 end
 
@@ -46,23 +55,17 @@ local function validatePublicSurface(implementation)
         and type(rawget(rawget(implementation, "Connection"), "IsConnected")) == "function"
 end
 
-local existing, existingRevision = get(Registry, PACKAGE_NAME, API_GENERATION)
-if existing ~= nil then
-    if not validatePublicSurface(existing) or rawget(existing, "REVISION") ~= existingRevision then
-        error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
-    end
-end
-
-local SignalKit, previousRevision =
-    register(Registry, PACKAGE_NAME, API_GENERATION, IMPLEMENTATION_REVISION)
+local SignalKit, previousRevision, selected = bootstrapPackage(Registry, {
+    package = PACKAGE_NAME,
+    api = API_GENERATION,
+    revision = IMPLEMENTATION_REVISION,
+    label = "MoltenCodes SignalKit",
+    validatePublicSurface = validatePublicSurface,
+})
 
 if SignalKit == nil then
     -- Equal or newer compatible revision already owns the shared package table.
-    return existing
-end
-
-if previousRevision ~= existingRevision then
-    error("MoltenCodes SignalKit Registry state changed unexpectedly during bootstrap", 2)
+    return selected
 end
 
 -- Public class/prototype -----------------------------------------------------

@@ -18,7 +18,7 @@ local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 
 -- Lua 5.1 numbers are doubles, which represent consecutive integers exactly only
 -- up to 2^53. Past that boundary distinct values start comparing equal, so a
@@ -182,6 +182,20 @@ end
 ---@field revision integer Currently selected implementation revision.
 ---@field implementation table The live shared package table.
 
+---Everything `Registry:Bootstrap` needs in order to reconcile one embedded copy.
+---
+---`package`, `api` and `revision` are the package's own identity. `label` is the
+---human-readable prefix Registry puts in front of the failures it raises on the
+---package's behalf, so an addon author sees which package refused to load.
+---@class Registry.BootstrapRequest
+---@field ["package"] string Package identifier, as in `Registry:Register`.
+---@field api integer API generation this copy implements.
+---@field revision integer Implementation revision this copy carries.
+---@field label string Error-message prefix, for example `"MoltenCodes SignalKit"`.
+---@field validatePublicSurface fun(implementation: any): boolean Whether a table exposes the complete public API of this generation.
+---@field validateState (fun(implementation: table): boolean)? Whether a same-revision copy already finished committing its private state.
+---@field resume (fun(implementation: table, complete: boolean): integer|nil)? Same-revision repair hook; see `Registry:Bootstrap`.
+
 ---The Registry facade shared by every compatible embedded copy.
 ---@class Registry
 ---@field API integer Registry API generation this facade implements.
@@ -189,6 +203,7 @@ end
 ---@field Register fun(self: Registry, packageName: string, api: integer, revision: integer): table|nil, integer|nil
 ---@field Get fun(self: Registry, packageName: string, api: integer): table|nil, integer|nil
 ---@field GetInfo fun(self: Registry, packageName: string, api: integer): Registry.PackageInfo|nil
+---@field Bootstrap fun(self: Registry, request: Registry.BootstrapRequest): table|nil, integer|nil, table|nil
 
 ---@type Registry
 local Registry = facade
@@ -294,9 +309,160 @@ if stateRevision < IMPLEMENTATION_REVISION then
         }
     end
 
+    ---@param field any
+    ---@param fieldName string
+    local function validateBootstrapFunction(field, fieldName)
+        if field ~= nil and type(field) ~= "function" then
+            error("Registry:Bootstrap request." .. fieldName .. " must be a function", 3)
+        end
+    end
+
+    ---Perform the reconciliation every embedded package repeats verbatim.
+    ---
+    ---A package bootstrap always answers the same three questions in the same
+    ---order: does a copy of this `(package, api)` pair already exist, is it
+    ---newer than this one, and did the copy that registered this same revision
+    ---actually finish. Getting that order wrong is how an older embedded copy
+    ---reinterprets private state it does not own, so the order lives here once
+    ---rather than in every package.
+    ---
+    ---The three return values are what the caller needs to finish:
+    ---
+    ---* `implementation` is the shared package table to initialize. When it is
+    ---  `nil` the caller is done and must `return selected` unchanged.
+    ---* `previousRevision` is `nil` for a first registration and otherwise the
+    ---  revision whose state this copy inherits, exactly as `Registry:Register`
+    ---  reports it.
+    ---* `selected` is the copy Registry has selected, which is what the caller
+    ---  returns when `implementation` is `nil`.
+    ---
+    ---`validateState` describes what "finished" means for a copy that carries
+    ---this exact revision. Without it, a same-revision copy that passed
+    ---`validatePublicSurface` is taken as complete.
+    ---
+    ---`resume` is the escape hatch for packages whose bootstrap installs shared
+    ---runtime state that a failed earlier attempt can leave half-built. It runs
+    ---only when Registry already holds this exact revision, receives whether
+    ---that copy looks complete, and returns either `nil` to accept the copy as
+    ---it is, or the revision to inherit so the caller re-runs its own setup
+    ---against the existing shared table. It may also raise on state it judges
+    ---unrepairable.
+    ---
+    ---Registry never calls this helper for itself: it is the file that
+    ---publishes the facade the helper lives on, so its own bootstrap has to run
+    ---before any facade method exists.
+    ---@param request Registry.BootstrapRequest
+    ---@return table|nil implementation
+    ---@return integer|nil previousRevision
+    ---@return table|nil selected
+    local function bootstrap(self, request)
+        if type(request) ~= "table" then
+            error("Registry:Bootstrap request must be a table", 2)
+        end
+
+        local packageName = rawget(request, "package")
+        local api = rawget(request, "api")
+        local revision = rawget(request, "revision")
+        local label = rawget(request, "label")
+        local validatePublicSurface = rawget(request, "validatePublicSurface")
+        local validateState = rawget(request, "validateState")
+        local resume = rawget(request, "resume")
+
+        validatePackageName(packageName, "Bootstrap")
+        validateApi(api, "Bootstrap")
+        if not isPositiveInteger(revision) then
+            error(
+                "Registry:Bootstrap revision must be a positive integer up to "
+                    .. MAXIMUM_INTEGER_TEXT,
+                2
+            )
+        end
+        if type(label) ~= "string" or label == "" then
+            error("Registry:Bootstrap request.label must be a non-empty string", 2)
+        end
+        if type(validatePublicSurface) ~= "function" then
+            error("Registry:Bootstrap request.validatePublicSurface must be a function", 2)
+        end
+        validateBootstrapFunction(validateState, "validateState")
+        validateBootstrapFunction(resume, "resume")
+
+        -- Level 3 points at the package file that called `Registry:Bootstrap`,
+        -- which is the caller of this helper: level 1 is `refuse` itself and
+        -- level 2 is `bootstrap`.
+        local function refuse(reason)
+            error(label .. " " .. reason, 3)
+        end
+
+        local existing, existingRevision = get(self, packageName, api)
+        if existing ~= nil then
+            if type(existing) ~= "table" or rawget(existing, "API") ~= api then
+                refuse("package state is corrupted or incomplete")
+            end
+
+            -- The facade publishes its revision only once it has committed the
+            -- matching implementation, so a facade claiming to be newer than
+            -- the revision Registry accepted cannot be trusted at all.
+            local facadeRevision = rawget(existing, "REVISION")
+            if type(facadeRevision) ~= "number" or facadeRevision > existingRevision then
+                refuse("package state is corrupted or incomplete")
+            end
+
+            if existingRevision > revision then
+                -- A newer compatible embedded revision owns its own private
+                -- state schema. Older copies validate the stable API surface
+                -- and must not reinterpret state they do not understand.
+                if facadeRevision ~= existingRevision or not validatePublicSurface(existing) then
+                    refuse("package state is corrupted or incomplete")
+                end
+                return nil, nil, existing
+            end
+
+            -- An older revision is deliberately not held to this revision's
+            -- public surface. It is about to be upgraded in place, and the
+            -- caller validates whatever it inherits before it reuses it.
+            if existingRevision == revision then
+                if not validatePublicSurface(existing) then
+                    refuse("package state is corrupted or incomplete")
+                end
+
+                local complete = facadeRevision == existingRevision
+                    and (validateState == nil or validateState(existing) == true)
+
+                if resume ~= nil then
+                    local inherited = resume(existing, complete)
+                    if inherited ~= nil then
+                        if not isPositiveInteger(inherited) and inherited ~= 0 then
+                            error("Registry:Bootstrap request.resume must return a revision", 2)
+                        end
+                        return existing, inherited, existing
+                    end
+                    return nil, nil, existing
+                end
+
+                if not complete then
+                    refuse("package state is corrupted or incomplete")
+                end
+                return nil, nil, existing
+            end
+        end
+
+        local implementation, previousRevision = register(self, packageName, api, revision)
+        if implementation == nil then
+            -- An equal or newer compatible revision owns the shared table.
+            return nil, nil, existing
+        end
+
+        if previousRevision ~= existingRevision then
+            refuse("Registry state changed unexpectedly during bootstrap")
+        end
+
+        return implementation, previousRevision, existing
+    end
+
     rawset(Registry, "Register", register)
     rawset(Registry, "Get", get)
     rawset(Registry, "GetInfo", getInfo)
+    rawset(Registry, "Bootstrap", bootstrap)
     rawset(Registry, "API", API_GENERATION)
     rawset(Registry, "REVISION", IMPLEMENTATION_REVISION)
     rawset(state, "registryRevision", IMPLEMENTATION_REVISION)
@@ -313,6 +479,7 @@ if
     or type(rawget(Registry, "Register")) ~= "function"
     or type(rawget(Registry, "Get")) ~= "function"
     or type(rawget(Registry, "GetInfo")) ~= "function"
+    or type(rawget(Registry, "Bootstrap")) ~= "function"
 then
     error("Registry: facade is corrupted or incompatible", 0)
 end

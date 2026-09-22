@@ -26,19 +26,27 @@ describe("RegistryTestEnv", function()
 
     it("clears the Registry bootstrap state", function()
         require("Registry")
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         assert.is_not_nil(rawget(_G, TestEnv.STATE_KEY))
 
         TestEnv.Reset()
 
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         assert.is_nil(rawget(_G, TestEnv.STATE_KEY))
     end)
 
     it("clears the public test namespace", function()
         require("Registry")
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         assert.is_not_nil(rawget(_G, TestEnv.NAMESPACE_KEY))
 
         TestEnv.Reset()
 
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         assert.is_nil(rawget(_G, TestEnv.NAMESPACE_KEY))
     end)
 
@@ -47,7 +55,11 @@ describe("RegistryTestEnv", function()
         TestEnv.Reset()
 
         assert.is_nil(package.loaded["Registry"])
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         assert.is_nil(rawget(_G, TestEnv.STATE_KEY))
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
         assert.is_nil(rawget(_G, TestEnv.NAMESPACE_KEY))
     end)
 

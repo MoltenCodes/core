@@ -22,7 +22,11 @@ describe("LifecycleKit late-load detection", function()
 
     it("does not treat a legacy single loading return as loaded", function()
         local LifecycleKit = TestEnv.NewPackage()
+        -- The package reads this host global at load time, so the spec has to install it in the global table.
+        -- selene: allow(global_usage)
         rawset(_G, "C_AddOns", nil)
+        -- The package reads this host global at load time, so the spec has to install it in the global table.
+        -- selene: allow(global_usage)
         rawset(_G, "IsAddOnLoaded", function()
             return true
         end)
@@ -46,7 +50,11 @@ describe("LifecycleKit late-load detection", function()
 
     it("uses the legacy finished return when explicitly available", function()
         local LifecycleKit = TestEnv.NewPackage()
+        -- The package reads this host global at load time, so the spec has to install it in the global table.
+        -- selene: allow(global_usage)
         rawset(_G, "C_AddOns", nil)
+        -- The package reads this host global at load time, so the spec has to install it in the global table.
+        -- selene: allow(global_usage)
         rawset(_G, "IsAddOnLoaded", function()
             return true, true
         end)

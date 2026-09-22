@@ -52,6 +52,8 @@ describe("LifecycleKit validation", function()
     end)
 
     it("does not cache a partially constructed instance when event setup fails", function()
+        -- The package reads this host global at load time, so the spec has to install it in the global table.
+        -- selene: allow(global_usage)
         local Registry = rawget(rawget(_G, "MoltenCodes"), "Registry")
         local EventKit = Registry:Get("eventKit", 1)
         local originalOnce = EventKit.Once

@@ -41,6 +41,8 @@ describe("EventKit errors", function()
     end)
 
     it("reports missing CreateFrame lazily", function()
+        -- The package reads this host global at load time, so the spec has to install it in the global table.
+        -- selene: allow(global_usage)
         rawset(_G, "CreateFrame", nil)
         expectErrorContaining("requires the World of Warcraft CreateFrame API", function()
             EventKit:Connect("PLAYER_LOGIN", function() end)
@@ -89,6 +91,8 @@ describe("EventKit errors", function()
         -- the host environment, not the caller's arguments. A stack level there
         -- names a line inside EventKit, so they carry an `EventKit:` prefix and
         -- no source position at all.
+        -- The package reads this host global at load time, so the spec has to install it in the global table.
+        -- selene: allow(global_usage)
         rawset(_G, "CreateFrame", nil)
 
         local ok, message = pcall(function()

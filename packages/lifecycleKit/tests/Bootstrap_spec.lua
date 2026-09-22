@@ -49,13 +49,13 @@ describe("LifecycleKit package bootstrap", function()
         end)
     end)
 
-    it("registers LifecycleKit API 1 revision 4", function()
+    it("registers LifecycleKit API 1 revision 5", function()
         local LifecycleKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("lifecycleKit", 1)
         assert.are.equal(LifecycleKit, selected)
-        assert.are.equal(4, revision)
+        assert.are.equal(5, revision)
         assert.are.equal(1, LifecycleKit.API)
-        assert.are.equal(4, LifecycleKit.REVISION)
+        assert.are.equal(5, LifecycleKit.REVISION)
     end)
 
     it("reuses facade and addon instances across duplicate embedding", function()
@@ -87,9 +87,9 @@ describe("LifecycleKit package bootstrap", function()
         require("SignalKit")
         require("EventKit")
 
-        local future = Registry:Register("lifecycleKit", 1, 5)
+        local future = Registry:Register("lifecycleKit", 1, 6)
         future.API = 1
-        future.REVISION = 5
+        future.REVISION = 6
         future.Instance = {
             GetAddonName = function() end,
             GetState = function() end,
@@ -107,7 +107,7 @@ describe("LifecycleKit package bootstrap", function()
         local selected, revision = Registry:Get("lifecycleKit", 1)
         assert.are.equal(future, loaded)
         assert.are.equal(future, selected)
-        assert.are.equal(5, revision)
+        assert.are.equal(6, revision)
     end)
 
     it("retries shared watcher setup after a same-revision bootstrap failure", function()
@@ -216,7 +216,7 @@ describe("LifecycleKit package bootstrap", function()
         local upgraded = require("LifecycleKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(4, upgraded.REVISION)
+        assert.are.equal(5, upgraded.REVISION)
         assert.are.equal(instance, upgraded:ForAddon("CarriedOver"))
         assert.is_nil(rawget(instance, "_phaseErrors"))
 

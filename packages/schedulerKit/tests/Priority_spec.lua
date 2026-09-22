@@ -130,7 +130,7 @@ describe("SchedulerKit priorities", function()
         local SchedulerKit = TestEnv.NewPackage()
         SchedulerKit:SetMaxResumesPerFrame(1)
         local order = {}
-        for index = 1, 8 do
+        for _ = 1, 8 do
             SchedulerKit:Schedule(function()
                 order[#order + 1] = "H"
             end, {

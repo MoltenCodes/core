@@ -109,6 +109,40 @@ Framework packages can be embedded by multiple addons. Registry assigns one stab
 
 Portable WoW runtime access to Registry is provided through `MoltenCodes.Registry`; packages must not depend on optional or newer module-loading facilities for their fundamental bootstrap path.
 
+## How a Kit bootstraps
+
+Every Kit's file scope answers the same four questions in the same order, and
+gets three of them from Registry rather than from its own code.
+
+1. **Find Registry.** The Kit reads the shared `MoltenCodes` namespace, asks for
+   its own Registry generation by number (`Registries[2]`), and falls back to the
+   `MoltenCodes.Registry` alias. Asking by number first is what keeps an API-2
+   Kit working once a future API 3 takes the alias over.
+2. **Check its dependencies.** Each Kit validates the facades it needs — the
+   exact API generation, the revision the facade claims, and the methods it is
+   about to call. This stays in the Kit: only the Kit knows what it uses.
+3. **Reconcile with `Registry:Bootstrap`.** The Kit hands Registry its identity
+   (`package`, `api`, `revision`), the label its failures should carry, and two
+   or three predicates: which fields make its public surface complete, whether a
+   copy carrying this same revision already finished, and optionally how to
+   resume one that did not. Registry decides whether this copy registers, yields
+   to a newer one, or adopts an existing one, and reports the revision whose
+   state this copy inherits. `packages/registry/docs/API.md` documents the
+   decision table.
+4. **Build or inherit its state.** With `previousRevision == nil` the Kit creates
+   its prototypes and private state; otherwise it validates and migrates what it
+   inherited, in place, so objects created by the older copy keep working.
+
+Registry itself is the exception: it publishes the facade `Bootstrap` lives on,
+so its own bootstrap runs before any facade method exists and is written out by
+hand.
+
+This is why a Kit's prototype tables and `_state` are never replaced on an
+upgrade. Registry keeps the shared package table's identity stable, and the Kit
+keeps the identity of everything hanging off it, so a consumer holding a
+reference from an older embedded copy observes the newer implementation instead
+of splitting across two.
+
 The first dependency layer above Registry is `signalKit`. SignalKit uses Registry only for embedded-package identity; its dispatch algorithm is pure Lua and does not depend on WoW Frames or event APIs.
 
 `eventKit` is the first WoW-specific package. It depends on Registry API 2 and SignalKit API 1, keeps the `CreateFrame`/Frame registration boundary narrow, and delegates listener ordering and mutation semantics to SignalKit instead of duplicating callback machinery. Regular events share one lazy Frame; unit-filtered events are grouped by normalized unit-token sets so `RegisterUnitEvent` registrations do not overwrite incompatible filters on the same Frame.

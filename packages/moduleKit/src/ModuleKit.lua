@@ -23,7 +23,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -122,18 +122,22 @@ local STATE_SCHEMA = 1
 -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
 -- selene: allow(global_usage)
 local namespace = rawget(_G, "MoltenCodes")
-if type(namespace) ~= "table" then
-    error("MoltenCodes ModuleKit requires Registry API 2 to be loaded first", 2)
-end
+local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
 
-local Registry = rawget(namespace, "Registry")
+-- Ask for Registry by generation and fall back to the alias. A future Registry
+-- API generation takes over `MoltenCodes.Registry`, so reading the alias first
+-- would hand this file a facade whose contract it was not written against.
+local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
+if Registry == nil and type(namespace) == "table" then
+    Registry = rawget(namespace, "Registry")
+end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
     error("MoltenCodes ModuleKit requires Registry API 2 to be loaded first", 2)
 end
 
-local registerPackage = rawget(Registry, "Register")
+local bootstrapPackage = rawget(Registry, "Bootstrap")
 local getPackage = rawget(Registry, "Get")
-if type(registerPackage) ~= "function" or type(getPackage) ~= "function" then
+if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
     error("MoltenCodes ModuleKit requires a valid Registry API 2 facade", 2)
 end
 
@@ -232,57 +236,48 @@ local function validateCurrentState(implementation)
         and type(rawget(dispatch, "shutdown")) == "function"
 end
 
-local existing, existingRevision = getPackage(Registry, PACKAGE_NAME, API_GENERATION)
-local existingFacadeRevision
-if existing ~= nil then
-    if type(existing) ~= "table" or rawget(existing, "API") ~= API_GENERATION then
-        error("MoltenCodes ModuleKit package state is corrupted or incomplete", 2)
-    end
-    existingFacadeRevision = rawget(existing, "REVISION")
-    if type(existingFacadeRevision) ~= "number" or existingFacadeRevision > existingRevision then
-        error("MoltenCodes ModuleKit package state is corrupted or incomplete", 2)
-    end
-
-    -- A future compatible revision wins. Older embedded copies must not
-    -- overwrite or reinterpret its state.
-    if existingRevision > IMPLEMENTATION_REVISION then
-        if existingFacadeRevision ~= existingRevision or not validatePublicSurface(existing) then
-            error("MoltenCodes ModuleKit package state is corrupted or incomplete", 2)
-        end
-        return existing
-    end
-end
-
-local ModuleKit, previousRevision =
-    registerPackage(Registry, PACKAGE_NAME, API_GENERATION, IMPLEMENTATION_REVISION)
-
-if ModuleKit == nil then
-    -- Registry may already have accepted this revision during an earlier
-    -- bootstrap that failed before ModuleKit finished committing its runtime
-    -- state. Resume that same revision instead of leaving the package stuck.
-    if existing == nil or existingRevision ~= IMPLEMENTATION_REVISION then
-        return existing
+---Resume a copy that already registered this revision.
+---
+---Registry may have accepted this revision during an earlier bootstrap that
+---failed before ModuleKit finished committing its shared runtime dispatch.
+---Resuming re-runs the rest of this file against the same facade instead of
+---leaving the package stuck with a half-built dispatch table.
+---@param implementation table the shared package table Registry selected
+---@param complete boolean whether that copy already committed this revision
+---@return integer|nil previousRevision `nil` accepts the copy unchanged
+local function resumeSameRevision(implementation, complete)
+    if complete then
+        return nil
     end
 
-    local existingState = rawget(existing, "_state")
-    local runtimeRevision = type(existingState) == "table"
-            and rawget(existingState, "runtimeRevision")
-        or nil
-    if
-        existingFacadeRevision == IMPLEMENTATION_REVISION
-        and runtimeRevision == IMPLEMENTATION_REVISION
-        and validatePublicSurface(existing)
-        and validateCurrentState(existing)
-    then
-        return existing
-    end
-
+    local existingState = rawget(implementation, "_state")
     if not validateStateBase(existingState) then
         error("MoltenCodes ModuleKit package state is corrupted or incomplete", 2)
     end
 
-    ModuleKit = existing
-    previousRevision = runtimeRevision or existingFacadeRevision or 0
+    local runtimeRevision = rawget(existingState, "runtimeRevision")
+    if type(runtimeRevision) ~= "number" then
+        runtimeRevision = rawget(implementation, "REVISION")
+    end
+    return runtimeRevision or 0
+end
+
+-- `Registry:Bootstrap` owns the reconciliation every embedded package repeats:
+-- look the package up, refuse to reinterpret state owned by a newer revision,
+-- and register this one. What stays here is what only ModuleKit can answer.
+local ModuleKit, previousRevision, selected = bootstrapPackage(Registry, {
+    package = PACKAGE_NAME,
+    api = API_GENERATION,
+    revision = IMPLEMENTATION_REVISION,
+    label = "MoltenCodes ModuleKit",
+    validatePublicSurface = validatePublicSurface,
+    validateState = validateCurrentState,
+    resume = resumeSameRevision,
+})
+
+if ModuleKit == nil then
+    -- Equal or newer compatible revision already owns the shared package table.
+    return selected
 end
 
 -- Registry keeps the identity of the two prototype tables below stable across

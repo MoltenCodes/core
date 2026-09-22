@@ -15,7 +15,7 @@ describe("SchedulerKit state properties", function()
             return (seed % limit) + 1
         end
 
-        for step = 1, 5000 do
+        for _ = 1, 5000 do
             local operation = random(5)
             if operation <= 2 then
                 local job

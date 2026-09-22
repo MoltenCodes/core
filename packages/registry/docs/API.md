@@ -1,7 +1,7 @@
 # Registry API
 
 Registry API generation: **2**  
-Implementation revision: **5**
+Implementation revision: **6**
 
 Registry is a zero-dependency runtime resolver for independently embedded framework packages.
 
@@ -174,6 +174,104 @@ Returns `nil` when no implementation has been registered.
 Every call returns a new metadata table. Mutating metadata fields cannot modify Registry-owned metadata.
 
 `implementation` intentionally points at the live shared package table. Changes made by an accepted package upgrade are therefore visible through that reference.
+
+## `Registry:Bootstrap(request)`
+
+Performs the reconciliation every embedded package used to repeat by hand, and
+returns what the package needs in order to finish.
+
+```lua
+local SignalKit, previousRevision, selected = Registry:Bootstrap({
+    package = "signalKit",
+    api = 1,
+    revision = 3,
+    label = "MoltenCodes SignalKit",
+    validatePublicSurface = validatePublicSurface,
+})
+
+if SignalKit == nil then
+    -- An equal or newer compatible revision already owns the package.
+    return selected
+end
+```
+
+Available from Registry API 2 **revision 6**. A package that calls it therefore
+requires a Registry at least that new. That is not a contract change — `api` is
+still 2 — but a package embedding Registry alongside its own files must keep the
+documented load order, which already puts Registry first.
+
+### Request fields
+
+| Field | Required | Meaning |
+|---|---|---|
+| `package` | yes | Package identifier, as in `Register`. |
+| `api` | yes | API generation this copy implements. |
+| `revision` | yes | Implementation revision this copy carries. |
+| `label` | yes | Prefix for the failures Registry raises on the package's behalf, for example `"MoltenCodes SignalKit"`. |
+| `validatePublicSurface` | yes | `fun(implementation): boolean` — whether a table exposes the complete public API of this generation. |
+| `validateState` | no | `fun(implementation): boolean` — whether a copy carrying this exact revision already committed its private state. Without it, a same-revision copy that passes `validatePublicSurface` counts as complete. |
+| `resume` | no | `fun(implementation, complete): integer\|nil` — the same-revision repair hook described below. |
+
+### Return values
+
+| Value | Meaning |
+|---|---|
+| `implementation` | The shared package table to initialize, or `nil` when there is nothing to do. |
+| `previousRevision` | `nil` for a first registration, otherwise the revision whose state this copy inherits, exactly as `Register` reports it. |
+| `selected` | The copy Registry has selected. This is what the package returns when `implementation` is `nil`. |
+
+### What it decides
+
+In order:
+
+1. **Nothing registered yet** — registers this revision and hands back a fresh
+   shared table with `previousRevision = nil`.
+2. **A newer compatible revision is registered** — validates only its public
+   surface and yields to it. A newer revision owns its own private state schema,
+   so an older copy must never reinterpret it.
+3. **This exact revision is registered** — validates the public surface, then
+   asks `validateState` whether that copy finished. A complete copy is returned
+   unchanged; an incomplete one is a corruption error unless `resume` says
+   otherwise.
+4. **An older revision is registered** — registers this one over it and reports
+   the inherited revision, so the package can migrate state in place. The older
+   copy is deliberately *not* held to this revision's public surface: it is about
+   to be replaced, and the package validates whatever it inherits itself.
+
+### The `resume` hook
+
+Some packages install shared runtime state that a failed earlier bootstrap can
+leave half-built — host event watchers, a dispatch table other objects call
+through. For those, "Registry already accepted this revision" does not imply
+"this revision finished".
+
+`resume` runs only in case 3, receives the selected copy and whether it looks
+complete, and returns either `nil` to accept the copy as it is, or the revision
+to inherit so the package re-runs its own setup against the existing shared
+table. It may also raise on state it judges unrepairable.
+
+### Reading Registry forward-compatibly
+
+A package resolves Registry by generation before it can call `Bootstrap`:
+
+```lua
+local namespace = rawget(_G, "MoltenCodes")
+local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
+local Registry = type(generations) == "table" and rawget(generations, 2) or nil
+if Registry == nil and type(namespace) == "table" then
+    Registry = rawget(namespace, "Registry")
+end
+```
+
+`MoltenCodes.Registry` is an alias for the newest generation loaded, so an
+eventual API 3 takes it over. Asking for `Registries[2]` first is what keeps an
+API-2 package working in that session; the alias remains the fallback for a
+Registry old enough to predate the `Registries` table.
+
+### Registry does not use it
+
+Registry is the file that publishes the facade `Bootstrap` lives on, so its own
+bootstrap has to run before any facade method exists. It stays hand-written.
 
 ## Registry constants
 

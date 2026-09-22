@@ -6,7 +6,7 @@
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
@@ -61,18 +61,22 @@ local STATE_SCHEMA = 2
 -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
 -- selene: allow(global_usage)
 local namespace = rawget(_G, "MoltenCodes")
-if type(namespace) ~= "table" then
-    error("MoltenCodes LifecycleKit requires Registry API 2 to be loaded first", 2)
-end
+local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
 
-local Registry = rawget(namespace, "Registry")
+-- Ask for Registry by generation and fall back to the alias. A future Registry
+-- API generation takes over `MoltenCodes.Registry`, so reading the alias first
+-- would hand this file a facade whose contract it was not written against.
+local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
+if Registry == nil and type(namespace) == "table" then
+    Registry = rawget(namespace, "Registry")
+end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
     error("MoltenCodes LifecycleKit requires Registry API 2 to be loaded first", 2)
 end
 
-local registerPackage = rawget(Registry, "Register")
+local bootstrapPackage = rawget(Registry, "Bootstrap")
 local getPackage = rawget(Registry, "Get")
-if type(registerPackage) ~= "function" or type(getPackage) ~= "function" then
+if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
     error("MoltenCodes LifecycleKit requires a valid Registry API 2 facade", 2)
 end
 
@@ -159,36 +163,30 @@ local function validateCurrentState(implementation)
         and type(rawget(currentState, "shutdownSeen")) == "boolean"
 end
 
-local existing, existingRevision = getPackage(Registry, PACKAGE_NAME, API_GENERATION)
-if existing ~= nil then
-    if not validatePublicSurface(existing) or rawget(existing, "REVISION") ~= existingRevision then
-        error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
-    end
-
-    if existingRevision == IMPLEMENTATION_REVISION and not validateCurrentState(existing) then
-        error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
-    end
-end
-
-local LifecycleKit, previousRevision =
-    registerPackage(Registry, PACKAGE_NAME, API_GENERATION, IMPLEMENTATION_REVISION)
+-- `Registry:Bootstrap` owns the reconciliation every embedded package repeats:
+-- look the package up, refuse to reinterpret state owned by a newer revision,
+-- and register this one. What stays here is what only LifecycleKit can answer.
+--
+-- LifecycleKit always resumes a copy that carries its own revision. Its shared
+-- host watchers live outside the package state this file validates, so a
+-- previous live upgrade can have committed the Registry revision and then
+-- failed while installing them. Re-running the rest of this file against the
+-- stable facade is idempotent and repairs that incomplete runtime setup; the
+-- state checks below still reject a facade whose package state is unusable.
+local LifecycleKit, previousRevision, selected = bootstrapPackage(Registry, {
+    package = PACKAGE_NAME,
+    api = API_GENERATION,
+    revision = IMPLEMENTATION_REVISION,
+    label = "MoltenCodes LifecycleKit",
+    validatePublicSurface = validatePublicSurface,
+    resume = function()
+        return IMPLEMENTATION_REVISION
+    end,
+})
 
 if LifecycleKit == nil then
-    if existingRevision ~= IMPLEMENTATION_REVISION then
-        -- A newer compatible embedded revision already owns the package.
-        return existing
-    end
-
-    -- Re-run the current implementation bootstrap against the stable facade.
-    -- This is intentionally idempotent: if a previous live upgrade committed
-    -- the Registry revision but failed while installing shared host watchers,
-    -- another embedded copy can repair that incomplete runtime setup.
-    LifecycleKit = existing
-    previousRevision = existingRevision
-end
-
-if previousRevision ~= existingRevision then
-    error("MoltenCodes LifecycleKit Registry state changed unexpectedly during bootstrap", 2)
+    -- A newer compatible embedded revision already owns the package.
+    return selected
 end
 
 -- Past this point the facade is always a table: Registry either handed one back

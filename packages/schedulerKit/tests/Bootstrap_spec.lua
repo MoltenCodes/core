@@ -47,7 +47,7 @@ describe("SchedulerKit bootstrap", function()
             return require("SchedulerKit")
         end)
         assert.is_true(ok)
-        assert.are.equal(4, SchedulerKit.REVISION)
+        assert.are.equal(5, SchedulerKit.REVISION)
 
         local scope = SchedulerKit:CreateScope()
         assert.is_false(scope:IsClosed())
@@ -151,7 +151,7 @@ describe("SchedulerKit bootstrap", function()
 
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(4, upgraded.REVISION)
+        assert.are.equal(5, upgraded.REVISION)
 
         -- Revision 4's lane bookkeeping is derived from the inherited queues
         -- rather than assumed empty, so work an older copy had already queued

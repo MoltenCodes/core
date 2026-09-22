@@ -26,7 +26,7 @@ describe("TimerKit state properties", function()
             assert.are.equal(running, scope:GetActiveCount())
         end
 
-        for step = 1, 5000 do
+        for _ = 1, 5000 do
             local operation = nextRandom(7)
 
             if operation <= 2 or #timers == 0 then

@@ -2,7 +2,7 @@
 
 Package: `signalKit`  
 API generation: `1`  
-Implementation revision: `2`
+Implementation revision: `3`
 
 SignalKit provides deterministic callback dispatch with explicit connection lifetimes.
 

@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **2**.
+Implementation revision: **3**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
