@@ -1,0 +1,62 @@
+# BigWigs packager metadata.
+#
+# This is the file CurseForge, Wago and WoWInterface build from. It describes
+# the MoltenCodes framework as an embeddable library bundle, not as a standalone
+# addon: the framework has no .toc of its own, registers no slash commands and
+# creates no UI. A consuming addon copies the kits it needs into
+# Libs/MoltenCodes/ and lists them in its own .toc, in the order documented in
+# docs/EMBEDDING.md.
+#
+# The packaged layout is the same one `python3 -m tooling.package.build`
+# produces locally, so what a release publishes and what a contributor can build
+# and checksum on their own machine agree:
+#
+#     MoltenCodes/
+#     ├── LICENSE
+#     ├── registry/Registry.lua
+#     ├── signalKit/SignalKit.lua
+#     └── ...
+#
+# See docs/RELEASES.md for tags, artifacts and checksums.
+
+package-as: MoltenCodes
+
+# The framework has no .toc, so there is nothing for the packager to generate
+# TOC files from, and no library to strip for a "nolib" variant.
+enable-toc-creation: no
+enable-nolib-creation: no
+
+license-output: LICENSE
+
+# Everything that exists for development rather than for the game client.
+ignore:
+  - .busted
+  - .editorconfig
+  - .gitattributes
+  - .github
+  - .gitignore
+  - .luarc.json
+  - .vscode
+  - docs
+  - examples
+  - meta
+  - selene.toml
+  - stylua.toml
+  - tooling
+  - packages/*/docs
+  - packages/*/tests
+  - packages/*/package.manifest.json
+  - packages/*/src/.luarc.json
+
+# Flatten each package's development layout into the one an addon embeds.
+# A package directory is named by its lowerCamelCase package ID; the Lua file
+# inside it keeps its PascalCase facade name.
+move-folders:
+  MoltenCodes/packages/registry/src: MoltenCodes/registry
+  MoltenCodes/packages/signalKit/src: MoltenCodes/signalKit
+  MoltenCodes/packages/eventKit/src: MoltenCodes/eventKit
+  MoltenCodes/packages/lifecycleKit/src: MoltenCodes/lifecycleKit
+  MoltenCodes/packages/moduleKit/src: MoltenCodes/moduleKit
+  MoltenCodes/packages/timerKit/src: MoltenCodes/timerKit
+  MoltenCodes/packages/schedulerKit/src: MoltenCodes/schedulerKit
+  MoltenCodes/packages/poolKit/src: MoltenCodes/poolKit

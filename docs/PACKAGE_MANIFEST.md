@@ -16,7 +16,16 @@ Every visible directory directly under `packages/` is treated as a package. A pa
 | `displayName` | string | Human-readable package name. |
 | `description` | string | Concise package purpose. |
 | `version` | string | Semantic Versioning release version. |
+| `license` | string | SPDX identifier of the package licence. |
 | `dependencies` | object | Runtime package dependency contracts. |
+
+`license` must be `MIT`, matching the repository [`LICENSE`](../LICENSE) that the
+release builder copies into every artifact. A package declaring a different
+licence would contradict the licence file shipped beside it, so the validator
+rejects it rather than trusting whichever of the two a consumer happens to read.
+If the framework ever ships a package under another licence, that is a
+deliberate repository-level decision and both this rule and the builder change
+with it.
 
 ## Runtime API fields
 
@@ -43,10 +52,15 @@ an addon would actually execute changes: a bug fix, a behaviour change, a state
 migration, a performance change that a consumer could observe.
 
 Do not raise it for edits that leave the executed implementation identical —
-comments, lint annotations, formatting, or renaming a local. Those change the
-shipped file and so belong in the changelog and in a `version` bump, but a copy
-carrying them is not a newer implementation, and claiming otherwise makes it
-displace an equivalent copy for no reason.
+comments, LuaCATS annotations, lint annotations, formatting, or renaming a local.
+Those change the shipped file and so belong in the changelog and in a `version`
+bump, but a copy carrying them is not a newer implementation, and claiming
+otherwise makes it displace an equivalent copy for no reason.
+
+"Identical" is checkable rather than a matter of opinion. Compile the file before
+and after with `luac -s -l`, normalise away the source line column and the
+prototype addresses, and compare: if the instruction listing is unchanged, the
+executed implementation is unchanged and `revision` must not move.
 
 The in-source `IMPLEMENTATION_REVISION`, the runtime `REVISION` field, and the
 manifest `revision` must always agree; each package's `Manifest_spec` enforces
@@ -91,9 +105,17 @@ packages/<name>/
 ├── README.md
 ├── package.manifest.json
 ├── src/                     # contains runtime Lua
+│   └── .luarc.json          # lua-language-server workspace for this directory
 ├── tests/                   # contains at least one *_spec.lua
 └── docs/API.md              # required when api/revision are declared
 ```
+
+`src/.luarc.json` must list exactly the shared `meta/` directory followed by the
+source directory of every package in this package's runtime dependency closure,
+dependency-first. `lua-language-server --check` uses the directory it is pointed
+at as its workspace root and ignores parent configuration, so this file is what
+makes a package type-checkable on its own. Repository validation derives the
+expected list from the manifests and fails when the two disagree.
 
 Additional package-owned documentation and internal source directories may be added without changing the manifest contract.
 

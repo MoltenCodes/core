@@ -26,6 +26,10 @@ class ManifestValidatorUnitTests(unittest.TestCase):
         self.assertFalse(module.positive_integer(0))
         self.assertFalse(module.positive_integer(True))
 
+    def test_license_is_required_and_fixed(self):
+        self.assertIn("license", module.REQUIRED)
+        self.assertEqual("MIT", module.REPOSITORY_LICENSE)
+
 
 class ManifestRepositoryTests(unittest.TestCase):
     def setUp(self):
@@ -50,6 +54,7 @@ class ManifestRepositoryTests(unittest.TestCase):
         api: int | None = 1,
         revision: int | None = 1,
         dependencies=None,
+        license_name: str | None = "MIT",
     ) -> None:
         package_dir = self.packages / name
         package_dir.mkdir()
@@ -60,6 +65,8 @@ class ManifestRepositoryTests(unittest.TestCase):
             "version": "1.0.0",
             "dependencies": dependencies or {},
         }
+        if license_name is not None:
+            data["license"] = license_name
         if api is not None:
             data["api"] = api
         if revision is not None:
@@ -78,6 +85,33 @@ class ManifestRepositoryTests(unittest.TestCase):
         self.write_manifest("eventKit", dependencies={"baseKit": {"api": 1}})
 
         self.assertEqual([], self.validate())
+
+    def test_missing_license_is_reported(self):
+        self.write_manifest("baseKit", license_name=None)
+
+        errors = self.validate()
+
+        self.assertTrue(any('missing required field "license"' in error for error in errors))
+
+    def test_license_must_match_the_repository_license(self):
+        self.write_manifest("baseKit", license_name="Apache-2.0")
+
+        errors = self.validate()
+
+        self.assertTrue(
+            any('"license" must be "MIT"' in error for error in errors),
+            errors,
+        )
+
+    def test_blank_license_is_reported(self):
+        self.write_manifest("baseKit", license_name="   ")
+
+        errors = self.validate()
+
+        self.assertTrue(
+            any('"license" must be a non-empty string' in error for error in errors),
+            errors,
+        )
 
     def test_public_package_requires_kit_suffix(self):
         self.write_manifest("utility")

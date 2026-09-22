@@ -26,9 +26,13 @@ SEMVER_RE = re.compile(
     r"(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$"
 )
 
-REQUIRED = {"name", "displayName", "description", "version", "dependencies"}
+REQUIRED = {"name", "displayName", "description", "version", "license", "dependencies"}
 OPTIONAL = {"api", "revision"}
 ALLOWED = REQUIRED | OPTIONAL
+
+#: The repository ships under one licence, so a package declaring a different
+#: one would contradict the LICENSE file that is packaged beside it.
+REPOSITORY_LICENSE = "MIT"
 
 
 def error(path: Path, message: str) -> str:
@@ -140,6 +144,17 @@ def load_manifests() -> tuple[dict[str, dict[str, Any]], list[str]]:
         version = data.get("version")
         if not isinstance(version, str) or not SEMVER_RE.fullmatch(version):
             errors.append(error(path, '"version" must be valid Semantic Versioning'))
+
+        license_name = data.get("license")
+        if not isinstance(license_name, str) or not license_name.strip():
+            errors.append(error(path, '"license" must be a non-empty string'))
+        elif license_name != REPOSITORY_LICENSE:
+            errors.append(
+                error(
+                    path,
+                    f'"license" must be "{REPOSITORY_LICENSE}" to match the repository LICENSE',
+                )
+            )
 
         api_present = "api" in data
         revision_present = "revision" in data
@@ -263,7 +278,7 @@ def main() -> int:
         runtime = ""
         if "api" in data:
             runtime = f" [API {data['api']}, Revision {data['revision']}]"
-        print(f"  - {name} {data['version']}{runtime}")
+        print(f"  - {name} {data['version']} ({data['license']}){runtime}")
 
     return 0
 
