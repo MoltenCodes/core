@@ -1,9 +1,16 @@
 """Package-aware Busted orchestration for the monorepo.
 
 Every selected package runs in its own Busted process with its own ``LUA_PATH``
-so that packages cannot see each other's test support modules. The runner always
-executes every selected package, then prints one summary table, so a single
-failing package can never hide the state of the packages behind it.
+so that packages cannot see each other's package-owned test support. The shared
+fixture under ``tests/support/`` is on every target's path, because it is
+repository test scaffolding rather than any one package's.
+
+``examples`` is a target beside the packages: the example addon is the
+documented embedding instructions, so it is exercised by the same command
+rather than by a second one that CI could forget.
+
+The runner always executes every selected target, then prints one summary table,
+so a single failing target can never hide the state of the targets behind it.
 """
 
 from __future__ import annotations
@@ -22,6 +29,21 @@ from tooling.validation.validate_manifests import load_manifests, validate_graph
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGES = ROOT / "packages"
+
+#: Test support shared by every package suite. It carries the World of Warcraft
+#: stubs, the ``package.loaded`` bookkeeping and the error capture that used to
+#: be copied into each ``packages/*/tests/support`` directory. It is repository
+#: test scaffolding rather than package-owned code, so it is never published
+#: with a package and never reachable from runtime source.
+SHARED_SUPPORT = ROOT / "tests" / "support"
+
+#: Example-addon specs run from the repository root, outside any package. They
+#: are a test target rather than a package: the example loads framework sources
+#: with ``loadfile`` the way a World of Warcraft ``.toc`` does, so it needs every
+#: package's source on its Lua path and has no manifest of its own.
+EXAMPLES_TARGET = "examples"
+EXAMPLES_TESTS = ROOT / "examples" / "tests"
+
 ManifestMap = dict[str, dict[str, Any]]
 
 #: Busted's final line, for example ``48 successes / 0 failures / 0 errors / 0 pending``.
@@ -78,12 +100,16 @@ def load_valid_manifests() -> tuple[ManifestMap, list[str]]:
 def select_test_packages(
     requested: Sequence[str], manifests: ManifestMap
 ) -> tuple[list[str], list[str]]:
-    """Select package test targets, preserving explicit user order."""
-    available = sorted(manifests)
+    """Select test targets, preserving explicit user order.
+
+    ``examples`` is a valid target alongside the manifest-discovered packages,
+    so the local command and CI run exactly the same set.
+    """
+    available = [*sorted(manifests), EXAMPLES_TARGET]
     if not requested:
         return available, []
 
-    unknown = sorted(set(requested) - set(manifests))
+    unknown = sorted(set(requested) - set(manifests) - {EXAMPLES_TARGET})
     if unknown:
         return [], [f'unknown package requested for testing: "{name}"' for name in unknown]
 
@@ -121,7 +147,7 @@ def build_lua_path(
     support_packages: Sequence[str],
     inherited: str | None = None,
 ) -> str:
-    """Build Lua paths for runtime source and the current package's test support."""
+    """Build Lua paths for runtime source, shared and per-package test support."""
     segments: list[str] = []
 
     for name in source_packages:
@@ -141,6 +167,16 @@ def build_lua_path(
                 str(package_dir / "tests" / "support" / "?" / "init.lua"),
             ]
         )
+
+    # The shared fixture comes last of the support entries, so a package that
+    # needs to shadow one of its modules can do so from its own support
+    # directory without editing the runner.
+    segments.extend(
+        [
+            str(SHARED_SUPPORT / "?.lua"),
+            str(SHARED_SUPPORT / "?" / "init.lua"),
+        ]
+    )
 
     if inherited:
         segments.append(inherited)
@@ -221,6 +257,44 @@ def run_package_suite(
     return PackageOutcome(package_name, result.returncode, *counts)
 
 
+def run_examples_suite(
+    manifests: ManifestMap,
+    busted: str,
+    busted_args: Sequence[str],
+    inherited_lua_path: str | None,
+) -> PackageOutcome:
+    """Run the example-addon specs with every package's source on the Lua path."""
+    specs = sorted(EXAMPLES_TESTS.rglob("*_spec.lua")) if EXAMPLES_TESTS.is_dir() else []
+    if not specs:
+        print(f"error: {EXAMPLES_TARGET}/tests: no *_spec.lua tests were found", file=sys.stderr)
+        return PackageOutcome(EXAMPLES_TARGET, 2, None, None, None, None)
+
+    env = os.environ.copy()
+    env["LUA_PATH"] = build_lua_path(
+        sorted(manifests),
+        support_packages=(),
+        inherited=inherited_lua_path,
+    )
+
+    command = [busted, *busted_args, str(EXAMPLES_TESTS.relative_to(ROOT))]
+    result = subprocess.run(
+        command, cwd=ROOT, env=env, check=False, capture_output=True, text=True
+    )
+
+    print(f"==> {EXAMPLES_TARGET}")
+    stdout = getattr(result, "stdout", "") or ""
+    stderr = getattr(result, "stderr", "") or ""
+    if stdout:
+        sys.stdout.write(stdout if stdout.endswith("\n") else stdout + "\n")
+    if stderr:
+        sys.stderr.write(stderr if stderr.endswith("\n") else stderr + "\n")
+
+    counts = parse_busted_summary(stdout + stderr)
+    if counts is None:
+        return PackageOutcome(EXAMPLES_TARGET, result.returncode, None, None, None, None)
+    return PackageOutcome(EXAMPLES_TARGET, result.returncode, *counts)
+
+
 def format_summary_table(outcomes: Sequence[PackageOutcome]) -> str:
     """Render the per-package result table, including a totals row."""
     headers = ("package", "successes", "failures", "errors", "pending", "status")
@@ -281,7 +355,7 @@ def format_summary_table(outcomes: Sequence[PackageOutcome]) -> str:
 
 
 def run(package_names: Sequence[str], busted_args: Sequence[str] = ()) -> int:
-    """Run every selected package suite, then report the aggregate result."""
+    """Run every selected suite, then report the aggregate result."""
     manifests, errors = load_valid_manifests()
     if errors:
         for message in errors:
@@ -302,7 +376,11 @@ def run(package_names: Sequence[str], busted_args: Sequence[str] = ()) -> int:
     inherited_lua_path = os.environ.get("LUA_PATH")
 
     outcomes = [
-        run_package_suite(name, manifests, busted, busted_args, inherited_lua_path)
+        (
+            run_examples_suite(manifests, busted, busted_args, inherited_lua_path)
+            if name == EXAMPLES_TARGET
+            else run_package_suite(name, manifests, busted, busted_args, inherited_lua_path)
+        )
         for name in selected
     ]
 
@@ -311,7 +389,7 @@ def run(package_names: Sequence[str], busted_args: Sequence[str] = ()) -> int:
 
     failed = [outcome.package_name for outcome in outcomes if not outcome.passed]
     if failed:
-        print(f"\nfailed packages: {', '.join(failed)}", file=sys.stderr)
+        print(f"\nfailed targets: {', '.join(failed)}", file=sys.stderr)
         return 1
     return 0
 
@@ -319,12 +397,15 @@ def run(package_names: Sequence[str], busted_args: Sequence[str] = ()) -> int:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse the runner's command line."""
     parser = argparse.ArgumentParser(
-        description="Run Busted for all monorepo packages or a selected package subset."
+        description="Run Busted for every monorepo test target or a selected subset."
     )
     parser.add_argument(
         "packages",
         nargs="*",
-        help="package names to test; omitted means every discovered package",
+        help=(
+            'test targets; a package name or "examples". '
+            "Omitted means every discovered package and the examples"
+        ),
     )
     parser.add_argument(
         "--busted-arg",

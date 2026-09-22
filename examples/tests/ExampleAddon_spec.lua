@@ -7,122 +7,34 @@
 -- the World of Warcraft client would — with the addon name and the addon's
 -- private table as the file's `...` vararg.
 --
--- The World of Warcraft API is stubbed inline rather than reused from a
--- package's `tests/support/` directory: those helpers are package-private by
--- the rule in docs/TESTING.md, and the example is not part of any package.
+-- The World of Warcraft API comes from the shared `FrameworkTestEnv` fixture,
+-- the same one the package suites use, so the host the example is proved
+-- against cannot drift from the host the framework is tested against. What
+-- stays here is what only this spec needs: the `print` capture the example
+-- greets through, and the file loading that is the point of the exercise.
+
+local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local EXAMPLES_DIRECTORY = "examples"
 local ADDON_NAME = "ExampleAddon"
 
-local REGISTRY_STATE_KEY = "__MOLTENCODES_REGISTRY_STATE_V2"
-local NAMESPACE_KEY = "MoltenCodes"
+-- The example loads its packages with `loadfile` rather than `require`, because
+-- that is what a World of Warcraft `.toc` does, so this environment carries no
+-- module chain.
+local TestEnv = FrameworkTestEnv.New({})
 
--- Host environment ----------------------------------------------------------
+local printedLines = {}
+local originalPrint = nil
 
-local frames
-local nativeTimers
-local loadedAddons
-local loggedIn
-local reportedErrors
-local printedLines
-local originalPrint
+---Install the host stubs plus the `print` capture the example greets through.
+local function installHost()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
 
----Build one stub Frame that records its registrations and script handlers.
----@return table
-local function newFrame()
-    local frame = {
-        scripts = {},
-        registrations = {},
-    }
-
-    function frame:SetScript(scriptName, handler)
-        self.scripts[scriptName] = handler
-    end
-
-    function frame:RegisterEvent(eventName)
-        self.registrations[eventName] = { units = false }
-        return true
-    end
-
-    function frame:RegisterUnitEvent(eventName, ...)
-        local units = {}
-        for index = 1, select("#", ...) do
-            units[select(index, ...)] = true
-        end
-        self.registrations[eventName] = { units = units }
-        return true
-    end
-
-    function frame:UnregisterEvent(eventName)
-        self.registrations[eventName] = nil
-    end
-
-    frames[#frames + 1] = frame
-    return frame
-end
-
-local function installWowApi()
-    frames = {}
-    nativeTimers = {}
-    loadedAddons = {}
-    loggedIn = false
-    reportedErrors = {}
     printedLines = {}
-
-    rawset(_G, "CreateFrame", function(frameType)
-        if frameType ~= "Frame" then
-            error('CreateFrame stub supports only "Frame", received ' .. tostring(frameType), 2)
-        end
-        return newFrame()
-    end)
-
-    rawset(_G, "C_AddOns", {
-        IsAddOnLoaded = function(addonName)
-            local finished = loadedAddons[addonName] == true
-            return finished, finished
-        end,
-    })
-
-    rawset(_G, "IsLoggedIn", function()
-        return loggedIn
-    end)
-
-    local function newNativeTimer(seconds, callback, repeating)
-        local native = {
-            seconds = seconds,
-            callback = callback,
-            repeating = repeating,
-            cancelled = false,
-        }
-
-        function native:Cancel()
-            self.cancelled = true
-        end
-
-        function native:IsCancelled()
-            return self.cancelled
-        end
-
-        nativeTimers[#nativeTimers + 1] = native
-        return native
-    end
-
-    rawset(_G, "C_Timer", {
-        NewTimer = function(seconds, callback)
-            return newNativeTimer(seconds, callback, false)
-        end,
-        NewTicker = function(seconds, callback)
-            return newNativeTimer(seconds, callback, true)
-        end,
-    })
-
-    rawset(_G, "geterrorhandler", function()
-        return function(message)
-            reportedErrors[#reportedErrors + 1] = tostring(message)
-        end
-    end)
-
     originalPrint = print
+    -- The example addon reaches the framework through the documented global namespace, exactly as a real addon does.
+    -- selene: allow(global_usage)
     rawset(_G, "print", function(...)
         local parts = {}
         for index = 1, select("#", ...) do
@@ -132,52 +44,39 @@ local function installWowApi()
     end)
 end
 
-local function removeWowApi()
+---Undo everything `installHost` changed, including the example's saved variable.
+local function removeHost()
     if originalPrint ~= nil then
+        -- The example addon reaches the framework through the documented global namespace, exactly as a real addon does.
+        -- selene: allow(global_usage)
         rawset(_G, "print", originalPrint)
         originalPrint = nil
     end
-    for _, key in ipairs({ "CreateFrame", "C_AddOns", "IsLoggedIn", "C_Timer", "geterrorhandler" }) do
-        rawset(_G, key, nil)
-    end
-    rawset(_G, NAMESPACE_KEY, nil)
-    rawset(_G, REGISTRY_STATE_KEY, nil)
+    TestEnv.Reset()
+    -- The example addon reaches the framework through the documented global namespace, exactly as a real addon does.
+    -- selene: allow(global_usage)
     rawset(_G, "ExampleAddonDB", nil)
-    frames = nil
-    nativeTimers = nil
-end
-
----Deliver `eventName` to every stub Frame registered for it.
----@param eventName string
----@param unit string|nil unit token for a unit-filtered event
----@param ... any client payload
-local function fireEvent(eventName, unit, ...)
-    for index = 1, #frames do
-        local frame = frames[index]
-        local registration = frame.registrations[eventName]
-        local handler = frame.scripts.OnEvent
-        if registration ~= nil and handler ~= nil then
-            local matches = registration.units == false
-                or (unit ~= nil and registration.units[unit] == true)
-            if matches then
-                if unit ~= nil and registration.units ~= false then
-                    handler(frame, eventName, unit, ...)
-                else
-                    handler(frame, eventName, ...)
-                end
-            end
-        end
-    end
 end
 
 ---Fire every live repeating native timer once.
 local function fireTickers()
-    for index = 1, #nativeTimers do
-        local native = nativeTimers[index]
-        if native.repeating and not native.cancelled then
-            native.callback(native)
+    local natives = TestEnv.NativeTimers()
+    for index = 1, #natives do
+        if natives[index].repeating then
+            TestEnv.FireNative(index)
         end
     end
+end
+
+---Every message the example reported through the host error handler.
+---@return string[]
+local function reportedErrorText()
+    local values = TestEnv.ReportedErrors()
+    local text = {}
+    for index = 1, #values do
+        text[index] = tostring(values[index])
+    end
+    return text
 end
 
 -- Loading the example -------------------------------------------------------
@@ -251,13 +150,15 @@ end
 -- Specs ---------------------------------------------------------------------
 
 describe("ExampleAddon", function()
-    before_each(installWowApi)
-    after_each(removeWowApi)
+    before_each(installHost)
+    after_each(removeHost)
 
     it("loads every package embeds.xml lists, in that order", function()
         loadEmbeddedPackages()
 
-        local registry = rawget(_G, NAMESPACE_KEY).Registries[2]
+        -- The example addon reaches the framework through the documented global namespace, exactly as a real addon does.
+        -- selene: allow(global_usage)
+        local registry = rawget(_G, TestEnv.NAMESPACE_KEY).Registries[2]
         assert.are.equal(2, registry.API)
         for _, packageName in ipairs({
             "signalKit",
@@ -277,36 +178,40 @@ describe("ExampleAddon", function()
         assert.are.equal("loading", addonTable.Lifecycle:GetState())
         assert.is_false(addonTable.Greeter:IsEnabled())
 
-        loadedAddons[ADDON_NAME] = true
-        fireEvent("ADDON_LOADED", nil, ADDON_NAME)
+        TestEnv.MarkAddonLoaded(ADDON_NAME)
+        TestEnv.Emit("ADDON_LOADED", ADDON_NAME)
         assert.are.equal("loaded", addonTable.Lifecycle:GetState())
         assert.is_true(addonTable.Greeter:IsInitialized())
 
-        loggedIn = true
-        fireEvent("PLAYER_LOGIN", nil)
+        TestEnv.SetLoggedIn(true)
+        TestEnv.Emit("PLAYER_LOGIN")
         assert.are.equal("ready", addonTable.Lifecycle:GetState())
         assert.is_true(addonTable.Greeter:IsEnabled())
 
+        -- The example addon reaches the framework through the documented global namespace, exactly as a real addon does.
+        -- selene: allow(global_usage)
         assert.are.equal(1, rawget(_G, "ExampleAddonDB").greetings)
-        assert.are.equal(0, #reportedErrors, table.concat(reportedErrors, "; "))
+        local reported = reportedErrorText()
+        assert.are.equal(0, #reported, table.concat(reported, "; "))
     end)
 
     it("delivers the events and the timer its module subscribes to", function()
         loadEmbeddedPackages()
         local addonTable = loadExampleAddon()
 
-        loadedAddons[ADDON_NAME] = true
-        fireEvent("ADDON_LOADED", nil, ADDON_NAME)
-        loggedIn = true
-        fireEvent("PLAYER_LOGIN", nil)
+        TestEnv.MarkAddonLoaded(ADDON_NAME)
+        TestEnv.Emit("ADDON_LOADED", ADDON_NAME)
+        TestEnv.SetLoggedIn(true)
+        TestEnv.Emit("PLAYER_LOGIN")
 
         local before = #printedLines
-        fireEvent("PLAYER_ENTERING_WORLD", nil, false, true)
-        fireEvent("UNIT_HEALTH", "player")
+        TestEnv.Emit("PLAYER_ENTERING_WORLD", false, true)
+        TestEnv.Emit("UNIT_HEALTH", "player")
         fireTickers()
 
         assert.are.equal(before + 3, #printedLines)
-        assert.are.equal(0, #reportedErrors, table.concat(reportedErrors, "; "))
+        local reported = reportedErrorText()
+        assert.are.equal(0, #reported, table.concat(reported, "; "))
         assert.is_true(addonTable.Timers:GetActiveCount() > 0)
     end)
 
@@ -314,16 +219,17 @@ describe("ExampleAddon", function()
         loadEmbeddedPackages()
         local addonTable = loadExampleAddon()
 
-        loadedAddons[ADDON_NAME] = true
-        fireEvent("ADDON_LOADED", nil, ADDON_NAME)
-        loggedIn = true
-        fireEvent("PLAYER_LOGIN", nil)
-        fireEvent("PLAYER_LOGOUT", nil)
+        TestEnv.MarkAddonLoaded(ADDON_NAME)
+        TestEnv.Emit("ADDON_LOADED", ADDON_NAME)
+        TestEnv.SetLoggedIn(true)
+        TestEnv.Emit("PLAYER_LOGIN")
+        TestEnv.Emit("PLAYER_LOGOUT")
 
         assert.are.equal("shutdown", addonTable.Lifecycle:GetState())
         assert.is_false(addonTable.Greeter:IsEnabled())
         assert.is_true(addonTable.Timers:IsClosed())
         assert.are.equal(0, addonTable.Timers:GetActiveCount())
-        assert.are.equal(0, #reportedErrors, table.concat(reportedErrors, "; "))
+        local reported = reportedErrorText()
+        assert.are.equal(0, #reported, table.concat(reported, "; "))
     end)
 end)

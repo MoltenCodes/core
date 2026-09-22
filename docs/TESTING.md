@@ -48,21 +48,30 @@ The canonical test command is:
 python3 -m tooling.test.run
 ```
 
-The runner discovers packages from manifests, generates `LUA_PATH` entries for package source and test support, then invokes Busted for every discovered package.
+The runner discovers packages from manifests, generates `LUA_PATH` entries for
+package source, package test support and the shared fixture, then invokes Busted
+for every discovered package.
 
-Every selected package always runs, even when an earlier package fails, so one
-broken package can never hide the state of the packages behind it. The runner
-echoes each suite's Busted output, then prints one table of successes, failures,
-errors and pending specs per package with a totals row, and exits non-zero when
-any package failed. Counts come from Busted's own summary line; when that line
-cannot be parsed the table shows `-` and falls back to the process exit status,
-so a reporting change can never turn a passing suite into a failure.
-
-To run a subset:
+The example addon under `examples/` is a target beside the packages, named
+`examples`. It is the documented embedding instructions in executable form, so
+it runs from the same command rather than from a second one CI could forget:
 
 ```bash
-python3 -m tooling.test.run registry
+python3 -m tooling.test.run           # every package, then the examples
+python3 -m tooling.test.run registry  # one package
+python3 -m tooling.test.run examples  # only the example addon
 ```
+
+`busted examples/tests` still works on its own; the root `.busted` puts the
+shared fixture on the Lua path so it does.
+
+Every selected target always runs, even when an earlier one fails, so one
+broken target can never hide the state of the targets behind it. The runner
+echoes each suite's Busted output, then prints one table of successes, failures,
+errors and pending specs per target with a totals row, and exits non-zero when
+any target failed. Counts come from Busted's own summary line; when that line
+cannot be parsed the table shows `-` and falls back to the process exit status,
+so a reporting change can never turn a passing suite into a failure.
 
 This design allows new packages to participate in the test suite without editing CI or root Busted paths.
 
@@ -70,11 +79,49 @@ This design allows new packages to participate in the test suite without editing
 
 Tests must not depend on execution order.
 
-Package-specific helpers belong under:
+## Shared and package-specific test support
+
+The host a package is tested against is shared; what a package does with that
+host is not.
 
 ```text
-packages/<package>/tests/support/
+tests/support/FrameworkTestEnv.lua      # the fake World of Warcraft client
+packages/<package>/tests/support/       # that package's own helpers
 ```
+
+`tests/support/FrameworkTestEnv.lua` is the one fake client the whole suite
+runs against. It provides the `CreateFrame` stub (including the two-slot
+`RegisterUnitEvent` limit the real host enforces), `C_Timer`, `C_AddOns`,
+`IsLoggedIn`, `securecallfunction`, `CombatLogGetCurrentEventInfo`, the
+independent `GetTimePreciseSec` and `debugprofilestop` clocks, the
+`geterrorhandler` capture behind `ReportedErrors`/`TakeReportedErrors`, the
+`package.loaded` bookkeeping behind `Reset`/`NewPackage`/`ReloadPackage`, and
+the `requireAfterFailedLoad` and `expectErrorContaining` helpers.
+
+`FrameworkTestEnv.New(options)` builds one environment per package, each with
+its own stub state. `options.modules` is the module chain in load order, and the
+package under test is the last entry:
+
+```lua
+local FrameworkTestEnv = require("FrameworkTestEnv")
+
+local TimerKitTestEnv = FrameworkTestEnv.New({
+    modules = { "Registry", "SignalKit", "EventKit", "LifecycleKit", "TimerKit" },
+})
+```
+
+`options.wowApi = false` suits a pure-Lua package whose specs opt into a host
+error sink explicitly, and `options.legacyRegistryState = true` also clears the
+retired Registry API 1 state key.
+
+Each package keeps `packages/<package>/tests/support/<Kit>TestEnv.lua` for what
+is genuinely its own: the load order above, and any helper only its specs can
+describe. That file is package-owned and published with the package; the shared
+fixture is repository test scaffolding and is not.
+
+`tooling/test/run.py` puts the shared directory on every target's `LUA_PATH`,
+after the package's own support directory, so a package could shadow a shared
+module from its own `tests/support/` without the runner changing.
 
 Test-only helpers are not public runtime API.
 
@@ -130,14 +177,26 @@ end
 ```
 
 Each package's `TestEnv.Reset()` clears the same marker, so a spec that calls
-`Reset` before every `require` already satisfies this.
+`Reset` before every `require` already satisfies this. The shared fixture also
+exposes that helper directly as `TestEnv.requireAfterFailedLoad(moduleName)`.
 
 ## Runtime dependencies
 
 Testing dependencies are development-only dependencies and must never become runtime WoW dependencies.
 
+## Linting test code
+
+Specs are linted with the same Selene rules as runtime code. Busted injects its
+vocabulary into spec chunks as globals rather than as a module, so test code is
+judged against the `busted.yml` standard library selected by
+`selene-tests.toml`; `python3 -m tooling.lint` runs both scopes. See
+[`TOOLING.md`](TOOLING.md) for what that standard corrects and why.
+
 ## CI
 
-CI validates formatting, runtime Lua linting, repository structure, repository-tooling unit tests, and the Lua package test suite.
+CI validates formatting, Lua linting for runtime and test code, the
+lua-language-server check for every source directory, repository structure,
+repository-tooling unit tests on the supported Python floor and the current
+release, and the Lua package and example test suites.
 
 As dependency graphs become larger, orchestration may optimize toward affected-package testing, but the full-suite command remains the correctness baseline.

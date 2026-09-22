@@ -30,6 +30,9 @@ local TIMER_KIT_API = 1
 ---Return the Registry facade for the API generation this addon targets.
 ---@return Registry
 local function resolveRegistry()
+    -- `MoltenCodes` is the documented global the framework publishes itself
+    -- under; reaching it is the whole point of this example.
+    -- selene: allow(undefined_variable)
     local namespace = MoltenCodes
     if type(namespace) ~= "table" then
         error(ADDON_NAME .. " requires MoltenCodes Registry API " .. REGISTRY_API, 0)
@@ -103,6 +106,10 @@ ADDON_TABLE.Timers = timers
 ---@field greetings integer how many times the addon has greeted this character
 
 ---@type ExampleAddonDatabase
+-- `ExampleAddonDB` is a World of Warcraft saved variable. The client declares
+-- it in the `.toc`, restores it as a global before the addon's files run, and
+-- persists it by that global name, so it cannot be a local.
+-- selene: allow(unscoped_variables)
 ExampleAddonDB = ExampleAddonDB or { greetings = 0 }
 
 lifecycle:OnLoaded(function()

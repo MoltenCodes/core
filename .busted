@@ -1,5 +1,10 @@
 return {
     default = {
         verbose = true,
+        -- The shared test fixture under `tests/support/` is repository-wide test
+        -- scaffolding rather than any one package's, so it belongs on the root
+        -- Lua path. Package source and package-owned support stay out of this
+        -- file: `tooling/test/run.py` builds those per package.
+        lpath = "tests/support/?.lua;tests/support/?/init.lua;;",
     },
 }
