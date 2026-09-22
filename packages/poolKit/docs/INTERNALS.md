@@ -13,6 +13,10 @@ Each pool uses:
 
 `Acquire` and the normal retained `Release` path perform O(1) table operations and create no framework-owned temporary tables. User callbacks may allocate independently.
 
+`Acquire` also compares `_maxActiveWarning` against the new active count. The field is `false` when leak warnings are not configured, so the default path is one `rawget` and one comparison, and the message-building work lives in a separate function that the hot path never enters.
+
+`_active` is intentionally the one unbounded structure in a pool. It must hold strong references for ownership, duplicate-release, and foreign-object checks to stay correct, and PoolKit cannot reclaim an object the caller never returns. The bound therefore belongs to the caller; `GetActiveCount` and `maxActiveWarning` make it observable.
+
 ## Why discarded history is weak
 
 Keeping a permanent “ever owned” set would defeat pooling by retaining every object ever created. Strict post-discard duplicate diagnostics instead use `__mode = "k"`, allowing garbage collection as soon as external references disappear.
@@ -22,6 +26,12 @@ Keeping a permanent “ever owned” set would defeat pooling by retaining every
 Release transitions the active marker from `ACTIVE` to `RELEASING` before invoking reset. This prevents a reset callback from recursively releasing the same object.
 
 If reset fails, the marker returns to `ACTIVE` and counters do not change. If reset succeeds, active ownership is removed before retention/destruction. Destruction is therefore post-commit cleanup.
+
+## Error levels
+
+Every argument validator takes an explicit `level`, which is the value `error` needs *inside the function that receives it*; each further hop towards `error` adds one. Nothing relies on a default, so a method that gains or loses an internal hop cannot silently start reporting at the wrong frame.
+
+Level `0` is reserved for "no position information" and is propagated unchanged by `nestedLevel`. The constructor-time `prewarm` path uses it: that failure is caught by a `pcall` and re-raised verbatim, so any position computed across the boundary would name a PoolKit frame rather than the caller.
 
 ## Bulk cleanup
 
@@ -33,7 +43,11 @@ PoolKit objects share a Registry-owned metatable whose `__index` points at the s
 
 ## Callback re-entrancy
 
-A small `_callbackPhase` marker protects ownership transactions from same-pool mutation inside `create`, `reset`, and `destroy`. Query methods remain valid, and callbacks may mutate other pools. Bulk cleanup detaches its complete snapshot before invoking destroy callbacks so query methods observe committed structural state.
+A `_callbackDepth` counter, paired with a `_callbackPhase` name for the rejection message, protects ownership transactions from same-pool mutation inside `create`, `reset`, and `destroy`. Query methods remain valid, and callbacks may mutate other pools. Bulk cleanup detaches its complete snapshot before invoking destroy callbacks so query methods observe committed structural state.
+
+The guard is a counter rather than a flag, and the previous phase name is restored rather than cleared, so a nested invocation cannot release a guard it did not take. Both halves are also restored when the callback returns by raising, which is what keeps a failed `reset` from locking its pool permanently.
+
+Note for maintainers: with the current public surface, same-pool nesting is not reachable. Every method that can invoke a lifecycle callback passes through `ensureMutationAllowed` first, so the guard refuses the re-entry before a second invocation can begin. The counter exists so that the invariant does not quietly depend on that: any future path that invokes a callback without the mutation check — or any callback-invoking method added later — would otherwise hand the outer callback a pool that looks unguarded. Specs cover the reachable case (nested lifecycle callbacks across two pools) and guard restoration after a raise.
 
 ## Table-pool fast path
 

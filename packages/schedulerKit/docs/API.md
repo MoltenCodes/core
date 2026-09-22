@@ -21,7 +21,7 @@ The package intentionally separates **when work becomes eligible** from **how mu
 | `ForAddon(addonName)` | Return the canonical LifecycleKit-owned scope for an addon. |
 | `SetFrameBudget(milliseconds)` | Set the scheduler's per-frame cooperative time budget. |
 | `GetFrameBudget()` | Return the current frame budget in milliseconds. |
-| `SetRunawayThreshold(milliseconds)` | Set the maximum accepted duration of a yielded slice. |
+| `SetRunawayThreshold(milliseconds)` | Set the slice duration above which a job is demoted. |
 | `GetRunawayThreshold()` | Return the current yielded-slice threshold. |
 | `SetMaxResumesPerFrame(count)` | Set the hard resume-count safety ceiling per frame. |
 | `GetMaxResumesPerFrame()` | Return the resume-count ceiling. |
@@ -39,6 +39,7 @@ The package intentionally separates **when work becomes eligible** from **how mu
 | `IsCancelled()` | Return whether the logical job was cancelled. |
 | `HasError()` | Distinguish a failed job even when its Lua error object is `nil`. |
 | `GetError()` | Return the original Lua error object for a failed job. |
+| `GetErrorTraceback()` | Return the stack captured where a callback error was raised. |
 | `Cancel()` | Logically cancel a non-terminal job. |
 
 ### Scopes
@@ -77,15 +78,23 @@ SchedulerKit.Priority.IDLE
 
 Jobs are FIFO within one priority lane.
 
-Across lanes, SchedulerKit uses a persistent weighted round-robin sequence:
+`HIGH`, `NORMAL`, and `LOW` are **contending** lanes. Across them SchedulerKit uses a persistent weighted round-robin sequence:
 
 ```text
-HIGH, HIGH, HIGH, HIGH, NORMAL, NORMAL, LOW, IDLE
+HIGH, HIGH, HIGH, HIGH, NORMAL, NORMAL, LOW
 ```
 
-The cursor is preserved between rendered frames. HIGH work therefore receives greater service, but a continuously populated HIGH queue cannot permanently starve NORMAL, LOW, or IDLE queues.
+The cursor is preserved between rendered frames. HIGH work therefore receives greater service, but a continuously populated HIGH queue cannot permanently starve NORMAL or LOW.
 
-Priority controls **service preference**, not correctness. A consumer must never rely on a lower-priority job being complete before a higher-priority job unless it models that dependency explicitly in its own state.
+`IDLE` is **not** a contending lane. It means what its name says: an IDLE job runs only when no HIGH, NORMAL, or LOW job is ready. It has no guaranteed share of a busy frame, which is the difference between IDLE and LOW — `LOW` is "serve this last among real work", `IDLE` is "serve this only when there is no real work".
+
+### IDLE starvation guard
+
+"Only when nothing else is ready" must not become "never" on a permanently busy client. After **256 consecutive resumes** of contending work while an IDLE job waits, SchedulerKit promotes one IDLE job ahead of the weighted lanes and resets the counter.
+
+The counter is charged only while IDLE work is actually waiting, so an IDLE job that arrives after a long busy stretch does not immediately jump the queue on credit it never earned. Under sustained load the guard leaves IDLE below half a percent of total service.
+
+Priority controls **service preference**, not correctness. A consumer must never rely on a lower-priority job being complete before a higher-priority job unless it models that dependency explicitly in its own state. A job may also be demoted by the scheduler itself (see the runaway threshold below), so `GetPriority()` is not guaranteed to return the value the job was scheduled with.
 
 ## Scheduling options
 
@@ -122,6 +131,42 @@ end)
 
 Raw `coroutine.yield(...)` is deliberately unsupported. A coroutine that suspends without SchedulerKit's internal yield token is failed with a diagnostic error. This prevents ambiguous scheduling semantics.
 
+### Important limitation: `Yield()` cannot cross a C-call boundary
+
+This is a property of Lua 5.1, which is the Lua version World of Warcraft runs, and it is the single most common way to break a cooperative job.
+
+A coroutine running under Lua 5.1 cannot suspend while a C function sits between it and the resume. `Context:Yield()` therefore **fails** when it is called from inside any of these:
+
+```lua
+pcall(function() context:Yield() end)          -- and xpcall
+table.sort(list, function(a, b) context:Yield() return a < b end)
+string.gsub(text, "%w+", function() context:Yield() end)
+setmetatable({}, { __index = function() context:Yield() end })
+```
+
+The error Lua raises is `attempt to yield across metamethod/C-call boundary`. If the callback lets that error propagate, the job fails normally and the reason is visible. The dangerous case is a callback that **swallows** it — typically its own `pcall` around per-item work — because the callback then runs on to completion having never surrendered the frame. That is a silent budget violation: the work looks cooperative and is not.
+
+SchedulerKit detects it. `Context:Yield()` records that a suspension was requested, and the driver notices a slice that ended with the callback returning although the yield never arrived. The outcome depends on how much of the frame the slice actually consumed:
+
+- within the runaway threshold — SchedulerKit reports a diagnostic through the host error handler naming the job and the rule; the job completes normally;
+- beyond the runaway threshold — the job is **failed**, because the slice both escaped the cooperative contract and outran the budget. `GetError()` carries the same diagnostic.
+
+The fix is always the same: move the yield point out of the C-called function.
+
+```lua
+-- Wrong: the yield is inside the protected call.
+SchedulerKit:Schedule(function(context)
+    for index = 1, #records do
+        pcall(process, records[index])
+        if context:ShouldYield() then
+            context:Yield()
+        end
+    end
+end)
+```
+
+The loop above is already correct, because the yield is outside `pcall`. Keep protected calls around the *work*, never around the yield.
+
 ### Important limitation: no preemption
 
 Lua execution is cooperative. SchedulerKit cannot interrupt an arbitrary callback in the middle of a long-running Lua instruction sequence.
@@ -138,9 +183,11 @@ The default budget is **2 ms** per scheduler-driven frame.
 SchedulerKit:SetFrameBudget(1.5)
 ```
 
-SchedulerKit reads WoW's monotonic precise-time clock and sets one deadline at the beginning of each OnUpdate scheduling pass.
+The budget is measured in **addon CPU milliseconds**, read from `debugprofilestop()`, not in wall-clock time. SchedulerKit sets one deadline on that clock at the beginning of each OnUpdate scheduling pass, and `Context:ShouldYield()` compares the current profiling time with that deadline.
 
-`Context:ShouldYield()` compares the current profiling time with that deadline.
+This distinction matters. A garbage-collection pause, a texture load, or any other client hitch moves wall time forward while the running job consumed none of the frame. Billing that to the job would make a perfectly cooperative callback look like it had blown the budget — it would yield immediately, or be flagged as a runaway, for a stall it did not cause. CPU time charges the job only for work the job actually did.
+
+A host that does not publish `debugprofilestop` falls back to the monotonic precise wall clock (`GetTimePreciseSec`), with the caveat above.
 
 The scheduler always permits at least one resume when work is ready. This prevents a very small budget or driver overhead from causing permanent starvation.
 
@@ -164,17 +211,19 @@ This limit is a safety valve for nested/zero-cost scheduling storms, not a throu
 
 ## Runaway yielded-slice threshold
 
-The default yielded-slice threshold is **8 ms**.
+The default yielded-slice threshold is **8 ms** of addon CPU time.
 
-If a job eventually calls `Context:Yield()` but the resume consumed more than this threshold before yielding, the job is failed instead of being requeued repeatedly.
+If a job calls `Context:Yield()` but the resume consumed more than this threshold before yielding, the job is **demoted one priority lane** (`HIGH` → `NORMAL` → `LOW` → `IDLE`, and no further) and the overrun is reported through the host error handler. The job is then requeued and keeps running.
 
 ```lua
 SchedulerKit:SetRunawayThreshold(6)
 ```
 
+A job that yielded honoured the cooperative contract. Its slices being too coarse is a scheduling problem, not misbehaviour, and killing it would destroy work the consumer has no way to resume. Demotion is the proportionate response: the job stops competing with well-behaved work, the overrun is visible in the error log, and the consumer keeps its results. Every subsequent overrunning slice reports again and demotes again until the job reaches `IDLE`.
+
 This is diagnostic containment, not preemption. A slice can only be measured after it yields back to SchedulerKit.
 
-A callback that completes normally is not retroactively converted into a failure merely because its final slice was long.
+A callback that completes normally is not retroactively converted into a failure merely because its final slice was long. The one exception is the swallowed-`Yield()` case described under *Cooperative execution*: there the job never yielded at all, so the threshold is the line between a diagnostic and a failure.
 
 ## Immediate vs next-frame scheduling
 
@@ -257,7 +306,22 @@ end
 
 `HasError()` exists separately because valid Lua error objects include `nil` and `false`.
 
-When WoW's `geterrorhandler()` is available, SchedulerKit also reports the original error object through the host error handler on a best-effort basis. Failure of the error handler itself cannot poison scheduler execution.
+SchedulerKit captures `debug.traceback` against the failing coroutine **while that coroutine is still available**, before the job's execution references are released. Lua 5.1 leaves an errored coroutine's frames in place, so the traceback names the function that actually raised rather than the driver frame that observed the failure:
+
+```lua
+if job:HasError() then
+    print(job:GetError())            -- the original Lua error object
+    print(job:GetErrorTraceback())   -- where it was raised
+end
+```
+
+`GetErrorTraceback()` returns `nil` for a job that did not fail through a callback error, and on a host that publishes no `debug.traceback`.
+
+When WoW's `geterrorhandler()` is available, SchedulerKit also reports the failure through the host error handler on a best-effort basis: the traceback when one was captured, otherwise the original error object. `GetError()` always keeps the original object unchanged, including `nil` and `false`. Failure of the error handler itself cannot poison scheduler execution.
+
+The host error handler is also the seam for non-fatal scheduler diagnostics — a demoted runaway slice and a swallowed `Context:Yield()` are reported there. Those reports never terminate a job.
+
+A failure is signalled **once**. An operation that raises to its direct caller, such as `SchedulerKit:After` failing to arm its TimerKit delay, is not additionally pushed to the error handler; a failure on the driver path, where nothing above SchedulerKit can observe a raise, is reported instead of raised.
 
 ## Scopes
 
@@ -310,14 +374,15 @@ SchedulerKit relies on only two direct WoW facilities:
 
 ```text
 CreateFrame("Frame") + Frame:SetScript("OnUpdate", ...)
-GetTimePreciseSec()
+debugprofilestop()          -- addon CPU milliseconds, the budget clock
+GetTimePreciseSec()         -- documented fallback when the above is absent
 ```
 
 The OnUpdate script is installed only while at least one job is ready to execute and removed when ready queues become empty. Delayed-only jobs therefore do not keep an OnUpdate handler active.
 
 WoW documents OnUpdate as firing on rendered UI frames and notes that it is resource-intensive when left active continuously. SchedulerKit's driver is intentionally lazy for that reason.
 
-`GetTimePreciseSec()` is used as the monotonic time source. It is not cached once per rendered frame, so SchedulerKit can observe budget consumption inside one OnUpdate pass without resetting or sharing a global profiling epoch.
+`debugprofilestop()` is read directly rather than cached once per rendered frame, so SchedulerKit can observe budget consumption inside one OnUpdate pass. SchedulerKit never calls `debugprofilestart()`: it only ever compares two readings, so it neither needs nor disturbs the shared profiling epoch other addons may be using.
 
 ## Protected actions and hardware events
 

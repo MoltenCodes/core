@@ -20,4 +20,8 @@ TimerKit adds a logical timer state machine, restart/cancel generation guards, d
 
 Use `TimerKit:CreateScope()` for manually owned groups and `TimerKit:ForAddon(addonName)` when timers must be cancelled automatically during addon shutdown. Package-level `TimerKit:After` / `Every` are convenience methods backed by an internal manual scope and are therefore not tied to an addon lifecycle.
 
+A caller that needs to carry its own bookkeeping on a timer attaches it through `timer:SetUserData(value)` and reads it back with `timer:GetUserData()`. One opaque value per timer, stored by reference, never read or cleared by TimerKit. This is the supported alternative to writing private fields onto a timer handle.
+
+Two timers that expire at the same instant fire in whatever order the client dispatches them; TimerKit imposes no ordering of its own. See [`docs/API.md`](docs/API.md).
+
 See [`docs/API.md`](docs/API.md) for the full state model, scope semantics, error behavior, and native API boundary.

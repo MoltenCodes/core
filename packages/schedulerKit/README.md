@@ -9,15 +9,15 @@ SchedulerKit is **not** a preemptive thread scheduler. A Lua callback must eithe
 ## Highlights
 
 - deterministic FIFO ordering within each priority;
-- weighted fair scheduling across `HIGH`, `NORMAL`, `LOW`, and `IDLE` priorities;
-- frame-budget observation using WoW's monotonic precise-time clock;
+- weighted fair scheduling across the `HIGH`, `NORMAL`, and `LOW` priorities, with `IDLE` reserved for work that runs only when nothing else is ready;
+- frame-budget observation in addon CPU time (`debugprofilestop`), so a client hitch is not charged to a cooperating job;
 - explicit `NextFrame` deferral when same-pass nested execution is not acceptable;
 - coroutine-backed resumable jobs;
 - explicit cancellation handles;
 - delayed and fixed-delay repeating jobs through TimerKit;
 - manual and addon-owned cancellation scopes;
 - automatic LifecycleKit shutdown cleanup;
-- callback-error isolation and per-job diagnostics;
+- callback-error isolation, captured tracebacks, and per-job diagnostics;
 - stale delayed-callback protection;
 - compatible embedded-copy identity through Registry.
 

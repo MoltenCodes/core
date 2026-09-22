@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 — 2026-09-22
+
+- Added `Timer:SetUserData(value)` and `Timer:GetUserData()`, a documented public seam for attaching one opaque owner-defined value to a timer. Consumers that need to associate their own state with a timer no longer have to write private fields onto a TimerKit handle. Attaching a value allocates nothing and survives cancel/restart; TimerKit never reads or clears it.
+- Normalised every `error` level so argument failures report the line that called the public method. Previously `scope:After(1, "nope")`, `TimerKit:After(...)`, timer/scope receiver checks, option-table fields, and closed-scope rejections reported one stack level too deep, which stripped the `file:line` prefix from the message or pointed it at the wrong frame.
+- Made `New()` option validation allocation-free. The allowed-field set is now a file-local constant instead of a table built per call, and the first unknown field is found by tracking the smallest key rather than collecting and sorting every offender.
+- Removed a dead counter update in bulk cancellation: a failed native cancel incremented the cancelled total on a path that always re-raises before returning it.
+- Documented same-instant timer ordering as host-defined, and documented that argument errors point at the caller.
+- Added LuaCATS annotations for the package facade, `Timer`, `Scope`, and the option table.
+
 ## 0.1.1 — 2026-09-22
 
 - No runtime behaviour change. Revision 1 still describes the shipped implementation.

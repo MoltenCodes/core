@@ -72,6 +72,51 @@ describe("SchedulerKit scopes", function()
         end)
     end)
 
+    it("survives a job closing its own scope mid-run", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local scope = SchedulerKit:CreateScope()
+        local afterClose = {}
+
+        local job = scope:Schedule(function(context)
+            context:GetJob():GetScope():Close()
+            afterClose.closed = scope:IsClosed()
+            afterClose.cancelled = context:IsCancelled()
+            afterClose.shouldYield = context:ShouldYield()
+        end)
+        -- Queued behind the closing job, so it must be cancelled rather than
+        -- resumed after its scope became terminal.
+        local sibling = scope:Schedule(function() end)
+
+        TestEnv.Tick()
+        assert.is_true(afterClose.closed)
+        assert.is_true(afterClose.cancelled)
+        assert.is_true(afterClose.shouldYield)
+        assert.are.equal("cancelled", job:GetState())
+        assert.are.equal("cancelled", sibling:GetState())
+        assert.are.equal(0, scope:GetActiveCount())
+        assert.are.equal(0, SchedulerKit:GetActiveCount())
+        assert.are.equal(0, TestEnv.ActiveOnUpdateCount())
+    end)
+
+    it("keeps a job that closes its own scope from being requeued after yielding", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local scope = SchedulerKit:CreateScope()
+        local passes = 0
+
+        local job = scope:Schedule(function(context)
+            passes = passes + 1
+            context:GetJob():GetScope():Close()
+            context:Yield()
+            passes = passes + 1
+        end)
+
+        TestEnv.Tick()
+        TestEnv.Tick()
+        assert.are.equal(1, passes)
+        assert.are.equal("cancelled", job:GetState())
+        assert.is_false(job:HasError())
+    end)
+
     it("uses canonical addon scopes and closes them at shutdown", function()
         local SchedulerKit = TestEnv.NewPackage()
         TestEnv.MarkAddonLoaded("Example")

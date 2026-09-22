@@ -10,5 +10,7 @@ The TimerKit suite covers:
 - best-effort scope cleanup after native cancellation failures;
 - LifecycleKit shutdown integration and addon-scope isolation;
 - native creation rollback and strict public input validation;
-- duplicate embedded loading and Registry publication;
+- `error` levels: every argument failure reports the caller's own line;
+- opaque per-timer user data attached through the public handle;
+- duplicate embedded loading, in-place revision upgrade, and Registry publication;
 - manifest/runtime API and revision consistency.

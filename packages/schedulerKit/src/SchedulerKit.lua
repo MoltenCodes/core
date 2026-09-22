@@ -4,10 +4,31 @@
 -- SchedulerKit combines deterministic priority queues, resumable coroutine
 -- jobs, cancellation scopes, TimerKit-backed delays, and LifecycleKit cleanup
 -- while keeping the WoW OnUpdate/profiling boundary narrow and testable.
+--
+-- Contents
+-- --------
+--   Constants ............. package identity, priorities, defaults
+--   Public types .......... LuaCATS declarations for the published surface
+--   Dependencies .......... Registry, LifecycleKit, TimerKit, WoW globals
+--   Validation ............ public-surface and shared-state validation
+--   Bootstrap ............. Registry registration and revision migration
+--   Generic helpers ....... argument validation, clocks, error reporting
+--   Scope ownership ....... intrusive active-job links
+--   Ready queues .......... per-priority FIFOs and lane occupancy
+--   Driver ................ lazy OnUpdate frame installation
+--   Job terminal handling . failure, traceback capture, cancellation
+--   Job creation/delay .... scopes, jobs, TimerKit-backed delays
+--   Execution ............. cooperative resume and the frame pass
+--   Scope cleanup ......... bulk cancellation and terminal close
+--   Context methods ....... the handle a running callback receives
+--   Job methods ........... the handle a scheduling caller receives
+--   Scope methods ......... the handle a scope owner receives
+--   Package public API .... the facade published through Registry
+--   Commit ................ prototype/facade assignment and self-check
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local REQUIRED_TIMER_API = 1
@@ -19,8 +40,10 @@ local PRIORITY_LOW = 3
 local PRIORITY_IDLE = 4
 local PRIORITY_COUNT = 4
 
--- Weighted fair sequence. The cursor is preserved between frames so a stream
--- of HIGH work cannot permanently starve lower-priority lanes.
+-- Weighted fair sequence over the three contending lanes. The cursor is
+-- preserved between frames so a stream of HIGH work cannot permanently starve
+-- NORMAL or LOW. IDLE is deliberately absent: it is background service that
+-- runs only when no other lane is ready (see IDLE_STARVATION_RESUMES).
 local PRIORITY_SLOTS = {
     PRIORITY_HIGH,
     PRIORITY_HIGH,
@@ -29,8 +52,14 @@ local PRIORITY_SLOTS = {
     PRIORITY_NORMAL,
     PRIORITY_NORMAL,
     PRIORITY_LOW,
-    PRIORITY_IDLE,
 }
+
+-- Starvation guard for IDLE. After this many consecutive resumes of contending
+-- work while IDLE work waits, one IDLE job is promoted ahead of the weighted
+-- lanes. The bound keeps "runs only when nothing else is ready" from becoming
+-- "never runs" on a permanently busy client, while leaving IDLE well under one
+-- percent of service under sustained load.
+local IDLE_STARVATION_RESUMES = 256
 
 local DEFAULT_FRAME_BUDGET_MS = 2
 local DEFAULT_RUNAWAY_THRESHOLD_MS = 8
@@ -39,6 +68,81 @@ local SCHEDULING_OPTION_KEYS = {
     priority = true,
     name = true,
 }
+
+-- Public types --------------------------------------------------------------
+--
+-- SchedulerKit publishes its methods by writing them onto Registry-owned
+-- prototype tables, so the editor-facing contract is declared here as LuaCATS
+-- classes rather than inferred from those assignments.
+
+---Logical state of a SchedulerKit job.
+---@alias SchedulerKitJobState "delayed"|"pending"|"running"|"completed"|"cancelled"|"failed"
+
+---Option table accepted by every scheduling method.
+---@class SchedulerKitScheduleOptions
+---@field priority integer? One of `SchedulerKit.Priority`; defaults to `NORMAL`.
+---@field name string? Optional non-empty diagnostic name.
+
+---The handle a scheduled callback receives while it runs.
+---@class SchedulerKitContext
+---@field ShouldYield fun(self: SchedulerKitContext): boolean
+---@field Yield fun(self: SchedulerKitContext)
+---@field GetJob fun(self: SchedulerKitContext): SchedulerKitJob
+---@field IsCancelled fun(self: SchedulerKitContext): boolean
+
+---A unit of scheduled work.
+---@class SchedulerKitJob
+---@field GetState fun(self: SchedulerKitJob): SchedulerKitJobState
+---@field GetPriority fun(self: SchedulerKitJob): integer
+---@field GetScope fun(self: SchedulerKitJob): SchedulerKitScope
+---@field GetName fun(self: SchedulerKitJob): string?
+---@field IsPending fun(self: SchedulerKitJob): boolean
+---@field IsCancelled fun(self: SchedulerKitJob): boolean
+---@field HasError fun(self: SchedulerKitJob): boolean
+---@field GetError fun(self: SchedulerKitJob): any
+---@field GetErrorTraceback fun(self: SchedulerKitJob): string?
+---@field Cancel fun(self: SchedulerKitJob): boolean
+
+---An ownership scope for jobs, closed manually or by addon shutdown.
+---@class SchedulerKitScope
+---@field Schedule fun(self: SchedulerKitScope, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
+---@field NextFrame fun(self: SchedulerKitScope, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
+---@field After fun(self: SchedulerKitScope, delay: number, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
+---@field Every fun(self: SchedulerKitScope, interval: number, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
+---@field CancelAll fun(self: SchedulerKitScope): boolean
+---@field Close fun(self: SchedulerKitScope): boolean
+---@field IsClosed fun(self: SchedulerKitScope): boolean
+---@field GetAddonName fun(self: SchedulerKitScope): string?
+---@field GetActiveCount fun(self: SchedulerKitScope): integer
+
+---Service-preference lanes.
+---@class SchedulerKitPriority
+---@field HIGH integer
+---@field NORMAL integer
+---@field LOW integer
+---@field IDLE integer
+
+---The SchedulerKit package facade published through Registry.
+---@class SchedulerKitFacade
+---@field API integer Public API generation.
+---@field REVISION integer Compatible implementation revision.
+---@field Priority SchedulerKitPriority
+---@field Job SchedulerKitJob Shared job prototype.
+---@field Scope SchedulerKitScope Shared scope prototype.
+---@field Context SchedulerKitContext Shared context prototype.
+---@field Schedule fun(self: SchedulerKitFacade, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
+---@field NextFrame fun(self: SchedulerKitFacade, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
+---@field After fun(self: SchedulerKitFacade, delay: number, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
+---@field Every fun(self: SchedulerKitFacade, interval: number, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
+---@field CreateScope fun(self: SchedulerKitFacade): SchedulerKitScope
+---@field ForAddon fun(self: SchedulerKitFacade, addonName: string): SchedulerKitScope
+---@field SetFrameBudget fun(self: SchedulerKitFacade, milliseconds: number): SchedulerKitFacade
+---@field GetFrameBudget fun(self: SchedulerKitFacade): number
+---@field SetRunawayThreshold fun(self: SchedulerKitFacade, milliseconds: number): SchedulerKitFacade
+---@field GetRunawayThreshold fun(self: SchedulerKitFacade): number
+---@field SetMaxResumesPerFrame fun(self: SchedulerKitFacade, count: integer): SchedulerKitFacade
+---@field GetMaxResumesPerFrame fun(self: SchedulerKitFacade): integer
+---@field GetActiveCount fun(self: SchedulerKitFacade): integer
 
 -- Dependencies --------------------------------------------------------------
 
@@ -103,11 +207,29 @@ local nativeCreateFrame = rawget(_G, "CreateFrame")
 -- GetTimePreciseSec is a World of Warcraft client API reachable only through the global table.
 -- selene: allow(global_usage)
 local nativeGetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
+-- debugprofilestop reports addon CPU milliseconds and is the clock the frame
+-- budget is actually defined against. Every supported client publishes it, but
+-- it is resolved defensively so an unusual host falls back to the wall clock
+-- instead of failing to load.
+-- selene: allow(global_usage)
+local nativeDebugProfileStop = rawget(_G, "debugprofilestop")
+-- debug.traceback captures a failing job's stack while its coroutine is still
+-- inspectable. A host that does not publish the debug library simply reports
+-- the bare error value instead.
+-- selene: allow(global_usage)
+local debugLibrary = rawget(_G, "debug")
+local nativeTraceback = type(debugLibrary) == "table" and rawget(debugLibrary, "traceback") or nil
 if type(nativeCreateFrame) ~= "function" then
     error("MoltenCodes SchedulerKit requires CreateFrame", 2)
 end
 if type(nativeGetTimePreciseSec) ~= "function" then
     error("MoltenCodes SchedulerKit requires GetTimePreciseSec", 2)
+end
+if type(nativeDebugProfileStop) ~= "function" then
+    nativeDebugProfileStop = nil
+end
+if type(nativeTraceback) ~= "function" then
+    nativeTraceback = nil
 end
 
 -- Validation ---------------------------------------------------------------
@@ -150,6 +272,7 @@ local function validatePublicSurface(implementation)
         and type(rawget(Job, "IsCancelled")) == "function"
         and type(rawget(Job, "HasError")) == "function"
         and type(rawget(Job, "GetError")) == "function"
+        and type(rawget(Job, "GetErrorTraceback")) == "function"
         and type(rawget(Job, "Cancel")) == "function"
         and type(rawget(Scope, "Schedule")) == "function"
         and type(rawget(Scope, "NextFrame")) == "function"
@@ -206,6 +329,17 @@ end
 local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     if not validateStateBase(currentState) then
+        return false
+    end
+
+    -- Revision 4 bookkeeping. It is checked here rather than in
+    -- `validateStateBase` so that inheriting state written by revision 3 during
+    -- a live upgrade is still accepted and migrated below.
+    if
+        type(rawget(currentState, "laneOccupied")) ~= "table"
+        or type(rawget(currentState, "occupiedLaneCount")) ~= "number"
+        or type(rawget(currentState, "idleGuard")) ~= "number"
+    then
         return false
     end
 
@@ -298,6 +432,9 @@ if previousRevision == nil then
         yieldToken = {},
         priorityCursor = 1,
         activeCount = 0,
+        laneOccupied = false,
+        occupiedLaneCount = 0,
+        idleGuard = 0,
         frame = false,
         driverEnabled = false,
         driverTrampoline = false,
@@ -324,6 +461,33 @@ end
 -- during a compatible live upgrade so shared state does not retain dead data.
 rawset(state, "nextJobId", nil)
 rawset(state, "runtimeRevision", nil)
+
+-- Revision 4 adds lane-occupancy bookkeeping so ready selection can skip empty
+-- priority lanes, plus the IDLE starvation guard. Both are derived from the
+-- inherited queues rather than assumed, so a live upgrade keeps serving jobs an
+-- older revision already queued. Deriving them unconditionally also covers the
+-- fresh-state case with one code path.
+local inheritedLaneOccupied = rawget(state, "laneOccupied")
+if type(inheritedLaneOccupied) ~= "table" then
+    inheritedLaneOccupied = {}
+    rawset(state, "laneOccupied", inheritedLaneOccupied)
+end
+
+local inheritedQueues = rawget(state, "queues")
+local inheritedOccupiedLanes = 0
+for priority = 1, PRIORITY_COUNT do
+    local queue = rawget(inheritedQueues, priority)
+    local hasItems = rawget(queue, "tail") >= rawget(queue, "head")
+    rawset(inheritedLaneOccupied, priority, hasItems)
+    if hasItems then
+        inheritedOccupiedLanes = inheritedOccupiedLanes + 1
+    end
+end
+rawset(state, "occupiedLaneCount", inheritedOccupiedLanes)
+
+if type(rawget(state, "idleGuard")) ~= "number" then
+    rawset(state, "idleGuard", 0)
+end
 
 local JOB_METATABLE = rawget(state, "jobMetatable")
 local SCOPE_METATABLE = rawget(state, "scopeMetatable")
@@ -414,13 +578,31 @@ local function validateOptions(options, methodName)
     return priority, name
 end
 
-local function now()
+-- Budget and runaway accounting measure **addon CPU milliseconds**, not
+-- wall-clock time. A garbage-collection pause, a client hitch, or a stall in
+-- unrelated code inflates wall time while the cooperating job consumed none of
+-- the frame; charging that to the job made well-behaved work look like a
+-- runaway. `debugprofilestop` already reports milliseconds.
+local function nowFromProfilingClock()
+    local value = nativeDebugProfileStop()
+    if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
+        error("MoltenCodes SchedulerKit debugprofilestop returned an invalid value", 0)
+    end
+    return value
+end
+
+-- Documented fallback for a host without the CPU clock: the monotonic precise
+-- wall clock, converted to milliseconds.
+local function nowFromPreciseClock()
     local value = nativeGetTimePreciseSec()
     if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
         error("MoltenCodes SchedulerKit GetTimePreciseSec returned an invalid value", 0)
     end
     return value * 1000
 end
+
+-- Bound once at load so the hot path does not branch on clock availability.
+local now = nativeDebugProfileStop ~= nil and nowFromProfilingClock or nowFromPreciseClock
 
 local function reportError(value)
     -- geterrorhandler is the World of Warcraft client error sink, published as a global.
@@ -517,6 +699,27 @@ end
 
 -- Ready queues --------------------------------------------------------------
 
+-- Lane occupancy is a conservative "this lane's backing array is non-empty"
+-- hint: a lane holding only stale cancelled nodes still counts as occupied, and
+-- the flag is cleared the moment a drain resets the lane's indices. A cleared
+-- flag therefore always means "definitely nothing here", which is what lets
+-- ready selection skip a lane without paying for a queue probe.
+local function markLaneOccupied(priority)
+    local laneOccupied = rawget(state, "laneOccupied")
+    if rawget(laneOccupied, priority) ~= true then
+        rawset(laneOccupied, priority, true)
+        rawset(state, "occupiedLaneCount", rawget(state, "occupiedLaneCount") + 1)
+    end
+end
+
+local function markLaneEmpty(priority)
+    local laneOccupied = rawget(state, "laneOccupied")
+    if rawget(laneOccupied, priority) == true then
+        rawset(laneOccupied, priority, false)
+        rawset(state, "occupiedLaneCount", rawget(state, "occupiedLaneCount") - 1)
+    end
+end
+
 local function queuePush(job)
     if rawget(job, "_queued") == true then
         return
@@ -527,6 +730,7 @@ local function queuePush(job)
     rawset(queue, "tail", tail)
     rawget(queue, "items")[tail] = job
     rawset(job, "_queued", true)
+    markLaneOccupied(priority)
 end
 
 local function queuePop(priority)
@@ -554,6 +758,7 @@ local function queuePop(priority)
     if head > tail then
         rawset(queue, "head", 1)
         rawset(queue, "tail", 0)
+        markLaneEmpty(priority)
     end
     return nil
 end
@@ -581,13 +786,19 @@ local function queueHasLive(priority)
     if head > tail then
         rawset(queue, "head", 1)
         rawset(queue, "tail", 0)
+        markLaneEmpty(priority)
     end
     return false
 end
 
 local function hasReadyJobs()
+    if rawget(state, "occupiedLaneCount") == 0 then
+        return false
+    end
+
+    local laneOccupied = rawget(state, "laneOccupied")
     for priority = 1, PRIORITY_COUNT do
-        if queueHasLive(priority) then
+        if rawget(laneOccupied, priority) == true and queueHasLive(priority) then
             return true
         end
     end
@@ -595,6 +806,25 @@ local function hasReadyJobs()
 end
 
 local function nextReadyJob()
+    if rawget(state, "occupiedLaneCount") == 0 then
+        return nil
+    end
+
+    local laneOccupied = rawget(state, "laneOccupied")
+    local idleWaiting = rawget(laneOccupied, PRIORITY_IDLE) == true
+    if not idleWaiting then
+        -- Nothing is being starved, so the guard must not accumulate credit
+        -- that a later IDLE job could spend immediately.
+        rawset(state, "idleGuard", 0)
+    elseif rawget(state, "idleGuard") >= IDLE_STARVATION_RESUMES then
+        local promoted = queuePop(PRIORITY_IDLE)
+        if promoted ~= nil then
+            rawset(state, "idleGuard", 0)
+            return promoted
+        end
+        idleWaiting = false
+    end
+
     local slotCount = #PRIORITY_SLOTS
     local cursor = rawget(state, "priorityCursor")
     for _ = 1, slotCount do
@@ -605,12 +835,23 @@ local function nextReadyJob()
         end
         rawset(state, "priorityCursor", cursor)
 
-        local job = queuePop(priority)
-        if job ~= nil then
-            return job
+        if rawget(laneOccupied, priority) == true then
+            local job = queuePop(priority)
+            if job ~= nil then
+                if idleWaiting then
+                    rawset(state, "idleGuard", rawget(state, "idleGuard") + 1)
+                end
+                return job
+            end
         end
     end
-    return nil
+
+    -- No contending lane is ready, so IDLE work is free to run.
+    local job = queuePop(PRIORITY_IDLE)
+    if job ~= nil then
+        rawset(state, "idleGuard", 0)
+    end
+    return job
 end
 
 -- Driver -------------------------------------------------------------------
@@ -666,8 +907,9 @@ local function detachDelayTimer(job)
     local delayTimer = rawget(job, "_delayTimer")
     rawset(job, "_delayTimer", false)
     if type(delayTimer) == "table" then
-        rawset(delayTimer, "__schedulerKitJob", nil)
-        rawset(delayTimer, "__schedulerKitGeneration", nil)
+        -- Release the scheduler's reference through TimerKit's public user-data
+        -- seam. SchedulerKit never writes private fields onto a timer handle.
+        delayTimer:SetUserData(nil)
     end
     return delayTimer
 end
@@ -683,10 +925,49 @@ local function finishJob(job, terminalState)
     unlinkActive(scope, job)
 end
 
-local function failJob(job, value)
+---Capture a failing coroutine's stack while the thread is still inspectable.
+---Lua 5.1 leaves an errored coroutine's stack in place, so this must run before
+---the job's thread reference is dropped.
+---@param thread thread
+---@param value any Original Lua error object.
+---@return string|false traceback `false` when the host has no `debug.traceback`.
+local function captureTraceback(thread, value)
+    if nativeTraceback == nil then
+        return false
+    end
+    -- `debug.traceback` returns a non-string message unchanged, so a non-string
+    -- error object is rendered first to keep the report a readable string.
+    local ok, traceback = pcall(nativeTraceback, thread, tostring(value))
+    if not ok or type(traceback) ~= "string" then
+        return false
+    end
+    return traceback
+end
+
+---Record a failure on the job without reporting it. The caller decides whether
+---the failure is re-raised to a direct caller or handed to the host error
+---handler, so one failure is never signalled twice.
+---@param job SchedulerKitJob
+---@param value any
+---@param traceback string|false
+local function markJobFailed(job, value, traceback)
     rawset(job, "_errorPresent", true)
     rawset(job, "_error", value)
+    rawset(job, "_errorTraceback", traceback)
     finishJob(job, "failed")
+end
+
+---Record a failure and report it through the host error handler. Used on the
+---driver path, where nothing above SchedulerKit can observe a raise.
+---@param job SchedulerKitJob
+---@param value any
+---@param traceback string|false
+local function failJob(job, value, traceback)
+    markJobFailed(job, value, traceback)
+    if traceback ~= false then
+        reportError(traceback)
+        return
+    end
     reportError(value)
 end
 
@@ -762,8 +1043,10 @@ local function newJob(scope, callback, priority, name, interval)
         _state = "pending",
         _errorPresent = false,
         _error = nil,
+        _errorTraceback = false,
         _generation = 1,
         _queued = false,
+        _yieldRequested = false,
         _coroutine = false,
         _context = false,
         _delayTimer = false,
@@ -778,18 +1061,27 @@ local function newJob(scope, callback, priority, name, interval)
     return job
 end
 
+-- One shared wake callback serves every delay, so arming a repeat interval
+-- allocates no closure. The job it belongs to travels on the TimerKit handle as
+-- public user data.
 local function delayedWakeCallback(timerHandle)
-    local job = type(timerHandle) == "table" and rawget(timerHandle, "__schedulerKitJob") or nil
-    local generation = type(timerHandle) == "table"
-            and rawget(timerHandle, "__schedulerKitGeneration")
-        or nil
-    if type(timerHandle) == "table" then
-        rawset(timerHandle, "__schedulerKitJob", nil)
-        rawset(timerHandle, "__schedulerKitGeneration", nil)
-    end
-    if type(job) ~= "table" or type(generation) ~= "number" then
+    if type(timerHandle) ~= "table" then
         return false
     end
+
+    local job = timerHandle:GetUserData()
+    if type(job) ~= "table" then
+        return false
+    end
+    timerHandle:SetUserData(nil)
+
+    -- The armed handle is the job's staleness token: a cancelled or re-armed
+    -- job no longer points at this timer, so resolve a generation that cannot
+    -- match rather than waking work that has already moved on. Passing the
+    -- generation keeps the dispatch contract identical to revision 3, so a
+    -- delay armed before a live upgrade still wakes correctly.
+    local generation = rawget(job, "_delayTimer") == timerHandle and rawget(job, "_generation")
+        or false
 
     local dispatch = rawget(state, "dispatch")
     local wake = type(dispatch) == "table" and rawget(dispatch, "wakeDelayed") or nil
@@ -799,6 +1091,10 @@ local function delayedWakeCallback(timerHandle)
     return wake(job, generation)
 end
 
+-- `armDelay` is reached both from a direct caller (`SchedulerKit:After`) and
+-- from the driver's repeat re-arm. It records the failure on the job and
+-- raises; whoever called it decides whether that raise reaches a caller or is
+-- converted into a host error report, so one failure is never signalled twice.
 local function armDelay(job, delay)
     local scope = rawget(job, "_scope")
     if rawget(scope, "_closed") == true then
@@ -806,26 +1102,26 @@ local function armDelay(job, delay)
         return false
     end
 
-    local generation = rawget(job, "_generation")
     rawset(job, "_state", "delayed")
     local ok, timerOrError = pcall(function()
         return ensureTimerScope(scope):After(delay, delayedWakeCallback)
     end)
 
     if not ok then
-        failJob(job, timerOrError)
+        markJobFailed(job, timerOrError, false)
         error(timerOrError, 0)
     end
 
     if type(timerOrError) ~= "table" then
         local value = "MoltenCodes SchedulerKit TimerKit returned an invalid timer handle"
-        failJob(job, value)
+        markJobFailed(job, value, false)
         error(value, 0)
     end
 
-    rawset(timerOrError, "__schedulerKitJob", job)
-    rawset(timerOrError, "__schedulerKitGeneration", generation)
+    -- TimerKit never dispatches a timer callback synchronously from `After`, so
+    -- the handle cannot fire before both halves of this link are in place.
     rawset(job, "_delayTimer", timerOrError)
+    timerOrError:SetUserData(job)
     return true
 end
 
@@ -839,7 +1135,7 @@ local function wakeDelayed(job, generation)
     queuePush(job)
     local ok, value = pcall(updateDriver)
     if not ok then
-        failJob(job, value)
+        failJob(job, value, false)
         return false
     end
     return true
@@ -897,12 +1193,82 @@ local function createCoroutine(job)
     end)
 end
 
+---Render a job for a diagnostic message. Only reached on failure/overrun
+---paths, so the concatenation never touches the normal resume path.
+---@param job SchedulerKitJob
+---@return string label
+local function describeJob(job)
+    local name = rawget(job, "_name")
+    if type(name) == "string" then
+        return '"' .. name .. '"'
+    end
+    return "(unnamed)"
+end
+
+---A job that yielded honoured the cooperative contract, so an over-long slice
+---is a scheduling problem rather than a reason to kill it. SchedulerKit lowers
+---its priority one lane, so it stops competing with well-behaved work, and
+---reports the overrun through the host error handler.
+---@param job SchedulerKitJob
+---@param elapsed number
+---@param threshold number
+local function demoteOverrunningJob(job, elapsed, threshold)
+    local priority = rawget(job, "_priority")
+    if priority < PRIORITY_IDLE then
+        priority = priority + 1
+        rawset(job, "_priority", priority)
+    end
+
+    reportError(
+        "SchedulerKit job "
+            .. describeJob(job)
+            .. " exceeded the cooperative slice threshold ("
+            .. tostring(elapsed)
+            .. "ms > "
+            .. tostring(threshold)
+            .. "ms) and now runs at priority "
+            .. tostring(priority)
+    )
+end
+
+---Handle a slice that ended with the callback returning although
+---`Context:Yield()` was called and the suspension never reached the scheduler.
+---@param job SchedulerKitJob
+---@param elapsed number
+---@return boolean failed Whether the job was failed and must not continue.
+local function handleSwallowedYield(job, elapsed)
+    local threshold = rawget(rawget(state, "config"), "runawayThresholdMs")
+    local message = "SchedulerKit job "
+        .. describeJob(job)
+        .. " called Context:Yield() but the suspension never reached the scheduler."
+        .. " In Lua 5.1 a coroutine cannot yield across a pcall, xpcall, metamethod,"
+        .. " table.sort comparator, or string.gsub callback; the resulting error was"
+        .. " swallowed and the callback ran on without surrendering the frame"
+
+    if elapsed > threshold then
+        -- The slice both escaped the cooperative contract and outran the
+        -- threshold, so it is a real budget violation rather than a mistake
+        -- that only needs diagnosing.
+        markJobFailed(
+            job,
+            message .. " (" .. tostring(elapsed) .. "ms > " .. tostring(threshold) .. "ms)",
+            false
+        )
+        reportError(rawget(job, "_error"))
+        return true
+    end
+
+    reportError(message)
+    return false
+end
+
 local function resumeJob(job)
     if rawget(job, "_state") ~= "pending" then
         return
     end
 
     rawset(job, "_state", "running")
+    rawset(job, "_yieldRequested", false)
     rawset(state, "currentJob", job)
 
     local thread = rawget(job, "_coroutine")
@@ -917,7 +1283,10 @@ local function resumeJob(job)
     rawset(state, "currentJob", false)
 
     if not ok then
-        failJob(job, yielded)
+        -- Capture the stack before the thread reference is dropped: Lua 5.1
+        -- leaves an errored coroutine's frames in place, and after the stack is
+        -- gone the report can only name the error value.
+        failJob(job, yielded, captureTraceback(thread, yielded))
         return
     end
 
@@ -927,15 +1296,23 @@ local function resumeJob(job)
 
     if coroutine.status(thread) == "dead" then
         rawset(job, "_coroutine", false)
+        if rawget(job, "_yieldRequested") == true and handleSwallowedYield(job, elapsed) then
+            return
+        end
+
         local interval = rawget(job, "_interval")
         if interval ~= false then
             rawset(job, "_generation", rawget(job, "_generation") + 1)
             -- A repeating job is re-armed through TimerKit after its callback
             -- finishes. Host/timer creation failures must not escape the
-            -- OnUpdate driver and starve unrelated scheduler work.
-            local rearmOk = pcall(armDelay, job, interval)
-            if not rearmOk and rawget(job, "_state") ~= "failed" then
-                failJob(job, "SchedulerKit failed to re-arm a repeating job")
+            -- OnUpdate driver and starve unrelated scheduler work, so the raise
+            -- `armDelay` owes its caller becomes a host error report here.
+            local rearmOk, rearmError = pcall(armDelay, job, interval)
+            if not rearmOk then
+                if rawget(job, "_state") ~= "failed" then
+                    markJobFailed(job, "SchedulerKit failed to re-arm a repeating job", false)
+                end
+                reportError(rearmError)
             end
         else
             finishJob(job, "completed")
@@ -944,21 +1321,13 @@ local function resumeJob(job)
     end
 
     if yielded ~= rawget(state, "yieldToken") then
-        failJob(job, "SchedulerKit jobs may yield only through Context:Yield()")
+        failJob(job, "SchedulerKit jobs may yield only through Context:Yield()", false)
         return
     end
 
     local threshold = rawget(rawget(state, "config"), "runawayThresholdMs")
     if elapsed > threshold then
-        failJob(
-            job,
-            "SchedulerKit job exceeded the cooperative slice threshold ("
-                .. tostring(elapsed)
-                .. "ms > "
-                .. tostring(threshold)
-                .. "ms)"
-        )
-        return
+        demoteOverrunningJob(job, elapsed, threshold)
     end
 
     rawset(job, "_state", "pending")
@@ -1124,6 +1493,12 @@ local function contextYield(self)
     then
         error("SchedulerKit.Context:Yield may only be called while its job is running", 3)
     end
+
+    -- Record the intent before suspending. Lua 5.1 refuses to yield across a
+    -- pcall, metamethod, or other C-call boundary; if the callback swallows
+    -- that error and runs on, the driver sees a slice that ended without the
+    -- yield it was promised and reports the silent budget violation.
+    rawset(job, "_yieldRequested", true)
     return coroutine.yield(rawget(state, "yieldToken"))
 end
 
@@ -1171,6 +1546,20 @@ local function jobGetError(self)
         return nil
     end
     return rawget(self, "_error")
+end
+
+---Return the stack captured at the point a callback error was raised, or `nil`
+---when the job did not fail through a callback error or the host publishes no
+---`debug.traceback`.
+---@param self SchedulerKitJob
+---@return string? traceback
+local function jobGetErrorTraceback(self)
+    validateJob(self, "SchedulerKit.Job:GetErrorTraceback")
+    local traceback = rawget(self, "_errorTraceback")
+    if traceback == false then
+        return nil
+    end
+    return traceback
 end
 
 local function jobCancel(self)
@@ -1329,6 +1718,7 @@ rawset(Job, "IsPending", jobIsPending)
 rawset(Job, "IsCancelled", jobIsCancelled)
 rawset(Job, "HasError", jobHasError)
 rawset(Job, "GetError", jobGetError)
+rawset(Job, "GetErrorTraceback", jobGetErrorTraceback)
 rawset(Job, "Cancel", jobCancel)
 
 rawset(Scope, "Schedule", scopeSchedule)

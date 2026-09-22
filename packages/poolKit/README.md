@@ -20,6 +20,11 @@ pool:Release(object)
 
 Retention is bounded by default (`128` objects). Consumers that deliberately need an unbounded pool must opt in with `PoolKit.UNBOUNDED`. PoolKit rejects foreign releases, protects against duplicate/re-entrant release, preserves state when reset fails, and performs best-effort destruction during bulk cleanup.
 
+Two contracts are worth knowing before the first `Acquire`:
+
+- **`Acquire` does not clean.** Cleaning happens in `reset`, at release time. A pool with no `reset` hands objects back exactly as the previous borrower left them. Pass `strictReset = true` to refuse to build such a pool by accident.
+- **Borrowed objects are caller-owned and unbounded.** `maxRetained` bounds what the pool keeps, not what callers hold. Use `GetActiveCount()`, and `maxActiveWarning` to be told once when too many objects are out at the same time.
+
 For plain tables, `PoolKit:NewTablePool()` provides a zero-configuration pool whose reset step shallow-clears every key.
 
 See [`docs/API.md`](docs/API.md) for the complete contract and [`docs/INTERNALS.md`](docs/INTERNALS.md) for ownership/allocation invariants.

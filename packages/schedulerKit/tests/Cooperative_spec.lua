@@ -81,19 +81,162 @@ describe("SchedulerKit cooperative jobs", function()
         assert.are.equal(7, calls)
     end)
 
-    it("fails suspended jobs that exceed the cooperative slice threshold", function()
+    it("demotes rather than kills a job that yields after an over-long slice", function()
         local SchedulerKit = TestEnv.NewPackage()
         SchedulerKit:SetRunawayThreshold(4)
+        SchedulerKit:SetMaxResumesPerFrame(1)
+        local completed = false
 
         local job = SchedulerKit:Schedule(function(context)
             TestEnv.AdvanceMs(5)
             context:Yield()
+            completed = true
+        end, { priority = SchedulerKit.Priority.HIGH, name = "slow pass" })
+
+        TestEnv.Tick()
+        assert.are.equal("pending", job:GetState())
+        assert.is_false(job:HasError())
+        assert.are.equal(SchedulerKit.Priority.NORMAL, job:GetPriority())
+        assert.are.equal(1, #TestEnv.ReportedErrors())
+        assert.is_true(TestEnv.ReportedErrors()[1]:find("slow pass", 1, true) ~= nil)
+
+        TestEnv.Tick()
+        assert.is_true(completed)
+        assert.are.equal("completed", job:GetState())
+    end)
+
+    it("demotes at most to IDLE and keeps reporting each overrun", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        SchedulerKit:SetRunawayThreshold(4)
+        SchedulerKit:SetMaxResumesPerFrame(1)
+
+        local job = SchedulerKit:Schedule(function(context)
+            for _ = 1, 5 do
+                TestEnv.AdvanceMs(5)
+                context:Yield()
+            end
+        end, { priority = SchedulerKit.Priority.LOW })
+
+        for _ = 1, 5 do
+            TestEnv.Tick()
+        end
+        assert.are.equal(SchedulerKit.Priority.IDLE, job:GetPriority())
+        assert.are.equal(5, #TestEnv.ReportedErrors())
+    end)
+
+    it("charges CPU time rather than wall time to a cooperating job", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        SchedulerKit:SetRunawayThreshold(4)
+        SchedulerKit:SetMaxResumesPerFrame(1)
+
+        -- A garbage-collection pause or client hitch inflates wall time while
+        -- the job itself consumed almost none of the frame.
+        local job = SchedulerKit:Schedule(function(context)
+            TestEnv.AdvanceProfileMs(1)
+            TestEnv.AdvanceWallMs(500)
+            context:Yield()
+        end, { priority = SchedulerKit.Priority.NORMAL })
+
+        TestEnv.Tick()
+        assert.are.equal("pending", job:GetState())
+        assert.are.equal(SchedulerKit.Priority.NORMAL, job:GetPriority())
+        assert.are.equal(0, #TestEnv.ReportedErrors())
+    end)
+
+    it("measures the frame budget in CPU time", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        SchedulerKit:SetFrameBudget(2)
+        local afterHitch, afterWork
+
+        SchedulerKit:Schedule(function(context)
+            TestEnv.AdvanceWallMs(50)
+            afterHitch = context:ShouldYield()
+            TestEnv.AdvanceProfileMs(3)
+            afterWork = context:ShouldYield()
+        end)
+
+        TestEnv.Tick()
+        assert.is_false(afterHitch)
+        assert.is_true(afterWork)
+    end)
+
+    it("falls back to the precise wall clock when the host has no CPU clock", function()
+        TestEnv.Reset()
+        TestEnv.WithoutProfilingClock()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        require("LifecycleKit")
+        require("TimerKit")
+        local SchedulerKit = require("SchedulerKit")
+
+        SchedulerKit:SetFrameBudget(2)
+        local before, after
+        SchedulerKit:Schedule(function(context)
+            before = context:ShouldYield()
+            TestEnv.AdvanceWallMs(3)
+            after = context:ShouldYield()
+        end)
+
+        TestEnv.Tick()
+        assert.is_false(before)
+        assert.is_true(after)
+    end)
+
+    it("reports a Context:Yield() that never reached the scheduler", function()
+        local SchedulerKit = TestEnv.NewPackage()
+
+        -- Lua 5.1 refuses to yield across a pcall boundary. A callback that
+        -- swallows that error runs to completion without ever surrendering the
+        -- frame, which used to be entirely silent.
+        local swallowed
+        local job = SchedulerKit:Schedule(function(context)
+            local ok, value = pcall(function()
+                context:Yield()
+            end)
+            swallowed = not ok and tostring(value) or nil
+        end, { name = "yield inside pcall" })
+
+        TestEnv.Tick()
+        assert.is_true(swallowed:find("yield across", 1, true) ~= nil)
+        assert.are.equal("completed", job:GetState())
+        assert.are.equal(1, #TestEnv.ReportedErrors())
+
+        local report = TestEnv.ReportedErrors()[1]
+        assert.is_true(report:find("yield inside pcall", 1, true) ~= nil)
+        assert.is_true(report:find("never reached the scheduler", 1, true) ~= nil)
+    end)
+
+    it("fails a swallowed yield that also outran the runaway threshold", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        SchedulerKit:SetRunawayThreshold(4)
+
+        local job = SchedulerKit:Schedule(function(context)
+            pcall(function()
+                context:Yield()
+            end)
+            TestEnv.AdvanceMs(5)
         end)
 
         TestEnv.Tick()
         assert.are.equal("failed", job:GetState())
         assert.is_true(job:HasError())
+        assert.is_true(tostring(job:GetError()):find("never reached the scheduler", 1, true) ~= nil)
         assert.are.equal(1, #TestEnv.ReportedErrors())
+    end)
+
+    it("does not report a job that yielded for real before completing", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        SchedulerKit:SetMaxResumesPerFrame(4)
+
+        local job = SchedulerKit:Schedule(function(context)
+            context:Yield()
+        end)
+
+        TestEnv.Tick()
+        assert.are.equal("completed", job:GetState())
+        assert.are.equal(0, #TestEnv.ReportedErrors())
     end)
 
     it("supports cooperative self-cancellation without requeueing", function()

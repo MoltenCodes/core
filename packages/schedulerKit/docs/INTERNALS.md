@@ -17,6 +17,8 @@ SchedulerKit facade
 └── _state
     ├── dispatch
     ├── queues[priority]
+    ├── laneOccupied[priority] + occupiedLaneCount
+    ├── priorityCursor + idleGuard
     ├── addonScopes
     ├── defaultScope
     ├── Job / Scope / Context metatables
@@ -26,6 +28,8 @@ SchedulerKit facade
 
 Existing Jobs, Scopes, Contexts, queues, and the installed Frame trampoline therefore survive a compatible revision upgrade.
 
+Bookkeeping a newer revision introduces is **derived** from inherited state rather than assumed: revision 4 rebuilds `laneOccupied`/`occupiedLaneCount` from the queues it inherits, so jobs an older embedded copy had already queued keep being served.
+
 The Frame trampoline and delayed TimerKit wakeups resolve operations through `_state.dispatch`. They do not permanently pin scheduler behavior to the source revision that originally created them.
 
 ## Ready queues
@@ -33,6 +37,21 @@ The Frame trampoline and delayed TimerKit wakeups resolve operations through `_s
 Each priority owns an array-backed FIFO queue with `head`/`tail` indices.
 
 Dequeuing clears consumed array slots to release references immediately. When a queue becomes empty, only its indices are reset; the backing table is reused rather than allocating a new table on every drain.
+
+### Lane occupancy
+
+Shared state carries a per-lane `laneOccupied` flag plus an `occupiedLaneCount`. The flag is set when a job is pushed and cleared the moment a drain resets a lane's indices, so it is a conservative hint: a lane holding only stale cancelled nodes still reads as occupied, but a cleared flag always means *definitely empty*.
+
+That one-sided guarantee is what lets ready selection skip a lane with a single table read instead of a `queuePop` call, and lets an entirely empty scheduler answer in one integer comparison.
+
+Measured on Lua 5.1.5, 200 000 trivial jobs resumed in one pass:
+
+| Workload | Probes per selection (before → after) | Frame pass |
+|---|---|---|
+| single `LOW` lane | 8 → 1 | 0.540 s → 0.345 s (**-36%**) |
+| single `HIGH` lane | 1 → 1 | 0.333 s → 0.314 s (-6%) |
+
+The saving scales with how many empty lanes the weighted cursor used to cross. `HIGH` sits at the front of the sequence and rarely crossed any, so it only gains the empty-scheduler early exit; `LOW` sat behind six empty probes on every selection. Selection order and per-lane FIFO are unchanged.
 
 Cancellation is lazy with respect to queue position:
 
@@ -44,15 +63,19 @@ This avoids O(n) removal from the middle of an array on `Job:Cancel()`.
 
 ## Weighted fairness
 
-Ready selection uses this repeating service sequence:
+Ready selection uses this repeating service sequence over the three contending lanes:
 
 ```text
-HIGH HIGH HIGH HIGH NORMAL NORMAL LOW IDLE
+HIGH HIGH HIGH HIGH NORMAL NORMAL LOW
 ```
 
 The cursor is stored in shared state and is **not reset at frame boundaries**. Preserving the cursor is what turns the sequence into starvation-resistant weighted service instead of repeatedly favoring the beginning of the sequence every frame.
 
 FIFO is preserved independently inside each lane.
+
+`IDLE` is deliberately outside the sequence. It is served only after a full pass over the contending lanes finds nothing ready, which is what makes `IDLE` mean "background" rather than "a slightly smaller share than LOW".
+
+The `idleGuard` counter bounds that: it is incremented on every contending resume **while IDLE work is waiting**, and once it reaches `IDLE_STARVATION_RESUMES` one IDLE job is promoted ahead of the sequence and the counter resets. It is also reset to zero whenever the IDLE lane is empty, so credit cannot accumulate during a busy stretch and then be spent by an IDLE job that arrives afterwards.
 
 ## Frame driver
 
@@ -72,7 +95,15 @@ remove OnUpdate
 
 Delayed-only jobs are owned by TimerKit and do not keep SchedulerKit's OnUpdate active.
 
-`GetTimePreciseSec()` is converted to milliseconds for budget accounting. The scheduler records one deadline per OnUpdate pass.
+### The budget clock
+
+Budget and runaway accounting use `debugprofilestop()`, which reports **addon CPU milliseconds**. The clock function is chosen once at load and bound to a file-local, so the hot path never branches on availability; `GetTimePreciseSec()` (converted to milliseconds) is the fallback when a host does not publish the CPU clock.
+
+Wall-clock time was wrong for this job. A garbage-collection pause or client hitch advances it while the running coroutine consumed none of the frame, which charged a cooperating job for a stall it did not cause and could convert it into a runaway. CPU time measures only what the job executed.
+
+SchedulerKit never calls `debugprofilestart()`. It compares two readings of the same monotonic counter, so it neither needs its own epoch nor disturbs one another addon may have started.
+
+The scheduler records one deadline per OnUpdate pass.
 
 Two independent ceilings stop one pass:
 
@@ -100,6 +131,16 @@ Repeating jobs replace `completed` with a TimerKit-backed `delayed` interval and
 
 Only SchedulerKit's private yield token is accepted. This makes accidental raw coroutine suspension fail fast instead of creating an undocumented protocol.
 
+### Yield intent
+
+`Context:Yield()` sets `_yieldRequested` on the job immediately before suspending, and `resumeJob` clears it at the start of every slice. If a slice ends with the coroutine dead while the flag is still set, the suspension never reached the driver: Lua 5.1 refused to yield across a C-call boundary and the callback swallowed the error. The driver reports that, and fails the job when the same slice also outran the runaway threshold.
+
+Checking the flag only on the dead-coroutine path avoids a false positive for a callback that catches the boundary error and then yields correctly further on.
+
+### Runaway slices
+
+A slice that exceeded the runaway threshold **and** ended in a real cooperative yield demotes the job one lane and reports through `geterrorhandler`. It is never failed: the job kept its side of the contract, and killing it would discard work the consumer cannot resume. Demotion is idempotent at `IDLE`.
+
 ## Scope ownership
 
 Active Jobs are linked into each Scope through intrusive previous/next pointers.
@@ -117,16 +158,11 @@ This gives:
 
 SchedulerKit uses a child TimerKit Scope per scheduling Scope.
 
-A delayed TimerKit logical handle stores two private fields:
+The waking job travels on the TimerKit handle through TimerKit's public `SetUserData`/`GetUserData` seam. SchedulerKit writes no private fields onto another package's objects, which is what `docs/ARCHITECTURE.md` requires of cross-package behaviour, and attaching the reference allocates nothing.
 
-```text
-__schedulerKitJob
-__schedulerKitGeneration
-```
+All delays share one SchedulerKit wake callback rather than allocating a new callback closure for every repeat interval. The wake callback reads the job from the handle, detaches it, then resolves the current implementation through shared `_state.dispatch`.
 
-All delays share one SchedulerKit wake callback rather than allocating a new callback closure for every repeat interval. The wake callback clears those fields before dispatching, then resolves the current implementation through shared `_state.dispatch`.
-
-Logical generations protect against stale delayed callbacks after cancellation.
+Staleness is decided by handle identity: a cancelled or re-armed job no longer points at the handle that fired, so the wake callback resolves a generation that cannot match. The dispatch entry still takes `(job, generation)`, unchanged from revision 3, so a delay armed before a live upgrade wakes correctly against the new implementation.
 
 ## Error containment
 
@@ -140,7 +176,9 @@ SchedulerKit:
 4. best-effort reports it through WoW's current error handler;
 5. continues unrelated scheduler work.
 
-Internal/native failures that occur in direct API operations may still be re-raised to the direct caller after logical cleanup has been committed.
+The traceback is captured by `debug.traceback(thread, message)` **before** the job's coroutine reference is dropped. Lua 5.1 does not unwind an errored coroutine's stack, so this is the only point at which the raising frame can still be named.
+
+Internal/native failures that occur in direct API operations may still be re-raised to the direct caller after logical cleanup has been committed. Such a failure is recorded on the job but **not** reported to the error handler, because the direct caller already has it; the same operation reached from the driver, where no caller can observe a raise, reports instead. One failure therefore produces exactly one signal.
 
 ## Allocation policy
 

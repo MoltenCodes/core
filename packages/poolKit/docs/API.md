@@ -42,9 +42,62 @@ Pool handles:
 - `destroy` — optional function, called as `destroy(object, pool)` when an object leaves pool ownership;
 - `maxRetained` — non-negative integer or `PoolKit.UNBOUNDED`; default `128`;
 - `strict` — boolean, default `true`; retains weak history for better duplicate-release diagnostics after discard;
-- `prewarm` — non-negative integer, default `0`; may not exceed a finite `maxRetained`.
+- `strictReset` — boolean, default `false`; refuses to construct a pool that has no `reset` (see *Acquire does not clean*);
+- `prewarm` — non-negative integer, default `0`; may not exceed a finite `maxRetained`;
+- `maxActiveWarning` — non-negative integer; report once when this many objects are borrowed simultaneously (see *Active objects are caller-owned*).
 
-Unknown fields are rejected so configuration typos cannot silently alter retention behavior.
+Unknown fields are rejected so configuration typos cannot silently alter retention behavior. When several unknown fields are present the message names the alphabetically first one.
+
+## Acquire does not clean
+
+`Acquire()` returns the object exactly as it was when it was released. PoolKit runs `reset` at **release** time and does nothing at acquire time, so a pool constructed **without** a `reset` callback hands back objects still carrying every field the previous borrower left on them:
+
+```lua
+local pool = PoolKit:New({ create = function() return {} end })
+
+local first = pool:Acquire()
+first.name = "stale"
+pool:Release(first)
+
+local second = pool:Acquire()
+assert(second == first)
+assert(second.name == "stale")   -- not cleaned: there is no reset callback
+```
+
+This is deliberate. A pool with no `reset` is a pure identity cache: PoolKit cannot know which fields are meaningful, and clearing them speculatively would both cost time on the hot path and destroy state some callers pool precisely in order to keep. Cleaning is the caller's decision, expressed as a `reset` callback.
+
+Two consequences are worth stating plainly:
+
+- **Never rely on a freshly acquired object being empty** unless the pool has a `reset` (or is a `NewTablePool`, whose built-in reset shallow-clears every key).
+- **Treat leftover state as a leak surface.** A resetless pool keeps the previous borrower's references alive for as long as the object is retained, which can hold objects that should have been collected.
+
+If a pool is supposed to have a `reset` and the callback was simply forgotten, `strictReset` turns that into a loud construction failure instead of a silent data leak:
+
+```lua
+PoolKit:New({ create = factory, strictReset = true })
+-- error: PoolKit:New strictReset requires a reset callback
+```
+
+`strictReset` is validated at construction and is not retained on the pool, so opting into it costs `Acquire` and `Release` nothing.
+
+## Active objects are caller-owned
+
+`GetAvailableCount()` is bounded by `maxRetained`. `GetActiveCount()` is **not bounded at all**.
+
+A borrowed object stays in the pool's active set until the caller releases it. PoolKit has no way to reclaim one — it holds a strong reference so that ownership, duplicate-release, and foreign-object checks stay correct — so an acquire loop that never releases grows the active set without limit. This is caller-owned retention, not a PoolKit retention policy, and it is the one place where a PoolKit pool is unbounded by construction.
+
+Use `GetActiveCount()` to observe it, and `maxActiveWarning` to be told about it:
+
+```lua
+local pool = PoolKit:New({
+    create = factory,
+    maxActiveWarning = 500,
+})
+```
+
+When the active count first reaches the threshold, PoolKit reports one diagnostic through WoW's `geterrorhandler()`. It reports **once per pool**: a leaking caller would otherwise be told on every subsequent acquire, drowning the signal it needs to see. The threshold changes nothing else — no acquire is refused and no object is reclaimed.
+
+Outside the WoW client, or on any host that publishes no `geterrorhandler`, the warning is silently skipped; PoolKit is pure Lua and never requires the client to work.
 
 ## Bounded retention
 
@@ -80,9 +133,22 @@ If `reset` raises, release is rolled back to the active state and the original e
 
 If reset succeeds, release is logically committed before optional destruction. Therefore a later destroy error does not make the object active again.
 
-Lifecycle callbacks may inspect the same pool through scalar/query methods, but they may not mutate that pool (`Acquire`, `Release`, `Prewarm`, `Trim`, `Clear`, `Close`, or `SetMaxRetained`) while `create`, `reset`, or `destroy` is executing. PoolKit rejects such same-pool re-entrancy explicitly. Callbacks may freely interact with other pools. This rule keeps callback behavior expressive without making ownership transactions recursively mutable.
+Lifecycle callbacks may inspect the same pool through scalar/query methods, but they may not mutate that pool (`Acquire`, `Release`, `Prewarm`, `Trim`, `Clear`, `Close`, or `SetMaxRetained`) while `create`, `reset`, or `destroy` is executing. PoolKit rejects such same-pool re-entrancy explicitly. Callbacks may freely interact with other pools, and a pool driven from inside another pool's callback does not weaken the outer pool's guard: the guard is released only when the callback that took it returns, including when it returns by raising. This rule keeps callback behavior expressive without making ownership transactions recursively mutable.
 
 Callbacks are synchronous lifecycle hooks; they must not yield. PoolKit uses protected calls where rollback or best-effort cleanup requires observing callback failure.
+
+## Argument errors point at the caller
+
+Every argument-validation failure is raised so that its `file:line` prefix is the line that called the public method:
+
+```lua
+pool:Prewarm(-1)
+-- MyAddon/Main.lua:42: PoolKit.Pool:Prewarm count must be a non-negative integer
+```
+
+This holds for constructor options, pool-method arguments, closed-pool rejections, factory results rejected by the pool, methods called on something that is not a PoolKit pool, and mutation attempted from inside a lifecycle callback.
+
+Errors that are re-raised after best-effort cleanup keep the original error object unchanged and therefore carry no added position. Constructor-time `prewarm` failures are re-raised the same way.
 
 ## Strict diagnostics
 

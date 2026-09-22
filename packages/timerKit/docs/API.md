@@ -21,6 +21,8 @@ Timer handles:
 | `GetState()` | Return `idle`, `running`, `completed`, or `cancelled`. |
 | `GetDelay()` | Return the configured delay/interval in seconds. |
 | `GetScope()` | Return the owning TimerKit scope. |
+| `GetUserData()` | Return the opaque value attached by the owner, or `nil`. |
+| `SetUserData(value)` | Attach one opaque owner-defined value; returns the timer. |
 | `IsRepeating()` | Return whether the timer is repeating. |
 | `IsPending()` | Return whether the logical timer is running. |
 | `IsCancelled()` | Return whether it was logically cancelled. |
@@ -64,7 +66,7 @@ timer:Restart()
 - `callback` — required Lua function;
 - `repeating` — optional boolean, default `false`.
 
-Unknown option fields are rejected so misspellings cannot silently change timer behavior.
+Unknown option fields are rejected so misspellings cannot silently change timer behavior. When several unknown fields are present the message names the alphabetically first one.
 
 Timer callbacks receive the **logical TimerKit timer handle**, not the native `C_Timer` FunctionContainer.
 
@@ -75,6 +77,70 @@ One-shot timers accept finite delays greater than or equal to zero. A zero-delay
 Repeating timers require a finite interval strictly greater than zero. TimerKit deliberately rejects a zero-interval repeating ticker to avoid pathological per-frame repetition through an API whose semantic purpose is interval timing.
 
 Negative, NaN, and infinite values are rejected.
+
+## Timer user data
+
+A consumer that has to associate its own bookkeeping with a timer attaches it
+through the timer handle instead of writing private fields onto it:
+
+```lua
+local timer = scope:After(0.5, wakeCallback)
+timer:SetUserData(myJobRecord)
+
+-- inside wakeCallback
+local record = timer:GetUserData()
+```
+
+The contract is deliberately small:
+
+- exactly **one** value per timer; a second `SetUserData` replaces the first;
+- the value is stored **by reference**. TimerKit never reads, copies, compares,
+  or serializes it, and attaching a value allocates nothing;
+- `SetUserData(nil)` detaches the value;
+- user data survives `Cancel()`, `Start()`, and `Restart()`. TimerKit never
+  clears it, so an owner that attaches a large object is responsible for
+  detaching it when the timer is no longer interesting;
+- `GetUserData()` returns `nil` for a timer that has never been given one,
+  including timers created by an older embedded TimerKit revision.
+
+This is the supported way for another package to carry state on a timer.
+Writing private fields onto a TimerKit timer handle is not supported: it is
+another package's internal state and may collide with a future revision.
+
+## Same-instant ordering
+
+When two timers are scheduled to fire at the same instant, the order in which
+their callbacks run is **host-defined**. TimerKit adds no ordering of its own:
+it hands each timer to `C_Timer` independently, and the client decides how
+same-frame expirations are dispatched. Creation order, delay value, and scope
+membership must not be relied on to sequence two timers that expire together.
+
+Work that genuinely depends on ordering should express it directly — by
+starting the second timer from the first timer's callback, or by using
+SchedulerKit, which owns deterministic ordering within a priority lane.
+
+Bulk operations are the one place TimerKit does impose an order: `CancelAll()`
+and `Close()` process the scope's active timers in creation order so cleanup is
+reproducible.
+
+## Argument errors point at the caller
+
+Every argument-validation failure is raised so that its `file:line` prefix is
+the line that called the public method:
+
+```lua
+scope:After(1, "nope")
+-- MyAddon/Main.lua:42: TimerKit.Scope:After callback must be a function
+```
+
+This holds for every public entry point — package-level and scope-level
+constructors, option-table fields, closed-scope rejections, and methods invoked
+on something that is not a TimerKit timer or scope. Host failures reported
+through TimerKit, such as an invalid native timer handle, use the same position.
+
+Errors that are re-raised after best-effort cleanup — the first native
+cancellation error from `CancelAll()` or `Close()` — deliberately keep the
+original error object unchanged and therefore carry no added position.
 
 ## State model
 

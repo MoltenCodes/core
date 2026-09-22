@@ -12,7 +12,9 @@ local frames = {}
 local addonLoaded = {}
 local loggedIn = false
 local nativeTimers = {}
-local clockMs = 0
+local wallClockMs = 0
+local profileClockMs = 0
+local profilingClockAvailable = true
 local reportedErrors = {}
 local failNextTimerCreate = nil
 local failNextTimerCancel = nil
@@ -125,8 +127,17 @@ function SchedulerKitTestEnv.InstallWowApi()
     })
 
     rawset(_G, "GetTimePreciseSec", function()
-        return clockMs / 1000
+        return wallClockMs / 1000
     end)
+
+    -- SchedulerKit measures its frame budget in addon CPU milliseconds. The
+    -- stub keeps that clock independent from the wall clock so a spec can
+    -- simulate a hitch: wall time moves while CPU time does not.
+    if profilingClockAvailable then
+        rawset(_G, "debugprofilestop", function()
+            return profileClockMs
+        end)
+    end
 
     rawset(_G, "geterrorhandler", function()
         return function(value)
@@ -150,13 +161,16 @@ function SchedulerKitTestEnv.Reset()
     rawset(_G, "IsLoggedIn", nil)
     rawset(_G, "C_Timer", nil)
     rawset(_G, "GetTimePreciseSec", nil)
+    rawset(_G, "debugprofilestop", nil)
     rawset(_G, "geterrorhandler", nil)
 
     frames = {}
     addonLoaded = {}
     loggedIn = false
     nativeTimers = {}
-    clockMs = 0
+    wallClockMs = 0
+    profileClockMs = 0
+    profilingClockAvailable = true
     reportedErrors = {}
     failNextTimerCreate = nil
     failNextTimerCancel = nil
@@ -180,12 +194,32 @@ function SchedulerKitTestEnv.ReloadPackage()
     return require("SchedulerKit")
 end
 
+---Advance both clocks, which is what an ordinary busy slice looks like.
 function SchedulerKitTestEnv.AdvanceMs(milliseconds)
-    clockMs = clockMs + milliseconds
+    wallClockMs = wallClockMs + milliseconds
+    profileClockMs = profileClockMs + milliseconds
+end
+
+---Advance only addon CPU time.
+function SchedulerKitTestEnv.AdvanceProfileMs(milliseconds)
+    profileClockMs = profileClockMs + milliseconds
+end
+
+---Advance only wall-clock time, as a garbage-collection pause or client hitch
+---does: the frame stalls without the running job consuming any CPU.
+function SchedulerKitTestEnv.AdvanceWallMs(milliseconds)
+    wallClockMs = wallClockMs + milliseconds
+end
+
+---Withhold `debugprofilestop` from the next `InstallWowApi`, so a spec can
+---exercise the documented wall-clock fallback. Must be called before the
+---package is loaded, because the clock is bound once at load.
+function SchedulerKitTestEnv.WithoutProfilingClock()
+    profilingClockAvailable = false
 end
 
 function SchedulerKitTestEnv.NowMs()
-    return clockMs
+    return profileClockMs
 end
 
 function SchedulerKitTestEnv.Tick(elapsed)

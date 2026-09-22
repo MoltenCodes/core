@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 — 2026-09-22
+
+- Measured the frame budget and the runaway threshold in addon CPU milliseconds (`debugprofilestop`) instead of wall-clock time. A garbage-collection pause or client hitch used to be charged to whichever job happened to be running, so a perfectly cooperative job could be flagged as a runaway for a stall it did not cause. `GetTimePreciseSec` remains the documented fallback for a host without the CPU clock.
+- Stopped failing a job that exceeded the runaway threshold **and then yielded**. Such a job kept its side of the cooperative contract, so it is now demoted one priority lane and the overrun is reported through `geterrorhandler`, instead of being killed and losing work the consumer cannot resume. Demotion stops at `IDLE`.
+- Detected the Lua 5.1 yield hazard: `Context:Yield()` cannot suspend across a `pcall`, `xpcall`, metamethod, `table.sort` comparator, or `string.gsub` callback. A job that swallowed that error previously ran to completion having never surrendered the frame — a silent budget violation. `Yield()` now records the request and the driver reports a slice that ended without the promised suspension, failing the job when that slice also outran the runaway threshold. The rule is documented under *Cooperative execution*.
+- Captured `debug.traceback` against the failing coroutine while its stack is still intact, and added `Job:GetErrorTraceback()`. The host error handler now receives the traceback rather than the bare error value; `Job:GetError()` still returns the original error object unchanged.
+- Made `IDLE` mean what it says. It previously received a guaranteed 1/8 share of the weighted sequence, the same as `LOW`. `IDLE` now runs only when no `HIGH`, `NORMAL`, or `LOW` job is ready, bounded by a starvation guard that promotes one IDLE job after 256 consecutive resumes of contending work. `HIGH`/`NORMAL`/`LOW` keep their 4:2:1 ratio.
+- Replaced the private fields SchedulerKit wrote onto TimerKit timer handles with TimerKit's public `SetUserData`/`GetUserData` seam, so cross-package behaviour uses a public API as `docs/ARCHITECTURE.md` requires. Staleness is now decided by handle identity; the delay-wake dispatch contract is unchanged, so a delay armed before a live upgrade still wakes correctly.
+- Stopped reporting an arming failure twice. `SchedulerKit:After` raising to its caller no longer also pushes the same failure to `geterrorhandler`; the repeat re-arm path, where nothing can observe a raise, reports instead. One failure now produces exactly one signal.
+- Skipped empty priority lanes during ready selection using per-lane occupancy bookkeeping. Selection order and per-lane FIFO are unchanged; a single-`LOW`-lane workload dropped from 8 queue probes per selection to 1 (200 000 resumes: 0.540 s → 0.345 s).
+- Added a table-of-contents header block to `src/SchedulerKit.lua`, and covered two previously untested paths: a job closing its own scope mid-run, and an `Every` job whose scope closes during its callback.
+
 ## 0.1.3 — 2026-09-22
 
 - No runtime behaviour change. Revision 3 still describes the shipped implementation.
