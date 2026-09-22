@@ -118,7 +118,6 @@ describe("ModuleKit failures", function()
         assert.is_nil(module:GetLastError())
     end)
 
-
     it("preserves hard-dependency state when DisableAll cannot disable a dependent", function()
         local addon = ModuleKit:ForAddon("MyAddon")
         local database = addon:CreateModule("Database")
@@ -138,7 +137,6 @@ describe("ModuleKit failures", function()
         assert.are.equal("UI", database:GetBlockedBy())
     end)
 
-
     it("preserves false error objects distinctly from successful operations", function()
         local addon = ModuleKit:ForAddon("MyAddon")
         local module = addon:CreateModule("UI")
@@ -155,5 +153,4 @@ describe("ModuleKit failures", function()
         assert.is_true(module:HasLastError())
         assert.is_false(module:GetLastError())
     end)
-
 end)

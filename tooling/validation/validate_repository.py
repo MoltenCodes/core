@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Validate repository structure, documentation navigation, and package layout."""
+
+from __future__ import annotations
 
 import json
 import re

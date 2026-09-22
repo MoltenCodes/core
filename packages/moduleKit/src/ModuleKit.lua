@@ -13,6 +13,8 @@ local STATE_SCHEMA = 1
 
 -- Dependencies --------------------------------------------------------------
 
+-- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
+-- selene: allow(global_usage)
 local namespace = rawget(_G, "MoltenCodes")
 if type(namespace) ~= "table" then
     error("MoltenCodes ModuleKit requires Registry API 2 to be loaded first", 2)
@@ -33,7 +35,8 @@ local LifecycleKit, lifecycleRevision = getPackage(Registry, "lifecycleKit", REQ
 if LifecycleKit == nil then
     error("MoltenCodes ModuleKit requires LifecycleKit API 1 to be loaded first", 2)
 end
-if type(LifecycleKit) ~= "table"
+if
+    type(LifecycleKit) ~= "table"
     or type(lifecycleRevision) ~= "number"
     or rawget(LifecycleKit, "API") ~= REQUIRED_LIFECYCLE_API
     or rawget(LifecycleKit, "REVISION") ~= lifecycleRevision
@@ -45,7 +48,8 @@ end
 -- Bootstrap -----------------------------------------------------------------
 
 local function validatePublicSurface(implementation)
-    if type(implementation) ~= "table"
+    if
+        type(implementation) ~= "table"
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
         or type(rawget(implementation, "Addon")) ~= "table"
@@ -134,12 +138,8 @@ if existing ~= nil then
     end
 end
 
-local ModuleKit, previousRevision = registerPackage(
-    Registry,
-    PACKAGE_NAME,
-    API_GENERATION,
-    IMPLEMENTATION_REVISION
-)
+local ModuleKit, previousRevision =
+    registerPackage(Registry, PACKAGE_NAME, API_GENERATION, IMPLEMENTATION_REVISION)
 
 if ModuleKit == nil then
     -- Registry may already have accepted this revision during an earlier
@@ -151,9 +151,10 @@ if ModuleKit == nil then
 
     local existingState = rawget(existing, "_state")
     local runtimeRevision = type(existingState) == "table"
-        and rawget(existingState, "runtimeRevision")
+            and rawget(existingState, "runtimeRevision")
         or nil
-    if existingFacadeRevision == IMPLEMENTATION_REVISION
+    if
+        existingFacadeRevision == IMPLEMENTATION_REVISION
         and runtimeRevision == IMPLEMENTATION_REVISION
         and validatePublicSurface(existing)
         and validateCurrentState(existing)
@@ -255,10 +256,7 @@ local function addNameConstraint(module, field, targetName, methodName)
     validateModuleName(targetName, methodName)
 
     if targetName == rawget(module, "_name") then
-        error(
-            'ModuleKit module "' .. targetName .. '" cannot depend/order against itself',
-            3
-        )
+        error('ModuleKit module "' .. targetName .. '" cannot depend/order against itself', 3)
     end
 
     if field == "_before" then
@@ -286,14 +284,15 @@ local function validateLateModuleOrdering(addon, newModule)
     local newBefore = rawget(newModule, "_before")
 
     for index = 1, #order do
-        local existing = order[index]
-        if rawget(existing, "_state") ~= "created" then
-            local existingName = rawget(existing, "_name")
-            local existingOptional = rawget(existing, "_optionalDependencies")
-            local existingAfter = rawget(existing, "_after")
-            local existingHard = rawget(existing, "_hardDependencies")
+        local existingModule = order[index]
+        if rawget(existingModule, "_state") ~= "created" then
+            local existingName = rawget(existingModule, "_name")
+            local existingOptional = rawget(existingModule, "_optionalDependencies")
+            local existingAfter = rawget(existingModule, "_after")
+            local existingHard = rawget(existingModule, "_hardDependencies")
 
-            if rawget(newBefore, existingName) == true
+            if
+                rawget(newBefore, existingName) == true
                 or rawget(existingOptional, newName) == true
                 or rawget(existingAfter, newName) == true
                 or rawget(existingHard, newName) == true
@@ -556,7 +555,8 @@ local function enabledHardDependents(module)
 
     for index = 1, #order do
         local candidate = order[index]
-        if candidate ~= module
+        if
+            candidate ~= module
             and rawget(candidate, "_state") == "enabled"
             and rawget(rawget(candidate, "_hardDependencies"), moduleName) == true
         then
@@ -641,10 +641,7 @@ end
 local function registerProvider(addon, name, provider, methodName)
     validateProviderName(name, methodName)
     if providerConflict(addon, name) then
-        error(
-            'ModuleKit.Addon:' .. methodName .. ' name "' .. name .. '" is already in use',
-            3
-        )
+        error("ModuleKit.Addon:" .. methodName .. ' name "' .. name .. '" is already in use', 3)
     end
     rawset(rawget(addon, "_providers"), name, provider)
     return addon
@@ -690,10 +687,8 @@ local function resolveProvider(addon, name, requestingModule)
             local cycle = {}
             for cycleIndex = index, #stack do
                 local record = stack[cycleIndex]
-                cycle[#cycle + 1] = resolutionLabel(
-                    rawget(record, "name"),
-                    rawget(record, "requestingModule")
-                )
+                cycle[#cycle + 1] =
+                    resolutionLabel(rawget(record, "name"), rawget(record, "requestingModule"))
             end
             cycle[#cycle + 1] = resolutionLabel(name, kind == "module" and requestingModule or nil)
             error("ModuleKit provider resolution cycle: " .. table.concat(cycle, " -> "), 3)
@@ -1460,9 +1455,10 @@ local function addonResolve(self, name, requestingModule)
     if requestingModule ~= nil then
         local modules = rawget(self, "_modules")
         local requesterName = type(requestingModule) == "table"
-            and rawget(requestingModule, "_name")
+                and rawget(requestingModule, "_name")
             or nil
-        if type(requesterName) ~= "string"
+        if
+            type(requesterName) ~= "string"
             or rawget(requestingModule, "_addon") ~= self
             or rawget(modules, requesterName) ~= requestingModule
         then
@@ -1509,7 +1505,8 @@ end
 
 local function installAddonSubscriptions(addon)
     local lifecycle = rawget(addon, "_lifecycle")
-    if type(lifecycle) ~= "table"
+    if
+        type(lifecycle) ~= "table"
         or type(lifecycle.IsShutdown) ~= "function"
         or type(lifecycle.OnLoaded) ~= "function"
         or type(lifecycle.OnReady) ~= "function"

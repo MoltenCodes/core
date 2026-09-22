@@ -35,6 +35,24 @@ The three version-like values serve different purposes:
 - `api` changes when the public runtime contract breaks;
 - `revision` orders compatible embedded implementations inside one API generation.
 
+### When to bump `revision`
+
+`revision` is the tiebreaker the Registry uses to decide which of several
+embedded copies of a package wins at runtime. Raise it when the implementation
+an addon would actually execute changes: a bug fix, a behaviour change, a state
+migration, a performance change that a consumer could observe.
+
+Do not raise it for edits that leave the executed implementation identical —
+comments, lint annotations, formatting, or renaming a local. Those change the
+shipped file and so belong in the changelog and in a `version` bump, but a copy
+carrying them is not a newer implementation, and claiming otherwise makes it
+displace an equivalent copy for no reason.
+
+The in-source `IMPLEMENTATION_REVISION`, the runtime `REVISION` field, and the
+manifest `revision` must always agree; each package's `Manifest_spec` enforces
+that. A `revision` bump additionally needs an in-place upgrade path from the
+previous revision and a spec that covers it.
+
 ## Dependency contracts
 
 A dependency names the exact API generation required by the consumer:

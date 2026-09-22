@@ -8,12 +8,16 @@ end
 
 describe("EventKit one-shot subscriptions", function()
     local EventKit
-    before_each(function() EventKit = TestEnv.NewPackage() end)
+    before_each(function()
+        EventKit = TestEnv.NewPackage()
+    end)
     after_each(TestEnv.Reset)
 
     it("runs Once exactly once", function()
         local calls = 0
-        local connection = EventKit:Once("PLAYER_LOGIN", function() calls = calls + 1 end)
+        local connection = EventKit:Once("PLAYER_LOGIN", function()
+            calls = calls + 1
+        end)
         TestEnv.Emit("PLAYER_LOGIN")
         TestEnv.Emit("PLAYER_LOGIN")
         assert.are.equal(1, calls)
@@ -43,8 +47,12 @@ describe("EventKit one-shot subscriptions", function()
     end)
 
     it("stays disconnected when its callback errors", function()
-        local connection = EventKit:Once("CUSTOM_EVENT", function() error("once failure") end)
-        expectErrorContaining("once failure", function() TestEnv.Emit("CUSTOM_EVENT") end)
+        local connection = EventKit:Once("CUSTOM_EVENT", function()
+            error("once failure")
+        end)
+        expectErrorContaining("once failure", function()
+            TestEnv.Emit("CUSTOM_EVENT")
+        end)
         assert.is_false(connection:IsConnected())
         assert.is_nil(TestEnv.Frames()[1].registrations.CUSTOM_EVENT)
     end)

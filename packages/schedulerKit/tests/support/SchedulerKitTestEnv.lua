@@ -1,3 +1,8 @@
+-- Busted injects luassert only into spec chunks. This support module is loaded
+-- through `require`, so it names the library explicitly for the few helpers that
+-- assert a genuine test expectation rather than a stub precondition.
+local assert = require("luassert")
+
 local SchedulerKitTestEnv = {}
 
 SchedulerKitTestEnv.REGISTRY_STATE_KEY = "__MOLTENCODES_REGISTRY_STATE_V2"
@@ -90,7 +95,12 @@ end
 
 function SchedulerKitTestEnv.InstallWowApi()
     rawset(_G, "CreateFrame", function(frameType)
-        assert.are.equal("Frame", frameType)
+        -- Stub precondition, not a test expectation: support modules are plain
+        -- `require`d modules, so Busted's injected `assert` global is unavailable
+        -- here and a misuse must surface as an ordinary Lua error.
+        if frameType ~= "Frame" then
+            error('CreateFrame stub supports only "Frame", received ' .. tostring(frameType), 2)
+        end
         return newFrame()
     end)
 

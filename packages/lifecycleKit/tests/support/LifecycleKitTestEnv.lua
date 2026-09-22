@@ -47,7 +47,12 @@ end
 
 function LifecycleKitTestEnv.InstallWowApi()
     rawset(_G, "CreateFrame", function(frameType)
-        assert.are.equal("Frame", frameType)
+        -- Stub precondition, not a test expectation: support modules are plain
+        -- `require`d modules, so Busted's injected `assert` global is unavailable
+        -- here and a misuse must surface as an ordinary Lua error.
+        if frameType ~= "Frame" then
+            error('CreateFrame stub supports only "Frame", received ' .. tostring(frameType), 2)
+        end
         return newFrame()
     end)
 

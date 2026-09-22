@@ -1,14 +1,20 @@
 local Env = require("PoolKitTestEnv")
 
 describe("PoolKit", function()
-    before_each(function() Env.Reset() end)
-    after_each(function() Env.Reset() end)
+    before_each(function()
+        Env.Reset()
+    end)
+    after_each(function()
+        Env.Reset()
+    end)
 
     it("reuses released objects and resets before retention", function()
         local PoolKit = Env.NewPackage()
         local resetCount = 0
         local pool = PoolKit:New({
-            create = function() return {} end,
+            create = function()
+                return {}
+            end,
             reset = function(object)
                 resetCount = resetCount + 1
                 object.value = nil
@@ -44,17 +50,32 @@ describe("PoolKit", function()
     it("rejects unknown options and invalid factory results", function()
         local PoolKit = Env.NewPackage()
         assert.has_error(function()
-            PoolKit:New({ create = function() return {} end, typo = true })
+            PoolKit:New({
+                create = function()
+                    return {}
+                end,
+                typo = true,
+            })
         end)
-        local pool = PoolKit:New({ create = function() return 7 end })
-        assert.has_error(function() pool:Acquire() end)
+        local pool = PoolKit:New({
+            create = function()
+                return 7
+            end,
+        })
+        assert.has_error(function()
+            pool:Acquire()
+        end)
         assert.are.equal(0, pool:GetCreatedCount())
         assert.are.equal(0, pool:GetActiveCount())
     end)
 
     it("uses bounded retention by default", function()
         local PoolKit = Env.NewPackage()
-        local pool = PoolKit:New({ create = function() return {} end })
+        local pool = PoolKit:New({
+            create = function()
+                return {}
+            end,
+        })
         assert.are.equal(128, PoolKit.DEFAULT_MAX_RETAINED)
         assert.are.equal(PoolKit.DEFAULT_MAX_RETAINED, pool:GetMaxRetained())
     end)

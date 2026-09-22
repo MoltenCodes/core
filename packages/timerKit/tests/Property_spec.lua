@@ -47,11 +47,17 @@ describe("TimerKit state properties", function()
             else
                 local timer = timers[nextRandom(#timers)]
                 if operation == 3 then
-                    pcall(function() timer:Start() end)
+                    pcall(function()
+                        timer:Start()
+                    end)
                 elseif operation == 4 then
-                    pcall(function() timer:Cancel() end)
+                    pcall(function()
+                        timer:Cancel()
+                    end)
                 elseif operation == 5 then
-                    pcall(function() timer:Restart() end)
+                    pcall(function()
+                        timer:Restart()
+                    end)
                 else
                     local natives = TestEnv.NativeTimers()
                     if #natives > 0 then

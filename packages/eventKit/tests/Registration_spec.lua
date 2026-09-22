@@ -2,7 +2,9 @@ local TestEnv = require("EventKitTestEnv")
 
 describe("EventKit registration lifecycle", function()
     local EventKit
-    before_each(function() EventKit = TestEnv.NewPackage() end)
+    before_each(function()
+        EventKit = TestEnv.NewPackage()
+    end)
     after_each(TestEnv.Reset)
 
     it("creates no Frame before the first subscription", function()

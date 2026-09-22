@@ -14,6 +14,8 @@ local STATE_SCHEMA = 2
 
 -- Dependencies --------------------------------------------------------------
 
+-- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
+-- selene: allow(global_usage)
 local namespace = rawget(_G, "MoltenCodes")
 if type(namespace) ~= "table" then
     error("MoltenCodes LifecycleKit requires Registry API 2 to be loaded first", 2)
@@ -35,7 +37,8 @@ if SignalKit == nil then
     error("MoltenCodes LifecycleKit requires SignalKit API 1 to be loaded first", 2)
 end
 local SignalKitConnection = type(SignalKit) == "table" and rawget(SignalKit, "Connection") or nil
-if type(SignalKit) ~= "table"
+if
+    type(SignalKit) ~= "table"
     or type(signalRevision) ~= "number"
     or rawget(SignalKit, "API") ~= REQUIRED_SIGNAL_API
     or rawget(SignalKit, "REVISION") ~= signalRevision
@@ -55,7 +58,8 @@ if EventKit == nil then
     error("MoltenCodes LifecycleKit requires EventKit API 1 to be loaded first", 2)
 end
 local EventKitConnection = type(EventKit) == "table" and rawget(EventKit, "Connection") or nil
-if type(EventKit) ~= "table"
+if
+    type(EventKit) ~= "table"
     or type(eventKitRevision) ~= "number"
     or rawget(EventKit, "API") ~= REQUIRED_EVENT_KIT_API
     or rawget(EventKit, "REVISION") ~= eventKitRevision
@@ -70,7 +74,8 @@ end
 -- Public-surface validation --------------------------------------------------
 
 local function validatePublicSurface(implementation)
-    if type(implementation) ~= "table"
+    if
+        type(implementation) ~= "table"
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
         or type(rawget(implementation, "Instance")) ~= "table"
@@ -115,12 +120,8 @@ if existing ~= nil then
     end
 end
 
-local LifecycleKit, previousRevision = registerPackage(
-    Registry,
-    PACKAGE_NAME,
-    API_GENERATION,
-    IMPLEMENTATION_REVISION
-)
+local LifecycleKit, previousRevision =
+    registerPackage(Registry, PACKAGE_NAME, API_GENERATION, IMPLEMENTATION_REVISION)
 
 if LifecycleKit == nil then
     if existingRevision ~= IMPLEMENTATION_REVISION then
@@ -164,14 +165,23 @@ if previousRevision == nil then
     rawset(LifecycleKit, "Instance", Instance)
     rawset(LifecycleKit, "Subscription", Subscription)
     rawset(LifecycleKit, "_state", state)
-elseif type(Instance) ~= "table" or type(Subscription) ~= "table" or type(state) ~= "table" then
-    error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
-elseif previousRevision == 1 then
-    if rawget(state, "schema") ~= 1 or type(rawget(state, "addons")) ~= "table" then
+else
+    -- An embedded copy is reusing state another copy created. The shape that
+    -- state must have depends on the revision that owns it, but every mismatch
+    -- is the same condition, so the checks resolve to one flag and one error.
+    local carriedStateIsUsable
+    if type(Instance) ~= "table" or type(Subscription) ~= "table" or type(state) ~= "table" then
+        carriedStateIsUsable = false
+    elseif previousRevision == 1 then
+        carriedStateIsUsable = rawget(state, "schema") == 1
+            and type(rawget(state, "addons")) == "table"
+    else
+        carriedStateIsUsable = validateCurrentState(LifecycleKit)
+    end
+
+    if not carriedStateIsUsable then
         error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
     end
-elseif not validateCurrentState(LifecycleKit) then
-    error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
 end
 
 local INSTANCE_METATABLE = { __index = Instance }
@@ -180,6 +190,8 @@ local SUBSCRIPTION_METATABLE = { __index = Subscription }
 -- Host-state probes ---------------------------------------------------------
 
 local function isAddonFinishedLoading(addonName)
+    -- C_AddOns is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
     local addonsApi = rawget(_G, "C_AddOns")
     local modern = type(addonsApi) == "table" and rawget(addonsApi, "IsAddOnLoaded") or nil
     if type(modern) == "function" then
@@ -189,6 +201,8 @@ local function isAddonFinishedLoading(addonName)
 
     -- Legacy IsAddOnLoaded exposes loading and finished states separately.
     -- Only the second return confirms that ADDON_LOADED already completed.
+    -- Legacy IsAddOnLoaded is a World of Warcraft client global kept for older clients.
+    -- selene: allow(global_usage)
     local legacy = rawget(_G, "IsAddOnLoaded")
     if type(legacy) == "function" then
         local _, finished = legacy(addonName)
@@ -199,6 +213,8 @@ local function isAddonFinishedLoading(addonName)
 end
 
 local function isPlayerLoggedIn()
+    -- IsLoggedIn is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
     local probe = rawget(_G, "IsLoggedIn")
     return type(probe) == "function" and probe() == true
 end

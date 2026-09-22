@@ -31,8 +31,12 @@ describe("SchedulerKit", function()
 
         SchedulerKit:Schedule(function()
             order[#order + 1] = "outer"
-            SchedulerKit:Schedule(function() order[#order + 1] = "nested" end)
-            SchedulerKit:NextFrame(function() order[#order + 1] = "next" end)
+            SchedulerKit:Schedule(function()
+                order[#order + 1] = "nested"
+            end)
+            SchedulerKit:NextFrame(function()
+                order[#order + 1] = "next"
+            end)
         end)
 
         TestEnv.Tick()
@@ -63,10 +67,18 @@ describe("SchedulerKit", function()
         assert.are.equal(12, SchedulerKit:GetRunawayThreshold())
         assert.are.equal(77, SchedulerKit:GetMaxResumesPerFrame())
 
-        assert.has_error(function() SchedulerKit:SetFrameBudget(0) end)
-        assert.has_error(function() SchedulerKit:SetRunawayThreshold(-1) end)
-        assert.has_error(function() SchedulerKit:SetMaxResumesPerFrame(1.5) end)
-        assert.has_error(function() SchedulerKit:SetMaxResumesPerFrame(math.huge) end)
+        assert.has_error(function()
+            SchedulerKit:SetFrameBudget(0)
+        end)
+        assert.has_error(function()
+            SchedulerKit:SetRunawayThreshold(-1)
+        end)
+        assert.has_error(function()
+            SchedulerKit:SetMaxResumesPerFrame(1.5)
+        end)
+        assert.has_error(function()
+            SchedulerKit:SetMaxResumesPerFrame(math.huge)
+        end)
     end)
 
     it("rejects unknown scheduling options", function()

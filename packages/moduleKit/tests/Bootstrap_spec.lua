@@ -49,7 +49,6 @@ describe("ModuleKit bootstrap", function()
         assert.are.equal(1, calls)
     end)
 
-
     it("repairs shared runtime dispatch on a same-revision reload", function()
         local ModuleKit = TestEnv.NewPackage()
         local state = rawget(ModuleKit, "_state")
@@ -61,7 +60,6 @@ describe("ModuleKit bootstrap", function()
         assert.are.equal(ModuleKit, reloaded)
         assert.is_true(type(rawget(rawget(state, "dispatch"), "shutdown")) == "function")
     end)
-
 
     it("migrates revision-1 lifecycle subscriptions without replacing addon identity", function()
         TestEnv.Reset()
@@ -163,5 +161,4 @@ describe("ModuleKit bootstrap", function()
         assert.is_false(oldShutdown:IsConnected())
         assert.are.equal(2, rawget(rawget(upgraded, "_state"), "runtimeRevision"))
     end)
-
 end)

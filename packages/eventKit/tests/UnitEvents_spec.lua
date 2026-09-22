@@ -2,7 +2,9 @@ local TestEnv = require("EventKitTestEnv")
 
 describe("EventKit unit subscriptions", function()
     local EventKit
-    before_each(function() EventKit = TestEnv.NewPackage() end)
+    before_each(function()
+        EventKit = TestEnv.NewPackage()
+    end)
     after_each(TestEnv.Reset)
 
     it("uses RegisterUnitEvent", function()
@@ -55,8 +57,12 @@ describe("EventKit unit subscriptions", function()
 
     it("keeps regular and unit registrations independent", function()
         local regularCalls, unitCalls = 0, 0
-        EventKit:Connect("UNIT_HEALTH", function() regularCalls = regularCalls + 1 end)
-        EventKit:ConnectUnit("UNIT_HEALTH", function() unitCalls = unitCalls + 1 end, "player")
+        EventKit:Connect("UNIT_HEALTH", function()
+            regularCalls = regularCalls + 1
+        end)
+        EventKit:ConnectUnit("UNIT_HEALTH", function()
+            unitCalls = unitCalls + 1
+        end, "player")
         TestEnv.Emit("UNIT_HEALTH", "target")
         TestEnv.Emit("UNIT_HEALTH", "player")
         assert.are.equal(2, regularCalls)

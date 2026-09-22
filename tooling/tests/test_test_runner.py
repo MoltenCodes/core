@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import tempfile
@@ -10,8 +11,16 @@ from tooling.test import run as module
 from tooling.validation import validate_manifests
 
 
-class TestRunnerTests(unittest.TestCase):
+def fake_process(returncode: int, stdout: str = "", stderr: str = ""):
+    """Model the completed Busted process the runner captures."""
+    return SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+class PackageFixture(unittest.TestCase):
+    """Redirects the runner and manifest validator at a throwaway package tree."""
+
     def setUp(self):
+        self.printed = ""
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)
         self.packages = self.root / "packages"
@@ -52,6 +61,8 @@ class TestRunnerTests(unittest.TestCase):
             json.dumps(manifest), encoding="utf-8"
         )
 
+
+class TestRunnerTests(PackageFixture):
     def test_selects_all_packages_in_deterministic_order(self):
         self.create_package("zetaKit")
         self.create_package("alphaKit")
@@ -130,8 +141,11 @@ class TestRunnerTests(unittest.TestCase):
         with (
             mock.patch.object(module.shutil, "which", return_value="/fake/busted"),
             mock.patch.object(
-                module.subprocess, "run", return_value=SimpleNamespace(returncode=0)
+                module.subprocess,
+                "run",
+                return_value=fake_process(0, "1 success / 0 failures / 0 errors / 0 pending"),
             ) as run_process,
+            mock.patch("sys.stdout", io.StringIO()),
         ):
             result = module.run(["baseKit", "eventKit"])
 
@@ -153,6 +167,127 @@ class TestRunnerTests(unittest.TestCase):
 
         self.assertIsNone(error)
         self.assertEqual(os.path.join("packages", "registry", "tests"), target)
+
+
+
+class BustedSummaryParsingTests(unittest.TestCase):
+    def test_parses_plural_summary_counts(self):
+        output = "48 successes / 0 failures / 0 errors / 0 pending : 0.01 seconds"
+
+        self.assertEqual((48, 0, 0, 0), module.parse_busted_summary(output))
+
+    def test_parses_singular_summary_nouns(self):
+        output = "1 success / 1 failure / 1 error / 1 pending : 0.01 seconds"
+
+        self.assertEqual((1, 1, 1, 1), module.parse_busted_summary(output))
+
+    def test_ignores_terminal_colour_codes(self):
+        output = "\x1b[32m7 successes\x1b[0m / 2 failures / 1 error / 3 pending"
+
+        self.assertEqual((7, 2, 1, 3), module.parse_busted_summary(output))
+
+    def test_returns_none_when_no_summary_line_is_present(self):
+        self.assertIsNone(module.parse_busted_summary("busted crashed before reporting"))
+
+
+class AggregateRunTests(PackageFixture):
+    def run_two_packages(self, first_process, second_process):
+        """Run two packages against fake Busted processes, capturing what is printed."""
+        self.create_package("alphaKit")
+        self.create_package("zetaKit")
+
+        stdout = io.StringIO()
+        with (
+            mock.patch.object(module.shutil, "which", return_value="/fake/busted"),
+            mock.patch.object(
+                module.subprocess,
+                "run",
+                side_effect=[first_process, second_process],
+            ) as run_process,
+            mock.patch("sys.stdout", stdout),
+            mock.patch("sys.stderr", io.StringIO()),
+        ):
+            result = module.run([])
+
+        self.printed = stdout.getvalue()
+        return result, run_process
+
+    def test_runs_every_package_even_after_a_failing_package(self):
+        result, run_process = self.run_two_packages(
+            fake_process(1, "3 successes / 2 failures / 0 errors / 0 pending"),
+            fake_process(0, "5 successes / 0 failures / 0 errors / 0 pending"),
+        )
+
+        self.assertEqual(1, result)
+        self.assertEqual(2, run_process.call_count)
+        self.assertEqual(
+            ["/fake/busted", os.path.join("packages", "alphaKit", "tests")],
+            run_process.call_args_list[0].args[0],
+        )
+        self.assertEqual(
+            ["/fake/busted", os.path.join("packages", "zetaKit", "tests")],
+            run_process.call_args_list[1].args[0],
+        )
+
+    def test_reports_zero_when_every_package_passes(self):
+        result, _ = self.run_two_packages(
+            fake_process(0, "3 successes / 0 failures / 0 errors / 0 pending"),
+            fake_process(0, "5 successes / 0 failures / 0 errors / 0 pending"),
+        )
+
+        self.assertEqual(0, result)
+
+    def test_prints_a_per_package_table_with_totals(self):
+        self.run_two_packages(
+            fake_process(1, "3 successes / 2 failures / 1 error / 0 pending"),
+            fake_process(0, "5 successes / 0 failures / 0 errors / 4 pending"),
+        )
+
+        self.assertIn("alphaKit", self.printed)
+        self.assertIn("zetaKit", self.printed)
+        self.assertIn("FAILED", self.printed)
+        self.assertRegex(self.printed, r"total\s+8\s+2\s+1\s+4")
+
+    def test_keeps_lua_path_isolated_per_package(self):
+        _, run_process = self.run_two_packages(
+            fake_process(0, "1 success / 0 failures / 0 errors / 0 pending"),
+            fake_process(0, "1 success / 0 failures / 0 errors / 0 pending"),
+        )
+
+        alpha_path = run_process.call_args_list[0].kwargs["env"]["LUA_PATH"]
+        zeta_path = run_process.call_args_list[1].kwargs["env"]["LUA_PATH"]
+        alpha_support = str(self.packages / "alphaKit" / "tests" / "support" / "?.lua")
+        zeta_support = str(self.packages / "zetaKit" / "tests" / "support" / "?.lua")
+
+        self.assertIn(alpha_support, alpha_path)
+        self.assertNotIn(zeta_support, alpha_path)
+        self.assertIn(zeta_support, zeta_path)
+        self.assertNotIn(alpha_support, zeta_path)
+
+    def test_falls_back_to_exit_status_when_the_summary_cannot_be_parsed(self):
+        result, _ = self.run_two_packages(
+            fake_process(0, "no recognisable summary"),
+            fake_process(0, "2 successes / 0 failures / 0 errors / 0 pending"),
+        )
+
+        self.assertEqual(0, result)
+        self.assertRegex(self.printed, r"alphaKit\s+-\s+-\s+-\s+-\s+ok")
+        self.assertNotIn("FAILED", self.printed)
+
+    def test_missing_busted_names_a_lua_51_toolchain_source(self):
+        self.create_package("alphaKit")
+
+        with (
+            mock.patch.object(module.shutil, "which", return_value=None),
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            result = module.run([])
+
+        self.assertEqual(127, result)
+        message = stderr.getvalue()
+        self.assertIn("hererocks", message)
+        self.assertIn("5.1", message)
+        self.assertIn("docs/DEVELOPMENT.md", message)
 
 
 if __name__ == "__main__":

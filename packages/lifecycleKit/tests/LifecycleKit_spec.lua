@@ -2,7 +2,9 @@ local TestEnv = require("LifecycleKitTestEnv")
 
 describe("LifecycleKit", function()
     local LifecycleKit
-    before_each(function() LifecycleKit = TestEnv.NewPackage() end)
+    before_each(function()
+        LifecycleKit = TestEnv.NewPackage()
+    end)
     after_each(TestEnv.Reset)
 
     it("returns one stable instance per addon name", function()

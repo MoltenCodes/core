@@ -137,7 +137,6 @@ describe("ModuleKit", function()
         end)
     end)
 
-
     it("returns a new module-list snapshot on every GetModules call", function()
         local addon = ModuleKit:ForAddon("MyAddon")
         local firstModule = addon:CreateModule("First")
@@ -149,5 +148,4 @@ describe("ModuleKit", function()
         assert.are.equal(firstModule, second[1])
         assert.are.equal(firstModule, addon:GetModules()[1])
     end)
-
 end)

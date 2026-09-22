@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2 — 2026-09-22
+
+- No runtime behaviour change. Revision 2 still describes the shipped implementation.
+- Renamed the late-module ordering loop variable to `existingModule` so it no longer shadows the bootstrap-level `existing` local. The shadowing was harmless but made the two unrelated values hard to tell apart while reading the bootstrap.
+- Made the test-support `CreateFrame` stub raise a plain error when asked for a frame type it does not model.
+- Annotated every deliberate `_G` access with the reason it crosses into the global table, so Selene reports the package clean without the `global_usage` lint being disabled repository-wide.
+- Reformatted the package with StyLua 2.5.2. Whitespace, wrapping and quote style only; the compiled Lua is unchanged.
+
 ## 0.1.1
 
 - Made existing addon lifecycle subscriptions upgrade-safe through shared runtime dispatch and migrated revision-1 subscriptions without replacing addon/container identity.

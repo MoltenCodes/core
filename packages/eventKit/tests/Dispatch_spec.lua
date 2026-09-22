@@ -2,7 +2,9 @@ local TestEnv = require("EventKitTestEnv")
 
 describe("EventKit dispatch", function()
     local EventKit
-    before_each(function() EventKit = TestEnv.NewPackage() end)
+    before_each(function()
+        EventKit = TestEnv.NewPackage()
+    end)
     after_each(TestEnv.Reset)
 
     it("forwards event name and preserves nil payload positions", function()
@@ -21,8 +23,12 @@ describe("EventKit dispatch", function()
 
     it("runs listeners in connection order", function()
         local calls = {}
-        EventKit:Connect("CUSTOM_EVENT", function() calls[#calls + 1] = "first" end)
-        EventKit:Connect("CUSTOM_EVENT", function() calls[#calls + 1] = "second" end)
+        EventKit:Connect("CUSTOM_EVENT", function()
+            calls[#calls + 1] = "first"
+        end)
+        EventKit:Connect("CUSTOM_EVENT", function()
+            calls[#calls + 1] = "second"
+        end)
         TestEnv.Emit("CUSTOM_EVENT")
         assert.are.equal("first", calls[1])
         assert.are.equal("second", calls[2])
@@ -30,7 +36,9 @@ describe("EventKit dispatch", function()
 
     it("does not deliver unrelated events", function()
         local calls = 0
-        EventKit:Connect("PLAYER_LOGIN", function() calls = calls + 1 end)
+        EventKit:Connect("PLAYER_LOGIN", function()
+            calls = calls + 1
+        end)
         TestEnv.Emit("PLAYER_LOGOUT")
         assert.are.equal(0, calls)
     end)
@@ -42,7 +50,9 @@ describe("EventKit dispatch", function()
             calls = calls + 1
             if not added then
                 added = true
-                EventKit:Connect("CUSTOM_EVENT", function() calls = calls + 10 end)
+                EventKit:Connect("CUSTOM_EVENT", function()
+                    calls = calls + 10
+                end)
             end
         end)
         TestEnv.Emit("CUSTOM_EVENT")
@@ -58,7 +68,9 @@ describe("EventKit dispatch", function()
             calls[#calls + 1] = "first"
             second:Disconnect()
         end)
-        second = EventKit:Connect("CUSTOM_EVENT", function() calls[#calls + 1] = "second" end)
+        second = EventKit:Connect("CUSTOM_EVENT", function()
+            calls[#calls + 1] = "second"
+        end)
         TestEnv.Emit("CUSTOM_EVENT")
         assert.are.equal(1, #calls)
         assert.are.equal("first", calls[1])
@@ -71,7 +83,9 @@ describe("EventKit dispatch", function()
             calls[#calls + 1] = "first:" .. value
             if not nested then
                 nested = true
-                EventKit:Connect("CUSTOM_EVENT", function(_, inner) calls[#calls + 1] = "new:" .. inner end)
+                EventKit:Connect("CUSTOM_EVENT", function(_, inner)
+                    calls[#calls + 1] = "new:" .. inner
+                end)
                 TestEnv.Emit("CUSTOM_EVENT", "nested")
             end
         end)

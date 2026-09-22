@@ -14,6 +14,8 @@ local STATE_SCHEMA = 1
 
 -- Dependencies --------------------------------------------------------------
 
+-- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
+-- selene: allow(global_usage)
 local namespace = rawget(_G, "MoltenCodes")
 if type(namespace) ~= "table" then
     error("MoltenCodes TimerKit requires Registry API 2 to be loaded first", 2)
@@ -32,10 +34,10 @@ end
 
 local LifecycleKit, lifecycleRevision = getPackage(Registry, "lifecycleKit", REQUIRED_LIFECYCLE_API)
 local LifecycleInstance = type(LifecycleKit) == "table" and rawget(LifecycleKit, "Instance") or nil
-local LifecycleSubscription = type(LifecycleKit) == "table"
-    and rawget(LifecycleKit, "Subscription")
+local LifecycleSubscription = type(LifecycleKit) == "table" and rawget(LifecycleKit, "Subscription")
     or nil
-if type(LifecycleKit) ~= "table"
+if
+    type(LifecycleKit) ~= "table"
     or type(lifecycleRevision) ~= "number"
     or rawget(LifecycleKit, "API") ~= REQUIRED_LIFECYCLE_API
     or rawget(LifecycleKit, "REVISION") ~= lifecycleRevision
@@ -49,6 +51,8 @@ then
     error("MoltenCodes TimerKit requires a valid LifecycleKit API 1 facade", 2)
 end
 
+-- C_Timer is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
 local wowTimerApi = rawget(_G, "C_Timer")
 local nativeNewTimer = type(wowTimerApi) == "table" and rawget(wowTimerApi, "NewTimer") or nil
 local nativeNewTicker = type(wowTimerApi) == "table" and rawget(wowTimerApi, "NewTicker") or nil
@@ -59,7 +63,8 @@ end
 -- Validation ----------------------------------------------------------------
 
 local function validatePublicSurface(implementation)
-    if type(implementation) ~= "table"
+    if
+        type(implementation) ~= "table"
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
         or type(rawget(implementation, "Timer")) ~= "table"
@@ -131,7 +136,8 @@ if existing ~= nil then
         end
         return existing
     elseif existingRevision == IMPLEMENTATION_REVISION then
-        if facadeRevision ~= existingRevision
+        if
+            facadeRevision ~= existingRevision
             or not validatePublicSurface(existing)
             or not validateCurrentState(existing)
         then
@@ -141,12 +147,8 @@ if existing ~= nil then
     end
 end
 
-local TimerKit, previousRevision = registerPackage(
-    Registry,
-    PACKAGE_NAME,
-    API_GENERATION,
-    IMPLEMENTATION_REVISION
-)
+local TimerKit, previousRevision =
+    registerPackage(Registry, PACKAGE_NAME, API_GENERATION, IMPLEMENTATION_REVISION)
 if TimerKit == nil then
     return existing
 end
@@ -208,11 +210,7 @@ local function validateNonEmptyString(value, label, level)
 end
 
 local function validateDelay(delay, repeating, label, level)
-    if type(delay) ~= "number"
-        or delay ~= delay
-        or delay == math.huge
-        or delay == -math.huge
-    then
+    if type(delay) ~= "number" or delay ~= delay or delay == math.huge or delay == -math.huge then
         error(label .. " must be a finite number", level or 3)
     end
 
@@ -243,7 +241,7 @@ local function validateOptions(options, methodName)
     end
     table.sort(unknown)
     if #unknown > 0 then
-        error(methodName .. " options contains unknown field \"" .. unknown[1] .. "\"", 4)
+        error(methodName .. ' options contains unknown field "' .. unknown[1] .. '"', 4)
     end
 
     local callback = rawget(options, "callback")
@@ -552,7 +550,8 @@ end
 
 local function createAddonScope(addonName)
     local lifecycle = LifecycleKit:ForAddon(addonName)
-    if type(lifecycle) ~= "table"
+    if
+        type(lifecycle) ~= "table"
         or type(lifecycle.IsShutdown) ~= "function"
         or type(lifecycle.OnShutdown) ~= "function"
     then

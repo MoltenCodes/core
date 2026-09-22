@@ -11,6 +11,8 @@ local REQUIRED_REGISTRY_API = 2
 
 -- Bootstrap ----------------------------------------------------------------
 
+-- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
+-- selene: allow(global_usage)
 local namespace = rawget(_G, "MoltenCodes")
 if type(namespace) ~= "table" then
     error("MoltenCodes SignalKit requires Registry API 2 to be loaded first", 2)
@@ -48,12 +50,8 @@ if existing ~= nil then
     end
 end
 
-local SignalKit, previousRevision = register(
-    Registry,
-    PACKAGE_NAME,
-    API_GENERATION,
-    IMPLEMENTATION_REVISION
-)
+local SignalKit, previousRevision =
+    register(Registry, PACKAGE_NAME, API_GENERATION, IMPLEMENTATION_REVISION)
 
 if SignalKit == nil then
     -- Equal or newer compatible revision already owns the shared package table.

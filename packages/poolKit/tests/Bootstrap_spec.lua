@@ -1,8 +1,12 @@
 local Env = require("PoolKitTestEnv")
 
 describe("PoolKit bootstrap", function()
-    before_each(function() Env.Reset() end)
-    after_each(function() Env.Reset() end)
+    before_each(function()
+        Env.Reset()
+    end)
+    after_each(function()
+        Env.Reset()
+    end)
 
     it("reuses the shared facade and existing pool identity on duplicate load", function()
         local PoolKit = Env.NewPackage()
@@ -29,7 +33,8 @@ describe("PoolKit bootstrap", function()
         local PoolKit = Env.NewPackage()
         rawset(PoolKit, "UNBOUNDED", {})
         package.loaded["PoolKit"] = nil
-        assert.has_error(function() require("PoolKit") end)
+        assert.has_error(function()
+            require("PoolKit")
+        end)
     end)
-
 end)

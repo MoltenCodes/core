@@ -6,7 +6,9 @@ describe("SchedulerKit delayed and repeating work", function()
     it("uses TimerKit to wake delayed jobs", function()
         local SchedulerKit = TestEnv.NewPackage()
         local calls = 0
-        local job = SchedulerKit:After(2, function() calls = calls + 1 end)
+        local job = SchedulerKit:After(2, function()
+            calls = calls + 1
+        end)
 
         assert.are.equal("delayed", job:GetState())
         assert.are.equal(1, #TestEnv.NativeTimers())
@@ -22,7 +24,9 @@ describe("SchedulerKit delayed and repeating work", function()
     it("supports zero-delay one-shot scheduling", function()
         local SchedulerKit = TestEnv.NewPackage()
         local calls = 0
-        SchedulerKit:After(0, function() calls = calls + 1 end)
+        SchedulerKit:After(0, function()
+            calls = calls + 1
+        end)
         TestEnv.FireNative(1)
         TestEnv.Tick()
         assert.are.equal(1, calls)
@@ -52,7 +56,9 @@ describe("SchedulerKit delayed and repeating work", function()
     it("cancels delayed wakeups", function()
         local SchedulerKit = TestEnv.NewPackage()
         local calls = 0
-        local job = SchedulerKit:After(1, function() calls = calls + 1 end)
+        local job = SchedulerKit:After(1, function()
+            calls = calls + 1
+        end)
         assert.is_true(job:Cancel())
         assert.are.equal("cancelled", job:GetState())
         assert.is_true(TestEnv.NativeTimers()[1].cancelled)
@@ -64,7 +70,9 @@ describe("SchedulerKit delayed and repeating work", function()
         local SchedulerKit = TestEnv.NewPackage()
         local first = SchedulerKit:Every(1, function() end)
         local unrelatedCalls = 0
-        SchedulerKit:Schedule(function() unrelatedCalls = unrelatedCalls + 1 end)
+        SchedulerKit:Schedule(function()
+            unrelatedCalls = unrelatedCalls + 1
+        end)
 
         TestEnv.FireNative(1)
         TestEnv.FailNextTimerCreate("rearm failed")

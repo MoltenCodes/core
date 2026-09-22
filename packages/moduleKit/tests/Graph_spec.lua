@@ -111,17 +111,20 @@ describe("ModuleKit dependency graph", function()
         assert.are.same({ "UI", "Database" }, calls)
     end)
 
-    it("rejects a late module that would retroactively precede an initialized optional dependent", function()
-        local addon = ModuleKit:ForAddon("MyAddon")
-        local ui = addon:CreateModule("UI")
-        ui:OptionalDependency("Analytics")
-        ui:Initialize()
+    it(
+        "rejects a late module that would retroactively precede an initialized optional dependent",
+        function()
+            local addon = ModuleKit:ForAddon("MyAddon")
+            local ui = addon:CreateModule("UI")
+            ui:OptionalDependency("Analytics")
+            ui:Initialize()
 
-        assert.has_error(function()
-            addon:CreateModule("Analytics")
-        end)
-        assert.is_false(addon:HasModule("Analytics"))
-    end)
+            assert.has_error(function()
+                addon:CreateModule("Analytics")
+            end)
+            assert.is_false(addon:HasModule("Analytics"))
+        end
+    )
 
     it("rejects a late module definition that must run before an initialized module", function()
         local addon = ModuleKit:ForAddon("MyAddon")
@@ -149,16 +152,18 @@ describe("ModuleKit dependency graph", function()
         assert.are.same({ "Core", "Late" }, addon:GetActivationOrder())
     end)
 
-    it("does not let an unrelated invalid module block targeted hard-dependency operations", function()
-        local addon = ModuleKit:ForAddon("MyAddon")
-        addon:CreateModule("Broken"):DependsOn("Missing")
-        local healthy = addon:CreateModule("Healthy")
+    it(
+        "does not let an unrelated invalid module block targeted hard-dependency operations",
+        function()
+            local addon = ModuleKit:ForAddon("MyAddon")
+            addon:CreateModule("Broken"):DependsOn("Missing")
+            local healthy = addon:CreateModule("Healthy")
 
-        healthy:Enable()
+            healthy:Enable()
 
-        assert.is_true(healthy:IsEnabled())
-    end)
-
+            assert.is_true(healthy:IsEnabled())
+        end
+    )
 
     it("rejects mutable late Before constraints against initialized modules", function()
         local addon = ModuleKit:ForAddon("MyAddon")
@@ -170,5 +175,4 @@ describe("ModuleKit dependency graph", function()
             late:Before("UI")
         end)
     end)
-
 end)

@@ -42,6 +42,8 @@ local SCHEDULING_OPTION_KEYS = {
 
 -- Dependencies --------------------------------------------------------------
 
+-- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
+-- selene: allow(global_usage)
 local namespace = rawget(_G, "MoltenCodes")
 if type(namespace) ~= "table" then
     error("MoltenCodes SchedulerKit requires Registry API 2 to be loaded first", 2)
@@ -60,10 +62,10 @@ end
 
 local LifecycleKit, lifecycleRevision = getPackage(Registry, "lifecycleKit", REQUIRED_LIFECYCLE_API)
 local LifecycleInstance = type(LifecycleKit) == "table" and rawget(LifecycleKit, "Instance") or nil
-local LifecycleSubscription = type(LifecycleKit) == "table"
-    and rawget(LifecycleKit, "Subscription")
+local LifecycleSubscription = type(LifecycleKit) == "table" and rawget(LifecycleKit, "Subscription")
     or nil
-if type(LifecycleKit) ~= "table"
+if
+    type(LifecycleKit) ~= "table"
     or type(lifecycleRevision) ~= "number"
     or rawget(LifecycleKit, "API") ~= REQUIRED_LIFECYCLE_API
     or rawget(LifecycleKit, "REVISION") ~= lifecycleRevision
@@ -80,7 +82,8 @@ end
 local TimerKit, timerRevision = getPackage(Registry, "timerKit", REQUIRED_TIMER_API)
 local TimerScope = type(TimerKit) == "table" and rawget(TimerKit, "Scope") or nil
 local Timer = type(TimerKit) == "table" and rawget(TimerKit, "Timer") or nil
-if type(TimerKit) ~= "table"
+if
+    type(TimerKit) ~= "table"
     or type(timerRevision) ~= "number"
     or rawget(TimerKit, "API") ~= REQUIRED_TIMER_API
     or rawget(TimerKit, "REVISION") ~= timerRevision
@@ -94,7 +97,11 @@ then
     error("MoltenCodes SchedulerKit requires a valid TimerKit API 1 facade", 2)
 end
 
+-- CreateFrame is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
 local nativeCreateFrame = rawget(_G, "CreateFrame")
+-- GetTimePreciseSec is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
 local nativeGetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 if type(nativeCreateFrame) ~= "function" then
     error("MoltenCodes SchedulerKit requires CreateFrame", 2)
@@ -106,7 +113,8 @@ end
 -- Validation ---------------------------------------------------------------
 
 local function validatePublicSurface(implementation)
-    if type(implementation) ~= "table"
+    if
+        type(implementation) ~= "table"
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
         or type(rawget(implementation, "Priority")) ~= "table"
@@ -159,7 +167,8 @@ local function validatePublicSurface(implementation)
 end
 
 local function validateStateBase(currentState)
-    if type(currentState) ~= "table"
+    if
+        type(currentState) ~= "table"
         or rawget(currentState, "schema") ~= STATE_SCHEMA
         or type(rawget(currentState, "addonScopes")) ~= "table"
         or type(rawget(currentState, "dispatch")) ~= "table"
@@ -178,7 +187,8 @@ local function validateStateBase(currentState)
     local queues = rawget(currentState, "queues")
     for priority = 1, PRIORITY_COUNT do
         local queue = rawget(queues, priority)
-        if type(queue) ~= "table"
+        if
+            type(queue) ~= "table"
             or type(rawget(queue, "items")) ~= "table"
             or type(rawget(queue, "head")) ~= "number"
             or type(rawget(queue, "tail")) ~= "number"
@@ -225,7 +235,8 @@ if existing ~= nil then
         end
         return existing
     elseif existingRevision == IMPLEMENTATION_REVISION then
-        if facadeRevision ~= existingRevision
+        if
+            facadeRevision ~= existingRevision
             or not validatePublicSurface(existing)
             or not validateCurrentState(existing)
         then
@@ -235,12 +246,8 @@ if existing ~= nil then
     end
 end
 
-local SchedulerKit, previousRevision = registerPackage(
-    Registry,
-    PACKAGE_NAME,
-    API_GENERATION,
-    IMPLEMENTATION_REVISION
-)
+local SchedulerKit, previousRevision =
+    registerPackage(Registry, PACKAGE_NAME, API_GENERATION, IMPLEMENTATION_REVISION)
 if SchedulerKit == nil then
     return existing
 end
@@ -294,7 +301,6 @@ if previousRevision == nil then
         frame = false,
         driverEnabled = false,
         driverTrampoline = false,
-        defaultScope = false,
         currentJob = false,
         frameDeadline = false,
     }
@@ -303,7 +309,8 @@ if previousRevision == nil then
     rawset(SchedulerKit, "Context", Context)
     rawset(SchedulerKit, "Priority", Priority)
     rawset(SchedulerKit, "_state", state)
-elseif type(Job) ~= "table"
+elseif
+    type(Job) ~= "table"
     or type(Scope) ~= "table"
     or type(Context) ~= "table"
     or type(Priority) ~= "table"
@@ -334,7 +341,8 @@ local function validateNonEmptyString(value, label, level)
 end
 
 local function validateFinitePositive(value, label, allowZero, level)
-    if type(value) ~= "number"
+    if
+        type(value) ~= "number"
         or value ~= value
         or value == math.huge
         or value == -math.huge
@@ -350,7 +358,8 @@ local function validateFinitePositive(value, label, allowZero, level)
 end
 
 local function validatePositiveInteger(value, label, level)
-    if type(value) ~= "number"
+    if
+        type(value) ~= "number"
         or value ~= value
         or value == math.huge
         or value == -math.huge
@@ -365,7 +374,8 @@ local function validatePriority(priority, label, level)
     if priority == nil then
         return PRIORITY_NORMAL
     end
-    if type(priority) ~= "number"
+    if
+        type(priority) ~= "number"
         or priority ~= math.floor(priority)
         or priority < PRIORITY_HIGH
         or priority > PRIORITY_IDLE
@@ -393,7 +403,7 @@ local function validateOptions(options, methodName)
         end
     end
     if unknown ~= nil then
-        error(methodName .. " options contains unknown field \"" .. unknown .. "\"", 4)
+        error(methodName .. ' options contains unknown field "' .. unknown .. '"', 4)
     end
 
     local priority = validatePriority(rawget(options, "priority"), methodName .. " priority", 4)
@@ -406,17 +416,15 @@ end
 
 local function now()
     local value = nativeGetTimePreciseSec()
-    if type(value) ~= "number"
-        or value ~= value
-        or value == math.huge
-        or value == -math.huge
-    then
+    if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
         error("MoltenCodes SchedulerKit GetTimePreciseSec returned an invalid value", 0)
     end
     return value * 1000
 end
 
 local function reportError(value)
+    -- geterrorhandler is the World of Warcraft client error sink, published as a global.
+    -- selene: allow(global_usage)
     local getErrorHandler = rawget(_G, "geterrorhandler")
     if type(getErrorHandler) ~= "function" then
         return
@@ -533,7 +541,8 @@ local function queuePop(priority)
         head = head + 1
         rawset(queue, "head", head)
 
-        if type(job) == "table"
+        if
+            type(job) == "table"
             and rawget(job, "_queued") == true
             and rawget(job, "_state") == "pending"
         then
@@ -557,7 +566,8 @@ local function queueHasLive(priority)
 
     while head <= tail do
         local job = items[head]
-        if type(job) == "table"
+        if
+            type(job) == "table"
             and rawget(job, "_queued") == true
             and rawget(job, "_state") == "pending"
         then
@@ -771,7 +781,7 @@ end
 local function delayedWakeCallback(timerHandle)
     local job = type(timerHandle) == "table" and rawget(timerHandle, "__schedulerKitJob") or nil
     local generation = type(timerHandle) == "table"
-        and rawget(timerHandle, "__schedulerKitGeneration")
+            and rawget(timerHandle, "__schedulerKitGeneration")
         or nil
     if type(timerHandle) == "table" then
         rawset(timerHandle, "__schedulerKitJob", nil)
@@ -860,7 +870,12 @@ local function scheduleAfterInScope(scope, delay, callback, options, repeating, 
     if rawget(scope, "_closed") == true then
         error(methodName .. " cannot schedule work in a closed scope", 3)
     end
-    validateFinitePositive(delay, methodName .. (repeating and " interval" or " delay"), not repeating, 3)
+    validateFinitePositive(
+        delay,
+        methodName .. (repeating and " interval" or " delay"),
+        not repeating,
+        3
+    )
     if type(callback) ~= "function" then
         error(methodName .. " callback must be a function", 3)
     end
@@ -1082,7 +1097,8 @@ local function contextShouldYield(self)
     validateContext(self, "SchedulerKit.Context:ShouldYield")
     local job = rawget(self, "_job")
     local jobState = rawget(job, "_state")
-    if rawget(state, "currentJob") ~= job
+    if
+        rawget(state, "currentJob") ~= job
         or (jobState ~= "running" and jobState ~= "cancelled")
     then
         error("SchedulerKit.Context:ShouldYield may only be called while its job is running", 3)
@@ -1102,7 +1118,8 @@ local function contextYield(self)
     validateContext(self, "SchedulerKit.Context:Yield")
     local job = rawget(self, "_job")
     local jobState = rawget(job, "_state")
-    if rawget(state, "currentJob") ~= job
+    if
+        rawget(state, "currentJob") ~= job
         or (jobState ~= "running" and jobState ~= "cancelled")
     then
         error("SchedulerKit.Context:Yield may only be called while its job is running", 3)
@@ -1167,36 +1184,15 @@ local function scopeSchedule(self, callback, options)
 end
 
 local function scopeNextFrame(self, callback, options)
-    return scheduleAfterInScope(
-        self,
-        0,
-        callback,
-        options,
-        false,
-        "SchedulerKit.Scope:NextFrame"
-    )
+    return scheduleAfterInScope(self, 0, callback, options, false, "SchedulerKit.Scope:NextFrame")
 end
 
 local function scopeAfter(self, delay, callback, options)
-    return scheduleAfterInScope(
-        self,
-        delay,
-        callback,
-        options,
-        false,
-        "SchedulerKit.Scope:After"
-    )
+    return scheduleAfterInScope(self, delay, callback, options, false, "SchedulerKit.Scope:After")
 end
 
 local function scopeEvery(self, interval, callback, options)
-    return scheduleAfterInScope(
-        self,
-        interval,
-        callback,
-        options,
-        true,
-        "SchedulerKit.Scope:Every"
-    )
+    return scheduleAfterInScope(self, interval, callback, options, true, "SchedulerKit.Scope:Every")
 end
 
 local function scopeCancelAll(self)
@@ -1295,12 +1291,7 @@ local function getFrameBudget()
 end
 
 local function setRunawayThreshold(_, milliseconds)
-    validateFinitePositive(
-        milliseconds,
-        "SchedulerKit:SetRunawayThreshold milliseconds",
-        false,
-        3
-    )
+    validateFinitePositive(milliseconds, "SchedulerKit:SetRunawayThreshold milliseconds", false, 3)
     rawset(rawget(state, "config"), "runawayThresholdMs", milliseconds)
     return SchedulerKit
 end
@@ -1367,7 +1358,8 @@ rawset(SchedulerKit, "GetMaxResumesPerFrame", getMaxResumesPerFrame)
 rawset(SchedulerKit, "GetActiveCount", getActiveCount)
 
 local defaultScope = rawget(state, "defaultScope")
-if defaultScope ~= false
+if
+    defaultScope ~= false
     and (type(defaultScope) ~= "table" or getmetatable(defaultScope) ~= SCOPE_METATABLE)
 then
     error("MoltenCodes SchedulerKit package state is corrupted or incomplete", 2)

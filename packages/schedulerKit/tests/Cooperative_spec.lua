@@ -68,7 +68,9 @@ describe("SchedulerKit cooperative jobs", function()
         SchedulerKit:SetMaxResumesPerFrame(3)
         local calls = 0
         for _ = 1, 7 do
-            SchedulerKit:Schedule(function() calls = calls + 1 end)
+            SchedulerKit:Schedule(function()
+                calls = calls + 1
+            end)
         end
 
         TestEnv.Tick()

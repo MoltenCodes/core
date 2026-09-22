@@ -43,13 +43,17 @@ describe("SchedulerKit bootstrap", function()
         end
 
         package.loaded["SchedulerKit"] = nil
-        local ok, SchedulerKit = pcall(function() return require("SchedulerKit") end)
+        local ok, SchedulerKit = pcall(function()
+            return require("SchedulerKit")
+        end)
         assert.is_true(ok)
         assert.are.equal(3, SchedulerKit.REVISION)
 
         local scope = SchedulerKit:CreateScope()
         assert.is_false(scope:IsClosed())
-        local delayedOk = pcall(function() scope:After(1, function() end) end)
+        local delayedOk = pcall(function()
+            scope:After(1, function() end)
+        end)
         assert.is_false(delayedOk)
         assert.are.equal(0, scope:GetActiveCount())
 

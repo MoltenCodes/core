@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """Validate package manifests and the runtime dependency graph.
 
 The package manifest is the canonical machine-readable metadata for every
 publishable directory under ``packages/``. This validator intentionally keeps
 its schema small and strict so typos and undeclared conventions fail early.
 """
+
+from __future__ import annotations
 
 import json
 import re

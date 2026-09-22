@@ -6,22 +6,47 @@ local function expectErrorContaining(expected, callback)
     assert.is_not_nil(string.find(tostring(message), expected, 1, true))
 end
 
+-- Lua 5.1 leaves a sentinel in `package.loaded` when a `require` raises, so a
+-- second `require` of the same module reports "loop or previous error loading
+-- module" instead of re-running the chunk. Clearing the sentinel is what lets a
+-- single test observe more than one bootstrap guard.
+local function requireAfterFailedLoad(moduleName)
+    package.loaded[moduleName] = nil
+    return require(moduleName)
+end
+
 describe("LifecycleKit package bootstrap", function()
     after_each(TestEnv.Reset)
 
     it("requires Registry to load first", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
-        expectErrorContaining("requires Registry API 2", function() require("LifecycleKit") end)
+        expectErrorContaining("requires Registry API 2", function()
+            require("LifecycleKit")
+        end)
     end)
 
-    it("requires SignalKit and EventKit to load first", function()
+    it("requires SignalKit to load first", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         require("Registry")
-        expectErrorContaining("requires SignalKit API 1", function() require("LifecycleKit") end)
+        expectErrorContaining("requires SignalKit API 1", function()
+            require("LifecycleKit")
+        end)
+    end)
+
+    it("requires EventKit to load first", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        expectErrorContaining("requires SignalKit API 1", function()
+            require("LifecycleKit")
+        end)
+
         require("SignalKit")
-        expectErrorContaining("requires EventKit API 1", function() require("LifecycleKit") end)
+        expectErrorContaining("requires EventKit API 1", function()
+            requireAfterFailedLoad("LifecycleKit")
+        end)
     end)
 
     it("registers LifecycleKit API 1 revision 3", function()
@@ -45,7 +70,9 @@ describe("LifecycleKit package bootstrap", function()
         local first = TestEnv.NewPackage()
         local life = first:ForAddon("MyAddon")
         local calls = 0
-        life:OnLoaded(function() calls = calls + 1 end)
+        life:OnLoaded(function()
+            calls = calls + 1
+        end)
 
         local second = TestEnv.ReloadPackage()
         TestEnv.LoadAddon("MyAddon")
@@ -92,7 +119,9 @@ describe("LifecycleKit package bootstrap", function()
         -- 2 used _phaseErrors[phase] = false as its active dispatch sentinel.
         local loadedSignal = life._signals.loaded
         SignalKit.Once(loadedSignal, function(instance)
-            local ok, message = pcall(function() error("legacy failure") end)
+            local ok, message = pcall(function()
+                error("legacy failure")
+            end)
             if not ok then
                 local current = instance._phaseErrors.loaded
                 if current == false then
@@ -102,9 +131,13 @@ describe("LifecycleKit package bootstrap", function()
                 end
             end
         end)
-        life:OnLoaded(function() laterCalls = laterCalls + 1 end)
+        life:OnLoaded(function()
+            laterCalls = laterCalls + 1
+        end)
 
-        expectErrorContaining("legacy failure", function() TestEnv.LoadAddon("LegacyPending") end)
+        expectErrorContaining("legacy failure", function()
+            TestEnv.LoadAddon("LegacyPending")
+        end)
         assert.are.equal(1, laterCalls)
         local selected, revision = Registry:Get("lifecycleKit", 1)
         assert.are.equal(LifecycleKit, selected)
@@ -123,9 +156,13 @@ describe("LifecycleKit package bootstrap", function()
         state.globalWatchers.playerLogin = nil
 
         local originalOnce = EventKit.Once
-        EventKit.Once = function() error("synthetic watcher failure") end
+        EventKit.Once = function()
+            error("synthetic watcher failure")
+        end
         package.loaded["LifecycleKit"] = nil
-        expectErrorContaining("synthetic watcher failure", function() require("LifecycleKit") end)
+        expectErrorContaining("synthetic watcher failure", function()
+            require("LifecycleKit")
+        end)
         EventKit.Once = originalOnce
 
         package.loaded["LifecycleKit"] = nil
@@ -160,7 +197,9 @@ describe("LifecycleKit package bootstrap", function()
         local LifecycleKit = TestEnv.NewPackage()
         LifecycleKit._state = nil
         package.loaded["LifecycleKit"] = nil
-        expectErrorContaining("corrupted or incomplete", function() require("LifecycleKit") end)
+        expectErrorContaining("corrupted or incomplete", function()
+            require("LifecycleKit")
+        end)
     end)
     it("repairs a revision-1 instance that missed PLAYER_LOGIN during live upgrade", function()
         TestEnv.Reset()
@@ -259,5 +298,4 @@ describe("LifecycleKit package bootstrap", function()
         assert.is_true(first:IsShutdown())
         assert.is_true(starved:IsShutdown())
     end)
-
 end)

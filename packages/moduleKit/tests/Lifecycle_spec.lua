@@ -185,25 +185,26 @@ describe("ModuleKit lifecycle integration", function()
         end)
     end)
 
+    it(
+        "performs terminal cleanup even when an inactive late definition makes the full graph invalid",
+        function()
+            local addon = ModuleKit:ForAddon("MyAddon")
+            local healthy = addon:CreateModule("Healthy")
+            local disables = 0
+            healthy.OnDisable = function()
+                disables = disables + 1
+            end
 
-    it("performs terminal cleanup even when an inactive late definition makes the full graph invalid", function()
-        local addon = ModuleKit:ForAddon("MyAddon")
-        local healthy = addon:CreateModule("Healthy")
-        local disables = 0
-        healthy.OnDisable = function()
-            disables = disables + 1
+            TestEnv.LoadAddon("MyAddon")
+            TestEnv.Login()
+            addon:CreateModule("Broken"):DependsOn("Missing")
+
+            assert.has_error(function()
+                TestEnv.Logout()
+            end)
+
+            assert.are.equal(1, disables)
+            assert.is_false(healthy:IsEnabled())
         end
-
-        TestEnv.LoadAddon("MyAddon")
-        TestEnv.Login()
-        addon:CreateModule("Broken"):DependsOn("Missing")
-
-        assert.has_error(function()
-            TestEnv.Logout()
-        end)
-
-        assert.are.equal(1, disables)
-        assert.is_false(healthy:IsEnabled())
-    end)
-
+    )
 end)

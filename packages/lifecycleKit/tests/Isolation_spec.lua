@@ -8,7 +8,9 @@ end
 
 describe("LifecycleKit cross-addon phase isolation", function()
     local LifecycleKit
-    before_each(function() LifecycleKit = TestEnv.NewPackage() end)
+    before_each(function()
+        LifecycleKit = TestEnv.NewPackage()
+    end)
     after_each(TestEnv.Reset)
 
     it("advances every loaded addon to ready before re-raising a callback error", function()
@@ -16,8 +18,12 @@ describe("LifecycleKit cross-addon phase isolation", function()
         local healthy = LifecycleKit:ForAddon("HealthyAddon")
         local healthyCalls = 0
 
-        broken:OnReady(function() error("ready failure") end)
-        healthy:OnReady(function() healthyCalls = healthyCalls + 1 end)
+        broken:OnReady(function()
+            error("ready failure")
+        end)
+        healthy:OnReady(function()
+            healthyCalls = healthyCalls + 1
+        end)
 
         TestEnv.LoadAddon("BrokenAddon")
         TestEnv.LoadAddon("HealthyAddon")
@@ -34,8 +40,12 @@ describe("LifecycleKit cross-addon phase isolation", function()
         local healthy = LifecycleKit:ForAddon("HealthyAddon")
         local healthyCalls = 0
 
-        broken:OnShutdown(function() error("shutdown failure") end)
-        healthy:OnShutdown(function() healthyCalls = healthyCalls + 1 end)
+        broken:OnShutdown(function()
+            error("shutdown failure")
+        end)
+        healthy:OnShutdown(function()
+            healthyCalls = healthyCalls + 1
+        end)
 
         TestEnv.LoadAddon("BrokenAddon")
         TestEnv.LoadAddon("HealthyAddon")

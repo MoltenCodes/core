@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4 — 2026-09-22
+
+- No runtime behaviour change. Revision 4 still describes the shipped implementation.
+- Documented that the private bootstrap state key and the public `MoltenCodes` namespace are the two deliberate global writes through which independently embedded copies find each other.
+- Annotated every deliberate `_G` access with the reason it crosses into the global table, so Selene reports the package clean without the `global_usage` lint being disabled repository-wide.
+- Reformatted the package with StyLua 2.5.2. Whitespace, wrapping and quote style only; the compiled Lua is unchanged.
+
 ## 0.3.3
 
 - Expanded runtime package-name validation to accept canonical lowerCamelCase Kit identities such as `signalKit`, `eventKit`, and `lifecycleKit`.

@@ -25,6 +25,36 @@ The canonical commands are documented in [`DEVELOPMENT.md`](DEVELOPMENT.md).
 - Tooling should be deterministic and produce actionable repository-relative errors.
 - Prefer the Python standard library for repository tooling until a third-party dependency provides clear value.
 - New tooling must have focused unit tests when its behavior is more than a trivial command wrapper.
+- Tooling reports the whole picture before it fails. The test runner executes every selected package and prints one summary table rather than stopping at the first failing package.
+
+## Lint policy: deliberate `_G` access
+
+Selene's `global_usage` lint is deliberately left at its default severity in
+[`selene.toml`](../selene.toml) instead of being switched off for the whole
+repository.
+
+Runtime packages legitimately touch `_G` in exactly two situations: reading a
+World of Warcraft client API that the client publishes only as a global
+(`CreateFrame`, `C_Timer`, `C_AddOns`, `IsLoggedIn`, `GetTimePreciseSec`,
+`geterrorhandler`, Lua 5.1's `unpack`), and reading or creating the shared
+`MoltenCodes` namespace and Registry state key through which independently
+embedded copies find each other.
+
+Each of those sites carries a one-line reason followed by the narrowest possible
+suppression:
+
+```lua
+-- C_Timer is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
+local wowTimerApi = rawget(_G, "C_Timer")
+```
+
+A Selene filtering comment applies to the statement that immediately follows it,
+so this silences one access and nothing else. Disabling the lint repository-wide
+would have been one line, but it would also silence the next `_G` access nobody
+intended, which is precisely the case Design Constitution principle 9 ("No
+hidden global state") exists to catch. The annotation makes every crossing of
+that boundary visible in review and in `git grep global_usage`.
 
 ## Future tooling
 

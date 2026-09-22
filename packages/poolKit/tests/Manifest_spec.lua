@@ -1,8 +1,12 @@
 local Env = require("PoolKitTestEnv")
 
 describe("PoolKit manifest", function()
-    before_each(function() Env.Reset() end)
-    after_each(function() Env.Reset() end)
+    before_each(function()
+        Env.Reset()
+    end)
+    after_each(function()
+        Env.Reset()
+    end)
 
     it("matches runtime API and revision metadata", function()
         local PoolKit = Env.NewPackage()

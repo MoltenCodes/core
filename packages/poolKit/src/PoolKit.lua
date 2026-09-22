@@ -13,6 +13,8 @@ local DEFAULT_MAX_RETAINED = 128
 
 -- Dependencies --------------------------------------------------------------
 
+-- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
+-- selene: allow(global_usage)
 local namespace = rawget(_G, "MoltenCodes")
 if type(namespace) ~= "table" then
     error("MoltenCodes PoolKit requires Registry API 2 to be loaded first", 2)
@@ -32,7 +34,8 @@ end
 -- Bootstrap -----------------------------------------------------------------
 
 local function validatePublicSurface(implementation)
-    if type(implementation) ~= "table"
+    if
+        type(implementation) ~= "table"
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
         or type(rawget(implementation, "Pool")) ~= "table"
@@ -98,7 +101,8 @@ if existing ~= nil then
         end
         return existing
     elseif existingRevision == IMPLEMENTATION_REVISION then
-        if facadeRevision ~= existingRevision
+        if
+            facadeRevision ~= existingRevision
             or not validatePublicSurface(existing)
             or not validateCurrentState(existing)
         then
@@ -108,12 +112,8 @@ if existing ~= nil then
     end
 end
 
-local PoolKit, previousRevision = registerPackage(
-    Registry,
-    PACKAGE_NAME,
-    API_GENERATION,
-    IMPLEMENTATION_REVISION
-)
+local PoolKit, previousRevision =
+    registerPackage(Registry, PACKAGE_NAME, API_GENERATION, IMPLEMENTATION_REVISION)
 if PoolKit == nil then
     return existing
 end
@@ -220,7 +220,7 @@ local function validateKnownFields(options, allowed, methodName)
         end
     end
     if firstUnknown ~= nil then
-        error(methodName .. " options contains unknown field \"" .. firstUnknown .. "\"", 4)
+        error(methodName .. ' options contains unknown field "' .. firstUnknown .. '"', 4)
     end
 end
 
@@ -598,11 +598,7 @@ end
 local function poolSetMaxRetained(self, maxRetained)
     validatePool(self, "PoolKit.Pool:SetMaxRetained")
     ensureMutationAllowed(self, "PoolKit.Pool:SetMaxRetained")
-    maxRetained = validateMaxRetained(
-        maxRetained,
-        "PoolKit.Pool:SetMaxRetained maxRetained",
-        2
-    )
+    maxRetained = validateMaxRetained(maxRetained, "PoolKit.Pool:SetMaxRetained maxRetained", 2)
     rawset(self, "_maxRetained", maxRetained)
     if maxRetained ~= UNBOUNDED then
         trimTo(self, maxRetained)
@@ -643,11 +639,8 @@ local function packageNew(_, options)
     validateCallback(reset, "PoolKit:New reset", false, 3)
     validateCallback(destroy, "PoolKit:New destroy", false, 3)
 
-    local maxRetained, strict, prewarm = parseCommonOptions(
-        options,
-        GENERIC_OPTION_KEYS,
-        "PoolKit:New"
-    )
+    local maxRetained, strict, prewarm =
+        parseCommonOptions(options, GENERIC_OPTION_KEYS, "PoolKit:New")
     return newPool(create, reset, destroy, maxRetained, strict, prewarm, false)
 end
 
@@ -662,11 +655,8 @@ local function tableReset(object)
 end
 
 local function packageNewTablePool(_, options)
-    local maxRetained, strict, prewarm = parseCommonOptions(
-        options,
-        TABLE_OPTION_KEYS,
-        "PoolKit:NewTablePool"
-    )
+    local maxRetained, strict, prewarm =
+        parseCommonOptions(options, TABLE_OPTION_KEYS, "PoolKit:NewTablePool")
     return newPool(tableCreate, tableReset, nil, maxRetained, strict, prewarm, true)
 end
 

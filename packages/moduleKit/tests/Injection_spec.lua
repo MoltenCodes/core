@@ -145,22 +145,24 @@ describe("ModuleKit dependency injection", function()
         end)
     end)
 
+    it(
+        "allows the same module-scoped provider to resolve for a different module during a factory",
+        function()
+            local addon = ModuleKit:ForAddon("MyAddon")
+            local a = addon:CreateModule("A")
+            local b = addon:CreateModule("B")
 
-    it("allows the same module-scoped provider to resolve for a different module during a factory", function()
-        local addon = ModuleKit:ForAddon("MyAddon")
-        local a = addon:CreateModule("A")
-        local b = addon:CreateModule("B")
+            addon:ProvideModule("Logger", function(_, module)
+                if module == a then
+                    return { peer = b:Resolve("Logger") }
+                end
+                return { owner = module:GetName() }
+            end)
 
-        addon:ProvideModule("Logger", function(_, module)
-            if module == a then
-                return { peer = b:Resolve("Logger") }
-            end
-            return { owner = module:GetName() }
-        end)
-
-        local value = a:Resolve("Logger")
-        assert.are.equal("B", value.peer.owner)
-    end)
+            local value = a:Resolve("Logger")
+            assert.are.equal("B", value.peer.owner)
+        end
+    )
 
     it("rejects forged requestingModule values on addon-level resolution", function()
         local addon = ModuleKit:ForAddon("MyAddon")
@@ -172,7 +174,6 @@ describe("ModuleKit dependency injection", function()
             addon:Resolve("Logger", { _addon = addon, _name = "Fake" })
         end)
     end)
-
 
     it("returns injection table snapshots without replacing injected value identity", function()
         local addon = ModuleKit:ForAddon("MyAddon")
@@ -190,5 +191,4 @@ describe("ModuleKit dependency injection", function()
         assert.are.equal(config, second.config)
         assert.are.equal(config, module:GetInjections().config)
     end)
-
 end)

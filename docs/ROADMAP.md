@@ -36,9 +36,100 @@ package can never receive further optimization, fixes, or API refinement.
 
 ## Ongoing framework work
 
-- [ ] Continue expanding the framework one focused Kit at a time.
+Work is sequenced in phases. A phase is finished when every checkbox in it is
+ticked; later phases may start early only where they do not depend on an
+unfinished item above them.
+
+### Phase 0 — Green
+
+Make every repository gate pass, so that later correctness work has a trustworthy
+baseline to measure against.
+
+- [x] Test support modules stop relying on Busted's injected globals: stub
+      preconditions raise plain errors, genuine expectations `require("luassert")`.
+- [x] Bootstrap specs clear the `package.loaded` sentinel between attempts so
+      every bootstrap guard they claim to cover is really executed.
+- [x] `tooling/test/run.py` runs every selected package, prints a per-package
+      summary table, and exits non-zero when any package failed.
+- [x] `tooling/test/run.py` names a concrete Lua 5.1 toolchain source when
+      Busted is missing from `PATH`.
+- [x] Tooling modules set `__doc__` (docstring above `from __future__ import`).
+- [x] Selene reports zero errors and zero warnings; deliberate `_G` access is
+      annotated per site with a reason.
+- [x] `stylua --check .` passes across the repository.
+- [x] `docs/DEVELOPMENT.md` documents the concrete toolchain install path and
+      troubleshooting.
+
+### Phase 1 — Correctness fixes per package
+
+Defects and hardening found by review, one package at a time. Every fix carries a
+regression test.
+
+- [ ] **eventKit** — enforce the World of Warcraft unit-token limit on
+      `ConnectUnit`/`OnceUnit` rather than letting the client silently truncate.
+- [ ] **eventKit** — isolate listeners at the event-bus boundary so one failing
+      listener cannot stop delivery to the rest.
+- [ ] **eventKit** — bound the number of unit-group frames a single addon can
+      cause to be created.
+- [ ] **eventKit** — audit `error` levels so messages point at the caller's line.
+- [ ] **moduleKit** — track the dispatched phase per module so an in-place
+      upgrade never re-enables a module that was explicitly disabled.
+- [ ] **schedulerKit** — measure the frame budget as CPU time via
+      `debugprofilestop` instead of wall-clock elapsed time.
+- [ ] **schedulerKit** — stop failing cooperating jobs when one job in the same
+      frame raises.
+- [ ] **schedulerKit** — capture a traceback at the point of failure rather than
+      after the stack has unwound.
+- [ ] **schedulerKit** — document the Lua 5.1 rule that a coroutine cannot yield
+      across a `pcall` boundary, and make the API shape that rule explicit.
+- [ ] **registry** — let two API generations of the same package coexist instead
+      of the newer one displacing the older.
+- [ ] **signalKit** — validate receivers at connect time.
+- [ ] **signalKit** — make disconnect cheaper than the current linear scan.
+- [ ] **timerKit** — audit `error` levels and correct the documentation that
+      describes them.
+- [ ] **poolKit** — audit `error` levels and correct the documentation that
+      describes them.
+
+### Phase 2 — Consumer story
+
+Everything an addon author needs in order to actually embed a package.
+
+- [ ] Write `docs/EMBEDDING.md` covering `.toc` entries, required load order,
+      supported Interface numbers, coexistence with LibStub-based libraries,
+      taint rules, and the combat-log (CLEU) constraints.
+- [ ] Add `.pkgmeta` and the packaging metadata the standard addon packagers
+      expect.
+- [ ] Give every public surface LuaCATS annotations so editors and the language
+      server describe the API correctly.
+
+### Phase 3 — Engineering system
+
+Repository mechanics that keep the above honest as the framework grows.
+
+- [ ] Pin every GitHub Action to a commit SHA rather than a moving tag.
+- [ ] Run Selene over test code too, using a Busted std definition.
+- [ ] Add a Python version floor row to the CI matrix so the documented minimum
+      is actually exercised.
+- [ ] Cache the Selene build in CI instead of recompiling it on every run.
+- [ ] Extract the repeated WoW-API stubs into one shared test-support fixture.
+- [ ] Add a `Registry:Bootstrap` helper so packages stop copying the same
+      bootstrap preamble.
+- [ ] Write `packages/moduleKit/docs/INTERNALS.md` describing the dependency
+      graph and resolution order.
+
+### Phase 4 — New Kits
+
+- [ ] Record the nine points from "Planned package policy" below for a Kit
+      **before** implementing it.
+- [ ] Implement accepted Kits one at a time, each meeting the definition of done.
+
+### Standing obligations
+
+These apply to every phase rather than being completed once.
+
 - [ ] Keep public APIs documented and version-aware.
-- [ ] Add regression tests for every fixed defect.
+- [ ] Add a regression test for every fixed defect.
 - [ ] Preserve deterministic lifecycle and ownership semantics.
 - [ ] Preserve bounded-by-default retention, caching, scheduling, and pooling.
 - [ ] Keep hot paths allocation-conscious and avoid unnecessary table/function creation.

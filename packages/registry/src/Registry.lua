@@ -46,6 +46,8 @@ end
 
 -- Bootstrap state ---------------------------------------------------------
 
+-- Independently embedded Registry copies find each other only through this global key.
+-- selene: allow(global_usage)
 local state = rawget(_G, GLOBAL_STATE_KEY)
 
 if state == nil then
@@ -56,6 +58,8 @@ if state == nil then
         entries = {},
         facade = {},
     }
+    -- The first copy to load publishes the shared state under that same global key.
+    -- selene: allow(global_usage)
     rawset(_G, GLOBAL_STATE_KEY, state)
 elseif type(state) ~= "table" then
     error("MoltenCodes Registry bootstrap state is incompatible", 2)
@@ -100,7 +104,8 @@ local function getEntry(packageEntries, api)
         return nil
     end
 
-    if type(entry) ~= "table"
+    if
+        type(entry) ~= "table"
         or not isPositiveInteger(rawget(entry, "revision"))
         or type(rawget(entry, "implementation")) ~= "table"
     then
@@ -212,7 +217,8 @@ end
 -- A compatible future implementation revision must preserve this public
 -- surface. Validate it after bootstrap so corrupted or incompatible state fails
 -- deterministically instead of producing delayed nil-call errors elsewhere.
-if rawget(Registry, "API") ~= API_GENERATION
+if
+    rawget(Registry, "API") ~= API_GENERATION
     or not isPositiveInteger(rawget(Registry, "REVISION"))
     or rawget(Registry, "REVISION") ~= stateRevision
     or type(rawget(Registry, "Register")) ~= "function"
@@ -224,9 +230,13 @@ end
 
 -- Public namespace --------------------------------------------------------
 
+-- The public MoltenCodes namespace is the documented global entry point for consumers.
+-- selene: allow(global_usage)
 local namespace = rawget(_G, PUBLIC_NAMESPACE_KEY)
 if namespace == nil then
     namespace = {}
+    -- The first copy to load creates that documented public namespace.
+    -- selene: allow(global_usage)
     rawset(_G, PUBLIC_NAMESPACE_KEY, namespace)
 elseif type(namespace) ~= "table" then
     error("MoltenCodes global namespace is owned by an incompatible value", 2)

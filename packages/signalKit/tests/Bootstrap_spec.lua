@@ -18,7 +18,6 @@ describe("SignalKit package bootstrap", function()
         end)
     end)
 
-
     it("rejects an incomplete existing SignalKit facade before registration", function()
         TestEnv.Reset()
         local Registry = require("Registry")

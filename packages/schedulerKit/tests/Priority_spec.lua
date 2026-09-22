@@ -31,10 +31,14 @@ describe("SchedulerKit priorities", function()
                 order[#order + 1] = "N" .. index
             end, { priority = SchedulerKit.Priority.NORMAL })
         end
-        SchedulerKit:Schedule(function() order[#order + 1] = "L" end, {
+        SchedulerKit:Schedule(function()
+            order[#order + 1] = "L"
+        end, {
             priority = SchedulerKit.Priority.LOW,
         })
-        SchedulerKit:Schedule(function() order[#order + 1] = "I" end, {
+        SchedulerKit:Schedule(function()
+            order[#order + 1] = "I"
+        end, {
             priority = SchedulerKit.Priority.IDLE,
         })
 
@@ -52,15 +56,21 @@ describe("SchedulerKit priorities", function()
         SchedulerKit:SetMaxResumesPerFrame(1)
         local order = {}
         for index = 1, 8 do
-            SchedulerKit:Schedule(function() order[#order + 1] = "H" end, {
+            SchedulerKit:Schedule(function()
+                order[#order + 1] = "H"
+            end, {
                 priority = SchedulerKit.Priority.HIGH,
             })
         end
-        SchedulerKit:Schedule(function() order[#order + 1] = "N" end, {
+        SchedulerKit:Schedule(function()
+            order[#order + 1] = "N"
+        end, {
             priority = SchedulerKit.Priority.NORMAL,
         })
 
-        for _ = 1, 5 do TestEnv.Tick() end
+        for _ = 1, 5 do
+            TestEnv.Tick()
+        end
         assert.are.same({ "H", "H", "H", "H", "N" }, order)
     end)
 end)

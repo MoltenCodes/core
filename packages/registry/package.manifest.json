@@ -2,7 +2,7 @@
   "name": "registry",
   "displayName": "Registry",
   "description": "A deterministic runtime registry for modular World of Warcraft libraries.",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "api": 2,
   "revision": 4,
   "dependencies": {}

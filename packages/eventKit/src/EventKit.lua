@@ -12,10 +12,14 @@ local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local STATE_SCHEMA = 1
 
+-- Lua 5.1 publishes unpack as a global; newer clients move it onto table.
+-- selene: allow(global_usage)
 local unpackValues = rawget(table, "unpack") or rawget(_G, "unpack")
 
 -- Dependencies --------------------------------------------------------------
 
+-- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
+-- selene: allow(global_usage)
 local namespace = rawget(_G, "MoltenCodes")
 if type(namespace) ~= "table" then
     error("MoltenCodes EventKit requires Registry API 2 to be loaded first", 2)
@@ -38,7 +42,8 @@ if SignalKit == nil then
 end
 
 local SignalKitConnection = type(SignalKit) == "table" and rawget(SignalKit, "Connection") or nil
-if type(SignalKit) ~= "table"
+if
+    type(SignalKit) ~= "table"
     or type(signalRevision) ~= "number"
     or rawget(SignalKit, "API") ~= REQUIRED_SIGNAL_API
     or rawget(SignalKit, "REVISION") ~= signalRevision
@@ -54,7 +59,8 @@ end
 -- Public-surface validation --------------------------------------------------
 
 local function validatePublicSurface(implementation)
-    if type(implementation) ~= "table"
+    if
+        type(implementation) ~= "table"
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
         or type(rawget(implementation, "Connection")) ~= "table"
@@ -90,12 +96,8 @@ if existing ~= nil then
     end
 end
 
-local EventKit, previousRevision = registerPackage(
-    Registry,
-    PACKAGE_NAME,
-    API_GENERATION,
-    IMPLEMENTATION_REVISION
-)
+local EventKit, previousRevision =
+    registerPackage(Registry, PACKAGE_NAME, API_GENERATION, IMPLEMENTATION_REVISION)
 
 if EventKit == nil then
     -- Equal or newer compatible revision already owns the shared package table.
@@ -126,7 +128,8 @@ if previousRevision == nil then
 
     rawset(EventKit, "Connection", Connection)
     rawset(EventKit, "_state", state)
-elseif type(Connection) ~= "table"
+elseif
+    type(Connection) ~= "table"
     or type(state) ~= "table"
     or rawget(state, "schema") ~= STATE_SCHEMA
     or type(rawget(state, "regularChannels")) ~= "table"
@@ -194,6 +197,8 @@ local function requireFrameMethod(frame, methodName)
 end
 
 local function createEventFrame(onEvent)
+    -- CreateFrame is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
     local createFrame = rawget(_G, "CreateFrame")
     if type(createFrame) ~= "function" then
         error("MoltenCodes EventKit requires the World of Warcraft CreateFrame API", 3)
@@ -418,7 +423,11 @@ local function connectUnitEvent(_, eventName, callback, ...)
     validateEventName(eventName, "ConnectUnit")
     validateCallback(callback, "ConnectUnit")
     local units, key = normalizeUnits("ConnectUnit", ...)
-    return connectToChannel(createUnitChannel(eventName, units, key, "ConnectUnit"), callback, false)
+    return connectToChannel(
+        createUnitChannel(eventName, units, key, "ConnectUnit"),
+        callback,
+        false
+    )
 end
 
 local function onceUnitEvent(_, eventName, callback, ...)

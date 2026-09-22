@@ -1,12 +1,21 @@
 local Env = require("PoolKitTestEnv")
 
 describe("PoolKit state properties", function()
-    before_each(function() Env.Reset() end)
-    after_each(function() Env.Reset() end)
+    before_each(function()
+        Env.Reset()
+    end)
+    after_each(function()
+        Env.Reset()
+    end)
 
     it("keeps active plus available equal to currently owned objects", function()
         local PoolKit = Env.NewPackage()
-        local pool = PoolKit:New({ create = function() return {} end, maxRetained = 16 })
+        local pool = PoolKit:New({
+            create = function()
+                return {}
+            end,
+            maxRetained = 16,
+        })
         local active = {}
         local seed = 99173
         local function random(maximum)
@@ -34,7 +43,12 @@ describe("PoolKit state properties", function()
     end)
     it("preserves accounting through resizing, prewarming, and clearing", function()
         local PoolKit = Env.NewPackage()
-        local pool = PoolKit:New({ create = function() return {} end, maxRetained = 16 })
+        local pool = PoolKit:New({
+            create = function()
+                return {}
+            end,
+            maxRetained = 16,
+        })
         local active = {}
         local seed = 171717
         local function random(maximum)
@@ -77,5 +91,4 @@ describe("PoolKit state properties", function()
             )
         end
     end)
-
 end)
