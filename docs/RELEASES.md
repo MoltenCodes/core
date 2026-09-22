@@ -51,6 +51,7 @@ Other options:
 | `--package NAME` | include `NAME` and its runtime dependencies |
 | `--out DIR` | output directory; created if missing |
 | `--zip` | additionally write `<bundle>.zip` |
+| `--verify` | re-read `CHECKSUMS.txt` afterwards and check it against the build |
 
 `--all` and `--package` are mutually exclusive and one of them is required.
 
@@ -123,6 +124,18 @@ It covers every file in the bundle, including `manifest.json`, and the zip when
 ```bash
 cd dist && sha256sum --check CHECKSUMS.txt
 ```
+
+`--verify` makes the builder check its own output before you ever publish it: it
+re-reads the file it has just written and reports, together, a recorded file that
+is missing, a recorded file whose digest no longer matches, and a file inside a
+described tree that nothing records. The last of those is the case
+`sha256sum --check` cannot see, because that tool only walks the lines it is
+given and a file left out of them passes silently.
+
+The two checks answer different questions and CI runs both: `--verify` proves the
+checksum file describes the bundle beside it exactly, and `sha256sum --check
+--strict CHECKSUMS.txt` proves the file is usable by the tool a downloader will
+actually reach for.
 
 ### Reproducibility
 
