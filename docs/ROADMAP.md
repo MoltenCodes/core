@@ -65,30 +65,30 @@ baseline to measure against.
 Defects and hardening found by review, one package at a time. Every fix carries a
 regression test.
 
-- [ ] **eventKit** — enforce the World of Warcraft unit-token limit on
+- [x] **eventKit** — enforce the World of Warcraft unit-token limit on
       `ConnectUnit`/`OnceUnit` rather than letting the client silently truncate.
-- [ ] **eventKit** — isolate listeners at the event-bus boundary so one failing
+- [x] **eventKit** — isolate listeners at the event-bus boundary so one failing
       listener cannot stop delivery to the rest.
-- [ ] **eventKit** — bound the number of unit-group frames a single addon can
+- [x] **eventKit** — bound the number of unit-group frames a single addon can
       cause to be created.
-- [ ] **eventKit** — audit `error` levels so messages point at the caller's line.
-- [ ] **moduleKit** — track the dispatched phase per module so an in-place
+- [x] **eventKit** — audit `error` levels so messages point at the caller's line.
+- [x] **moduleKit** — track the dispatched phase per module so an in-place
       upgrade never re-enables a module that was explicitly disabled.
-- [ ] **schedulerKit** — measure the frame budget as CPU time via
+- [x] **schedulerKit** — measure the frame budget as CPU time via
       `debugprofilestop` instead of wall-clock elapsed time.
-- [ ] **schedulerKit** — stop failing cooperating jobs when one job in the same
+- [x] **schedulerKit** — stop failing cooperating jobs when one job in the same
       frame raises.
-- [ ] **schedulerKit** — capture a traceback at the point of failure rather than
+- [x] **schedulerKit** — capture a traceback at the point of failure rather than
       after the stack has unwound.
-- [ ] **schedulerKit** — document the Lua 5.1 rule that a coroutine cannot yield
+- [x] **schedulerKit** — document the Lua 5.1 rule that a coroutine cannot yield
       across a `pcall` boundary, and make the API shape that rule explicit.
-- [ ] **registry** — let two API generations of the same package coexist instead
+- [x] **registry** — let two API generations of the same package coexist instead
       of the newer one displacing the older.
-- [ ] **signalKit** — validate receivers at connect time.
-- [ ] **signalKit** — make disconnect cheaper than the current linear scan.
-- [ ] **timerKit** — audit `error` levels and correct the documentation that
+- [x] **signalKit** — validate receivers at connect time.
+- [x] **signalKit** — make disconnect cheaper than the current linear scan.
+- [x] **timerKit** — audit `error` levels and correct the documentation that
       describes them.
-- [ ] **poolKit** — audit `error` levels and correct the documentation that
+- [x] **poolKit** — audit `error` levels and correct the documentation that
       describes them.
 
 ### Phase 2 — Consumer story
