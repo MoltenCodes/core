@@ -1,0 +1,56 @@
+local TestEnv = require("TimerKitTestEnv")
+
+describe("TimerKit bootstrap", function()
+    after_each(TestEnv.Reset)
+
+    it("returns the same facade on duplicate embedded load", function()
+        local TimerKit = TestEnv.NewPackage()
+        local reloaded = TestEnv.ReloadPackage()
+        assert.are.equal(TimerKit, reloaded)
+    end)
+
+    it("publishes through Registry", function()
+        local TimerKit, Registry = TestEnv.NewPackage()
+        local registered, revision = Registry:Get("timerKit", 1)
+        assert.are.equal(TimerKit, registered)
+        assert.are.equal(TimerKit.REVISION, revision)
+    end)
+
+    it("does not reinterpret private state owned by a newer compatible revision", function()
+        local TimerKit, Registry = TestEnv.NewPackage()
+        local upgraded, previous = Registry:Register("timerKit", 1, 99)
+        assert.are.equal(TimerKit, upgraded)
+        assert.are.equal(1, previous)
+
+        rawset(TimerKit, "REVISION", 99)
+        rawset(TimerKit, "_state", { schema = 999 })
+        package.loaded["TimerKit"] = nil
+
+        local reloaded = require("TimerKit")
+        assert.are.equal(TimerKit, reloaded)
+        assert.are.equal(99, reloaded.REVISION)
+    end)
+
+    it("requires LifecycleKit", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        local ok, value = pcall(require, "TimerKit")
+        assert.is_false(ok)
+        assert.is_true(tostring(value):find("LifecycleKit API 1", 1, true) ~= nil)
+    end)
+
+    it("requires C_Timer NewTimer and NewTicker", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        require("LifecycleKit")
+        rawset(_G, "C_Timer", {})
+
+        local ok, value = pcall(require, "TimerKit")
+        assert.is_false(ok)
+        assert.is_true(tostring(value):find("C_Timer.NewTimer", 1, true) ~= nil)
+    end)
+end)

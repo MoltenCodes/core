@@ -1,0 +1,16 @@
+{
+  "name": "timerKit",
+  "displayName": "TimerKit",
+  "description": "Cancelable, scope-aware World of Warcraft timers with deterministic lifecycle cleanup.",
+  "version": "0.1.0",
+  "api": 1,
+  "revision": 1,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    },
+    "lifecycleKit": {
+      "api": 1
+    }
+  }
+}

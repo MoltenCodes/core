@@ -1,0 +1,35 @@
+local Env = require("PoolKitTestEnv")
+
+describe("PoolKit bootstrap", function()
+    before_each(function() Env.Reset() end)
+    after_each(function() Env.Reset() end)
+
+    it("reuses the shared facade and existing pool identity on duplicate load", function()
+        local PoolKit = Env.NewPackage()
+        local pool = PoolKit:NewTablePool()
+        local reloaded = Env.ReloadPackage()
+        assert.are.equal(PoolKit, reloaded)
+        assert.are.equal(pool:GetMaxRetained(), reloaded.DEFAULT_MAX_RETAINED)
+        local object = pool:Acquire()
+        pool:Release(object)
+        assert.are.equal(1, pool:GetAvailableCount())
+    end)
+
+    it("does not downgrade a newer compatible embedded revision", function()
+        local PoolKit, Registry = Env.NewPackage()
+        local shared = Registry:Register("poolKit", 1, 99)
+        assert.are.equal(PoolKit, shared)
+        rawset(shared, "REVISION", 99)
+        package.loaded["PoolKit"] = nil
+        local reloaded = require("PoolKit")
+        assert.are.equal(shared, reloaded)
+        assert.are.equal(99, reloaded.REVISION)
+    end)
+    it("rejects same-revision UNBOUNDED sentinel drift", function()
+        local PoolKit = Env.NewPackage()
+        rawset(PoolKit, "UNBOUNDED", {})
+        package.loaded["PoolKit"] = nil
+        assert.has_error(function() require("PoolKit") end)
+    end)
+
+end)

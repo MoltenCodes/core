@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Validate repository",
+      "type": "shell",
+      "command": "python3 -m tooling.validation.validate_repository",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run all Lua tests",
+      "type": "shell",
+      "command": "python3 -m tooling.test.run",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Registry tests",
+      "type": "shell",
+      "command": "python3 -m tooling.test.run registry",
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint runtime Lua",
+      "type": "shell",
+      "command": "python3 -m tooling.lint",
+      "problemMatcher": []
+    },
+    {
+      "label": "Check Lua formatting",
+      "type": "shell",
+      "command": "stylua --check .",
+      "problemMatcher": []
+    }
+  ]
+}

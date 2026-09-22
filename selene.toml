@@ -1,0 +1,6 @@
+std = "lua51"
+
+exclude = [
+    "dist/**",
+    "build/**"
+]

@@ -1,0 +1,19 @@
+{
+  "name": "lifecycleKit",
+  "displayName": "LifecycleKit",
+  "description": "Per-addon loading, readiness, and shutdown lifecycle coordination for MoltenCodes packages.",
+  "version": "0.1.2",
+  "api": 1,
+  "revision": 3,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    },
+    "signalKit": {
+      "api": 1
+    },
+    "eventKit": {
+      "api": 1
+    }
+  }
+}

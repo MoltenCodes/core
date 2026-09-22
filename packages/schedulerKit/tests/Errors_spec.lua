@@ -1,0 +1,51 @@
+local TestEnv = require("SchedulerKitTestEnv")
+
+describe("SchedulerKit error isolation", function()
+    after_each(TestEnv.Reset)
+
+    it("marks callback failures without starving later jobs", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local failed = SchedulerKit:Schedule(function() error("boom", 0) end)
+        local calls = 0
+        SchedulerKit:Schedule(function() calls = calls + 1 end)
+
+        TestEnv.Tick()
+        assert.are.equal("failed", failed:GetState())
+        assert.is_true(failed:HasError())
+        assert.are.equal("boom", failed:GetError())
+        assert.are.equal(1, calls)
+        assert.are.equal("boom", TestEnv.ReportedErrors()[1])
+    end)
+
+    it("preserves nil and false Lua error objects", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local nilJob = SchedulerKit:Schedule(function() error(nil, 0) end)
+        local falseJob = SchedulerKit:Schedule(function() error(false, 0) end)
+        TestEnv.Tick()
+
+        assert.is_true(nilJob:HasError())
+        assert.is_nil(nilJob:GetError())
+        assert.is_true(falseJob:HasError())
+        assert.is_false(falseJob:GetError())
+    end)
+
+    it("logically cancels even when native timer cancellation raises", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local job = SchedulerKit:After(2, function() end)
+        TestEnv.FailNextTimerCancel("native cancel failed")
+
+        local ok, value = pcall(function() job:Cancel() end)
+        assert.is_false(ok)
+        assert.are.equal("native cancel failed", value)
+        assert.are.equal("cancelled", job:GetState())
+        assert.is_false(job:IsPending())
+    end)
+
+    it("rolls back work if the OnUpdate driver cannot be installed", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        TestEnv.FailNextSetScript("driver failed")
+        local ok = pcall(function() SchedulerKit:Schedule(function() end) end)
+        assert.is_false(ok)
+        assert.are.equal(0, SchedulerKit:GetActiveCount())
+    end)
+end)

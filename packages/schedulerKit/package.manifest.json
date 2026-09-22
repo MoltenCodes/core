@@ -1,0 +1,19 @@
+{
+  "name": "schedulerKit",
+  "displayName": "SchedulerKit",
+  "description": "Cooperative, frame-budgeted scheduling with priorities, cancellation scopes, and delayed work.",
+  "version": "0.1.2",
+  "api": 1,
+  "revision": 3,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    },
+    "lifecycleKit": {
+      "api": 1
+    },
+    "timerKit": {
+      "api": 1
+    }
+  }
+}

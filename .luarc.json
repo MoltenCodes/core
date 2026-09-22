@@ -1,0 +1,14 @@
+{
+  "runtime": {
+    "version": "Lua 5.1"
+  },
+  "workspace": {
+    "library": [
+      "./meta"
+    ],
+    "checkThirdParty": false
+  },
+  "format": {
+    "enable": false
+  }
+}

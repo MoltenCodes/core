@@ -1,0 +1,17 @@
+local Env = require("PoolKitTestEnv")
+
+describe("PoolKit manifest", function()
+    before_each(function() Env.Reset() end)
+    after_each(function() Env.Reset() end)
+
+    it("matches runtime API and revision metadata", function()
+        local PoolKit = Env.NewPackage()
+        local file = assert(io.open("packages/poolKit/package.manifest.json", "r"))
+        local contents = file:read("*a")
+        file:close()
+        local api = tonumber(contents:match('"api"%s*:%s*(%d+)'))
+        local revision = tonumber(contents:match('"revision"%s*:%s*(%d+)'))
+        assert.are.equal(PoolKit.API, api)
+        assert.are.equal(PoolKit.REVISION, revision)
+    end)
+end)
