@@ -8,7 +8,7 @@ Repository tooling requires:
 
 | Tool | Version | Why |
 |---|---|---|
-| Python | 3.10 or newer (CI runs 3.13) | repository tooling, validation, test orchestration |
+| Python | 3.10 or newer (CI runs 3.10 and 3.13) | repository tooling, validation, test orchestration |
 | Lua | 5.1.5 | the World of Warcraft client runtime; runtime code must stay 5.1-compatible |
 | LuaRocks | 3.13.0 | installs Busted |
 | Busted | 2.3.0-1 | pure-Lua test framework |
@@ -161,8 +161,10 @@ lua-language-server --check examples --checklevel=Warning
 
 `--check` treats the directory it is given as its workspace root and ignores
 parent configuration, so each package source directory and `examples/` owns a
-`.luarc.json`. Repository validation keeps those files in step with the
-manifests; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+`.luarc.json`. Repository validation keeps those files in step with what they
+describe: a package's file with the manifests, and `examples/.luarc.json` with
+`examples/embeds.xml`, so the example is only ever type-checked against the
+packages it actually embeds. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 Check the workflow file after editing it:
 
@@ -175,14 +177,27 @@ actionlint
 Repository tooling supports Python 3.10 and newer, declared once as
 `requires-python` in [`../pyproject.toml`](../pyproject.toml). Repository
 validation refuses to run on anything older and checks that the declaration and
-the validator's own constant agree. CI runs the tooling unit tests on both 3.10
-and 3.13, so the floor is exercised rather than asserted.
+the validator's own constant agree. Every CI job that runs repository tooling —
+the Lua tests, the linter, repository validation and the release build — runs on
+both 3.10 and 3.13, so the floor is exercised rather than asserted.
+
+## Building a release bundle
 
 Build a distributable bundle:
 
 ```bash
 python3 -m tooling.package.build --all --out dist
 ```
+
+Build it and check the checksums it wrote against the files it produced:
+
+```bash
+python3 -m tooling.package.build --all --out dist --verify
+```
+
+`--verify` is what CI runs, together with `sha256sum --check --strict
+CHECKSUMS.txt` inside the output directory — the command somebody verifying a
+downloaded artifact would run. Both must pass before a bundle is published.
 
 See [`RELEASES.md`](RELEASES.md) for the artifact layout and checksums.
 

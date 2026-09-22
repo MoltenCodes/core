@@ -10,6 +10,10 @@ what went in and a ``CHECKSUMS.txt`` that records exactly what came out.
 Builds are deterministic: no timestamps are written into the artifact and the
 zip entries use a fixed modification time, so building the same sources twice
 produces byte-identical output and therefore identical checksums.
+
+``--verify`` reads the produced ``CHECKSUMS.txt`` back and holds it against the
+files on disk, so a release is never published with a checksum file that does
+not describe the artifact beside it.
 """
 
 from __future__ import annotations
@@ -197,6 +201,69 @@ def write_checksums(output_dir: Path, paths: Sequence[Path]) -> Path:
     return checksums
 
 
+def read_checksums(checksums: Path) -> dict[str, str]:
+    """Parse a ``CHECKSUMS.txt`` into a mapping of relative path to digest.
+
+    The format is the one ``sha256sum`` writes and reads: a hex digest, two
+    spaces, then the path relative to the directory the file sits in.
+    """
+    recorded: dict[str, str] = {}
+    for number, line in enumerate(checksums.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        digest, separator, relative = line.partition("  ")
+        if not separator or not relative.strip():
+            raise BuildError(f"{checksums.name}: line {number} is not in the sha256sum format")
+        recorded[relative.strip()] = digest.strip()
+    return recorded
+
+
+def verify_checksums(output_dir: Path) -> list[str]:
+    """Check ``CHECKSUMS.txt`` in ``output_dir`` against the files beside it.
+
+    Three things can be wrong and all three are reported together, because a
+    caller fixing one wants to see the rest in the same run: a recorded file is
+    gone, a recorded file's contents no longer hash to what was written down,
+    or a file sits inside the artifact without being recorded at all.
+
+    Only the trees ``CHECKSUMS.txt`` itself names are inspected for unrecorded
+    files. An output directory may hold bundles from earlier builds -- a
+    single-package bundle beside the full one, say -- and those are not what
+    this checksum file claims to describe.
+    """
+    checksums = output_dir / "CHECKSUMS.txt"
+    if not checksums.is_file():
+        return [f"{checksums.name}: missing; nothing to verify"]
+
+    recorded = read_checksums(checksums)
+    if not recorded:
+        return [f"{checksums.name}: records no files"]
+
+    problems: list[str] = []
+    for relative in sorted(recorded):
+        path = output_dir / relative
+        if not path.is_file():
+            problems.append(
+                f"{relative}: recorded in {checksums.name} but missing from the build"
+            )
+        elif sha256_of(path) != recorded[relative]:
+            problems.append(
+                f"{relative}: contents do not match the digest in {checksums.name}"
+            )
+
+    described_trees = {relative.split("/", 1)[0] for relative in recorded}
+    for path in sorted(output_dir.rglob("*")):
+        if not path.is_file() or path == checksums:
+            continue
+        relative = path.relative_to(output_dir).as_posix()
+        if relative.split("/", 1)[0] in described_trees and relative not in recorded:
+            problems.append(
+                f"{relative}: present in the build but not recorded in {checksums.name}"
+            )
+
+    return problems
+
+
 def write_zip(output_dir: Path, bundle_dir: Path) -> Path:
     """Archive the bundle directory reproducibly."""
     archive = output_dir / f"{bundle_dir.name}.zip"
@@ -287,6 +354,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--zip", action="store_true", dest="create_zip", help="also write a reproducible zip"
     )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="re-read CHECKSUMS.txt afterwards and check it against the build",
+    )
     return parser.parse_args(argv)
 
 
@@ -311,6 +383,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     print("  load order:")
     for relative in manifest["loadOrder"]:
         print(f"    {relative}")
+
+    if args.verify:
+        try:
+            problems = verify_checksums(output_dir)
+        except BuildError as failure:
+            print(f"error: {failure}", file=sys.stderr)
+            return 1
+
+        if problems:
+            print(
+                f"error: checksum verification failed with {len(problems)} problem(s):",
+                file=sys.stderr,
+            )
+            for problem in problems:
+                print(f"  - {problem}", file=sys.stderr)
+            return 1
+
+        verified = len(read_checksums(output_dir / "CHECKSUMS.txt"))
+        print(f"  checksums verified: {verified} file(s)")
+
     return 0
 
 

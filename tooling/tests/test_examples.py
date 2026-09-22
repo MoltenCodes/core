@@ -2,37 +2,27 @@
 
 from __future__ import annotations
 
-import re
 import shutil
 import subprocess
 import unittest
-from pathlib import Path
 
 from tooling.package import build as package_build
 from tooling.validation.validate_manifests import ROOT, load_manifests
 
+# Reading ``embeds.xml`` belongs to the validator, which enforces the example's
+# editor configuration against it; the tests read it through the same helpers so
+# the two can never disagree about what the example embeds.
+from tooling.validation.validate_repository import embedded_script_names, package_id_for
+
 
 EXAMPLES = ROOT / "examples"
-SCRIPT_RE = re.compile(r'<Script\s+file="([^"]+)"\s*/>')
-
-
-def embedded_script_names() -> list[str]:
-    """Return the Lua file names ``embeds.xml`` lists, in load order."""
-    xml = (EXAMPLES / "embeds.xml").read_text(encoding="utf-8")
-    return [reference.replace("\\", "/").rsplit("/", 1)[-1] for reference in SCRIPT_RE.findall(xml)]
-
-
-def package_id_for(script_name: str) -> str:
-    """Map ``SignalKit.lua`` to the package ID ``signalKit``."""
-    facade = script_name[: -len(".lua")]
-    return facade[0].lower() + facade[1:]
 
 
 class ExampleAddonLayoutTests(unittest.TestCase):
     def setUp(self):
         self.manifests, errors = load_manifests()
         self.assertEqual([], errors)
-        self.scripts = embedded_script_names()
+        self.scripts = embedded_script_names(EXAMPLES / "embeds.xml")
 
     def test_embeds_xml_lists_scripts(self):
         self.assertTrue(self.scripts, "embeds.xml lists no scripts")

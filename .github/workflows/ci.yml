@@ -30,6 +30,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every job that runs repository tooling runs it on both supported
+        # Pythons: the floor `requires-python` in `pyproject.toml` declares, and
+        # the release developers actually use. The test runner is Python, so the
+        # floor has to orchestrate Busted as well as the newer interpreter does.
+        python-version: ["3.10", "3.13"]
+
     steps:
       # Every action below is pinned to a commit SHA. A tag such as `v7` is a
       # moving reference the upstream owner can repoint at any time, including
@@ -39,10 +48,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       - name: Set up Lua
         uses: leafo/gh-actions-lua@6919171ccf181b826f44b9bca76307b577217377 # v13.0.0
@@ -120,14 +129,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    strategy:
+      fail-fast: false
+      matrix:
+        # The linter is Python too: it discovers the Lua to lint and invokes
+        # Selene, so it runs on the floor and on the current release like the
+        # rest of the tooling.
+        python-version: ["3.10", "3.13"]
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       # The published binary replaces `cargo install selene`, which rebuilt the
       # whole dependency tree from source on every run for a tool whose output
@@ -149,6 +166,43 @@ jobs:
       # which adds the Busted standard library.
       - name: Lint runtime and test Lua
         run: python3 -m tooling.lint
+
+  package:
+    name: Release bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both supported Pythons, like every other job that runs repository
+        # tooling: a release must be buildable from the declared floor.
+        python-version: ["3.10", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Building against the real tree is the only way to prove the repository
+      # can still be released: the builder fails closed on package metadata no
+      # other job exercises, and `--verify` reads the `CHECKSUMS.txt` it just
+      # wrote back to prove it describes the bundle beside it exactly -- nothing
+      # recorded that is missing, nothing shipped that is unrecorded.
+      - name: Build every package into a bundle
+        run: python3 -m tooling.package.build --all --out "${RUNNER_TEMP}/bundle" --verify
+
+      # `--verify` proves the file is correct; `sha256sum --check` proves it is
+      # also usable, because a downloader verifies the artifact with that tool
+      # and not with this repository's tooling. `--strict` fails on a line the
+      # tool cannot parse instead of quietly skipping it.
+      - name: Verify the checksums the way a downloader would
+        working-directory: ${{ runner.temp }}/bundle
+        run: sha256sum --check --strict CHECKSUMS.txt
 
   repository:
     name: Repository validation

@@ -85,7 +85,8 @@ The host a package is tested against is shared; what a package does with that
 host is not.
 
 ```text
-tests/support/FrameworkTestEnv.lua      # the fake World of Warcraft client
+tests/support/FrameworkTestEnv.lua      # the fake World of Warcraft client (facade)
+tests/support/framework/                # one file per stub behind that facade
 packages/<package>/tests/support/       # that package's own helpers
 ```
 
@@ -97,6 +98,31 @@ independent `GetTimePreciseSec` and `debugprofilestop` clocks, the
 `geterrorhandler` capture behind `ReportedErrors`/`TakeReportedErrors`, the
 `package.loaded` bookkeeping behind `Reset`/`NewPackage`/`ReloadPackage`, and
 the `requireAfterFailedLoad` and `expectErrorContaining` helpers.
+
+`FrameworkTestEnv.lua` is the facade specs require; the stubs themselves are one
+module-level factory per file under `tests/support/framework/`:
+
+| Module | What it stands in for |
+|---|---|
+| `Constants.lua` | Registry state keys, the namespace key, the unit-token limit, and the list of globals an environment owns. |
+| `FrameStub.lua` | `CreateFrame`, the Frame registration bookkeeping, and `Emit`/`Tick`/`Frames`/`ActiveOnUpdateCount`. |
+| `TimerStub.lua` | `C_Timer` and the native timer handles, including the three host failures a package must survive. |
+| `ClockStub.lua` | `GetTimePreciseSec` and `debugprofilestop`, kept independent of each other. |
+| `AddonStub.lua` | `C_AddOns`, `IsLoggedIn`, `CombatLogGetCurrentEventInfo`, and the `LoadAddon`/`Login`/`Logout` helpers. |
+| `ErrorHandlerStub.lua` | `geterrorhandler` and `securecallfunction`, and the two ways a spec reads what reached them. |
+
+Each stub module exposes the same three functions over the environment's shared
+state table: `Reset(state)` returns the fields it owns to their initial values,
+`InstallGlobals(state)` installs the globals it owns, and
+`Attach(environment, state)` publishes its helpers on the environment. The
+facade owns what is not any one stub's: option handling, the module chain's load
+order, and the `Reset`/`NewPackage`/`ReloadPackage` lifecycle that drives every
+stub together. `ErrorHandlerStub` has no `InstallGlobals`, because a pure-Lua
+package's specs opt into a host error sink with `InstallHostErrorHandler()`
+rather than having one installed for them.
+
+Adding a stub is therefore a new file under `framework/` and one entry in the
+facade's `STUBS` list. Specs never require the stub modules directly.
 
 `FrameworkTestEnv.New(options)` builds one environment per package, each with
 its own stub state. `options.modules` is the module chain in load order, and the

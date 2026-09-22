@@ -46,6 +46,19 @@ LANGUAGE_SERVER_CONFIG_NAME = ".luarc.json"
 #: Path from a package source directory to the shared editor metadata.
 SHARED_META_LIBRARY = "../../../meta"
 
+#: Path from `examples/` to the shared editor metadata. The example addon is
+#: type-checked with `examples/` as the workspace root, so it owns a
+#: configuration of its own and reaches `meta/` one level up instead of three.
+EXAMPLE_SHARED_META_LIBRARY = "../meta"
+
+#: The example addon's load list, which is also what a consuming addon copies.
+EXAMPLE_EMBEDS = Path("examples/embeds.xml")
+
+#: A `<Script file="Libs\MoltenCodes\signalKit\SignalKit.lua" />` entry in
+#: `examples/embeds.xml`. The example ships the Windows-style separators the
+#: client expects, so the file name is taken from either separator.
+EMBEDDED_SCRIPT_RE = re.compile(r'<Script\s+file="([^"]+)"\s*/>')
+
 PACKAGE_REQUIRED_FILES = (
     Path("README.md"),
     Path("CHANGELOG.md"),
@@ -152,6 +165,82 @@ def _dependency_closure(package_name: str, manifests: dict[str, dict[str, object
     return resolved
 
 
+def validate_workspace_library(path: Path, expected: list[str]) -> list[str]:
+    """Check one lua-language-server configuration's `workspace.library` list.
+
+    Every `.luarc.json` in the repository is generated knowledge: the list is
+    derived from what the directory actually depends on, so the check reports
+    the whole expected list rather than the first entry that differs. That is
+    the text a contributor pastes to fix the file.
+    """
+    if not path.is_file():
+        return [error(path, "required lua-language-server configuration is missing")]
+
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [error(path, f"unable to read configuration: {exc}")]
+
+    workspace = config.get("workspace") if isinstance(config, dict) else None
+    library = workspace.get("library") if isinstance(workspace, dict) else None
+    if library != expected:
+        return [error(path, f"workspace.library must be {json.dumps(expected)}")]
+
+    return []
+
+
+def embedded_script_names(embeds: Path) -> list[str]:
+    """Return the Lua file names an `embeds.xml` loads, in the order it loads them.
+
+    A reference is written the way the client reads it, as a path under the
+    consuming addon (`Libs\\MoltenCodes\\signalKit\\SignalKit.lua`); only the
+    file name at its end identifies the package.
+    """
+    references = EMBEDDED_SCRIPT_RE.findall(embeds.read_text(encoding="utf-8"))
+    return [reference.replace("\\", "/").rsplit("/", 1)[-1] for reference in references]
+
+
+def package_id_for(script_name: str) -> str:
+    """Map a Lua facade file name (`SignalKit.lua`) to its package ID (`signalKit`).
+
+    The two spellings of one package are a convention `docs/PACKAGE_MANIFEST.md`
+    requires: lowerCamelCase for the package and its directory, PascalCase for
+    the Lua facade it publishes.
+    """
+    facade = script_name[: -len(".lua")] if script_name.endswith(".lua") else script_name
+    return facade[:1].lower() + facade[1:]
+
+
+def embedded_package_names(embeds: Path) -> list[str]:
+    """Return the package IDs an `embeds.xml` loads, in the order it loads them."""
+    return [package_id_for(script) for script in embedded_script_names(embeds)]
+
+
+def validate_example_language_server_config() -> list[str]:
+    """Check that the example addon is type-checked against exactly what it embeds.
+
+    `examples/.luarc.json` is a workspace root like a package source directory,
+    so it is validated the same way, against the same shared `meta/` entry. The
+    difference is where its expected list comes from: not the manifests, but
+    `examples/embeds.xml`, which is the file the example actually loads at run
+    time. Listing a package the example does not embed would let the example
+    type-check against code a reader copying it would never ship, which is the
+    one mistake this file can make that nothing else would catch.
+    """
+    embeds = ROOT / EXAMPLE_EMBEDS
+    if not embeds.is_file():
+        # `validate_required_root_files` already reports the missing file; there
+        # is nothing to derive an expected library list from.
+        return []
+
+    expected = [EXAMPLE_SHARED_META_LIBRARY]
+    expected.extend(f"../packages/{name}/src" for name in embedded_package_names(embeds))
+
+    return validate_workspace_library(
+        ROOT / "examples" / LANGUAGE_SERVER_CONFIG_NAME, expected
+    )
+
+
 def validate_language_server_configs(manifests: dict[str, dict[str, object]]) -> list[str]:
     """Check that every package source directory can be type-checked on its own.
 
@@ -162,26 +251,12 @@ def validate_language_server_configs(manifests: dict[str, dict[str, object]]) ->
     errors: list[str] = []
 
     for name in sorted(manifests):
-        path = ROOT / "packages" / name / "src" / LANGUAGE_SERVER_CONFIG_NAME
-        if not path.is_file():
-            errors.append(error(path, "required lua-language-server configuration is missing"))
-            continue
-
-        try:
-            config = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            errors.append(error(path, f"unable to read configuration: {exc}"))
-            continue
-
         expected = [SHARED_META_LIBRARY]
-        expected.extend(f"../../{dependency}/src" for dependency in _dependency_closure(name, manifests))
-
-        workspace = config.get("workspace") if isinstance(config, dict) else None
-        library = workspace.get("library") if isinstance(workspace, dict) else None
-        if library != expected:
-            errors.append(
-                error(path, f"workspace.library must be {json.dumps(expected)}")
-            )
+        expected.extend(
+            f"../../{dependency}/src" for dependency in _dependency_closure(name, manifests)
+        )
+        path = ROOT / "packages" / name / "src" / LANGUAGE_SERVER_CONFIG_NAME
+        errors.extend(validate_workspace_library(path, expected))
 
     return errors
 
@@ -273,6 +348,7 @@ def validate_repository() -> tuple[dict[str, dict[str, object]], list[str]]:
     errors.extend(validate_graph(manifests))
     errors.extend(validate_required_root_files())
     errors.extend(validate_language_server_configs(manifests))
+    errors.extend(validate_example_language_server_config())
     errors.extend(validate_package_layout())
     errors.extend(validate_markdown_links())
     return manifests, errors

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 from tooling.package import build as module
 from tooling.validation import validate_manifests
@@ -42,8 +45,8 @@ class LoadOrderTests(unittest.TestCase):
         self.assertEqual("registry", ordered[0])
 
 
-class BuildTests(unittest.TestCase):
-    """Every build runs against a temporary repository, never the real one."""
+class TemporaryRepositoryTests(unittest.TestCase):
+    """Fixture for every builder test: a repository made for one test, never the real one."""
 
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
@@ -110,6 +113,10 @@ class BuildTests(unittest.TestCase):
         self.write_package(
             "signalKit", facade="SignalKit", dependencies={"registry": {"api": 1}}
         )
+
+
+class BuildTests(TemporaryRepositoryTests):
+    """What the builder puts in a bundle, and what it refuses to build."""
 
     def test_builds_every_package_by_default(self):
         self.write_minimal_repository()
@@ -249,6 +256,109 @@ class BuildTests(unittest.TestCase):
             module.build(self.output)
 
         self.assertIn("LICENSE", str(failure.exception))
+
+
+class ChecksumVerificationTests(TemporaryRepositoryTests):
+    """`--verify` reads `CHECKSUMS.txt` back and holds it against the build."""
+
+    def build_and_verify(self) -> list[str]:
+        module.build(self.output)
+        return module.verify_checksums(self.output)
+
+    def test_a_fresh_build_verifies(self):
+        self.write_minimal_repository()
+
+        self.assertEqual([], self.build_and_verify())
+
+    def test_modified_contents_are_reported(self):
+        self.write_minimal_repository()
+        module.build(self.output)
+        (self.output / "MoltenCodes" / "registry" / "Registry.lua").write_text(
+            "return { tampered = true }\n", encoding="utf-8"
+        )
+
+        problems = module.verify_checksums(self.output)
+
+        self.assertEqual(1, len(problems))
+        self.assertIn("do not match the digest", problems[0])
+        self.assertIn("MoltenCodes/registry/Registry.lua", problems[0])
+
+    def test_a_recorded_file_that_disappeared_is_reported(self):
+        self.write_minimal_repository()
+        module.build(self.output)
+        (self.output / "MoltenCodes" / "registry" / "Registry.lua").unlink()
+
+        problems = module.verify_checksums(self.output)
+
+        self.assertEqual(1, len(problems))
+        self.assertIn("missing from the build", problems[0])
+
+    def test_an_unrecorded_file_in_the_bundle_is_reported(self):
+        self.write_minimal_repository()
+        module.build(self.output)
+        (self.output / "MoltenCodes" / "registry" / "Smuggled.lua").write_text(
+            "return {}\n", encoding="utf-8"
+        )
+
+        problems = module.verify_checksums(self.output)
+
+        self.assertEqual(1, len(problems))
+        self.assertIn("not recorded in CHECKSUMS.txt", problems[0])
+
+    def test_a_bundle_the_checksums_do_not_describe_is_ignored(self):
+        """An output directory may hold an earlier build; only the newest is described."""
+        self.write_minimal_repository()
+        module.build(self.output)
+
+        module.build(self.output, package_name="signalKit")
+
+        self.assertTrue((self.output / "MoltenCodes").is_dir())
+        self.assertEqual([], module.verify_checksums(self.output))
+
+    def test_a_missing_checksum_file_is_reported(self):
+        self.write_minimal_repository()
+        module.build(self.output)
+        (self.output / "CHECKSUMS.txt").unlink()
+
+        problems = module.verify_checksums(self.output)
+
+        self.assertEqual(1, len(problems))
+        self.assertIn("nothing to verify", problems[0])
+
+    def test_a_malformed_checksum_line_is_reported(self):
+        self.write_minimal_repository()
+        module.build(self.output)
+        (self.output / "CHECKSUMS.txt").write_text("not a checksum line\n", encoding="utf-8")
+
+        with self.assertRaises(module.BuildError) as failure:
+            module.verify_checksums(self.output)
+
+        self.assertIn("sha256sum format", str(failure.exception))
+
+    def test_command_line_verify_succeeds_on_a_clean_build(self):
+        self.write_minimal_repository()
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            status = module.main(["--all", "--out", str(self.output), "--verify"])
+
+        self.assertEqual(0, status)
+        self.assertIn("checksums verified", output.getvalue())
+
+    def test_command_line_verify_fails_the_command_on_a_problem(self):
+        """A problem must fail the command, not merely be printed under a success."""
+        self.write_minimal_repository()
+        problem = "MoltenCodes/LICENSE: contents do not match the digest in CHECKSUMS.txt"
+
+        output = io.StringIO()
+        errors = io.StringIO()
+        with mock.patch.object(module, "verify_checksums", return_value=[problem]):
+            with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                status = module.main(["--all", "--out", str(self.output), "--verify"])
+
+        self.assertEqual(1, status)
+        self.assertIn("checksum verification failed", errors.getvalue())
+        self.assertIn(problem, errors.getvalue())
 
 
 class PkgmetaTests(unittest.TestCase):

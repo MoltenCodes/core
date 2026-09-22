@@ -14,7 +14,7 @@ tooling/
 ├── tests/                         # Python unit tests for repository tooling
 └── validation/
     ├── validate_manifests.py      # manifest schema and dependency graph checks
-    └── validate_repository.py     # repository structure and Markdown link checks
+    └── validate_repository.py     # structure, editor configuration and link checks
 ```
 
 `tooling/test/` (singular) is the Busted orchestration package; `tooling/tests/`
@@ -31,9 +31,12 @@ exists so the floor is written down once, in a machine-readable place.
 
 `python3 -m tooling.validation.validate_repository` refuses to certify the
 repository from an older interpreter, and checks that the declaration and the
-constant in the validator still agree, so the two cannot drift apart. CI runs the
-tooling unit tests on both the floor and the release developers use, so the
-documented minimum is exercised rather than merely asserted.
+constant in the validator still agree, so the two cannot drift apart. Every CI
+job that runs repository tooling — the Lua tests, the linter, repository
+validation and the release build — runs on both the floor and the release
+developers use, so the documented minimum is exercised rather than merely
+asserted. There is no exemption: a job that could only run on the newer
+interpreter would make the floor a claim instead of a supported version.
 
 The canonical commands are documented in [`DEVELOPMENT.md`](DEVELOPMENT.md).
 
@@ -122,6 +125,20 @@ It is deliberately deterministic — no timestamps in the artifact, fixed zip en
 times — so two builds of the same commit produce identical checksums. It fails
 closed on invalid package metadata but does not run the test suite, the linter or
 the formatter; those are separate commands and remain the caller's responsibility.
+
+`--verify` reads the `CHECKSUMS.txt` it has just written back and holds it
+against the files on disk. It reports a recorded file that is missing, a
+recorded file whose contents no longer hash to what was written down, and a file
+inside the bundle that nothing records at all, and it exits non-zero if it finds
+any of them. Bundles from earlier builds that the checksum file does not
+describe are left alone, so a single-package bundle sitting beside the full one
+is not mistaken for an unrecorded file.
+
+CI builds the whole framework into a temporary directory on every run and checks
+the result twice: once with `--verify`, and once with `sha256sum --check
+--strict`, which is what somebody who downloads the artifact would use. The
+first proves the file is correct, the second proves it is also readable by the
+standard tool.
 
 [`../docs/RELEASES.md`](../docs/RELEASES.md) documents the command line, the
 artifact layout, and the relationship to [`../.pkgmeta`](../.pkgmeta), which is

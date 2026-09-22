@@ -10,9 +10,7 @@
       "../packages/eventKit/src",
       "../packages/lifecycleKit/src",
       "../packages/moduleKit/src",
-      "../packages/timerKit/src",
-      "../packages/schedulerKit/src",
-      "../packages/poolKit/src"
+      "../packages/timerKit/src"
     ],
     "checkThirdParty": false
   },

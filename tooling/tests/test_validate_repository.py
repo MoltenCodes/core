@@ -43,6 +43,25 @@ class RepositoryValidatorTests(unittest.TestCase):
         )
         return path
 
+    def write_example_embeds(self, *facades: str) -> Path:
+        """Write an `examples/embeds.xml` that loads the given Lua facades, in order."""
+        references = "\n".join(
+            f'    <Script file="Libs\\MoltenCodes\\{module.package_id_for(facade)}\\{facade}" />'
+            for facade in facades
+        )
+        path = self.root / module.EXAMPLE_EMBEDS
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"<Ui>\n{references}\n</Ui>\n", encoding="utf-8")
+        return path
+
+    def write_example_language_server_config(self, library: list[str]) -> Path:
+        path = self.root / "examples" / module.LANGUAGE_SERVER_CONFIG_NAME
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"workspace": {"library": library}}), encoding="utf-8"
+        )
+        return path
+
     def create_package(self, name: str, *, api: bool = True) -> Path:
         package = self.packages / name
         (package / "src").mkdir(parents=True)
@@ -127,6 +146,69 @@ class RepositoryValidatorTests(unittest.TestCase):
 
         self.assertEqual(1, len(errors))
         self.assertIn("lua-language-server configuration is missing", errors[0])
+
+    def test_embedded_package_names_follow_the_embed_order(self):
+        embeds = self.write_example_embeds("Registry.lua", "SignalKit.lua", "EventKit.lua")
+
+        self.assertEqual(
+            ["registry", "signalKit", "eventKit"], module.embedded_package_names(embeds)
+        )
+
+    def test_example_config_must_list_meta_and_the_embedded_packages(self):
+        self.write_example_embeds("Registry.lua", "SignalKit.lua")
+        self.write_example_language_server_config(
+            [
+                module.EXAMPLE_SHARED_META_LIBRARY,
+                "../packages/registry/src",
+                "../packages/signalKit/src",
+            ]
+        )
+
+        self.assertEqual([], module.validate_example_language_server_config())
+
+    def test_example_config_listing_an_unembedded_package_is_reported(self):
+        self.write_example_embeds("Registry.lua", "SignalKit.lua")
+        self.write_example_language_server_config(
+            [
+                module.EXAMPLE_SHARED_META_LIBRARY,
+                "../packages/registry/src",
+                "../packages/signalKit/src",
+                "../packages/poolKit/src",
+            ]
+        )
+
+        errors = module.validate_example_language_server_config()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn(f"examples/{module.LANGUAGE_SERVER_CONFIG_NAME}", errors[0])
+        self.assertNotIn("poolKit", errors[0])
+
+    def test_example_config_must_follow_the_embed_order(self):
+        self.write_example_embeds("Registry.lua", "SignalKit.lua")
+        self.write_example_language_server_config(
+            [
+                module.EXAMPLE_SHARED_META_LIBRARY,
+                "../packages/signalKit/src",
+                "../packages/registry/src",
+            ]
+        )
+
+        errors = module.validate_example_language_server_config()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("workspace.library must be", errors[0])
+
+    def test_missing_example_config_is_reported(self):
+        self.write_example_embeds("Registry.lua")
+
+        errors = module.validate_example_language_server_config()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("lua-language-server configuration is missing", errors[0])
+
+    def test_example_config_is_not_checked_without_embeds(self):
+        """A missing `embeds.xml` is `validate_required_root_files`' error to report."""
+        self.assertEqual([], module.validate_example_language_server_config())
 
     def test_package_layout_accepts_complete_package(self):
         self.create_package("registry")
