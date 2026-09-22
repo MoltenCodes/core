@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-09-22
+
+- Registry API generations now publish side by side. Every generation publishes itself at `MoltenCodes.Registries[<generation>]` and `MoltenCodes.Registry` is an alias for the newest generation present, so loading a second generation no longer aborts either addon's load with a fatal `MoltenCodes.Registry API generation conflict` error.
+- A generation displaced from the alias is parked under its own `Registries` key when that key is free, so generations that predate the `Registries` convention stay reachable.
+- Load-time failures raise at level 0 with an explicit `Registry:` prefix. A stack level is meaningless at file scope, where the "caller" is whichever addon TOC happened to load the file; argument errors raised from `Register`, `Get` and `GetInfo` continue to point at the calling line.
+- `Register`, `Get` and `GetInfo` now reject API generations and revisions above `2^53`. Lua 5.1 numbers are doubles, so a value such as `1e300` used to be accepted as a "positive integer" and became an unbeatable revision that no future embedded copy could replace.
+- Annotated the public surface with LuaCATS types so editors and lua-language-server describe `Register`, `Get`, `GetInfo` and the metadata snapshot correctly.
+- Added specs for two generations coexisting in both load orders, generation-private bootstrap state, the integer bound, and the caller-line position of argument errors.
+- Documented the API-generation migration story and a `.toc` embedding example.
+
 ## 0.3.4 — 2026-09-22
 
 - No runtime behaviour change. Revision 4 still describes the shipped implementation.

@@ -1,7 +1,7 @@
 # Registry API
 
 Registry API generation: **2**  
-Implementation revision: **4**
+Implementation revision: **5**
 
 Registry is a zero-dependency runtime resolver for independently embedded framework packages.
 
@@ -16,6 +16,43 @@ local Registry = MoltenCodes.Registry
 `Registry.lua` publishes this namespace whenever it is loaded directly by an addon TOC.
 
 The file also returns the exact same Registry facade, which is useful in pure-Lua tests and in WoW environments where the module `require` API is available.
+
+Code that must keep working when a future Registry API generation loads in the
+same session asks for its generation by number instead:
+
+```lua
+local Registry = MoltenCodes.Registries and MoltenCodes.Registries[2] or MoltenCodes.Registry
+```
+
+See [API-generation coexistence](#registry-api-generation-coexistence) for why.
+
+### Embedding Registry from a `.toc`
+
+Registry has no dependencies and must be listed before every framework package
+that uses it:
+
+```toc
+## Interface: 110000
+## Title: My Addon
+## Notes: Example of embedding MoltenCodes packages
+
+Libs\MoltenCodes\Registry.lua
+Libs\MoltenCodes\SignalKit.lua
+Libs\MoltenCodes\EventKit.lua
+
+MyAddon.lua
+```
+
+`MyAddon.lua` then resolves the packages it needs without `require`:
+
+```lua
+local Registry = MoltenCodes.Registry
+local EventKit = Registry:Get("eventKit", 1)
+```
+
+Every addon lists its own bundled copies. Registry reconciles them: whichever
+copy of a package carries the highest revision wins, and all addons end up
+sharing that one instance.
 
 ## Package identity
 
@@ -33,7 +70,16 @@ Package names use the same naming rule as package manifests:
 ^[a-z][A-Za-z0-9]*$
 ```
 
-API generations and revisions are positive integers. Repository package manifests additionally require public framework packages to end in `Kit`; Registry itself validates identifier syntax rather than repository naming policy.
+API generations and revisions are positive integers no greater than `2^53`.
+
+That upper bound is not cosmetic. Lua 5.1 numbers are doubles, which represent
+consecutive integers exactly only up to `2^53`; past that boundary distinct
+values start comparing equal. Without the bound, `Register("someKit", 1, 1e300)`
+passed the "positive integer" test and became a revision no future embedded copy
+could ever beat. Values above the bound, non-integers, `nan` and both infinities
+are rejected.
+
+Repository package manifests additionally require public framework packages to end in `Kit`; Registry itself validates identifier syntax rather than repository naming policy.
 
 ## `Registry:Register(packageName, api, revision)`
 
@@ -136,10 +182,12 @@ Registry.REVISION
 
 ## Embedded Registry copies
 
-Registry stores one private bootstrap object in the WoW global environment and one public facade at:
+Registry stores one private bootstrap object in the WoW global environment, per
+API generation, and publishes two public entries:
 
 ```lua
-MoltenCodes.Registry
+MoltenCodes.Registry        -- alias for the newest generation loaded
+MoltenCodes.Registries[2]   -- this generation, always
 ```
 
 Compatible embedded copies reuse both the bootstrap state and facade. Loading another compatible copy therefore does not create an isolated registry.
@@ -171,8 +219,100 @@ Private state that must survive upgrades should also be designed for in-place mi
 Registry cannot roll back arbitrary mutations made by package initialization. If initialization raises an error after registration is accepted, the shared table can remain partially updated at the accepted revision. Package authors should therefore keep initialization deterministic, validate failure-prone inputs before mutating the shared table, and perform explicit migration carefully when upgrading existing state.
 
 
-## Registry API-generation compatibility
+## Registry API-generation coexistence
 
-Registry is the bootstrap layer itself, so all embedded Registry copies participating in one public `MoltenCodes.Registry` facade must use the same Registry API generation. Compatible implementation revisions within that generation may upgrade the shared facade in place.
+Registry is the bootstrap layer itself, so all embedded Registry copies that
+share one facade must use the same Registry API generation. Compatible
+implementation revisions inside that generation upgrade the shared facade in
+place; an incompatible generation is never treated as an implementation
+revision, because that would route callers compiled for one `Register()`
+contract into a different one.
 
-An incompatible Registry API generation is rejected explicitly rather than being silently treated as an implementation revision. This prevents callers compiled for one `Register()` contract from being routed to a different contract.
+Generations are kept apart rather than rejected. Each generation owns:
+
+- a private bootstrap-state global keyed by its own generation number, so
+  registrations made through one generation are invisible to the other;
+- a public entry at `MoltenCodes.Registries[<generation>]`, which is the
+  documented, generation-exact access path;
+- a share in `MoltenCodes.Registry`, which is an **alias for the newest
+  generation currently loaded**.
+
+### Publication rules
+
+When `Registry.lua` for generation *G* loads:
+
+1. It publishes itself at `MoltenCodes.Registries[G]`. If that key already holds
+   a different table, the state is corrupt and loading fails.
+2. If `MoltenCodes.Registry` is empty or already this facade, it claims the alias.
+3. If the alias holds a generation **older** than *G*, it claims the alias and
+   parks the displaced facade at `MoltenCodes.Registries[<older>]` when that key
+   is free. Older generations predate this convention and would otherwise become
+   unreachable.
+4. If the alias holds a generation **newer** than *G*, it leaves the alias alone
+   and returns normally. The copy stays fully usable through
+   `MoltenCodes.Registries[G]`.
+5. If the alias holds a table that claims generation *G* but is not this facade,
+   loading fails: two different tables cannot both be the shared facade.
+
+Rules 3 and 4 make the result independent of load order: whichever order the two
+files load in, the newest generation owns the alias and both generations remain
+reachable by number.
+
+Loading a second generation therefore never aborts the load of the addon that
+embedded the other one. That was the previous behaviour — a fatal
+`MoltenCodes.Registry API generation conflict` at file scope — and it took down
+an unrelated addon for no reason the user could act on.
+
+### Migration story
+
+A consumer written against one generation must not be handed another one. The
+migration is:
+
+1. **Today (generation 2 only).** `MoltenCodes.Registry` is generation 2.
+   Existing package bootstraps read it and assert `Registry.API == 2`. Nothing
+   changes.
+2. **When a generation 3 ships.** Generation 3 takes the alias. Bootstraps that
+   still read `MoltenCodes.Registry` and require API 2 then fail their own
+   dependency check with their own error, instead of Registry aborting the load
+   for them.
+3. **Forward-compatible bootstrap.** Packages should resolve their generation by
+   number and fall back to the alias only for copies of Registry older than
+   revision 5:
+
+   ```lua
+   local generations = rawget(namespace, "Registries")
+   local Registry = generations and rawget(generations, 2) or rawget(namespace, "Registry")
+   ```
+
+   This is the shape the shared `Registry:Bootstrap` helper will adopt. The
+   framework packages in this repository still use the plain alias; migrating
+   them is a single coordinated change rather than a per-package one.
+
+Registry does not translate between generations. A generation-3 facade is not
+routed generation-2 calls and vice versa; a package that needs both asks for
+both by number.
+
+## Error reporting
+
+Registry raises two kinds of error, and the stack level differs on purpose.
+
+**Argument errors** from `Register()`, `Get()` and `GetInfo()`, and corrupted
+package state discovered while serving one of those calls, point at the calling
+line. A package author sees their own `Registry:Register(...)` call, not a line
+inside `Registry.lua`.
+
+**Load-time failures** — incompatible or corrupted bootstrap state, a corrupted
+facade, a hostile owner of `MoltenCodes` or `MoltenCodes.Registries` — raise with
+level `0`, which attaches no source position, and carry an explicit `Registry:`
+prefix instead:
+
+```text
+Registry: bootstrap state is incompatible
+Registry: API generation is incompatible
+Registry: facade is corrupted or incompatible
+Registry: MoltenCodes global namespace is owned by an incompatible value
+```
+
+These run at file scope, where the only "caller" is whichever addon TOC happened
+to load the file. A stack level there names an arbitrary consumer line that has
+nothing to do with the failure, so the prefix carries the attribution instead.

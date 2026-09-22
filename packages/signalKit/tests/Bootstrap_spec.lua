@@ -37,14 +37,14 @@ describe("SignalKit package bootstrap", function()
         end)
     end)
 
-    it("registers itself as SignalKit API 1 revision 1", function()
+    it("registers itself as SignalKit API 1 revision 2", function()
         local SignalKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("signalKit", 1)
 
         assert.are.equal(SignalKit, selected)
-        assert.are.equal(1, revision)
+        assert.are.equal(2, revision)
         assert.are.equal(1, SignalKit.API)
-        assert.are.equal(1, SignalKit.REVISION)
+        assert.are.equal(2, SignalKit.REVISION)
     end)
 
     it("reuses the same package facade on duplicate embedding", function()

@@ -47,6 +47,61 @@ describe("EventKit errors", function()
         end)
     end)
 
+    it("points argument errors at the calling line, not at EventKit", function()
+        local function callConnectWithABadEventName()
+            EventKit:Connect("", function() end)
+        end
+
+        local function callConnectWithABadCallback()
+            EventKit:Connect("PLAYER_LOGIN", "nope")
+        end
+
+        local function callConnectUnitWithTooManyTokens()
+            EventKit:ConnectUnit("UNIT_HEALTH", function() end, "player", "target", "focus")
+        end
+
+        local function callConnectWithARejectedRegistration()
+            TestEnv.FailNextRegisterEvent()
+            EventKit:Connect("PLAYER_LOGIN", function() end)
+        end
+
+        local calls = {
+            callConnectWithABadEventName,
+            callConnectWithABadCallback,
+            callConnectUnitWithTooManyTokens,
+            callConnectWithARejectedRegistration,
+        }
+
+        for index = 1, #calls do
+            local ok, message = pcall(calls[index])
+            message = tostring(message)
+
+            assert.is_false(ok)
+            assert.is_not_nil(
+                string.find(message, "packages/eventKit/tests/Errors_spec.lua:", 1, true)
+            )
+            assert.is_nil(string.find(message, "src/EventKit.lua", 1, true))
+        end
+    end)
+
+    it("names the package instead of a misleading line for host failures", function()
+        -- These are raised two to four frames below the public API and describe
+        -- the host environment, not the caller's arguments. A stack level there
+        -- names a line inside EventKit, so they carry an `EventKit:` prefix and
+        -- no source position at all.
+        rawset(_G, "CreateFrame", nil)
+
+        local ok, message = pcall(function()
+            EventKit:Connect("PLAYER_LOGIN", function() end)
+        end)
+
+        assert.is_false(ok)
+        assert.are.equal(
+            "EventKit: requires the World of Warcraft CreateFrame API",
+            tostring(message)
+        )
+    end)
+
     it("does not retain a channel after RegisterEvent rejects it", function()
         TestEnv.FailNextRegisterEvent()
         expectErrorContaining("could not register event", function()
@@ -71,17 +126,88 @@ describe("EventKit errors", function()
         assert.are.equal(2, #frame.registerUnitEventCalls)
     end)
 
-    it("propagates listener errors and aborts later listeners", function()
-        local laterCalls = 0
+    it("reports a listener error instead of raising it", function()
         EventKit:Connect("CUSTOM_EVENT", function()
             error("listener failure")
         end)
+
+        TestEnv.Emit("CUSTOM_EVENT")
+
+        local reported = TestEnv.ReportedErrors()
+        assert.are.equal(1, #reported)
+        assert.is_not_nil(string.find(reported[1], "listener failure", 1, true))
+    end)
+
+    it("keeps delivering to the other tenants when the first one throws", function()
+        -- EventKit is one shared instance per WoW session. A failing handler in
+        -- one addon must not cost every addon behind it its event.
+        local secondTenantCalls = 0
+        local thirdTenantCalls = 0
+
         EventKit:Connect("CUSTOM_EVENT", function()
+            error("first tenant failure")
+        end)
+        EventKit:Connect("CUSTOM_EVENT", function()
+            secondTenantCalls = secondTenantCalls + 1
+        end)
+        EventKit:Connect("CUSTOM_EVENT", function()
+            thirdTenantCalls = thirdTenantCalls + 1
+        end)
+
+        TestEnv.Emit("CUSTOM_EVENT")
+        TestEnv.Emit("CUSTOM_EVENT")
+
+        assert.are.equal(2, secondTenantCalls)
+        assert.are.equal(2, thirdTenantCalls)
+        assert.are.equal(2, #TestEnv.ReportedErrors())
+    end)
+
+    it("isolates listeners through securecallfunction when the client has it", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        TestEnv.InstallSecureCallFunction()
+        require("Registry")
+        require("SignalKit")
+        local isolated = require("EventKit")
+
+        local laterCalls = 0
+        isolated:Connect("CUSTOM_EVENT", function()
+            error("first tenant failure")
+        end)
+        isolated:Connect("CUSTOM_EVENT", function()
             laterCalls = laterCalls + 1
         end)
-        expectErrorContaining("listener failure", function()
-            TestEnv.Emit("CUSTOM_EVENT")
+
+        TestEnv.Emit("CUSTOM_EVENT")
+
+        assert.are.equal(1, laterCalls)
+        assert.are.equal(1, #TestEnv.ReportedErrors())
+    end)
+
+    it("keeps large payloads and nesting intact while isolating", function()
+        local outer, inner
+        local nested = false
+
+        EventKit:Connect("WIDE_EVENT", function(...)
+            outer = { select("#", ...), ... }
+            if not nested then
+                nested = true
+                TestEnv.Emit("NESTED_EVENT", "a", nil, "c")
+            end
         end)
-        assert.are.equal(0, laterCalls)
+        EventKit:Connect("NESTED_EVENT", function(...)
+            inner = { select("#", ...), ... }
+        end)
+
+        TestEnv.Emit("WIDE_EVENT", 1, 2, 3, 4, 5, 6, 7, 8, 9)
+
+        assert.are.equal(10, outer[1])
+        assert.are.equal("WIDE_EVENT", outer[2])
+        assert.are.equal(9, outer[11])
+        assert.are.equal(4, inner[1])
+        assert.are.equal("NESTED_EVENT", inner[2])
+        assert.are.equal("a", inner[3])
+        assert.is_nil(inner[4])
+        assert.are.equal("c", inner[5])
     end)
 end)

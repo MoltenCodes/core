@@ -17,14 +17,17 @@ For each `(package, API generation)` pair:
 - separate API generations are independent;
 - malformed private package state is rejected consistently instead of being exposed as valid data.
 
-Registry itself also survives duplicate embedding. Every compatible Registry copy in API generation 2 shares one internal bootstrap state and one facade table. A newer compatible Registry revision upgrades that facade in place. Incompatible Registry API generations fail explicitly instead of silently sharing a mismatched public contract.
+Registry itself also survives duplicate embedding. Every compatible Registry copy in API generation 2 shares one internal bootstrap state and one facade table. A newer compatible Registry revision upgrades that facade in place.
+
+Different Registry API generations never share a facade, but they do coexist. Each generation keeps its own bootstrap state and publishes itself at `MoltenCodes.Registries[<generation>]`; `MoltenCodes.Registry` is an alias for the newest generation loaded. Loading a second generation therefore cannot abort the load of the addon that embedded the other one. See [`docs/API.md`](docs/API.md) for the publication rules and the migration story.
 
 ## World of Warcraft access
 
 Registry publishes its facade as:
 
 ```lua
-MoltenCodes.Registry
+MoltenCodes.Registry        -- newest Registry API generation loaded
+MoltenCodes.Registries[2]   -- this API generation, always
 ```
 
 This is the portable runtime access path for addons loaded through TOC files and does not require WoW's module `require` API.

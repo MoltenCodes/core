@@ -5,10 +5,22 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.1.0`
+- Version: `0.2.0`
 - API generation: `1`
-- Implementation revision: `1`
+- Implementation revision: `2`
 - Runtime dependencies: Registry API 2, SignalKit API 1
+
+EventKit is multi-tenant: one shared instance serves every addon in a WoW
+session. That shapes three of its guarantees:
+
+- **Listeners are isolated.** One addon's erroring handler is reported through
+  the host error handler and never stops delivery to the others.
+- **Unit-filter Frames are bounded and reused.** A unit group is released when
+  its last listener goes and its Frame returns to a free list; EventKit creates
+  at most 64 Frames for unit filters in a session.
+- **`ConnectUnit` accepts at most two unit tokens**, because
+  `Frame:RegisterUnitEvent` has two filter slots. A third is an error rather
+  than something the client silently drops.
 
 ## Example
 
@@ -32,4 +44,6 @@ local health = EventKit:ConnectUnit("UNIT_HEALTH", function(eventName, unit)
 end, "player")
 ```
 
-See [`docs/API.md`](docs/API.md) for the full public contract and edge-case semantics.
+See [`docs/API.md`](docs/API.md) for the full public contract and edge-case
+semantics, including the combat-log event's empty payload, the taint
+consequences of a shared bus, and the measured cost of listener isolation.

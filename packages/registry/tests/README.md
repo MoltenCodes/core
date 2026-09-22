@@ -12,7 +12,10 @@ The Registry suite covers:
 - runtime API/revision consistency with `package.manifest.json`;
 - input validation;
 - test-environment isolation;
-- bootstrap/facade corruption and metatable hardening.
+- bootstrap/facade corruption and metatable hardening;
+- API-generation coexistence, alias ownership in both load orders, and
+  generation-private bootstrap state;
+- the stack level of load-time versus argument errors.
 
 Test helpers belong under `support/` and are not public package API.
 

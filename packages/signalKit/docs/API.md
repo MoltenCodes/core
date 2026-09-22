@@ -2,7 +2,7 @@
 
 Package: `signalKit`  
 API generation: `1`  
-Implementation revision: `1`
+Implementation revision: `2`
 
 SignalKit provides deterministic callback dispatch with explicit connection lifetimes.
 
@@ -43,6 +43,23 @@ end)
 
 `callback` must be a function.
 
+`Connect`, `Once`, `Fire` and `DisconnectAll` must be called **on a signal**, and
+`Disconnect` and `IsConnected` **on a connection handle**. Calling them without a
+receiver — `SignalKit.Connect(callback)` instead of `signal:Connect(callback)` —
+raises a SignalKit error that names the mistake at the calling line:
+
+```text
+SignalKit:Connect must be called on a signal instance; use signal:Connect(callback)
+```
+
+Previously the same typo surfaced as `attempt to index a function value` or
+`attempt to get length of a nil value` somewhere inside SignalKit, naming neither
+the mistake nor the line that made it.
+
+The receiver test inspects a private field rather than comparing metatables. A
+newer embedded package revision builds its own signal metatable, so a metatable
+comparison would reject instances created by the revision it just upgraded.
+
 Multiple connections may use the same function. Each connection is independent and occupies its own position in deterministic connection order.
 
 ## `signal:Once(callback)`
@@ -66,7 +83,12 @@ Each `Fire()` captures the active listener-array identity **and its current leng
 - `DisconnectAll()` prevents not-yet-run callbacks in the current snapshot from running.
 - A nested `Fire()` captures the then-current active listener array and therefore observes connects/disconnects performed before the nested call.
 
-Disconnect operations replace the signal's active listener array, while already-running dispatches may continue to hold an older array reference. Connection objects are shared across those arrays, so the connected flag makes a disconnect immediately visible everywhere.
+A disconnect marks its connection rather than removing it from the array, and
+array compaction replaces the array instead of editing it. Already-running
+dispatches may therefore continue to hold an older array. Connection objects are
+shared across those arrays, so the disconnected flag makes a disconnect
+immediately visible everywhere, including to a dispatch that is mid-walk over an
+array the compaction has already superseded.
 
 These rules make re-entrant dispatch deterministic without allocating a listener-array copy for each `Fire()`.
 
@@ -113,15 +135,54 @@ Let `n` be the number of currently connected listeners.
 | `Fire(...)` | `O(n)` | none |
 | `Connect(...)` | amortized `O(1)` | none |
 | `Once(...)` | amortized `O(1)` | none |
-| `Disconnect()` | `O(n)` | one array when connected |
+| `Disconnect()` | amortized `O(1)` | none, except on compaction |
 | `DisconnectAll()` | `O(n)` | one empty array |
 
-This model intentionally optimizes repeated dispatch, which is expected to be more common than listener mutation in framework event paths.
+### Tombstones and compaction
+
+`Disconnect()` marks its connection as disconnected and leaves the handle in the
+listener array as a tombstone. The array is compacted — replaced by one holding
+only live entries — as soon as at least half of its slots are tombstones.
+
+Each compaction is `O(n)` but removes `n/2` slots, so disconnect stays amortized
+`O(1)`, and the array never retains more than twice the live listener count. A
+disconnected handle's callback is released immediately; only the small handle
+table survives until the next compaction.
+
+Revision 1 instead copied the whole array on every `Disconnect()`, which made
+tearing a signal down quadratic. Measured on Lua 5.1.5, disconnecting every
+listener of a signal one handle at a time:
+
+| Listeners | Revision 1 | Revision 2 |
+|---:|---:|---:|
+| 100 | 0.13 ms, 119 KB | 0.04 ms, 2 KB |
+| 500 | 2.03 ms, 2,658 KB | 0.18 ms, 9 KB |
+| 1000 | 7.22 ms, 10,585 KB | 0.34 ms, 17 KB |
+| 2000 | 28.53 ms, 42,248 KB | 0.68 ms, 33 KB |
+| 4000 | 97.55 ms, 168,805 KB | 1.45 ms, 65 KB |
+
+Revision 1 time grows by roughly 3.4× per doubling of `n` (quadratic); revision 2
+grows by roughly 2.1× (linear). At 4000 listeners the teardown is 67× faster and
+allocates 2,600× less.
+
+`Fire()` is unchanged: 0 KB allocated in both revisions, and the two type tests
+that validate the receiver are within measurement noise of revision 1 across
+repeated best-of-five runs (200,000 dispatches over 8 listeners: 110.6 ms versus
+111.6 ms in the closest pair, 112.3 ms versus 116.1 ms in the widest).
+
+This model intentionally optimizes repeated dispatch, which is expected to be
+more common than listener mutation in framework event paths, while no longer
+punishing bulk teardown.
 
 ## Embedded copies and revision upgrades
 
 Registry owns the stable `SignalKit` package table for `(signal, API 1)`. SignalKit instances use that shared table as their method prototype, so existing signal instances observe compatible package-method upgrades loaded into the same API generation.
 
 `SignalKit.Connection` is also preserved as one shared method table across compatible package revisions, allowing existing connection handles to observe compatible connection-method upgrades.
+
+Revision 2 changed the listener-array layout. Signals created by revision 1 carry
+no tombstone counter, so every counter read treats a missing counter as zero;
+live revision-1 signal instances therefore keep working unchanged after a
+revision-2 copy upgrades the shared package table in place.
 
 As with every Registry-managed package, a revision is selected before package initialization completes. Package initialization is therefore written so that all fallible dependency validation occurs before registration and the post-registration commit path performs only local deterministic mutations.

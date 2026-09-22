@@ -50,6 +50,70 @@ describe("SignalKit Once", function()
         assert.are.equal(1, calls)
     end)
 
+    it("does not run a Once connected during the current dispatch", function()
+        local calls = {}
+        local connected = false
+        local once
+
+        signal:Connect(function()
+            calls[#calls + 1] = "existing"
+            if not connected then
+                connected = true
+                once = signal:Once(function()
+                    calls[#calls + 1] = "once"
+                end)
+            end
+        end)
+
+        signal:Fire()
+
+        assert.are.equal(1, #calls)
+        assert.are.equal("existing", calls[1])
+        assert.is_true(once:IsConnected())
+
+        signal:Fire()
+
+        assert.are.equal(3, #calls)
+        assert.are.equal("existing", calls[2])
+        assert.are.equal("once", calls[3])
+        assert.is_false(once:IsConnected())
+
+        signal:Fire()
+
+        assert.are.equal(4, #calls)
+        assert.are.equal("existing", calls[4])
+    end)
+
+    it("runs a Once connected during a dispatch when a nested Fire follows it", function()
+        -- A nested Fire captures the then-current array, so unlike the outer
+        -- dispatch it does observe the listener the outer callback just added.
+        local calls = {}
+        local nested = false
+
+        signal:Connect(function()
+            calls[#calls + 1] = "existing"
+            if not nested then
+                nested = true
+                signal:Once(function()
+                    calls[#calls + 1] = "once"
+                end)
+                signal:Fire()
+            end
+        end)
+
+        signal:Fire()
+
+        assert.are.equal(3, #calls)
+        assert.are.equal("existing", calls[1])
+        assert.are.equal("existing", calls[2])
+        assert.are.equal("once", calls[3])
+
+        signal:Fire()
+
+        assert.are.equal(4, #calls)
+        assert.are.equal("existing", calls[4])
+    end)
+
     it("remains disconnected when its callback errors", function()
         local connection = signal:Once(function()
             error("once failure")

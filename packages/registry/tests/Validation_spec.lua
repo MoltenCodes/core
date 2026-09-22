@@ -58,6 +58,37 @@ describe("Registry argument validation", function()
         end)
     end)
 
+    it("rejects numbers too large to be exact integers", function()
+        expectErrorContaining("revision must be a positive integer up to 2^53", function()
+            Registry:Register("eventKit", 1, 1e300)
+        end)
+
+        expectErrorContaining("api must be a positive integer up to 2^53", function()
+            Registry:Register("eventKit", 1e300, 1)
+        end)
+
+        expectErrorContaining("revision must be a positive integer", function()
+            Registry:Register("eventKit", 1, math.huge)
+        end)
+
+        assert.is_table(Registry:Register("eventKit", 1, 2 ^ 53))
+    end)
+
+    it("points argument errors at the calling line, not at Registry", function()
+        local function callerOfRegister()
+            Registry:Register("eventKit", 1, 0)
+        end
+
+        local ok, message = pcall(callerOfRegister)
+        message = tostring(message)
+
+        assert.is_false(ok)
+        assert.is_not_nil(
+            string.find(message, "packages/registry/tests/Validation_spec.lua:", 1, true)
+        )
+        assert.is_nil(string.find(message, "src/Registry.lua", 1, true))
+    end)
+
     it("does not create an entry when validation fails", function()
         pcall(function()
             Registry:Register("eventKit", 0, 1)

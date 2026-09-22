@@ -1,11 +1,5 @@
 local TestEnv = require("EventKitTestEnv")
 
-local function expectErrorContaining(expected, callback)
-    local ok, message = pcall(callback)
-    assert.is_false(ok)
-    assert.is_not_nil(string.find(tostring(message), expected, 1, true))
-end
-
 describe("EventKit one-shot subscriptions", function()
     local EventKit
     before_each(function()
@@ -50,9 +44,12 @@ describe("EventKit one-shot subscriptions", function()
         local connection = EventKit:Once("CUSTOM_EVENT", function()
             error("once failure")
         end)
-        expectErrorContaining("once failure", function()
-            TestEnv.Emit("CUSTOM_EVENT")
-        end)
+
+        TestEnv.Emit("CUSTOM_EVENT")
+
+        local reported = TestEnv.ReportedErrors()
+        assert.are.equal(1, #reported)
+        assert.is_not_nil(string.find(reported[1], "once failure", 1, true))
         assert.is_false(connection:IsConnected())
         assert.is_nil(TestEnv.Frames()[1].registrations.CUSTOM_EVENT)
     end)

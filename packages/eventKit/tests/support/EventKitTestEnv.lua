@@ -1,11 +1,27 @@
+--- Narrow fake World of Warcraft Frame boundary for the EventKit suite.
+---
+--- The stub models the parts of the host contract EventKit depends on and
+--- deliberately enforces the parts EventKit is not allowed to exceed:
+---
+--- * `RegisterUnitEvent` has exactly two unit-filter slots, and a third token is
+---   an error rather than something the client quietly drops;
+--- * a unit registration only delivers events whose first payload value matches
+---   one of its filter tokens;
+--- * `Emit` walks Frames in creation order. That order is **not** part of
+---   EventKit's contract: EventKit does not define callback ordering between
+---   different Frames, so no spec may depend on it.
 local EventKitTestEnv = {}
 
 EventKitTestEnv.REGISTRY_STATE_KEY = "__MOLTENCODES_REGISTRY_STATE_V2"
 EventKitTestEnv.NAMESPACE_KEY = "MoltenCodes"
 
+--- The host's `Frame:RegisterUnitEvent(event, unit1, unit2)` slot count.
+EventKitTestEnv.MAXIMUM_UNIT_TOKENS = 2
+
 local frames = {}
 local nextRegisterEventResult = nil
 local nextRegisterUnitEventResult = nil
+local reportedErrors = {}
 
 local function copyArray(values)
     local copy = {}
@@ -40,6 +56,20 @@ local function newFrame()
     end
 
     function frame:RegisterUnitEvent(eventName, ...)
+        local unitCount = select("#", ...)
+        -- Stub precondition, not a test expectation: the real host has two unit
+        -- slots. Modelling that faithfully is the only way the suite can see a
+        -- package bug that passes a third token.
+        if unitCount > EventKitTestEnv.MAXIMUM_UNIT_TOKENS then
+            error(
+                "RegisterUnitEvent stub accepts at most "
+                    .. EventKitTestEnv.MAXIMUM_UNIT_TOKENS
+                    .. " unit tokens, received "
+                    .. unitCount,
+                2
+            )
+        end
+
         local units = { ... }
         self.registerUnitEventCalls[#self.registerUnitEventCalls + 1] = {
             eventName = eventName,
@@ -79,6 +109,8 @@ local function registrationAccepts(registration, ...)
     return false
 end
 
+--- Installs the fake `CreateFrame` and the host error-handler hook EventKit
+--- reports isolated listener failures through.
 function EventKitTestEnv.InstallWowApi()
     rawset(_G, "CreateFrame", function(frameType)
         -- Stub precondition, not a test expectation: support modules are plain
@@ -89,6 +121,12 @@ function EventKitTestEnv.InstallWowApi()
         end
         return newFrame()
     end)
+
+    rawset(_G, "geterrorhandler", function()
+        return function(message)
+            reportedErrors[#reportedErrors + 1] = tostring(message)
+        end
+    end)
 end
 
 function EventKitTestEnv.Reset()
@@ -98,9 +136,12 @@ function EventKitTestEnv.Reset()
     rawset(_G, EventKitTestEnv.REGISTRY_STATE_KEY, nil)
     rawset(_G, EventKitTestEnv.NAMESPACE_KEY, nil)
     rawset(_G, "CreateFrame", nil)
+    rawset(_G, "geterrorhandler", nil)
+    rawset(_G, "securecallfunction", nil)
     frames = {}
     nextRegisterEventResult = nil
     nextRegisterUnitEventResult = nil
+    reportedErrors = {}
 end
 
 function EventKitTestEnv.NewPackage()
@@ -121,6 +162,26 @@ function EventKitTestEnv.Frames()
     return frames
 end
 
+--- Installs a `securecallfunction` stub so a spec can exercise the modern-client
+--- isolation path. Must be called before `EventKit.lua` loads.
+function EventKitTestEnv.InstallSecureCallFunction()
+    rawset(_G, "securecallfunction", function(callback, ...)
+        local ok, message = pcall(callback, ...)
+        if not ok then
+            reportedErrors[#reportedErrors + 1] = tostring(message)
+        end
+    end)
+end
+
+--- Every listener error EventKit has reported through the host error handler.
+function EventKitTestEnv.ReportedErrors()
+    return reportedErrors
+end
+
+--- Delivers `eventName` to every Frame whose registration accepts it.
+---
+--- Frames are walked in creation order. That order is an artefact of this stub,
+--- not an EventKit guarantee.
 function EventKitTestEnv.Emit(eventName, ...)
     local frameCount = #frames
     for index = 1, frameCount do

@@ -16,7 +16,9 @@ SignalKit centralizes those semantics:
 - a nested `Fire()` sees the listener set as it exists when that nested call begins;
 - `Once()` disconnects before callback invocation;
 - callback errors propagate to the caller and abort that dispatch;
-- `Fire()` does not clone the listener array or allocate a dispatch snapshot.
+- `Fire()` does not clone the listener array or allocate a dispatch snapshot;
+- calling a signal or connection method without its receiver is reported as a
+  SignalKit error at the calling line.
 
 ## Example
 
@@ -44,9 +46,11 @@ Registry must be loaded before `SignalKit.lua`.
 
 Dispatch is optimized for the common pattern where signals fire more often than listeners are added or removed.
 
-`Fire()` captures the current listener-array reference and its length without allocating a copy. `Connect()` appends in `O(1)`; an in-progress dispatch keeps its original length boundary, so the new listener is deferred. `Disconnect()` uses copy-on-write removal and marks the shared connection inactive, so in-progress dispatches skip it immediately.
+`Fire()` captures the current listener-array reference and its length without allocating a copy. `Connect()` appends in `O(1)`; an in-progress dispatch keeps its original length boundary, so the new listener is deferred.
 
-This keeps the hot dispatch path allocation-free while making connection cheap and disconnection deterministic.
+`Disconnect()` marks the shared connection inactive in `O(1)` without allocating, so in-progress dispatches skip it immediately. The handle stays in the listener array as a tombstone until at least half the array is tombstones, at which point the array is compacted. Disconnection is therefore amortized `O(1)` and the array never retains more than twice the live listener count.
+
+This keeps the hot dispatch path allocation-free while making both connection and bulk teardown cheap and deterministic. See [`docs/API.md`](docs/API.md) for measured numbers.
 
 ## Documentation
 

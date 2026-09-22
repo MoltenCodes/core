@@ -4,24 +4,60 @@
 -- packages. The core invariants are: one shared facade per Registry API
 -- generation, one stable implementation table per (package, API) pair, and
 -- highest-revision-wins selection without replacing shared table identity.
+--
+-- Registry generations publish side by side. Every generation owns a private
+-- bootstrap state keyed by its own generation number and publishes itself at
+-- `MoltenCodes.Registries[<generation>]`. `MoltenCodes.Registry` is an alias for
+-- the newest generation present, so loading a second generation never aborts the
+-- load of an addon that embedded the other one.
 
 local GLOBAL_STATE_KEY = "__MOLTENCODES_REGISTRY_STATE_V2"
 local PUBLIC_NAMESPACE_KEY = "MoltenCodes"
+local PUBLIC_GENERATIONS_KEY = "Registries"
+local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
+
+-- Lua 5.1 numbers are doubles, which represent consecutive integers exactly only
+-- up to 2^53. Past that boundary distinct values start comparing equal, so a
+-- revision such as `1e300` would silently become an unbeatable revision that no
+-- future embedded copy could ever replace. Identifiers are therefore bounded.
+local MAXIMUM_INTEGER = 2 ^ 53
+local MAXIMUM_INTEGER_TEXT = "2^53"
 
 -- Validation ---------------------------------------------------------------
 
+---Whether `value` is a number that represents an exact integer in range.
+---
+---`nan` fails the `% 1` comparison and both infinities fail the bound, so no
+---explicit special-casing is required.
+---@param value any
+---@return boolean
+local function isBoundedInteger(value)
+    return type(value) == "number"
+        and value % 1 == 0
+        and value <= MAXIMUM_INTEGER
+        and value >= -MAXIMUM_INTEGER
+end
+
+---Whether `value` is an exact integer greater than zero and within range.
+---@param value any
+---@return boolean
 local function isPositiveInteger(value)
-    return type(value) == "number" and value > 0 and value % 1 == 0
+    return isBoundedInteger(value) and value > 0
 end
 
+---Whether `value` is an exact integer of zero or more and within range.
+---@param value any
+---@return boolean
 local function isNonNegativeInteger(value)
-    return type(value) == "number" and value >= 0 and value % 1 == 0
+    return isBoundedInteger(value) and value >= 0
 end
 
+---@param packageName any
+---@param methodName string
 local function validatePackageName(packageName, methodName)
     if type(packageName) ~= "string" or packageName == "" then
         error("Registry:" .. methodName .. " packageName must be a non-empty string", 3)
@@ -32,19 +68,36 @@ local function validatePackageName(packageName, methodName)
     end
 end
 
+---@param api any
+---@param methodName string
 local function validateApi(api, methodName)
     if not isPositiveInteger(api) then
-        error("Registry:" .. methodName .. " api must be a positive integer", 3)
+        error(
+            "Registry:"
+                .. methodName
+                .. " api must be a positive integer up to "
+                .. MAXIMUM_INTEGER_TEXT,
+            3
+        )
     end
 end
 
+---@param revision any
 local function validateRevision(revision)
     if not isPositiveInteger(revision) then
-        error("Registry:Register revision must be a positive integer", 3)
+        error(
+            "Registry:Register revision must be a positive integer up to " .. MAXIMUM_INTEGER_TEXT,
+            3
+        )
     end
 end
 
 -- Bootstrap state ---------------------------------------------------------
+--
+-- Everything below runs at file scope, where the "caller" is whichever addon TOC
+-- happens to be loading this file. A stack level would therefore point at an
+-- arbitrary consumer line, so load-time failures use level 0 and carry an
+-- explicit `Registry:` prefix instead.
 
 -- Independently embedded Registry copies find each other only through this global key.
 -- selene: allow(global_usage)
@@ -62,7 +115,7 @@ if state == nil then
     -- selene: allow(global_usage)
     rawset(_G, GLOBAL_STATE_KEY, state)
 elseif type(state) ~= "table" then
-    error("MoltenCodes Registry bootstrap state is incompatible", 2)
+    error("Registry: bootstrap state is incompatible", 0)
 end
 
 local stateSchema = rawget(state, "schema")
@@ -72,11 +125,11 @@ local entries = rawget(state, "entries")
 local facade = rawget(state, "facade")
 
 if stateSchema ~= STATE_SCHEMA then
-    error("MoltenCodes Registry bootstrap state is incompatible", 2)
+    error("Registry: bootstrap state is incompatible", 0)
 end
 
 if stateApi ~= API_GENERATION then
-    error("MoltenCodes Registry API generation is incompatible", 2)
+    error("Registry: API generation is incompatible", 0)
 end
 
 if
@@ -84,20 +137,25 @@ if
     or type(entries) ~= "table"
     or type(facade) ~= "table"
 then
-    error("MoltenCodes Registry bootstrap state is corrupted", 2)
+    error("Registry: bootstrap state is corrupted", 0)
 end
 
 -- Package-state access ----------------------------------------------------
 
+---@param packageName string
+---@return table|nil
 local function getPackageEntries(packageName)
     local packageEntries = rawget(entries, packageName)
     if packageEntries ~= nil and type(packageEntries) ~= "table" then
-        error("MoltenCodes Registry package state is corrupted", 3)
+        error("Registry: package state is corrupted", 3)
     end
 
     return packageEntries
 end
 
+---@param packageEntries table
+---@param api integer
+---@return table|nil
 local function getEntry(packageEntries, api)
     local entry = rawget(packageEntries, api)
     if entry == nil then
@@ -109,7 +167,7 @@ local function getEntry(packageEntries, api)
         or not isPositiveInteger(rawget(entry, "revision"))
         or type(rawget(entry, "implementation")) ~= "table"
     then
-        error("MoltenCodes Registry package state is corrupted", 3)
+        error("Registry: package state is corrupted", 3)
     end
 
     return entry
@@ -117,6 +175,22 @@ end
 
 -- Shared facade -----------------------------------------------------------
 
+---Metadata snapshot returned by `Registry:GetInfo`.
+---@class RegistryPackageInfo
+---@field ["package"] string Package identifier the snapshot describes.
+---@field api integer API generation the snapshot describes.
+---@field revision integer Currently selected implementation revision.
+---@field implementation table The live shared package table.
+
+---The Registry facade shared by every compatible embedded copy.
+---@class Registry
+---@field API integer Registry API generation this facade implements.
+---@field REVISION integer Registry implementation revision currently installed.
+---@field Register fun(self: Registry, packageName: string, api: integer, revision: integer): table|nil, integer|nil
+---@field Get fun(self: Registry, packageName: string, api: integer): table|nil, integer|nil
+---@field GetInfo fun(self: Registry, packageName: string, api: integer): RegistryPackageInfo|nil
+
+---@type Registry
 local Registry = facade
 
 -- Every compatible embedded Registry copy shares this facade. A newer
@@ -124,6 +198,12 @@ local Registry = facade
 -- acquired from older compatible copies continue to point at the upgraded
 -- Registry facade.
 if stateRevision < IMPLEMENTATION_REVISION then
+    ---Requests initialization rights for one package revision.
+    ---@param packageName string
+    ---@param api integer
+    ---@param revision integer
+    ---@return table|nil sharedPackageTable `nil` when an equal or newer revision already won.
+    ---@return integer|nil previousRevision `nil` for the first accepted revision.
     local function register(_, packageName, api, revision, ...)
         if select("#", ...) ~= 0 then
             error(
@@ -166,6 +246,11 @@ if stateRevision < IMPLEMENTATION_REVISION then
         return rawget(entry, "implementation"), currentRevision
     end
 
+    ---Returns the selected shared package table and its revision.
+    ---@param packageName string
+    ---@param api integer
+    ---@return table|nil implementation
+    ---@return integer|nil revision
     local function get(_, packageName, api)
         validatePackageName(packageName, "Get")
         validateApi(api, "Get")
@@ -183,6 +268,10 @@ if stateRevision < IMPLEMENTATION_REVISION then
         return rawget(entry, "implementation"), rawget(entry, "revision")
     end
 
+    ---Returns a freshly allocated metadata snapshot for one registration.
+    ---@param packageName string
+    ---@param api integer
+    ---@return RegistryPackageInfo|nil
     local function getInfo(_, packageName, api)
         validatePackageName(packageName, "GetInfo")
         validateApi(api, "GetInfo")
@@ -225,7 +314,7 @@ if
     or type(rawget(Registry, "Get")) ~= "function"
     or type(rawget(Registry, "GetInfo")) ~= "function"
 then
-    error("MoltenCodes Registry facade is corrupted or incompatible", 2)
+    error("Registry: facade is corrupted or incompatible", 0)
 end
 
 -- Public namespace --------------------------------------------------------
@@ -239,28 +328,65 @@ if namespace == nil then
     -- selene: allow(global_usage)
     rawset(_G, PUBLIC_NAMESPACE_KEY, namespace)
 elseif type(namespace) ~= "table" then
-    error("MoltenCodes global namespace is owned by an incompatible value", 2)
+    error("Registry: MoltenCodes global namespace is owned by an incompatible value", 0)
 end
 
-local publishedRegistry = rawget(namespace, "Registry")
-if publishedRegistry ~= nil and publishedRegistry ~= Registry then
-    local publishedApi = nil
-    if type(publishedRegistry) == "table" then
-        publishedApi = rawget(publishedRegistry, "API")
+-- Generation-exact publication. A consumer written against one Registry API
+-- generation reads `MoltenCodes.Registries[<generation>]` and is therefore never
+-- handed a different contract, whichever generation owns the alias.
+local generations = rawget(namespace, PUBLIC_GENERATIONS_KEY)
+if generations == nil then
+    generations = {}
+    rawset(namespace, PUBLIC_GENERATIONS_KEY, generations)
+elseif type(generations) ~= "table" then
+    error("Registry: MoltenCodes.Registries is owned by an incompatible value", 0)
+end
+
+local publishedGeneration = rawget(generations, API_GENERATION)
+if publishedGeneration ~= nil and publishedGeneration ~= Registry then
+    error("Registry: MoltenCodes.Registries[" .. API_GENERATION .. "] is not this facade", 0)
+end
+rawset(generations, API_GENERATION, Registry)
+
+-- `MoltenCodes.Registry` is an alias for the newest generation that has loaded.
+-- Claiming or yielding it is deliberately silent: a generation mismatch is a
+-- migration state, not a corruption, and must never abort either addon's load.
+local aliased = rawget(namespace, PUBLIC_ALIAS_KEY)
+if aliased == nil or aliased == Registry then
+    rawset(namespace, PUBLIC_ALIAS_KEY, Registry)
+else
+    local aliasedApi = nil
+    if type(aliased) == "table" then
+        aliasedApi = rawget(aliased, "API")
     end
 
-    if publishedApi ~= nil then
+    if not isPositiveInteger(aliasedApi) then
+        error("Registry: MoltenCodes.Registry is owned by an incompatible value", 0)
+    end
+
+    if aliasedApi == API_GENERATION then
+        -- Same generation, different table: the bootstrap state above proved
+        -- this facade is the shared one, so the alias cannot also be correct.
         error(
-            "MoltenCodes.Registry API generation conflict: loaded "
-                .. tostring(publishedApi)
-                .. ", requested "
-                .. tostring(API_GENERATION),
-            2
+            "Registry: MoltenCodes.Registry claims API "
+                .. API_GENERATION
+                .. " but is not the shared facade",
+            0
         )
     end
 
-    error("MoltenCodes.Registry is owned by an incompatible value", 2)
+    if aliasedApi < API_GENERATION then
+        -- Park the displaced generation under its own key. Generations older
+        -- than this one predate `MoltenCodes.Registries` and would otherwise
+        -- become unreachable the moment this copy claims the alias.
+        if rawget(generations, aliasedApi) == nil then
+            rawset(generations, aliasedApi, aliased)
+        end
+        rawset(namespace, PUBLIC_ALIAS_KEY, Registry)
+    end
+
+    -- A newer generation already owns the alias. This copy stays fully usable
+    -- through `MoltenCodes.Registries[API_GENERATION]` and returns normally.
 end
-rawset(namespace, "Registry", Registry)
 
 return Registry
