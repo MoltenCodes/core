@@ -174,3 +174,28 @@ class RepositoryValidatorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PythonFloorTests(unittest.TestCase):
+    """The declared Python floor is enforced rather than merely documented."""
+
+    def test_accepts_the_floor_itself(self):
+        self.assertEqual([], module.validate_python_version(module.PYTHON_FLOOR))
+
+    def test_rejects_an_interpreter_below_the_floor(self):
+        major, minor = module.PYTHON_FLOOR
+        errors = module.validate_python_version((major, minor - 1))
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("older than the supported floor", errors[0])
+        self.assertIn("pyproject.toml", errors[0])
+
+    def test_matches_requires_python_in_pyproject(self):
+        declared = module.REQUIRES_PYTHON_RE.search(
+            (module.ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        )
+
+        self.assertIsNotNone(declared)
+        self.assertEqual(
+            module.PYTHON_FLOOR, (int(declared.group(1)), int(declared.group(2)))
+        )

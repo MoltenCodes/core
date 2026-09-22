@@ -1,0 +1,19 @@
+# Project metadata for the repository's Python tooling.
+#
+# There is deliberately no build backend: nothing under `tooling/` is packaged
+# or published. This file exists so the supported Python floor is declared in
+# one machine-readable place, which `tooling/validation/validate_repository.py`
+# enforces and CI exercises with a matrix row.
+
+[project]
+name = "moltencodes-core-tooling"
+version = "0.1.0"
+description = "Repository tooling for the MoltenCodes World of Warcraft framework."
+readme = "tooling/README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.moltencodes]
+# Kept in step with `requires-python` above; the validator reads this value.
+python-floor = "3.10"

@@ -1,0 +1,132 @@
+# Selene standard-library definition for Busted and luassert.
+#
+# Busted injects its vocabulary into spec chunks as globals rather than as a
+# module a spec requires, so without this file every `describe`, `it` and
+# `assert.are.equal` in the suite reads as an undefined variable or as misuse of
+# Lua's own one-argument `assert`. Declaring them here is what lets Selene lint
+# test code with the same rules as runtime code instead of being switched off
+# for it.
+#
+# It builds on the bundled `lua51` library through `base` rather than through
+# Selene's `lua51+busted` chaining, because a chained std can only add entries:
+# the `error` correction below has to replace the base definition.
+#
+# The `*.*` wildcards mark the luassert entry points, whose shape is a chain of
+# arbitrary matcher names (`assert.are.equal`, `assert.is_not_nil`,
+# `assert.has_error`) that no fixed signature can describe.
+---
+base: lua51
+
+globals:
+  # Lua 5.1's `error` accepts any value as the error object, not only a string.
+  # The bundled `lua51` standard library describes the first argument as a
+  # string, so specs that prove the framework preserves a `nil` or `false` error
+  # object read as misuse. This is a correction to the library description, not
+  # a suppressed lint: the runtime `selene.toml` keeps the stricter default.
+  error:
+    args:
+      - type: any
+      - type: number
+        required: false
+
+  # Suite structure.
+  describe:
+    args:
+      - type: string
+      - type: function
+  context:
+    args:
+      - type: string
+      - type: function
+  insulate:
+    args:
+      - type: string
+      - type: function
+  expose:
+    args:
+      - type: string
+      - type: function
+  randomize:
+    args:
+      - type: bool
+        required: false
+
+  # Test cases.
+  it:
+    args:
+      - type: string
+      - type: function
+        required: false
+  spec:
+    args:
+      - type: string
+      - type: function
+        required: false
+  test:
+    args:
+      - type: string
+      - type: function
+        required: false
+  pending:
+    args:
+      - type: string
+        required: false
+      - type: function
+        required: false
+
+  # Fixtures.
+  before_each:
+    args:
+      - type: function
+  after_each:
+    args:
+      - type: function
+  setup:
+    args:
+      - type: function
+  teardown:
+    args:
+      - type: function
+  lazy_setup:
+    args:
+      - type: function
+  lazy_teardown:
+    args:
+      - type: function
+  strict_setup:
+    args:
+      - type: function
+  strict_teardown:
+    args:
+      - type: function
+  finally:
+    args:
+      - type: function
+  async:
+    args:
+      - type: function
+        required: false
+  done:
+    any: true
+
+  # luassert. Inside a spec chunk `assert` is luassert's callable matcher table
+  # as well as Lua's own `assert(value, message)`, so the field wildcard is added
+  # on top of the base definition rather than replacing it.
+  assert.*:
+    any: true
+  spy:
+    any: true
+  spy.*:
+    any: true
+  stub:
+    any: true
+  stub.*:
+    any: true
+  mock:
+    any: true
+  mock.*:
+    any: true
+  match:
+    any: true
+  match.*:
+    any: true

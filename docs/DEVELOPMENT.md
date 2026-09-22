@@ -71,9 +71,10 @@ brew install stylua selene lua-language-server
 ```
 
 `lua-language-server` is used both by editors and by the `--check` gate below;
-it is not needed to run the Lua test suite. Selene can also be installed with
-`cargo install selene --version 0.31.0 --locked --no-default-features`, which is
-what CI does.
+it is not needed to run the Lua test suite. CI installs the published
+`selene-light` and `lua-language-server` binaries and verifies each download
+against a SHA-256 recorded in the workflow, so the versions here and there stay
+the same without CI rebuilding Selene from source on every run.
 
 ## Troubleshooting
 
@@ -109,23 +110,30 @@ Run repository-tooling unit tests:
 python3 -m unittest discover -s tooling/tests -p "test_*.py"
 ```
 
-Run every package's Lua tests:
+Run every package's Lua tests and the example addon's specs:
 
 ```bash
 python3 -m tooling.test.run
 ```
 
-Run one package's Lua tests:
+Run one target's Lua tests:
 
 ```bash
 python3 -m tooling.test.run registry
+python3 -m tooling.test.run examples
 ```
 
-Lint all runtime Lua recursively:
+Lint all Lua recursively, runtime and test alike:
 
 ```bash
 python3 -m tooling.lint
 ```
+
+Test code is judged against the Busted standard library in
+[`../busted.yml`](../busted.yml), selected by
+[`../selene-tests.toml`](../selene-tests.toml); runtime Lua keeps the stricter
+[`../selene.toml`](../selene.toml). Both scopes run, and both must report zero
+errors and zero warnings.
 
 Check Lua formatting:
 
@@ -155,6 +163,20 @@ lua-language-server --check examples --checklevel=Warning
 parent configuration, so each package source directory and `examples/` owns a
 `.luarc.json`. Repository validation keeps those files in step with the
 manifests; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+Check the workflow file after editing it:
+
+```bash
+actionlint
+```
+
+## Supported Python
+
+Repository tooling supports Python 3.10 and newer, declared once as
+`requires-python` in [`../pyproject.toml`](../pyproject.toml). Repository
+validation refuses to run on anything older and checks that the declaration and
+the validator's own constant agree. CI runs the tooling unit tests on both 3.10
+and 3.13, so the floor is exercised rather than asserted.
 
 Build a distributable bundle:
 

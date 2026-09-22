@@ -1,0 +1,12 @@
+# Selene configuration for test code.
+#
+# Test code is linted with the same rules as runtime code; the only difference
+# is the standard library, because Busted injects its vocabulary as globals.
+# `tooling/lint.py` selects this file with `--config` for the test paths and the
+# root `selene.toml` for runtime sources.
+std = "busted"
+
+exclude = [
+    "dist/**",
+    "build/**"
+]

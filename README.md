@@ -53,13 +53,16 @@ python3 -m tooling.validation.validate_repository
 python3 -m unittest discover -s tooling/tests -p "test_*.py"
 ```
 
-Lua package tests require the Lua/Busted toolchain documented in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md):
+Lua tests require the Lua/Busted toolchain documented in
+[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md). One command runs every package
+suite and the example addon's specs:
 
 ```bash
 python3 -m tooling.test.run
 ```
 
-Runtime Lua linting is package-aware and recursive:
+Lua linting is package-aware and recursive, and covers test code as well as
+runtime code:
 
 ```bash
 python3 -m tooling.lint
@@ -72,6 +75,7 @@ python3 -m tooling.lint
 ├── .github/                 # Continuous integration
 ├── .pkgmeta                 # Addon-site packager metadata
 ├── .vscode/                 # Editor integration only
+├── busted.yml               # Selene standard library for Busted test code
 ├── docs/                    # Repository-wide documentation
 │   └── EMBEDDING.md         # How an addon embeds the framework
 ├── examples/                # A complete example addon, loaded by its own spec
@@ -85,6 +89,10 @@ python3 -m tooling.lint
 │   ├── timerKit/
 │   ├── schedulerKit/
 │   └── poolKit/
+├── pyproject.toml           # Python tooling metadata and the supported floor
+├── selene.toml              # Selene configuration for runtime Lua
+├── selene-tests.toml        # Selene configuration for test Lua
+├── tests/support/           # Shared test fixture: the fake WoW client
 └── tooling/                 # Repository tooling; never a runtime dependency
 ```
 

@@ -113,15 +113,27 @@ Everything an addon author needs in order to actually embed a package.
 
 Repository mechanics that keep the above honest as the framework grows.
 
-- [ ] Pin every GitHub Action to a commit SHA rather than a moving tag.
-- [ ] Run Selene over test code too, using a Busted std definition.
-- [ ] Add a Python version floor row to the CI matrix so the documented minimum
-      is actually exercised.
-- [ ] Cache the Selene build in CI instead of recompiling it on every run.
-- [ ] Extract the repeated WoW-API stubs into one shared test-support fixture,
-      including the inline stub in `examples/tests/`.
-- [ ] Add a `Registry:Bootstrap` helper so packages stop copying the same
-      bootstrap preamble.
+- [x] Pin every GitHub Action to a commit SHA rather than a moving tag, with the
+      release the SHA was taken from in a trailing comment. The StyLua action no
+      longer receives `GITHUB_TOKEN`; it only needed one to raise the anonymous
+      API rate limit.
+- [x] Run Selene over test code too, using a Busted std definition. `busted.yml`
+      is selected by `selene-tests.toml`; `tooling/lint.py` lints
+      `packages/*/tests`, `examples/tests` and the shared fixture under it, and
+      reports zero errors and zero warnings.
+- [x] Add a Python version floor row to the CI matrix so the documented minimum
+      is actually exercised. `pyproject.toml` declares `requires-python`,
+      repository validation enforces it, and CI runs the tooling tests on 3.10
+      and 3.13.
+- [x] Stop recompiling Selene in CI. It now installs the published
+      `selene-light` binary and verifies a recorded SHA-256, which removes the
+      build rather than caching it.
+- [x] Extract the repeated WoW-API stubs into one shared test-support fixture,
+      including the inline stub in `examples/tests/`. `tests/support/FrameworkTestEnv.lua`
+      is the one fake client; each package keeps a thin `tests/support/<Kit>TestEnv.lua`.
+- [x] Add a `Registry:Bootstrap` helper so packages stop copying the same
+      bootstrap preamble. All seven Kits use it; Registry does not, because it
+      publishes the facade the helper lives on.
 - [ ] Write `packages/moduleKit/docs/INTERNALS.md` describing the dependency
       graph and resolution order.
 
@@ -191,4 +203,5 @@ duplicating those specifications.
 
 ---
 
-Last roadmap baseline update: 2026-09-22 (phase 2 complete).
+Last roadmap baseline update: 2026-09-22 (phase 3 engineering-system items
+complete except `packages/moduleKit/docs/INTERNALS.md`).

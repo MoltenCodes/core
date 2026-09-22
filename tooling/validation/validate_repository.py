@@ -52,6 +52,14 @@ PACKAGE_REQUIRED_FILES = (
     Path("package.manifest.json"),
 )
 
+#: Oldest Python the repository tooling supports. Keep this in step with
+#: `requires-python` in `pyproject.toml`; `validate_python_version` compares the
+#: two so the declaration and the check can never drift apart.
+PYTHON_FLOOR = (3, 10)
+
+#: `requires-python` in `pyproject.toml`, which the floor above must match.
+REQUIRES_PYTHON_RE = re.compile(r'^\s*requires-python\s*=\s*"\s*>=\s*([0-9]+)\.([0-9]+)', re.M)
+
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 IGNORED_DIRECTORY_NAMES = {
     ".git",
@@ -68,6 +76,51 @@ IGNORED_DIRECTORY_NAMES = {
     "reports",
     "venv",
 }
+
+
+def format_version(version: tuple[int, int]) -> str:
+    """Render a (major, minor) version the way a person writes it."""
+    return f"{version[0]}.{version[1]}"
+
+
+def validate_python_version(running: tuple[int, int] | None = None) -> list[str]:
+    """Refuse to certify the repository from a Python older than the declared floor.
+
+    The tooling is written against `PYTHON_FLOOR`, so an older interpreter can
+    fail later with a syntax error or a missing standard-library method rather
+    than with something a reader can act on. Failing here says which version is
+    running, which one is required, and where that requirement is written down.
+    """
+    errors: list[str] = []
+
+    if running is None:
+        running = sys.version_info[:2]
+
+    pyproject = ROOT / "pyproject.toml"
+    if not pyproject.is_file():
+        errors.append(error(Path("pyproject.toml"), "missing; it declares requires-python"))
+    else:
+        declared = REQUIRES_PYTHON_RE.search(pyproject.read_text(encoding="utf-8"))
+        if declared is None:
+            errors.append(
+                error(Path("pyproject.toml"), 'no `requires-python = ">=X.Y"` declaration')
+            )
+        elif (int(declared.group(1)), int(declared.group(2))) != PYTHON_FLOOR:
+            errors.append(
+                error(
+                    Path("pyproject.toml"),
+                    f"requires-python is >={declared.group(1)}.{declared.group(2)} but "
+                    f"tooling declares a {format_version(PYTHON_FLOOR)} floor",
+                )
+            )
+
+    if running < PYTHON_FLOOR:
+        errors.append(
+            f"python {format_version(running)} is older than the supported floor "
+            f"{format_version(PYTHON_FLOOR)}; see requires-python in pyproject.toml"
+        )
+
+    return errors
 
 
 def validate_required_root_files() -> list[str]:
@@ -214,7 +267,9 @@ def validate_markdown_links() -> list[str]:
 
 def validate_repository() -> tuple[dict[str, dict[str, object]], list[str]]:
     """Run all repository checks and return loaded package manifests plus errors."""
-    manifests, errors = load_manifests()
+    errors = validate_python_version()
+    manifests, manifest_errors = load_manifests()
+    errors.extend(manifest_errors)
     errors.extend(validate_graph(manifests))
     errors.extend(validate_required_root_files())
     errors.extend(validate_language_server_configs(manifests))

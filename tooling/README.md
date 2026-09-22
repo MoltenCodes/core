@@ -34,6 +34,18 @@ Run tooling unit tests:
 python3 -m unittest discover -s tooling/tests -p "test_*.py"
 ```
 
+`tooling/test/` (singular) is the Busted orchestration package behind
+`python3 -m tooling.test.run`; `tooling/tests/` (plural) is this suite's own unit
+tests. The names differ by one letter, so `tooling/tests/__init__.py` says which
+is which for anyone who lands in the wrong one.
+
+## Supported Python
+
+`pyproject.toml` declares the floor as `requires-python = ">=3.10"`.
+`python3 -m tooling.validation.validate_repository` refuses to run on anything
+older and checks that the declaration and the tooling's own constant agree. CI
+runs the tooling unit tests on both the floor and the current release.
+
 Build a distributable bundle:
 
 ```bash

@@ -26,22 +26,37 @@ class PackageFixture(unittest.TestCase):
         self.packages = self.root / "packages"
         self.packages.mkdir()
 
+        self.shared_support = self.root / "tests" / "support"
+        self.shared_support.mkdir(parents=True)
+        self.examples_tests = self.root / "examples" / "tests"
+
         self.original_runner_root = module.ROOT
         self.original_runner_packages = module.PACKAGES
+        self.original_shared_support = module.SHARED_SUPPORT
+        self.original_examples_tests = module.EXAMPLES_TESTS
         self.original_validator_root = validate_manifests.ROOT
         self.original_validator_packages = validate_manifests.PACKAGES
 
         module.ROOT = self.root
         module.PACKAGES = self.packages
+        module.SHARED_SUPPORT = self.shared_support
+        module.EXAMPLES_TESTS = self.examples_tests
         validate_manifests.ROOT = self.root
         validate_manifests.PACKAGES = self.packages
 
     def tearDown(self):
         module.ROOT = self.original_runner_root
         module.PACKAGES = self.original_runner_packages
+        module.SHARED_SUPPORT = self.original_shared_support
+        module.EXAMPLES_TESTS = self.original_examples_tests
         validate_manifests.ROOT = self.original_validator_root
         validate_manifests.PACKAGES = self.original_validator_packages
         self.tempdir.cleanup()
+
+    def create_examples(self) -> None:
+        """Create the example-addon spec directory the runner also targets."""
+        self.examples_tests.mkdir(parents=True, exist_ok=True)
+        (self.examples_tests / "Example_spec.lua").write_text("", encoding="utf-8")
 
     def create_package(self, name: str, *, dependencies=None) -> None:
         package = self.packages / name
@@ -73,7 +88,17 @@ class TestRunnerTests(PackageFixture):
         selected, errors = module.select_test_packages([], manifests)
 
         self.assertEqual([], errors)
-        self.assertEqual(["alphaKit", "zetaKit"], selected)
+        self.assertEqual(["alphaKit", "zetaKit", "examples"], selected)
+
+    def test_accepts_examples_as_an_explicit_target(self):
+        self.create_package("registry")
+        manifests, errors = module.load_valid_manifests()
+        self.assertEqual([], errors)
+
+        selected, errors = module.select_test_packages(["examples"], manifests)
+
+        self.assertEqual([], errors)
+        self.assertEqual(["examples"], selected)
 
     def test_rejects_unknown_requested_package(self):
         self.create_package("registry")
@@ -192,10 +217,20 @@ class BustedSummaryParsingTests(unittest.TestCase):
 
 
 class AggregateRunTests(PackageFixture):
-    def run_two_packages(self, first_process, second_process):
-        """Run two packages against fake Busted processes, capturing what is printed."""
+    def run_two_packages(self, first_process, second_process, examples_process=None):
+        """Run two packages against fake Busted processes, capturing what is printed.
+
+        The examples target always runs too, so a third fake process stands in
+        for it unless a test wants to describe its result.
+        """
         self.create_package("alphaKit")
         self.create_package("zetaKit")
+        self.create_examples()
+
+        if examples_process is None:
+            examples_process = fake_process(
+                0, "0 successes / 0 failures / 0 errors / 0 pending"
+            )
 
         stdout = io.StringIO()
         with (
@@ -203,7 +238,7 @@ class AggregateRunTests(PackageFixture):
             mock.patch.object(
                 module.subprocess,
                 "run",
-                side_effect=[first_process, second_process],
+                side_effect=[first_process, second_process, examples_process],
             ) as run_process,
             mock.patch("sys.stdout", stdout),
             mock.patch("sys.stderr", io.StringIO()),
@@ -220,7 +255,7 @@ class AggregateRunTests(PackageFixture):
         )
 
         self.assertEqual(1, result)
-        self.assertEqual(2, run_process.call_count)
+        self.assertEqual(3, run_process.call_count)
         self.assertEqual(
             ["/fake/busted", os.path.join("packages", "alphaKit", "tests")],
             run_process.call_args_list[0].args[0],
@@ -228,6 +263,10 @@ class AggregateRunTests(PackageFixture):
         self.assertEqual(
             ["/fake/busted", os.path.join("packages", "zetaKit", "tests")],
             run_process.call_args_list[1].args[0],
+        )
+        self.assertEqual(
+            ["/fake/busted", os.path.join("examples", "tests")],
+            run_process.call_args_list[2].args[0],
         )
 
     def test_reports_zero_when_every_package_passes(self):
@@ -264,6 +303,44 @@ class AggregateRunTests(PackageFixture):
         self.assertNotIn(zeta_support, alpha_path)
         self.assertIn(zeta_support, zeta_path)
         self.assertNotIn(alpha_support, zeta_path)
+
+    def test_puts_the_shared_fixture_on_every_target_path(self):
+        _, run_process = self.run_two_packages(
+            fake_process(0, "1 success / 0 failures / 0 errors / 0 pending"),
+            fake_process(0, "1 success / 0 failures / 0 errors / 0 pending"),
+        )
+
+        shared = str(self.shared_support / "?.lua")
+        for call in run_process.call_args_list:
+            self.assertIn(shared, call.kwargs["env"]["LUA_PATH"])
+
+    def test_gives_the_examples_target_every_package_source(self):
+        _, run_process = self.run_two_packages(
+            fake_process(0, "1 success / 0 failures / 0 errors / 0 pending"),
+            fake_process(0, "1 success / 0 failures / 0 errors / 0 pending"),
+        )
+
+        examples_path = run_process.call_args_list[2].kwargs["env"]["LUA_PATH"]
+
+        self.assertIn(str(self.packages / "alphaKit" / "src" / "?.lua"), examples_path)
+        self.assertIn(str(self.packages / "zetaKit" / "src" / "?.lua"), examples_path)
+        # The example addon is not a package, so no package-owned support
+        # directory belongs on its path.
+        self.assertNotIn(
+            str(self.packages / "alphaKit" / "tests" / "support" / "?.lua"), examples_path
+        )
+
+    def test_counts_the_examples_target_in_the_totals(self):
+        self.run_two_packages(
+            fake_process(0, "3 successes / 0 failures / 0 errors / 0 pending"),
+            fake_process(0, "5 successes / 0 failures / 0 errors / 0 pending"),
+            examples_process=fake_process(
+                0, "4 successes / 0 failures / 0 errors / 0 pending"
+            ),
+        )
+
+        self.assertIn("examples", self.printed)
+        self.assertRegex(self.printed, r"total\s+12\s+0\s+0\s+0")
 
     def test_falls_back_to_exit_status_when_the_summary_cannot_be_parsed(self):
         result, _ = self.run_two_packages(

@@ -37,10 +37,14 @@ ignore:
   - .gitignore
   - .luarc.json
   - .vscode
+  - busted.yml
   - docs
   - examples
   - meta
+  - pyproject.toml
   - selene.toml
+  - selene-tests.toml
+  - tests
   - stylua.toml
   - tooling
   - packages/*/docs

@@ -20,7 +20,19 @@
       "problemMatcher": []
     },
     {
-      "label": "Lint runtime Lua",
+      "label": "Run example addon tests",
+      "type": "shell",
+      "command": "python3 -m tooling.test.run examples",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run tooling unit tests",
+      "type": "shell",
+      "command": "python3 -m unittest discover -s tooling/tests -p \"test_*.py\"",
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint Lua (runtime and tests)",
       "type": "shell",
       "command": "python3 -m tooling.lint",
       "problemMatcher": []

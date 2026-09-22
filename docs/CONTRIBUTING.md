@@ -10,14 +10,16 @@ Before submitting a change:
 
 1. Run `python3 -m tooling.validation.validate_repository`.
 2. Run `python3 -m unittest discover -s tooling/tests -p "test_*.py"` when tooling changed.
-3. Run `python3 -m tooling.test.run`.
-4. Run `python3 -m tooling.lint`.
+3. Run `python3 -m tooling.test.run`, which covers every package and the example addon.
+4. Run `python3 -m tooling.lint`, which covers runtime and test Lua. Both scopes
+   must report zero errors and zero warnings.
 5. Run `stylua --check .`.
 6. Run `lua-language-server --check packages/<name>/src --checklevel=Warning` for every
    package you touched, and `lua-language-server --check examples --checklevel=Warning`
    when the public surface changed.
-7. Update package documentation when public behavior changes.
-8. Update the owning package changelog for user-visible changes.
+7. Run `actionlint` when you changed `.github/workflows/`.
+8. Update package documentation when public behavior changes.
+9. Update the owning package changelog for user-visible changes.
 
 ## LuaCATS annotations
 
