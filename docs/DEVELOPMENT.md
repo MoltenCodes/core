@@ -70,8 +70,8 @@ These are standalone binaries and come from Homebrew:
 brew install stylua selene lua-language-server
 ```
 
-`lua-language-server` is editor tooling only; it is not needed to run the
-repository commands. Selene can also be installed with
+`lua-language-server` is used both by editors and by the `--check` gate below;
+it is not needed to run the Lua test suite. Selene can also be installed with
 `cargo install selene --version 0.31.0 --locked --no-default-features`, which is
 what CI does.
 
@@ -138,6 +138,31 @@ Format Lua:
 ```bash
 stylua .
 ```
+
+Type-check one package's runtime Lua:
+
+```bash
+lua-language-server --check packages/registry/src --checklevel=Warning
+```
+
+and the example addon, which is checked against the packages' own annotations:
+
+```bash
+lua-language-server --check examples --checklevel=Warning
+```
+
+`--check` treats the directory it is given as its workspace root and ignores
+parent configuration, so each package source directory and `examples/` owns a
+`.luarc.json`. Repository validation keeps those files in step with the
+manifests; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+Build a distributable bundle:
+
+```bash
+python3 -m tooling.package.build --all --out dist
+```
+
+See [`RELEASES.md`](RELEASES.md) for the artifact layout and checksums.
 
 ## Why commands go through tooling
 

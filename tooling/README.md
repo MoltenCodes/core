@@ -34,4 +34,11 @@ Run tooling unit tests:
 python3 -m unittest discover -s tooling/tests -p "test_*.py"
 ```
 
+Build a distributable bundle:
+
+```bash
+python3 -m tooling.package.build --all --out dist
+python3 -m tooling.package.build --package signalKit --out dist --zip
+```
+
 See [`../docs/TOOLING.md`](../docs/TOOLING.md) for architecture and [`../docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md) for local setup.

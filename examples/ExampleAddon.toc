@@ -1,0 +1,17 @@
+## Interface: 120100, 50504, 20506, 11509
+## Title: Example Addon
+## Notes: Minimal addon showing how to embed the MoltenCodes framework.
+## Author: MoltenCodes
+## Version: 1.0.0
+## SavedVariables: ExampleAddonDB
+## IconTexture: Interface\Icons\INV_Misc_Gear_01
+## X-Category: Development Tools
+## X-License: MIT
+## X-Embeds: MoltenCodes-Registry, MoltenCodes-SignalKit, MoltenCodes-EventKit, MoltenCodes-LifecycleKit, MoltenCodes-ModuleKit, MoltenCodes-TimerKit
+
+# Embedded framework packages. This file must come first: every package below
+# resolves its dependencies at load time and raises if one is missing.
+embeds.xml
+
+# Addon code.
+Core.lua

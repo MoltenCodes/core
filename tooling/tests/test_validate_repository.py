@@ -28,6 +28,21 @@ class RepositoryValidatorTests(unittest.TestCase):
         validate_manifests.PACKAGES = self.original_manifest_packages
         self.tempdir.cleanup()
 
+    def write_required_root_files(self) -> None:
+        """Create every file `REQUIRED_ROOT_FILES` names, with placeholder content."""
+        for relative in module.REQUIRED_ROOT_FILES:
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("placeholder\n", encoding="utf-8")
+
+    def write_language_server_config(self, name: str, library: list[str]) -> Path:
+        path = self.packages / name / "src" / module.LANGUAGE_SERVER_CONFIG_NAME
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"workspace": {"library": library}}), encoding="utf-8"
+        )
+        return path
+
     def create_package(self, name: str, *, api: bool = True) -> Path:
         package = self.packages / name
         (package / "src").mkdir(parents=True)
@@ -43,6 +58,7 @@ class RepositoryValidatorTests(unittest.TestCase):
             "displayName": name.title(),
             "description": f"{name} package",
             "version": "1.0.0",
+            "license": "MIT",
             "dependencies": {},
         }
         if api:
@@ -54,6 +70,63 @@ class RepositoryValidatorTests(unittest.TestCase):
             json.dumps(manifest), encoding="utf-8"
         )
         return package
+
+    def test_required_root_files_are_accepted_when_present(self):
+        self.write_required_root_files()
+
+        self.assertEqual([], module.validate_required_root_files())
+
+    def test_missing_required_root_file_is_reported(self):
+        self.write_required_root_files()
+        (self.root / "docs" / "EMBEDDING.md").unlink()
+
+        errors = module.validate_required_root_files()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("docs/EMBEDDING.md", errors[0])
+
+    def test_required_root_files_cover_the_consumer_surface(self):
+        for relative in (
+            Path(".pkgmeta"),
+            Path("docs/EMBEDDING.md"),
+            Path("examples/Core.lua"),
+            Path("examples/ExampleAddon.toc"),
+            Path("examples/embeds.xml"),
+        ):
+            self.assertIn(relative, module.REQUIRED_ROOT_FILES)
+
+    def test_language_server_config_must_list_meta_and_dependencies(self):
+        manifests = {
+            "registry": {"dependencies": {}},
+            "signalKit": {"dependencies": {"registry": {"api": 2}}},
+        }
+        self.write_language_server_config("registry", [module.SHARED_META_LIBRARY])
+        self.write_language_server_config(
+            "signalKit", [module.SHARED_META_LIBRARY, "../../registry/src"]
+        )
+
+        self.assertEqual([], module.validate_language_server_configs(manifests))
+
+    def test_language_server_config_missing_a_dependency_is_reported(self):
+        manifests = {
+            "registry": {"dependencies": {}},
+            "signalKit": {"dependencies": {"registry": {"api": 2}}},
+        }
+        self.write_language_server_config("registry", [module.SHARED_META_LIBRARY])
+        self.write_language_server_config("signalKit", [module.SHARED_META_LIBRARY])
+
+        errors = module.validate_language_server_configs(manifests)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("../../registry/src", errors[0])
+
+    def test_missing_language_server_config_is_reported(self):
+        manifests = {"registry": {"dependencies": {}}}
+
+        errors = module.validate_language_server_configs(manifests)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("lua-language-server configuration is missing", errors[0])
 
     def test_package_layout_accepts_complete_package(self):
         self.create_package("registry")

@@ -95,13 +95,19 @@ regression test.
 
 Everything an addon author needs in order to actually embed a package.
 
-- [ ] Write `docs/EMBEDDING.md` covering `.toc` entries, required load order,
+- [x] Write `docs/EMBEDDING.md` covering `.toc` entries, required load order,
       supported Interface numbers, coexistence with LibStub-based libraries,
       taint rules, and the combat-log (CLEU) constraints.
-- [ ] Add `.pkgmeta` and the packaging metadata the standard addon packagers
+- [x] Ship a complete example addon under `examples/`, loaded by its own spec and
+      type-checked on every run so the documented instructions cannot rot.
+- [x] Add `.pkgmeta` and the packaging metadata the standard addon packagers
       expect.
-- [ ] Give every public surface LuaCATS annotations so editors and the language
-      server describe the API correctly.
+- [x] Make `docs/RELEASES.md` describe tooling that exists: `tooling/package/build.py`
+      assembles a checksummed, reproducible bundle for one Kit or the whole
+      framework.
+- [x] Give every public surface LuaCATS annotations so editors and the language
+      server describe the API correctly, in one `---@` style, with `meta/wow/`
+      definitions for the client API the Kits touch.
 
 ### Phase 3 — Engineering system
 
@@ -112,7 +118,8 @@ Repository mechanics that keep the above honest as the framework grows.
 - [ ] Add a Python version floor row to the CI matrix so the documented minimum
       is actually exercised.
 - [ ] Cache the Selene build in CI instead of recompiling it on every run.
-- [ ] Extract the repeated WoW-API stubs into one shared test-support fixture.
+- [ ] Extract the repeated WoW-API stubs into one shared test-support fixture,
+      including the inline stub in `examples/tests/`.
 - [ ] Add a `Registry:Bootstrap` helper so packages stop copying the same
       bootstrap preamble.
 - [ ] Write `packages/moduleKit/docs/INTERNALS.md` describing the dependency
@@ -184,4 +191,4 @@ duplicating those specifications.
 
 ---
 
-Last roadmap baseline update: 2026-09-22.
+Last roadmap baseline update: 2026-09-22 (phase 2 complete).

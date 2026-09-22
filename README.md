@@ -17,6 +17,33 @@ This repository is a monorepo. Every publishable runtime package lives under `pa
 | [`schedulerKit`](packages/schedulerKit/) | Implemented | Cooperative frame-budgeted scheduling with priorities, cancellation scopes, and TimerKit delays. |
 | [`poolKit`](packages/poolKit/) | Implemented | Allocation-conscious bounded object pooling with deterministic ownership and cleanup. |
 
+## Using the framework in an addon
+
+The framework is embedded, not installed: you copy the Kits you need into your
+addon and list them in your `.toc`. There is nothing for your users to download
+separately, and several addons shipping different copies of the same Kit
+reconcile to one shared instance at runtime.
+
+- [`docs/EMBEDDING.md`](docs/EMBEDDING.md) is the guide: directory layout, load
+  order, supported Interface numbers, coexistence with LibStub, taint rules, the
+  combat-log constraint, `/reload` semantics, performance guidance, and the exact
+  error message each load-order mistake produces.
+- [`examples/`](examples/) is a complete, runnable example addon — `.toc`,
+  `embeds.xml` and `Core.lua` — that a spec loads and the language server
+  type-checks on every run, so it cannot drift from the framework.
+
+Build the artifact you embed:
+
+```bash
+python3 -m tooling.package.build --all --out dist
+```
+
+This writes `dist/MoltenCodes/` in the layout an addon embeds, a `manifest.json`
+recording every package's version, API generation, revision and the load order,
+and SHA-256 checksums in `dist/CHECKSUMS.txt`. Published artifacts come from the
+same layout through [`.pkgmeta`](.pkgmeta); see
+[`docs/RELEASES.md`](docs/RELEASES.md).
+
 ## Quick start
 
 Repository validation and Python tooling tests require Python 3.10 or newer:
@@ -43,9 +70,12 @@ python3 -m tooling.lint
 ```text
 .
 ├── .github/                 # Continuous integration
+├── .pkgmeta                 # Addon-site packager metadata
 ├── .vscode/                 # Editor integration only
 ├── docs/                    # Repository-wide documentation
-├── meta/                    # Editor-only Lua metadata
+│   └── EMBEDDING.md         # How an addon embeds the framework
+├── examples/                # A complete example addon, loaded by its own spec
+├── meta/                    # Editor-only Lua metadata, including the WoW API
 ├── packages/                # Independently publishable runtime packages
 │   ├── registry/
 │   ├── signalKit/
@@ -62,12 +92,14 @@ python3 -m tooling.lint
 
 Start with [`docs/README.md`](docs/README.md) for the documentation map.
 
+- [`docs/EMBEDDING.md`](docs/EMBEDDING.md) — how an addon embeds and loads the framework.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — package boundaries and runtime architecture.
 - [`docs/DESIGN_CONSTITUTION.md`](docs/DESIGN_CONSTITUTION.md) — non-negotiable design principles.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — local setup and canonical development commands.
 - [`docs/TESTING.md`](docs/TESTING.md) — testing layers, conventions, and orchestration.
 - [`docs/PACKAGE_MANIFEST.md`](docs/PACKAGE_MANIFEST.md) — package metadata and dependency contracts.
-- [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — contribution workflow.
+- [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — contribution workflow and annotation rules.
+- [`docs/RELEASES.md`](docs/RELEASES.md) — tags, build command, and release artifacts.
 
 ## Principles
 

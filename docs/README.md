@@ -2,6 +2,15 @@
 
 This directory is the entry point for repository-wide documentation.
 
+## Using the framework
+
+- [`EMBEDDING.md`](EMBEDDING.md) is the addon author's guide: `.toc` entries, load
+  order, supported Interface numbers, LibStub coexistence, taint, the combat log,
+  `/reload` semantics, performance guidance, and the error messages a wrong load
+  order produces.
+- [`../examples/`](../examples/) contains a complete example addon that is loaded
+  and type-checked on every test run.
+
 ## Architecture and contracts
 
 - [`DESIGN_CONSTITUTION.md`](DESIGN_CONSTITUTION.md) defines the principles that package and tooling changes must preserve.
@@ -13,8 +22,8 @@ This directory is the entry point for repository-wide documentation.
 - [`DEVELOPMENT.md`](DEVELOPMENT.md) contains local prerequisites and canonical repository commands.
 - [`TESTING.md`](TESTING.md) describes test layers, Busted conventions, and package-aware test orchestration.
 - [`TOOLING.md`](TOOLING.md) explains repository tooling and its separation from runtime code.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) defines contribution expectations.
-- [`RELEASES.md`](RELEASES.md) describes independent package versioning and release conventions.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) defines contribution expectations, including the LuaCATS annotation rules.
+- [`RELEASES.md`](RELEASES.md) describes independent package versioning, the build command, and release artifacts.
 
 ## Package documentation
 

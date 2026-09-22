@@ -1,0 +1,19 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <!--
+        Embedded MoltenCodes packages, in dependency order.
+
+        Registry has no dependencies and must load first; everything else
+        resolves its dependencies through `MoltenCodes.Registry` while this file
+        is being read, so a package listed above its dependency raises at load.
+
+        In a real addon these files live under Libs/MoltenCodes/ and this file
+        lives beside them. Keep only the packages the addon actually uses, plus
+        everything they depend on.
+    -->
+    <Script file="Libs\MoltenCodes\registry\Registry.lua" />
+    <Script file="Libs\MoltenCodes\signalKit\SignalKit.lua" />
+    <Script file="Libs\MoltenCodes\eventKit\EventKit.lua" />
+    <Script file="Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua" />
+    <Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />
+    <Script file="Libs\MoltenCodes\timerKit\TimerKit.lua" />
+</Ui>

@@ -18,6 +18,7 @@ from tooling.validation.validate_manifests import (
 
 
 REQUIRED_ROOT_FILES = (
+    Path(".pkgmeta"),
     Path("README.md"),
     Path("LICENSE"),
     Path("docs/README.md"),
@@ -25,11 +26,25 @@ REQUIRED_ROOT_FILES = (
     Path("docs/CONTRIBUTING.md"),
     Path("docs/DESIGN_CONSTITUTION.md"),
     Path("docs/DEVELOPMENT.md"),
+    Path("docs/EMBEDDING.md"),
     Path("docs/PACKAGE_MANIFEST.md"),
     Path("docs/RELEASES.md"),
     Path("docs/TESTING.md"),
     Path("docs/TOOLING.md"),
+    Path("examples/Core.lua"),
+    Path("examples/ExampleAddon.toc"),
+    Path("examples/embeds.xml"),
 )
+
+#: Name of the lua-language-server configuration each package source directory
+#: owns. `lua-language-server --check <dir>` treats `<dir>` as its workspace
+#: root and does not look in parent directories, so the configuration that makes
+#: the shared `meta/` definitions and the package's dependencies resolvable has
+#: to live next to the sources it applies to.
+LANGUAGE_SERVER_CONFIG_NAME = ".luarc.json"
+
+#: Path from a package source directory to the shared editor metadata.
+SHARED_META_LIBRARY = "../../../meta"
 
 PACKAGE_REQUIRED_FILES = (
     Path("README.md"),
@@ -62,6 +77,59 @@ def validate_required_root_files() -> list[str]:
         path = ROOT / relative
         if not path.is_file():
             errors.append(error(path, "required repository file is missing"))
+    return errors
+
+
+def _dependency_closure(package_name: str, manifests: dict[str, dict[str, object]]) -> list[str]:
+    """Return the transitive runtime dependencies of one package, dependency-first."""
+    resolved: list[str] = []
+    seen: set[str] = set()
+
+    def visit(name: str) -> None:
+        dependencies = manifests[name].get("dependencies", {})
+        if not isinstance(dependencies, dict):
+            return
+        for dependency in sorted(dependencies):
+            if dependency in manifests and dependency not in seen:
+                seen.add(dependency)
+                visit(dependency)
+                resolved.append(dependency)
+
+    visit(package_name)
+    return resolved
+
+
+def validate_language_server_configs(manifests: dict[str, dict[str, object]]) -> list[str]:
+    """Check that every package source directory can be type-checked on its own.
+
+    The expected library list is derived from the manifests rather than stored
+    twice, so adding a dependency and forgetting the editor configuration is a
+    validation error instead of a warning that only appears in an editor.
+    """
+    errors: list[str] = []
+
+    for name in sorted(manifests):
+        path = ROOT / "packages" / name / "src" / LANGUAGE_SERVER_CONFIG_NAME
+        if not path.is_file():
+            errors.append(error(path, "required lua-language-server configuration is missing"))
+            continue
+
+        try:
+            config = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(error(path, f"unable to read configuration: {exc}"))
+            continue
+
+        expected = [SHARED_META_LIBRARY]
+        expected.extend(f"../../{dependency}/src" for dependency in _dependency_closure(name, manifests))
+
+        workspace = config.get("workspace") if isinstance(config, dict) else None
+        library = workspace.get("library") if isinstance(workspace, dict) else None
+        if library != expected:
+            errors.append(
+                error(path, f"workspace.library must be {json.dumps(expected)}")
+            )
+
     return errors
 
 
@@ -149,6 +217,7 @@ def validate_repository() -> tuple[dict[str, dict[str, object]], list[str]]:
     manifests, errors = load_manifests()
     errors.extend(validate_graph(manifests))
     errors.extend(validate_required_root_files())
+    errors.extend(validate_language_server_configs(manifests))
     errors.extend(validate_package_layout())
     errors.extend(validate_markdown_links())
     return manifests, errors

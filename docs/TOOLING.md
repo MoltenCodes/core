@@ -7,6 +7,8 @@ Repository tooling lives under `tooling/` and is never a runtime dependency.
 ```text
 tooling/
 ├── lint.py                         # recursively discovers and lints runtime Lua
+├── package/
+│   └── build.py                   # assembles a checksummed distributable bundle
 ├── test/
 │   └── run.py                     # package-aware Busted orchestration
 ├── tests/                         # Python unit tests for repository tooling
@@ -56,14 +58,28 @@ intended, which is precisely the case Design Constitution principle 9 ("No
 hidden global state") exists to catch. The annotation makes every crossing of
 that boundary visible in review and in `git grep global_usage`.
 
+## Release tooling
+
+`tooling/package/build.py` assembles the distributable bundle: it copies each
+package's runtime sources and package-owned documentation into the layout an
+addon embeds, writes a `manifest.json` describing versions, revisions, licences
+and the load order, and writes SHA-256 checksums into `CHECKSUMS.txt`.
+
+It is deliberately deterministic — no timestamps in the artifact, fixed zip entry
+times — so two builds of the same commit produce identical checksums. It fails
+closed on invalid package metadata but does not run the test suite, the linter or
+the formatter; those are separate commands and remain the caller's responsibility.
+
+[`../docs/RELEASES.md`](../docs/RELEASES.md) documents the command line, the
+artifact layout, and the relationship to [`../.pkgmeta`](../.pkgmeta), which is
+what the addon-site packagers build from.
+
 ## Future tooling
 
-Build and release tooling will be added only when implemented. Empty placeholder directories are intentionally avoided because they imply capabilities that do not yet exist.
+Tooling is added only when implemented. Empty placeholder directories are intentionally avoided because they imply capabilities that do not yet exist.
 
 Likely future responsibilities include:
 
 - dependency-aware build ordering;
-- package artifact generation;
-- reproducibility checks;
-- release validation;
-- checksums and publication metadata.
+- affected-package test selection;
+- release validation and publication.
