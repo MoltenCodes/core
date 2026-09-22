@@ -18,46 +18,52 @@ local DEFAULT_MAX_RETAINED = 128
 -- rather than inferred from those assignments.
 
 ---Options shared by every pool constructor.
----@class PoolKitCommonOptions
+---@class PoolKit.CommonOptions
 ---@field maxRetained (integer|table)? Non-negative integer or `PoolKit.UNBOUNDED`; default `128`.
 ---@field strict boolean? Keep weak discarded-object history for richer duplicate-release diagnostics; default `true`.
 ---@field prewarm integer? Objects to create up front; default `0`.
 ---@field maxActiveWarning integer? Report once through `geterrorhandler` when this many objects are borrowed at the same time.
 
 ---Options accepted by `PoolKit:New`.
----@class PoolKitNewOptions : PoolKitCommonOptions
----@field create fun(pool: PoolKitPool): table|userdata Required factory.
----@field reset (fun(object: table|userdata, pool: PoolKitPool))? Called before retention or discard.
----@field destroy (fun(object: table|userdata, pool: PoolKitPool))? Called when an object leaves pool ownership.
+---@class PoolKit.NewOptions : PoolKit.CommonOptions
+---@field create PoolKit.Factory Required factory.
+---@field reset PoolKit.ObjectCallback? Called before retention or discard.
+---@field destroy PoolKit.ObjectCallback? Called when an object leaves pool ownership.
 ---@field strictReset boolean? Refuse to construct a pool that has no `reset`; default `false`.
 
+---The factory a pool calls when it has no retained object to hand out.
+---@alias PoolKit.Factory fun(pool: PoolKit.Pool): table|userdata
+
+---A per-object lifecycle callback: `reset` before retention, `destroy` on exit.
+---@alias PoolKit.ObjectCallback fun(object: table|userdata, pool: PoolKit.Pool)
+
 ---A reusable object pool.
----@class PoolKitPool
----@field Acquire fun(self: PoolKitPool): table|userdata
----@field Release fun(self: PoolKitPool, object: table|userdata): boolean
----@field Prewarm fun(self: PoolKitPool, count: integer): integer
----@field Trim fun(self: PoolKitPool, retainCount: integer?): integer
----@field Clear fun(self: PoolKitPool): integer
----@field Close fun(self: PoolKitPool): boolean
----@field IsClosed fun(self: PoolKitPool): boolean
----@field GetAvailableCount fun(self: PoolKitPool): integer
----@field GetActiveCount fun(self: PoolKitPool): integer
----@field GetCreatedCount fun(self: PoolKitPool): integer
----@field GetDiscardedCount fun(self: PoolKitPool): integer
----@field GetMaxRetained fun(self: PoolKitPool): integer|table
----@field SetMaxRetained fun(self: PoolKitPool, maxRetained: integer|table): PoolKitPool
----@field Owns fun(self: PoolKitPool, object: any): boolean
----@field IsActive fun(self: PoolKitPool, object: any): boolean
+---@class PoolKit.Pool
+---@field Acquire fun(self: PoolKit.Pool): table|userdata
+---@field Release fun(self: PoolKit.Pool, object: table|userdata): boolean
+---@field Prewarm fun(self: PoolKit.Pool, count: integer): integer
+---@field Trim fun(self: PoolKit.Pool, retainCount: integer?): integer
+---@field Clear fun(self: PoolKit.Pool): integer
+---@field Close fun(self: PoolKit.Pool): boolean
+---@field IsClosed fun(self: PoolKit.Pool): boolean
+---@field GetAvailableCount fun(self: PoolKit.Pool): integer
+---@field GetActiveCount fun(self: PoolKit.Pool): integer
+---@field GetCreatedCount fun(self: PoolKit.Pool): integer
+---@field GetDiscardedCount fun(self: PoolKit.Pool): integer
+---@field GetMaxRetained fun(self: PoolKit.Pool): integer|table
+---@field SetMaxRetained fun(self: PoolKit.Pool, maxRetained: integer|table): PoolKit.Pool
+---@field Owns fun(self: PoolKit.Pool, object: any): boolean
+---@field IsActive fun(self: PoolKit.Pool, object: any): boolean
 
 ---The PoolKit package facade published through Registry.
----@class PoolKitFacade
+---@class PoolKit
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
----@field Pool PoolKitPool Shared pool prototype.
+---@field Pool PoolKit.Pool Shared pool prototype.
 ---@field UNBOUNDED table Sentinel selecting caller-owned unbounded retention.
 ---@field DEFAULT_MAX_RETAINED integer
----@field New fun(self: PoolKitFacade, options: PoolKitNewOptions): PoolKitPool
----@field NewTablePool fun(self: PoolKitFacade, options: PoolKitCommonOptions?): PoolKitPool
+---@field New fun(self: PoolKit, options: PoolKit.NewOptions): PoolKit.Pool
+---@field NewTablePool fun(self: PoolKit, options: PoolKit.CommonOptions?): PoolKit.Pool
 
 -- Dependencies --------------------------------------------------------------
 
@@ -81,6 +87,9 @@ end
 
 -- Bootstrap -----------------------------------------------------------------
 
+---Whether `implementation` exposes the complete PoolKit API 1 surface.
+---@param implementation any shared package table handed back by Registry
+---@return boolean
 local function validatePublicSurface(implementation)
     if
         type(implementation) ~= "table"
@@ -113,6 +122,9 @@ local function validatePublicSurface(implementation)
         and type(rawget(Pool, "IsActive")) == "function"
 end
 
+---Whether `currentState` has the shape this revision's schema requires.
+---@param currentState any
+---@return boolean
 local function validateState(currentState)
     return type(currentState) == "table"
         and rawget(currentState, "schema") == STATE_SCHEMA
@@ -120,6 +132,9 @@ local function validateState(currentState)
         and type(rawget(currentState, "unbounded")) == "table"
 end
 
+---Whether `implementation` and its package state still agree with each other.
+---@param implementation table
+---@return boolean
 local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     if not validateState(currentState) then
@@ -195,6 +210,10 @@ local RELEASING = 2
 
 -- Validation ----------------------------------------------------------------
 
+---Whether `value` is an exact integer of zero or more. `nan` and both
+---infinities are rejected before the integer test can accept them.
+---@param value any
+---@return boolean
 local function isNonNegativeInteger(value)
     return type(value) == "number"
         and value == value
@@ -213,6 +232,9 @@ end
 -- hop. The constructor-time prewarm path needs it: that failure is caught and
 -- re-raised verbatim, so a position computed across the `pcall` boundary would
 -- be meaningless.
+---Return the stack level one hop further from `error`, preserving level `0`.
+---@param level integer
+---@return integer
 local function nestedLevel(level)
     if level == 0 then
         return 0
@@ -220,12 +242,18 @@ local function nestedLevel(level)
     return level + 1
 end
 
+---@param self any receiver the public method was called on
+---@param methodName string public method name, used in the argument error
+---@param level integer stack level the failure is reported at
 local function validatePool(self, methodName, level)
     if type(self) ~= "table" or getmetatable(self) ~= POOL_METATABLE then
         error(methodName .. " must be called on a PoolKit pool", level)
     end
 end
 
+---@param object any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
 local function validatePoolObject(object, label, level)
     local objectType = type(object)
     if objectType ~= "table" and objectType ~= "userdata" then
@@ -233,6 +261,10 @@ local function validatePoolObject(object, label, level)
     end
 end
 
+---@param value any non-negative integer or `PoolKit.UNBOUNDED`
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+---@return integer|table maxRetained
 local function validateMaxRetained(value, label, level)
     if value == UNBOUNDED then
         return value
@@ -243,12 +275,19 @@ local function validateMaxRetained(value, label, level)
     return value
 end
 
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
 local function validateCount(value, label, level)
     if not isNonNegativeInteger(value) then
         error(label .. " must be a non-negative integer", level)
     end
 end
 
+---@param value any
+---@param label string argument description, used in the argument error
+---@param required boolean whether `nil` is rejected
+---@param level integer stack level the failure is reported at
 local function validateCallback(value, label, required, level)
     if value == nil and not required then
         return
@@ -276,6 +315,11 @@ local TABLE_OPTION_KEYS = {
     maxActiveWarning = true,
 }
 
+---Reject the alphabetically first unrecognised option field, if any.
+---@param options table
+---@param allowed table<string, boolean>
+---@param methodName string public method name, used in the argument error
+---@param level integer stack level the failure is reported at
 local function validateKnownFields(options, allowed, methodName, level)
     local firstUnknown = nil
     for key in next, options do
@@ -291,6 +335,15 @@ local function validateKnownFields(options, allowed, methodName, level)
     end
 end
 
+---Validate the options every constructor shares and apply their defaults.
+---@param options PoolKit.CommonOptions|nil
+---@param allowed table<string, boolean> option keys this constructor accepts
+---@param methodName string public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return integer|table maxRetained
+---@return boolean strict
+---@return integer prewarm
+---@return integer|false maxActiveWarning `false` when leak warnings are disabled
 local function parseCommonOptions(options, allowed, methodName, level)
     if options == nil then
         options = {}
@@ -340,6 +393,11 @@ end
 
 -- Error helpers --------------------------------------------------------------
 
+---Keep the first failure of a best-effort loop, wrapped so `nil` survives.
+---@param firstError table|nil
+---@param ok boolean
+---@param value any
+---@return table|nil firstError
 local function captureFirstError(firstError, ok, value)
     if not ok and firstError == nil then
         return { value = value }
@@ -347,6 +405,8 @@ local function captureFirstError(firstError, ok, value)
     return firstError
 end
 
+---Re-raise a captured failure unchanged, or return when there was none.
+---@param firstError table|nil
 local function raiseCaptured(firstError)
     if firstError ~= nil then
         error(firstError.value, 0)
@@ -375,6 +435,10 @@ end
 
 -- Internal lifecycle ---------------------------------------------------------
 
+---Refuse a mutation attempted from inside one of this pool's own callbacks.
+---@param pool PoolKit.Pool
+---@param methodName string public method name, used in the argument error
+---@param level integer stack level the failure is reported at
 local function ensureMutationAllowed(pool, methodName, level)
     if rawget(pool, "_callbackDepth") > 0 then
         error(
@@ -391,6 +455,12 @@ end
 -- is restored rather than cleared. A nested lifecycle callback on the same pool
 -- therefore cannot hand the outer callback a pool that looks unguarded, and the
 -- rejection message keeps naming the phase the caller is actually inside.
+---Run one user lifecycle callback with the re-entrancy guard raised.
+---@param pool PoolKit.Pool
+---@param phase "create"|"reset"|"destroy"
+---@param callback function
+---@param ... any arguments forwarded to `callback`
+---@return any result
 local function invokeLifecycleCallback(pool, phase, callback, ...)
     local depth = rawget(pool, "_callbackDepth") + 1
     local previousPhase = rawget(pool, "_callbackPhase")
@@ -407,6 +477,9 @@ local function invokeLifecycleCallback(pool, phase, callback, ...)
     return value
 end
 
+---Record that `object` has left this pool's ownership.
+---@param pool PoolKit.Pool
+---@param object table|userdata
 local function markDiscarded(pool, object)
     local released = rawget(pool, "_released")
     if released ~= false then
@@ -415,6 +488,9 @@ local function markDiscarded(pool, object)
     rawset(pool, "_discardedCount", rawget(pool, "_discardedCount") + 1)
 end
 
+---Mark `object` discarded and run the pool's `destroy` callback for it.
+---@param pool PoolKit.Pool
+---@param object table|userdata
 local function destroyDiscarded(pool, object)
     markDiscarded(pool, object)
     local destroy = rawget(pool, "_destroy")
@@ -423,6 +499,11 @@ local function destroyDiscarded(pool, object)
     end
 end
 
+---Reject a factory result this pool already owns or cannot pool at all.
+---@param pool PoolKit.Pool
+---@param object any
+---@param methodName string public method name, used in the argument error
+---@param level integer stack level the failure is reported at
 local function validateFactoryObject(pool, object, methodName, level)
     validatePoolObject(object, methodName .. " factory result", nestedLevel(level))
 
@@ -438,6 +519,11 @@ local function validateFactoryObject(pool, object, methodName, level)
     end
 end
 
+---Build one new object through the pool's factory and count it.
+---@param pool PoolKit.Pool
+---@param methodName string public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+---@return table|userdata object
 local function createObject(pool, methodName, level)
     local create = rawget(pool, "_create")
     local object
@@ -451,17 +537,29 @@ local function createObject(pool, methodName, level)
     return object
 end
 
+---Whether the pool has room to retain one more released object.
+---@param pool PoolKit.Pool
+---@return boolean
 local function canRetain(pool)
     local maxRetained = rawget(pool, "_maxRetained")
     return maxRetained == UNBOUNDED or rawget(pool, "_availableCount") < maxRetained
 end
 
+---Drop one retained object, reporting a failing `destroy` to the caller.
+---@param pool PoolKit.Pool
+---@param object table|userdata
+---@return boolean ok
+---@return any errorValue
 local function discardAvailableObject(pool, object)
     local retained = rawget(pool, "_retained")
     rawset(retained, object, nil)
     return pcall(destroyDiscarded, pool, object)
 end
 
+---Reduce retention to `retainCount` objects, destroying the rest.
+---@param pool PoolKit.Pool
+---@param retainCount integer
+---@return integer removed
 local function trimTo(pool, retainCount)
     local available = rawget(pool, "_available")
     local count = rawget(pool, "_availableCount")
@@ -494,6 +592,11 @@ local function trimTo(pool, retainCount)
     return removed
 end
 
+---Create objects until `targetCount` of them are immediately available.
+---@param pool PoolKit.Pool
+---@param targetCount integer
+---@param level integer stack level failures are reported at; `0` for construction
+---@return integer created
 local function prewarmInternal(pool, targetCount, level)
     if rawget(pool, "_closed") == true then
         error("PoolKit.Pool:Prewarm cannot use a closed pool", level)
@@ -521,6 +624,16 @@ local function prewarmInternal(pool, targetCount, level)
     return created
 end
 
+---Construct one pool and, when asked, prewarm it before it escapes.
+---@param create PoolKit.Factory
+---@param reset PoolKit.ObjectCallback|nil
+---@param destroy PoolKit.ObjectCallback|nil
+---@param maxRetained integer|table
+---@param strict boolean
+---@param prewarm integer
+---@param maxActiveWarning integer|false
+---@param trustedCallbacks boolean whether PoolKit itself owns the callbacks
+---@return PoolKit.Pool
 local function newPool(
     create,
     reset,
@@ -581,7 +694,7 @@ end
 
 ---Report a leak threshold once. Kept out of `poolAcquire` so the disabled
 ---default costs one comparison and no extra frame on the hot path.
----@param pool PoolKitPool
+---@param pool PoolKit.Pool
 ---@param activeCount integer
 local function warnActiveThreshold(pool, activeCount)
     rawset(pool, "_activeWarned", true)
@@ -596,7 +709,7 @@ local function warnActiveThreshold(pool, activeCount)
 end
 
 ---Borrow one object, reusing the most recently retained object when available.
----@param self PoolKitPool
+---@param self PoolKit.Pool
 ---@return table|userdata object
 local function poolAcquire(self)
     validatePool(self, "PoolKit.Pool:Acquire", 3)
@@ -636,7 +749,7 @@ end
 
 ---Reset and return an active object; discard it when retention is full or the
 ---pool is closed.
----@param self PoolKitPool
+---@param self PoolKit.Pool
 ---@param object table|userdata
 ---@return boolean released
 local function poolRelease(self, object)
@@ -690,7 +803,7 @@ local function poolRelease(self, object)
 end
 
 ---Ensure at least `count` objects are immediately available.
----@param self PoolKitPool
+---@param self PoolKit.Pool
 ---@param count integer
 ---@return integer created
 local function poolPrewarm(self, count)
@@ -700,6 +813,10 @@ local function poolPrewarm(self, count)
     return prewarmInternal(self, count, 3)
 end
 
+---Reduce retention to `retainCount` objects, or to none by default.
+---@param self PoolKit.Pool
+---@param retainCount integer? defaults to `0`
+---@return integer removed
 local function poolTrim(self, retainCount)
     validatePool(self, "PoolKit.Pool:Trim", 3)
     ensureMutationAllowed(self, "PoolKit.Pool:Trim", 3)
@@ -711,12 +828,18 @@ local function poolTrim(self, retainCount)
     return trimTo(self, retainCount)
 end
 
+---Destroy every retained object while keeping the pool usable.
+---@param self PoolKit.Pool
+---@return integer removed
 local function poolClear(self)
     validatePool(self, "PoolKit.Pool:Clear", 3)
     ensureMutationAllowed(self, "PoolKit.Pool:Clear", 3)
     return trimTo(self, 0)
 end
 
+---Terminally close the pool after destroying everything it retains.
+---@param self PoolKit.Pool
+---@return boolean closed `false` when the pool was already closed.
 local function poolClose(self)
     validatePool(self, "PoolKit.Pool:Close", 3)
     ensureMutationAllowed(self, "PoolKit.Pool:Close", 3)
@@ -728,47 +851,75 @@ local function poolClose(self)
     return true
 end
 
+---Whether the pool is terminally closed.
+---@param self PoolKit.Pool
+---@return boolean closed
 local function poolIsClosed(self)
     validatePool(self, "PoolKit.Pool:IsClosed", 3)
     return rawget(self, "_closed") == true
 end
 
+---Number of objects retained and ready to hand out.
+---@param self PoolKit.Pool
+---@return integer availableCount
 local function poolGetAvailableCount(self)
     validatePool(self, "PoolKit.Pool:GetAvailableCount", 3)
     return rawget(self, "_availableCount")
 end
 
+---Number of objects currently borrowed. These are caller-owned and unbounded.
+---@param self PoolKit.Pool
+---@return integer activeCount
 local function poolGetActiveCount(self)
     validatePool(self, "PoolKit.Pool:GetActiveCount", 3)
     return rawget(self, "_activeCount")
 end
 
+---Number of objects this pool has ever built through its factory.
+---@param self PoolKit.Pool
+---@return integer createdCount
 local function poolGetCreatedCount(self)
     validatePool(self, "PoolKit.Pool:GetCreatedCount", 3)
     return rawget(self, "_createdCount")
 end
 
+---Number of objects this pool has released from its ownership.
+---@param self PoolKit.Pool
+---@return integer discardedCount
 local function poolGetDiscardedCount(self)
     validatePool(self, "PoolKit.Pool:GetDiscardedCount", 3)
     return rawget(self, "_discardedCount")
 end
 
+---Current retention bound, or `PoolKit.UNBOUNDED`.
+---@param self PoolKit.Pool
+---@return integer|table maxRetained
 local function poolGetMaxRetained(self)
     validatePool(self, "PoolKit.Pool:GetMaxRetained", 3)
     return rawget(self, "_maxRetained")
 end
 
+---Change the retention bound, trimming immediately when it shrinks.
+---@param self PoolKit.Pool
+---@param maxRetained integer|table non-negative integer or `PoolKit.UNBOUNDED`
+---@return PoolKit.Pool self
 local function poolSetMaxRetained(self, maxRetained)
     validatePool(self, "PoolKit.Pool:SetMaxRetained", 3)
     ensureMutationAllowed(self, "PoolKit.Pool:SetMaxRetained", 3)
     maxRetained = validateMaxRetained(maxRetained, "PoolKit.Pool:SetMaxRetained maxRetained", 3)
     rawset(self, "_maxRetained", maxRetained)
     if maxRetained ~= UNBOUNDED then
+        -- `UNBOUNDED` is the only non-integer `validateMaxRetained` accepts.
+        ---@cast maxRetained integer
         trimTo(self, maxRetained)
     end
     return self
 end
 
+---Whether `object` is borrowed from or retained by this pool.
+---@param self PoolKit.Pool
+---@param object any
+---@return boolean owned
 local function poolOwns(self, object)
     validatePool(self, "PoolKit.Pool:Owns", 3)
     local objectType = type(object)
@@ -779,6 +930,10 @@ local function poolOwns(self, object)
         or rawget(rawget(self, "_retained"), object) == true
 end
 
+---Whether `object` is currently borrowed from this pool.
+---@param self PoolKit.Pool
+---@param object any
+---@return boolean active
 local function poolIsActive(self, object)
     validatePool(self, "PoolKit.Pool:IsActive", 3)
     local objectType = type(object)
@@ -792,8 +947,9 @@ end
 -- Package constructors -------------------------------------------------------
 
 ---Create a generic object pool.
----@param options PoolKitNewOptions
----@return PoolKitPool pool
+---@param _ PoolKit
+---@param options PoolKit.NewOptions
+---@return PoolKit.Pool pool
 local function packageNew(_, options)
     if type(options) ~= "table" then
         error("PoolKit:New options must be a table", 2)
@@ -820,10 +976,14 @@ local function packageNew(_, options)
     return newPool(create, reset, destroy, maxRetained, strict, prewarm, maxActiveWarning, false)
 end
 
+---Factory for `PoolKit:NewTablePool`.
+---@return table
 local function tableCreate()
     return {}
 end
 
+---Shallow-clearing reset for `PoolKit:NewTablePool`.
+---@param object table
 local function tableReset(object)
     for key in next, object do
         rawset(object, key, nil)
@@ -831,8 +991,9 @@ local function tableReset(object)
 end
 
 ---Create a shallow-clearing Lua table pool.
----@param options PoolKitCommonOptions?
----@return PoolKitPool pool
+---@param _ PoolKit
+---@param options PoolKit.CommonOptions?
+---@return PoolKit.Pool pool
 local function packageNewTablePool(_, options)
     local maxRetained, strict, prewarm, maxActiveWarning =
         parseCommonOptions(options, TABLE_OPTION_KEYS, "PoolKit:NewTablePool", 3)

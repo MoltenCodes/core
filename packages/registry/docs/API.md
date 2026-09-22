@@ -32,16 +32,20 @@ Registry has no dependencies and must be listed before every framework package
 that uses it:
 
 ```toc
-## Interface: 110000
+## Interface: 120100, 50504, 20506, 11509
 ## Title: My Addon
 ## Notes: Example of embedding MoltenCodes packages
 
-Libs\MoltenCodes\Registry.lua
-Libs\MoltenCodes\SignalKit.lua
-Libs\MoltenCodes\EventKit.lua
+Libs\MoltenCodes\registry\Registry.lua
+Libs\MoltenCodes\signalKit\SignalKit.lua
+Libs\MoltenCodes\eventKit\EventKit.lua
 
 MyAddon.lua
 ```
+
+Those Interface numbers are current as of 2026-09; see
+[`../../../docs/EMBEDDING.md`](../../../docs/EMBEDDING.md) for the supported
+flavours, the full load-order rules, and a complete example addon.
 
 `MyAddon.lua` then resolves the packages it needs without `require`:
 

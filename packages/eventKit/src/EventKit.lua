@@ -78,6 +78,9 @@ end
 
 -- Public-surface validation --------------------------------------------------
 
+---Whether `implementation` exposes the complete EventKit API 1 surface.
+---@param implementation any shared package table handed back by Registry
+---@return boolean
 local function validatePublicSurface(implementation)
     if
         type(implementation) ~= "table"
@@ -97,6 +100,9 @@ local function validatePublicSurface(implementation)
         and type(rawget(connection, "IsConnected")) == "function"
 end
 
+---Whether `implementation` carries package state of this revision's schema.
+---@param implementation table
+---@return boolean
 local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     return type(currentState) == "table"
@@ -139,20 +145,42 @@ end
 -- underscore-prefixed field on the facade is reserved in the same way: consumers
 -- must not read or write them, and a future revision may change their shape.
 
+---A listener invoked with the event name followed by the client's payload.
+---
+---`COMBAT_LOG_EVENT_UNFILTERED` carries no payload; that listener reads the
+---event through `CombatLogGetCurrentEventInfo()` instead.
+---@alias EventKit.Listener fun(eventName: string, ...: any)
+
 ---A connection handle returned by an EventKit subscription.
----@class EventKitConnection
----@field Disconnect fun(self: EventKitConnection): boolean
----@field IsConnected fun(self: EventKitConnection): boolean
+---@class EventKit.Connection
+---@field Disconnect fun(self: EventKit.Connection): boolean
+---@field IsConnected fun(self: EventKit.Connection): boolean
+
+---One event name's fan-out: a host registration plus the signal behind it.
+---@class EventKit.Channel
+---@field eventName string
+---@field frame WowFrame Frame holding the host registration.
+---@field signal SignalKit.Signal Listener fan-out for this event.
+---@field count integer Live EventKit connections sharing the registration.
+---@field channels table<string, EventKit.Channel> Owning channel map.
+---@field group EventKit.UnitGroup? `nil` for a regular, unfiltered event.
+
+---The channels registered against one normalized unit-token set.
+---@class EventKit.UnitGroup
+---@field key string Normalized, order-independent unit-set key.
+---@field units string[] Sorted, de-duplicated unit tokens.
+---@field channels table<string, EventKit.Channel>
+---@field frame WowFrame? `nil` once the group has released its Frame.
 
 ---The shared EventKit package table.
 ---@class EventKit
 ---@field API integer EventKit API generation.
 ---@field REVISION integer EventKit implementation revision.
----@field Connection EventKitConnection Shared method prototype for connection handles.
----@field Connect fun(self: EventKit, eventName: string, callback: fun(eventName: string, ...: any)): EventKitConnection
----@field Once fun(self: EventKit, eventName: string, callback: fun(eventName: string, ...: any)): EventKitConnection
----@field ConnectUnit fun(self: EventKit, eventName: string, callback: fun(eventName: string, ...: any), unit1: string, unit2: string?): EventKitConnection
----@field OnceUnit fun(self: EventKit, eventName: string, callback: fun(eventName: string, ...: any), unit1: string, unit2: string?): EventKitConnection
+---@field Connection EventKit.Connection Shared method prototype for connection handles.
+---@field Connect fun(self: EventKit, eventName: string, callback: EventKit.Listener): EventKit.Connection
+---@field Once fun(self: EventKit, eventName: string, callback: EventKit.Listener): EventKit.Connection
+---@field ConnectUnit fun(self: EventKit, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
+---@field OnceUnit fun(self: EventKit, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
 
 local Connection = rawget(EventKit, "Connection")
 local state = rawget(EventKit, "_state")
@@ -211,18 +239,30 @@ local CONNECTION_METATABLE = { __index = Connection }
 
 -- Validation ----------------------------------------------------------------
 
+---@param eventName any
+---@param methodName string public method name, used in the argument error
 local function validateEventName(eventName, methodName)
     if type(eventName) ~= "string" or eventName == "" then
         error("EventKit:" .. methodName .. " eventName must be a non-empty string", 3)
     end
 end
 
+---@param callback any
+---@param methodName string public method name, used in the argument error
 local function validateCallback(callback, methodName)
     if type(callback) ~= "function" then
         error("EventKit:" .. methodName .. " callback must be a function", 3)
     end
 end
 
+---Sort and de-duplicate unit tokens into a group key.
+---
+---The key is order-independent, so `"player", "target"` and `"target", "player"`
+---share one group and therefore one Frame.
+---@param methodName string public method name, used in the argument errors
+---@param ... string one or two unit tokens
+---@return string[] units sorted, de-duplicated tokens
+---@return string key normalized group key
 local function normalizeUnits(methodName, ...)
     local count = select("#", ...)
     if count == 0 then
@@ -279,6 +319,10 @@ end
 -- would name a line inside EventKit, so they raise at level 0 with an explicit
 -- `EventKit:` prefix instead. Argument errors keep pointing at the caller.
 
+---Return one Frame method, or fail naming the host capability that is missing.
+---@param frame WowFrame?
+---@param methodName string
+---@return function
 local function requireFrameMethod(frame, methodName)
     local method = frame and frame[methodName]
     if type(method) ~= "function" then
@@ -287,6 +331,9 @@ local function requireFrameMethod(frame, methodName)
     return method
 end
 
+---Create one hidden Frame and bind `onEvent` to its `OnEvent` script.
+---@param onEvent fun(frame: WowFrame, eventName: string, ...: any)
+---@return WowFrame
 local function createEventFrame(onEvent)
     -- CreateFrame is a World of Warcraft client API reachable only through the global table.
     -- selene: allow(global_usage)
@@ -305,6 +352,10 @@ local function createEventFrame(onEvent)
     return frame
 end
 
+---`OnEvent` handler shared by every unfiltered event registration.
+---@param _ WowFrame
+---@param eventName string
+---@param ... any client payload
 local function onRegularFrameEvent(_, eventName, ...)
     -- The dispatcher is validated once at load and kept in shared state, so the
     -- per-event path is a single table read instead of a read plus a type check.
@@ -313,6 +364,8 @@ local function onRegularFrameEvent(_, eventName, ...)
     return rawget(state, "dispatchRegular")(EventKit, eventName, ...)
 end
 
+---Return the single Frame that carries every unfiltered registration.
+---@return WowFrame
 local function ensureRegularFrame()
     local frame = rawget(state, "regularFrame")
     if frame ~= nil then
@@ -326,6 +379,9 @@ end
 
 -- Unit-group Frames -----------------------------------------------------------
 
+---Take a Frame for `group`, reusing a released one before creating another.
+---@param group EventKit.UnitGroup
+---@return WowFrame
 local function acquireUnitFrame(group)
     local function onUnitFrameEvent(_, eventName, ...)
         return rawget(state, "dispatchUnit")(EventKit, group, eventName, ...)
@@ -360,6 +416,8 @@ local function acquireUnitFrame(group)
     return frame
 end
 
+---Drop `group` and return its Frame to the free list.
+---@param group EventKit.UnitGroup
 local function releaseUnitGroup(group)
     local groups = rawget(state, "unitGroups")
     rawset(groups, rawget(group, "key"), nil)
@@ -376,6 +434,10 @@ local function releaseUnitGroup(group)
     freeFrames[#freeFrames + 1] = frame
 end
 
+---Return the group owning `key`, creating it and its Frame on demand.
+---@param units string[]
+---@param key string
+---@return EventKit.UnitGroup
 local function ensureUnitGroup(units, key)
     local groups = rawget(state, "unitGroups")
     local group = rawget(groups, key)
@@ -397,6 +459,10 @@ end
 
 -- Channels ------------------------------------------------------------------
 
+---Return the unfiltered channel for `eventName`, registering it on demand.
+---@param eventName string
+---@param methodName string public method name, used in the argument error
+---@return EventKit.Channel
 local function createRegularChannel(eventName, methodName)
     local channels = rawget(state, "regularChannels")
     local existingChannel = rawget(channels, eventName)
@@ -424,6 +490,12 @@ local function createRegularChannel(eventName, methodName)
     return channel
 end
 
+---Return the unit-filtered channel for `eventName`, registering it on demand.
+---@param eventName string
+---@param units string[]
+---@param key string normalized group key produced by `normalizeUnits`
+---@param methodName string public method name, used in the argument error
+---@return EventKit.Channel
 local function createUnitChannel(eventName, units, key, methodName)
     local group = ensureUnitGroup(units, key)
     local channels = rawget(group, "channels")
@@ -456,6 +528,8 @@ local function createUnitChannel(eventName, units, key, methodName)
     return channel
 end
 
+---Drop one connection from `channel`, unregistering it once the last one goes.
+---@param channel EventKit.Channel
 local function releaseChannel(channel)
     local count = rawget(channel, "count") - 1
     rawset(channel, "count", count)
@@ -503,6 +577,8 @@ local pendingCount = 0
 local pendingFirst, pendingSecond, pendingThird, pendingFourth, pendingFifth, pendingSixth
 local pendingBuffer = {}
 
+---Hand a failing listener's error to the host error handler.
+---@param message any
 local function reportListenerError(message)
     -- geterrorhandler is a World of Warcraft client API reachable only through the global table.
     -- selene: allow(global_usage)
@@ -521,6 +597,8 @@ local function reportListenerError(message)
     print(message)
 end
 
+---Reusable `xpcall` trampoline that forwards the staged payload.
+---@return any ...
 local function invokePending()
     local callback = pendingCallback
     local count = pendingCount
@@ -574,6 +652,9 @@ local function stageWidePayload(count, ...)
     end
 end
 
+---Call `callback` so a raised error is reported rather than propagated.
+---@param callback EventKit.Listener
+---@param ... any event name followed by the client payload
 local function isolateWithXpcall(callback, ...)
     local count = select("#", ...)
     pendingCallback = callback
@@ -599,6 +680,8 @@ end
 
 -- Connections ---------------------------------------------------------------
 
+---@param connection EventKit.Connection
+---@return boolean disconnected `true` only for the call that transitioned the state.
 local function disconnectEventConnection(connection)
     if rawget(connection, "_connected") ~= true then
         return false
@@ -616,6 +699,11 @@ local function disconnectEventConnection(connection)
     return true
 end
 
+---Wrap `callback` in one isolation closure and attach it to `channel`.
+---@param channel EventKit.Channel
+---@param callback EventKit.Listener
+---@param once boolean whether the connection disconnects before its first call
+---@return EventKit.Connection
 local function connectToChannel(channel, callback, once)
     local connection = setmetatable({
         _connected = true,
@@ -645,16 +733,26 @@ local function connectToChannel(channel, callback, once)
     return connection
 end
 
+---Cancel this subscription and release its share of the host registration.
+---@param self EventKit.Connection
+---@return boolean disconnected `true` only for the call that transitioned the state.
 local function disconnect(self)
     return disconnectEventConnection(self)
 end
 
+---Whether this subscription is still delivering.
+---@param self EventKit.Connection
+---@return boolean connected
 local function isConnected(self)
     return rawget(self, "_connected") == true
 end
 
 -- Dispatch ------------------------------------------------------------------
 
+---Fan one unfiltered event out to its channel.
+---@param _ EventKit
+---@param eventName string
+---@param ... any client payload
 local function dispatchRegular(_, eventName, ...)
     local channels = rawget(state, "regularChannels")
     local channel = rawget(channels, eventName)
@@ -663,6 +761,11 @@ local function dispatchRegular(_, eventName, ...)
     end
 end
 
+---Fan one unit-filtered event out to its channel inside `group`.
+---@param _ EventKit
+---@param group EventKit.UnitGroup
+---@param eventName string
+---@param ... any client payload
 local function dispatchUnit(_, group, eventName, ...)
     local channels = rawget(group, "channels")
     local channel = rawget(channels, eventName)
@@ -673,18 +776,34 @@ end
 
 -- Public API ----------------------------------------------------------------
 
+---Subscribe to every future occurrence of `eventName`.
+---@param _ EventKit
+---@param eventName string
+---@param callback EventKit.Listener
+---@return EventKit.Connection connection
 local function connectEvent(_, eventName, callback)
     validateEventName(eventName, "Connect")
     validateCallback(callback, "Connect")
     return connectToChannel(createRegularChannel(eventName, "Connect"), callback, false)
 end
 
+---Subscribe to at most one future occurrence of `eventName`.
+---@param _ EventKit
+---@param eventName string
+---@param callback EventKit.Listener
+---@return EventKit.Connection connection
 local function onceEvent(_, eventName, callback)
     validateEventName(eventName, "Once")
     validateCallback(callback, "Once")
     return connectToChannel(createRegularChannel(eventName, "Once"), callback, true)
 end
 
+---Subscribe to `eventName` filtered to one or two unit tokens.
+---@param _ EventKit
+---@param eventName string
+---@param callback EventKit.Listener
+---@param ... string one or two unit tokens; `Frame:RegisterUnitEvent` has two slots
+---@return EventKit.Connection connection
 local function connectUnitEvent(_, eventName, callback, ...)
     validateEventName(eventName, "ConnectUnit")
     validateCallback(callback, "ConnectUnit")
@@ -696,6 +815,12 @@ local function connectUnitEvent(_, eventName, callback, ...)
     )
 end
 
+---Subscribe once to `eventName` filtered to one or two unit tokens.
+---@param _ EventKit
+---@param eventName string
+---@param callback EventKit.Listener
+---@param ... string one or two unit tokens; `Frame:RegisterUnitEvent` has two slots
+---@return EventKit.Connection connection
 local function onceUnitEvent(_, eventName, callback, ...)
     validateEventName(eventName, "OnceUnit")
     validateCallback(callback, "OnceUnit")

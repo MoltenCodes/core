@@ -57,3 +57,18 @@ This keeps the hot dispatch path allocation-free while making both connection an
 - [`docs/API.md`](docs/API.md) — complete API and mutation semantics.
 - [`CHANGELOG.md`](CHANGELOG.md) — package evolution.
 - [`tests/README.md`](tests/README.md) — behavior covered by executable specs.
+
+## Embedding
+
+[`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:
+directory layout, supported Interface numbers, taint, `/reload` semantics and
+troubleshooting. This package's load order inside a consuming addon is:
+
+```toc
+Libs\MoltenCodes\registry\Registry.lua
+Libs\MoltenCodes\signalKit\SignalKit.lua
+```
+
+Direct runtime dependencies: Registry API 2.
+Every file above is required; omitting one makes this package raise at
+load.

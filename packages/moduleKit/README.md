@@ -35,3 +35,21 @@ Definition-table creation is validated strictly: unknown fields and sparse list 
 See [`docs/API.md`](docs/API.md) for provider scopes, lifecycle behavior, failure semantics, late-module rules, and the complete public contract.
 
 [`docs/INTERNALS.md`](docs/INTERNALS.md) documents the implementation for maintainers: the section map of the runtime file, the ordering algorithm, the failure model, and the lifecycle replay hazard.
+
+## Embedding
+
+[`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:
+directory layout, supported Interface numbers, taint, `/reload` semantics and
+troubleshooting. This package's load order inside a consuming addon is:
+
+```toc
+Libs\MoltenCodes\registry\Registry.lua
+Libs\MoltenCodes\signalKit\SignalKit.lua
+Libs\MoltenCodes\eventKit\EventKit.lua
+Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
+Libs\MoltenCodes\moduleKit\ModuleKit.lua
+```
+
+Direct runtime dependencies: LifecycleKit API 1, Registry API 2.
+Every file above is required; omitting one makes this package raise at
+load.

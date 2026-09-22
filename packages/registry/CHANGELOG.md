@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 — 2026-09-22
+
+- Normalised every LuaCATS annotation to the canonical `---@` form and completed the public surface: 40 annotation lines became 40. Every public function, method, facade table, class, field, alias and callback signature is now typed, so editors and `lua-language-server` describe the package instead of guessing.
+- Renamed `RegistryPackageInfo` to `Registry.PackageInfo`, so every LuaCATS type in the framework is named after the facade that owns it.
+- The annotation count is unchanged because the public surface was already fully annotated; only the type name and the style rule changed.
+- Added `src/.luarc.json`. `lua-language-server --check <dir>` treats the directory it is given as its workspace root and ignores parent configuration, so each package source directory now points at the shared `meta/` definitions and at its own runtime dependencies. `packages/<name>/src` type-checks clean at `--checklevel=Warning`.
+- Added the now-required `license` field (`MIT`) to `package.manifest.json`, matching the repository `LICENSE` that the release builder copies into every artifact.
+- Added an "Embedding" section to the README with this package's load order and direct dependencies, pointing at the new `docs/EMBEDDING.md`.
+- No runtime behaviour change. `IMPLEMENTATION_REVISION` is unchanged, and `luac -s -l` produces an identical instruction listing before and after, so no embedded copy carrying these edits displaces an equivalent copy.
+
 ## 0.4.0 — 2026-09-22
 
 - Registry API generations now publish side by side. Every generation publishes itself at `MoltenCodes.Registries[<generation>]` and `MoltenCodes.Registry` is an alias for the newest generation present, so loading a second generation no longer aborts either addon's load with a fatal `MoltenCodes.Registry API generation conflict` error.

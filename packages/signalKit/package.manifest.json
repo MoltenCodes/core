@@ -2,7 +2,8 @@
   "name": "signalKit",
   "displayName": "SignalKit",
   "description": "A deterministic, re-entrant pure-Lua signal primitive for MoltenCodes runtime packages.",
-  "version": "0.2.0",
+  "version": "0.2.1",
+  "license": "MIT",
   "api": 1,
   "revision": 2,
   "dependencies": {

@@ -25,3 +25,21 @@ A caller that needs to carry its own bookkeeping on a timer attaches it through 
 Two timers that expire at the same instant fire in whatever order the client dispatches them; TimerKit imposes no ordering of its own. See [`docs/API.md`](docs/API.md).
 
 See [`docs/API.md`](docs/API.md) for the full state model, scope semantics, error behavior, and native API boundary.
+
+## Embedding
+
+[`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:
+directory layout, supported Interface numbers, taint, `/reload` semantics and
+troubleshooting. This package's load order inside a consuming addon is:
+
+```toc
+Libs\MoltenCodes\registry\Registry.lua
+Libs\MoltenCodes\signalKit\SignalKit.lua
+Libs\MoltenCodes\eventKit\EventKit.lua
+Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
+Libs\MoltenCodes\timerKit\TimerKit.lua
+```
+
+Direct runtime dependencies: LifecycleKit API 1, Registry API 2.
+Every file above is required; omitting one makes this package raise at
+load.

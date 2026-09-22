@@ -76,73 +76,86 @@ local SCHEDULING_OPTION_KEYS = {
 -- classes rather than inferred from those assignments.
 
 ---Logical state of a SchedulerKit job.
----@alias SchedulerKitJobState "delayed"|"pending"|"running"|"completed"|"cancelled"|"failed"
+---@alias SchedulerKit.JobState "delayed"|"pending"|"running"|"completed"|"cancelled"|"failed"
+
+---A scheduled callback. It receives the context handle for its own job.
+---@alias SchedulerKit.Callback fun(context: SchedulerKit.Context)
+
+---An error object wrapped so that `nil` and `false` stay representable.
+---@class SchedulerKit.ErrorRecord
+---@field value any the original Lua error object
+
+---One priority lane's FIFO. `head > tail` means the lane is drained.
+---@class SchedulerKit.Queue
+---@field items table<integer, SchedulerKit.Job>
+---@field head integer
+---@field tail integer
 
 ---Option table accepted by every scheduling method.
----@class SchedulerKitScheduleOptions
+---@class SchedulerKit.ScheduleOptions
 ---@field priority integer? One of `SchedulerKit.Priority`; defaults to `NORMAL`.
 ---@field name string? Optional non-empty diagnostic name.
 
 ---The handle a scheduled callback receives while it runs.
----@class SchedulerKitContext
----@field ShouldYield fun(self: SchedulerKitContext): boolean
----@field Yield fun(self: SchedulerKitContext)
----@field GetJob fun(self: SchedulerKitContext): SchedulerKitJob
----@field IsCancelled fun(self: SchedulerKitContext): boolean
+---@class SchedulerKit.Context
+---@field ShouldYield fun(self: SchedulerKit.Context): boolean
+---@field Yield fun(self: SchedulerKit.Context)
+---@field GetJob fun(self: SchedulerKit.Context): SchedulerKit.Job
+---@field IsCancelled fun(self: SchedulerKit.Context): boolean
 
 ---A unit of scheduled work.
----@class SchedulerKitJob
----@field GetState fun(self: SchedulerKitJob): SchedulerKitJobState
----@field GetPriority fun(self: SchedulerKitJob): integer
----@field GetScope fun(self: SchedulerKitJob): SchedulerKitScope
----@field GetName fun(self: SchedulerKitJob): string?
----@field IsPending fun(self: SchedulerKitJob): boolean
----@field IsCancelled fun(self: SchedulerKitJob): boolean
----@field HasError fun(self: SchedulerKitJob): boolean
----@field GetError fun(self: SchedulerKitJob): any
----@field GetErrorTraceback fun(self: SchedulerKitJob): string?
----@field Cancel fun(self: SchedulerKitJob): boolean
+---@class SchedulerKit.Job
+---@field GetState fun(self: SchedulerKit.Job): SchedulerKit.JobState
+---@field GetPriority fun(self: SchedulerKit.Job): integer
+---@field GetScope fun(self: SchedulerKit.Job): SchedulerKit.Scope
+---@field GetName fun(self: SchedulerKit.Job): string?
+---@field IsPending fun(self: SchedulerKit.Job): boolean
+---@field IsCancelled fun(self: SchedulerKit.Job): boolean
+---@field HasError fun(self: SchedulerKit.Job): boolean
+---@field GetError fun(self: SchedulerKit.Job): any
+---@field GetErrorTraceback fun(self: SchedulerKit.Job): string?
+---@field Cancel fun(self: SchedulerKit.Job): boolean
 
 ---An ownership scope for jobs, closed manually or by addon shutdown.
----@class SchedulerKitScope
----@field Schedule fun(self: SchedulerKitScope, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
----@field NextFrame fun(self: SchedulerKitScope, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
----@field After fun(self: SchedulerKitScope, delay: number, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
----@field Every fun(self: SchedulerKitScope, interval: number, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
----@field CancelAll fun(self: SchedulerKitScope): boolean
----@field Close fun(self: SchedulerKitScope): boolean
----@field IsClosed fun(self: SchedulerKitScope): boolean
----@field GetAddonName fun(self: SchedulerKitScope): string?
----@field GetActiveCount fun(self: SchedulerKitScope): integer
+---@class SchedulerKit.Scope
+---@field Schedule fun(self: SchedulerKit.Scope, callback: SchedulerKit.Callback, options: SchedulerKit.ScheduleOptions?): SchedulerKit.Job
+---@field NextFrame fun(self: SchedulerKit.Scope, callback: SchedulerKit.Callback, options: SchedulerKit.ScheduleOptions?): SchedulerKit.Job
+---@field After fun(self: SchedulerKit.Scope, delay: number, callback: SchedulerKit.Callback, options: SchedulerKit.ScheduleOptions?): SchedulerKit.Job
+---@field Every fun(self: SchedulerKit.Scope, interval: number, callback: SchedulerKit.Callback, options: SchedulerKit.ScheduleOptions?): SchedulerKit.Job
+---@field CancelAll fun(self: SchedulerKit.Scope): boolean
+---@field Close fun(self: SchedulerKit.Scope): boolean
+---@field IsClosed fun(self: SchedulerKit.Scope): boolean
+---@field GetAddonName fun(self: SchedulerKit.Scope): string?
+---@field GetActiveCount fun(self: SchedulerKit.Scope): integer
 
 ---Service-preference lanes.
----@class SchedulerKitPriority
+---@class SchedulerKit.Priority
 ---@field HIGH integer
 ---@field NORMAL integer
 ---@field LOW integer
 ---@field IDLE integer
 
 ---The SchedulerKit package facade published through Registry.
----@class SchedulerKitFacade
+---@class SchedulerKit
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
----@field Priority SchedulerKitPriority
----@field Job SchedulerKitJob Shared job prototype.
----@field Scope SchedulerKitScope Shared scope prototype.
----@field Context SchedulerKitContext Shared context prototype.
----@field Schedule fun(self: SchedulerKitFacade, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
----@field NextFrame fun(self: SchedulerKitFacade, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
----@field After fun(self: SchedulerKitFacade, delay: number, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
----@field Every fun(self: SchedulerKitFacade, interval: number, callback: fun(context: SchedulerKitContext), options: SchedulerKitScheduleOptions?): SchedulerKitJob
----@field CreateScope fun(self: SchedulerKitFacade): SchedulerKitScope
----@field ForAddon fun(self: SchedulerKitFacade, addonName: string): SchedulerKitScope
----@field SetFrameBudget fun(self: SchedulerKitFacade, milliseconds: number): SchedulerKitFacade
----@field GetFrameBudget fun(self: SchedulerKitFacade): number
----@field SetRunawayThreshold fun(self: SchedulerKitFacade, milliseconds: number): SchedulerKitFacade
----@field GetRunawayThreshold fun(self: SchedulerKitFacade): number
----@field SetMaxResumesPerFrame fun(self: SchedulerKitFacade, count: integer): SchedulerKitFacade
----@field GetMaxResumesPerFrame fun(self: SchedulerKitFacade): integer
----@field GetActiveCount fun(self: SchedulerKitFacade): integer
+---@field Priority SchedulerKit.Priority
+---@field Job SchedulerKit.Job Shared job prototype.
+---@field Scope SchedulerKit.Scope Shared scope prototype.
+---@field Context SchedulerKit.Context Shared context prototype.
+---@field Schedule fun(self: SchedulerKit, callback: SchedulerKit.Callback, options: SchedulerKit.ScheduleOptions?): SchedulerKit.Job
+---@field NextFrame fun(self: SchedulerKit, callback: SchedulerKit.Callback, options: SchedulerKit.ScheduleOptions?): SchedulerKit.Job
+---@field After fun(self: SchedulerKit, delay: number, callback: SchedulerKit.Callback, options: SchedulerKit.ScheduleOptions?): SchedulerKit.Job
+---@field Every fun(self: SchedulerKit, interval: number, callback: SchedulerKit.Callback, options: SchedulerKit.ScheduleOptions?): SchedulerKit.Job
+---@field CreateScope fun(self: SchedulerKit): SchedulerKit.Scope
+---@field ForAddon fun(self: SchedulerKit, addonName: string): SchedulerKit.Scope
+---@field SetFrameBudget fun(self: SchedulerKit, milliseconds: number): SchedulerKit
+---@field GetFrameBudget fun(self: SchedulerKit): number
+---@field SetRunawayThreshold fun(self: SchedulerKit, milliseconds: number): SchedulerKit
+---@field GetRunawayThreshold fun(self: SchedulerKit): number
+---@field SetMaxResumesPerFrame fun(self: SchedulerKit, count: integer): SchedulerKit
+---@field GetMaxResumesPerFrame fun(self: SchedulerKit): integer
+---@field GetActiveCount fun(self: SchedulerKit): integer
 
 -- Dependencies --------------------------------------------------------------
 
@@ -234,6 +247,9 @@ end
 
 -- Validation ---------------------------------------------------------------
 
+---Whether `implementation` exposes the complete SchedulerKit API 1 surface.
+---@param implementation any shared package table handed back by Registry
+---@return boolean
 local function validatePublicSurface(implementation)
     if
         type(implementation) ~= "table"
@@ -289,6 +305,9 @@ local function validatePublicSurface(implementation)
         and type(rawget(Context, "IsCancelled")) == "function"
 end
 
+---Whether `currentState` has the fields every API 1 revision shares.
+---@param currentState any
+---@return boolean
 local function validateStateBase(currentState)
     if
         type(currentState) ~= "table"
@@ -326,6 +345,9 @@ local function validateStateBase(currentState)
         and type(rawget(config, "maxResumesPerFrame")) == "number"
 end
 
+---Whether `implementation` carries package state of this revision's schema.
+---@param implementation table
+---@return boolean
 local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     if not validateStateBase(currentState) then
@@ -392,6 +414,8 @@ local Context = rawget(SchedulerKit, "Context")
 local Priority = rawget(SchedulerKit, "Priority")
 local state = rawget(SchedulerKit, "_state")
 
+---Build one empty priority lane.
+---@return SchedulerKit.Queue
 local function newQueue()
     return { items = {}, head = 1, tail = 0 }
 end
@@ -498,12 +522,19 @@ rawset(CONTEXT_METATABLE, "__index", Context)
 
 -- Generic helpers -----------------------------------------------------------
 
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer? stack level the failure is reported at; defaults to `3`
 local function validateNonEmptyString(value, label, level)
     if type(value) ~= "string" or value == "" then
         error(label .. " must be a non-empty string", level or 3)
     end
 end
 
+---@param value any
+---@param label string argument description, used in the argument error
+---@param allowZero boolean whether zero is accepted
+---@param level integer? stack level the failure is reported at; defaults to `3`
 local function validateFinitePositive(value, label, allowZero, level)
     if
         type(value) ~= "number"
@@ -521,6 +552,9 @@ local function validateFinitePositive(value, label, allowZero, level)
     end
 end
 
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer? stack level the failure is reported at; defaults to `3`
 local function validatePositiveInteger(value, label, level)
     if
         type(value) ~= "number"
@@ -534,6 +568,10 @@ local function validatePositiveInteger(value, label, level)
     end
 end
 
+---@param priority any one of `SchedulerKit.Priority`, or `nil` for `NORMAL`
+---@param label string argument description, used in the argument error
+---@param level integer? stack level the failure is reported at; defaults to `3`
+---@return integer priority
 local function validatePriority(priority, label, level)
     if priority == nil then
         return PRIORITY_NORMAL
@@ -549,6 +587,11 @@ local function validatePriority(priority, label, level)
     return priority
 end
 
+---Validate one scheduling option table and apply its defaults.
+---@param options any
+---@param methodName string public method name, used in the argument errors
+---@return integer priority
+---@return string|nil name
 local function validateOptions(options, methodName)
     if options == nil then
         return PRIORITY_NORMAL, nil
@@ -583,6 +626,8 @@ end
 -- unrelated code inflates wall time while the cooperating job consumed none of
 -- the frame; charging that to the job made well-behaved work look like a
 -- runaway. `debugprofilestop` already reports milliseconds.
+---Current addon CPU milliseconds.
+---@return number milliseconds
 local function nowFromProfilingClock()
     local value = nativeDebugProfileStop()
     if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
@@ -593,6 +638,8 @@ end
 
 -- Documented fallback for a host without the CPU clock: the monotonic precise
 -- wall clock, converted to milliseconds.
+---Current monotonic wall-clock milliseconds.
+---@return number milliseconds
 local function nowFromPreciseClock()
     local value = nativeGetTimePreciseSec()
     if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
@@ -604,6 +651,8 @@ end
 -- Bound once at load so the hot path does not branch on clock availability.
 local now = nativeDebugProfileStop ~= nil and nowFromProfilingClock or nowFromPreciseClock
 
+---Hand a diagnostic to the host error handler, best-effort.
+---@param value any
 local function reportError(value)
     -- geterrorhandler is the World of Warcraft client error sink, published as a global.
     -- selene: allow(global_usage)
@@ -619,30 +668,42 @@ local function reportError(value)
     pcall(handler, value)
 end
 
+---@param scope any receiver the public method was called on
+---@param methodName string public method name, used in the argument error
 local function validateScope(scope, methodName)
     if type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE then
         error(methodName .. " must be called on a SchedulerKit scope", 3)
     end
 end
 
+---@param job any receiver the public method was called on
+---@param methodName string public method name, used in the argument error
 local function validateJob(job, methodName)
     if type(job) ~= "table" or getmetatable(job) ~= JOB_METATABLE then
         error(methodName .. " must be called on a SchedulerKit job", 3)
     end
 end
 
+---@param context any receiver the public method was called on
+---@param methodName string public method name, used in the argument error
 local function validateContext(context, methodName)
     if type(context) ~= "table" or getmetatable(context) ~= CONTEXT_METATABLE then
         error(methodName .. " must be called on a SchedulerKit context", 3)
     end
 end
 
+---Whether a job in this state can never be scheduled again.
+---@param jobState SchedulerKit.JobState
+---@return boolean
 local function isTerminalJobState(jobState)
     return jobState == "completed" or jobState == "cancelled" or jobState == "failed"
 end
 
 -- Scope ownership -----------------------------------------------------------
 
+---Append `job` to its scope's intrusive active list.
+---@param scope SchedulerKit.Scope
+---@param job SchedulerKit.Job
 local function linkActive(scope, job)
     local tail = rawget(scope, "_tail")
     rawset(job, "_scopePrev", tail)
@@ -657,6 +718,9 @@ local function linkActive(scope, job)
     rawset(state, "activeCount", rawget(state, "activeCount") + 1)
 end
 
+---Remove `job` from its scope's intrusive active list, once.
+---@param scope SchedulerKit.Scope
+---@param job SchedulerKit.Job
 local function unlinkActive(scope, job)
     if rawget(job, "_active") ~= true then
         return
@@ -682,6 +746,9 @@ local function unlinkActive(scope, job)
     rawset(state, "activeCount", rawget(state, "activeCount") - 1)
 end
 
+---Drop the LifecycleKit shutdown subscription an addon scope holds.
+---@param scope SchedulerKit.Scope
+---@return SchedulerKit.ErrorRecord|nil errorRecord
 local function disconnectShutdownSubscription(scope)
     local subscription = rawget(scope, "_shutdownSubscription")
     if subscription == false then
@@ -704,6 +771,7 @@ end
 -- the flag is cleared the moment a drain resets the lane's indices. A cleared
 -- flag therefore always means "definitely nothing here", which is what lets
 -- ready selection skip a lane without paying for a queue probe.
+---@param priority integer
 local function markLaneOccupied(priority)
     local laneOccupied = rawget(state, "laneOccupied")
     if rawget(laneOccupied, priority) ~= true then
@@ -712,6 +780,7 @@ local function markLaneOccupied(priority)
     end
 end
 
+---@param priority integer
 local function markLaneEmpty(priority)
     local laneOccupied = rawget(state, "laneOccupied")
     if rawget(laneOccupied, priority) == true then
@@ -720,6 +789,8 @@ local function markLaneEmpty(priority)
     end
 end
 
+---Enqueue `job` in its own priority lane, at most once.
+---@param job SchedulerKit.Job
 local function queuePush(job)
     if rawget(job, "_queued") == true then
         return
@@ -733,6 +804,9 @@ local function queuePush(job)
     markLaneOccupied(priority)
 end
 
+---Take the next live job from one lane, discarding stale entries.
+---@param priority integer
+---@return SchedulerKit.Job|nil
 local function queuePop(priority)
     local queue = rawget(rawget(state, "queues"), priority)
     local items = rawget(queue, "items")
@@ -763,6 +837,9 @@ local function queuePop(priority)
     return nil
 end
 
+---Whether one lane still holds a job that can run, trimming stale entries.
+---@param priority integer
+---@return boolean
 local function queueHasLive(priority)
     local queue = rawget(rawget(state, "queues"), priority)
     local items = rawget(queue, "items")
@@ -791,6 +868,8 @@ local function queueHasLive(priority)
     return false
 end
 
+---Whether any lane holds work, which is what decides if the driver runs.
+---@return boolean
 local function hasReadyJobs()
     if rawget(state, "occupiedLaneCount") == 0 then
         return false
@@ -805,6 +884,11 @@ local function hasReadyJobs()
     return false
 end
 
+---Select the next job to resume under the weighted lane sequence.
+---
+---`IDLE` is served only when no contending lane is ready, except that the
+---starvation guard promotes one `IDLE` job after enough contending resumes.
+---@return SchedulerKit.Job|nil
 local function nextReadyJob()
     if rawget(state, "occupiedLaneCount") == 0 then
         return nil
@@ -856,6 +940,8 @@ end
 
 -- Driver -------------------------------------------------------------------
 
+---Return the driver Frame, creating it and its trampoline on demand.
+---@return WowFrame
 local function ensureDriver()
     local frame = rawget(state, "frame")
     if frame ~= false then
@@ -884,6 +970,7 @@ local function ensureDriver()
     return frame
 end
 
+---Install or remove the `OnUpdate` handler to match whether work is ready.
 local function updateDriver()
     local needed = hasReadyJobs()
     local enabled = rawget(state, "driverEnabled") == true
@@ -903,6 +990,9 @@ end
 
 -- Job terminal/error handling ---------------------------------------------
 
+---Release the TimerKit handle a delayed job is holding, if any.
+---@param job SchedulerKit.Job
+---@return TimerKit.Timer|false delayTimer
 local function detachDelayTimer(job)
     local delayTimer = rawget(job, "_delayTimer")
     rawset(job, "_delayTimer", false)
@@ -914,6 +1004,9 @@ local function detachDelayTimer(job)
     return delayTimer
 end
 
+---Move `job` into a terminal state and release everything it retained.
+---@param job SchedulerKit.Job
+---@param terminalState "completed"|"cancelled"|"failed"
 local function finishJob(job, terminalState)
     rawset(job, "_state", terminalState)
     rawset(job, "_queued", false)
@@ -947,7 +1040,7 @@ end
 ---Record a failure on the job without reporting it. The caller decides whether
 ---the failure is re-raised to a direct caller or handed to the host error
 ---handler, so one failure is never signalled twice.
----@param job SchedulerKitJob
+---@param job SchedulerKit.Job
 ---@param value any
 ---@param traceback string|false
 local function markJobFailed(job, value, traceback)
@@ -959,7 +1052,7 @@ end
 
 ---Record a failure and report it through the host error handler. Used on the
 ---driver path, where nothing above SchedulerKit can observe a raise.
----@param job SchedulerKitJob
+---@param job SchedulerKit.Job
 ---@param value any
 ---@param traceback string|false
 local function failJob(job, value, traceback)
@@ -971,6 +1064,9 @@ local function failJob(job, value, traceback)
     reportError(value)
 end
 
+---Cancel `job`, cancelling its pending delay and updating the driver.
+---@param job SchedulerKit.Job
+---@return boolean cancelled `false` when the job was already terminal.
 local function cancelJob(job)
     validateJob(job, "SchedulerKit.Job:Cancel")
     local jobState = rawget(job, "_state")
@@ -1006,6 +1102,9 @@ end
 
 -- Job creation/delay --------------------------------------------------------
 
+---Build one open scope. `addonName` is `nil` for a manually owned scope.
+---@param addonName string|nil
+---@return SchedulerKit.Scope
 local function newScope(addonName)
     return setmetatable({
         _addonName = addonName,
@@ -1018,6 +1117,9 @@ local function newScope(addonName)
     }, SCOPE_METATABLE)
 end
 
+---Return the TimerKit scope backing this scope's delays, creating it lazily.
+---@param scope SchedulerKit.Scope
+---@return TimerKit.Scope
 local function ensureTimerScope(scope)
     local timerScope = rawget(scope, "_timerScope")
     if timerScope ~= false then
@@ -1033,6 +1135,13 @@ local function ensureTimerScope(scope)
     return timerScope
 end
 
+---Build one job and its context handle, and link it into `scope`.
+---@param scope SchedulerKit.Scope
+---@param callback SchedulerKit.Callback
+---@param priority integer
+---@param name string|nil
+---@param interval number|false repeat interval, or `false` for a one-shot job
+---@return SchedulerKit.Job
 local function newJob(scope, callback, priority, name, interval)
     local job = setmetatable({
         _scope = scope,
@@ -1064,6 +1173,9 @@ end
 -- One shared wake callback serves every delay, so arming a repeat interval
 -- allocates no closure. The job it belongs to travels on the TimerKit handle as
 -- public user data.
+---Shared TimerKit callback that wakes whichever job armed the handle.
+---@param timerHandle TimerKit.Timer
+---@return boolean woken
 local function delayedWakeCallback(timerHandle)
     if type(timerHandle) ~= "table" then
         return false
@@ -1095,6 +1207,10 @@ end
 -- from the driver's repeat re-arm. It records the failure on the job and
 -- raises; whoever called it decides whether that raise reaches a caller or is
 -- converted into a host error report, so one failure is never signalled twice.
+---Put `job` to sleep for `delay` seconds through TimerKit.
+---@param job SchedulerKit.Job
+---@param delay number
+---@return boolean armed `false` when the owning scope had already closed.
 local function armDelay(job, delay)
     local scope = rawget(job, "_scope")
     if rawget(scope, "_closed") == true then
@@ -1125,6 +1241,10 @@ local function armDelay(job, delay)
     return true
 end
 
+---Return a delayed job to the ready queues, ignoring stale generations.
+---@param job SchedulerKit.Job
+---@param generation integer|false generation the expired handle was armed for
+---@return boolean woken
 local function wakeDelayed(job, generation)
     if rawget(job, "_generation") ~= generation or rawget(job, "_state") ~= "delayed" then
         return false
@@ -1141,6 +1261,12 @@ local function wakeDelayed(job, generation)
     return true
 end
 
+---Validate and queue one immediately eligible job.
+---@param scope SchedulerKit.Scope
+---@param callback any
+---@param options SchedulerKit.ScheduleOptions|nil
+---@param methodName string public method name, used in the argument errors
+---@return SchedulerKit.Job
 local function scheduleInScope(scope, callback, options, methodName)
     validateScope(scope, methodName)
     if rawget(scope, "_closed") == true then
@@ -1161,6 +1287,14 @@ local function scheduleInScope(scope, callback, options, methodName)
     return job
 end
 
+---Validate and arm one delayed or repeating job.
+---@param scope SchedulerKit.Scope
+---@param delay any seconds to wait; the repeat interval when `repeating`
+---@param callback any
+---@param options SchedulerKit.ScheduleOptions|nil
+---@param repeating boolean
+---@param methodName string public method name, used in the argument errors
+---@return SchedulerKit.Job
 local function scheduleAfterInScope(scope, delay, callback, options, repeating, methodName)
     validateScope(scope, methodName)
     if rawget(scope, "_closed") == true then
@@ -1185,6 +1319,9 @@ end
 
 -- Execution ----------------------------------------------------------------
 
+---Wrap a job's callback in the coroutine its slices are resumed through.
+---@param job SchedulerKit.Job
+---@return thread
 local function createCoroutine(job)
     local callback = rawget(job, "_callback")
     local context = rawget(job, "_context")
@@ -1195,7 +1332,7 @@ end
 
 ---Render a job for a diagnostic message. Only reached on failure/overrun
 ---paths, so the concatenation never touches the normal resume path.
----@param job SchedulerKitJob
+---@param job SchedulerKit.Job
 ---@return string label
 local function describeJob(job)
     local name = rawget(job, "_name")
@@ -1209,7 +1346,7 @@ end
 ---is a scheduling problem rather than a reason to kill it. SchedulerKit lowers
 ---its priority one lane, so it stops competing with well-behaved work, and
 ---reports the overrun through the host error handler.
----@param job SchedulerKitJob
+---@param job SchedulerKit.Job
 ---@param elapsed number
 ---@param threshold number
 local function demoteOverrunningJob(job, elapsed, threshold)
@@ -1233,7 +1370,7 @@ end
 
 ---Handle a slice that ended with the callback returning although
 ---`Context:Yield()` was called and the suspension never reached the scheduler.
----@param job SchedulerKitJob
+---@param job SchedulerKit.Job
 ---@param elapsed number
 ---@return boolean failed Whether the job was failed and must not continue.
 local function handleSwallowedYield(job, elapsed)
@@ -1262,6 +1399,8 @@ local function handleSwallowedYield(job, elapsed)
     return false
 end
 
+---Run one slice of `job`, then requeue, re-arm, finish or fail it.
+---@param job SchedulerKit.Job
 local function resumeJob(job)
     if rawget(job, "_state") ~= "pending" then
         return
@@ -1334,6 +1473,8 @@ local function resumeJob(job)
     queuePush(job)
 end
 
+---One driver pass: resume ready jobs until the budget or the resume cap ends it.
+---@param _elapsed number seconds since the previous frame, unused
 local function runFrame(_elapsed)
     local config = rawget(state, "config")
     local startTime = now()
@@ -1361,6 +1502,9 @@ end
 
 -- Scope cleanup -------------------------------------------------------------
 
+---Cancel every job of `scope`, keeping the scope itself usable.
+---@param scope SchedulerKit.Scope
+---@return boolean cancelled
 local function cancelAll(scope)
     validateScope(scope, "SchedulerKit.Scope:CancelAll")
     local firstError = nil
@@ -1380,6 +1524,9 @@ local function cancelAll(scope)
     return true
 end
 
+---Terminally close `scope`, its jobs, its subscription and its timer scope.
+---@param scope SchedulerKit.Scope
+---@return boolean closed `false` when the scope was already closed.
 local function closeScope(scope)
     validateScope(scope, "SchedulerKit.Scope:Close")
     if rawget(scope, "_closed") == true then
@@ -1414,6 +1561,9 @@ local function closeScope(scope)
     return true
 end
 
+---Build the addon-owned scope for `addonName` and bind it to addon shutdown.
+---@param addonName string
+---@return SchedulerKit.Scope
 local function createAddonScope(addonName)
     local lifecycle = LifecycleKit:ForAddon(addonName)
     local scope = newScope(addonName)
@@ -1452,16 +1602,27 @@ end
 
 -- Context public methods ----------------------------------------------------
 
+---Return the job this context belongs to.
+---@param self SchedulerKit.Context
+---@return SchedulerKit.Job job
 local function contextGetJob(self)
     validateContext(self, "SchedulerKit.Context:GetJob")
     return rawget(self, "_job")
 end
 
+---Whether the running job has been cancelled and should return early.
+---@param self SchedulerKit.Context
+---@return boolean cancelled
 local function contextIsCancelled(self)
     validateContext(self, "SchedulerKit.Context:IsCancelled")
     return rawget(rawget(self, "_job"), "_state") == "cancelled"
 end
 
+---Whether this slice has used its share of the frame budget.
+---
+---Callable only while the owning job is the one currently running.
+---@param self SchedulerKit.Context
+---@return boolean shouldYield
 local function contextShouldYield(self)
     validateContext(self, "SchedulerKit.Context:ShouldYield")
     local job = rawget(self, "_job")
@@ -1483,6 +1644,11 @@ local function contextShouldYield(self)
     return now() >= deadline
 end
 
+---Suspend the running job until the scheduler resumes it again.
+---
+---Lua 5.1 cannot yield across a `pcall`, a metamethod or any other C-call
+---boundary, so this must be called directly from the job's own callback.
+---@param self SchedulerKit.Context
 local function contextYield(self)
     validateContext(self, "SchedulerKit.Context:Yield")
     local job = rawget(self, "_job")
@@ -1504,42 +1670,66 @@ end
 
 -- Job public methods --------------------------------------------------------
 
+---Return the job's logical state.
+---@param self SchedulerKit.Job
+---@return SchedulerKit.JobState state
 local function jobGetState(self)
     validateJob(self, "SchedulerKit.Job:GetState")
     return rawget(self, "_state")
 end
 
+---Return the job's current priority lane, which an overrun may have lowered.
+---@param self SchedulerKit.Job
+---@return integer priority
 local function jobGetPriority(self)
     validateJob(self, "SchedulerKit.Job:GetPriority")
     return rawget(self, "_priority")
 end
 
+---Return the scope that owns this job.
+---@param self SchedulerKit.Job
+---@return SchedulerKit.Scope scope
 local function jobGetScope(self)
     validateJob(self, "SchedulerKit.Job:GetScope")
     return rawget(self, "_scope")
 end
 
+---Return the diagnostic name this job was scheduled with, if any.
+---@param self SchedulerKit.Job
+---@return string? name
 local function jobGetName(self)
     validateJob(self, "SchedulerKit.Job:GetName")
     return rawget(self, "_name")
 end
 
+---Whether the job may still run: delayed, queued or currently running.
+---@param self SchedulerKit.Job
+---@return boolean pending
 local function jobIsPending(self)
     validateJob(self, "SchedulerKit.Job:IsPending")
     local jobState = rawget(self, "_state")
     return jobState == "delayed" or jobState == "pending" or jobState == "running"
 end
 
+---Whether the job was cancelled.
+---@param self SchedulerKit.Job
+---@return boolean cancelled
 local function jobIsCancelled(self)
     validateJob(self, "SchedulerKit.Job:IsCancelled")
     return rawget(self, "_state") == "cancelled"
 end
 
+---Whether the job failed. Pair with `GetError`, whose value may be `nil`.
+---@param self SchedulerKit.Job
+---@return boolean hasError
 local function jobHasError(self)
     validateJob(self, "SchedulerKit.Job:HasError")
     return rawget(self, "_errorPresent") == true
 end
 
+---Return the recorded error object, which may itself legitimately be `nil`.
+---@param self SchedulerKit.Job
+---@return any errorValue
 local function jobGetError(self)
     validateJob(self, "SchedulerKit.Job:GetError")
     if rawget(self, "_errorPresent") ~= true then
@@ -1551,7 +1741,7 @@ end
 ---Return the stack captured at the point a callback error was raised, or `nil`
 ---when the job did not fail through a callback error or the host publishes no
 ---`debug.traceback`.
----@param self SchedulerKitJob
+---@param self SchedulerKit.Job
 ---@return string? traceback
 local function jobGetErrorTraceback(self)
     validateJob(self, "SchedulerKit.Job:GetErrorTraceback")
@@ -1562,46 +1752,86 @@ local function jobGetErrorTraceback(self)
     return traceback
 end
 
+---Cancel this job.
+---@param self SchedulerKit.Job
+---@return boolean cancelled `false` when the job was already terminal.
 local function jobCancel(self)
     return cancelJob(self)
 end
 
 -- Scope public methods ------------------------------------------------------
 
+---Schedule immediately eligible cooperative work in this scope.
+---@param self SchedulerKit.Scope
+---@param callback SchedulerKit.Callback
+---@param options SchedulerKit.ScheduleOptions?
+---@return SchedulerKit.Job job
 local function scopeSchedule(self, callback, options)
     return scheduleInScope(self, callback, options, "SchedulerKit.Scope:Schedule")
 end
 
+---Schedule work that must not run during the current pass.
+---@param self SchedulerKit.Scope
+---@param callback SchedulerKit.Callback
+---@param options SchedulerKit.ScheduleOptions?
+---@return SchedulerKit.Job job
 local function scopeNextFrame(self, callback, options)
     return scheduleAfterInScope(self, 0, callback, options, false, "SchedulerKit.Scope:NextFrame")
 end
 
+---Schedule work to become eligible after `delay` seconds.
+---@param self SchedulerKit.Scope
+---@param delay number Finite seconds greater than or equal to zero.
+---@param callback SchedulerKit.Callback
+---@param options SchedulerKit.ScheduleOptions?
+---@return SchedulerKit.Job job
 local function scopeAfter(self, delay, callback, options)
     return scheduleAfterInScope(self, delay, callback, options, false, "SchedulerKit.Scope:After")
 end
 
+---Schedule work that re-arms `interval` seconds after each run completes.
+---@param self SchedulerKit.Scope
+---@param interval number Finite seconds greater than zero.
+---@param callback SchedulerKit.Callback
+---@param options SchedulerKit.ScheduleOptions?
+---@return SchedulerKit.Job job
 local function scopeEvery(self, interval, callback, options)
     return scheduleAfterInScope(self, interval, callback, options, true, "SchedulerKit.Scope:Every")
 end
 
+---Cancel every job in this scope while keeping the scope reusable.
+---@param self SchedulerKit.Scope
+---@return boolean cancelled
 local function scopeCancelAll(self)
     return cancelAll(self)
 end
 
+---Terminally close this scope after cancelling everything it owns.
+---@param self SchedulerKit.Scope
+---@return boolean closed `false` when the scope was already closed.
 local function scopeClose(self)
     return closeScope(self)
 end
 
+---Whether this scope is terminally closed.
+---@param self SchedulerKit.Scope
+---@return boolean closed
 local function scopeIsClosed(self)
     validateScope(self, "SchedulerKit.Scope:IsClosed")
     return rawget(self, "_closed") == true
 end
 
+---Return the owning addon name, or `nil` for a manual scope.
+---@param self SchedulerKit.Scope
+---@return string? addonName
 local function scopeGetAddonName(self)
     validateScope(self, "SchedulerKit.Scope:GetAddonName")
     return rawget(self, "_addonName")
 end
 
+---Number of jobs of this scope that have not reached a terminal state.
+---@param self SchedulerKit.Scope
+---@return integer activeCount
 local function scopeGetActiveCount(self)
     validateScope(self, "SchedulerKit.Scope:GetActiveCount")
     return rawget(self, "_activeCount")
@@ -1609,6 +1839,8 @@ end
 
 -- Package public API --------------------------------------------------------
 
+---Return SchedulerKit's internal manual scope, replacing it once it is closed.
+---@return SchedulerKit.Scope
 local function getDefaultScope()
     local scope = rawget(state, "defaultScope")
     if scope == false or rawget(scope, "_closed") == true then
@@ -1618,10 +1850,20 @@ local function getDefaultScope()
     return scope
 end
 
+---Schedule work in SchedulerKit's internal manual scope.
+---@param _ SchedulerKit
+---@param callback SchedulerKit.Callback
+---@param options SchedulerKit.ScheduleOptions?
+---@return SchedulerKit.Job job
 local function packageSchedule(_, callback, options)
     return scheduleInScope(getDefaultScope(), callback, options, "SchedulerKit:Schedule")
 end
 
+---Schedule next-pass work in SchedulerKit's internal manual scope.
+---@param _ SchedulerKit
+---@param callback SchedulerKit.Callback
+---@param options SchedulerKit.ScheduleOptions?
+---@return SchedulerKit.Job job
 local function packageNextFrame(_, callback, options)
     return scheduleAfterInScope(
         getDefaultScope(),
@@ -1633,6 +1875,12 @@ local function packageNextFrame(_, callback, options)
     )
 end
 
+---Schedule delayed work in SchedulerKit's internal manual scope.
+---@param _ SchedulerKit
+---@param delay number Finite seconds greater than or equal to zero.
+---@param callback SchedulerKit.Callback
+---@param options SchedulerKit.ScheduleOptions?
+---@return SchedulerKit.Job job
 local function packageAfter(_, delay, callback, options)
     return scheduleAfterInScope(
         getDefaultScope(),
@@ -1644,6 +1892,12 @@ local function packageAfter(_, delay, callback, options)
     )
 end
 
+---Schedule repeating work in SchedulerKit's internal manual scope.
+---@param _ SchedulerKit
+---@param interval number Finite seconds greater than zero.
+---@param callback SchedulerKit.Callback
+---@param options SchedulerKit.ScheduleOptions?
+---@return SchedulerKit.Job job
 local function packageEvery(_, interval, callback, options)
     return scheduleAfterInScope(
         getDefaultScope(),
@@ -1655,10 +1909,16 @@ local function packageEvery(_, interval, callback, options)
     )
 end
 
+---Create a manually owned scope, closed only by its owner.
+---@return SchedulerKit.Scope scope
 local function createScope()
     return newScope(nil)
 end
 
+---Return the shared LifecycleKit-owned scheduler scope for an addon.
+---@param _ SchedulerKit
+---@param addonName string addon folder name, as LifecycleKit matches it
+---@return SchedulerKit.Scope scope
 local function forAddon(_, addonName)
     validateNonEmptyString(addonName, "SchedulerKit:ForAddon addonName", 3)
     local addonScopes = rawget(state, "addonScopes")
@@ -1669,36 +1929,56 @@ local function forAddon(_, addonName)
     return createAddonScope(addonName)
 end
 
+---Set the addon CPU milliseconds one driver pass may spend.
+---@param _ SchedulerKit
+---@param milliseconds number Finite and greater than zero.
+---@return SchedulerKit self
 local function setFrameBudget(_, milliseconds)
     validateFinitePositive(milliseconds, "SchedulerKit:SetFrameBudget milliseconds", false, 3)
     rawset(rawget(state, "config"), "frameBudgetMs", milliseconds)
     return SchedulerKit
 end
 
+---Current frame budget in addon CPU milliseconds.
+---@return number milliseconds
 local function getFrameBudget()
     return rawget(rawget(state, "config"), "frameBudgetMs")
 end
 
+---Set the slice length past which a cooperating job is demoted one lane.
+---@param _ SchedulerKit
+---@param milliseconds number Finite and greater than zero.
+---@return SchedulerKit self
 local function setRunawayThreshold(_, milliseconds)
     validateFinitePositive(milliseconds, "SchedulerKit:SetRunawayThreshold milliseconds", false, 3)
     rawset(rawget(state, "config"), "runawayThresholdMs", milliseconds)
     return SchedulerKit
 end
 
+---Current runaway threshold in addon CPU milliseconds.
+---@return number milliseconds
 local function getRunawayThreshold()
     return rawget(rawget(state, "config"), "runawayThresholdMs")
 end
 
+---Set the hard cap on job resumes in one driver pass.
+---@param _ SchedulerKit
+---@param count integer Finite and greater than zero.
+---@return SchedulerKit self
 local function setMaxResumesPerFrame(_, count)
     validatePositiveInteger(count, "SchedulerKit:SetMaxResumesPerFrame count", 3)
     rawset(rawget(state, "config"), "maxResumesPerFrame", count)
     return SchedulerKit
 end
 
+---Current per-pass resume cap.
+---@return integer count
 local function getMaxResumesPerFrame()
     return rawget(rawget(state, "config"), "maxResumesPerFrame")
 end
 
+---Number of jobs across every scope that have not reached a terminal state.
+---@return integer activeCount
 local function getActiveCount()
     return rawget(state, "activeCount")
 end

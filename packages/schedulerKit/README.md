@@ -41,3 +41,22 @@ end, {
 ```
 
 For the complete public contract, see [`docs/API.md`](docs/API.md). Maintainers can also read [`docs/INTERNALS.md`](docs/INTERNALS.md) for queue, driver, shared-state, and allocation invariants.
+
+## Embedding
+
+[`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:
+directory layout, supported Interface numbers, taint, `/reload` semantics and
+troubleshooting. This package's load order inside a consuming addon is:
+
+```toc
+Libs\MoltenCodes\registry\Registry.lua
+Libs\MoltenCodes\signalKit\SignalKit.lua
+Libs\MoltenCodes\eventKit\EventKit.lua
+Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
+Libs\MoltenCodes\timerKit\TimerKit.lua
+Libs\MoltenCodes\schedulerKit\SchedulerKit.lua
+```
+
+Direct runtime dependencies: LifecycleKit API 1, Registry API 2, TimerKit API 1.
+Every file above is required; omitting one makes this package raise at
+load.

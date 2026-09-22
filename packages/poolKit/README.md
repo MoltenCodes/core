@@ -28,3 +28,18 @@ Two contracts are worth knowing before the first `Acquire`:
 For plain tables, `PoolKit:NewTablePool()` provides a zero-configuration pool whose reset step shallow-clears every key.
 
 See [`docs/API.md`](docs/API.md) for the complete contract and [`docs/INTERNALS.md`](docs/INTERNALS.md) for ownership/allocation invariants.
+
+## Embedding
+
+[`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:
+directory layout, supported Interface numbers, taint, `/reload` semantics and
+troubleshooting. This package's load order inside a consuming addon is:
+
+```toc
+Libs\MoltenCodes\registry\Registry.lua
+Libs\MoltenCodes\poolKit\PoolKit.lua
+```
+
+Direct runtime dependencies: Registry API 2.
+Every file above is required; omitting one makes this package raise at
+load.

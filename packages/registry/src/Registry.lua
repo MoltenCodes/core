@@ -176,7 +176,7 @@ end
 -- Shared facade -----------------------------------------------------------
 
 ---Metadata snapshot returned by `Registry:GetInfo`.
----@class RegistryPackageInfo
+---@class Registry.PackageInfo
 ---@field ["package"] string Package identifier the snapshot describes.
 ---@field api integer API generation the snapshot describes.
 ---@field revision integer Currently selected implementation revision.
@@ -188,7 +188,7 @@ end
 ---@field REVISION integer Registry implementation revision currently installed.
 ---@field Register fun(self: Registry, packageName: string, api: integer, revision: integer): table|nil, integer|nil
 ---@field Get fun(self: Registry, packageName: string, api: integer): table|nil, integer|nil
----@field GetInfo fun(self: Registry, packageName: string, api: integer): RegistryPackageInfo|nil
+---@field GetInfo fun(self: Registry, packageName: string, api: integer): Registry.PackageInfo|nil
 
 ---@type Registry
 local Registry = facade
@@ -271,7 +271,7 @@ if stateRevision < IMPLEMENTATION_REVISION then
     ---Returns a freshly allocated metadata snapshot for one registration.
     ---@param packageName string
     ---@param api integer
-    ---@return RegistryPackageInfo|nil
+    ---@return Registry.PackageInfo|nil
     local function getInfo(_, packageName, api)
         validatePackageName(packageName, "GetInfo")
         validateApi(api, "GetInfo")

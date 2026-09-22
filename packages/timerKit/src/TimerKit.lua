@@ -28,50 +28,53 @@ local TIMER_OPTION_KEYS = {
 -- rather than inferred from those assignments.
 
 ---Logical state of a TimerKit timer.
----@alias TimerKitTimerState "idle"|"running"|"completed"|"cancelled"
+---@alias TimerKit.TimerState "idle"|"running"|"completed"|"cancelled"
+
+---A timer callback, invoked with the logical timer handle that fired.
+---@alias TimerKit.Callback fun(timer: TimerKit.Timer)
 
 ---Option table accepted by `TimerKit:New` and `TimerKit.Scope:New`.
----@class TimerKitTimerOptions
+---@class TimerKit.TimerOptions
 ---@field delay number Finite seconds; must be greater than zero when repeating.
----@field callback fun(timer: TimerKitTimer) Receives the logical timer handle.
+---@field callback TimerKit.Callback Receives the logical timer handle.
 ---@field repeating boolean? Defaults to `false`.
 
 ---A cancelable logical timer owned by exactly one scope.
----@class TimerKitTimer
----@field GetState fun(self: TimerKitTimer): TimerKitTimerState
----@field GetDelay fun(self: TimerKitTimer): number
----@field GetScope fun(self: TimerKitTimer): TimerKitScope
----@field GetUserData fun(self: TimerKitTimer): any
----@field SetUserData fun(self: TimerKitTimer, value: any): TimerKitTimer
----@field IsRepeating fun(self: TimerKitTimer): boolean
----@field IsPending fun(self: TimerKitTimer): boolean
----@field IsCancelled fun(self: TimerKitTimer): boolean
----@field Start fun(self: TimerKitTimer): boolean
----@field Cancel fun(self: TimerKitTimer): boolean
----@field Restart fun(self: TimerKitTimer): boolean
+---@class TimerKit.Timer
+---@field GetState fun(self: TimerKit.Timer): TimerKit.TimerState
+---@field GetDelay fun(self: TimerKit.Timer): number
+---@field GetScope fun(self: TimerKit.Timer): TimerKit.Scope
+---@field GetUserData fun(self: TimerKit.Timer): any
+---@field SetUserData fun(self: TimerKit.Timer, value: any): TimerKit.Timer
+---@field IsRepeating fun(self: TimerKit.Timer): boolean
+---@field IsPending fun(self: TimerKit.Timer): boolean
+---@field IsCancelled fun(self: TimerKit.Timer): boolean
+---@field Start fun(self: TimerKit.Timer): boolean
+---@field Cancel fun(self: TimerKit.Timer): boolean
+---@field Restart fun(self: TimerKit.Timer): boolean
 
 ---An ownership scope for timers, closed manually or by addon shutdown.
----@class TimerKitScope
----@field New fun(self: TimerKitScope, options: TimerKitTimerOptions): TimerKitTimer
----@field After fun(self: TimerKitScope, delay: number, callback: fun(timer: TimerKitTimer)): TimerKitTimer
----@field Every fun(self: TimerKitScope, interval: number, callback: fun(timer: TimerKitTimer)): TimerKitTimer
----@field CancelAll fun(self: TimerKitScope): integer
----@field Close fun(self: TimerKitScope): boolean
----@field IsClosed fun(self: TimerKitScope): boolean
----@field GetAddonName fun(self: TimerKitScope): string?
----@field GetActiveCount fun(self: TimerKitScope): integer
+---@class TimerKit.Scope
+---@field New fun(self: TimerKit.Scope, options: TimerKit.TimerOptions): TimerKit.Timer
+---@field After fun(self: TimerKit.Scope, delay: number, callback: TimerKit.Callback): TimerKit.Timer
+---@field Every fun(self: TimerKit.Scope, interval: number, callback: TimerKit.Callback): TimerKit.Timer
+---@field CancelAll fun(self: TimerKit.Scope): integer
+---@field Close fun(self: TimerKit.Scope): boolean
+---@field IsClosed fun(self: TimerKit.Scope): boolean
+---@field GetAddonName fun(self: TimerKit.Scope): string?
+---@field GetActiveCount fun(self: TimerKit.Scope): integer
 
 ---The TimerKit package facade published through Registry.
----@class TimerKitFacade
+---@class TimerKit
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
----@field Timer TimerKitTimer Shared timer prototype.
----@field Scope TimerKitScope Shared scope prototype.
----@field New fun(self: TimerKitFacade, options: TimerKitTimerOptions): TimerKitTimer
----@field After fun(self: TimerKitFacade, delay: number, callback: fun(timer: TimerKitTimer)): TimerKitTimer
----@field Every fun(self: TimerKitFacade, interval: number, callback: fun(timer: TimerKitTimer)): TimerKitTimer
----@field CreateScope fun(self: TimerKitFacade): TimerKitScope
----@field ForAddon fun(self: TimerKitFacade, addonName: string): TimerKitScope
+---@field Timer TimerKit.Timer Shared timer prototype.
+---@field Scope TimerKit.Scope Shared scope prototype.
+---@field New fun(self: TimerKit, options: TimerKit.TimerOptions): TimerKit.Timer
+---@field After fun(self: TimerKit, delay: number, callback: TimerKit.Callback): TimerKit.Timer
+---@field Every fun(self: TimerKit, interval: number, callback: TimerKit.Callback): TimerKit.Timer
+---@field CreateScope fun(self: TimerKit): TimerKit.Scope
+---@field ForAddon fun(self: TimerKit, addonName: string): TimerKit.Scope
 
 -- Dependencies --------------------------------------------------------------
 
@@ -123,6 +126,9 @@ end
 
 -- Validation ----------------------------------------------------------------
 
+---Whether `implementation` exposes the complete TimerKit API 1 surface.
+---@param implementation any shared package table handed back by Registry
+---@return boolean
 local function validatePublicSurface(implementation)
     if
         type(implementation) ~= "table"
@@ -163,6 +169,9 @@ local function validatePublicSurface(implementation)
         and type(rawget(Scope, "GetActiveCount")) == "function"
 end
 
+---Whether `currentState` has the fields every API 1 revision shares.
+---@param currentState any
+---@return boolean
 local function validateStateBase(currentState)
     return type(currentState) == "table"
         and rawget(currentState, "schema") == STATE_SCHEMA
@@ -174,6 +183,9 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "scopeMetatable")) == "table"
 end
 
+---Whether `implementation` carries package state of this revision's schema.
+---@param implementation table
+---@return boolean
 local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     return validateStateBase(currentState) and type(rawget(currentState, "defaultScope")) == "table"
@@ -249,10 +261,18 @@ local SCOPE_METATABLE = rawget(state, "scopeMetatable")
 rawset(TIMER_METATABLE, "__index", Timer)
 rawset(SCOPE_METATABLE, "__index", Scope)
 
+---Wrap an error object so that `nil` and `false` stay representable.
+---@param value any
+---@return { value: any }
 local function newErrorRecord(value)
     return { value = value }
 end
 
+---Keep the first failure of a best-effort loop.
+---@param firstError { value: any }|nil
+---@param ok boolean
+---@param value any
+---@return { value: any }|nil firstError
 local function captureFirstError(firstError, ok, value)
     if not ok and firstError == nil then
         return newErrorRecord(value)
@@ -260,6 +280,8 @@ local function captureFirstError(firstError, ok, value)
     return firstError
 end
 
+---Re-raise a captured failure unchanged, or return when there was none.
+---@param firstError { value: any }|nil
 local function raiseCaptured(firstError)
     if firstError ~= nil then
         error(firstError.value, 0)
@@ -271,12 +293,19 @@ end
 -- TimerKit. `level` is always the value `error` needs *inside the function that
 -- receives it*, so every further hop towards `error` adds exactly one.
 
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
 local function validateNonEmptyString(value, label, level)
     if type(value) ~= "string" or value == "" then
         error(label .. " must be a non-empty string", level)
     end
 end
 
+---@param delay any finite seconds; strictly positive for a repeating timer
+---@param repeating boolean
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
 local function validateDelay(delay, repeating, label, level)
     if type(delay) ~= "number" or delay ~= delay or delay == math.huge or delay == -math.huge then
         error(label .. " must be a finite number", level)
@@ -291,6 +320,13 @@ local function validateDelay(delay, repeating, label, level)
     end
 end
 
+---Validate one `New`-style option table and unpack the values it carries.
+---@param options any
+---@param methodName string public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return number delay
+---@return TimerKit.Callback callback
+---@return boolean repeating
 local function validateOptions(options, methodName, level)
     if type(options) ~= "table" then
         error(methodName .. " options must be a table", level)
@@ -328,18 +364,27 @@ local function validateOptions(options, methodName, level)
     return delay, callback, repeating
 end
 
+---@param scope any receiver the public method was called on
+---@param methodName string public method name, used in the argument error
+---@param level integer stack level the failure is reported at
 local function validateScope(scope, methodName, level)
     if type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE then
         error(methodName .. " must be called on a TimerKit scope", level)
     end
 end
 
+---@param timer any receiver the public method was called on
+---@param methodName string public method name, used in the argument error
+---@param level integer stack level the failure is reported at
 local function validateTimer(timer, methodName, level)
     if type(timer) ~= "table" or getmetatable(timer) ~= TIMER_METATABLE then
         error(methodName .. " must be called on a TimerKit timer", level)
     end
 end
 
+---Return the host handle's `Cancel` method, or `nil` when it has none.
+---@param native any handle returned by `C_Timer.NewTimer`/`NewTicker`
+---@return fun(native: any)|nil
 local function getNativeCancel(native)
     local nativeType = type(native)
     if nativeType ~= "table" and nativeType ~= "userdata" then
@@ -355,6 +400,9 @@ local function getNativeCancel(native)
     return cancel
 end
 
+---Record `timer` as running inside `scope`.
+---@param scope TimerKit.Scope
+---@param timer TimerKit.Timer
 local function attachActive(scope, timer)
     local active = rawget(scope, "_active")
     if rawget(active, timer) ~= true then
@@ -363,6 +411,9 @@ local function attachActive(scope, timer)
     end
 end
 
+---Record `timer` as no longer running inside `scope`.
+---@param scope TimerKit.Scope
+---@param timer TimerKit.Timer
 local function detachActive(scope, timer)
     local active = rawget(scope, "_active")
     if rawget(active, timer) == true then
@@ -371,6 +422,8 @@ local function detachActive(scope, timer)
     end
 end
 
+---Cancel one host timer handle, failing loudly when it is unusable.
+---@param native any|nil
 local function cancelNative(native)
     if native == nil then
         return
@@ -382,6 +435,9 @@ local function cancelNative(native)
     cancel(native)
 end
 
+---Cancel `timer` logically, then ask the host to cancel its native handle.
+---@param timer TimerKit.Timer
+---@return boolean cancelled `false` when the timer was not running.
 local function cancelTimer(timer)
     if rawget(timer, "_state") ~= "running" then
         return false
@@ -402,6 +458,10 @@ local function cancelTimer(timer)
     return true
 end
 
+---Deliver one native callback, ignoring generations a restart superseded.
+---@param timer TimerKit.Timer
+---@param generation integer generation the native handle was created for
+---@return boolean fired
 local function fireTimer(timer, generation)
     if rawget(timer, "_generation") ~= generation or rawget(timer, "_state") ~= "running" then
         return false
@@ -418,6 +478,9 @@ local function fireTimer(timer, generation)
     return true
 end
 
+---Undo the bookkeeping of a start whose host call failed.
+---@param timer TimerKit.Timer
+---@param previousState TimerKit.TimerState
 local function rollbackStart(timer, previousState)
     rawset(timer, "_native", nil)
     rawset(timer, "_state", previousState)
@@ -426,6 +489,11 @@ end
 
 -- The caller has already validated `timer`; `level` identifies that caller so a
 -- closed-scope or invalid-host-handle failure still reports at its line.
+---Start `timer` and bind a fresh generation to its new native handle.
+---@param timer TimerKit.Timer
+---@param methodName string public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+---@return boolean started `false` when the timer was already running.
 local function startTimer(timer, methodName, level)
     if rawget(timer, "_state") == "running" then
         return false
@@ -467,6 +535,11 @@ local function startTimer(timer, methodName, level)
     return true
 end
 
+---Cancel `timer` when it is running, then start it again.
+---@param timer TimerKit.Timer
+---@param methodName string public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+---@return boolean started
 local function restartTimer(timer, methodName, level)
     local scope = rawget(timer, "_scope")
     if rawget(scope, "_closed") == true then
@@ -479,12 +552,20 @@ local function restartTimer(timer, methodName, level)
     return startTimer(timer, methodName, level + 1)
 end
 
+---Return the next per-session timer identifier, used for stable ordering.
+---@return integer
 local function nextTimerId()
     local id = rawget(state, "nextTimerId") + 1
     rawset(state, "nextTimerId", id)
     return id
 end
 
+---Build one idle timer. The caller owns all validation.
+---@param scope TimerKit.Scope
+---@param delay number
+---@param callback TimerKit.Callback
+---@param repeating boolean
+---@return TimerKit.Timer
 local function constructTimer(scope, delay, callback, repeating)
     return setmetatable({
         _id = nextTimerId(),
@@ -498,6 +579,14 @@ local function constructTimer(scope, delay, callback, repeating)
     }, TIMER_METATABLE)
 end
 
+---Validate the `After`/`Every` arguments and build the idle timer.
+---@param scope TimerKit.Scope
+---@param delay any
+---@param callback any
+---@param repeating boolean
+---@param methodName string public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return TimerKit.Timer
 local function createTimer(scope, delay, callback, repeating, methodName, level)
     validateScope(scope, methodName, level + 1)
     if rawget(scope, "_closed") == true then
@@ -510,6 +599,12 @@ local function createTimer(scope, delay, callback, repeating, methodName, level)
     return constructTimer(scope, delay, callback, repeating)
 end
 
+---Validate a `New` option table and build the idle timer it describes.
+---@param scope TimerKit.Scope
+---@param options any
+---@param methodName string public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return TimerKit.Timer
 local function newTimerInScope(scope, options, methodName, level)
     validateScope(scope, methodName, level + 1)
     if rawget(scope, "_closed") == true then
@@ -522,12 +617,22 @@ end
 -- Shared by `Scope:After`/`Scope:Every` and their package-level counterparts, so
 -- both entry points sit at the same distance from the validators and report
 -- argument errors at their own caller's line.
+---@param scope TimerKit.Scope
+---@param delay any
+---@param callback any
+---@param repeating boolean
+---@param methodName string public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return TimerKit.Timer
 local function startTimerInScope(scope, delay, callback, repeating, methodName, level)
     local timer = createTimer(scope, delay, callback, repeating, methodName, level + 1)
     startTimer(timer, methodName, level + 1)
     return timer
 end
 
+---Return every running timer of `scope`, ordered by creation, as a snapshot.
+---@param scope TimerKit.Scope
+---@return TimerKit.Timer[]
 local function snapshotActive(scope)
     local timers = {}
     local active = rawget(scope, "_active")
@@ -542,6 +647,8 @@ end
 
 -- Internal bulk cancellation. The caller owns validation, so scope cleanup
 -- driven by LifecycleKit shutdown does not have to fake a public call site.
+---@param scope TimerKit.Scope
+---@return integer cancelled
 local function cancelAllInScope(scope)
     local timers = snapshotActive(scope)
     local cancelled = 0
@@ -565,6 +672,8 @@ local function cancelAllInScope(scope)
     return cancelled
 end
 
+---Drop the LifecycleKit shutdown subscription an addon scope holds.
+---@param scope TimerKit.Scope
 local function disconnectShutdownSubscription(scope)
     local subscription = rawget(scope, "_shutdownSubscription")
     rawset(scope, "_shutdownSubscription", nil)
@@ -579,6 +688,9 @@ local function disconnectShutdownSubscription(scope)
     disconnect(subscription)
 end
 
+---Terminally close `scope` after best-effort cancellation and unsubscription.
+---@param scope TimerKit.Scope
+---@return boolean closed `false` when the scope was already closed.
 local function closeScope(scope)
     if rawget(scope, "_closed") == true then
         return false
@@ -599,6 +711,9 @@ local function closeScope(scope)
     return true
 end
 
+---Build one open scope. `addonName` is `nil` for a manually owned scope.
+---@param addonName string|nil
+---@return TimerKit.Scope
 local function newScope(addonName)
     return setmetatable({
         _addonName = addonName,
@@ -609,6 +724,9 @@ local function newScope(addonName)
     }, SCOPE_METATABLE)
 end
 
+---Build the addon-owned scope for `addonName` and bind it to addon shutdown.
+---@param addonName string
+---@return TimerKit.Scope
 local function createAddonScope(addonName)
     local lifecycle = LifecycleKit:ForAddon(addonName)
     if
@@ -651,15 +769,15 @@ end
 -- Timer public methods ------------------------------------------------------
 
 ---Return the logical timer state.
----@param self TimerKitTimer
----@return TimerKitTimerState state
+---@param self TimerKit.Timer
+---@return TimerKit.TimerState state
 local function timerGetState(self)
     validateTimer(self, "TimerKit.Timer:GetState", 3)
     return rawget(self, "_state")
 end
 
 ---Return the configured delay or repeat interval in seconds.
----@param self TimerKitTimer
+---@param self TimerKit.Timer
 ---@return number seconds
 local function timerGetDelay(self)
     validateTimer(self, "TimerKit.Timer:GetDelay", 3)
@@ -667,15 +785,15 @@ local function timerGetDelay(self)
 end
 
 ---Return the scope that owns this timer.
----@param self TimerKitTimer
----@return TimerKitScope scope
+---@param self TimerKit.Timer
+---@return TimerKit.Scope scope
 local function timerGetScope(self)
     validateTimer(self, "TimerKit.Timer:GetScope", 3)
     return rawget(self, "_scope")
 end
 
 ---Return the opaque value attached to this timer, or `nil` when none is set.
----@param self TimerKitTimer
+---@param self TimerKit.Timer
 ---@return any userData
 local function timerGetUserData(self)
     validateTimer(self, "TimerKit.Timer:GetUserData", 3)
@@ -684,9 +802,9 @@ end
 
 ---Attach one opaque value to this timer. TimerKit stores the reference and
 ---never reads, copies, or clears it; passing `nil` detaches it again.
----@param self TimerKitTimer
+---@param self TimerKit.Timer
 ---@param value any
----@return TimerKitTimer self
+---@return TimerKit.Timer self
 local function timerSetUserData(self, value)
     validateTimer(self, "TimerKit.Timer:SetUserData", 3)
     rawset(self, "_userData", value)
@@ -694,7 +812,7 @@ local function timerSetUserData(self, value)
 end
 
 ---Return whether the timer repeats instead of firing once.
----@param self TimerKitTimer
+---@param self TimerKit.Timer
 ---@return boolean repeating
 local function timerIsRepeating(self)
     validateTimer(self, "TimerKit.Timer:IsRepeating", 3)
@@ -702,7 +820,7 @@ local function timerIsRepeating(self)
 end
 
 ---Return whether the logical timer is currently running.
----@param self TimerKitTimer
+---@param self TimerKit.Timer
 ---@return boolean pending
 local function timerIsPending(self)
     validateTimer(self, "TimerKit.Timer:IsPending", 3)
@@ -710,7 +828,7 @@ local function timerIsPending(self)
 end
 
 ---Return whether the timer was logically cancelled.
----@param self TimerKitTimer
+---@param self TimerKit.Timer
 ---@return boolean cancelled
 local function timerIsCancelled(self)
     validateTimer(self, "TimerKit.Timer:IsCancelled", 3)
@@ -718,7 +836,7 @@ local function timerIsCancelled(self)
 end
 
 ---Start an idle, completed, or cancelled timer.
----@param self TimerKitTimer
+---@param self TimerKit.Timer
 ---@return boolean started `false` when the timer was already running.
 local function timerStart(self)
     validateTimer(self, "TimerKit.Timer:Start", 3)
@@ -726,7 +844,7 @@ local function timerStart(self)
 end
 
 ---Cancel a running timer.
----@param self TimerKitTimer
+---@param self TimerKit.Timer
 ---@return boolean cancelled `false` when the timer was not running.
 local function timerCancel(self)
     validateTimer(self, "TimerKit.Timer:Cancel", 3)
@@ -734,7 +852,7 @@ local function timerCancel(self)
 end
 
 ---Cancel the timer when needed and start a fresh logical generation.
----@param self TimerKitTimer
+---@param self TimerKit.Timer
 ---@return boolean started
 local function timerRestart(self)
     validateTimer(self, "TimerKit.Timer:Restart", 3)
@@ -744,33 +862,33 @@ end
 -- Scope public methods ------------------------------------------------------
 
 ---Create an idle timer owned by this scope.
----@param self TimerKitScope
----@param options TimerKitTimerOptions
----@return TimerKitTimer timer
+---@param self TimerKit.Scope
+---@param options TimerKit.TimerOptions
+---@return TimerKit.Timer timer
 local function scopeNew(self, options)
     return newTimerInScope(self, options, "TimerKit.Scope:New", 3)
 end
 
 ---Create and immediately start a one-shot timer in this scope.
----@param self TimerKitScope
+---@param self TimerKit.Scope
 ---@param delay number Finite seconds greater than or equal to zero.
----@param callback fun(timer: TimerKitTimer)
----@return TimerKitTimer timer
+---@param callback TimerKit.Callback
+---@return TimerKit.Timer timer
 local function scopeAfter(self, delay, callback)
     return startTimerInScope(self, delay, callback, false, "TimerKit.Scope:After", 3)
 end
 
 ---Create and immediately start a repeating timer in this scope.
----@param self TimerKitScope
+---@param self TimerKit.Scope
 ---@param interval number Finite seconds greater than zero.
----@param callback fun(timer: TimerKitTimer)
----@return TimerKitTimer timer
+---@param callback TimerKit.Callback
+---@return TimerKit.Timer timer
 local function scopeEvery(self, interval, callback)
     return startTimerInScope(self, interval, callback, true, "TimerKit.Scope:Every", 3)
 end
 
 ---Cancel every active timer while keeping the scope reusable.
----@param self TimerKitScope
+---@param self TimerKit.Scope
 ---@return integer cancelled
 local function scopeCancelAll(self)
     validateScope(self, "TimerKit.Scope:CancelAll", 3)
@@ -778,7 +896,7 @@ local function scopeCancelAll(self)
 end
 
 ---Terminally close the scope after best-effort cancellation.
----@param self TimerKitScope
+---@param self TimerKit.Scope
 ---@return boolean closed `false` when the scope was already closed.
 local function scopeClose(self)
     validateScope(self, "TimerKit.Scope:Close", 3)
@@ -786,7 +904,7 @@ local function scopeClose(self)
 end
 
 ---Return whether the scope is terminally closed.
----@param self TimerKitScope
+---@param self TimerKit.Scope
 ---@return boolean closed
 local function scopeIsClosed(self)
     validateScope(self, "TimerKit.Scope:IsClosed", 3)
@@ -794,7 +912,7 @@ local function scopeIsClosed(self)
 end
 
 ---Return the owning addon name, or `nil` for a manual scope.
----@param self TimerKitScope
+---@param self TimerKit.Scope
 ---@return string? addonName
 local function scopeGetAddonName(self)
     validateScope(self, "TimerKit.Scope:GetAddonName", 3)
@@ -802,7 +920,7 @@ local function scopeGetAddonName(self)
 end
 
 ---Return the number of logically running timers owned by this scope.
----@param self TimerKitScope
+---@param self TimerKit.Scope
 ---@return integer activeCount
 local function scopeGetActiveCount(self)
     validateScope(self, "TimerKit.Scope:GetActiveCount", 3)
@@ -811,6 +929,8 @@ end
 
 -- Package public API --------------------------------------------------------
 
+---Return TimerKit's internal manual scope, replacing it once it is closed.
+---@return TimerKit.Scope
 local function getDefaultScope()
     local scope = rawget(state, "defaultScope")
     if scope == false or rawget(scope, "_closed") == true then
@@ -821,37 +941,41 @@ local function getDefaultScope()
 end
 
 ---Create an idle timer in TimerKit's internal manual scope.
----@param options TimerKitTimerOptions
----@return TimerKitTimer timer
+---@param _ TimerKit
+---@param options TimerKit.TimerOptions
+---@return TimerKit.Timer timer
 local function packageNew(_, options)
     return newTimerInScope(getDefaultScope(), options, "TimerKit:New", 3)
 end
 
 ---Create and immediately start a one-shot timer in the internal manual scope.
+---@param _ TimerKit
 ---@param delay number Finite seconds greater than or equal to zero.
----@param callback fun(timer: TimerKitTimer)
----@return TimerKitTimer timer
+---@param callback TimerKit.Callback
+---@return TimerKit.Timer timer
 local function packageAfter(_, delay, callback)
     return startTimerInScope(getDefaultScope(), delay, callback, false, "TimerKit:After", 3)
 end
 
 ---Create and immediately start a repeating timer in the internal manual scope.
+---@param _ TimerKit
 ---@param interval number Finite seconds greater than zero.
----@param callback fun(timer: TimerKitTimer)
----@return TimerKitTimer timer
+---@param callback TimerKit.Callback
+---@return TimerKit.Timer timer
 local function packageEvery(_, interval, callback)
     return startTimerInScope(getDefaultScope(), interval, callback, true, "TimerKit:Every", 3)
 end
 
----Create a manually owned timer scope.
----@return TimerKitScope scope
+---Create a manually owned timer scope, closed only by its owner.
+---@return TimerKit.Scope scope
 local function createScope()
     return newScope(nil)
 end
 
 ---Return the shared LifecycleKit-owned timer scope for an addon.
----@param addonName string
----@return TimerKitScope scope
+---@param _ TimerKit
+---@param addonName string addon folder name, as LifecycleKit matches it
+---@return TimerKit.Scope scope
 local function forAddon(_, addonName)
     validateNonEmptyString(addonName, "TimerKit:ForAddon addonName", 3)
 

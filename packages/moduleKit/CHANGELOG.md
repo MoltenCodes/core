@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1 — 2026-09-22
+
+- Normalised every LuaCATS annotation to the canonical `---@` form and completed the public surface: 140 annotation lines became 314. Every public function, method, facade table, class, field, alias and callback signature is now typed, so editors and `lua-language-server` describe the package instead of guessing.
+- Moved the LuaCATS declarations into a "Public types" section at the top of the file and off the prototype locals, added the missing `ModuleKit` facade class, and gave `ModuleKit.Addon` and `ModuleKit.Module` their full method lists.
+- Declared the definition table as `ModuleKit.Definition` instead of `table|nil`, so `CreateModule`'s second argument autocompletes and a misspelled field is reported by the language server as well as at runtime.
+- Gave `Module:Inject` an `---@overload` for its map form, and replaced the `table` placeholders in the graph and container-pass helpers with the real module and container types.
+- Added `src/.luarc.json`. `lua-language-server --check <dir>` treats the directory it is given as its workspace root and ignores parent configuration, so each package source directory now points at the shared `meta/` definitions and at its own runtime dependencies. `packages/<name>/src` type-checks clean at `--checklevel=Warning`.
+- Added the now-required `license` field (`MIT`) to `package.manifest.json`, matching the repository `LICENSE` that the release builder copies into every artifact.
+- Added an "Embedding" section to the README with this package's load order and direct dependencies, pointing at the new `docs/EMBEDDING.md`.
+- No runtime behaviour change. `IMPLEMENTATION_REVISION` is unchanged, and `luac -s -l` produces an identical instruction listing before and after, so no embedded copy carrying these edits displaces an equivalent copy.
+
 ## 0.2.0 — 2026-09-22
 
 - Implementation revision 3.

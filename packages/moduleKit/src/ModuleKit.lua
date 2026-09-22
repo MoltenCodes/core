@@ -28,6 +28,95 @@ local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
 
+-- Public types --------------------------------------------------------------
+--
+-- ModuleKit publishes its methods by writing them onto Registry-owned prototype
+-- tables, so the editor-facing contract is declared here as LuaCATS classes
+-- rather than inferred from those assignments.
+
+---Stable state a module moves through.
+---@alias ModuleKit.ModuleState
+---| "created"      # defined but not initialized
+---| "initialized"  # `OnInitialize` completed
+---| "enabled"      # `OnEnable` completed
+---| "disabled"     # `OnDisable` completed
+
+---How targeted operations treat unmet hard dependencies.
+---@alias ModuleKit.DependencyPolicy "automatic"|"strict"
+
+---The atomic definition table `Addon:CreateModule` accepts.
+---
+---Unknown fields and sparse list fields are rejected rather than ignored.
+---@class ModuleKit.Definition
+---@field dependsOn string[]? required modules, as `DependsOn` edges
+---@field optionalDependencies string[]? ordering-only edges that do not activate
+---@field before string[]? modules this one must precede
+---@field after string[]? modules this one must follow
+---@field inject table<string, string>? alias-to-provider/module-name map
+---@field onInitialize fun(self: ModuleKit.Module, injections: table<string, any>)?
+---@field onEnable fun(self: ModuleKit.Module)?
+---@field onDisable fun(self: ModuleKit.Module)?
+
+---One module inside an addon container.
+---
+---Hook fields are assigned by the consumer, either through the definition table
+---or directly on the module, and are called by ModuleKit at the matching phase.
+---@class ModuleKit.Module
+---@field OnInitialize fun(self: ModuleKit.Module, injections: table<string, any>)?
+---@field OnEnable fun(self: ModuleKit.Module)?
+---@field OnDisable fun(self: ModuleKit.Module)?
+---@field GetName fun(self: ModuleKit.Module): string
+---@field GetAddon fun(self: ModuleKit.Module): ModuleKit.Addon
+---@field GetState fun(self: ModuleKit.Module): ModuleKit.ModuleState
+---@field IsInitialized fun(self: ModuleKit.Module): boolean
+---@field IsEnabled fun(self: ModuleKit.Module): boolean
+---@field GetLastError fun(self: ModuleKit.Module): any
+---@field HasLastError fun(self: ModuleKit.Module): boolean
+---@field GetBlockedBy fun(self: ModuleKit.Module): string|nil
+---@field GetInjections fun(self: ModuleKit.Module): table<string, any>
+---@field DependsOn fun(self: ModuleKit.Module, moduleName: string): ModuleKit.Module
+---@field OptionalDependency fun(self: ModuleKit.Module, moduleName: string): ModuleKit.Module
+---@field Before fun(self: ModuleKit.Module, moduleName: string): ModuleKit.Module
+---@field After fun(self: ModuleKit.Module, moduleName: string): ModuleKit.Module
+---@field Inject fun(self: ModuleKit.Module, aliasOrMap: string|table<string, string>, target: string?): ModuleKit.Module
+---@field Initialize fun(self: ModuleKit.Module): ModuleKit.Module
+---@field Enable fun(self: ModuleKit.Module): ModuleKit.Module
+---@field Disable fun(self: ModuleKit.Module): ModuleKit.Module
+---@field Activate fun(self: ModuleKit.Module): ModuleKit.Module
+---@field Resolve fun(self: ModuleKit.Module, providerName: string): any
+
+---One addon's module container, bound to that addon's LifecycleKit instance.
+---@class ModuleKit.Addon
+---@field GetAddonName fun(self: ModuleKit.Addon): string
+---@field GetDependencyPolicy fun(self: ModuleKit.Addon): ModuleKit.DependencyPolicy
+---@field SetDependencyPolicy fun(self: ModuleKit.Addon, policy: ModuleKit.DependencyPolicy): ModuleKit.DependencyPolicy
+---@field CreateModule fun(self: ModuleKit.Addon, name: string, definition: ModuleKit.Definition?): ModuleKit.Module
+---@field GetModule fun(self: ModuleKit.Addon, name: string): ModuleKit.Module|nil
+---@field HasModule fun(self: ModuleKit.Addon, name: string): boolean
+---@field GetModules fun(self: ModuleKit.Addon): ModuleKit.Module[]
+---@field GetActivationOrder fun(self: ModuleKit.Addon): string[]
+---@field ValidateGraph fun(self: ModuleKit.Addon): boolean
+---@field InitializeAll fun(self: ModuleKit.Addon): ModuleKit.Addon
+---@field EnableAll fun(self: ModuleKit.Addon): ModuleKit.Addon
+---@field DisableAll fun(self: ModuleKit.Addon): ModuleKit.Addon
+---@field ProvideValue fun(self: ModuleKit.Addon, name: string, value: any): ModuleKit.Addon
+---@field ProvideSingleton fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon): any): ModuleKit.Addon
+---@field ProvideModule fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any): ModuleKit.Addon
+---@field ProvideTransient fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any): ModuleKit.Addon
+---@field Resolve fun(self: ModuleKit.Addon, name: string, requestingModule: ModuleKit.Module|nil): any
+
+---An error object wrapped so that `nil` and `false` stay representable.
+---@class ModuleKit.ErrorRecord
+---@field value any the original Lua error object
+
+---The ModuleKit package facade published through Registry.
+---@class ModuleKit
+---@field API integer Public API generation.
+---@field REVISION integer Compatible implementation revision.
+---@field Addon ModuleKit.Addon Shared container prototype.
+---@field Module ModuleKit.Module Shared module prototype.
+---@field ForAddon fun(self: ModuleKit, addonName: string): ModuleKit.Addon
+
 -- Dependencies --------------------------------------------------------------
 
 -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
@@ -64,6 +153,9 @@ end
 
 -- Bootstrap -----------------------------------------------------------------
 
+---Whether `implementation` exposes the complete ModuleKit API 1 surface.
+---@param implementation any shared package table handed back by Registry
+---@return boolean
 local function validatePublicSurface(implementation)
     if
         type(implementation) ~= "table"
@@ -117,12 +209,18 @@ local function validatePublicSurface(implementation)
         and type(rawget(Module, "Resolve")) == "function"
 end
 
+---Whether `currentState` has the fields every API 1 revision shares.
+---@param currentState any
+---@return boolean
 local function validateStateBase(currentState)
     return type(currentState) == "table"
         and rawget(currentState, "schema") == STATE_SCHEMA
         and type(rawget(currentState, "addons")) == "table"
 end
 
+---Whether `implementation` carries runtime state this revision has committed.
+---@param implementation table
+---@return boolean
 local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     local dispatch = type(currentState) == "table" and rawget(currentState, "dispatch") or nil
@@ -187,25 +285,10 @@ if ModuleKit == nil then
     previousRevision = runtimeRevision or existingFacadeRevision or 0
 end
 
---- Stable state a module moves through.
---- @alias ModuleKit.ModuleState
---- | "created"      # defined but not initialized
---- | "initialized"  # `OnInitialize` completed
---- | "enabled"      # `OnEnable` completed
---- | "disabled"     # `OnDisable` completed
-
---- How targeted operations treat unmet hard dependencies.
---- @alias ModuleKit.DependencyPolicy "automatic"|"strict"
-
---- Method prototype shared by every addon container.
----
---- Registry keeps this table's identity stable across compatible embedded
---- revisions, so containers created by an older copy observe newer methods.
---- @class ModuleKit.Addon
+-- Registry keeps the identity of the two prototype tables below stable across
+-- compatible embedded revisions, so containers and modules created by an older
+-- copy observe newer methods.
 local Addon = rawget(ModuleKit, "Addon")
-
---- Method prototype shared by every module.
---- @class ModuleKit.Module
 local Module = rawget(ModuleKit, "Module")
 
 local state = rawget(ModuleKit, "_state")
@@ -245,20 +328,30 @@ local MODULE_METATABLE = { __index = Module }
 
 -- Validation helpers --------------------------------------------------------
 
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer? stack level the failure is reported at; defaults to `3`
 local function validateNonEmptyString(value, label, level)
     if type(value) ~= "string" or value == "" then
         error(label .. " must be a non-empty string", level or 3)
     end
 end
 
+---@param value any
+---@param methodName string public method name, used in the argument error
 local function validateModuleName(value, methodName)
     validateNonEmptyString(value, "ModuleKit.Module:" .. methodName .. " moduleName", 4)
 end
 
+---@param value any
+---@param methodName string public method name, used in the argument error
 local function validateProviderName(value, methodName)
     validateNonEmptyString(value, "ModuleKit.Addon:" .. methodName .. " providerName", 4)
 end
 
+---Copy one level of `source`, so a caller cannot mutate container-owned state.
+---@param source table<any, any>
+---@return table<any, any>
 local function shallowCopy(source)
     local copy = {}
     for key, value in pairs(source) do
@@ -267,6 +360,9 @@ local function shallowCopy(source)
     return copy
 end
 
+---Refuse a definition change to a module that has already been initialized.
+---@param module ModuleKit.Module
+---@param methodName string public method name, used in the argument error
 local function ensureDefinitionMutable(module, methodName)
     if rawget(module, "_state") ~= "created" then
         error(
@@ -280,12 +376,24 @@ local function ensureDefinitionMutable(module, methodName)
     end
 end
 
+---Refuse an operation on a container whose addon has already shut down.
+---@param addon ModuleKit.Addon
+---@param methodName string public method name, used in the argument error
 local function ensureNotShutdown(addon, methodName)
     if rawget(addon, "_shutdown") == true then
         error("ModuleKit.Addon:" .. methodName .. " cannot run after addon shutdown", 3)
     end
 end
 
+---Record one dependency or ordering edge by target name.
+---
+---Targets are names rather than objects, so an edge can be declared before the
+---module it names exists.
+---@param module ModuleKit.Module
+---@param field "_hardDependencies"|"_optionalDependencies"|"_before"|"_after"
+---@param targetName string
+---@param methodName string public method name, used in the argument errors
+---@return ModuleKit.Module module
 local function addNameConstraint(module, field, targetName, methodName)
     ensureDefinitionMutable(module, methodName)
     ensureNotShutdown(rawget(module, "_addon"), methodName)
@@ -314,6 +422,9 @@ local function addNameConstraint(module, field, targetName, methodName)
     return module
 end
 
+---Refuse a late module that would have to run before an initialized one.
+---@param addon ModuleKit.Addon
+---@param newModule ModuleKit.Module
 local function validateLateModuleOrdering(addon, newModule)
     local order = rawget(addon, "_moduleOrder")
     local newName = rawget(newModule, "_name")
@@ -348,10 +459,16 @@ end
 
 -- Graph ---------------------------------------------------------------------
 
+---Creation order of `module`, the deterministic tie-break inside a container.
+---@param module ModuleKit.Module
+---@return integer
 local function moduleSortKey(module)
     return rawget(module, "_order")
 end
 
+---Return the keys of a name set as a sorted array.
+---@param names table<string, boolean>
+---@return string[]
 local function sortedNameKeys(names)
     local result = {}
     for name in pairs(names) do
@@ -361,6 +478,11 @@ local function sortedNameKeys(names)
     return result
 end
 
+---Add one predecessor edge, keeping the indegree count in step.
+---@param adjacency table<ModuleKit.Module, table<ModuleKit.Module, boolean>>
+---@param indegree table<ModuleKit.Module, integer>
+---@param fromModule ModuleKit.Module predecessor
+---@param toModule ModuleKit.Module successor
 local function addEdge(adjacency, indegree, fromModule, toModule)
     if fromModule == toModule then
         return
@@ -373,6 +495,10 @@ local function addEdge(adjacency, indegree, fromModule, toModule)
     end
 end
 
+---Resolve a name set to the modules that exist, in deterministic order.
+---@param addon ModuleKit.Addon
+---@param names table<string, boolean>
+---@return ModuleKit.Module[]
 local function orderedTargets(addon, names)
     local modules = rawget(addon, "_modules")
     local result = {}
@@ -393,6 +519,10 @@ local function orderedTargets(addon, names)
     return result
 end
 
+---Return the names on one cycle of the graph, for the diagnostic message.
+---@param order ModuleKit.Module[]
+---@param adjacency table<ModuleKit.Module, table<ModuleKit.Module, boolean>>
+---@return string[]|nil cycle `nil` when the graph is acyclic
 local function findCycle(order, adjacency)
     local visiting = {}
     local visited = {}
@@ -452,18 +582,18 @@ local function findCycle(order, adjacency)
     return nil
 end
 
---- Insert `module` into the ready set, keeping it sorted by creation order.
+---Insert `module` into the ready set, keeping it sorted by creation order.
 ---
---- The set is stored in *descending* creation order so the next module to emit
---- is always its last element: removing the last element is O(1), while
---- removing the first would shift the whole array on every emission.
+---The set is stored in *descending* creation order so the next module to emit
+---is always its last element: removing the last element is O(1), while
+---removing the first would shift the whole array on every emission.
 ---
---- Creation order is unique inside one container, so the comparison is a total
---- order and the position found here is the only valid one. Together with the
---- descending layout this keeps the emitted order identical to a full re-sort
---- after every insertion, without paying for one.
---- @param ready table[] ready set, sorted by descending creation order
---- @param module table
+---Creation order is unique inside one container, so the comparison is a total
+---order and the position found here is the only valid one. Together with the
+---descending layout this keeps the emitted order identical to a full re-sort
+---after every insertion, without paying for one.
+---@param ready ModuleKit.Module[] ready set, sorted by descending creation order
+---@param module ModuleKit.Module
 local function insertReady(ready, module)
     local moduleOrder = moduleSortKey(module)
     local low = 1
@@ -483,14 +613,14 @@ local function insertReady(ready, module)
     table.insert(ready, low, module)
 end
 
---- Order `order` so every module follows the modules it has edges from.
+---Order `order` so every module follows the modules it has edges from.
 ---
---- Kahn's algorithm, with creation order as the deterministic tie-break among
---- modules that are simultaneously ready.
---- @param order table[] every module in the graph, in creation order
---- @param adjacency table<table, table<table, boolean>> predecessor → successors
---- @param indegree table<table, integer> remaining unsatisfied predecessors
---- @return table[]|nil order `nil` when the graph contains a cycle
+---Kahn's algorithm, with creation order as the deterministic tie-break among
+---modules that are simultaneously ready.
+---@param order ModuleKit.Module[] every module in the graph, in creation order
+---@param adjacency table<ModuleKit.Module, table<ModuleKit.Module, boolean>> predecessor → successors
+---@param indegree table<ModuleKit.Module, integer> remaining unsatisfied predecessors
+---@return ModuleKit.Module[]|nil order `nil` when the graph contains a cycle
 local function topologicalSort(order, adjacency, indegree)
     local ready = {}
     for index = 1, #order do
@@ -534,6 +664,9 @@ local function topologicalSort(order, adjacency, indegree)
     return result
 end
 
+---Build and topologically sort the container's complete module graph.
+---@param addon ModuleKit.Addon
+---@return ModuleKit.Module[] order activation order for the whole container
 local function buildGraph(addon)
     local order = rawget(addon, "_moduleOrder")
     local modules = rawget(addon, "_modules")
@@ -594,6 +727,9 @@ local function buildGraph(addon)
     return result
 end
 
+---Return the modules `module` requires, in deterministic order.
+---@param module ModuleKit.Module
+---@return ModuleKit.Module[]
 local function hardDependencies(module)
     local addon = rawget(module, "_addon")
     local modules = rawget(addon, "_modules")
@@ -621,6 +757,9 @@ local function hardDependencies(module)
     return result
 end
 
+---Return the enabled modules that require `module`, newest first.
+---@param module ModuleKit.Module
+---@return ModuleKit.Module[]
 local function enabledHardDependents(module)
     local addon = rawget(module, "_addon")
     local order = rawget(addon, "_moduleOrder")
@@ -644,6 +783,9 @@ local function enabledHardDependents(module)
     return result
 end
 
+---Order the currently enabled modules by their hard dependencies alone.
+---@param addon ModuleKit.Addon
+---@return ModuleKit.Module[] order
 local function buildEnabledHardOrder(addon)
     local allModules = rawget(addon, "_moduleOrder")
     local modulesByName = rawget(addon, "_modules")
@@ -690,6 +832,12 @@ end
 
 -- Dependency injection ------------------------------------------------------
 
+---Whether a resolution-stack entry names the resolution being attempted.
+---@param record any
+---@param name string
+---@param kind "value"|"singleton"|"module"|"transient"
+---@param requestingModule ModuleKit.Module|nil
+---@return boolean
 local function resolutionRecordMatches(record, name, kind, requestingModule)
     if type(record) ~= "table" or rawget(record, "name") ~= name then
         return false
@@ -700,6 +848,10 @@ local function resolutionRecordMatches(record, name, kind, requestingModule)
     return true
 end
 
+---Render one resolution for the cycle diagnostic.
+---@param name string
+---@param requestingModule ModuleKit.Module|nil
+---@return string
 local function resolutionLabel(name, requestingModule)
     if requestingModule ~= nil then
         return name .. "[" .. tostring(rawget(requestingModule, "_name")) .. "]"
@@ -707,11 +859,21 @@ local function resolutionLabel(name, requestingModule)
     return name
 end
 
+---Whether `name` is already taken by a module or another provider.
+---@param addon ModuleKit.Addon
+---@param name string
+---@return boolean
 local function providerConflict(addon, name)
     return rawget(rawget(addon, "_modules"), name) ~= nil
         or rawget(rawget(addon, "_providers"), name) ~= nil
 end
 
+---Publish one provider record under `name`.
+---@param addon ModuleKit.Addon
+---@param name string
+---@param provider table provider record; its `kind` selects the resolution rule
+---@param methodName string public method name, used in the argument errors
+---@return ModuleKit.Addon addon
 local function registerProvider(addon, name, provider, methodName)
     validateProviderName(name, methodName)
     if providerConflict(addon, name) then
@@ -721,6 +883,15 @@ local function registerProvider(addon, name, provider, methodName)
     return addon
 end
 
+---Resolve one injectable, falling back to a module of the same name.
+---
+---Resolution is re-entrant: the container keeps a stack so a provider factory
+---that resolves its way back to itself is reported as a cycle rather than
+---recursing until the stack overflows.
+---@param addon ModuleKit.Addon
+---@param name string
+---@param requestingModule ModuleKit.Module|nil scope context for module providers
+---@return any value
 local function resolveProvider(addon, name, requestingModule)
     validateProviderName(name, "Resolve")
 
@@ -799,6 +970,9 @@ local function resolveProvider(addon, name, requestingModule)
     return value
 end
 
+---Resolve every declared injection alias of `module`, in alias order.
+---@param module ModuleKit.Module
+---@return table<string, any> injections
 local function resolveInjections(module)
     local addon = rawget(module, "_addon")
     local specification = rawget(module, "_injectSpec")
@@ -821,18 +995,30 @@ end
 
 -- Lifecycle operations ------------------------------------------------------
 
+---Record why the last operation on `module` did not complete.
+---@param module ModuleKit.Module
+---@param value any error object, which may legitimately be `nil`
+---@param blockedBy string|nil dependency or dependent name that blocked it
+---@param hasError boolean whether `value` is a real error object
 local function recordFailure(module, value, blockedBy, hasError)
     rawset(module, "_lastError", value)
     rawset(module, "_hasLastError", hasError == true)
     rawset(module, "_blockedBy", blockedBy)
 end
 
+---Clear the failure record after a successful transition.
+---@param module ModuleKit.Module
 local function clearFailure(module)
     rawset(module, "_lastError", nil)
     rawset(module, "_hasLastError", false)
     rawset(module, "_blockedBy", nil)
 end
 
+---Call one consumer lifecycle hook, if the module defines it.
+---@param module ModuleKit.Module
+---@param name "OnInitialize"|"OnEnable"|"OnDisable"
+---@return boolean ok
+---@return any errorValue
 local function invokeHook(module, name)
     local callback = rawget(module, name)
     if callback == nil then
@@ -846,6 +1032,9 @@ local function invokeHook(module, name)
     return pcall(callback, module, rawget(module, "_injections"))
 end
 
+---Initialize exactly `module`, ignoring dependency policy.
+---@param module ModuleKit.Module
+---@return ModuleKit.Module module
 local function initializeOne(module)
     local current = rawget(module, "_state")
     if current ~= "created" then
@@ -870,6 +1059,9 @@ local function initializeOne(module)
     return module
 end
 
+---Enable exactly `module`, initializing it first when it is still `created`.
+---@param module ModuleKit.Module
+---@return ModuleKit.Module module
 local function enableOne(module)
     local current = rawget(module, "_state")
     if current == "enabled" then
@@ -901,6 +1093,9 @@ local function enableOne(module)
     return module
 end
 
+---Disable exactly `module`, ignoring dependency policy.
+---@param module ModuleKit.Module
+---@return ModuleKit.Module module
 local function disableOne(module)
     if rawget(module, "_state") ~= "enabled" then
         return module
@@ -917,6 +1112,10 @@ local function disableOne(module)
     return module
 end
 
+---Initialize `module` under the container's dependency policy.
+---@param module ModuleKit.Module
+---@param visiting table<ModuleKit.Module, boolean>|nil recursion guard, `automatic` policy only
+---@return ModuleKit.Module module
 local function initializeWithPolicy(module, visiting)
     local addon = rawget(module, "_addon")
     ensureNotShutdown(addon, "Initialize")
@@ -964,6 +1163,10 @@ local function initializeWithPolicy(module, visiting)
     return initializeOne(module)
 end
 
+---Enable `module` under the container's dependency policy.
+---@param module ModuleKit.Module
+---@param visiting table<ModuleKit.Module, boolean>|nil recursion guard, `automatic` policy only
+---@return ModuleKit.Module module
 local function enableWithPolicy(module, visiting)
     local addon = rawget(module, "_addon")
     ensureNotShutdown(addon, "Enable")
@@ -1007,6 +1210,9 @@ local function enableWithPolicy(module, visiting)
     return enableOne(module)
 end
 
+---Disable `module` under the container's dependency policy.
+---@param module ModuleKit.Module
+---@return ModuleKit.Module module
 local function disableWithPolicy(module)
     local addon = rawget(module, "_addon")
     local dependents = enabledHardDependents(module)
@@ -1032,6 +1238,11 @@ local function disableWithPolicy(module)
     return disableOne(module)
 end
 
+---Keep the first failure of a pass that continues after independent errors.
+---@param current ModuleKit.ErrorRecord|nil
+---@param ok boolean
+---@param value any
+---@return ModuleKit.ErrorRecord|nil
 local function captureFirstError(current, ok, value)
     if current ~= nil or ok then
         return current
@@ -1039,6 +1250,8 @@ local function captureFirstError(current, ok, value)
     return { value = value }
 end
 
+---Re-raise a captured failure unchanged, or return when there was none.
+---@param record ModuleKit.ErrorRecord|nil
 local function raiseCaptured(record)
     if record ~= nil then
         error(rawget(record, "value"), 0)
@@ -1047,9 +1260,9 @@ end
 
 -- Whole-container passes ----------------------------------------------------
 
---- Catch one module up to the LifecycleKit phases its container has reached.
---- @param addon table
---- @param module table
+---Catch one module up to the LifecycleKit phases its container has reached.
+---@param addon ModuleKit.Addon
+---@param module ModuleKit.Module
 local function catchUpModule(addon, module)
     local lifecycle = rawget(addon, "_lifecycle")
     if lifecycle:IsLoaded() then
@@ -1060,15 +1273,15 @@ local function catchUpModule(addon, module)
     end
 end
 
---- Catch a module up now, or queue it while a whole-container pass is running.
+---Catch a module up now, or queue it while a whole-container pass is running.
 ---
---- A hook can create a module while `InitializeAll` / `EnableAll` / `DisableAll`
---- is walking the graph. Catching it up there and then would happen outside the
---- running pass's blocking set, so a module could be activated even though a
---- hard dependency had already failed in the same pass. The module is queued
---- instead and caught up once the outermost pass has finished.
---- @param addon table
---- @param module table
+---A hook can create a module while `InitializeAll` / `EnableAll` / `DisableAll`
+---is walking the graph. Catching it up there and then would happen outside the
+---running pass's blocking set, so a module could be activated even though a
+---hard dependency had already failed in the same pass. The module is queued
+---instead and caught up once the outermost pass has finished.
+---@param addon ModuleKit.Addon
+---@param module ModuleKit.Module
 local function scheduleCatchUp(addon, module)
     if rawget(addon, "_passDepth") > 0 then
         local pending = rawget(addon, "_pendingCatchUp")
@@ -1078,14 +1291,14 @@ local function scheduleCatchUp(addon, module)
     catchUpModule(addon, module)
 end
 
---- Catch up every module queued while the pass that just finished was running.
+---Catch up every module queued while the pass that just finished was running.
 ---
---- Catching one module up can create another. Outside a pass `scheduleCatchUp`
---- handles those immediately, and a nested pass that ends mid-flush leaves its
---- modules on the queue for this loop to pick up, so one flush is enough.
---- @param addon table
---- @param firstError table|nil error record captured so far
---- @return table|nil firstError
+---Catching one module up can create another. Outside a pass `scheduleCatchUp`
+---handles those immediately, and a nested pass that ends mid-flush leaves its
+---modules on the queue for this loop to pick up, so one flush is enough.
+---@param addon ModuleKit.Addon
+---@param firstError ModuleKit.ErrorRecord|nil error record captured so far
+---@return ModuleKit.ErrorRecord|nil firstError
 local function flushPendingCatchUp(addon, firstError)
     if rawget(addon, "_flushingCatchUp") == true then
         return firstError
@@ -1103,17 +1316,17 @@ local function flushPendingCatchUp(addon, firstError)
     return firstError
 end
 
---- Run one whole-container pass with re-entrancy bookkeeping.
+---Run one whole-container pass with re-entrancy bookkeeping.
 ---
---- The pass body reports its first captured error by returning it rather than
---- raising, so the depth counter is always restored and the deferred catch-up
---- queue is always flushed, whichever way the pass ends.
---- @param addon table
---- @param pass fun(order: table[], shutdown: boolean|nil): table|nil
---- @param order table[] modules in the order the pass must visit them
---- @param shutdown boolean|nil terminal-cleanup flag, for the disable pass
---- @param seedError table|nil error captured before the pass could start
---- @return table addon
+---The pass body reports its first captured error by returning it rather than
+---raising, so the depth counter is always restored and the deferred catch-up
+---queue is always flushed, whichever way the pass ends.
+---@param addon ModuleKit.Addon
+---@param pass fun(order: ModuleKit.Module[], shutdown: boolean|nil): ModuleKit.ErrorRecord|nil
+---@param order ModuleKit.Module[] modules in the order the pass must visit them
+---@param shutdown boolean|nil terminal-cleanup flag, for the disable pass
+---@param seedError ModuleKit.ErrorRecord|nil error captured before the pass could start
+---@return ModuleKit.Addon addon
 local function runContainerPass(addon, pass, order, shutdown, seedError)
     rawset(addon, "_passDepth", rawget(addon, "_passDepth") + 1)
     local ok, result = pcall(pass, order, shutdown)
@@ -1137,11 +1350,12 @@ local function runContainerPass(addon, pass, order, shutdown, seedError)
     return addon
 end
 
---- Initialize every module in `order`.
+---Initialize every module in `order`.
 ---
---- Independent modules continue after a failure. A module whose hard dependency
---- failed, or never left `created`, is recorded as blocked instead of attempted.
---- @return table|nil firstError
+---Independent modules continue after a failure. A module whose hard dependency
+---failed, or never left `created`, is recorded as blocked instead of attempted.
+---@param order ModuleKit.Module[]
+---@return ModuleKit.ErrorRecord|nil firstError
 local function runInitializeAllPass(order)
     local firstError
     local failed = {}
@@ -1173,17 +1387,18 @@ local function runInitializeAllPass(order)
     return firstError
 end
 
---- Initialize the whole container in deterministic graph order.
---- @param addon table
---- @return table addon
+---Initialize the whole container in deterministic graph order.
+---@param addon ModuleKit.Addon
+---@return ModuleKit.Addon addon
 local function initializeAllInternal(addon)
     ensureNotShutdown(addon, "InitializeAll")
     local order = buildGraph(addon)
     return runContainerPass(addon, runInitializeAllPass, order)
 end
 
---- Enable every module in `order`, initializing the ones still in `created`.
---- @return table|nil firstError
+---Enable every module in `order`, initializing the ones still in `created`.
+---@param order ModuleKit.Module[]
+---@return ModuleKit.ErrorRecord|nil firstError
 local function runEnableAllPass(order)
     local firstError
     local failed = {}
@@ -1215,21 +1430,22 @@ local function runEnableAllPass(order)
     return firstError
 end
 
---- Enable the whole container in deterministic graph order.
+---Enable the whole container in deterministic graph order.
 ---
---- This is a target state, not a delta: a module that was explicitly disabled
---- earlier is enabled again. See `docs/API.md` for why.
---- @param addon table
---- @return table addon
+---This is a target state, not a delta: a module that was explicitly disabled
+---earlier is enabled again. See `docs/API.md` for why.
+---@param addon ModuleKit.Addon
+---@return ModuleKit.Addon addon
 local function enableAllInternal(addon)
     ensureNotShutdown(addon, "EnableAll")
     local order = buildGraph(addon)
     return runContainerPass(addon, runEnableAllPass, order)
 end
 
---- Disable every enabled module in `order`, walking it in reverse.
---- @param shutdown boolean|nil terminal cleanup, which ignores dependent failures
---- @return table|nil firstError
+---Disable every enabled module in `order`, walking it in reverse.
+---@param order ModuleKit.Module[]
+---@param shutdown boolean|nil terminal cleanup, which ignores dependent failures
+---@return ModuleKit.ErrorRecord|nil firstError
 local function runDisableAllPass(order, shutdown)
     local firstError
 
@@ -1261,10 +1477,10 @@ local function runDisableAllPass(order, shutdown)
     return firstError
 end
 
---- Disable the whole container in reverse graph order.
---- @param addon table
---- @param shutdown boolean `true` for terminal LifecycleKit cleanup
---- @return table addon
+---Disable the whole container in reverse graph order.
+---@param addon ModuleKit.Addon
+---@param shutdown boolean `true` for terminal LifecycleKit cleanup
+---@return ModuleKit.Addon addon
 local function disableAllInternal(addon, shutdown)
     local order
     local seedError
@@ -1292,66 +1508,66 @@ end
 
 -- Module public API ---------------------------------------------------------
 
---- Return this module's name.
---- @param self ModuleKit.Module
---- @return string
+---Return this module's name.
+---@param self ModuleKit.Module
+---@return string
 local function moduleGetName(self)
     return rawget(self, "_name")
 end
 
---- Return the addon container that owns this module.
---- @param self ModuleKit.Module
---- @return ModuleKit.Addon
+---Return the addon container that owns this module.
+---@param self ModuleKit.Module
+---@return ModuleKit.Addon
 local function moduleGetAddon(self)
     return rawget(self, "_addon")
 end
 
---- Return the module's current stable state.
---- @param self ModuleKit.Module
---- @return ModuleKit.ModuleState
+---Return the module's current stable state.
+---@param self ModuleKit.Module
+---@return ModuleKit.ModuleState
 local function moduleGetState(self)
     return rawget(self, "_state")
 end
 
---- Report whether initialization has completed at least once.
---- @param self ModuleKit.Module
---- @return boolean
+---Report whether initialization has completed at least once.
+---@param self ModuleKit.Module
+---@return boolean
 local function moduleIsInitialized(self)
     return rawget(self, "_state") ~= "created"
 end
 
---- Report whether the module is currently enabled.
---- @param self ModuleKit.Module
---- @return boolean
+---Report whether the module is currently enabled.
+---@param self ModuleKit.Module
+---@return boolean
 local function moduleIsEnabled(self)
     return rawget(self, "_state") == "enabled"
 end
 
---- Return the last error object, which may itself legitimately be `nil`.
---- Pair with `HasLastError` to tell "no error" from "an error object of `nil`".
---- @param self ModuleKit.Module
---- @return any
+---Return the last error object, which may itself legitimately be `nil`.
+---Pair with `HasLastError` to tell "no error" from "an error object of `nil`".
+---@param self ModuleKit.Module
+---@return any
 local function moduleGetLastError(self)
     return rawget(self, "_lastError")
 end
 
---- Report whether the last operation recorded an actual error.
---- @param self ModuleKit.Module
---- @return boolean
+---Report whether the last operation recorded an actual error.
+---@param self ModuleKit.Module
+---@return boolean
 local function moduleHasLastError(self)
     return rawget(self, "_hasLastError") == true
 end
 
---- Return the dependency or dependent name that blocked the last operation.
---- @param self ModuleKit.Module
---- @return string|nil
+---Return the dependency or dependent name that blocked the last operation.
+---@param self ModuleKit.Module
+---@return string|nil
 local function moduleGetBlockedBy(self)
     return rawget(self, "_blockedBy")
 end
 
---- Return a shallow-copy snapshot of the resolved injection table.
---- @param self ModuleKit.Module
---- @return table<string, any>
+---Return a shallow-copy snapshot of the resolved injection table.
+---@param self ModuleKit.Module
+---@return table<string, any>
 local function moduleGetInjections(self)
     local injections = rawget(self, "_injections")
     if injections == nil then
@@ -1360,47 +1576,48 @@ local function moduleGetInjections(self)
     return shallowCopy(injections)
 end
 
---- Require `moduleName` to be active before this module, and order against it.
---- @param self ModuleKit.Module
---- @param moduleName string
---- @return ModuleKit.Module self
+---Require `moduleName` to be active before this module, and order against it.
+---@param self ModuleKit.Module
+---@param moduleName string
+---@return ModuleKit.Module self
 local function moduleDependsOn(self, moduleName)
     return addNameConstraint(self, "_hardDependencies", moduleName, "DependsOn")
 end
 
---- Order after `moduleName` when it exists, without requiring it.
---- @param self ModuleKit.Module
---- @param moduleName string
---- @return ModuleKit.Module self
+---Order after `moduleName` when it exists, without requiring it.
+---@param self ModuleKit.Module
+---@param moduleName string
+---@return ModuleKit.Module self
 local function moduleOptionalDependency(self, moduleName)
     return addNameConstraint(self, "_optionalDependencies", moduleName, "OptionalDependency")
 end
 
---- Order this module before `moduleName`, without requiring it.
---- @param self ModuleKit.Module
---- @param moduleName string
---- @return ModuleKit.Module self
+---Order this module before `moduleName`, without requiring it.
+---@param self ModuleKit.Module
+---@param moduleName string
+---@return ModuleKit.Module self
 local function moduleBefore(self, moduleName)
     return addNameConstraint(self, "_before", moduleName, "Before")
 end
 
---- Order this module after `moduleName`, without requiring it.
---- @param self ModuleKit.Module
---- @param moduleName string
---- @return ModuleKit.Module self
+---Order this module after `moduleName`, without requiring it.
+---@param self ModuleKit.Module
+---@param moduleName string
+---@return ModuleKit.Module self
 local function moduleAfter(self, moduleName)
     return addNameConstraint(self, "_after", moduleName, "After")
 end
 
---- Declare injection aliases.
+---Declare injection aliases.
 ---
---- Targets are provider or module **names**, never the objects themselves: the
---- container resolves a name at initialization time, so a module can inject
---- something that does not exist yet when the declaration is written.
---- @param self ModuleKit.Module
---- @param aliasOrMap string|table<string, string> one alias, or an alias-to-name map
---- @param target string|nil target name, when a single alias was given
---- @return ModuleKit.Module self
+---Targets are provider or module **names**, never the objects themselves: the
+---container resolves a name at initialization time, so a module can inject
+---something that does not exist yet when the declaration is written.
+---@param self ModuleKit.Module
+---@param aliasOrMap string|table<string, string> one alias, or an alias-to-name map
+---@param target string|nil target name, when a single alias was given
+---@return ModuleKit.Module self
+---@overload fun(self: ModuleKit.Module, map: table<string, string>): ModuleKit.Module
 local function moduleInject(self, aliasOrMap, target)
     ensureDefinitionMutable(self, "Inject")
     ensureNotShutdown(rawget(self, "_addon"), "Inject")
@@ -1431,34 +1648,34 @@ local function moduleInject(self, aliasOrMap, target)
     return self
 end
 
---- Initialize this module under the container's dependency policy.
---- @param self ModuleKit.Module
---- @return ModuleKit.Module self
+---Initialize this module under the container's dependency policy.
+---@param self ModuleKit.Module
+---@return ModuleKit.Module self
 local function moduleInitialize(self)
     return initializeWithPolicy(self)
 end
 
---- Enable this module under the container's dependency policy.
---- @param self ModuleKit.Module
---- @return ModuleKit.Module self
+---Enable this module under the container's dependency policy.
+---@param self ModuleKit.Module
+---@return ModuleKit.Module self
 local function moduleEnable(self)
     return enableWithPolicy(self)
 end
 
---- Disable this module under the container's dependency policy.
---- @param self ModuleKit.Module
---- @return ModuleKit.Module self
+---Disable this module under the container's dependency policy.
+---@param self ModuleKit.Module
+---@return ModuleKit.Module self
 local function moduleDisable(self)
     return disableWithPolicy(self)
 end
 
---- Catch this module up to the LifecycleKit phases its container has reached.
+---Catch this module up to the LifecycleKit phases its container has reached.
 ---
---- This is an explicit request, so it runs immediately even when called from a
---- hook during a whole-container pass. Definition-table catch-up is deferred
---- instead; see `scheduleCatchUp`.
---- @param self ModuleKit.Module
---- @return ModuleKit.Module self
+---This is an explicit request, so it runs immediately even when called from a
+---hook during a whole-container pass. Definition-table catch-up is deferred
+---instead; see `scheduleCatchUp`.
+---@param self ModuleKit.Module
+---@return ModuleKit.Module self
 local function moduleActivate(self)
     local addon = rawget(self, "_addon")
     local lifecycle = rawget(addon, "_lifecycle")
@@ -1472,34 +1689,34 @@ local function moduleActivate(self)
     return self
 end
 
---- Resolve an injectable with this module as the scope context.
---- @param self ModuleKit.Module
---- @param providerName string
---- @return any
+---Resolve an injectable with this module as the scope context.
+---@param self ModuleKit.Module
+---@param providerName string
+---@return any
 local function moduleResolve(self, providerName)
     return resolveProvider(rawget(self, "_addon"), providerName, self)
 end
 
 -- Addon public API ----------------------------------------------------------
 
---- Return the addon name this container was created for.
---- @param self ModuleKit.Addon
---- @return string
+---Return the addon name this container was created for.
+---@param self ModuleKit.Addon
+---@return string
 local function addonGetAddonName(self)
     return rawget(self, "_name")
 end
 
---- Return the container's dependency policy.
---- @param self ModuleKit.Addon
---- @return ModuleKit.DependencyPolicy
+---Return the container's dependency policy.
+---@param self ModuleKit.Addon
+---@return ModuleKit.DependencyPolicy
 local function addonGetDependencyPolicy(self)
     return rawget(self, "_dependencyPolicy")
 end
 
---- Change the container's dependency policy.
---- @param self ModuleKit.Addon
---- @param policy ModuleKit.DependencyPolicy
---- @return ModuleKit.DependencyPolicy previous
+---Change the container's dependency policy.
+---@param self ModuleKit.Addon
+---@param policy ModuleKit.DependencyPolicy
+---@return ModuleKit.DependencyPolicy previous
 local function addonSetDependencyPolicy(self, policy)
     ensureNotShutdown(self, "SetDependencyPolicy")
     if policy ~= "automatic" and policy ~= "strict" then
@@ -1521,6 +1738,11 @@ local DEFINITION_FIELDS = {
     onDisable = true,
 }
 
+---Apply one dense-array definition field by calling `method` per entry.
+---@param module ModuleKit.Module
+---@param definition ModuleKit.Definition
+---@param key "dependsOn"|"optionalDependencies"|"before"|"after"
+---@param method fun(module: ModuleKit.Module, targetName: string): ModuleKit.Module
 local function applyDefinitionList(module, definition, key, method)
     local values = rawget(definition, key)
     if values == nil then
@@ -1550,6 +1772,11 @@ local function applyDefinitionList(module, definition, key, method)
     end
 end
 
+---Copy one definition hook onto the module under its public field name.
+---@param module ModuleKit.Module
+---@param definition ModuleKit.Definition
+---@param key "onInitialize"|"onEnable"|"onDisable"
+---@param field "OnInitialize"|"OnEnable"|"OnDisable"
 local function applyDefinitionCallback(module, definition, key, field)
     local callback = rawget(definition, key)
     if callback == nil then
@@ -1561,6 +1788,9 @@ local function applyDefinitionCallback(module, definition, key, field)
     rawset(module, field, callback)
 end
 
+---Apply a complete definition table in a fixed, deterministic field order.
+---@param module ModuleKit.Module
+---@param definition ModuleKit.Definition|nil
 local function applyDefinition(module, definition)
     if definition == nil then
         return
@@ -1597,11 +1827,11 @@ local function applyDefinition(module, definition)
     applyDefinitionCallback(module, definition, "onDisable", "OnDisable")
 end
 
---- Create a uniquely named module in this container.
---- @param self ModuleKit.Addon
---- @param name string
---- @param definition table|nil atomic definition table; see `docs/API.md`
---- @return ModuleKit.Module
+---Create a uniquely named module in this container.
+---@param self ModuleKit.Addon
+---@param name string
+---@param definition ModuleKit.Definition|nil atomic definition table; see `docs/API.md`
+---@return ModuleKit.Module module
 local function addonCreateModule(self, name, definition)
     ensureNotShutdown(self, "CreateModule")
     validateModuleName(name, "CreateModule")
@@ -1647,27 +1877,27 @@ local function addonCreateModule(self, name, definition)
     return module
 end
 
---- Return the named module, or `nil`.
---- @param self ModuleKit.Addon
---- @param name string
---- @return ModuleKit.Module|nil
+---Return the named module, or `nil`.
+---@param self ModuleKit.Addon
+---@param name string
+---@return ModuleKit.Module|nil
 local function addonGetModule(self, name)
     validateModuleName(name, "GetModule")
     return rawget(rawget(self, "_modules"), name)
 end
 
---- Report whether the named module exists in this container.
---- @param self ModuleKit.Addon
---- @param name string
---- @return boolean
+---Report whether the named module exists in this container.
+---@param self ModuleKit.Addon
+---@param name string
+---@return boolean
 local function addonHasModule(self, name)
     validateModuleName(name, "HasModule")
     return rawget(rawget(self, "_modules"), name) ~= nil
 end
 
---- Return a new array snapshot of every module, in creation order.
---- @param self ModuleKit.Addon
---- @return ModuleKit.Module[]
+---Return a new array snapshot of every module, in creation order.
+---@param self ModuleKit.Addon
+---@return ModuleKit.Module[]
 local function addonGetModules(self)
     local modules = {}
     local order = rawget(self, "_moduleOrder")
@@ -1677,9 +1907,9 @@ local function addonGetModules(self)
     return modules
 end
 
---- Return module names in deterministic full-graph topological order.
---- @param self ModuleKit.Addon
---- @return string[]
+---Return module names in deterministic full-graph topological order.
+---@param self ModuleKit.Addon
+---@return string[]
 local function addonGetActivationOrder(self)
     local order = buildGraph(self)
     local names = {}
@@ -1689,40 +1919,40 @@ local function addonGetActivationOrder(self)
     return names
 end
 
---- Validate the complete graph, raising a diagnostic on the first problem.
---- @param self ModuleKit.Addon
---- @return boolean `true` on success
+---Validate the complete graph, raising a diagnostic on the first problem.
+---@param self ModuleKit.Addon
+---@return boolean `true` on success
 local function addonValidateGraph(self)
     buildGraph(self)
     return true
 end
 
---- Initialize every module in the container.
---- @param self ModuleKit.Addon
---- @return ModuleKit.Addon self
+---Initialize every module in the container.
+---@param self ModuleKit.Addon
+---@return ModuleKit.Addon self
 local function addonInitializeAll(self)
     return initializeAllInternal(self)
 end
 
---- Enable every module in the container, including ones explicitly disabled.
---- @param self ModuleKit.Addon
---- @return ModuleKit.Addon self
+---Enable every module in the container, including ones explicitly disabled.
+---@param self ModuleKit.Addon
+---@return ModuleKit.Addon self
 local function addonEnableAll(self)
     return enableAllInternal(self)
 end
 
---- Disable every enabled module without terminating the container.
---- @param self ModuleKit.Addon
---- @return ModuleKit.Addon self
+---Disable every enabled module without terminating the container.
+---@param self ModuleKit.Addon
+---@return ModuleKit.Addon self
 local function addonDisableAll(self)
     return disableAllInternal(self, false)
 end
 
---- Register an addon-scoped constant. `nil` is rejected.
---- @param self ModuleKit.Addon
---- @param name string
---- @param value any
---- @return ModuleKit.Addon self
+---Register an addon-scoped constant. `nil` is rejected.
+---@param self ModuleKit.Addon
+---@param name string
+---@param value any
+---@return ModuleKit.Addon self
 local function addonProvideValue(self, name, value)
     ensureNotShutdown(self, "ProvideValue")
     if value == nil then
@@ -1731,17 +1961,19 @@ local function addonProvideValue(self, name, value)
     return registerProvider(self, name, { kind = "value", value = value }, "ProvideValue")
 end
 
+---@param factory any
+---@param methodName string public method name, used in the argument error
 local function validateFactory(factory, methodName)
     if type(factory) ~= "function" then
         error("ModuleKit.Addon:" .. methodName .. " factory must be a function", 4)
     end
 end
 
---- Register a factory resolved once per container.
---- @param self ModuleKit.Addon
---- @param name string
---- @param factory fun(addon: ModuleKit.Addon): any
---- @return ModuleKit.Addon self
+---Register a factory resolved once per container.
+---@param self ModuleKit.Addon
+---@param name string
+---@param factory fun(addon: ModuleKit.Addon): any
+---@return ModuleKit.Addon self
 local function addonProvideSingleton(self, name, factory)
     ensureNotShutdown(self, "ProvideSingleton")
     validateFactory(factory, "ProvideSingleton")
@@ -1753,11 +1985,11 @@ local function addonProvideSingleton(self, name, factory)
     }, "ProvideSingleton")
 end
 
---- Register a factory resolved once per requesting module.
---- @param self ModuleKit.Addon
---- @param name string
---- @param factory fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any
---- @return ModuleKit.Addon self
+---Register a factory resolved once per requesting module.
+---@param self ModuleKit.Addon
+---@param name string
+---@param factory fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any
+---@return ModuleKit.Addon self
 local function addonProvideModule(self, name, factory)
     ensureNotShutdown(self, "ProvideModule")
     validateFactory(factory, "ProvideModule")
@@ -1768,11 +2000,11 @@ local function addonProvideModule(self, name, factory)
     }, "ProvideModule")
 end
 
---- Register a factory resolved on every resolution.
---- @param self ModuleKit.Addon
---- @param name string
---- @param factory fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any
---- @return ModuleKit.Addon self
+---Register a factory resolved on every resolution.
+---@param self ModuleKit.Addon
+---@param name string
+---@param factory fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any
+---@return ModuleKit.Addon self
 local function addonProvideTransient(self, name, factory)
     ensureNotShutdown(self, "ProvideTransient")
     validateFactory(factory, "ProvideTransient")
@@ -1782,11 +2014,11 @@ local function addonProvideTransient(self, name, factory)
     }, "ProvideTransient")
 end
 
---- Resolve an injectable, optionally with module scope context.
---- @param self ModuleKit.Addon
---- @param name string
---- @param requestingModule ModuleKit.Module|nil must be owned by this container
---- @return any
+---Resolve an injectable, optionally with module scope context.
+---@param self ModuleKit.Addon
+---@param name string
+---@param requestingModule ModuleKit.Module|nil must be owned by this container
+---@return any
 local function addonResolve(self, name, requestingModule)
     if requestingModule ~= nil then
         local modules = rawget(self, "_modules")
@@ -1809,30 +2041,37 @@ end
 
 -- Addon creation / lifecycle integration -----------------------------------
 
---- The LifecycleKit phases a container subscribes to, in delivery order.
+---The LifecycleKit phases a container subscribes to, in delivery order.
 local LIFECYCLE_PHASES = { "loaded", "ready", "shutdown" }
 
---- LifecycleKit subscription method per phase.
+---LifecycleKit subscription method per phase.
 local PHASE_SUBSCRIBE = {
     loaded = "OnLoaded",
     ready = "OnReady",
     shutdown = "OnShutdown",
 }
 
---- LifecycleKit query that reports whether a phase has already been reached.
+---LifecycleKit query that reports whether a phase has already been reached.
 local PHASE_REACHED_QUERY = {
     loaded = "IsLoaded",
     ready = "IsReady",
     shutdown = "IsShutdown",
 }
 
---- Shared runtime dispatch entry point per phase.
+---Shared runtime dispatch entry point per phase.
 local PHASE_DISPATCH = {
     loaded = "initializeAll",
     ready = "enableAll",
     shutdown = "shutdown",
 }
 
+---Call one whole-container pass through shared runtime dispatch.
+---
+---Going through shared state rather than a captured local is what lets a newer
+---compatible revision upgrade containers an older copy created.
+---@param name "initializeAll"|"enableAll"|"shutdown"
+---@param addon ModuleKit.Addon
+---@return ModuleKit.Addon addon
 local function invokeDispatch(name, addon)
     local dispatch = rawget(state, "dispatch")
     local callback = type(dispatch) == "table" and rawget(dispatch, name) or nil
@@ -1842,28 +2081,28 @@ local function invokeDispatch(name, addon)
     return callback(addon)
 end
 
---- Report whether LifecycleKit has already reached `phase` for `lifecycle`.
---- @param lifecycle table
---- @param phase "loaded"|"ready"|"shutdown"
---- @return boolean
+---Report whether LifecycleKit has already reached `phase` for `lifecycle`.
+---@param lifecycle LifecycleKit.Instance
+---@param phase "loaded"|"ready"|"shutdown"
+---@return boolean
 local function isPhaseReached(lifecycle, phase)
     local query = lifecycle[PHASE_REACHED_QUERY[phase]]
     return query(lifecycle) == true
 end
 
---- Install the per-container runtime fields this implementation revision owns.
+---Install the per-container runtime fields this implementation revision owns.
 ---
---- A container created by an earlier compatible revision carries neither the
---- dispatched-phase set nor the whole-container pass bookkeeping, so an
---- in-place upgrade adds them before anything reads them.
+---A container created by an earlier compatible revision carries neither the
+---dispatched-phase set nor the whole-container pass bookkeeping, so an
+---in-place upgrade adds them before anything reads them.
 ---
---- The dispatched set is rebuilt from LifecycleKit: every revision subscribed
---- to all three phases when it created a container, and LifecycleKit replays a
---- phase it has already reached to every new subscriber. For a carried-over
---- container, "phase reached" and "phase already dispatched into this
---- container" therefore mean the same thing.
---- @param addon table
---- @param lifecycle table
+---The dispatched set is rebuilt from LifecycleKit: every revision subscribed
+---to all three phases when it created a container, and LifecycleKit replays a
+---phase it has already reached to every new subscriber. For a carried-over
+---container, "phase reached" and "phase already dispatched into this
+---container" therefore mean the same thing.
+---@param addon ModuleKit.Addon
+---@param lifecycle LifecycleKit.Instance
 local function ensureContainerRuntimeFields(addon, lifecycle)
     if type(rawget(addon, "_dispatched")) ~= "table" then
         local dispatched = {}
@@ -1884,8 +2123,8 @@ local function ensureContainerRuntimeFields(addon, lifecycle)
     end
 end
 
---- Drop every LifecycleKit subscription this container currently holds.
---- @param addon table
+---Drop every LifecycleKit subscription this container currently holds.
+---@param addon ModuleKit.Addon
 local function disconnectAddonSubscriptions(addon)
     local subscriptions = rawget(addon, "_subscriptions")
     if type(subscriptions) ~= "table" then
@@ -1906,20 +2145,20 @@ local function disconnectAddonSubscriptions(addon)
     rawset(addon, "_subscriptions", {})
 end
 
---- Subscribe the container to the LifecycleKit phases it has not received yet.
+---Subscribe the container to the LifecycleKit phases it has not received yet.
 ---
---- LifecycleKit replays a phase it has already reached to every new subscriber.
---- That is exactly what a freshly created container wants, and exactly what an
---- in-place upgrade must avoid: re-subscribing there would run module hooks out
---- of package bootstrap, and the replayed `ready` phase would call `EnableAll`,
---- silently re-enabling a module the addon had deliberately disabled.
+---LifecycleKit replays a phase it has already reached to every new subscriber.
+---That is exactly what a freshly created container wants, and exactly what an
+---in-place upgrade must avoid: re-subscribing there would run module hooks out
+---of package bootstrap, and the replayed `ready` phase would call `EnableAll`,
+---silently re-enabling a module the addon had deliberately disabled.
 ---
---- The dispatched-phase set is the guard. During an upgrade the lifecycle is
---- also probed directly, so no already-reached phase can be subscribed to even
---- if the set were wrong, and a module hook can therefore never run out of
---- package bootstrap.
---- @param addon table
---- @param duringUpgrade boolean|nil `true` while migrating a carried-over container
+---The dispatched-phase set is the guard. During an upgrade the lifecycle is
+---also probed directly, so no already-reached phase can be subscribed to even
+---if the set were wrong, and a module hook can therefore never run out of
+---package bootstrap.
+---@param addon ModuleKit.Addon
+---@param duringUpgrade boolean|nil `true` while migrating a carried-over container
 local function installAddonSubscriptions(addon, duringUpgrade)
     local lifecycle = rawget(addon, "_lifecycle")
     if
@@ -1967,9 +2206,9 @@ local function installAddonSubscriptions(addon, duringUpgrade)
     end
 end
 
---- Create the container for `addonName` and bind it to its lifecycle.
---- @param addonName string
---- @return ModuleKit.Addon
+---Create the container for `addonName` and bind it to its lifecycle.
+---@param addonName string
+---@return ModuleKit.Addon
 local function createAddon(addonName)
     local lifecycle = LifecycleKit:ForAddon(addonName)
     local addon = setmetatable({
@@ -1999,9 +2238,10 @@ local function createAddon(addonName)
     return addon
 end
 
---- Return the stable container for `addonName`, creating it on demand.
---- @param addonName string addon folder name, as LifecycleKit matches it
---- @return ModuleKit.Addon
+---Return the stable container for `addonName`, creating it on demand.
+---@param _ ModuleKit
+---@param addonName string addon folder name, as LifecycleKit matches it
+---@return ModuleKit.Addon addon
 local function forAddon(_, addonName)
     validateNonEmptyString(addonName, "ModuleKit:ForAddon addonName", 3)
 
@@ -2013,6 +2253,7 @@ local function forAddon(_, addonName)
     return createAddon(addonName)
 end
 
+---Move every live container's LifecycleKit subscriptions onto this revision.
 local function migrateAddonSubscriptions()
     local addons = rawget(state, "addons")
     local names = {}

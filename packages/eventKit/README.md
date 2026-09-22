@@ -5,7 +5,7 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.2.0`
+- Version: `0.2.1`
 - API generation: `1`
 - Implementation revision: `2`
 - Runtime dependencies: Registry API 2, SignalKit API 1
@@ -47,3 +47,19 @@ end, "player")
 See [`docs/API.md`](docs/API.md) for the full public contract and edge-case
 semantics, including the combat-log event's empty payload, the taint
 consequences of a shared bus, and the measured cost of listener isolation.
+
+## Embedding
+
+[`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:
+directory layout, supported Interface numbers, taint, `/reload` semantics and
+troubleshooting. This package's load order inside a consuming addon is:
+
+```toc
+Libs\MoltenCodes\registry\Registry.lua
+Libs\MoltenCodes\signalKit\SignalKit.lua
+Libs\MoltenCodes\eventKit\EventKit.lua
+```
+
+Direct runtime dependencies: Registry API 2, SignalKit API 1.
+Every file above is required; omitting one makes this package raise at
+load.

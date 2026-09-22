@@ -29,6 +29,9 @@ if type(register) ~= "function" or type(get) ~= "function" then
     error("MoltenCodes SignalKit requires a valid Registry API 2 facade", 2)
 end
 
+---Whether `implementation` exposes the complete SignalKit API 1 surface.
+---@param implementation any shared package table handed back by Registry
+---@return boolean
 local function validatePublicSurface(implementation)
     return type(implementation) == "table"
         and rawget(implementation, "API") == API_GENERATION
@@ -70,23 +73,23 @@ end
 -- a newer embedded package revision.
 
 ---A connection handle returned by `signal:Connect` or `signal:Once`.
----@class SignalConnection
----@field Disconnect fun(self: SignalConnection): boolean
----@field IsConnected fun(self: SignalConnection): boolean
+---@class SignalKit.Connection
+---@field Disconnect fun(self: SignalKit.Connection): boolean
+---@field IsConnected fun(self: SignalKit.Connection): boolean
 
 ---An independent dispatch point created by `SignalKit:New()`.
----@class Signal
----@field Connect fun(self: Signal, callback: fun(...)): SignalConnection
----@field Once fun(self: Signal, callback: fun(...)): SignalConnection
----@field Fire fun(self: Signal, ...: any)
----@field DisconnectAll fun(self: Signal): integer
+---@class SignalKit.Signal
+---@field Connect fun(self: SignalKit.Signal, callback: fun(...)): SignalKit.Connection
+---@field Once fun(self: SignalKit.Signal, callback: fun(...)): SignalKit.Connection
+---@field Fire fun(self: SignalKit.Signal, ...: any)
+---@field DisconnectAll fun(self: SignalKit.Signal): integer
 
 ---The shared SignalKit package table.
----@class SignalKit: Signal
+---@class SignalKit: SignalKit.Signal
 ---@field API integer SignalKit API generation.
 ---@field REVISION integer SignalKit implementation revision.
----@field Connection SignalConnection Shared method prototype for connection handles.
----@field New fun(self: SignalKit?): Signal
+---@field Connection SignalKit.Connection Shared method prototype for connection handles.
+---@field New fun(self: SignalKit?): SignalKit.Signal
 
 local Connection = rawget(SignalKit, "Connection")
 if previousRevision == nil then
@@ -237,6 +240,13 @@ local function disconnectConnection(connection)
     return true
 end
 
+---Shared implementation of `Connect` and `Once`.
+---@param signal any receiver the public method was called on
+---@param callback any candidate listener, validated here
+---@param once boolean whether the connection disconnects before its first call
+---@param methodName "Connect"|"Once" public method name, used in the argument error
+---@param receiverMessage string error text raised when `signal` is not a signal
+---@return SignalKit.Connection
 local function connect(signal, callback, once, methodName, receiverMessage)
     local listeners = listenersOf(signal)
     if listeners == nil then
@@ -262,7 +272,7 @@ end
 -- Public methods ---------------------------------------------------------------
 
 ---Creates an independent signal instance.
----@return Signal
+---@return SignalKit.Signal signal
 local function newSignal()
     return setmetatable({
         _listeners = {},
@@ -271,20 +281,23 @@ local function newSignal()
 end
 
 ---Connects `callback` for every future dispatch.
----@param callback fun(...)
----@return SignalConnection
+---@param self SignalKit.Signal
+---@param callback fun(...: any)
+---@return SignalKit.Connection connection
 local function connectListener(self, callback)
     return connect(self, callback, false, "Connect", CONNECT_RECEIVER_MESSAGE)
 end
 
 ---Connects `callback` for at most one dispatch.
----@param callback fun(...)
----@return SignalConnection
+---@param self SignalKit.Signal
+---@param callback fun(...: any)
+---@return SignalKit.Connection connection
 local function connectOnce(self, callback)
     return connect(self, callback, true, "Once", ONCE_RECEIVER_MESSAGE)
 end
 
 ---Invokes every currently eligible listener in connection order.
+---@param self SignalKit.Signal
 ---@param ... any Forwarded to each listener exactly, including `nil` values.
 local function fire(self, ...)
     -- Capture both the current listener array and its length. Connect appends
@@ -322,6 +335,7 @@ local function fire(self, ...)
 end
 
 ---Disconnects every listener connected at the moment of the call.
+---@param self SignalKit.Signal
 ---@return integer disconnected
 local function disconnectAll(self)
     local listeners = listenersOf(self)
@@ -351,6 +365,7 @@ local function disconnectAll(self)
 end
 
 ---Disconnects this connection.
+---@param self SignalKit.Connection
 ---@return boolean disconnected `true` only for the call that transitioned the state.
 local function disconnect(self)
     if not isConnectionHandle(self) then
@@ -361,7 +376,8 @@ local function disconnect(self)
 end
 
 ---Whether this connection is still active.
----@return boolean
+---@param self SignalKit.Connection
+---@return boolean connected
 local function isConnected(self)
     if not isConnectionHandle(self) then
         error(IS_CONNECTED_RECEIVER_MESSAGE, 2)

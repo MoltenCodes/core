@@ -1,0 +1,19 @@
+{
+  "runtime": {
+    "version": "Lua 5.1"
+  },
+  "workspace": {
+    "library": [
+      "../../../meta",
+      "../../registry/src",
+      "../../signalKit/src",
+      "../../eventKit/src",
+      "../../lifecycleKit/src",
+      "../../timerKit/src"
+    ],
+    "checkThirdParty": false
+  },
+  "format": {
+    "enable": false
+  }
+}

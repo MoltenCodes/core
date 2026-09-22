@@ -66,3 +66,16 @@ Registry has no runtime package dependencies.
 - [`docs/API.md`](docs/API.md) — complete public contract and upgrade semantics.
 - [`CHANGELOG.md`](CHANGELOG.md) — package evolution.
 - [`tests/README.md`](tests/README.md) — behavior covered by the test suite.
+
+## Embedding
+
+[`../../docs/EMBEDDING.md`](../../docs/EMBEDDING.md) is the addon author's guide:
+directory layout, supported Interface numbers, taint, `/reload` semantics and
+troubleshooting. This package's load order inside a consuming addon is:
+
+```toc
+Libs\MoltenCodes\registry\Registry.lua
+```
+
+No runtime dependencies. Registry is the bootstrap layer, so it is the
+first MoltenCodes file every addon loads.

@@ -12,6 +12,50 @@ local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
 local STATE_SCHEMA = 2
 
+-- Public types --------------------------------------------------------------
+--
+-- LifecycleKit publishes its methods by writing them onto Registry-owned
+-- prototype tables, so the editor-facing contract is declared here as LuaCATS
+-- classes rather than inferred from those assignments.
+
+---Lifecycle phase reported by `Instance:GetState()`.
+---@alias LifecycleKit.State
+---| "loading"   # the addon's `ADDON_LOADED` has not been observed yet
+---| "loaded"    # `ADDON_LOADED` completed for this addon
+---| "ready"     # the addon is loaded and the player is logged in
+---| "shutdown"  # `PLAYER_LOGOUT` was observed
+
+---A callback invoked once for the phase it subscribed to.
+---@alias LifecycleKit.PhaseCallback fun(instance: LifecycleKit.Instance)
+
+---An error object wrapped so that `nil` and `false` stay representable.
+---@class LifecycleKit.ErrorRecord
+---@field value any the original Lua error object
+
+---The per-addon lifecycle handle returned by `LifecycleKit:ForAddon`.
+---@class LifecycleKit.Instance
+---@field GetAddonName fun(self: LifecycleKit.Instance): string
+---@field GetState fun(self: LifecycleKit.Instance): LifecycleKit.State
+---@field IsLoaded fun(self: LifecycleKit.Instance): boolean
+---@field IsReady fun(self: LifecycleKit.Instance): boolean
+---@field IsShutdown fun(self: LifecycleKit.Instance): boolean
+---@field OnLoaded fun(self: LifecycleKit.Instance, callback: LifecycleKit.PhaseCallback): LifecycleKit.Subscription
+---@field OnReady fun(self: LifecycleKit.Instance, callback: LifecycleKit.PhaseCallback): LifecycleKit.Subscription
+---@field OnShutdown fun(self: LifecycleKit.Instance, callback: LifecycleKit.PhaseCallback): LifecycleKit.Subscription
+
+---A pending one-shot phase subscription.
+---@class LifecycleKit.Subscription
+---@field Disconnect fun(self: LifecycleKit.Subscription): boolean
+---@field IsConnected fun(self: LifecycleKit.Subscription): boolean
+
+---The LifecycleKit package facade published through Registry.
+---@class LifecycleKit
+---@field API integer Public API generation.
+---@field REVISION integer Compatible implementation revision.
+---@field Instance LifecycleKit.Instance Shared lifecycle-instance prototype.
+---@field Subscription LifecycleKit.Subscription Shared subscription prototype.
+---@field ForAddon fun(self: LifecycleKit, addonName: string): LifecycleKit.Instance
+
 -- Dependencies --------------------------------------------------------------
 
 -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
@@ -73,6 +117,9 @@ end
 
 -- Public-surface validation --------------------------------------------------
 
+---Whether `implementation` exposes the complete LifecycleKit API 1 surface.
+---@param implementation any shared package table handed back by Registry
+---@return boolean
 local function validatePublicSurface(implementation)
     if
         type(implementation) ~= "table"
@@ -99,6 +146,9 @@ local function validatePublicSurface(implementation)
         and type(rawget(Subscription, "IsConnected")) == "function"
 end
 
+---Whether `implementation` carries package state of this revision's schema.
+---@param implementation table
+---@return boolean
 local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     return type(currentState) == "table"
@@ -143,26 +193,14 @@ end
 
 -- Past this point the facade is always a table: Registry either handed one back
 -- or the branch above adopted the validated `existing` implementation.
---- @cast LifecycleKit table
+---@cast LifecycleKit table
 
 -- Stable public prototypes and package state --------------------------------
 
---- Lifecycle phase reported by `Instance:GetState()`.
---- @alias LifecycleKit.State
---- | "loading"   # the addon's `ADDON_LOADED` has not been observed yet
---- | "loaded"    # `ADDON_LOADED` completed for this addon
---- | "ready"     # the addon is loaded and the player is logged in
---- | "shutdown"  # `PLAYER_LOGOUT` was observed
-
---- Method prototype shared by every per-addon lifecycle instance.
----
---- Registry keeps this table's identity stable across compatible embedded
---- revisions, so instances created by an older copy observe newer methods.
---- @class LifecycleKit.Instance
+-- Registry keeps the identity of the two prototype tables below stable across
+-- compatible embedded revisions, so instances created by an older copy observe
+-- newer methods.
 local Instance = rawget(LifecycleKit, "Instance")
-
---- Method prototype shared by every one-shot phase subscription handle.
---- @class LifecycleKit.Subscription
 local Subscription = rawget(LifecycleKit, "Subscription")
 
 local state = rawget(LifecycleKit, "_state")
@@ -204,13 +242,13 @@ local SUBSCRIPTION_METATABLE = { __index = Subscription }
 
 -- Host-state probes ---------------------------------------------------------
 
---- Report whether `ADDON_LOADED` has already completed for `addonName`.
+---Report whether `ADDON_LOADED` has already completed for `addonName`.
 ---
---- Both the modern and the legacy host API return `(loaded, finished)`: an addon
---- that is mid-load answers `true, false`. Only the second value confirms that
---- the `ADDON_LOADED` transition finished, so only that value is trusted here.
---- @param addonName string
---- @return boolean
+---Both the modern and the legacy host API return `(loaded, finished)`: an addon
+---that is mid-load answers `true, false`. Only the second value confirms that
+---the `ADDON_LOADED` transition finished, so only that value is trusted here.
+---@param addonName string
+---@return boolean
 local function isAddonFinishedLoading(addonName)
     -- C_AddOns is a World of Warcraft client API reachable only through the global table.
     -- selene: allow(global_usage)
@@ -234,8 +272,8 @@ local function isAddonFinishedLoading(addonName)
     return false
 end
 
---- Report whether the host says the player is already logged in.
---- @return boolean
+---Report whether the host says the player is already logged in.
+---@return boolean
 local function isPlayerLoggedIn()
     -- IsLoggedIn is a World of Warcraft client API reachable only through the global table.
     -- selene: allow(global_usage)
@@ -245,16 +283,16 @@ end
 
 -- In-place upgrade ----------------------------------------------------------
 
---- Drop per-instance fields that an older compatible revision owned.
+---Drop per-instance fields that an older compatible revision owned.
 ---
---- Revision 3 kept a second, redundant phase-error slot (`_phaseErrors`) beside
---- `_phaseCaptures`. This revision captures phase-callback failures through
---- `_phaseCaptures` alone, so the retired table is released when an older copy
---- hands its state over rather than being retained for the session's lifetime.
+---Revision 3 kept a second, redundant phase-error slot (`_phaseErrors`) beside
+---`_phaseCaptures`. This revision captures phase-callback failures through
+---`_phaseCaptures` alone, so the retired table is released when an older copy
+---hands its state over rather than being retained for the session's lifetime.
 ---
---- Pending revision-3 subscription closures stay correct across this upgrade:
---- they report a callback failure through `_phaseCaptures`, whose record shape
---- is unchanged, and never read `_phaseErrors` themselves.
+---Pending revision-3 subscription closures stay correct across this upgrade:
+---they report a callback failure through `_phaseCaptures`, whose record shape
+---is unchanged, and never read `_phaseErrors` themselves.
 local function releaseRetiredInstanceFields()
     if previousRevision == nil or previousRevision >= IMPLEMENTATION_REVISION then
         return
@@ -272,6 +310,8 @@ releaseRetiredInstanceFields()
 
 -- Subscription --------------------------------------------------------------
 
+---Return a subscription handle that is already spent.
+---@return LifecycleKit.Subscription
 local function newDisconnectedSubscription()
     return setmetatable({
         _connected = false,
@@ -279,9 +319,9 @@ local function newDisconnectedSubscription()
     }, SUBSCRIPTION_METATABLE)
 end
 
---- Report whether this subscription is still pending delivery.
---- @param self LifecycleKit.Subscription
---- @return boolean
+---Report whether this subscription is still pending delivery.
+---@param self LifecycleKit.Subscription
+---@return boolean
 local function isSubscriptionConnected(self)
     if rawget(self, "_connected") ~= true then
         return false
@@ -299,9 +339,9 @@ local function isSubscriptionConnected(self)
     return true
 end
 
---- Cancel a pending subscription.
---- @param self LifecycleKit.Subscription
---- @return boolean changed `true` only when a pending subscription became disconnected
+---Cancel a pending subscription.
+---@param self LifecycleKit.Subscription
+---@return boolean changed `true` only when a pending subscription became disconnected
 local function disconnectSubscription(self)
     if not isSubscriptionConnected(self) then
         return false
@@ -316,10 +356,15 @@ end
 
 -- Phase machinery -----------------------------------------------------------
 
+---@param value any
+---@return LifecycleKit.ErrorRecord
 local function newErrorRecord(value)
     return { value = value }
 end
 
+---Return the per-phase error-capture map of `instance`, creating it on demand.
+---@param instance LifecycleKit.Instance
+---@return table<string, table>
 local function getPhaseCaptures(instance)
     local captures = rawget(instance, "_phaseCaptures")
     if captures == nil then
@@ -331,12 +376,14 @@ local function getPhaseCaptures(instance)
     return captures
 end
 
---- Dispatch one phase to every pending subscriber of `instance`.
+---Dispatch one phase to every pending subscriber of `instance`.
 ---
---- The capture record is the single error-capture protocol: subscriber wrappers
---- record the first callback failure into it while dispatch continues, so one
---- failing subscriber cannot starve the rest of a one-shot phase.
---- @return table|nil errorRecord first captured error, wrapped so that `nil` and `false` stay representable
+---The capture record is the single error-capture protocol: subscriber wrappers
+---record the first callback failure into it while dispatch continues, so one
+---failing subscriber cannot starve the rest of a one-shot phase.
+---@param instance LifecycleKit.Instance
+---@param signalKey "loaded"|"ready"|"shutdown"
+---@return LifecycleKit.ErrorRecord|nil errorRecord first captured error, wrapped so that `nil` and `false` stay representable
 local function firePhase(instance, signalKey)
     local signals = rawget(instance, "_signals")
     local signal = rawget(signals, signalKey)
@@ -360,6 +407,9 @@ local function firePhase(instance, signalKey)
     return nil
 end
 
+---Enter the `ready` phase unless an earlier phase already made it impossible.
+---@param instance LifecycleKit.Instance
+---@return LifecycleKit.ErrorRecord|nil
 local function markReady(instance)
     if rawget(instance, "_ready") == true or rawget(instance, "_shutdown") == true then
         return nil
@@ -369,6 +419,9 @@ local function markReady(instance)
     return firePhase(instance, "ready")
 end
 
+---Enter the `loaded` phase, continuing straight into `ready` when applicable.
+---@param instance LifecycleKit.Instance
+---@return LifecycleKit.ErrorRecord|nil
 local function markLoaded(instance)
     if rawget(instance, "_loaded") == true or rawget(instance, "_shutdown") == true then
         return nil
@@ -388,6 +441,9 @@ local function markLoaded(instance)
     return firstError
 end
 
+---Enter the terminal `shutdown` phase and release unreachable subscriptions.
+---@param instance LifecycleKit.Instance
+---@return LifecycleKit.ErrorRecord|nil
 local function markShutdown(instance)
     if rawget(instance, "_shutdown") == true then
         return nil
@@ -409,12 +465,16 @@ local function markShutdown(instance)
     return firePhase(instance, "shutdown")
 end
 
+---Re-raise a captured phase error unchanged, or return when there was none.
+---@param errorRecord LifecycleKit.ErrorRecord|nil
 local function raisePhaseError(errorRecord)
     if errorRecord ~= nil then
         error(rawget(errorRecord, "value"), 0)
     end
 end
 
+---Return every known addon name, sorted, as a snapshot safe to iterate.
+---@return string[]
 local function snapshotAddonNames()
     local addons = rawget(state, "addons")
     local names = {}
@@ -427,6 +487,9 @@ local function snapshotAddonNames()
     return names
 end
 
+---Run `callback` for every live instance, keeping the first error only.
+---@param callback fun(instance: LifecycleKit.Instance): LifecycleKit.ErrorRecord|nil
+---@return LifecycleKit.ErrorRecord|nil firstError first captured error, or `nil`
 local function runForAllAddons(callback)
     local addons = rawget(state, "addons")
     local names = snapshotAddonNames()
@@ -452,11 +515,15 @@ end
 
 -- Shared event coordination -------------------------------------------------
 
+---Forget a shared watcher that has already delivered its one-shot event.
+---@param key "addonLoaded"|"playerLogin"|"playerLogout"
 local function clearGlobalWatcher(key)
     local watchers = rawget(state, "globalWatchers")
     rawset(watchers, key, nil)
 end
 
+---Cancel a shared watcher that can no longer deliver anything useful.
+---@param key "addonLoaded"|"playerLogin"|"playerLogout"
 local function disconnectGlobalWatcher(key)
     local watchers = rawget(state, "globalWatchers")
     local connection = rawget(watchers, key)
@@ -466,6 +533,9 @@ local function disconnectGlobalWatcher(key)
     end
 end
 
+---`ADDON_LOADED` handler shared by every addon LifecycleKit tracks.
+---@param _ string event name
+---@param addonName string
 local function onAddonLoaded(_, addonName)
     local instance = rawget(rawget(state, "addons"), addonName)
     if instance ~= nil then
@@ -473,6 +543,7 @@ local function onAddonLoaded(_, addonName)
     end
 end
 
+---`PLAYER_LOGIN` handler: promote every loaded instance to `ready`.
 local function onPlayerLogin()
     rawset(state, "loginSeen", true)
     clearGlobalWatcher("playerLogin")
@@ -487,6 +558,7 @@ local function onPlayerLogin()
     raisePhaseError(firstError)
 end
 
+---`PLAYER_LOGOUT` handler: drive every instance into `shutdown`.
 local function onPlayerLogout()
     rawset(state, "shutdownSeen", true)
     clearGlobalWatcher("playerLogout")
@@ -500,13 +572,13 @@ local function onPlayerLogout()
     raisePhaseError(firstError)
 end
 
---- Install the shared `ADDON_LOADED` / `PLAYER_LOGIN` / `PLAYER_LOGOUT` watchers.
+---Install the shared `ADDON_LOADED` / `PLAYER_LOGIN` / `PLAYER_LOGOUT` watchers.
 ---
---- Idempotent: only missing watchers are created, and a partial failure rolls
---- back the watchers this call created before re-raising. Once `PLAYER_LOGOUT`
---- has been observed no watcher is installed at all, because every remaining
---- transition is already decided and instances created afterwards go straight
---- to `shutdown`.
+---Idempotent: only missing watchers are created, and a partial failure rolls
+---back the watchers this call created before re-raising. Once `PLAYER_LOGOUT`
+---has been observed no watcher is installed at all, because every remaining
+---transition is already decided and instances created afterwards go straight
+---to `shutdown`.
 local function ensureGlobalWatchers()
     if rawget(state, "shutdownSeen") == true then
         return
@@ -556,6 +628,9 @@ end
 
 -- Instance creation ---------------------------------------------------------
 
+---Create, publish and catch up the lifecycle instance for `addonName`.
+---@param addonName string
+---@return LifecycleKit.Instance
 local function createInstance(addonName)
     ensureGlobalWatchers()
 
@@ -592,16 +667,16 @@ end
 
 -- Public instance API -------------------------------------------------------
 
---- Return the addon name this lifecycle instance was created for.
---- @param self LifecycleKit.Instance
---- @return string addonName
+---Return the addon name this lifecycle instance was created for.
+---@param self LifecycleKit.Instance
+---@return string addonName
 local function getAddonName(self)
     return rawget(self, "_addonName")
 end
 
---- Return the furthest lifecycle phase this instance has reached.
---- @param self LifecycleKit.Instance
---- @return LifecycleKit.State
+---Return the furthest lifecycle phase this instance has reached.
+---@param self LifecycleKit.Instance
+---@return LifecycleKit.State
 local function getState(self)
     if rawget(self, "_shutdown") == true then
         return "shutdown"
@@ -615,39 +690,39 @@ local function getState(self)
     return "loading"
 end
 
---- Report whether the `loaded` phase itself was reached.
---- @param self LifecycleKit.Instance
---- @return boolean
+---Report whether the `loaded` phase itself was reached.
+---@param self LifecycleKit.Instance
+---@return boolean
 local function isLoaded(self)
     return rawget(self, "_loaded") == true
 end
 
---- Report whether the `ready` phase itself was reached.
---- @param self LifecycleKit.Instance
---- @return boolean
+---Report whether the `ready` phase itself was reached.
+---@param self LifecycleKit.Instance
+---@return boolean
 local function isReady(self)
     return rawget(self, "_ready") == true
 end
 
---- Report whether the `shutdown` phase itself was reached.
---- @param self LifecycleKit.Instance
---- @return boolean
+---Report whether the `shutdown` phase itself was reached.
+---@param self LifecycleKit.Instance
+---@return boolean
 local function isShutdown(self)
     return rawget(self, "_shutdown") == true
 end
 
---- Shared implementation of `OnLoaded`, `OnReady` and `OnShutdown`.
+---Shared implementation of `OnLoaded`, `OnReady` and `OnShutdown`.
 ---
---- The argument error is raised at level 3 so it points at the addon code that
---- called the public method: level 1 is this function, level 2 the public
---- method, level 3 its caller. That only holds while the public methods call
---- this function in a non-tail position; see `onLoaded` for why.
---- @param self LifecycleKit.Instance
---- @param phaseKey "loaded"|"ready"|"shutdown"
---- @param reached boolean whether the phase has already occurred
---- @param callback fun(instance: LifecycleKit.Instance)
---- @param methodName string public method name, used in the argument error
---- @return LifecycleKit.Subscription
+---The argument error is raised at level 3 so it points at the addon code that
+---called the public method: level 1 is this function, level 2 the public
+---method, level 3 its caller. That only holds while the public methods call
+---this function in a non-tail position; see `onLoaded` for why.
+---@param self LifecycleKit.Instance
+---@param phaseKey "loaded"|"ready"|"shutdown"
+---@param reached boolean whether the phase has already occurred
+---@param callback LifecycleKit.PhaseCallback
+---@param methodName string public method name, used in the argument error
+---@return LifecycleKit.Subscription
 local function subscribePhase(self, phaseKey, reached, callback, methodName)
     if type(callback) ~= "function" then
         error("LifecycleKit.Instance:" .. methodName .. " callback must be a function", 3)
@@ -704,25 +779,25 @@ local function subscribePhase(self, phaseKey, reached, callback, methodName)
     return subscription
 end
 
---- Subscribe to the `loaded` phase, replaying it if it already occurred.
+---Subscribe to the `loaded` phase, replaying it if it already occurred.
 ---
---- The call to `subscribePhase` is deliberately not a tail call. Lua 5.1 drops
---- the calling frame on a tail call, which would collapse one level and make
---- `subscribePhase`'s argument error point one frame past the addon code that
---- called this method. `Errors_spec` pins the reported file and line.
---- @param self LifecycleKit.Instance
---- @param callback fun(instance: LifecycleKit.Instance)
---- @return LifecycleKit.Subscription
+---The call to `subscribePhase` is deliberately not a tail call. Lua 5.1 drops
+---the calling frame on a tail call, which would collapse one level and make
+---`subscribePhase`'s argument error point one frame past the addon code that
+---called this method. `Errors_spec` pins the reported file and line.
+---@param self LifecycleKit.Instance
+---@param callback LifecycleKit.PhaseCallback
+---@return LifecycleKit.Subscription subscription
 local function onLoaded(self, callback)
     local subscription =
         subscribePhase(self, "loaded", rawget(self, "_loaded") == true, callback, "OnLoaded")
     return subscription
 end
 
---- Subscribe to the `ready` phase, replaying it if it already occurred.
---- @param self LifecycleKit.Instance
---- @param callback fun(instance: LifecycleKit.Instance)
---- @return LifecycleKit.Subscription
+---Subscribe to the `ready` phase, replaying it if it already occurred.
+---@param self LifecycleKit.Instance
+---@param callback LifecycleKit.PhaseCallback
+---@return LifecycleKit.Subscription subscription
 local function onReady(self, callback)
     -- Not a tail call, for the reason documented on `onLoaded`.
     local subscription =
@@ -730,10 +805,10 @@ local function onReady(self, callback)
     return subscription
 end
 
---- Subscribe to the `shutdown` phase, replaying it if it already occurred.
---- @param self LifecycleKit.Instance
---- @param callback fun(instance: LifecycleKit.Instance)
---- @return LifecycleKit.Subscription
+---Subscribe to the `shutdown` phase, replaying it if it already occurred.
+---@param self LifecycleKit.Instance
+---@param callback LifecycleKit.PhaseCallback
+---@return LifecycleKit.Subscription subscription
 local function onShutdown(self, callback)
     -- Not a tail call, for the reason documented on `onLoaded`.
     local subscription =
@@ -743,16 +818,17 @@ end
 
 -- Public package API --------------------------------------------------------
 
---- Return the stable lifecycle instance for `addonName`, creating it on demand.
+---Return the stable lifecycle instance for `addonName`, creating it on demand.
 ---
---- `addonName` is matched exactly against the name WoW reports in
---- `ADDON_LOADED`, which is the addon's folder name as installed. See
---- `docs/API.md` for why the name is not normalised.
+---`addonName` is matched exactly against the name WoW reports in
+---`ADDON_LOADED`, which is the addon's folder name as installed. See
+---`docs/API.md` for why the name is not normalised.
 ---
---- The argument error is raised at level 2 because this function is the frame
---- the consumer calls: level 1 is this function, level 2 its caller.
---- @param addonName string addon folder name, exactly as installed
---- @return LifecycleKit.Instance
+---The argument error is raised at level 2 because this function is the frame
+---the consumer calls: level 1 is this function, level 2 its caller.
+---@param _ LifecycleKit
+---@param addonName string addon folder name, exactly as installed
+---@return LifecycleKit.Instance instance
 local function forAddon(_, addonName)
     if type(addonName) ~= "string" or addonName == "" then
         error("LifecycleKit:ForAddon addonName must be a non-empty string", 2)
