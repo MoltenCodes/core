@@ -6,6 +6,22 @@ local function expectErrorContaining(expected, callback)
     assert.is_not_nil(string.find(tostring(message), expected, 1, true))
 end
 
+-- EventKit isolates listener errors at the event-bus boundary, so an error that
+-- LifecycleKit re-raises from inside a host event dispatch is reported through
+-- the host error handler instead of escaping `Emit`. These helpers observe that
+-- report while still asserting the exact error object LifecycleKit produced.
+local function takeSingleReportedError()
+    local reported = TestEnv.TakeReportedErrors()
+    assert.are.equal(1, #reported)
+    return reported[1].value
+end
+
+local function expectReportedErrorContaining(expected, callback)
+    callback()
+    local value = takeSingleReportedError()
+    assert.is_not_nil(string.find(tostring(value), expected, 1, true))
+end
+
 describe("LifecycleKit validation", function()
     local LifecycleKit
     before_each(function()
@@ -58,7 +74,7 @@ describe("LifecycleKit validation", function()
         life:OnLoaded(function()
             error("boom")
         end)
-        expectErrorContaining("boom", function()
+        expectReportedErrorContaining("boom", function()
             TestEnv.LoadAddon("MyAddon")
         end)
         assert.is_true(life:IsLoaded())
@@ -80,7 +96,7 @@ describe("LifecycleKit validation", function()
             seen[#seen + 1] = "third"
         end)
 
-        expectErrorContaining("first failure", function()
+        expectReportedErrorContaining("first failure", function()
             TestEnv.LoadAddon("MyAddon")
         end)
         assert.are.same({ "first", "second", "third" }, seen)
@@ -100,11 +116,9 @@ describe("LifecycleKit validation", function()
             laterCalls = laterCalls + 1
         end)
 
-        local ok, message = pcall(function()
-            TestEnv.LoadAddon("MyAddon")
-        end)
-        assert.is_false(ok)
-        assert.are.equal(false, message)
+        TestEnv.LoadAddon("MyAddon")
+
+        assert.are.equal(false, takeSingleReportedError())
         assert.are.equal(2, laterCalls)
     end)
 
@@ -118,11 +132,9 @@ describe("LifecycleKit validation", function()
             laterCalls = laterCalls + 1
         end)
 
-        local ok, message = pcall(function()
-            TestEnv.LoadAddon("MyAddon")
-        end)
-        assert.is_false(ok)
-        assert.is_nil(message)
+        TestEnv.LoadAddon("MyAddon")
+
+        assert.is_nil(takeSingleReportedError())
         assert.are.equal(1, laterCalls)
     end)
 
@@ -136,10 +148,154 @@ describe("LifecycleKit validation", function()
             laterCalls = laterCalls + 1
         end)
 
-        expectErrorContaining("first failure", function()
+        expectReportedErrorContaining("first failure", function()
             TestEnv.LoadAddon("MyAddon")
         end)
         assert.are.equal(1, laterCalls)
         assert.is_false(later:IsConnected())
+    end)
+end)
+
+-- These specs pin the Lua error level of argument validation. The reported
+-- position must be the line in this spec file that called the public method:
+-- not a line inside LifecycleKit, and not a frame further up the stack.
+describe("LifecycleKit argument error positions", function()
+    local LifecycleKit
+    before_each(function()
+        LifecycleKit = TestEnv.NewPackage()
+    end)
+    after_each(TestEnv.Reset)
+
+    it("reports ForAddon argument errors at the caller's file and line", function()
+        local source = debug.getinfo(1, "S").short_src
+        local callLine
+        local ok, message = pcall(function()
+            callLine = debug.getinfo(1, "l").currentline + 1
+            LifecycleKit:ForAddon("")
+        end)
+
+        assert.is_false(ok)
+        assert.are.equal(
+            source
+                .. ":"
+                .. callLine
+                .. ": LifecycleKit:ForAddon addonName must be a non-empty string",
+            message
+        )
+    end)
+
+    it("reports OnLoaded argument errors at the caller's file and line", function()
+        local life = LifecycleKit:ForAddon("MyAddon")
+        local source = debug.getinfo(1, "S").short_src
+        local callLine
+        local ok, message = pcall(function()
+            callLine = debug.getinfo(1, "l").currentline + 1
+            life:OnLoaded(5)
+        end)
+
+        assert.is_false(ok)
+        assert.are.equal(
+            source
+                .. ":"
+                .. callLine
+                .. ": LifecycleKit.Instance:OnLoaded callback must be a function",
+            message
+        )
+    end)
+
+    it("reports OnReady argument errors at the caller's file and line", function()
+        local life = LifecycleKit:ForAddon("MyAddon")
+        local source = debug.getinfo(1, "S").short_src
+        local callLine
+        local ok, message = pcall(function()
+            callLine = debug.getinfo(1, "l").currentline + 1
+            life:OnReady(5)
+        end)
+
+        assert.is_false(ok)
+        assert.are.equal(
+            source
+                .. ":"
+                .. callLine
+                .. ": LifecycleKit.Instance:OnReady callback must be a function",
+            message
+        )
+    end)
+
+    it("reports OnShutdown argument errors at the caller's file and line", function()
+        local life = LifecycleKit:ForAddon("MyAddon")
+        local source = debug.getinfo(1, "S").short_src
+        local callLine
+        local ok, message = pcall(function()
+            callLine = debug.getinfo(1, "l").currentline + 1
+            life:OnShutdown(5)
+        end)
+
+        assert.is_false(ok)
+        assert.are.equal(
+            source
+                .. ":"
+                .. callLine
+                .. ": LifecycleKit.Instance:OnShutdown callback must be a function",
+            message
+        )
+    end)
+end)
+
+describe("LifecycleKit callback error propagation", function()
+    local LifecycleKit
+    before_each(function()
+        LifecycleKit = TestEnv.NewPackage()
+    end)
+    after_each(TestEnv.Reset)
+
+    it("re-raises the original error object from a replayed callback", function()
+        local life = LifecycleKit:ForAddon("MyAddon")
+        TestEnv.LoadAddon("MyAddon")
+
+        local errorObject = { reason = "replay failure" }
+        local ok, message = pcall(function()
+            life:OnLoaded(function()
+                error(errorObject)
+            end)
+        end)
+
+        assert.is_false(ok)
+        assert.are.equal(errorObject, message)
+        assert.is_true(life:IsLoaded())
+    end)
+
+    it("re-raises the original error object from a dispatched callback", function()
+        local life = LifecycleKit:ForAddon("MyAddon")
+        local errorObject = { reason = "dispatch failure" }
+        life:OnLoaded(function()
+            error(errorObject)
+        end)
+
+        TestEnv.LoadAddon("MyAddon")
+
+        assert.are.equal(errorObject, takeSingleReportedError())
+        assert.is_true(life:IsLoaded())
+    end)
+
+    it("preserves a false error object on both the replay and the dispatch path", function()
+        local dispatched = LifecycleKit:ForAddon("DispatchedAddon")
+        dispatched:OnLoaded(function()
+            error(false)
+        end)
+        TestEnv.LoadAddon("DispatchedAddon")
+        local dispatchMessage = takeSingleReportedError()
+
+        local replayed = LifecycleKit:ForAddon("ReplayedAddon")
+        TestEnv.LoadAddon("ReplayedAddon")
+        local replayOk, replayMessage = pcall(function()
+            replayed:OnLoaded(function()
+                error(false)
+            end)
+        end)
+
+        assert.is_false(replayOk)
+        assert.are.equal(dispatchMessage, replayMessage)
+        assert.is_false(replayMessage)
     end)
 end)

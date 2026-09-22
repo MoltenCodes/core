@@ -6,6 +6,7 @@ LifecycleKitTestEnv.NAMESPACE_KEY = "MoltenCodes"
 local frames = {}
 local addonLoaded = {}
 local loggedIn = false
+local reportedErrors = {}
 
 local function copyArray(values)
     local result = {}
@@ -57,14 +58,32 @@ function LifecycleKitTestEnv.InstallWowApi()
     end)
 
     rawset(_G, "C_AddOns", {
+        -- The real C_AddOns.IsAddOnLoaded returns (loaded, finished). An addon
+        -- whose files are being executed but whose ADDON_LOADED transition has
+        -- not completed answers (true, false), so the stub must be able to
+        -- report that state separately from "finished".
         IsAddOnLoaded = function(addonName)
-            local finished = addonLoaded[addonName] == true
+            local status = addonLoaded[addonName]
+            if status == "loading" then
+                return true, false
+            end
+            local finished = status == true
             return finished, finished
         end,
     })
 
     rawset(_G, "IsLoggedIn", function()
         return loggedIn
+    end)
+
+    -- EventKit isolates listener errors at the event-bus boundary: it reports
+    -- them through the host error handler instead of letting them escape the
+    -- dispatch. Capturing that handler is how a spec observes an error that
+    -- LifecycleKit re-raised from inside a host event delivery.
+    rawset(_G, "geterrorhandler", function()
+        return function(message)
+            reportedErrors[#reportedErrors + 1] = { value = message }
+        end
     end)
 end
 
@@ -79,9 +98,11 @@ function LifecycleKitTestEnv.Reset()
     rawset(_G, "C_AddOns", nil)
     rawset(_G, "IsAddOnLoaded", nil)
     rawset(_G, "IsLoggedIn", nil)
+    rawset(_G, "geterrorhandler", nil)
     frames = {}
     addonLoaded = {}
     loggedIn = false
+    reportedErrors = {}
 end
 
 function LifecycleKitTestEnv.NewPackage()
@@ -115,6 +136,11 @@ function LifecycleKitTestEnv.MarkAddonLoaded(addonName)
     addonLoaded[addonName] = true
 end
 
+--- Mark an addon as loading but not finished, the (true, false) host state.
+function LifecycleKitTestEnv.MarkAddonLoading(addonName)
+    addonLoaded[addonName] = "loading"
+end
+
 function LifecycleKitTestEnv.SetLoggedIn(value)
     loggedIn = value == true
 end
@@ -132,6 +158,15 @@ end
 function LifecycleKitTestEnv.Logout()
     LifecycleKitTestEnv.Emit("PLAYER_LOGOUT")
     loggedIn = false
+end
+
+--- Return and clear every error EventKit reported through the host error
+--- handler since the last call. Each entry is `{ value = <error object> }`,
+--- so `nil` and `false` error objects stay representable.
+function LifecycleKitTestEnv.TakeReportedErrors()
+    local taken = reportedErrors
+    reportedErrors = {}
+    return taken
 end
 
 function LifecycleKitTestEnv.Frames()

@@ -71,11 +71,13 @@ describe("LifecycleKit phase subscriptions", function()
         life:OnReady(function()
             readyCalls = readyCalls + 1
         end)
-        local ok, message = pcall(function()
-            TestEnv.LoadAddon("MyAddon")
-        end)
-        assert.is_false(ok)
-        assert.is_not_nil(string.find(tostring(message), "loaded failure", 1, true))
+        TestEnv.LoadAddon("MyAddon")
+
+        -- EventKit reports the re-raised callback error through the host error
+        -- handler; the known ready progression still happened before it.
+        local reported = TestEnv.TakeReportedErrors()
+        assert.are.equal(1, #reported)
+        assert.is_not_nil(string.find(tostring(reported[1].value), "loaded failure", 1, true))
         assert.is_true(life:IsReady())
         assert.are.equal(1, readyCalls)
     end)

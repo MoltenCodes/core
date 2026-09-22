@@ -33,3 +33,5 @@ Whole-container `InitializeAll()` / `EnableAll()` operations always process the 
 Definition-table creation is validated strictly: unknown fields and sparse list fields are rejected rather than silently ignored. Late module creation is also guarded so a new module cannot retroactively introduce an ordering predecessor for a module that has already initialized.
 
 See [`docs/API.md`](docs/API.md) for provider scopes, lifecycle behavior, failure semantics, late-module rules, and the complete public contract.
+
+[`docs/INTERNALS.md`](docs/INTERNALS.md) documents the implementation for maintainers: the section map of the runtime file, the ordering algorithm, the failure model, and the lifecycle replay hazard.

@@ -137,6 +137,40 @@ describe("ModuleKit", function()
         end)
     end)
 
+    it("re-enables an explicitly disabled module during EnableAll", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local module = addon:CreateModule("UI")
+        local enables = 0
+        module.OnEnable = function()
+            enables = enables + 1
+        end
+
+        addon:EnableAll()
+        module:Disable()
+        assert.are.equal("disabled", module:GetState())
+
+        addon:EnableAll()
+
+        -- EnableAll states a target for the whole container, not a delta, so it
+        -- does not remember that this module was switched off.
+        assert.is_true(module:IsEnabled())
+        assert.are.equal(2, enables)
+    end)
+
+    it("rejects non-name arguments to Inject", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local database = addon:CreateModule("Database")
+        local ui = addon:CreateModule("UI")
+
+        -- Inject takes provider/module names, never the objects themselves.
+        assert.has_error(function()
+            ui:Inject("database", database)
+        end)
+        assert.has_error(function()
+            ui:Inject({ database = database })
+        end)
+    end)
+
     it("returns a new module-list snapshot on every GetModules call", function()
         local addon = ModuleKit:ForAddon("MyAddon")
         local firstModule = addon:CreateModule("First")

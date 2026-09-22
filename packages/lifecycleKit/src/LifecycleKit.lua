@@ -6,7 +6,7 @@
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
@@ -141,10 +141,30 @@ if previousRevision ~= existingRevision then
     error("MoltenCodes LifecycleKit Registry state changed unexpectedly during bootstrap", 2)
 end
 
+-- Past this point the facade is always a table: Registry either handed one back
+-- or the branch above adopted the validated `existing` implementation.
+--- @cast LifecycleKit table
+
 -- Stable public prototypes and package state --------------------------------
 
+--- Lifecycle phase reported by `Instance:GetState()`.
+--- @alias LifecycleKit.State
+--- | "loading"   # the addon's `ADDON_LOADED` has not been observed yet
+--- | "loaded"    # `ADDON_LOADED` completed for this addon
+--- | "ready"     # the addon is loaded and the player is logged in
+--- | "shutdown"  # `PLAYER_LOGOUT` was observed
+
+--- Method prototype shared by every per-addon lifecycle instance.
+---
+--- Registry keeps this table's identity stable across compatible embedded
+--- revisions, so instances created by an older copy observe newer methods.
+--- @class LifecycleKit.Instance
 local Instance = rawget(LifecycleKit, "Instance")
+
+--- Method prototype shared by every one-shot phase subscription handle.
+--- @class LifecycleKit.Subscription
 local Subscription = rawget(LifecycleKit, "Subscription")
+
 local state = rawget(LifecycleKit, "_state")
 
 if previousRevision == nil then
@@ -166,20 +186,15 @@ if previousRevision == nil then
     rawset(LifecycleKit, "Subscription", Subscription)
     rawset(LifecycleKit, "_state", state)
 else
-    -- An embedded copy is reusing state another copy created. The shape that
-    -- state must have depends on the revision that owns it, but every mismatch
-    -- is the same condition, so the checks resolve to one flag and one error.
-    local carriedStateIsUsable
-    if type(Instance) ~= "table" or type(Subscription) ~= "table" or type(state) ~= "table" then
-        carriedStateIsUsable = false
-    elseif previousRevision == 1 then
-        carriedStateIsUsable = rawget(state, "schema") == 1
-            and type(rawget(state, "addons")) == "table"
-    else
-        carriedStateIsUsable = validateCurrentState(LifecycleKit)
-    end
-
-    if not carriedStateIsUsable then
+    -- An embedded copy is reusing state another copy created. Every revision of
+    -- API generation 1 that this implementation accepts carries the same state
+    -- schema, so one check covers both a same-revision bootstrap retry and an
+    -- in-place upgrade from an older compatible revision.
+    if
+        type(Instance) ~= "table"
+        or type(Subscription) ~= "table"
+        or not validateCurrentState(LifecycleKit)
+    then
         error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
     end
 end
@@ -189,14 +204,21 @@ local SUBSCRIPTION_METATABLE = { __index = Subscription }
 
 -- Host-state probes ---------------------------------------------------------
 
+--- Report whether `ADDON_LOADED` has already completed for `addonName`.
+---
+--- Both the modern and the legacy host API return `(loaded, finished)`: an addon
+--- that is mid-load answers `true, false`. Only the second value confirms that
+--- the `ADDON_LOADED` transition finished, so only that value is trusted here.
+--- @param addonName string
+--- @return boolean
 local function isAddonFinishedLoading(addonName)
     -- C_AddOns is a World of Warcraft client API reachable only through the global table.
     -- selene: allow(global_usage)
     local addonsApi = rawget(_G, "C_AddOns")
     local modern = type(addonsApi) == "table" and rawget(addonsApi, "IsAddOnLoaded") or nil
     if type(modern) == "function" then
-        local _, loaded = modern(addonName)
-        return loaded == true
+        local _, finished = modern(addonName)
+        return finished == true
     end
 
     -- Legacy IsAddOnLoaded exposes loading and finished states separately.
@@ -212,6 +234,8 @@ local function isAddonFinishedLoading(addonName)
     return false
 end
 
+--- Report whether the host says the player is already logged in.
+--- @return boolean
 local function isPlayerLoggedIn()
     -- IsLoggedIn is a World of Warcraft client API reachable only through the global table.
     -- selene: allow(global_usage)
@@ -219,51 +243,32 @@ local function isPlayerLoggedIn()
     return type(probe) == "function" and probe() == true
 end
 
--- Revision-1 state migration ------------------------------------------------
+-- In-place upgrade ----------------------------------------------------------
 
-local function migrateRevision1State()
-    if previousRevision ~= 1 then
+--- Drop per-instance fields that an older compatible revision owned.
+---
+--- Revision 3 kept a second, redundant phase-error slot (`_phaseErrors`) beside
+--- `_phaseCaptures`. This revision captures phase-callback failures through
+--- `_phaseCaptures` alone, so the retired table is released when an older copy
+--- hands its state over rather than being retained for the session's lifetime.
+---
+--- Pending revision-3 subscription closures stay correct across this upgrade:
+--- they report a callback failure through `_phaseCaptures`, whose record shape
+--- is unchanged, and never read `_phaseErrors` themselves.
+local function releaseRetiredInstanceFields()
+    if previousRevision == nil or previousRevision >= IMPLEMENTATION_REVISION then
         return
     end
 
-    local addons = rawget(state, "addons")
-    local loginSeen = isPlayerLoggedIn()
-    local shutdownSeen = false
-
-    for _, instance in pairs(addons) do
+    for _, instance in pairs(rawget(state, "addons")) do
         if type(instance) ~= "table" then
             error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
         end
-
-        if rawget(instance, "_loginSeen") == true then
-            loginSeen = true
-        end
-        if rawget(instance, "_shutdown") == true then
-            shutdownSeen = true
-        end
-
-        local watchers = rawget(instance, "_watchers")
-        if type(watchers) == "table" then
-            for _, key in ipairs({ "addonLoaded", "playerLogin", "playerLogout" }) do
-                local connection = rawget(watchers, key)
-                if connection ~= nil then
-                    connection:Disconnect()
-                    rawset(watchers, key, nil)
-                end
-            end
-        end
-
-        rawset(instance, "_watchers", nil)
-        rawset(instance, "_loginSeen", nil)
+        rawset(instance, "_phaseErrors", nil)
     end
-
-    rawset(state, "globalWatchers", {})
-    rawset(state, "loginSeen", loginSeen)
-    rawset(state, "shutdownSeen", shutdownSeen)
-    rawset(state, "schema", STATE_SCHEMA)
 end
 
-migrateRevision1State()
+releaseRetiredInstanceFields()
 
 -- Subscription --------------------------------------------------------------
 
@@ -274,6 +279,9 @@ local function newDisconnectedSubscription()
     }, SUBSCRIPTION_METATABLE)
 end
 
+--- Report whether this subscription is still pending delivery.
+--- @param self LifecycleKit.Subscription
+--- @return boolean
 local function isSubscriptionConnected(self)
     if rawget(self, "_connected") ~= true then
         return false
@@ -291,6 +299,9 @@ local function isSubscriptionConnected(self)
     return true
 end
 
+--- Cancel a pending subscription.
+--- @param self LifecycleKit.Subscription
+--- @return boolean changed `true` only when a pending subscription became disconnected
 local function disconnectSubscription(self)
     if not isSubscriptionConnected(self) then
         return false
@@ -320,32 +331,28 @@ local function getPhaseCaptures(instance)
     return captures
 end
 
+--- Dispatch one phase to every pending subscriber of `instance`.
+---
+--- The capture record is the single error-capture protocol: subscriber wrappers
+--- record the first callback failure into it while dispatch continues, so one
+--- failing subscriber cannot starve the rest of a one-shot phase.
+--- @return table|nil errorRecord first captured error, wrapped so that `nil` and `false` stay representable
 local function firePhase(instance, signalKey)
     local signals = rawget(instance, "_signals")
     local signal = rawget(signals, signalKey)
-    local phaseErrors = rawget(instance, "_phaseErrors")
     local captures = getPhaseCaptures(instance)
     local capture = {
         active = true,
         failed = false,
     }
 
-    -- Keep the revision-2 false-sentinel slot alive while revision-3 uses a
-    -- separate capture record. Pending revision-2 subscription closures can
-    -- therefore finish safely after an in-place embedded package upgrade.
-    rawset(phaseErrors, signalKey, false)
     rawset(captures, signalKey, capture)
     local ok, signalError = pcall(rawget(SignalKit, "Fire"), signal, instance)
-    local legacyError = rawget(phaseErrors, signalKey)
-    rawset(phaseErrors, signalKey, nil)
     rawset(capture, "active", false)
     rawset(captures, signalKey, nil)
 
     if not ok then
         return newErrorRecord(signalError)
-    end
-    if legacyError ~= false and legacyError ~= nil then
-        return newErrorRecord(legacyError)
     end
     if rawget(capture, "failed") == true then
         return newErrorRecord(rawget(capture, "value"))
@@ -493,6 +500,13 @@ local function onPlayerLogout()
     raisePhaseError(firstError)
 end
 
+--- Install the shared `ADDON_LOADED` / `PLAYER_LOGIN` / `PLAYER_LOGOUT` watchers.
+---
+--- Idempotent: only missing watchers are created, and a partial failure rolls
+--- back the watchers this call created before re-raising. Once `PLAYER_LOGOUT`
+--- has been observed no watcher is installed at all, because every remaining
+--- transition is already decided and instances created afterwards go straight
+--- to `shutdown`.
 local function ensureGlobalWatchers()
     if rawget(state, "shutdownSeen") == true then
         return
@@ -559,7 +573,6 @@ local function createInstance(addonName)
             ready = SignalKit:New(),
             shutdown = SignalKit:New(),
         },
-        _phaseErrors = {},
         _phaseCaptures = {},
     }, INSTANCE_METATABLE)
 
@@ -579,10 +592,16 @@ end
 
 -- Public instance API -------------------------------------------------------
 
+--- Return the addon name this lifecycle instance was created for.
+--- @param self LifecycleKit.Instance
+--- @return string addonName
 local function getAddonName(self)
     return rawget(self, "_addonName")
 end
 
+--- Return the furthest lifecycle phase this instance has reached.
+--- @param self LifecycleKit.Instance
+--- @return LifecycleKit.State
 local function getState(self)
     if rawget(self, "_shutdown") == true then
         return "shutdown"
@@ -596,18 +615,39 @@ local function getState(self)
     return "loading"
 end
 
+--- Report whether the `loaded` phase itself was reached.
+--- @param self LifecycleKit.Instance
+--- @return boolean
 local function isLoaded(self)
     return rawget(self, "_loaded") == true
 end
 
+--- Report whether the `ready` phase itself was reached.
+--- @param self LifecycleKit.Instance
+--- @return boolean
 local function isReady(self)
     return rawget(self, "_ready") == true
 end
 
+--- Report whether the `shutdown` phase itself was reached.
+--- @param self LifecycleKit.Instance
+--- @return boolean
 local function isShutdown(self)
     return rawget(self, "_shutdown") == true
 end
 
+--- Shared implementation of `OnLoaded`, `OnReady` and `OnShutdown`.
+---
+--- The argument error is raised at level 3 so it points at the addon code that
+--- called the public method: level 1 is this function, level 2 the public
+--- method, level 3 its caller. That only holds while the public methods call
+--- this function in a non-tail position; see `onLoaded` for why.
+--- @param self LifecycleKit.Instance
+--- @param phaseKey "loaded"|"ready"|"shutdown"
+--- @param reached boolean whether the phase has already occurred
+--- @param callback fun(instance: LifecycleKit.Instance)
+--- @param methodName string public method name, used in the argument error
+--- @return LifecycleKit.Subscription
 local function subscribePhase(self, phaseKey, reached, callback, methodName)
     if type(callback) ~= "function" then
         error("LifecycleKit.Instance:" .. methodName .. " callback must be a function", 3)
@@ -615,7 +655,14 @@ local function subscribePhase(self, phaseKey, reached, callback, methodName)
 
     if reached then
         local subscription = newDisconnectedSubscription()
-        callback(self)
+        local ok, callbackError = pcall(callback, self)
+        if not ok then
+            -- Replay and dispatch report a failing callback the same way: the
+            -- original Lua error object, re-raised unchanged once LifecycleKit
+            -- has committed its own state. A subscriber cannot know which of the
+            -- two paths it will take, so the two must not differ.
+            error(callbackError, 0)
+        end
         return subscription
     end
 
@@ -657,29 +704,58 @@ local function subscribePhase(self, phaseKey, reached, callback, methodName)
     return subscription
 end
 
+--- Subscribe to the `loaded` phase, replaying it if it already occurred.
+---
+--- The call to `subscribePhase` is deliberately not a tail call. Lua 5.1 drops
+--- the calling frame on a tail call, which would collapse one level and make
+--- `subscribePhase`'s argument error point one frame past the addon code that
+--- called this method. `Errors_spec` pins the reported file and line.
+--- @param self LifecycleKit.Instance
+--- @param callback fun(instance: LifecycleKit.Instance)
+--- @return LifecycleKit.Subscription
 local function onLoaded(self, callback)
-    return subscribePhase(self, "loaded", rawget(self, "_loaded") == true, callback, "OnLoaded")
+    local subscription =
+        subscribePhase(self, "loaded", rawget(self, "_loaded") == true, callback, "OnLoaded")
+    return subscription
 end
 
+--- Subscribe to the `ready` phase, replaying it if it already occurred.
+--- @param self LifecycleKit.Instance
+--- @param callback fun(instance: LifecycleKit.Instance)
+--- @return LifecycleKit.Subscription
 local function onReady(self, callback)
-    return subscribePhase(self, "ready", rawget(self, "_ready") == true, callback, "OnReady")
+    -- Not a tail call, for the reason documented on `onLoaded`.
+    local subscription =
+        subscribePhase(self, "ready", rawget(self, "_ready") == true, callback, "OnReady")
+    return subscription
 end
 
+--- Subscribe to the `shutdown` phase, replaying it if it already occurred.
+--- @param self LifecycleKit.Instance
+--- @param callback fun(instance: LifecycleKit.Instance)
+--- @return LifecycleKit.Subscription
 local function onShutdown(self, callback)
-    return subscribePhase(
-        self,
-        "shutdown",
-        rawget(self, "_shutdown") == true,
-        callback,
-        "OnShutdown"
-    )
+    -- Not a tail call, for the reason documented on `onLoaded`.
+    local subscription =
+        subscribePhase(self, "shutdown", rawget(self, "_shutdown") == true, callback, "OnShutdown")
+    return subscription
 end
 
 -- Public package API --------------------------------------------------------
 
+--- Return the stable lifecycle instance for `addonName`, creating it on demand.
+---
+--- `addonName` is matched exactly against the name WoW reports in
+--- `ADDON_LOADED`, which is the addon's folder name as installed. See
+--- `docs/API.md` for why the name is not normalised.
+---
+--- The argument error is raised at level 2 because this function is the frame
+--- the consumer calls: level 1 is this function, level 2 its caller.
+--- @param addonName string addon folder name, exactly as installed
+--- @return LifecycleKit.Instance
 local function forAddon(_, addonName)
     if type(addonName) ~= "string" or addonName == "" then
-        error("LifecycleKit:ForAddon addonName must be a non-empty string", 3)
+        error("LifecycleKit:ForAddon addonName must be a non-empty string", 2)
     end
 
     local addons = rawget(state, "addons")

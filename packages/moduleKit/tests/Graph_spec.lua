@@ -176,3 +176,82 @@ describe("ModuleKit dependency graph", function()
         end)
     end)
 end)
+
+-- The topological sort keeps its ready set sorted by creation order instead of
+-- re-sorting after every insertion. These specs pin the emitted order so that
+-- optimisation cannot quietly change it.
+describe("ModuleKit deterministic activation order", function()
+    local ModuleKit
+
+    before_each(function()
+        ModuleKit = TestEnv.NewPackage()
+    end)
+
+    after_each(TestEnv.Reset)
+
+    --- Twelve modules created in name order, with dependency edges that force
+    --- the ready set to hold several candidates at once and to be refilled out
+    --- of creation order. The expected order is the one Kahn's algorithm
+    --- produces when the smallest creation order always wins.
+    local function buildLayeredFixture(addon)
+        for index = 1, 12 do
+            addon:CreateModule(string.format("M%02d", index))
+        end
+
+        addon:GetModule("M04"):DependsOn("M07")
+        addon:GetModule("M05"):DependsOn("M07")
+        addon:GetModule("M09"):DependsOn("M01")
+        addon:GetModule("M12"):DependsOn("M11")
+        addon:GetModule("M11"):DependsOn("M10")
+        addon:GetModule("M03"):DependsOn("M12")
+        addon:GetModule("M06"):DependsOn("M02")
+    end
+
+    local LAYERED_ORDER = {
+        "M01",
+        "M02",
+        "M06",
+        "M07",
+        "M04",
+        "M05",
+        "M08",
+        "M09",
+        "M10",
+        "M11",
+        "M12",
+        "M03",
+    }
+
+    it("orders a larger layered graph deterministically", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        buildLayeredFixture(addon)
+
+        assert.are.same(LAYERED_ORDER, addon:GetActivationOrder())
+    end)
+
+    it("returns the same order on every call", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        buildLayeredFixture(addon)
+
+        assert.are.same(addon:GetActivationOrder(), addon:GetActivationOrder())
+        assert.are.same(LAYERED_ORDER, addon:GetActivationOrder())
+    end)
+
+    it("activates the larger graph in the order it reports", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        buildLayeredFixture(addon)
+
+        local calls = {}
+        local modules = addon:GetModules()
+        for index = 1, #modules do
+            local module = modules[index]
+            module.OnInitialize = function(self)
+                calls[#calls + 1] = self:GetName()
+            end
+        end
+
+        addon:InitializeAll()
+
+        assert.are.same(LAYERED_ORDER, calls)
+    end)
+end)

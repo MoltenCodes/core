@@ -22,4 +22,6 @@ A lifecycle instance moves through `loading`, `loaded`, `ready`, and `shutdown`.
 
 `LifecycleKit:ForAddon(name)` is idempotent: every caller in the same runtime receives the same lifecycle instance for that addon name.
 
+The name is matched exactly against the folder name WoW reports in `ADDON_LOADED`, so pass the addon's own name — inside an addon file, `local addonName = ...`.
+
 See [`docs/API.md`](docs/API.md) for the complete contract.

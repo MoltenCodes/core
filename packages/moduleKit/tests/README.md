@@ -12,4 +12,8 @@ The ModuleKit suite covers:
 - terminal best-effort shutdown cleanup;
 - late-created modules and definition-table catch-up;
 - strict definition-schema validation;
-- manifest/runtime metadata consistency.
+- manifest/runtime metadata consistency;
+- in-place upgrade safety: a deliberately disabled module stays disabled, and no module hook runs during migration;
+- re-entrant module creation from a hook, which is deferred to the end of the running whole-container pass;
+- the Lua 5.1 rule that a hook cannot yield across the `pcall` boundary;
+- deterministic activation order on a larger layered graph fixture.

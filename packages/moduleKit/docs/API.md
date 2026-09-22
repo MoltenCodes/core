@@ -26,7 +26,7 @@ The addon container exposes:
 | `GetActivationOrder()` | Return module names in deterministic full-graph topological order. |
 | `ValidateGraph()` | Validate the complete graph and return `true` on success. |
 | `InitializeAll()` | Initialize the complete graph. |
-| `EnableAll()` | Initialize as needed and enable the complete graph. |
+| `EnableAll()` | Initialize as needed and enable the complete graph, including modules that were explicitly disabled. |
 | `DisableAll()` | Disable enabled modules in reverse graph order without terminating the addon container. |
 | `ProvideValue(name, value)` | Register an addon-scoped constant. |
 | `ProvideSingleton(name, factory)` | Register a lazily cached addon-scoped factory. |
@@ -50,7 +50,7 @@ Each module exposes:
 | `DependsOn(name)` | Add a required activation dependency. |
 | `OptionalDependency(name)` | Add an ordering edge only when the target exists. |
 | `Before(name)` / `After(name)` | Add ordering-only constraints. |
-| `Inject(alias, target)` / `Inject(map)` | Declare injection aliases. |
+| `Inject(alias, target)` / `Inject(map)` | Declare injection aliases. Targets are provider/module **names**. |
 | `Initialize()` | Targeted initialization under the selected dependency policy. |
 | `Enable()` | Targeted enable under the selected dependency policy. |
 | `Disable()` | Targeted disable under the selected dependency policy. |
@@ -82,6 +82,16 @@ The default is `automatic`.
 - targeted disable is rejected while an enabled hard dependent exists.
 
 `addon:InitializeAll()` and `addon:EnableAll()` are explicit whole-container operations. They process the complete graph in deterministic topological order under either policy. Policy therefore controls **targeted implicit activation**, not whether an explicit whole-container operation can process dependencies.
+
+### `EnableAll()` re-enables explicitly disabled modules
+
+`EnableAll()` states a target for the whole container — every module enabled — rather than a delta from the current state. A module that was explicitly disabled earlier is therefore enabled again, and its `OnEnable` runs again.
+
+This is deliberate. If `EnableAll()` skipped previously disabled modules, the container's final state would depend on history that nothing observable records, and there would be no way to express "enable everything" at all. Keeping the operation a target state makes it idempotent and predictable: calling it twice leaves the same container state either way.
+
+Consumers that want a module to stay off should keep that decision in their own configuration and disable the module after the container operation, or use targeted `module:Enable()` / `module:Disable()` instead of the whole-container form.
+
+Note that LifecycleKit's `ready` phase calls `EnableAll()` once. An in-place ModuleKit upgrade never dispatches an already-delivered phase a second time, so an upgrade cannot re-enable a module through this rule.
 
 ## Creating modules
 
@@ -132,6 +142,12 @@ The four ordering/dependency list fields must be dense arrays. Unknown fields, m
 
 A definition-table module catches up synchronously to already-reached LifecycleKit phases.
 
+There is one exception. When the module is created from a hook while a whole-container operation (`InitializeAll`, `EnableAll`, `DisableAll`, or the LifecycleKit phase that triggers one) is still running, its catch-up is deferred to the end of that operation. `CreateModule` then returns a module still in `created` state.
+
+Activating it in the middle of the running pass would bypass that pass's failure blocking: the new module could be activated even though the pass had already decided one of its hard dependencies failed. Deferring gives the same result as creating the module immediately after the pass returned.
+
+`module:Activate()` is not deferred. It is an explicit request from addon code rather than implicit catch-up, so it runs synchronously wherever it is called.
+
 ### Late module ordering
 
 Once a module has initialized, its already-observed ordering cannot be rewritten retroactively. Creating a new module is rejected if its appearance would make it a predecessor of an already-initialized module. The same rule applies when a mutable late module attempts `Before("AlreadyInitialized")`.
@@ -168,6 +184,14 @@ function module:OnDisable(deps) end
 ```
 
 Each hook receives the stable resolved injection table as its second argument. A failed hook leaves the module at its previous stable state and can be retried.
+
+### Hooks must not yield
+
+ModuleKit invokes every hook through `pcall`, which is what turns a hook failure into a recorded module failure instead of an aborted lifecycle pass.
+
+In Lua 5.1 — the version the WoW client runs — a coroutine cannot suspend across a C function, and `pcall` is one. A hook that calls `coroutine.yield`, directly or through something that yields on its behalf, therefore fails with `attempt to yield across metamethod/C-call boundary`. ModuleKit records that like any other hook failure: the module stays at its previous stable state and `HasLastError()` is set.
+
+Do asynchronous work by starting it from the hook and returning, for example by scheduling it through SchedulerKit, rather than by suspending the hook itself.
 
 `module:Activate()` catches one module up to LifecycleKit's already-reached phases. It follows the selected dependency policy for hard dependencies.
 
@@ -250,6 +274,8 @@ module:Inject({
 })
 ```
 
+Injection targets are **names**, never objects. `Inject("database", "Database")` declares the provider or module *named* `Database`; passing the module or a provider's value instead is rejected. Names are resolved at initialization time, which is what lets a module declare an injection before the target has been registered.
+
 Injection aliases are resolved in sorted alias order for deterministic factory side effects. Provider/module names cannot collide, so resolution remains unambiguous. A module itself can be injected by its module name.
 
 Injection does **not** implicitly create a lifecycle dependency. If an injected module must initialize or enable before the consumer, declare the corresponding `DependsOn` explicitly.
@@ -292,7 +318,11 @@ For each addon container:
 
 After shutdown, the container is terminal: new modules, graph/injection definition changes, provider registration, dependency-policy changes, and enable/initialize operations are rejected. Read-only inspection, resolution of already-registered providers, and idempotent disable operations remain available.
 
-Lifecycle subscriptions dispatch through revision-independent shared runtime state. Compatible embedded ModuleKit upgrades therefore preserve existing addon/container identity while moving already-created containers onto the newest accepted implementation. Revision-1 subscriptions are migrated once during the revision-2 upgrade, and same-revision bootstrap can repair incomplete shared dispatch after an interrupted bootstrap.
+Lifecycle subscriptions dispatch through revision-independent shared runtime state. Compatible embedded ModuleKit upgrades therefore preserve existing addon/container identity while moving already-created containers onto the newest accepted implementation, and same-revision bootstrap can repair incomplete shared dispatch after an interrupted bootstrap.
+
+Each container records which lifecycle phases have already been dispatched into it. An upgrade re-subscribes only to phases that have not been dispatched yet, so it never replays `loaded` or `ready` into a container that already received them. Without that, an upgrade would run module hooks out of package bootstrap and the replayed `ready` phase would re-enable modules the addon had deliberately disabled. Phases that have not been reached are still subscribed to, so an upgraded container keeps its shutdown cleanup.
+
+Errors raised out of a phase dispatch leave ModuleKit with the original Lua error object. What happens to them beyond that is EventKit's contract: EventKit isolates listeners at the event-bus boundary and reports the error through the host error handler, so one addon's failing module cannot stop delivery to another addon.
 
 ## Dependencies
 
@@ -302,3 +332,7 @@ ModuleKit API 1 requires:
 - LifecycleKit API 1
 
 ModuleKit does not depend directly on EventKit or SignalKit; those are implementation dependencies of LifecycleKit and remain outside ModuleKit's direct contract.
+
+## Internals
+
+[`INTERNALS.md`](INTERNALS.md) documents the section map of the runtime file, the ordering algorithm, the failure model, the lifecycle replay hazard, and the re-entrancy rules. It is maintainer documentation, not part of this contract.

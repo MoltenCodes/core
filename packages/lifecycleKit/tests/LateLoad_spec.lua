@@ -30,6 +30,20 @@ describe("LifecycleKit late-load detection", function()
         assert.are.equal("loading", life:GetState())
     end)
 
+    it("does not treat a modern loading-but-not-finished addon as loaded", function()
+        local LifecycleKit = TestEnv.NewPackage()
+        TestEnv.MarkAddonLoading("PartialAddon")
+
+        -- C_AddOns.IsAddOnLoaded answers (true, false) while an addon's files
+        -- are executing but its ADDON_LOADED transition has not completed.
+        local life = LifecycleKit:ForAddon("PartialAddon")
+        assert.are.equal("loading", life:GetState())
+
+        -- The normal transition still arrives once loading finishes.
+        TestEnv.LoadAddon("PartialAddon")
+        assert.are.equal("loaded", life:GetState())
+    end)
+
     it("uses the legacy finished return when explicitly available", function()
         local LifecycleKit = TestEnv.NewPackage()
         rawset(_G, "C_AddOns", nil)

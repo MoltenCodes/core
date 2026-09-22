@@ -1,9 +1,13 @@
 local TestEnv = require("LifecycleKitTestEnv")
 
-local function expectErrorContaining(expected, callback)
-    local ok, message = pcall(callback)
-    assert.is_false(ok)
-    assert.is_not_nil(string.find(tostring(message), expected, 1, true))
+-- EventKit isolates listener errors at the event-bus boundary, so an error that
+-- LifecycleKit re-raises from inside a host event dispatch is reported through
+-- the host error handler instead of escaping `Emit`.
+local function expectReportedErrorContaining(expected, callback)
+    callback()
+    local reported = TestEnv.TakeReportedErrors()
+    assert.are.equal(1, #reported)
+    assert.is_not_nil(string.find(tostring(reported[1].value), expected, 1, true))
 end
 
 describe("LifecycleKit cross-addon phase isolation", function()
@@ -28,7 +32,7 @@ describe("LifecycleKit cross-addon phase isolation", function()
         TestEnv.LoadAddon("BrokenAddon")
         TestEnv.LoadAddon("HealthyAddon")
 
-        expectErrorContaining("ready failure", TestEnv.Login)
+        expectReportedErrorContaining("ready failure", TestEnv.Login)
 
         assert.is_true(broken:IsReady())
         assert.is_true(healthy:IsReady())
@@ -51,7 +55,7 @@ describe("LifecycleKit cross-addon phase isolation", function()
         TestEnv.LoadAddon("HealthyAddon")
         TestEnv.Login()
 
-        expectErrorContaining("shutdown failure", TestEnv.Logout)
+        expectReportedErrorContaining("shutdown failure", TestEnv.Logout)
 
         assert.is_true(broken:IsShutdown())
         assert.is_true(healthy:IsShutdown())

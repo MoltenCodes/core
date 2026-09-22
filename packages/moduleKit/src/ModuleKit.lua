@@ -3,10 +3,27 @@
 -- Addon-scoped module lifecycle, dependency graphs, and dependency injection.
 -- ModuleKit is intentionally independent from WoW Frame APIs; lifecycle timing
 -- is supplied by LifecycleKit and package identity by Registry.
+--
+-- Contents
+--
+--   Dependencies ......... Registry and LifecycleKit handshake.
+--   Bootstrap ............ Embedded revision reconciliation and shared state.
+--   Validation helpers ... Argument checks and definition-mutability rules.
+--   Graph ................ Edge construction, cycle reporting, topological order.
+--   Dependency injection . Provider registration, scoped resolution, cycles.
+--   Lifecycle operations . Single-module transitions, dependency policies,
+--                          whole-container passes and deferred catch-up.
+--   Module public API ..... Methods installed on the shared Module prototype.
+--   Addon public API ...... Methods installed on the shared Addon prototype.
+--   Addon creation ........ Container identity and LifecycleKit subscriptions.
+--   Commit ................ Publishing the public surface and runtime dispatch.
+--
+-- `docs/INTERNALS.md` explains the graph algorithm, the failure model, and the
+-- lifecycle replay hazard that the dispatched-phase set guards against.
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -170,8 +187,27 @@ if ModuleKit == nil then
     previousRevision = runtimeRevision or existingFacadeRevision or 0
 end
 
+--- Stable state a module moves through.
+--- @alias ModuleKit.ModuleState
+--- | "created"      # defined but not initialized
+--- | "initialized"  # `OnInitialize` completed
+--- | "enabled"      # `OnEnable` completed
+--- | "disabled"     # `OnDisable` completed
+
+--- How targeted operations treat unmet hard dependencies.
+--- @alias ModuleKit.DependencyPolicy "automatic"|"strict"
+
+--- Method prototype shared by every addon container.
+---
+--- Registry keeps this table's identity stable across compatible embedded
+--- revisions, so containers created by an older copy observe newer methods.
+--- @class ModuleKit.Addon
 local Addon = rawget(ModuleKit, "Addon")
+
+--- Method prototype shared by every module.
+--- @class ModuleKit.Module
 local Module = rawget(ModuleKit, "Module")
+
 local state = rawget(ModuleKit, "_state")
 
 if previousRevision == nil then
@@ -416,6 +452,45 @@ local function findCycle(order, adjacency)
     return nil
 end
 
+--- Insert `module` into the ready set, keeping it sorted by creation order.
+---
+--- The set is stored in *descending* creation order so the next module to emit
+--- is always its last element: removing the last element is O(1), while
+--- removing the first would shift the whole array on every emission.
+---
+--- Creation order is unique inside one container, so the comparison is a total
+--- order and the position found here is the only valid one. Together with the
+--- descending layout this keeps the emitted order identical to a full re-sort
+--- after every insertion, without paying for one.
+--- @param ready table[] ready set, sorted by descending creation order
+--- @param module table
+local function insertReady(ready, module)
+    local moduleOrder = moduleSortKey(module)
+    local low = 1
+    local high = #ready
+
+    -- Binary search for the first entry created before `module`; that index is
+    -- where `module` belongs in a descending array.
+    while low <= high do
+        local middle = math.floor((low + high) / 2)
+        if moduleSortKey(ready[middle]) > moduleOrder then
+            low = middle + 1
+        else
+            high = middle - 1
+        end
+    end
+
+    table.insert(ready, low, module)
+end
+
+--- Order `order` so every module follows the modules it has edges from.
+---
+--- Kahn's algorithm, with creation order as the deterministic tie-break among
+--- modules that are simultaneously ready.
+--- @param order table[] every module in the graph, in creation order
+--- @param adjacency table<table, table<table, boolean>> predecessor → successors
+--- @param indegree table<table, integer> remaining unsatisfied predecessors
+--- @return table[]|nil order `nil` when the graph contains a cycle
 local function topologicalSort(order, adjacency, indegree)
     local ready = {}
     for index = 1, #order do
@@ -426,12 +501,14 @@ local function topologicalSort(order, adjacency, indegree)
     end
 
     table.sort(ready, function(left, right)
-        return moduleSortKey(left) < moduleSortKey(right)
+        return moduleSortKey(left) > moduleSortKey(right)
     end)
 
     local result = {}
     while #ready > 0 do
-        local module = table.remove(ready, 1)
+        local last = #ready
+        local module = ready[last]
+        ready[last] = nil
         result[#result + 1] = module
 
         local targets = {}
@@ -446,10 +523,7 @@ local function topologicalSort(order, adjacency, indegree)
             local target = targets[index]
             indegree[target] = indegree[target] - 1
             if indegree[target] == 0 then
-                ready[#ready + 1] = target
-                table.sort(ready, function(left, right)
-                    return moduleSortKey(left) < moduleSortKey(right)
-                end)
+                insertReady(ready, target)
             end
         end
     end
@@ -971,9 +1045,104 @@ local function raiseCaptured(record)
     end
 end
 
-local function initializeAllInternal(addon)
-    ensureNotShutdown(addon, "InitializeAll")
-    local order = buildGraph(addon)
+-- Whole-container passes ----------------------------------------------------
+
+--- Catch one module up to the LifecycleKit phases its container has reached.
+--- @param addon table
+--- @param module table
+local function catchUpModule(addon, module)
+    local lifecycle = rawget(addon, "_lifecycle")
+    if lifecycle:IsLoaded() then
+        initializeWithPolicy(module)
+    end
+    if lifecycle:IsReady() then
+        enableWithPolicy(module)
+    end
+end
+
+--- Catch a module up now, or queue it while a whole-container pass is running.
+---
+--- A hook can create a module while `InitializeAll` / `EnableAll` / `DisableAll`
+--- is walking the graph. Catching it up there and then would happen outside the
+--- running pass's blocking set, so a module could be activated even though a
+--- hard dependency had already failed in the same pass. The module is queued
+--- instead and caught up once the outermost pass has finished.
+--- @param addon table
+--- @param module table
+local function scheduleCatchUp(addon, module)
+    if rawget(addon, "_passDepth") > 0 then
+        local pending = rawget(addon, "_pendingCatchUp")
+        pending[#pending + 1] = module
+        return
+    end
+    catchUpModule(addon, module)
+end
+
+--- Catch up every module queued while the pass that just finished was running.
+---
+--- Catching one module up can create another. Outside a pass `scheduleCatchUp`
+--- handles those immediately, and a nested pass that ends mid-flush leaves its
+--- modules on the queue for this loop to pick up, so one flush is enough.
+--- @param addon table
+--- @param firstError table|nil error record captured so far
+--- @return table|nil firstError
+local function flushPendingCatchUp(addon, firstError)
+    if rawget(addon, "_flushingCatchUp") == true then
+        return firstError
+    end
+    rawset(addon, "_flushingCatchUp", true)
+
+    local pending = rawget(addon, "_pendingCatchUp")
+    while #pending > 0 do
+        local module = table.remove(pending, 1)
+        local ok, value = pcall(catchUpModule, addon, module)
+        firstError = captureFirstError(firstError, ok, value)
+    end
+
+    rawset(addon, "_flushingCatchUp", false)
+    return firstError
+end
+
+--- Run one whole-container pass with re-entrancy bookkeeping.
+---
+--- The pass body reports its first captured error by returning it rather than
+--- raising, so the depth counter is always restored and the deferred catch-up
+--- queue is always flushed, whichever way the pass ends.
+--- @param addon table
+--- @param pass fun(order: table[], shutdown: boolean|nil): table|nil
+--- @param order table[] modules in the order the pass must visit them
+--- @param shutdown boolean|nil terminal-cleanup flag, for the disable pass
+--- @param seedError table|nil error captured before the pass could start
+--- @return table addon
+local function runContainerPass(addon, pass, order, shutdown, seedError)
+    rawset(addon, "_passDepth", rawget(addon, "_passDepth") + 1)
+    local ok, result = pcall(pass, order, shutdown)
+    local depth = rawget(addon, "_passDepth") - 1
+    rawset(addon, "_passDepth", depth)
+
+    local firstError = seedError
+    if ok then
+        if firstError == nil then
+            firstError = result
+        end
+    else
+        firstError = captureFirstError(firstError, ok, result)
+    end
+
+    if depth == 0 then
+        firstError = flushPendingCatchUp(addon, firstError)
+    end
+
+    raiseCaptured(firstError)
+    return addon
+end
+
+--- Initialize every module in `order`.
+---
+--- Independent modules continue after a failure. A module whose hard dependency
+--- failed, or never left `created`, is recorded as blocked instead of attempted.
+--- @return table|nil firstError
+local function runInitializeAllPass(order)
     local firstError
     local failed = {}
 
@@ -1001,13 +1170,21 @@ local function initializeAllInternal(addon)
         end
     end
 
-    raiseCaptured(firstError)
-    return addon
+    return firstError
 end
 
-local function enableAllInternal(addon)
-    ensureNotShutdown(addon, "EnableAll")
+--- Initialize the whole container in deterministic graph order.
+--- @param addon table
+--- @return table addon
+local function initializeAllInternal(addon)
+    ensureNotShutdown(addon, "InitializeAll")
     local order = buildGraph(addon)
+    return runContainerPass(addon, runInitializeAllPass, order)
+end
+
+--- Enable every module in `order`, initializing the ones still in `created`.
+--- @return table|nil firstError
+local function runEnableAllPass(order)
     local firstError
     local failed = {}
 
@@ -1035,31 +1212,26 @@ local function enableAllInternal(addon)
         end
     end
 
-    raiseCaptured(firstError)
-    return addon
+    return firstError
 end
 
-local function disableAllInternal(addon, shutdown)
-    local order
+--- Enable the whole container in deterministic graph order.
+---
+--- This is a target state, not a delta: a module that was explicitly disabled
+--- earlier is enabled again. See `docs/API.md` for why.
+--- @param addon table
+--- @return table addon
+local function enableAllInternal(addon)
+    ensureNotShutdown(addon, "EnableAll")
+    local order = buildGraph(addon)
+    return runContainerPass(addon, runEnableAllPass, order)
+end
+
+--- Disable every enabled module in `order`, walking it in reverse.
+--- @param shutdown boolean|nil terminal cleanup, which ignores dependent failures
+--- @return table|nil firstError
+local function runDisableAllPass(order, shutdown)
     local firstError
-    local graphOk, graphResult = pcall(buildGraph, addon)
-
-    if graphOk then
-        order = graphResult
-    elseif shutdown then
-        -- Shutdown is terminal cleanup. A malformed inactive definition must
-        -- not prevent already-enabled modules from releasing resources. Keep
-        -- the graph error for diagnostics, but continue in a safe order based
-        -- on the hard-dependency edges of enabled modules only.
-        firstError = { value = graphResult }
-        order = buildEnabledHardOrder(addon)
-    else
-        error(graphResult, 0)
-    end
-
-    if shutdown then
-        rawset(addon, "_shutdown", true)
-    end
 
     for index = #order, 1, -1 do
         local module = order[index]
@@ -1086,44 +1258,100 @@ local function disableAllInternal(addon, shutdown)
         end
     end
 
-    raiseCaptured(firstError)
-    return addon
+    return firstError
+end
+
+--- Disable the whole container in reverse graph order.
+--- @param addon table
+--- @param shutdown boolean `true` for terminal LifecycleKit cleanup
+--- @return table addon
+local function disableAllInternal(addon, shutdown)
+    local order
+    local seedError
+    local graphOk, graphResult = pcall(buildGraph, addon)
+
+    if graphOk then
+        order = graphResult
+    elseif shutdown then
+        -- Shutdown is terminal cleanup. A malformed inactive definition must
+        -- not prevent already-enabled modules from releasing resources. Keep
+        -- the graph error for diagnostics, but continue in a safe order based
+        -- on the hard-dependency edges of enabled modules only.
+        seedError = { value = graphResult }
+        order = buildEnabledHardOrder(addon)
+    else
+        error(graphResult, 0)
+    end
+
+    if shutdown then
+        rawset(addon, "_shutdown", true)
+    end
+
+    return runContainerPass(addon, runDisableAllPass, order, shutdown, seedError)
 end
 
 -- Module public API ---------------------------------------------------------
 
+--- Return this module's name.
+--- @param self ModuleKit.Module
+--- @return string
 local function moduleGetName(self)
     return rawget(self, "_name")
 end
 
+--- Return the addon container that owns this module.
+--- @param self ModuleKit.Module
+--- @return ModuleKit.Addon
 local function moduleGetAddon(self)
     return rawget(self, "_addon")
 end
 
+--- Return the module's current stable state.
+--- @param self ModuleKit.Module
+--- @return ModuleKit.ModuleState
 local function moduleGetState(self)
     return rawget(self, "_state")
 end
 
+--- Report whether initialization has completed at least once.
+--- @param self ModuleKit.Module
+--- @return boolean
 local function moduleIsInitialized(self)
     return rawget(self, "_state") ~= "created"
 end
 
+--- Report whether the module is currently enabled.
+--- @param self ModuleKit.Module
+--- @return boolean
 local function moduleIsEnabled(self)
     return rawget(self, "_state") == "enabled"
 end
 
+--- Return the last error object, which may itself legitimately be `nil`.
+--- Pair with `HasLastError` to tell "no error" from "an error object of `nil`".
+--- @param self ModuleKit.Module
+--- @return any
 local function moduleGetLastError(self)
     return rawget(self, "_lastError")
 end
 
+--- Report whether the last operation recorded an actual error.
+--- @param self ModuleKit.Module
+--- @return boolean
 local function moduleHasLastError(self)
     return rawget(self, "_hasLastError") == true
 end
 
+--- Return the dependency or dependent name that blocked the last operation.
+--- @param self ModuleKit.Module
+--- @return string|nil
 local function moduleGetBlockedBy(self)
     return rawget(self, "_blockedBy")
 end
 
+--- Return a shallow-copy snapshot of the resolved injection table.
+--- @param self ModuleKit.Module
+--- @return table<string, any>
 local function moduleGetInjections(self)
     local injections = rawget(self, "_injections")
     if injections == nil then
@@ -1132,22 +1360,47 @@ local function moduleGetInjections(self)
     return shallowCopy(injections)
 end
 
+--- Require `moduleName` to be active before this module, and order against it.
+--- @param self ModuleKit.Module
+--- @param moduleName string
+--- @return ModuleKit.Module self
 local function moduleDependsOn(self, moduleName)
     return addNameConstraint(self, "_hardDependencies", moduleName, "DependsOn")
 end
 
+--- Order after `moduleName` when it exists, without requiring it.
+--- @param self ModuleKit.Module
+--- @param moduleName string
+--- @return ModuleKit.Module self
 local function moduleOptionalDependency(self, moduleName)
     return addNameConstraint(self, "_optionalDependencies", moduleName, "OptionalDependency")
 end
 
+--- Order this module before `moduleName`, without requiring it.
+--- @param self ModuleKit.Module
+--- @param moduleName string
+--- @return ModuleKit.Module self
 local function moduleBefore(self, moduleName)
     return addNameConstraint(self, "_before", moduleName, "Before")
 end
 
+--- Order this module after `moduleName`, without requiring it.
+--- @param self ModuleKit.Module
+--- @param moduleName string
+--- @return ModuleKit.Module self
 local function moduleAfter(self, moduleName)
     return addNameConstraint(self, "_after", moduleName, "After")
 end
 
+--- Declare injection aliases.
+---
+--- Targets are provider or module **names**, never the objects themselves: the
+--- container resolves a name at initialization time, so a module can inject
+--- something that does not exist yet when the declaration is written.
+--- @param self ModuleKit.Module
+--- @param aliasOrMap string|table<string, string> one alias, or an alias-to-name map
+--- @param target string|nil target name, when a single alias was given
+--- @return ModuleKit.Module self
 local function moduleInject(self, aliasOrMap, target)
     ensureDefinitionMutable(self, "Inject")
     ensureNotShutdown(rawget(self, "_addon"), "Inject")
@@ -1178,18 +1431,34 @@ local function moduleInject(self, aliasOrMap, target)
     return self
 end
 
+--- Initialize this module under the container's dependency policy.
+--- @param self ModuleKit.Module
+--- @return ModuleKit.Module self
 local function moduleInitialize(self)
     return initializeWithPolicy(self)
 end
 
+--- Enable this module under the container's dependency policy.
+--- @param self ModuleKit.Module
+--- @return ModuleKit.Module self
 local function moduleEnable(self)
     return enableWithPolicy(self)
 end
 
+--- Disable this module under the container's dependency policy.
+--- @param self ModuleKit.Module
+--- @return ModuleKit.Module self
 local function moduleDisable(self)
     return disableWithPolicy(self)
 end
 
+--- Catch this module up to the LifecycleKit phases its container has reached.
+---
+--- This is an explicit request, so it runs immediately even when called from a
+--- hook during a whole-container pass. Definition-table catch-up is deferred
+--- instead; see `scheduleCatchUp`.
+--- @param self ModuleKit.Module
+--- @return ModuleKit.Module self
 local function moduleActivate(self)
     local addon = rawget(self, "_addon")
     local lifecycle = rawget(addon, "_lifecycle")
@@ -1203,20 +1472,34 @@ local function moduleActivate(self)
     return self
 end
 
+--- Resolve an injectable with this module as the scope context.
+--- @param self ModuleKit.Module
+--- @param providerName string
+--- @return any
 local function moduleResolve(self, providerName)
     return resolveProvider(rawget(self, "_addon"), providerName, self)
 end
 
 -- Addon public API ----------------------------------------------------------
 
+--- Return the addon name this container was created for.
+--- @param self ModuleKit.Addon
+--- @return string
 local function addonGetAddonName(self)
     return rawget(self, "_name")
 end
 
+--- Return the container's dependency policy.
+--- @param self ModuleKit.Addon
+--- @return ModuleKit.DependencyPolicy
 local function addonGetDependencyPolicy(self)
     return rawget(self, "_dependencyPolicy")
 end
 
+--- Change the container's dependency policy.
+--- @param self ModuleKit.Addon
+--- @param policy ModuleKit.DependencyPolicy
+--- @return ModuleKit.DependencyPolicy previous
 local function addonSetDependencyPolicy(self, policy)
     ensureNotShutdown(self, "SetDependencyPolicy")
     if policy ~= "automatic" and policy ~= "strict" then
@@ -1314,6 +1597,11 @@ local function applyDefinition(module, definition)
     applyDefinitionCallback(module, definition, "onDisable", "OnDisable")
 end
 
+--- Create a uniquely named module in this container.
+--- @param self ModuleKit.Addon
+--- @param name string
+--- @param definition table|nil atomic definition table; see `docs/API.md`
+--- @return ModuleKit.Module
 local function addonCreateModule(self, name, definition)
     ensureNotShutdown(self, "CreateModule")
     validateModuleName(name, "CreateModule")
@@ -1349,29 +1637,37 @@ local function addonCreateModule(self, name, definition)
     -- A fully specified late-created module can catch up immediately. For the
     -- common mutable-object style, omit the definition and call :Activate()
     -- after assigning callbacks/dependencies so no user setup is raced.
+    --
+    -- Created from a hook while a whole-container pass is running, the catch-up
+    -- is deferred to the end of that pass; see `scheduleCatchUp`.
     if definition ~= nil then
-        local lifecycle = rawget(self, "_lifecycle")
-        if lifecycle:IsLoaded() then
-            initializeWithPolicy(module)
-        end
-        if lifecycle:IsReady() then
-            enableWithPolicy(module)
-        end
+        scheduleCatchUp(self, module)
     end
 
     return module
 end
 
+--- Return the named module, or `nil`.
+--- @param self ModuleKit.Addon
+--- @param name string
+--- @return ModuleKit.Module|nil
 local function addonGetModule(self, name)
     validateModuleName(name, "GetModule")
     return rawget(rawget(self, "_modules"), name)
 end
 
+--- Report whether the named module exists in this container.
+--- @param self ModuleKit.Addon
+--- @param name string
+--- @return boolean
 local function addonHasModule(self, name)
     validateModuleName(name, "HasModule")
     return rawget(rawget(self, "_modules"), name) ~= nil
 end
 
+--- Return a new array snapshot of every module, in creation order.
+--- @param self ModuleKit.Addon
+--- @return ModuleKit.Module[]
 local function addonGetModules(self)
     local modules = {}
     local order = rawget(self, "_moduleOrder")
@@ -1381,6 +1677,9 @@ local function addonGetModules(self)
     return modules
 end
 
+--- Return module names in deterministic full-graph topological order.
+--- @param self ModuleKit.Addon
+--- @return string[]
 local function addonGetActivationOrder(self)
     local order = buildGraph(self)
     local names = {}
@@ -1390,23 +1689,40 @@ local function addonGetActivationOrder(self)
     return names
 end
 
+--- Validate the complete graph, raising a diagnostic on the first problem.
+--- @param self ModuleKit.Addon
+--- @return boolean `true` on success
 local function addonValidateGraph(self)
     buildGraph(self)
     return true
 end
 
+--- Initialize every module in the container.
+--- @param self ModuleKit.Addon
+--- @return ModuleKit.Addon self
 local function addonInitializeAll(self)
     return initializeAllInternal(self)
 end
 
+--- Enable every module in the container, including ones explicitly disabled.
+--- @param self ModuleKit.Addon
+--- @return ModuleKit.Addon self
 local function addonEnableAll(self)
     return enableAllInternal(self)
 end
 
+--- Disable every enabled module without terminating the container.
+--- @param self ModuleKit.Addon
+--- @return ModuleKit.Addon self
 local function addonDisableAll(self)
     return disableAllInternal(self, false)
 end
 
+--- Register an addon-scoped constant. `nil` is rejected.
+--- @param self ModuleKit.Addon
+--- @param name string
+--- @param value any
+--- @return ModuleKit.Addon self
 local function addonProvideValue(self, name, value)
     ensureNotShutdown(self, "ProvideValue")
     if value == nil then
@@ -1421,6 +1737,11 @@ local function validateFactory(factory, methodName)
     end
 end
 
+--- Register a factory resolved once per container.
+--- @param self ModuleKit.Addon
+--- @param name string
+--- @param factory fun(addon: ModuleKit.Addon): any
+--- @return ModuleKit.Addon self
 local function addonProvideSingleton(self, name, factory)
     ensureNotShutdown(self, "ProvideSingleton")
     validateFactory(factory, "ProvideSingleton")
@@ -1432,6 +1753,11 @@ local function addonProvideSingleton(self, name, factory)
     }, "ProvideSingleton")
 end
 
+--- Register a factory resolved once per requesting module.
+--- @param self ModuleKit.Addon
+--- @param name string
+--- @param factory fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any
+--- @return ModuleKit.Addon self
 local function addonProvideModule(self, name, factory)
     ensureNotShutdown(self, "ProvideModule")
     validateFactory(factory, "ProvideModule")
@@ -1442,6 +1768,11 @@ local function addonProvideModule(self, name, factory)
     }, "ProvideModule")
 end
 
+--- Register a factory resolved on every resolution.
+--- @param self ModuleKit.Addon
+--- @param name string
+--- @param factory fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any
+--- @return ModuleKit.Addon self
 local function addonProvideTransient(self, name, factory)
     ensureNotShutdown(self, "ProvideTransient")
     validateFactory(factory, "ProvideTransient")
@@ -1451,6 +1782,11 @@ local function addonProvideTransient(self, name, factory)
     }, "ProvideTransient")
 end
 
+--- Resolve an injectable, optionally with module scope context.
+--- @param self ModuleKit.Addon
+--- @param name string
+--- @param requestingModule ModuleKit.Module|nil must be owned by this container
+--- @return any
 local function addonResolve(self, name, requestingModule)
     if requestingModule ~= nil then
         local modules = rawget(self, "_modules")
@@ -1473,6 +1809,30 @@ end
 
 -- Addon creation / lifecycle integration -----------------------------------
 
+--- The LifecycleKit phases a container subscribes to, in delivery order.
+local LIFECYCLE_PHASES = { "loaded", "ready", "shutdown" }
+
+--- LifecycleKit subscription method per phase.
+local PHASE_SUBSCRIBE = {
+    loaded = "OnLoaded",
+    ready = "OnReady",
+    shutdown = "OnShutdown",
+}
+
+--- LifecycleKit query that reports whether a phase has already been reached.
+local PHASE_REACHED_QUERY = {
+    loaded = "IsLoaded",
+    ready = "IsReady",
+    shutdown = "IsShutdown",
+}
+
+--- Shared runtime dispatch entry point per phase.
+local PHASE_DISPATCH = {
+    loaded = "initializeAll",
+    ready = "enableAll",
+    shutdown = "shutdown",
+}
+
 local function invokeDispatch(name, addon)
     local dispatch = rawget(state, "dispatch")
     local callback = type(dispatch) == "table" and rawget(dispatch, name) or nil
@@ -1482,6 +1842,50 @@ local function invokeDispatch(name, addon)
     return callback(addon)
 end
 
+--- Report whether LifecycleKit has already reached `phase` for `lifecycle`.
+--- @param lifecycle table
+--- @param phase "loaded"|"ready"|"shutdown"
+--- @return boolean
+local function isPhaseReached(lifecycle, phase)
+    local query = lifecycle[PHASE_REACHED_QUERY[phase]]
+    return query(lifecycle) == true
+end
+
+--- Install the per-container runtime fields this implementation revision owns.
+---
+--- A container created by an earlier compatible revision carries neither the
+--- dispatched-phase set nor the whole-container pass bookkeeping, so an
+--- in-place upgrade adds them before anything reads them.
+---
+--- The dispatched set is rebuilt from LifecycleKit: every revision subscribed
+--- to all three phases when it created a container, and LifecycleKit replays a
+--- phase it has already reached to every new subscriber. For a carried-over
+--- container, "phase reached" and "phase already dispatched into this
+--- container" therefore mean the same thing.
+--- @param addon table
+--- @param lifecycle table
+local function ensureContainerRuntimeFields(addon, lifecycle)
+    if type(rawget(addon, "_dispatched")) ~= "table" then
+        local dispatched = {}
+        for index = 1, #LIFECYCLE_PHASES do
+            local phase = LIFECYCLE_PHASES[index]
+            if isPhaseReached(lifecycle, phase) then
+                rawset(dispatched, phase, true)
+            end
+        end
+        rawset(addon, "_dispatched", dispatched)
+    end
+
+    if type(rawget(addon, "_passDepth")) ~= "number" then
+        rawset(addon, "_passDepth", 0)
+    end
+    if type(rawget(addon, "_pendingCatchUp")) ~= "table" then
+        rawset(addon, "_pendingCatchUp", {})
+    end
+end
+
+--- Drop every LifecycleKit subscription this container currently holds.
+--- @param addon table
 local function disconnectAddonSubscriptions(addon)
     local subscriptions = rawget(addon, "_subscriptions")
     if type(subscriptions) ~= "table" then
@@ -1489,9 +1893,8 @@ local function disconnectAddonSubscriptions(addon)
         return
     end
 
-    local keys = { "loaded", "ready", "shutdown" }
-    for index = 1, #keys do
-        local subscription = rawget(subscriptions, keys[index])
+    for index = 1, #LIFECYCLE_PHASES do
+        local subscription = rawget(subscriptions, LIFECYCLE_PHASES[index])
         if subscription ~= nil then
             local disconnect = type(subscription) == "table" and subscription.Disconnect or nil
             if type(disconnect) ~= "function" then
@@ -1503,17 +1906,35 @@ local function disconnectAddonSubscriptions(addon)
     rawset(addon, "_subscriptions", {})
 end
 
-local function installAddonSubscriptions(addon)
+--- Subscribe the container to the LifecycleKit phases it has not received yet.
+---
+--- LifecycleKit replays a phase it has already reached to every new subscriber.
+--- That is exactly what a freshly created container wants, and exactly what an
+--- in-place upgrade must avoid: re-subscribing there would run module hooks out
+--- of package bootstrap, and the replayed `ready` phase would call `EnableAll`,
+--- silently re-enabling a module the addon had deliberately disabled.
+---
+--- The dispatched-phase set is the guard. During an upgrade the lifecycle is
+--- also probed directly, so no already-reached phase can be subscribed to even
+--- if the set were wrong, and a module hook can therefore never run out of
+--- package bootstrap.
+--- @param addon table
+--- @param duringUpgrade boolean|nil `true` while migrating a carried-over container
+local function installAddonSubscriptions(addon, duringUpgrade)
     local lifecycle = rawget(addon, "_lifecycle")
     if
         type(lifecycle) ~= "table"
         or type(lifecycle.IsShutdown) ~= "function"
+        or type(lifecycle.IsLoaded) ~= "function"
+        or type(lifecycle.IsReady) ~= "function"
         or type(lifecycle.OnLoaded) ~= "function"
         or type(lifecycle.OnReady) ~= "function"
         or type(lifecycle.OnShutdown) ~= "function"
     then
         error("MoltenCodes ModuleKit addon lifecycle state is corrupted", 2)
     end
+
+    ensureContainerRuntimeFields(addon, lifecycle)
 
     local subscriptions = {}
     rawset(addon, "_subscriptions", subscriptions)
@@ -1522,17 +1943,33 @@ local function installAddonSubscriptions(addon)
         return
     end
 
-    subscriptions.loaded = lifecycle:OnLoaded(function()
-        return invokeDispatch("initializeAll", addon)
-    end)
-    subscriptions.ready = lifecycle:OnReady(function()
-        return invokeDispatch("enableAll", addon)
-    end)
-    subscriptions.shutdown = lifecycle:OnShutdown(function()
-        return invokeDispatch("shutdown", addon)
-    end)
+    local dispatched = rawget(addon, "_dispatched")
+    for index = 1, #LIFECYCLE_PHASES do
+        local phase = LIFECYCLE_PHASES[index]
+        if rawget(dispatched, phase) ~= true then
+            if duringUpgrade and isPhaseReached(lifecycle, phase) then
+                -- The dispatched set disagreed with LifecycleKit. Trust the
+                -- lifecycle and record the phase rather than subscribing, so a
+                -- replay cannot reach module hooks from package bootstrap.
+                rawset(dispatched, phase, true)
+            else
+                local dispatchName = PHASE_DISPATCH[phase]
+                local subscribe = lifecycle[PHASE_SUBSCRIBE[phase]]
+                subscriptions[phase] = subscribe(lifecycle, function()
+                    -- Record the phase before dispatching. It has happened even
+                    -- if the dispatch raises, and a later in-place upgrade must
+                    -- not run it a second time.
+                    rawset(rawget(addon, "_dispatched"), phase, true)
+                    return invokeDispatch(dispatchName, addon)
+                end)
+            end
+        end
+    end
 end
 
+--- Create the container for `addonName` and bind it to its lifecycle.
+--- @param addonName string
+--- @return ModuleKit.Addon
 local function createAddon(addonName)
     local lifecycle = LifecycleKit:ForAddon(addonName)
     local addon = setmetatable({
@@ -1545,6 +1982,11 @@ local function createAddon(addonName)
         _resolutionStack = {},
         _shutdown = lifecycle:IsShutdown(),
         _subscriptions = {},
+        -- A new container has received nothing yet, so every phase LifecycleKit
+        -- has already reached is replayed into it on subscription.
+        _dispatched = {},
+        _passDepth = 0,
+        _pendingCatchUp = {},
     }, ADDON_METATABLE)
 
     local addons = rawget(state, "addons")
@@ -1557,6 +1999,9 @@ local function createAddon(addonName)
     return addon
 end
 
+--- Return the stable container for `addonName`, creating it on demand.
+--- @param addonName string addon folder name, as LifecycleKit matches it
+--- @return ModuleKit.Addon
 local function forAddon(_, addonName)
     validateNonEmptyString(addonName, "ModuleKit:ForAddon addonName", 3)
 
@@ -1586,7 +2031,7 @@ local function migrateAddonSubscriptions()
         else
             local ok, value = pcall(function()
                 disconnectAddonSubscriptions(addon)
-                installAddonSubscriptions(addon)
+                installAddonSubscriptions(addon, true)
             end)
             firstError = captureFirstError(firstError, ok, value)
         end

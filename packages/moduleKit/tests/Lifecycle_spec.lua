@@ -1,5 +1,15 @@
 local TestEnv = require("ModuleKitTestEnv")
 
+-- EventKit isolates listener errors at the event-bus boundary, so an error that
+-- LifecycleKit re-raises from a phase dispatch is reported through the host
+-- error handler instead of escaping `Emit`.
+local function expectReportedError(callback)
+    callback()
+    local reported = TestEnv.TakeReportedErrors()
+    assert.are.equal(1, #reported)
+    return reported[1].value
+end
+
 describe("ModuleKit lifecycle integration", function()
     local ModuleKit
 
@@ -148,9 +158,7 @@ describe("ModuleKit lifecycle integration", function()
         TestEnv.LoadAddon("BrokenAddon")
         TestEnv.LoadAddon("HealthyAddon")
 
-        assert.has_error(function()
-            TestEnv.Login()
-        end)
+        expectReportedError(TestEnv.Login)
 
         assert.is_false(broken:IsEnabled())
         assert.is_true(healthy:IsEnabled())
@@ -173,9 +181,7 @@ describe("ModuleKit lifecycle integration", function()
         TestEnv.LoadAddon("MyAddon")
         TestEnv.Login()
 
-        assert.has_error(function()
-            TestEnv.Logout()
-        end)
+        expectReportedError(TestEnv.Logout)
 
         assert.are.same({ "Second", "First" }, calls)
         assert.are.equal("disabled", first:GetState())
@@ -199,12 +205,128 @@ describe("ModuleKit lifecycle integration", function()
             TestEnv.Login()
             addon:CreateModule("Broken"):DependsOn("Missing")
 
-            assert.has_error(function()
-                TestEnv.Logout()
-            end)
+            expectReportedError(TestEnv.Logout)
 
             assert.are.equal(1, disables)
             assert.is_false(healthy:IsEnabled())
         end
     )
+end)
+
+describe("ModuleKit re-entrant module creation", function()
+    local ModuleKit
+
+    before_each(function()
+        ModuleKit = TestEnv.NewPackage()
+    end)
+
+    after_each(TestEnv.Reset)
+
+    it("defers a module created from a hook until the bulk pass has finished", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local calls = {}
+        local first = addon:CreateModule("First")
+        local second = addon:CreateModule("Second")
+
+        first.OnInitialize = function()
+            calls[#calls + 1] = "First"
+            addon:CreateModule("Late", {
+                onInitialize = function()
+                    calls[#calls + 1] = "Late"
+                end,
+            })
+        end
+        second.OnInitialize = function()
+            calls[#calls + 1] = "Second"
+        end
+
+        TestEnv.LoadAddon("MyAddon")
+
+        -- "Late" is created while the pass is still walking the graph, so it
+        -- catches up after the pass instead of jumping ahead of "Second".
+        assert.are.same({ "First", "Second", "Late" }, calls)
+        assert.are.equal("initialized", addon:GetModule("Late"):GetState())
+    end)
+
+    it("does not activate a hook-created module in the middle of a bulk pass", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local database = addon:CreateModule("Database")
+        local middle = addon:CreateModule("Middle")
+        local spawner = addon:CreateModule("Spawner")
+        middle:DependsOn("Database")
+
+        local failDatabase = true
+        database.OnEnable = function()
+            if failDatabase then
+                failDatabase = false
+                error("database enable failed")
+            end
+        end
+
+        local observed = {}
+        spawner.OnEnable = function()
+            addon:CreateModule("Late", { dependsOn = { "Middle" } })
+            observed.middleEnabled = middle:IsEnabled()
+            observed.lateState = addon:GetModule("Late"):GetState()
+        end
+
+        TestEnv.LoadAddon("MyAddon")
+        expectReportedError(TestEnv.Login)
+
+        -- While the pass was running, "Database" had failed and "Middle" was
+        -- blocked by it. Activating the hook-created module there and then
+        -- would have contradicted a decision the pass had already made.
+        assert.is_false(observed.middleEnabled)
+        assert.are.equal("created", observed.lateState)
+    end)
+
+    it("keeps explicit Activate immediate inside a hook", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local calls = {}
+        local first = addon:CreateModule("First")
+
+        first.OnInitialize = function()
+            calls[#calls + 1] = "First"
+            local late = addon:CreateModule("Late")
+            late.OnInitialize = function()
+                calls[#calls + 1] = "Late"
+            end
+            late:Activate()
+        end
+
+        TestEnv.LoadAddon("MyAddon")
+
+        -- Activate is an explicit request, not definition-table catch-up.
+        assert.are.same({ "First", "Late" }, calls)
+    end)
+end)
+
+describe("ModuleKit hooks and coroutines", function()
+    local ModuleKit
+
+    before_each(function()
+        ModuleKit = TestEnv.NewPackage()
+    end)
+
+    after_each(TestEnv.Reset)
+
+    it("cannot yield out of a hook, because hooks run under pcall", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local module = addon:CreateModule("UI")
+        module.OnInitialize = function()
+            coroutine.yield()
+        end
+
+        local thread = coroutine.create(function()
+            module:Initialize()
+        end)
+        local ok, message = coroutine.resume(thread)
+
+        -- Lua 5.1 cannot suspend a coroutine across a C function, and pcall is
+        -- one. The attempt surfaces as an ordinary hook failure.
+        assert.is_false(ok)
+        assert.is_not_nil(string.find(tostring(message), "yield across", 1, true))
+        assert.are.equal("created", module:GetState())
+        assert.is_true(module:HasLastError())
+    end)
 end)

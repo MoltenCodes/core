@@ -5,3 +5,5 @@ The LifecycleKit suite covers state transitions, late subscribers, load-on-deman
 WoW APIs are simulated by `support/LifecycleKitTestEnv.lua`; production source does not expose test-only hooks.
 
 Additional regression coverage includes multiple callback failures within one phase, arbitrary Lua error objects, same-revision watcher recovery, and missed-login catch-up after interrupted bootstrap.
+
+Argument-error positions are pinned: each spec asserts the exact `file:line` the error reports, so a stray tail call or a wrong `error` level fails the suite instead of passing unnoticed.

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 — 2026-09-22
+
+- Implementation revision 3.
+- Fixed an in-place upgrade re-enabling deliberately disabled modules. Re-installing lifecycle subscriptions made LifecycleKit replay `ready` into containers that had already received it, which ran `EnableAll` a second time out of package bootstrap. Each container now records the phases dispatched into it, an upgrade subscribes only to phases that have not been dispatched, and during an upgrade the lifecycle is probed directly as well, so a module hook can never run out of package bootstrap. A container created by an earlier revision has its dispatched set rebuilt from LifecycleKit.
+- Deferred definition-table catch-up for a module created from a hook while a whole-container pass is running. Activating it mid-pass bypassed that pass's dependency-failure blocking; it is now caught up when the outermost pass finishes, with the same result as creating it immediately afterwards. `module:Activate()` stays immediate, because it is an explicit request rather than implicit catch-up.
+- Replaced the topological sort's front removal and per-insertion full re-sort with a ready set kept sorted by descending creation order, consumed from its end and refilled by binary search. The emitted order is unchanged and is now pinned on a twelve-module fixture as well as the small ones.
+- Documented that `EnableAll()` states a target for the whole container and therefore re-enables modules that were explicitly disabled, with the reason; kept the behaviour.
+- Documented that `Inject` accepts provider and module names only, never the objects themselves.
+- Documented that hooks must not yield: they run under `pcall`, and Lua 5.1 cannot suspend a coroutine across a C function.
+- Added `docs/INTERNALS.md` and a contents block at the top of `ModuleKit.lua`.
+- Adapted the lifecycle specs to EventKit's listener isolation: an error raised out of a phase dispatch is now reported through the host error handler instead of escaping the event delivery.
+
 ## 0.1.2 — 2026-09-22
 
 - No runtime behaviour change. Revision 2 still describes the shipped implementation.

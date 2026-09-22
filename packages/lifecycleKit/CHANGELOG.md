@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 — 2026-09-22
+
+- Implementation revision 4.
+- Raised `LifecycleKit:ForAddon` argument errors at level 2 instead of level 3. `ForAddon` is the frame the consumer calls, so level 3 pointed one frame past the calling addon code.
+- Stopped `OnLoaded`, `OnReady` and `OnShutdown` from tail-calling their shared implementation. Lua 5.1 drops the calling frame on a tail call, which collapsed one level and made an invalid-callback error report a position outside the addon that raised it. All four argument errors now report the caller's own file and line, and specs pin those positions.
+- Unified callback-error reporting across the replay and the dispatch path. A callback invoked synchronously because its phase had already occurred is now captured and re-raised the same way a dispatched callback is, so a subscriber sees the original Lua error object unchanged regardless of which path its subscription took.
+- Removed the pre-1.0 compatibility machinery: the revision-1 state migration and the revision-2/revision-3 dual error-capture protocol. No revision before this one was ever published, so nothing could rely on them. Phase-callback failures are captured through the single `_phaseCaptures` protocol, and the retired `_phaseErrors` slot is released from every carried-over instance during an in-place upgrade.
+- Documented exact addon-name matching as the contract, with the reason, rather than normalising case.
+- Documented that `PLAYER_ENTERING_WORLD` is a non-goal: `ready` means loaded and logged in.
+- Adapted the phase-error specs to EventKit's listener isolation: an error LifecycleKit re-raises from inside a host event dispatch is now reported through the host error handler rather than escaping the delivery, so the specs observe that handler instead of catching the error at the emit site.
+
 ## 0.1.3 — 2026-09-22
 
 - No runtime behaviour change. Revision 3 still describes the shipped implementation.
