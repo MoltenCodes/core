@@ -53,6 +53,7 @@ class PackageFixture(unittest.TestCase):
             "displayName": name,
             "description": "test",
             "version": "1.0.0",
+            "license": "MIT",
             "api": 1,
             "revision": 1,
             "dependencies": dependencies or {},
