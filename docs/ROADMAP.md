@@ -203,5 +203,5 @@ duplicating those specifications.
 
 ---
 
-Last roadmap baseline update: 2026-09-22 (phase 3 engineering-system items
-complete except `packages/moduleKit/docs/INTERNALS.md`).
+Last roadmap baseline update: 2026-09-22 (phases 0 through 3 complete; phase 4
+is the next sequenced work).

@@ -248,6 +248,37 @@ describe("ModuleKit re-entrant module creation", function()
         assert.are.equal("initialized", addon:GetModule("Late"):GetState())
     end)
 
+    it("catches several deferred modules up in creation order", function()
+        -- The deferred queue is drained with a cursor rather than by shifting
+        -- every remaining entry down a slot. The order it produces must not
+        -- change, including for modules queued by an already-deferred module.
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local calls = {}
+        local first = addon:CreateModule("First")
+
+        local function noteAndSpawn(name, spawns)
+            return function()
+                calls[#calls + 1] = name
+                for index = 1, #spawns do
+                    local spawned = spawns[index]
+                    addon:CreateModule(spawned, {
+                        onInitialize = function()
+                            calls[#calls + 1] = spawned
+                        end,
+                    })
+                end
+            end
+        end
+
+        first.OnInitialize = noteAndSpawn("First", { "LateA", "LateB", "LateC" })
+        addon:CreateModule("Second").OnInitialize = noteAndSpawn("Second", {})
+
+        TestEnv.LoadAddon("MyAddon")
+
+        assert.are.same({ "First", "Second", "LateA", "LateB", "LateC" }, calls)
+        assert.are.equal("initialized", addon:GetModule("LateC"):GetState())
+    end)
+
     it("does not activate a hook-created module in the middle of a bulk pass", function()
         local addon = ModuleKit:ForAddon("MyAddon")
         local database = addon:CreateModule("Database")

@@ -82,6 +82,16 @@ Disconnects the subscription and returns `true` exactly once. Later calls return
 
 Returns whether the connection is still active.
 
+### Both methods require a receiver
+
+`EventKit.Connection` is the shared method prototype every handle indexes, so its
+methods are reachable without a receiver. Called that way — `EventKit.Connection.Disconnect()`
+or `connection.Disconnect()` with a dot instead of a colon — they raise
+`EventKit:Disconnect must be called on a connection handle; use connection:Disconnect()`
+at the calling line. The receiver test is a field type test rather than a metatable
+comparison, so a handle created by an older embedded revision is still accepted after
+an in-place upgrade.
+
 ## Registration architecture
 
 Normal events share one lazily created Frame.

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-09-22
+
+- The frame budget is no longer defeated by a resettable clock. `debugprofilestop` reports one process-wide timer that any addon can zero with `debugprofilestart()`, and the budget was a single absolute deadline computed at the start of the pass. After a restart every later reading fell below that deadline, the budget check never fired, and the pass ran to the resume-count ceiling instead: a thousand resumes against a 2 ms budget, in one frame.
+- Frame accounting is now monotonic. Each budget check remembers the previous reading; forward movement is spent as budget, and a backwards jump re-anchors the deadline to the new reading while carrying the budget left at the last good reading. A restart can neither extend a frame nor refund what it already spent, and a large forward jump simply ends the frame early, which is the safe direction. `Context:ShouldYield()` shares the same accounting, so a restart cannot leave a cooperating job believing it still owns the frame.
+- The runaway yielded-slice measurement is protected the same way. The raw difference between readings either side of a restart is negative, so a slice that burned fifty milliseconds used to measure as free and escape demotion. The finishing reading is the time since the restart, and that lower bound is now used as the slice's duration.
+- Documented the shared-clock hazard in `docs/API.md` under *The profiling clock is shared*, and the "do not call `debugprofilestart()`" rule in the framework's `docs/EMBEDDING.md` performance guidance.
+- Implementation revision 6. Package state carries the previous clock reading beside the frame deadline; state written by an older revision is seeded rather than rejected, and the inherited deadline is left untouched so a copy loading while the older one drives a frame does not have that frame pulled out from under it.
+- Five regression specs: a neighbour zeroing the clock mid-frame, the remaining budget carried across a backwards jump, a forward jump, `ShouldYield()` after a reset, and a runaway slice that restarted the profiler. The shared test fixture gained `SetProfileMs` to drive them.
+- No public API change. `SchedulerKit` API generation 1 is unchanged.
+
 ## 0.3.0 — 2026-09-22
 
 - Moved the bootstrap handshake onto `Registry:Bootstrap`. The package lookup, the refusal to reinterpret a newer revision's private state, the registration and the inherited-revision reporting now live in Registry; what stays here is the dependency check, the public-surface predicate, the state predicate and the migration itself.

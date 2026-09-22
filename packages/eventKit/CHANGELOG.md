@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 — 2026-09-22
+
+- `connection:Disconnect()` and `connection:IsConnected()` now validate their receiver. Reached through the shared `EventKit.Connection` prototype with no receiver — `EventKit.Connection.Disconnect()`, or a dot where a colon was meant — they used to raise `bad argument #1 to 'rawget'` from a line inside `src/EventKit.lua`, which named neither the package nor the mistake. They now raise `EventKit:Disconnect must be called on a connection handle; use connection:Disconnect()` at the caller's line, matching SignalKit's existing guard.
+- The receiver test is a `_connected` field type test rather than a metatable comparison, so handles created by an older embedded revision keep working after an in-place upgrade: the newer copy replaces the methods on the shared prototype those handles already index.
+- Implementation revision 4. Two regression specs cover the named message and the caller's line for both methods.
+- No public API change. `EventKit` API generation 1 is unchanged.
+
 ## 0.3.0 — 2026-09-22
 
 - Moved the bootstrap handshake onto `Registry:Bootstrap`. The package lookup, the refusal to reinterpret a newer revision's private state, the registration and the inherited-revision reporting now live in Registry; what stays here is the dependency check, the public-surface predicate, the state predicate and the migration itself.

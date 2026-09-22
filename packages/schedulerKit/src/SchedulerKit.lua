@@ -28,7 +28,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local REQUIRED_TIMER_API = 1
@@ -451,6 +451,7 @@ if previousRevision == nil then
         driverTrampoline = false,
         currentJob = false,
         frameDeadline = false,
+        frameReading = false,
     }
     rawset(SchedulerKit, "Job", Job)
     rawset(SchedulerKit, "Scope", Scope)
@@ -498,6 +499,15 @@ rawset(state, "occupiedLaneCount", inheritedOccupiedLanes)
 
 if type(rawget(state, "idleGuard")) ~= "number" then
     rawset(state, "idleGuard", 0)
+end
+
+-- Revision 6 makes frame accounting monotonic, which needs the previous clock
+-- reading beside the deadline. State written by an older revision carries no
+-- such field. It is seeded rather than derived, and `frameDeadline` is left
+-- exactly as inherited: a copy loading while the older one drives a frame must
+-- not have that frame's deadline pulled out from under it.
+if type(rawget(state, "frameReading")) ~= "number" then
+    rawset(state, "frameReading", false)
 end
 
 local JOB_METATABLE = rawget(state, "jobMetatable")
@@ -637,6 +647,78 @@ end
 
 -- Bound once at load so the hot path does not branch on clock availability.
 local now = nativeDebugProfileStop ~= nil and nowFromProfilingClock or nowFromPreciseClock
+
+-- `debugprofilestop` reports one process-wide timer, and `debugprofilestart()`
+-- zeroes it for everybody. Any addon in the session can therefore make the
+-- clock this scheduler is measuring against jump backwards in the middle of a
+-- frame. A deadline computed once from the frame's start does not survive that:
+-- after a reset every later reading is smaller than the deadline, the budget
+-- check never fires, and the frame runs to the resume cap instead of to the
+-- budget — a thousand resumes against a two-millisecond budget.
+--
+-- Accounting is therefore kept monotonic. Only forward movement since the
+-- previous reading is spent, and a backwards jump re-anchors the deadline to
+-- the new reading while keeping the budget the frame has left. The frame is
+-- shortened rather than extended, nothing already spent is refunded, and a
+-- resetting neighbour can cost this scheduler at most the readings it
+-- straddles. A large forward jump is charged as ordinary spending and simply
+-- ends the frame early, which is the safe direction: the budget exists to stop
+-- the scheduler from overrunning a frame, not to guarantee it a share of one.
+
+---Re-anchor the frame deadline against a clock that may have been reset, and
+---report whether the frame's CPU budget is spent.
+---@return boolean exhausted `false` whenever no frame is being driven.
+local function frameBudgetExhausted()
+    local deadline = rawget(state, "frameDeadline")
+    if type(deadline) ~= "number" then
+        return false
+    end
+
+    local reading = now()
+    local previous = rawget(state, "frameReading")
+    if type(previous) ~= "number" then
+        -- No reference point: state inherited from a revision that did not keep
+        -- one. Adopt this reading and charge the frame from here.
+        rawset(state, "frameReading", reading)
+        return false
+    end
+
+    if reading < previous then
+        -- `deadline - previous` is the budget left at the previous reading.
+        -- Carry that remainder across the reset instead of the absolute value.
+        deadline = reading + (deadline - previous)
+        rawset(state, "frameDeadline", deadline)
+    end
+
+    rawset(state, "frameReading", reading)
+    return reading >= deadline
+end
+
+---Milliseconds of addon CPU time between `startTime` and now.
+---
+---When the clock was restarted while the slice ran, the finishing reading is
+---smaller than the starting one and the raw subtraction is negative — a slice
+---that took a hundred milliseconds would be measured as free and could never be
+---recognised as a runaway, while the nonsense figure still reached the
+---diagnostic that names it.
+---
+---The finishing reading is itself the answer in that case: the clock counts up
+---from wherever it was restarted, so it already holds the part of the slice
+---that followed the restart. That is a lower bound on the slice — the part
+---before the restart is unknowable — and a lower bound is the right side to err
+---on, because it can only make this measurement miss a runaway, never invent
+---one. The frame budget needs no such correction: its next reading continues
+---from the restart on its own, so only the sliver either side of the jump goes
+---uncharged there.
+---@param startTime number reading taken before the slice ran
+---@return number milliseconds
+local function elapsedSince(startTime)
+    local finishTime = now()
+    if finishTime < startTime then
+        return finishTime > 0 and finishTime or 0
+    end
+    return finishTime - startTime
+end
 
 ---Hand a diagnostic to the host error handler, best-effort.
 ---@param value any
@@ -1405,7 +1487,7 @@ local function resumeJob(job)
 
     local startTime = now()
     local ok, yielded = coroutine.resume(thread)
-    local elapsed = now() - startTime
+    local elapsed = elapsedSince(startTime)
     rawset(state, "currentJob", false)
 
     if not ok then
@@ -1465,12 +1547,13 @@ end
 local function runFrame(_elapsed)
     local config = rawget(state, "config")
     local startTime = now()
+    rawset(state, "frameReading", startTime)
     rawset(state, "frameDeadline", startTime + rawget(config, "frameBudgetMs"))
 
     local resumes = 0
     local maxResumes = rawget(config, "maxResumesPerFrame")
     while resumes < maxResumes do
-        if resumes > 0 and now() >= rawget(state, "frameDeadline") then
+        if resumes > 0 and frameBudgetExhausted() then
             break
         end
 
@@ -1484,6 +1567,7 @@ local function runFrame(_elapsed)
 
     rawset(state, "currentJob", false)
     rawset(state, "frameDeadline", false)
+    rawset(state, "frameReading", false)
     updateDriver()
 end
 
@@ -1624,11 +1708,7 @@ local function contextShouldYield(self)
         return true
     end
 
-    local deadline = rawget(state, "frameDeadline")
-    if type(deadline) ~= "number" then
-        return false
-    end
-    return now() >= deadline
+    return frameBudgetExhausted()
 end
 
 ---Suspend the running job until the scheduler resumes it again.

@@ -101,7 +101,9 @@ Budget and runaway accounting use `debugprofilestop()`, which reports **addon CP
 
 Wall-clock time was wrong for this job. A garbage-collection pause or client hitch advances it while the running coroutine consumed none of the frame, which charged a cooperating job for a stall it did not cause and could convert it into a runaway. CPU time measures only what the job executed.
 
-SchedulerKit never calls `debugprofilestart()`. It compares two readings of the same monotonic counter, so it neither needs its own epoch nor disturbs one another addon may have started.
+SchedulerKit never calls `debugprofilestart()`. It compares two readings of the same counter, so it neither needs its own epoch nor disturbs one another addon may have started.
+
+That counter is not monotonic, though: it is one process-wide timer, and any other addon calling `debugprofilestart()` zeroes it mid-frame. The accounting is therefore made monotonic here rather than assumed. Each budget check keeps the previous reading in `state.frameReading` beside `state.frameDeadline`; forward movement is spent, and a backwards jump re-anchors the deadline to the new reading with the budget that was left at the previous one. `Context:ShouldYield()` runs through the same function, so a job and the driver can never disagree about whether the frame is over. The runaway slice measurement cannot lean on a later reading, so when it sees a backwards jump it uses the finishing reading — the time since the restart — as a lower bound rather than a negative duration.
 
 The scheduler records one deadline per OnUpdate pass.
 

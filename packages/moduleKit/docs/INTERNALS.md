@@ -108,11 +108,15 @@ Two things prevent it.
 
 Phases that have *not* been reached are still subscribed to during an upgrade, so a container that has not shut down yet keeps its cleanup.
 
+**A replay is synchronous, inside `subscribe()`.** The callback runs before the handle exists, so anything the install loop read before that call may be stale by the time it returns. A hook running in the replay can reach container shutdown, and the loop must not then keep going: it re-tests `_shutdown` after every subscription, disconnects the handle the shutdown happened inside rather than storing it, and abandons the phases behind it. It also re-reads `_subscriptions` for each phase rather than holding the table it captured, so a handle can never be filed in a table the container has since replaced — where nothing would ever disconnect it.
+
 ## Re-entrant module creation
 
 A hook may create a module while a whole-container pass is walking the graph. Catching that module up immediately would happen outside the running pass's blocking set, so it could be activated even though the pass had already decided that one of its hard dependencies failed.
 
 `_passDepth` counts the whole-container passes a container is inside. While it is non-zero, definition-table catch-up is queued on `_pendingCatchUp` and flushed once the outermost pass finishes — with the same effect as creating the module immediately after the pass returned. `_flushingCatchUp` keeps a nested pass that ends during the flush from starting a second one; its modules stay on the queue for the running loop.
+
+The queue is drained with an index cursor and cleared once, not by removing the head each time: shifting every remaining entry down a slot per module made a flush quadratic in the number of modules waiting. Entries appended while the loop runs are picked up by the same pass, so the order is the one creation established.
 
 `module:Activate()` is not deferred. It is an explicit request from addon code, not implicit catch-up, so it keeps its synchronous contract.
 

@@ -130,9 +130,9 @@ registry
        ↓
    lifecycleKit
     ├──→ moduleKit
-    └──→ timerKit
-            ↓
-       schedulerKit
+    ├──→ timerKit
+    │       ↓
+    └──→ schedulerKit
 ```
 
 Any order consistent with that graph works. This one is consistent with it and
@@ -492,6 +492,15 @@ only if you use the parts that exist rather than rebuilding them.
 - **The budget is CPU time, not wall time.** SchedulerKit measures with
   `debugprofilestop`, so a client hitch or a garbage-collection pause is not
   charged to your job.
+- **Do not call `debugprofilestart()`.** There is one profiling timer per
+  process and that call zeroes it for every addon in the session, including
+  SchedulerKit's frame accounting and every other library measuring its own
+  cost. SchedulerKit survives a restart — its budget is monotonic and re-anchors
+  itself, see *The profiling clock is shared* in
+  [`schedulerKit/docs/API.md`](../packages/schedulerKit/docs/API.md) — but the
+  measurement straddling your call is lost, for you and for everybody else. Use
+  `GetTimePreciseSec()` for your own timings, and if you must profile CPU, keep
+  the restart off any per-frame path.
 - **Pools are bounded by default.** PoolKit retains 128 objects per pool unless
   you say otherwise, and `PoolKit.UNBOUNDED` is an explicit, documented opt-in
   that makes retention your problem. `maxRetained` bounds what the pool keeps,

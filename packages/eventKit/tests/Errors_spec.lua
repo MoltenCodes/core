@@ -86,6 +86,62 @@ describe("EventKit errors", function()
         end
     end)
 
+    it("names the misuse when a connection method is called without a receiver", function()
+        -- `EventKit.Connection` is a shared prototype, so a caller can reach these
+        -- methods with no receiver at all. Without the guard the first `rawget`
+        -- inside raised "bad argument #1 to 'rawget'" from EventKit's own line.
+        expectErrorContaining(
+            "EventKit:Disconnect must be called on a connection handle",
+            function()
+                EventKit.Connection.Disconnect(nil)
+            end
+        )
+
+        expectErrorContaining(
+            "EventKit:IsConnected must be called on a connection handle",
+            function()
+                EventKit.Connection.IsConnected(nil)
+            end
+        )
+
+        expectErrorContaining(
+            "EventKit:Disconnect must be called on a connection handle",
+            function()
+                EventKit.Connection.Disconnect({})
+            end
+        )
+
+        expectErrorContaining(
+            "EventKit:IsConnected must be called on a connection handle",
+            function()
+                EventKit.Connection.IsConnected("not a connection")
+            end
+        )
+    end)
+
+    it("points connection receiver errors at the calling line", function()
+        local function callDisconnectWithoutReceiver()
+            EventKit.Connection.Disconnect()
+        end
+
+        local function callIsConnectedWithoutReceiver()
+            EventKit.Connection.IsConnected()
+        end
+
+        local calls = { callDisconnectWithoutReceiver, callIsConnectedWithoutReceiver }
+
+        for index = 1, #calls do
+            local ok, message = pcall(calls[index])
+            message = tostring(message)
+
+            assert.is_false(ok)
+            assert.is_not_nil(
+                string.find(message, "packages/eventKit/tests/Errors_spec.lua:", 1, true)
+            )
+            assert.is_nil(string.find(message, "src/EventKit.lua", 1, true))
+        end
+    end)
+
     it("names the package instead of a misleading line for host failures", function()
         -- These are raised two to four frames below the public API and describe
         -- the host environment, not the caller's arguments. A stack level there

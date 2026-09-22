@@ -23,7 +23,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -1300,11 +1300,25 @@ local function flushPendingCatchUp(addon, firstError)
     end
     rawset(addon, "_flushingCatchUp", true)
 
+    -- The queue is drained with a cursor rather than `table.remove(pending, 1)`,
+    -- which shifted every remaining entry down one slot per module and made a
+    -- flush quadratic in the number of modules waiting. Entries appended while
+    -- the loop runs — catching one module up can queue another — are picked up
+    -- by the same pass, so the order modules are caught up in is unchanged.
     local pending = rawget(addon, "_pendingCatchUp")
-    while #pending > 0 do
-        local module = table.remove(pending, 1)
+    local cursor = 1
+    while cursor <= #pending do
+        local module = pending[cursor]
+        cursor = cursor + 1
         local ok, value = pcall(catchUpModule, addon, module)
         firstError = captureFirstError(firstError, ok, value)
+    end
+
+    -- Entries are appended only from inside `catchUpModule`, which is what this
+    -- loop calls, so the last length test already saw everything the flush
+    -- produced and the queue can be emptied in one go.
+    for index = #pending, 1, -1 do
+        pending[index] = nil
     end
 
     rawset(addon, "_flushingCatchUp", false)
@@ -2118,6 +2132,16 @@ local function ensureContainerRuntimeFields(addon, lifecycle)
     end
 end
 
+---Disconnect one LifecycleKit subscription handle.
+---@param subscription any handle returned by a LifecycleKit `On<Phase>` call
+local function disconnectSubscriptionHandle(subscription)
+    local disconnect = type(subscription) == "table" and subscription.Disconnect or nil
+    if type(disconnect) ~= "function" then
+        error("MoltenCodes ModuleKit lifecycle subscription state is corrupted", 2)
+    end
+    disconnect(subscription)
+end
+
 ---Drop every LifecycleKit subscription this container currently holds.
 ---@param addon ModuleKit.Addon
 local function disconnectAddonSubscriptions(addon)
@@ -2130,11 +2154,7 @@ local function disconnectAddonSubscriptions(addon)
     for index = 1, #LIFECYCLE_PHASES do
         local subscription = rawget(subscriptions, LIFECYCLE_PHASES[index])
         if subscription ~= nil then
-            local disconnect = type(subscription) == "table" and subscription.Disconnect or nil
-            if type(disconnect) ~= "function" then
-                error("MoltenCodes ModuleKit lifecycle subscription state is corrupted", 2)
-            end
-            disconnect(subscription)
+            disconnectSubscriptionHandle(subscription)
         end
     end
     rawset(addon, "_subscriptions", {})
@@ -2170,8 +2190,7 @@ local function installAddonSubscriptions(addon, duringUpgrade)
 
     ensureContainerRuntimeFields(addon, lifecycle)
 
-    local subscriptions = {}
-    rawset(addon, "_subscriptions", subscriptions)
+    rawset(addon, "_subscriptions", {})
 
     if rawget(addon, "_shutdown") == true then
         return
@@ -2189,13 +2208,33 @@ local function installAddonSubscriptions(addon, duringUpgrade)
             else
                 local dispatchName = PHASE_DISPATCH[phase]
                 local subscribe = lifecycle[PHASE_SUBSCRIBE[phase]]
-                subscriptions[phase] = subscribe(lifecycle, function()
+                local handle = subscribe(lifecycle, function()
                     -- Record the phase before dispatching. It has happened even
                     -- if the dispatch raises, and a later in-place upgrade must
                     -- not run it a second time.
                     rawset(rawget(addon, "_dispatched"), phase, true)
                     return invokeDispatch(dispatchName, addon)
                 end)
+
+                -- `subscribe` is not a passive registration: LifecycleKit
+                -- replays a phase it has already reached to the new subscriber,
+                -- synchronously, before it returns the handle. A module hook
+                -- running inside that replay can reach container shutdown, so
+                -- the `_shutdown` test above is stale from here on and the
+                -- container may no longer own the table this loop started with.
+                --
+                -- Re-test and re-read both. A shutdown that happened during the
+                -- replay disconnects the handle it just produced and abandons
+                -- the phases behind it: a shut-down container must not be left
+                -- listening for `ready`, and a handle filed in a `_subscriptions`
+                -- table the container has replaced is one nothing would ever
+                -- disconnect.
+                if rawget(addon, "_shutdown") == true then
+                    disconnectSubscriptionHandle(handle)
+                    return
+                end
+
+                rawget(addon, "_subscriptions")[phase] = handle
             end
         end
     end

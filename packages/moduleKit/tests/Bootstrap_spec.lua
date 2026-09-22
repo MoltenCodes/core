@@ -159,7 +159,7 @@ describe("ModuleKit bootstrap", function()
         assert.is_false(oldLoaded:IsConnected())
         assert.is_false(oldReady:IsConnected())
         assert.is_false(oldShutdown:IsConnected())
-        assert.are.equal(4, rawget(rawget(upgraded, "_state"), "runtimeRevision"))
+        assert.are.equal(5, rawget(rawget(upgraded, "_state"), "runtimeRevision"))
     end)
 end)
 
@@ -226,6 +226,72 @@ describe("ModuleKit in-place upgrade", function()
         assert.is_nil(rawget(dispatched, "shutdown"))
         assert.are.equal("disabled", module:GetState())
         assert.are.same({ "initialize", "enable", "disable" }, hooks)
+    end)
+
+    -- LifecycleKit replays a reached phase synchronously inside the subscribe
+    -- call, before it hands back the handle. A module hook running in that
+    -- replay can reach container shutdown, which the install loop used to test
+    -- for exactly once, before the first subscription: it then went on to
+    -- subscribe every remaining phase, leaving a container that believes it is
+    -- shut down listening for `ready`.
+    it("stops subscribing when a replayed phase shuts the container down", function()
+        local ModuleKit = TestEnv.NewPackage()
+        local addon = ModuleKit:ForAddon("ReplayAddon")
+        local dispatch = rawget(rawget(ModuleKit, "_state"), "dispatch")
+
+        local module = addon:CreateModule("UI")
+        module.OnInitialize = function()
+            -- A `PLAYER_LOGOUT` that arrives while the replay is running.
+            dispatch.shutdown(addon)
+        end
+
+        local handles = {}
+        local function newHandle(phase)
+            local handle = { phase = phase, connected = true }
+            handle.Disconnect = function(self)
+                self.connected = false
+            end
+            handles[#handles + 1] = handle
+            return handle
+        end
+
+        -- A lifecycle stub, which is the shape ModuleKit duck-types for. Its
+        -- `OnLoaded` replays the phase the way LifecycleKit does: the callback
+        -- runs first, the handle exists only afterwards.
+        rawset(addon, "_lifecycle", {
+            IsLoaded = function()
+                return false
+            end,
+            IsReady = function()
+                return false
+            end,
+            IsShutdown = function()
+                return false
+            end,
+            OnLoaded = function(_, callback)
+                callback()
+                return newHandle("loaded")
+            end,
+            OnReady = function()
+                return newHandle("ready")
+            end,
+            OnShutdown = function()
+                return newHandle("shutdown")
+            end,
+        })
+        rawset(addon, "_dispatched", {})
+        markStateAsOlderRevision(ModuleKit)
+
+        TestEnv.ReloadPackage()
+
+        -- Only `loaded` was ever subscribed, and its handle — produced after the
+        -- replay had already shut the container down — was disconnected rather
+        -- than tracked. No live subscription survives on a shut-down container.
+        assert.is_true(rawget(addon, "_shutdown"))
+        assert.are.equal(1, #handles)
+        assert.are.equal("loaded", handles[1].phase)
+        assert.is_false(handles[1].connected)
+        assert.is_nil(next(rawget(addon, "_subscriptions")))
     end)
 
     it("still dispatches a phase the container has not received yet", function()

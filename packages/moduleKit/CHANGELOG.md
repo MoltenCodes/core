@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 — 2026-09-22
+
+- `installAddonSubscriptions` no longer keeps subscribing after the container has been shut down. LifecycleKit replays a phase it has already reached synchronously, inside the `subscribe()` call and before it returns the handle, so a module hook running in that replay can reach container shutdown. The loop tested `_shutdown` exactly once, before the first subscription, and then went on to subscribe the remaining phases: a container that believed it was shut down was left listening for `ready`, and would have run `EnableAll` on it. The shutdown test is now repeated after every `subscribe()`, and a handle produced by a call the shutdown happened inside is disconnected rather than stored.
+- The loop also re-reads `rawget(addon, "_subscriptions")` for each phase instead of holding the table it captured before the first call, so a handle can never be filed in a table the container has since replaced, where nothing would ever disconnect it.
+- Extracted `disconnectSubscriptionHandle` from `disconnectAddonSubscriptions`, which is what both paths now use to release a handle.
+- The deferred catch-up queue is drained with an index cursor instead of `table.remove(pending, 1)`. Shifting every remaining entry down a slot per module made a flush quadratic in the number of modules waiting; the queue is now walked once and cleared at the end. Modules queued while the flush runs are still picked up by the same pass, and the order modules are caught up in is unchanged.
+- Implementation revision 5. Two regression specs: a replayed phase that shuts the container down leaves no live subscription behind, and a flush that catches five deferred modules up produces the same order as before.
+- No public API change. `ModuleKit` API generation 1 is unchanged.
+
 ## 0.3.0 — 2026-09-22
 
 - Moved the bootstrap handshake onto `Registry:Bootstrap`. The package lookup, the refusal to reinterpret a newer revision's private state, the registration and the inherited-revision reporting now live in Registry; what stays here is the dependency check, the public-surface predicate, the state predicate and the migration itself.

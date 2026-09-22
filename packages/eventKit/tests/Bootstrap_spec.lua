@@ -7,9 +7,9 @@ local function expectErrorContaining(expected, callback)
 end
 
 local function installFutureEventsFacade(Registry)
-    local EventKit = Registry:Register("eventKit", 1, 4)
+    local EventKit = Registry:Register("eventKit", 1, 5)
     EventKit.API = 1
-    EventKit.REVISION = 4
+    EventKit.REVISION = 5
     EventKit.Connection = { Disconnect = function() end, IsConnected = function() end }
     EventKit.Connect = function() end
     EventKit.Once = function() end
@@ -49,13 +49,13 @@ describe("EventKit package bootstrap", function()
         end)
     end)
 
-    it("registers EventKit API 1 revision 3", function()
+    it("registers EventKit API 1 revision 4", function()
         local EventKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("eventKit", 1)
         assert.are.equal(EventKit, selected)
-        assert.are.equal(3, revision)
+        assert.are.equal(4, revision)
         assert.are.equal(1, EventKit.API)
-        assert.are.equal(3, EventKit.REVISION)
+        assert.are.equal(4, EventKit.REVISION)
     end)
 
     it("reuses the package facade across duplicate embedding", function()
@@ -128,7 +128,7 @@ describe("EventKit package bootstrap", function()
         local state = EventKit._state
 
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(3, EventKit.REVISION)
+        assert.are.equal(4, EventKit.REVISION)
         assert.are.equal(legacyConnectionMethods, EventKit.Connection)
         assert.are.equal(2, state.schema)
         assert.are.equal(legacyGroup, state.unitGroups["6:player"])
@@ -168,6 +168,6 @@ describe("EventKit package bootstrap", function()
         local selected, revision = Registry:Get("eventKit", 1)
         assert.are.equal(future, loaded)
         assert.are.equal(future, selected)
-        assert.are.equal(4, revision)
+        assert.are.equal(5, revision)
     end)
 end)

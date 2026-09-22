@@ -183,7 +183,7 @@ The default budget is **2 ms** per scheduler-driven frame.
 SchedulerKit:SetFrameBudget(1.5)
 ```
 
-The budget is measured in **addon CPU milliseconds**, read from `debugprofilestop()`, not in wall-clock time. SchedulerKit sets one deadline on that clock at the beginning of each OnUpdate scheduling pass, and `Context:ShouldYield()` compares the current profiling time with that deadline.
+The budget is measured in **addon CPU milliseconds**, read from `debugprofilestop()`, not in wall-clock time. SchedulerKit sets one deadline on that clock at the beginning of each OnUpdate scheduling pass, re-anchors it whenever the clock moves backwards (see *The profiling clock is shared* below), and `Context:ShouldYield()` reports against the same accounting.
 
 This distinction matters. A garbage-collection pause, a texture load, or any other client hitch moves wall time forward while the running job consumed none of the frame. Billing that to the job would make a perfectly cooperative callback look like it had blown the budget — it would yield immediately, or be flagged as a runaway, for a stall it did not cause. CPU time charges the job only for work the job actually did.
 
@@ -192,6 +192,42 @@ A host that does not publish `debugprofilestop` falls back to the monotonic prec
 The scheduler always permits at least one resume when work is ready. This prevents a very small budget or driver overhead from causing permanent starvation.
 
 Changing the budget during a currently running frame affects subsequent frames; the current pass retains the deadline it started with.
+
+### The profiling clock is shared
+
+`debugprofilestop()` reports **one process-wide timer**, and `debugprofilestart()`
+zeroes it for every addon in the session. It is not SchedulerKit's clock, and
+nothing stops a neighbouring addon — or a profiling tool the player installed —
+from restarting it in the middle of a SchedulerKit frame.
+
+A budget expressed as a single absolute deadline does not survive that. After a
+restart every later reading is below the deadline, the budget check never fires,
+and the pass runs to the resume-count ceiling instead of to the budget: a
+thousand resumes against a 2 ms budget.
+
+SchedulerKit therefore keeps its frame accounting **monotonic**. Each budget
+check remembers the previous reading, and:
+
+- a reading that moved **forward** is spent as ordinary budget;
+- a reading that moved **backwards** re-anchors the deadline to the new reading,
+  carrying the budget that was left at the last good reading. The frame is never
+  extended by a restart and never refunded what it already spent, and because
+  the clock counts up again from wherever it restarted, only the sliver of time
+  either side of the jump goes uncharged;
+- a large **forward** jump is spent like any other reading and simply ends the
+  frame early. That is the safe direction: the budget exists to stop the
+  scheduler overrunning a frame, not to guarantee it a share of one.
+
+The runaway threshold measures one slice rather than a whole frame, so it cannot
+lean on the next reading to recover. When the clock restarted while a slice ran,
+the finishing reading is itself the time since the restart, and that lower bound
+is used as the slice's duration — a runaway that straddles a restart is still
+recognised, and is never credited with a negative duration.
+
+**What this costs you:** nothing, unless you call `debugprofilestart()` yourself.
+If you do, you are resetting a timer the whole session shares. Prefer
+`GetTimePreciseSec()` for your own measurements; if you genuinely need the CPU
+profiler, do not leave it restarting on a per-frame path.
 
 ### Shared configuration
 
@@ -222,6 +258,8 @@ SchedulerKit:SetRunawayThreshold(6)
 A job that yielded honoured the cooperative contract. Its slices being too coarse is a scheduling problem, not misbehaviour, and killing it would destroy work the consumer has no way to resume. Demotion is the proportionate response: the job stops competing with well-behaved work, the overrun is visible in the error log, and the consumer keeps its results. Every subsequent overrunning slice reports again and demotes again until the job reaches `IDLE`.
 
 This is diagnostic containment, not preemption. A slice can only be measured after it yields back to SchedulerKit.
+
+If the shared profiling clock was restarted while the slice ran, the slice is measured as the time since that restart — a lower bound, because the part before the restart is unknowable. The threshold can therefore under-report such a slice, but never over-report it and never see it as free.
 
 A callback that completes normally is not retroactively converted into a failure merely because its final slice was long. The one exception is the swallowed-`Yield()` case described under *Cooperative execution*: there the job never yielded at all, so the threshold is the line between a diagnostic and a failure.
 

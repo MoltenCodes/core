@@ -11,7 +11,7 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local STATE_SCHEMA = 2
@@ -236,6 +236,32 @@ end
 local CONNECTION_METATABLE = { __index = Connection }
 
 -- Validation ----------------------------------------------------------------
+
+-- Connection methods are published on a shared prototype, so `connection.Disconnect()`
+-- and `EventKit.Connection.Disconnect()` both reach them with no receiver. Without a
+-- guard the first `rawget` inside raises "bad argument #1 to 'rawget'" from EventKit's
+-- own line, which names neither the package nor the mistake. Each method therefore
+-- tests its receiver first and raises at the caller.
+local CONNECTION_RECEIVER_HINT = " must be called on a connection handle; use connection:"
+
+local DISCONNECT_RECEIVER_MESSAGE = "EventKit:Disconnect"
+    .. CONNECTION_RECEIVER_HINT
+    .. "Disconnect()"
+local IS_CONNECTED_RECEIVER_MESSAGE = "EventKit:IsConnected"
+    .. CONNECTION_RECEIVER_HINT
+    .. "IsConnected()"
+
+---Whether `self` looks like a connection handle owned by this package.
+---
+---The test is a field type test rather than a metatable comparison on purpose: a
+---newer embedded revision builds its own connection metatable, so metatable
+---identity would reject handles created by the revision it upgraded. `rawget`
+---raises on a non-table, so the table test has to come first.
+---@param self any
+---@return boolean
+local function isConnectionHandle(self)
+    return type(self) == "table" and type(rawget(self, "_connected")) == "boolean"
+end
 
 ---@param eventName any
 ---@param methodName string public method name, used in the argument error
@@ -735,6 +761,10 @@ end
 ---@param self EventKit.Connection
 ---@return boolean disconnected `true` only for the call that transitioned the state.
 local function disconnect(self)
+    if not isConnectionHandle(self) then
+        error(DISCONNECT_RECEIVER_MESSAGE, 2)
+    end
+
     return disconnectEventConnection(self)
 end
 
@@ -742,6 +772,10 @@ end
 ---@param self EventKit.Connection
 ---@return boolean connected
 local function isConnected(self)
+    if not isConnectionHandle(self) then
+        error(IS_CONNECTED_RECEIVER_MESSAGE, 2)
+    end
+
     return rawget(self, "_connected") == true
 end
 
