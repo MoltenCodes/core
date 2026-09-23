@@ -77,7 +77,7 @@ describe("TimerKit bootstrap", function()
 
         local upgraded = require("TimerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(3, upgraded.REVISION)
+        assert.are.equal(4, upgraded.REVISION)
         assert.are.equal(timerPrototype, upgraded.Timer)
 
         -- A timer object created by revision 1 gains the revision-2 user-data
@@ -88,6 +88,49 @@ describe("TimerKit bootstrap", function()
         assert.are.equal("owner state", legacyTimer:GetUserData())
         assert.is_true(legacyTimer:Start())
         assert.are.equal(1, legacyScope:GetActiveCount())
+    end)
+
+    it("reports no remaining time for a timer an older revision started", function()
+        local TimerKit = TestEnv.NewPackage()
+        local timer = TimerKit:After(2, function() end)
+
+        -- Revisions before 4 kept no deadline. A timer they started is still
+        -- running after the upgrade, but TimerKit cannot know when it fires, so
+        -- it says nothing rather than inventing an answer.
+        rawset(timer, "_deadline", nil)
+        assert.is_true(timer:IsPending())
+        assert.is_nil(timer:GetRemaining())
+        assert.is_nil(timer:GetDeadline())
+
+        timer:Restart()
+        assert.are.equal(2, timer:GetRemaining())
+    end)
+
+    it("learns the deadline of an older revision's ticker at its next tick", function()
+        local TimerKit = TestEnv.NewPackage()
+        local ticker = TimerKit:Every(1, function() end)
+        rawset(ticker, "_deadline", nil)
+
+        TestEnv.AdvanceMs(1000)
+        TestEnv.FireNative(1)
+
+        assert.are.equal(2, ticker:GetDeadline())
+    end)
+
+    it("requires GetTimePreciseSec", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        require("LifecycleKit")
+        -- The package reads this host global at load time, so the spec has to remove it from the global table.
+        -- selene: allow(global_usage)
+        rawset(_G, "GetTimePreciseSec", nil)
+
+        local ok, value = pcall(require, "TimerKit")
+        assert.is_false(ok)
+        assert.is_true(tostring(value):find("GetTimePreciseSec", 1, true) ~= nil)
     end)
 
     it("requires LifecycleKit", function()

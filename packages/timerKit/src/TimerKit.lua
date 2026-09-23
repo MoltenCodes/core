@@ -4,10 +4,25 @@
 -- boundary narrow, adds deterministic logical state, guards stale native
 -- callbacks across restart/cancel operations, and integrates addon-owned timer
 -- scopes with LifecycleKit shutdown.
+--
+-- Contents
+-- --------
+--   Constants ............. package identity and option keys
+--   Public types .......... LuaCATS declarations for the published surface
+--   Dependencies .......... Registry, LifecycleKit, C_Timer, the monotonic clock
+--   Validation ............ public-surface and shared-state validation
+--   Bootstrap ............. Registry registration and inherited state
+--   Generic helpers ....... error capture and argument validation
+--   Timer internals ....... start, cancel, fire, restart, deadlines
+--   Scope internals ....... active-set bookkeeping, bulk cancel, close
+--   Timer public methods .. the handle a timer owner receives
+--   Scope public methods .. the handle a scope owner receives
+--   Package public API .... the facade published through Registry
+--   Commit ................ prototype/facade assignment and self-check
 
 local PACKAGE_NAME = "timerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -52,6 +67,8 @@ local TIMER_OPTION_KEYS = {
 ---@field Start fun(self: TimerKit.Timer): boolean
 ---@field Cancel fun(self: TimerKit.Timer): boolean
 ---@field Restart fun(self: TimerKit.Timer): boolean
+---@field GetRemaining fun(self: TimerKit.Timer): number?
+---@field GetDeadline fun(self: TimerKit.Timer): number?
 
 ---An ownership scope for timers, closed manually or by addon shutdown.
 ---@class TimerKit.Scope
@@ -128,6 +145,17 @@ if type(nativeNewTimer) ~= "function" or type(nativeNewTicker) ~= "function" the
     error("MoltenCodes TimerKit requires C_Timer.NewTimer and C_Timer.NewTicker", 2)
 end
 
+-- Deadlines are read from the same monotonic wall clock SchedulerKit falls back
+-- to. `C_Timer` fires on wall time, so the CPU clock (`debugprofilestop`) would
+-- be the wrong reference, and `GetTime()` is frame-quantised. The value is only
+-- ever used for introspection; TimerKit never schedules from it.
+-- GetTimePreciseSec is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
+local nativeGetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
+if type(nativeGetTimePreciseSec) ~= "function" then
+    error("MoltenCodes TimerKit requires GetTimePreciseSec", 2)
+end
+
 -- Validation ----------------------------------------------------------------
 
 ---Whether `implementation` exposes the complete TimerKit API 1 surface.
@@ -163,6 +191,8 @@ local function validatePublicSurface(implementation)
         and type(rawget(Timer, "Start")) == "function"
         and type(rawget(Timer, "Cancel")) == "function"
         and type(rawget(Timer, "Restart")) == "function"
+        and type(rawget(Timer, "GetRemaining")) == "function"
+        and type(rawget(Timer, "GetDeadline")) == "function"
         and type(rawget(Scope, "New")) == "function"
         and type(rawget(Scope, "After")) == "function"
         and type(rawget(Scope, "Every")) == "function"
@@ -194,6 +224,8 @@ local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     return validateStateBase(currentState) and type(rawget(currentState, "defaultScope")) == "table"
 end
+
+-- Bootstrap -----------------------------------------------------------------
 
 -- `Registry:Bootstrap` owns the reconciliation every embedded package repeats:
 -- look the package up, refuse to reinterpret state owned by a newer revision,
@@ -244,6 +276,8 @@ local TIMER_METATABLE = rawget(state, "timerMetatable")
 local SCOPE_METATABLE = rawget(state, "scopeMetatable")
 rawset(TIMER_METATABLE, "__index", Timer)
 rawset(SCOPE_METATABLE, "__index", Scope)
+
+-- Generic helpers -----------------------------------------------------------
 
 ---Wrap an error object so that `nil` and `false` stay representable.
 ---@param value any
@@ -366,6 +400,14 @@ local function validateTimer(timer, methodName, level)
     end
 end
 
+-- Timer internals -----------------------------------------------------------
+
+---Current monotonic wall-clock seconds, the reference every deadline uses.
+---@return number seconds
+local function now()
+    return nativeGetTimePreciseSec()
+end
+
 ---Return the host handle's `Cancel` method, or `nil` when it has none.
 ---@param native any handle returned by `C_Timer.NewTimer`/`NewTicker`
 ---@return fun(native: any)|nil
@@ -436,6 +478,7 @@ local function cancelTimer(timer)
     rawset(timer, "_generation", rawget(timer, "_generation") + 1)
     rawset(timer, "_native", nil)
     rawset(timer, "_state", "cancelled")
+    rawset(timer, "_deadline", false)
     detachActive(scope, timer)
 
     cancelNative(native)
@@ -452,9 +495,14 @@ local function fireTimer(timer, generation)
     end
 
     local repeating = rawget(timer, "_repeating") == true
-    if not repeating then
+    if repeating then
+        -- The host re-arms a ticker relative to the tick it just delivered, so
+        -- the next deadline is one interval from now, not from the first start.
+        rawset(timer, "_deadline", now() + rawget(timer, "_delay"))
+    else
         rawset(timer, "_native", nil)
         rawset(timer, "_state", "completed")
+        rawset(timer, "_deadline", false)
         detachActive(rawget(timer, "_scope"), timer)
     end
 
@@ -468,6 +516,7 @@ end
 local function rollbackStart(timer, previousState)
     rawset(timer, "_native", nil)
     rawset(timer, "_state", previousState)
+    rawset(timer, "_deadline", false)
     detachActive(rawget(timer, "_scope"), timer)
 end
 
@@ -516,6 +565,7 @@ local function startTimer(timer, methodName, level)
     end
 
     rawset(timer, "_native", native)
+    rawset(timer, "_deadline", now() + rawget(timer, "_delay"))
     return true
 end
 
@@ -560,6 +610,9 @@ local function constructTimer(scope, delay, callback, repeating)
         _state = "idle",
         _native = nil,
         _generation = 0,
+        -- `false` rather than `nil` keeps the slot in the table from creation,
+        -- so the first start does not rehash the timer.
+        _deadline = false,
     }, TIMER_METATABLE)
 end
 
@@ -613,6 +666,8 @@ local function startTimerInScope(scope, delay, callback, repeating, methodName, 
     startTimer(timer, methodName, level + 1)
     return timer
 end
+
+-- Scope internals -----------------------------------------------------------
 
 ---Return every running timer of `scope`, ordered by creation, as a snapshot.
 ---@param scope TimerKit.Scope
@@ -843,6 +898,48 @@ local function timerRestart(self)
     return restartTimer(self, "TimerKit.Timer:Restart", 3)
 end
 
+---Return the monotonic instant this timer fires next, or `nil` when it is not
+---running.
+---
+---The instant is on the `GetTimePreciseSec()` clock. It is TimerKit's own
+---accounting of when it asked the host to fire, not a promise from the host:
+---`C_Timer` delivers on the first frame at or after that instant.
+---@param self TimerKit.Timer
+---@return number? deadline seconds on the `GetTimePreciseSec()` clock
+local function timerGetDeadline(self)
+    validateTimer(self, "TimerKit.Timer:GetDeadline", 3)
+    if rawget(self, "_state") ~= "running" then
+        return nil
+    end
+    local deadline = rawget(self, "_deadline")
+    if type(deadline) ~= "number" then
+        -- Started by a revision that kept no deadline; see API.md.
+        return nil
+    end
+    return deadline
+end
+
+---Return the seconds left until this timer fires next, or `nil` when it is not
+---running. Never negative: a timer the host has not delivered yet although its
+---deadline passed reports `0`.
+---@param self TimerKit.Timer
+---@return number? remaining seconds, an estimate; see `GetDeadline`
+local function timerGetRemaining(self)
+    validateTimer(self, "TimerKit.Timer:GetRemaining", 3)
+    if rawget(self, "_state") ~= "running" then
+        return nil
+    end
+    local deadline = rawget(self, "_deadline")
+    if type(deadline) ~= "number" then
+        return nil
+    end
+    local remaining = deadline - now()
+    if remaining < 0 then
+        return 0
+    end
+    return remaining
+end
+
 -- Scope public methods ------------------------------------------------------
 
 ---Create an idle timer owned by this scope.
@@ -984,6 +1081,8 @@ rawset(Timer, "IsCancelled", timerIsCancelled)
 rawset(Timer, "Start", timerStart)
 rawset(Timer, "Cancel", timerCancel)
 rawset(Timer, "Restart", timerRestart)
+rawset(Timer, "GetRemaining", timerGetRemaining)
+rawset(Timer, "GetDeadline", timerGetDeadline)
 
 rawset(Scope, "New", scopeNew)
 rawset(Scope, "After", scopeAfter)

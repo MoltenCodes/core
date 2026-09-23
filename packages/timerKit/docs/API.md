@@ -29,6 +29,8 @@ Timer handles:
 | `Start()` | Start an idle/completed/cancelled timer; return `false` if already running. |
 | `Cancel()` | Cancel a running timer; return `false` if it is not running. |
 | `Restart()` | Cancel if necessary and start a fresh generation. |
+| `GetRemaining()` | Seconds until the next fire while running; `nil` otherwise. |
+| `GetDeadline()` | Monotonic instant of the next fire while running; `nil` otherwise. |
 
 Scopes:
 
@@ -106,6 +108,50 @@ The contract is deliberately small:
 This is the supported way for another package to carry state on a timer.
 Writing private fields onto a TimerKit timer handle is not supported: it is
 another package's internal state and may collide with a future revision.
+
+## Remaining time
+
+```lua
+local timer = scope:After(30, expire)
+
+timer:GetRemaining() -- 30, then counting down
+timer:GetDeadline()  -- GetTimePreciseSec() at start + 30
+```
+
+- `GetRemaining()` returns the seconds until the timer fires next as a number
+  while the timer is `running`, and `nil` in every other state — `idle`,
+  `completed` and `cancelled`. It never returns `0` to mean "not running", so a
+  caller can tell "about to fire" from "will not fire".
+- `GetDeadline()` returns the instant of the next fire on the
+  `GetTimePreciseSec()` clock while `running`, and `nil` otherwise.
+- A repeating timer reports its **next** tick. The deadline moves forward by one
+  interval each time a tick is delivered.
+- `Start()` and `Restart()` compute a fresh deadline from the moment they run.
+- A one-shot reports `nil` from inside its own callback: it is already
+  `completed` by then.
+
+### Precision
+
+TimerKit does not fire timers; `C_Timer` does, on the first frame at or after
+the requested moment. The deadline is TimerKit's own record of when it asked
+the host to fire, read from `GetTimePreciseSec()` — the monotonic wall clock,
+because `C_Timer` runs on wall time and `GetTime()` only advances once per
+frame. The remaining time is therefore an **estimate**: the real callback can
+arrive up to one frame later than the deadline says. While the host is late,
+`GetRemaining()` reports `0` and the timer is still `running`; it never returns
+a negative number.
+
+Nothing is computed on the dispatch path beyond one clock read per repeating
+tick, and TimerKit never schedules from these values.
+
+### Timers started by an older revision
+
+Revisions before 4 kept no deadline. A timer such a revision started keeps
+running after an in-place upgrade, but TimerKit cannot know when it will fire,
+so `GetRemaining()` and `GetDeadline()` return `nil` for it until its next
+`Start()`/`Restart()` or, for a repeating timer, its next tick.
+
+TimerKit requires `GetTimePreciseSec` at load, as SchedulerKit already does.
 
 ## Same-instant ordering
 
@@ -220,6 +266,7 @@ TimerKit relies only on:
 C_Timer.NewTimer
 C_Timer.NewTicker
 nativeHandle:Cancel()
+GetTimePreciseSec()   -- deadlines only; never used to schedule
 ```
 
 It does not inspect native timer userdata or depend on undocumented implementation fields. This is important because modern WoW timer handles are native FunctionContainer userdata.

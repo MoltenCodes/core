@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-09-23
+
+- Added `Timer:GetRemaining()` and `Timer:GetDeadline()`. While a timer is `running` they return the seconds until its next fire and the instant of that fire on the `GetTimePreciseSec()` clock; in every other state they return `nil`, never `0`, so "about to fire" and "will not fire" stay distinguishable. A repeating timer reports its next tick, and `Start`/`Restart` compute a fresh deadline.
+- The deadline is TimerKit's own record of when it asked `C_Timer` to fire, so the remaining time is documented as an estimate: the host delivers on the first frame at or after it. An overdue timer reports `0` rather than a negative number.
+- TimerKit now requires `GetTimePreciseSec` at load, as SchedulerKit already does. It is read once per start and once per repeating tick; nothing else on the dispatch path changed.
+- Timer handles carry one more private field, created as `false` with the handle so the first start does not rehash it.
+- Implementation revision 4. Timers started by an older embedded revision keep running after the upgrade and report `nil` until their next start or tick; bootstrap specs cover both cases and the new load requirement. Twelve new specs cover running, repeating, cancelled, completed, idle, restarted, overdue and rolled-back timers and the caller's line for receiver errors.
+- Added a table-of-contents header to `src/TimerKit.lua`, which exceeds 400 lines.
+- `TimerKit` API generation 1 is unchanged; the additions are compatible.
+
 ## 0.3.0 — 2026-09-22
 
 - Moved the bootstrap handshake onto `Registry:Bootstrap`. The package lookup, the refusal to reinterpret a newer revision's private state, the registration and the inherited-revision reporting now live in Registry; what stays here is the dependency check, the public-surface predicate, the state predicate and the migration itself.
