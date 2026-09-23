@@ -28,6 +28,31 @@ Initialization, allocations, dispatch, and indirection should remain deliberate.
 
 Reusable retention structures such as pools and caches must be bounded by default. Unbounded retention may exist only as an explicit, documented opt-in owned by the caller.
 
+## 4a. Bounded by default, opened on purpose
+
+Every retained collection, queue, cache and registry a Kit keeps has a limit,
+and the limit holds unless the consumer says otherwise. A consumer who needs
+more says so in one of three visible ways: an option on the object it creates
+(`maxEntries`, `maxHooks`, `maxCommands`), a package-wide `Kit:SetLimits{}`
+read back through `Kit:GetLimits()`, or the package's `Kit.UNBOUNDED` sentinel
+where unbounded retention is the consumer's own memory and nothing else's. A
+hard ceiling remains only where the Lua stack or a wire format makes more
+unsafe, and the documentation names that reason. A limit reached is refused
+with a named reason, never grown silently; a limit opened is the consumer's
+decision, recorded in their code.
+
+## 4b. Minimal footprint
+
+A Kit requires only what it cannot work without. Registry is the one shared
+dependency of every Kit, and SignalKit is the accepted second one for Kits
+whose contract includes callbacks or signals, because reimplementing dispatch
+in each Kit would violate modularity. Everything else a Kit can use is optional:
+declared under `optionalDependencies`, found at call time through
+`Registry:Find`, and absent without breaking the Kit. A Kit that owns per-addon
+state is closed at shutdown by LifecycleKit calling into it, never by depending
+on LifecycleKit. Each package's README states its minimum footprint: how many
+files an addon embeds to use it alone.
+
 ## 5. Determinism
 
 Equivalent inputs and registration sets must produce equivalent observable results regardless of load order unless a contract explicitly states otherwise.

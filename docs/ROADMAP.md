@@ -910,6 +910,36 @@ LibEditModeOverride: item W14).
 9. Status: implemented (package E, 0.1.0); deviations recorded in
    `packages/widgetKit/docs/API.md`.
 
+#### Package F — independence and escape hatches
+
+Decided 2026-09-23 after Yankı asked whether every Kit still stands alone and
+whether strict defaults can be opened. Two principles are added to the design
+constitution (4a bounded by default, opened on purpose; 4b minimal footprint)
+and the tree is brought to them. Registry and SignalKit are the accepted core
+pair; nothing else is a required dependency unless the Kit cannot work
+without it.
+
+- [ ] **timerKit** — LifecycleKit becomes optional: the addon scope is closed
+      by LifecycleKit calling `TimerKit:CloseAddonScopes` (the two-step
+      EventKit already uses); timerKit embeds as two files.
+- [ ] **schedulerKit** — LifecycleKit becomes optional the same way; the
+      chain shrinks to registry, signalKit, timerKit.
+- [ ] **readinessKit**, **testKit** — chains follow (testKit keeps
+      LifecycleKit, it gates on phases by purpose).
+- [ ] **lifecycleKit** — calls `TimerKit:CloseAddonScopes` and
+      `SchedulerKit:CloseAddonScopes` at shutdown when those Kits are present.
+- [ ] Every fixed limit becomes an option, a `SetLimits` entry or accepts
+      `Kit.UNBOUNDED`, per principle 4a: signalKit (bus, topic and listener
+      caps), eventKit (unit-filter frames), hookKit, commandKit, localeKit,
+      mediaKit, profileKit, cacheKit (`UNBOUNDED`), schemaKit (depth and
+      captures through `SetLimits` with a stated ceiling), optionsKit,
+      settingsKit, widgetKit (creation ceiling), codecKit and commKit
+      (`UNBOUNDED` where safe), moduleKit and lifecycleKit (dependency and
+      queue caps), readinessKit, schedulerKit (lanes, watchers, debounce
+      arguments), testKit.
+- [ ] Every package README states its minimum footprint; EMBEDDING.md gains a
+      footprint table and the dependency graph is redrawn.
+
 ### Standing obligations
 
 These apply to every phase rather than being completed once.
