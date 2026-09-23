@@ -23,3 +23,5 @@ Current packages:
 - [`schemaKit`](schemaKit/) — sealed value schemas with structured, secret-safe failures; the validation core for arguments, saved variables, options and messages.
 - [`localeKit`](localeKit/) — per-addon translations, missing-key reporting and coverage, indexed format specifiers.
 - [`hookKit`](hookKit/) — reversible, secure-first hooking of functions, methods and frame scripts.
+- [`settingsKit`](settingsKit/) — saved-variable databases: scopes, validated writes, wildcard defaults, profiles, migrations.
+- [`optionsKit`](optionsKit/) — typed, validated, introspectable options tree with no renderer.

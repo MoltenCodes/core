@@ -46,6 +46,8 @@ Current package entry points:
 - [`SchemaKit`](../packages/schemaKit/README.md) — sealed value schemas with structured, secret-safe failures, defaults and descriptions.
 - [`LocaleKit`](../packages/localeKit/README.md) — per-addon translations, missing-key reporting and coverage, indexed format specifiers.
 - [`HookKit`](../packages/hookKit/README.md) — reversible, secure-first hooking in three named semantics.
+- [`SettingsKit`](../packages/settingsKit/README.md) — saved-variable databases with scopes, validated writes, profiles and migrations.
+- [`OptionsKit`](../packages/optionsKit/README.md) — typed, validated, introspectable options tree with no renderer.
 
 Each package keeps its complete public contract under its own `docs/API.md`.
 

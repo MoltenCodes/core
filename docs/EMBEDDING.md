@@ -128,6 +128,8 @@ registry
 ├──→ cacheKit
 ├──→ profileKit
 ├──→ schemaKit
+│       ├──→ settingsKit   (also needs signalKit)
+│       └──→ optionsKit    (also needs signalKit)
 ├──→ localeKit
 ├──→ hookKit
 ├──→ poolKit
@@ -156,12 +158,14 @@ hookKit/HookKit.lua
 lifecycleKit/LifecycleKit.lua
 localeKit/LocaleKit.lua
 moduleKit/ModuleKit.lua
+schemaKit/SchemaKit.lua
+optionsKit/OptionsKit.lua
 poolKit/PoolKit.lua
 profileKit/ProfileKit.lua
 timerKit/TimerKit.lua
 readinessKit/ReadinessKit.lua
 schedulerKit/SchedulerKit.lua
-schemaKit/SchemaKit.lua
+settingsKit/SettingsKit.lua
 ```
 
 You can list the files directly in your `.toc`:
@@ -454,13 +458,16 @@ actually touch, which is deliberately small:
 
 | Kit | Requires | Degrades gracefully without |
 |---|---|---|
-| `registry`, `poolKit`, `moduleKit` | nothing but Lua 5.1 | — |
+| `registry`, `poolKit` | nothing but Lua 5.1 | — |
+| `moduleKit` | LifecycleKit's surface | HookKit API 1, TimerKit API 1, SchedulerKit API 1, EventKit scopes and SignalKit buses through `Registry:Find` (a missing Kit leaves that `module.scope` field `nil`) |
 | `signalKit` | nothing but Lua 5.1 | `securecallfunction` (bus deliveries fall back to `xpcall`), `geterrorhandler` (falls back to `print`), `issecretvalue` (only guards a validator's refusal reason) |
 | `schemaKit` | nothing but Lua 5.1 | `issecretvalue` (looked up at every check; absent: nothing is treated as secret) |
 | `localeKit` | nothing but Lua 5.1 | `GetLocale` (client locale `enUS`), `geterrorhandler` (missing-key reports fall back to `print`), `issecretvalue` (`Format` treats nothing as secret) |
+| `settingsKit` | SchemaKit's and SignalKit's surfaces | `UnitName` and `GetRealmName` (`db.char`, and `db.realm` without `GetRealmName`, unavailable), `UnitClass` (`db.class` unavailable), `UnitFactionGroup` (`db.faction` unavailable); an unavailable scope raises at the reader; `issecretvalue` (nothing treated as secret), `geterrorhandler` (`print`), EventKit API 1 through `Registry:Find` (no compaction at `PLAYER_LOGOUT`; call `db:Compact()`) |
+| `optionsKit` | SchemaKit's and SignalKit's surfaces | `issecretvalue` (looked up at every call; absent: nothing is treated as secret), SettingsKit API 1 through `Registry:Find` (`Define` with `options.db` raises; `get`/`set` options unaffected) |
 | `hookKit` | nothing but Lua 5.1 | `hooksecurefunc` (`SecureHook` raises at the caller), `issecurevariable` (nothing treated as secure), `Frame:HookScript` / `Frame:GetScript` / `Frame:SetScript` (the matching script hooks raise at the caller), `Frame:IsProtected` (frame not protected), `InCombatLockdown` (never in combat), ClientKit API 1 (`issecretvalue`) |
 | `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript` | `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`) |
-| `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat) |
+| `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat), HookKit API 1 through `Registry:Find` (its addon scopes are closed at logout when present; the SignalKit addon bus is closed the same way) |
 | `readinessKit` | TimerKit's surface | `GetTimePreciseSec` (negative cache disabled, timeouts counted in polls), EventKit API 1 through `Registry:Find` (`gate:ReprobeOn` raises at the caller) |
 | `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | `GetTimePreciseSec` (`GetRemaining` and `GetDeadline` then return `nil`) |
 | `clientKit` | nothing but Lua 5.1 | `WOW_PROJECT_ID` (flavour `"classic"`), `GetBuildInfo` (interface `0`), `issecretvalue` (`IsSecret` false), `C_EventUtils.IsEventValid` (`IsEventValid` nil), `IsForbidden` / `CanBeAccessedInContext` (`CanAccessFrame` true), `C_AddOns` / `C_Spell` / `C_Item` (legacy globals, then nil or false) |
@@ -743,22 +750,32 @@ again from your `.toc`. LifecycleKit reports `PLAYER_LOGOUT` on the way out, so
 `OnShutdown` callbacks run and addon-owned timer and scheduler scopes close, but
 none of that state is written anywhere.
 
-**Persistence is entirely yours.** Declare `## SavedVariables` in your `.toc`,
-populate the table in your `loaded` phase, and read it from there:
+**Persistence is yours to declare.** Declare `## SavedVariables` in your
+`.toc` and open the database in your `loaded` phase, which is the addon's own
+`ADDON_LOADED` and the first moment the client guarantees the table exists. Do
+not touch it at file scope.
 
 ```lua
 lifecycle:OnLoaded(function()
-    MyAddonDB = MyAddonDB or { version = 1 }
+    local db = SettingsKit:Open("MyAddonDB", {
+        profile = SchemaKit.table{ fields = {
+            scale = SchemaKit.optional(SchemaKit.number{ min = 0.5, max = 2 }, 1),
+        } },
+    }, { version = 1 })
+    print(db.profile.scale) -- 1, read from the defaults, never stored
 end)
 ```
 
-The `loaded` phase is the addon's own `ADDON_LOADED`, which is the first moment
-the client guarantees your saved variables table exists. Do not touch it at file
-scope.
-
-No Kit reads or writes a saved variable, and no Kit will ever add one: a shared
-library that wrote to a global saved-variables table would make every embedding
-addon's state depend on which copy won.
+`SettingsKit` (package `settingsKit`) is the one Kit that writes a saved
+variable, and only the global your own `.toc` names: defaults are never written
+into the table, every write is validated against your schema at the writer's
+line and a secret value is refused, profiles and versioned migrations are built
+in, and `db:Compact()` removes values equal to their defaults at `PLAYER_LOGOUT`
+when EventKit is present. The layout of the saved table is specified in
+[`settingsKit/docs/INTERNALS.md`](../packages/settingsKit/docs/INTERNALS.md).
+No other Kit reads or writes a saved variable, and none will add one of its own:
+a shared library that wrote to a global saved-variables table would make every
+embedding addon's state depend on which copy won.
 
 ## Performance guidance
 

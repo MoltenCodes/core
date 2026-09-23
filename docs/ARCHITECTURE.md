@@ -19,6 +19,8 @@ packages/
 ├── schemaKit/
 ├── localeKit/
 ├── hookKit/
+├── settingsKit/
+├── optionsKit/
 ├── <future-package>/
 └── ...
 ```
@@ -27,7 +29,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -69,6 +71,8 @@ registry
 ├──→ cacheKit
 ├──→ profileKit
 ├──→ schemaKit
+│       ├──→ settingsKit   (also needs signalKit)
+│       └──→ optionsKit    (also needs signalKit)
 ├──→ localeKit
 ├──→ hookKit
 ├──→ poolKit
@@ -179,9 +183,9 @@ The first dependency layer above Registry is `signalKit`. SignalKit uses Registr
 `eventKit` is the first WoW-specific package. It depends on Registry API 2 and SignalKit API 1, keeps the `CreateFrame`/Frame registration boundary narrow, and delegates listener ordering and mutation semantics to SignalKit instead of duplicating callback machinery. Regular events share one lazy Frame; unit-filtered events are grouped by normalized unit-token sets so `RegisterUnitEvent` registrations do not overwrite incompatible filters on the same Frame.
 
 
-`lifecycleKit` depends on Registry API 2, SignalKit API 1, and EventKit API 1. It owns per-addon phase state, converts `ADDON_LOADED`, `PLAYER_LOGIN`, and `PLAYER_LOGOUT` into replay-aware lifecycle phases, keeps one shared combat-lockdown state from `PLAYER_REGEN_DISABLED` / `PLAYER_REGEN_ENABLED` with a bounded per-addon "run when out of combat" queue, lets an addon declare itself halted for the session and announces that to the addons that depend on it, and leaves all WoW Frame registration inside EventKit.
+`lifecycleKit` depends on Registry API 2, SignalKit API 1, and EventKit API 1. It owns per-addon phase state, converts `ADDON_LOADED`, `PLAYER_LOGIN`, and `PLAYER_LOGOUT` into replay-aware lifecycle phases, keeps one shared combat-lockdown state from `PLAYER_REGEN_DISABLED` / `PLAYER_REGEN_ENABLED` with a bounded per-addon "run when out of combat" queue, lets an addon declare itself halted for the session and announces that to the addons that depend on it, owns addon-shutdown teardown for EventKit scopes, HookKit scopes and the SignalKit bus in that order, and leaves all WoW Frame registration inside EventKit.
 
-`moduleKit` depends directly on Registry API 2 and LifecycleKit API 1. It owns addon-local module lifecycle, topological dependency graphs, explicit `automatic`/`strict` dependency policies, and addon-scoped dependency injection. Hard `DependsOn` edges define activation requirements, while optional/`Before`/`After` edges remain ordering constraints for whole-container graph operations. Compatible ModuleKit revisions preserve existing addon/container identity and route lifecycle subscriptions through shared runtime dispatch so embedded upgrades can move live containers onto the newest accepted implementation. It deliberately does not depend directly on EventKit or SignalKit; those remain transitive implementation concerns of LifecycleKit.
+`moduleKit` depends directly on Registry API 2 and LifecycleKit API 1. It owns addon-local module lifecycle, topological dependency graphs, explicit `automatic`/`strict` dependency policies, and addon-scoped dependency injection. Hard `DependsOn` edges define activation requirements, while optional/`Before`/`After` edges remain ordering constraints for whole-container graph operations. Each module owns `module.scope` with `Timers`, `Events`, `Jobs`, `Hooks` and `Messages`, created on first use through `Registry:Find` and closed when the module is disabled, so a module writes no teardown; a module may declare `requiresAddons`, and a halted addon among them blocks the module until the session ends. Compatible ModuleKit revisions preserve existing addon/container identity and route lifecycle subscriptions through shared runtime dispatch so embedded upgrades can move live containers onto the newest accepted implementation. It deliberately does not depend directly on EventKit or SignalKit; those remain transitive implementation concerns of LifecycleKit.
 
 `timerKit` depends directly on Registry API 2 and LifecycleKit API 1. It wraps only the stable `C_Timer.NewTimer` / `C_Timer.NewTicker` boundary, provides deterministic logical timer state and ownership scopes, and closes addon-owned scopes through LifecycleKit shutdown. Running native callbacks dispatch through shared package state so future compatible revisions can update logical behavior without replacing Timer/Scope identity. TimerKit does not depend on ModuleKit; module code may opt into addon-owned or manually owned timer scopes without creating a package cycle.
 
@@ -205,3 +209,7 @@ The first dependency layer above Registry is `signalKit`. SignalKit uses Registr
 `hookKit` depends only on Registry API 2. It owns reversible hooks in three named semantics (secure post-hook over `hooksecurefunc` / `HookScript`, safe pre-hook, raw replacement), refuses non-secure hooks of secure targets and of protected scripts, and keeps records per scope in weak-keyed tables. ClientKit is found at call time through `Registry:Find` for `IsSecret`, so it adds no edge to the load order.
 
 `signalKit` also carries the named message bus: a bus is a name-to-signal map with a declared topic policy, so two modules or two addons that share no reference can talk while dispatch, ordering and re-entrancy stay SignalKit's own; listener errors on a bus are isolated and reported because a bus is a cross-addon boundary.
+
+`settingsKit` depends on Registry API 2, SchemaKit API 1 and SignalKit API 1. It opens one database per saved-variable name over empty proxy views that resolve the saved table on every access, fall back to defaults compiled once from the schema's description, and validate each write with one probe check at the writer's line. Secret values are refused. EventKit is found through `Registry:Find` to compact on `PLAYER_LOGOUT`.
+
+`optionsKit` depends on Registry API 2, SchemaKit API 1 and SignalKit API 1. It owns one sealed options tree per addon: every value option carries a SchemaKit schema built at `Define`, paths are pre-indexed and siblings pre-sorted so `Get`, `Set` and `Walk` allocate nothing, and changes fire a SignalKit signal. SettingsKit is found at call time through `Registry:Find` when `Define` receives `options.db`, so it adds no edge to the load order.

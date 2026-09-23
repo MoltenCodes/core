@@ -36,6 +36,8 @@ those defaults when they are documented and observable.
 - [x] `schemaKit`
 - [x] `localeKit`
 - [x] `hookKit`
+- [x] `settingsKit`
+- [x] `optionsKit`
 
 These entries describe packages present in this repository snapshot. A checked
 item means its implementation is part of the repository; it does not mean the
@@ -343,19 +345,19 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
 
 - [x] `schemaKit` — sealed schemas with structured failures, shared by
       settings, options and messaging.
-- [ ] `settingsKit` — saved variables with scopes, wildcard defaults,
+- [x] `settingsKit` — saved variables with scopes, wildcard defaults,
       profiles and versioned migrations (v1: profiles; v2: spec-aware profiles
       and namespaces).
 - [x] `localeKit` — translations per locale, missing-key reporting, indexed
       format specifiers.
 - [x] `hookKit` — secure-first, reversible hooking, released with the module.
 - [x] **signalKit** — a named message bus with a validated topic policy.
-- [ ] **moduleKit** — map a halted LifecycleKit dependency to the blocked
+- [x] **moduleKit** — map a halted LifecycleKit dependency to the blocked
       enable state, and give `module.scope` the `Hooks` and `Messages`
       scopes once hookKit and the signalKit bus exist.
-- [ ] **lifecycleKit** — close the addon's HookKit scopes and its SignalKit
+- [x] **lifecycleKit** — close the addon's HookKit scopes and its SignalKit
       bus at shutdown, the two-step already used for EventKit scopes.
-- [ ] `optionsKit` — typed, validated, introspectable options schema with no
+- [x] `optionsKit` — typed, validated, introspectable options schema with no
       renderer.
 - [ ] `commandKit` — slash commands, hyperlink-aware argument parsing,
       output sinks, schema binding, tab completion.
@@ -515,7 +517,8 @@ the WowAce directory item W6 (a shared validation core).
 8. Docs: README, API.md with a full addon example (TOC `## SavedVariables`,
    schema, Open in OnLoaded), INTERNALS.md (layout of the saved table),
    CHANGELOG; EMBEDDING.md host row and a saved-variables section.
-9. Status: planned (package C2).
+9. Status: implemented (package C2, 0.1.0); deviations recorded in
+   `packages/settingsKit/docs/API.md`.
 
 **optionsKit** — facade `OptionsKit`
 
@@ -550,7 +553,8 @@ the WowAce directory item W6 (a shared validation core).
    manifest, error levels.
 8. Docs: README, API.md with a complete options tree example, CHANGELOG;
    a note on how a renderer (widgetKit, package E) consumes Describe.
-9. Status: planned (package C3).
+9. Status: implemented (package C3, 0.1.0); deviations recorded in
+   `packages/optionsKit/docs/API.md`.
 
 **commandKit** — facade `CommandKit`
 

@@ -23,6 +23,8 @@ This repository is a monorepo. Every publishable runtime package lives under `pa
 | [`schemaKit`](packages/schemaKit/) | Implemented | Sealed value schemas with structured, secret-safe failures: one validation core for arguments, saved variables, options and received messages. |
 | [`localeKit`](packages/localeKit/) | Implemented | Per-addon translations at the cost of one table, missing-key reporting and coverage, indexed format specifiers. |
 | [`hookKit`](packages/hookKit/) | Implemented | Reversible, secure-first hooking of functions, methods and frame scripts in three named semantics. |
+| [`settingsKit`](packages/settingsKit/) | Implemented | Saved variables with scopes, schema-validated writes, defaults never written back, profiles and versioned migrations. |
+| [`optionsKit`](packages/optionsKit/) | Implemented | Typed, validated, introspectable options tree bound to getters or a SettingsKit database, with no renderer. |
 
 ## Using the framework in an addon
 
@@ -109,7 +111,9 @@ python3 -m tooling.spell
 │   ├── readinessKit/
 │   ├── schemaKit/
 │   ├── localeKit/
-│   └── hookKit/
+│   ├── hookKit/
+│   ├── settingsKit/
+│   └── optionsKit/
 ├── pyproject.toml           # Python tooling metadata and the supported floor
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua
