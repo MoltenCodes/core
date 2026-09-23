@@ -1,0 +1,16 @@
+# Changelog
+
+## 0.1.0 — 2026-09-23
+
+- Added CommandKit API generation 1, implementation revision 1.
+- Added `CommandKit:CreateScope()`, `CommandKit:ForAddon(addonName)` and `CommandKit:CloseAddonScopes(addonName)`, mirroring the HookKit and EventKit scope model; `CloseAddonScopes` records nothing for an addon without a scope and returns `false`. `CommandKit.MAX_COMMANDS` is 64 per scope, beyond which `Register` returns `nil, "full"`; `CommandKit.MAX_DEPTH` is 3 sub-command levels.
+- Added `scope:Register(name, spec)` with `handler`, `arguments` (a `SchemaKit.array` schema or a list of per-position schemas), `usage`, `description`, `subcommands` and `complete`. Registration writes `SlashCmdList[<key>]` and `SLASH_<key>1` through `rawset` with the key `MOLTENCODES_<ADDON>_<NAME>`, and returns `nil, "taken"` when another scope or another addon already uses the slash name (best effort: `SlashCmdList` and `SecureCmdList` keys are checked through their `SLASH_<key><n>` globals).
+- A slash name keeps its key and a permanent dispatcher for the session; `Unregister`, `Close` and `CloseAddonScopes` leave the globals in place and inert, and a later registration of the name by any scope reuses them.
+- Added `CommandKit:Parse(text)` (allocating) and `CommandKit:ParseInto(text, array)` (allocation-free for text seen before): whitespace runs, `"double"` and `'single'` quotes with `\"` and `\'` escapes, `|H…|h…|h` hyperlinks, `|c…|r` colour-wrapped text, `|T…|t` textures and `||`; an unterminated quote or hyperlink returns `nil, reason`.
+- Dispatch walks sub-commands case-insensitively, coerces tokens for number and boolean schemas, checks every argument with `Check`, prints the SchemaKit failure and the generated usage on a refusal, and runs the handler under `pcall`, reporting a failure to the sink and to the host error handler. A dispatch of text seen before allocates nothing; nested dispatches are bounded at 4.
+- Added the handler context: `Print`, `Printf` (through `LocaleKit:Format` when LocaleKit is registered), `Usage`, `Fail`, `GetCommandPath` and `GetRawText`; `Print` and `Printf` refuse secret arguments; a context refuses use after its command returned.
+- Added sinks: `scope:SetSink(sink)` for anything with `AddMessage`, `DEFAULT_CHAT_FRAME` by default, and `CommandKit:CaptureSink()` for tests, keeping the latest 256 lines.
+- Added `scope:BindOptions(tree, commandName, options)`: `get`, `set`, `reset`, `list` and `exec` sub-commands over an OptionsKit tree found through `Registry:Find`, with values parsed per option kind, `validate` messages printed, hidden options treated as unknown, disabled options refused, and `confirm` honoured with an explicit `confirm` word.
+- Added `scope:EnableCompletion()` and `scope:DisableCompletion()`: tab completion of sub-command names, `complete` candidates and bound option paths through a `ChatEdit_CustomTabPressed` replacement that forwards everything else to the function it replaced, and is removed again when the last scope disables completion unless another addon has replaced it since.
+- OptionsKit, LocaleKit and ClientKit API 1 are optional dependencies.
+- 92 specs, including allocation guards on `ParseInto`, on a checked sub-command dispatch and on an inert dispatcher, and an in-place upgrade spec.

@@ -1,0 +1,2778 @@
+-- MoltenCodes CommandKit
+--
+-- Slash commands for World of Warcraft addons, done once: registration owned by
+-- a scope, an argument parser that keeps quoted text, hyperlinks and colour
+-- codes whole, sub-commands whose usage text is generated from their
+-- declarations, arguments checked against SchemaKit schemas, output written to
+-- a replaceable sink, optional tab completion, and a binding that drives an
+-- OptionsKit tree from the command line.
+--
+-- The client's slash tables are shared and collision-prone. CommandKit writes
+-- `SlashCmdList[<key>]` and `SLASH_<key>1` through `rawset`, with a key derived
+-- from the addon and command names, refuses a slash name another owner already
+-- uses (`nil, "taken"`), and never removes what it wrote: the client caches the
+-- function behind a slash name, so an unregistered command keeps a permanent
+-- dispatcher that does nothing until the name is registered again.
+--
+-- CommandKit needs Registry API 2 and SchemaKit API 1. OptionsKit API 1
+-- (`BindOptions`), LocaleKit API 1 (`Printf`) and ClientKit API 1 (`IsSecret`)
+-- are optional and found through `Registry:Find` when they are used.
+--
+-- Contents
+-- --------
+--   Constants ............. identity, bounds, field lists, method lists
+--   Public types .......... LuaCATS declarations for the published surface
+--   Dependencies .......... Registry, SchemaKit and the host facilities read
+--   Validation ............ public-surface and shared-state predicates
+--   Bootstrap ............. Registry registration and inherited state
+--   Host access ........... slash tables, the error handler, the secret probe
+--   Argument checks ....... receivers, names, spec tables
+--   Parser ................ the tokeniser behind Parse, ParseInto and dispatch
+--   Output ................ sinks, the capture sink, line writing
+--   Argument schemas ...... sealing, coercion and usage text from schemas
+--   Command records ....... compiling a spec into an immutable record tree
+--   Slash registration .... keys, the taken check, the permanent dispatchers
+--   Dispatch .............. frames, sub-command walk, validation, the handler
+--   Context methods ....... what a handler receives
+--   Options binding ....... get, set, reset, list and exec over OptionsKit
+--   Completion ............ the ChatEdit_CustomTabPressed replacement chain
+--   Scope methods ......... the handle a scope owner receives
+--   Package public API .... the facade published through Registry
+--   Commit ................ prototype/facade assignment and self-check
+--
+-- Layout and invariants are described in `docs/INTERNALS.md`.
+
+-- Constants ------------------------------------------------------------------
+
+local PACKAGE_NAME = "commandKit"
+local API_GENERATION = 1
+local IMPLEMENTATION_REVISION = 1
+local REQUIRED_REGISTRY_API = 2
+local REQUIRED_SCHEMAKIT_API = 1
+local OPTIONAL_OPTIONSKIT_API = 1
+local OPTIONAL_LOCALEKIT_API = 1
+local OPTIONAL_CLIENTKIT_API = 1
+local STATE_SCHEMA = 1
+
+-- Every scope, command record and context carries the layout it was built
+-- with, so a later revision that changes a layout can upgrade old objects
+-- instead of guessing from which fields exist.
+local SCOPE_SCHEMA = 1
+local RECORD_SCHEMA = 1
+local CONTEXT_SCHEMA = 1
+
+-- The most top-level commands one scope registers. Every slash name stays in
+-- the client's tables for the session, so a scope that needs more is almost
+-- certainly registering in a loop.
+local MAX_COMMANDS = 64
+
+-- The deepest sub-command nesting: `/cmd one two three`.
+local MAX_DEPTH = 3
+
+-- The most sub-commands one command declares at one level.
+local MAX_SUBCOMMANDS = 64
+
+-- The most per-position argument schemas one command declares.
+local MAX_POSITIONS = 16
+
+-- How many dispatches may be in progress at once: a handler that runs another
+-- slash command, which runs another, and so on. Each level reuses one frame of
+-- buffers, so the bound is also the number of frames CommandKit ever keeps.
+local MAX_NESTING = 4
+
+-- How many `SLASH_<key><n>` globals the taken check reads per foreign key. The
+-- client itself stops at the first gap; the bound only stops a pathological one.
+local MAX_SLASH_ALIASES = 16
+
+-- The most candidates one completion offers, and the most lines a capture sink
+-- keeps (the oldest are dropped).
+local MAX_COMPLETIONS = 32
+local MAX_CAPTURED = 256
+
+-- The longest command or sub-command name.
+local MAX_NAME_LENGTH = 32
+
+-- The prefix of every slash-table key CommandKit writes.
+local KEY_PREFIX = "MOLTENCODES_"
+
+-- The fields a command spec accepts.
+local SPEC_FIELDS = {
+    handler = true,
+    arguments = true,
+    usage = true,
+    description = true,
+    subcommands = true,
+    complete = true,
+}
+
+-- The fields `BindOptions` accepts in its option table.
+local BIND_OPTION_FIELDS = { description = true }
+
+-- Words a boolean argument and a toggle option accept, lower-case.
+local BOOLEAN_WORDS = {
+    on = true,
+    off = false,
+    ["true"] = true,
+    ["false"] = false,
+    yes = true,
+    no = false,
+    ["1"] = true,
+    ["0"] = false,
+}
+
+-- The published surface, listed once so the public-surface predicate reads as
+-- a checklist instead of a long boolean expression.
+local FACADE_METHODS = {
+    "CreateScope",
+    "ForAddon",
+    "CloseAddonScopes",
+    "Parse",
+    "ParseInto",
+    "CaptureSink",
+}
+local SCOPE_METHODS = {
+    "Register",
+    "Unregister",
+    "IsRegistered",
+    "SetSink",
+    "BindOptions",
+    "EnableCompletion",
+    "DisableCompletion",
+    "Close",
+    "IsClosed",
+    "GetActiveCount",
+    "GetAddonName",
+}
+local CONTEXT_METHODS = {
+    "Print",
+    "Printf",
+    "Usage",
+    "Fail",
+    "GetCommandPath",
+    "GetRawText",
+}
+
+-- Byte values the parser compares against, so it never builds a
+-- one-character string to compare.
+local BYTE_SPACE = 32
+local BYTE_TAB = 9
+local BYTE_NEWLINE = 10
+local BYTE_RETURN = 13
+local BYTE_DOUBLE_QUOTE = 34
+local BYTE_SINGLE_QUOTE = 39
+local BYTE_BACKSLASH = 92
+local BYTE_PIPE = 124
+local BYTE_LINK = 72 -- "H": starts a hyperlink
+local BYTE_COLOUR = 99 -- "c": starts a colour code
+local BYTE_TEXTURE = 84 -- "T": starts a texture
+
+-- Public types ---------------------------------------------------------------
+--
+-- CommandKit publishes its methods by writing them onto Registry-owned
+-- prototype tables, so the editor-facing contract is declared here as LuaCATS
+-- classes rather than inferred from those assignments.
+
+---Anything that accepts a line of output. A chat frame is one.
+---@class CommandKit.Sink
+---@field AddMessage fun(self: CommandKit.Sink, text: string)
+
+---The sink `CommandKit:CaptureSink()` returns, for tests.
+---@class CommandKit.CaptureSink: CommandKit.Sink
+---@field Messages fun(self: CommandKit.CaptureSink): string[]
+---@field Clear fun(self: CommandKit.CaptureSink)
+
+---What `Register` accepts for a command or a sub-command.
+---@class CommandKit.CommandSpec
+---@field handler (fun(context: CommandKit.Context, ...: any))? Runs the command with its checked arguments.
+---@field arguments table? A `SchemaKit.array` schema, or a list of per-position schemas.
+---@field usage string? What to type after the command path, for the usage line.
+---@field description string? One line of help.
+---@field subcommands table<string, CommandKit.CommandSpec>? Named sub-commands, at most three levels deep.
+---@field complete (fun(context: CommandKit.Context, text: string, position: integer): string[]?)? Candidates for tab completion.
+
+---What a handler, a completion function and the generated sub-commands
+---receive. Valid only while the call that received it runs.
+---@class CommandKit.Context
+---@field Print fun(self: CommandKit.Context, ...: any)
+---@field Printf fun(self: CommandKit.Context, template: string, ...: any)
+---@field Usage fun(self: CommandKit.Context)
+---@field Fail fun(self: CommandKit.Context, reason: string)
+---@field GetCommandPath fun(self: CommandKit.Context): string
+---@field GetRawText fun(self: CommandKit.Context): string
+
+---Option table accepted by `BindOptions`.
+---@class CommandKit.BindOptions
+---@field description string? The bound command's help line.
+
+---The owner of a set of slash commands, released together by `Close`.
+---@class CommandKit.Scope
+---@field Register fun(self: CommandKit.Scope, name: string, spec: CommandKit.CommandSpec): true|nil, "taken"|"full"|nil
+---@field Unregister fun(self: CommandKit.Scope, name: string): boolean
+---@field IsRegistered fun(self: CommandKit.Scope, name: string): boolean
+---@field SetSink fun(self: CommandKit.Scope, sink: CommandKit.Sink?)
+---@field BindOptions fun(self: CommandKit.Scope, tree: table, commandName: string, options: CommandKit.BindOptions?): true|nil, "taken"|"full"|nil
+---@field EnableCompletion fun(self: CommandKit.Scope): boolean
+---@field DisableCompletion fun(self: CommandKit.Scope): boolean
+---@field Close fun(self: CommandKit.Scope): boolean
+---@field IsClosed fun(self: CommandKit.Scope): boolean
+---@field GetActiveCount fun(self: CommandKit.Scope): integer
+---@field GetAddonName fun(self: CommandKit.Scope): string?
+
+---The CommandKit package facade published through Registry.
+---@class CommandKit
+---@field API integer Public API generation.
+---@field REVISION integer Compatible implementation revision.
+---@field MAX_COMMANDS integer The most top-level commands one scope registers.
+---@field MAX_DEPTH integer The deepest sub-command nesting.
+---@field Scope CommandKit.Scope Shared scope prototype.
+---@field Context CommandKit.Context Shared context prototype.
+---@field CreateScope fun(self: CommandKit): CommandKit.Scope
+---@field ForAddon fun(self: CommandKit, addonName: string): CommandKit.Scope
+---@field CloseAddonScopes fun(self: CommandKit, addonName: string): boolean
+---@field Parse fun(self: CommandKit, text: string): string[]|nil, string?
+---@field ParseInto fun(self: CommandKit, text: string, array: table): integer|nil, string?
+---@field CaptureSink fun(self: CommandKit): CommandKit.CaptureSink
+
+-- Dependencies ---------------------------------------------------------------
+
+-- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
+-- selene: allow(global_usage)
+local namespace = rawget(_G, "MoltenCodes")
+local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
+
+-- Ask for Registry by generation and fall back to the alias. A future Registry
+-- API generation takes over `MoltenCodes.Registry`, so reading the alias first
+-- would hand this file a facade whose contract it was not written against.
+local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
+if Registry == nil and type(namespace) == "table" then
+    Registry = rawget(namespace, "Registry")
+end
+if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
+    error("MoltenCodes CommandKit requires Registry API 2 to be loaded first", 2)
+end
+
+local bootstrapPackage = rawget(Registry, "Bootstrap")
+local getPackage = rawget(Registry, "Get")
+if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
+    error("MoltenCodes CommandKit requires a valid Registry API 2 facade", 2)
+end
+
+-- SchemaKit is required: argument schemas are sealed and checked with it, and
+-- `BindOptions` builds its own. It is checked at load, so a missing one fails
+-- loudly at this file instead of at the first `Register`.
+local SchemaKit = getPackage(Registry, "schemaKit", REQUIRED_SCHEMAKIT_API)
+if
+    type(SchemaKit) ~= "table"
+    or rawget(SchemaKit, "API") ~= REQUIRED_SCHEMAKIT_API
+    or type(rawget(SchemaKit, "Seal")) ~= "function"
+    or type(rawget(SchemaKit, "string")) ~= "function"
+    or type(rawget(SchemaKit, "optional")) ~= "function"
+then
+    error("MoltenCodes CommandKit requires SchemaKit API 1 to be loaded first", 2)
+end
+
+-- Validation -----------------------------------------------------------------
+
+---Whether every name in `methodNames` is a function field of `prototype`.
+---@param prototype table
+---@param methodNames string[]
+---@return boolean
+local function hasMethods(prototype, methodNames)
+    for index = 1, #methodNames do
+        if type(rawget(prototype, methodNames[index])) ~= "function" then
+            return false
+        end
+    end
+    return true
+end
+
+---Whether `implementation` exposes the complete CommandKit API 1 surface.
+---@param implementation any shared package table handed back by Registry
+---@return boolean
+local function validatePublicSurface(implementation)
+    if
+        type(implementation) ~= "table"
+        or rawget(implementation, "API") ~= API_GENERATION
+        or type(rawget(implementation, "REVISION")) ~= "number"
+        or type(rawget(implementation, "MAX_COMMANDS")) ~= "number"
+        or type(rawget(implementation, "MAX_DEPTH")) ~= "number"
+        or type(rawget(implementation, "Scope")) ~= "table"
+        or type(rawget(implementation, "Context")) ~= "table"
+    then
+        return false
+    end
+
+    return hasMethods(implementation, FACADE_METHODS)
+        and hasMethods(rawget(implementation, "Scope"), SCOPE_METHODS)
+        and hasMethods(rawget(implementation, "Context"), CONTEXT_METHODS)
+end
+
+---Whether `currentState` has the fields every API 1 revision shares.
+---@param currentState any
+---@return boolean
+local function validateStateBase(currentState)
+    return type(currentState) == "table"
+        and rawget(currentState, "schema") == STATE_SCHEMA
+        and type(rawget(currentState, "dispatch")) == "table"
+        and type(rawget(currentState, "runtimeRevision")) == "number"
+        and type(rawget(currentState, "scopeMetatable")) == "table"
+        and type(rawget(currentState, "contextMetatable")) == "table"
+        and type(rawget(currentState, "addonScopes")) == "table"
+        and type(rawget(currentState, "activeByName")) == "table"
+        and type(rawget(currentState, "keyByName")) == "table"
+        and type(rawget(currentState, "ownedKeys")) == "table"
+        and type(rawget(currentState, "slashHandlers")) == "table"
+        and type(rawget(currentState, "frames")) == "table"
+        and type(rawget(currentState, "completion")) == "table"
+end
+
+---Whether `implementation` carries package state of this revision's schema.
+---@param implementation table
+---@return boolean
+local function validateCurrentState(implementation)
+    return validateStateBase(rawget(implementation, "_state"))
+end
+
+-- Bootstrap ------------------------------------------------------------------
+
+-- `Registry:Bootstrap` owns the reconciliation every embedded package repeats:
+-- look the package up, refuse to reinterpret state owned by a newer revision,
+-- and register this one. What stays here is what only CommandKit can answer.
+local CommandKit, previousRevision, selected = bootstrapPackage(Registry, {
+    package = PACKAGE_NAME,
+    api = API_GENERATION,
+    revision = IMPLEMENTATION_REVISION,
+    label = "MoltenCodes CommandKit",
+    validatePublicSurface = validatePublicSurface,
+    validateState = validateCurrentState,
+})
+
+if CommandKit == nil then
+    -- An equal or newer compatible revision already owns the shared package table.
+    return selected
+end
+
+local Scope = rawget(CommandKit, "Scope")
+local Context = rawget(CommandKit, "Context")
+local state = rawget(CommandKit, "_state")
+
+if previousRevision == nil then
+    if Scope ~= nil or Context ~= nil or state ~= nil then
+        error("MoltenCodes CommandKit package state is corrupted or incomplete", 2)
+    end
+
+    Scope = {}
+    Context = {}
+    state = {
+        schema = STATE_SCHEMA,
+        -- Every closure CommandKit leaves in the client's tables calls through
+        -- this table, so a newer revision replaces the behaviour behind slash
+        -- dispatchers and the tab handler an older revision installed.
+        dispatch = {},
+        runtimeRevision = 0,
+        scopeMetatable = {},
+        contextMetatable = {},
+        -- Addon name to that addon's canonical scope.
+        addonScopes = {},
+        -- Lower-case slash name to the active command record that owns it.
+        activeByName = {},
+        -- Lower-case slash name to the slash-table key it was first
+        -- registered under. Kept for the session: the client caches the
+        -- function behind a name, so a name keeps its key and its dispatcher.
+        keyByName = {},
+        -- Slash-table key to `true` for every key CommandKit ever wrote, so
+        -- the taken check never mistakes CommandKit's own inert entries for
+        -- another owner's.
+        ownedKeys = {},
+        -- Slash-table key to the permanent dispatcher closure written there.
+        slashHandlers = {},
+        -- Dispatch frames, one per nesting level, reused for every dispatch.
+        frames = {},
+        frameDepth = 0,
+        -- The ChatEdit_CustomTabPressed replacement: whether it is installed,
+        -- the function it replaced, the closure itself, and how many scopes
+        -- have completion enabled.
+        completion = {
+            installed = false,
+            previous = false,
+            handler = false,
+            enabledScopes = 0,
+        },
+    }
+    rawset(CommandKit, "Scope", Scope)
+    rawset(CommandKit, "Context", Context)
+    rawset(CommandKit, "_state", state)
+elseif type(Scope) ~= "table" or type(Context) ~= "table" or not validateStateBase(state) then
+    error("MoltenCodes CommandKit package state is corrupted or incomplete", 2)
+end
+
+-- The metatables and prototypes are kept across upgrades, so scopes and
+-- contexts built by an older copy keep their records and gain this copy's
+-- methods without being replaced.
+local SCOPE_METATABLE = rawget(state, "scopeMetatable")
+local CONTEXT_METATABLE = rawget(state, "contextMetatable")
+local dispatch = rawget(state, "dispatch")
+local addonScopes = rawget(state, "addonScopes")
+local activeByName = rawget(state, "activeByName")
+local keyByName = rawget(state, "keyByName")
+local ownedKeys = rawget(state, "ownedKeys")
+local slashHandlers = rawget(state, "slashHandlers")
+local frames = rawget(state, "frames")
+local completion = rawget(state, "completion")
+rawset(SCOPE_METATABLE, "__index", Scope)
+rawset(CONTEXT_METATABLE, "__index", Context)
+
+-- Host access ----------------------------------------------------------------
+--
+-- Every host facility is read from the global table when it is used, never
+-- cached at load: the slash tables and the chat frame exist by the time an
+-- addon registers a command, whatever order the files loaded in.
+
+---Read a host global without triggering a metatable on the global table.
+---@param name string
+---@return any
+local function readGlobal(name)
+    -- The slash tables, the chat frame and the host probes are World of Warcraft client globals.
+    -- selene: allow(global_usage)
+    return rawget(_G, name)
+end
+
+---Write a host global without triggering a metatable on the global table.
+---@param name string
+---@param value any
+local function writeGlobal(name, value)
+    -- `SLASH_<key>1` and `ChatEdit_CustomTabPressed` are client globals an addon writes to extend the chat box.
+    -- selene: allow(global_usage)
+    rawset(_G, name, value)
+end
+
+---Find an optional package through `Registry:Find`, or `nil`.
+---@param packageName string
+---@param api integer
+---@return table|nil
+local function findOptional(packageName, api)
+    local findPackage = rawget(Registry, "Find")
+    if type(findPackage) ~= "function" then
+        return nil
+    end
+    local found = findPackage(Registry, packageName, api)
+    if type(found) == "table" then
+        return found
+    end
+    return nil
+end
+
+---Hand a failure to the host error handler.
+---
+---The failure is passed on unchanged: it may be a secret string built from a
+---secret argument, and CommandKit never inspects it.
+---@param failure any
+local function reportError(failure)
+    local getErrorHandler = readGlobal("geterrorhandler")
+    if type(getErrorHandler) == "function" then
+        local handler = getErrorHandler()
+        if type(handler) == "function" then
+            handler(failure)
+            return
+        end
+    end
+
+    -- Outside a WoW client there is no error handler to report through.
+    -- Printing is what the client's own default handler does, and staying
+    -- silent would turn a handler bug into an invisible one.
+    print(failure)
+end
+
+---Whether `value` is a secret value, asking ClientKit when one is registered
+---and the host's `issecretvalue` otherwise. Never used on the dispatch path.
+---@param value any
+---@return boolean
+local function isSecret(value)
+    local ClientKit = findOptional("clientKit", OPTIONAL_CLIENTKIT_API)
+    if ClientKit ~= nil then
+        local clientIsSecret = rawget(ClientKit, "IsSecret")
+        if type(clientIsSecret) == "function" then
+            return clientIsSecret(ClientKit, value) == true
+        end
+    end
+    local probe = readGlobal("issecretvalue")
+    return type(probe) == "function" and probe(value) == true
+end
+
+-- Argument checks ------------------------------------------------------------
+--
+-- Argument validation raises with an explicit stack level so the reported
+-- position is the line that called the public method, never a line inside
+-- CommandKit. `level` is always the value `error` needs *inside the function
+-- that receives it*, so every further hop towards `error` adds exactly one.
+
+---@param scope any receiver the public method was called on
+---@param methodName string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateScope(scope, methodName, level)
+    if type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE then
+        error(methodName .. " must be called on a CommandKit scope", level)
+    end
+end
+
+---@param scope CommandKit.Scope
+---@param methodName string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function ensureOpen(scope, methodName, level)
+    if rawget(scope, "_closed") == true then
+        error(methodName .. " cannot be used on a closed scope", level)
+    end
+end
+
+---Refuse a receiver other than the CommandKit facade (a `.` call, say).
+---@param receiver any
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateFacade(receiver, label, level)
+    if receiver ~= CommandKit then
+        error(label .. " must be called on the CommandKit facade; use " .. label .. "(...)", level)
+    end
+end
+
+---Refuse anything but a non-empty, non-secret string. The secret check comes
+---before the emptiness comparison, which would raise on a secret.
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateString(value, label, level)
+    if type(value) ~= "string" then
+        error(label .. " must be a non-empty string", level)
+    end
+    if isSecret(value) then
+        error(label .. " must not be a secret value", level)
+    end
+    if value == "" then
+        error(label .. " must be a non-empty string", level)
+    end
+end
+
+---Refuse anything but a command or sub-command name: letters, digits and
+---underscores, starting with a letter, at most `MAX_NAME_LENGTH` bytes.
+---Returns the name in lower case, the form every lookup uses.
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+---@return string name
+local function readCommandName(value, label, level)
+    validateString(value, label, level + 1)
+    if #value > MAX_NAME_LENGTH or value:find("^%a[%w_]*$") == nil then
+        error(
+            label
+                .. ' "'
+                .. value
+                .. '" must be letters, digits and underscores, starting with a letter, at most '
+                .. MAX_NAME_LENGTH
+                .. " long",
+            level
+        )
+    end
+    return value:lower()
+end
+
+---Refuse a table field that is present but not a string.
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateOptionalString(value, label, level)
+    if value ~= nil and type(value) ~= "string" then
+        error(label .. " must be a string", level)
+    end
+end
+
+---Refuse a table with a field outside `accepted`, naming the alphabetically
+---first unknown one, without allocating.
+---@param value table
+---@param accepted table<string, boolean>
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+local function refuseUnknownFields(value, accepted, label, level)
+    local firstUnknown = nil
+    for key in next, value do
+        if accepted[key] ~= true then
+            local text = type(key) == "string" and key or ("<" .. type(key) .. " key>")
+            if firstUnknown == nil or text < firstUnknown then
+                firstUnknown = text
+            end
+        end
+    end
+    if firstUnknown ~= nil then
+        error(label .. ' contains unknown field "' .. firstUnknown .. '"', level)
+    end
+end
+
+-- Parser ---------------------------------------------------------------------
+--
+-- One pass over the text, byte by byte, with no state outside the call. A
+-- token is a run of non-whitespace bytes, a quoted string, or either of those
+-- containing escape sequences that the client displays as one unit:
+--
+--   `|H<data>|h<text>|h`   a hyperlink; its text is usually `[Name With Spaces]`
+--   `|c<colour><text>|r`   colour-wrapped text, often around a hyperlink
+--   `|T<texture>|t`        an inline texture
+--   `||`                   an escaped pipe
+--
+-- The state machine is drawn in `docs/INTERNALS.md`.
+
+---Whether `byte` is whitespace between tokens.
+---@param byte integer|nil
+---@return boolean
+local function isSpace(byte)
+    return byte == BYTE_SPACE or byte == BYTE_TAB or byte == BYTE_NEWLINE or byte == BYTE_RETURN
+end
+
+---Skip one escape sequence that starts with the pipe at `position`, and return
+---the position after it. A hyperlink without both of its `|h` markers is
+---refused; a colour code or texture without its terminator is ordinary text.
+---@param text string
+---@param position integer the position of a `|`
+---@param length integer `#text`
+---@param inQuotes boolean whether the sequence is inside a quoted string
+---@return integer|nil nextPosition
+---@return string|nil reason
+local function skipEscape(text, position, length, inQuotes)
+    if position >= length then
+        return position + 1
+    end
+    local marker = text:byte(position + 1)
+    if marker == BYTE_PIPE then
+        return position + 2
+    end
+    if marker == BYTE_LINK then
+        local dataEnd = text:find("|h", position + 2, true)
+        if dataEnd == nil then
+            return nil, "unterminated link"
+        end
+        local textEnd = text:find("|h", dataEnd + 2, true)
+        if textEnd == nil then
+            return nil, "unterminated link"
+        end
+        return textEnd + 2
+    end
+    -- Inside quotes only the closing quote ends the token, so a colour code or
+    -- texture needs no grouping there; a hyperlink still does, because its
+    -- text may contain a quote.
+    if not inQuotes then
+        if marker == BYTE_COLOUR then
+            local close = text:find("|r", position + 2, true)
+            if close ~= nil then
+                return close + 2
+            end
+        elseif marker == BYTE_TEXTURE then
+            local close = text:find("|t", position + 2, true)
+            if close ~= nil then
+                return close + 2
+            end
+        end
+    end
+    return position + 2
+end
+
+---Read a quoted token whose opening quote is at `position`.
+---@param text string
+---@param position integer
+---@param length integer
+---@param quote integer the quote byte
+---@return string|nil token
+---@return integer|string nextPositionOrReason
+local function readQuoted(text, position, length, quote)
+    local cursor = position + 1
+    local escaped = false
+    while cursor <= length do
+        local byte = text:byte(cursor)
+        if byte == BYTE_BACKSLASH and text:byte(cursor + 1) == quote then
+            escaped = true
+            cursor = cursor + 2
+        elseif byte == quote then
+            local token = text:sub(position + 1, cursor - 1)
+            if escaped then
+                if quote == BYTE_DOUBLE_QUOTE then
+                    token = (token:gsub('\\"', '"'))
+                else
+                    token = (token:gsub("\\'", "'"))
+                end
+            end
+            return token, cursor + 1
+        elseif byte == BYTE_PIPE then
+            local nextPosition, reason = skipEscape(text, cursor, length, true)
+            if nextPosition == nil then
+                return nil, reason --[[@as string]]
+            end
+            cursor = nextPosition
+        else
+            cursor = cursor + 1
+        end
+    end
+    return nil, "unterminated quote"
+end
+
+---Read an unquoted token starting at `position`.
+---@param text string
+---@param position integer
+---@param length integer
+---@return string|nil token
+---@return integer|string nextPositionOrReason
+local function readBare(text, position, length)
+    local cursor = position
+    while cursor <= length do
+        local byte = text:byte(cursor)
+        if isSpace(byte) then
+            break
+        end
+        if byte == BYTE_PIPE then
+            local nextPosition, reason = skipEscape(text, cursor, length, false)
+            if nextPosition == nil then
+                return nil, reason --[[@as string]]
+            end
+            cursor = nextPosition
+        else
+            cursor = cursor + 1
+        end
+    end
+    if cursor > length + 1 then
+        cursor = length + 1
+    end
+    return text:sub(position, cursor - 1), cursor
+end
+
+---Tokenise `text` into `array[1..count]` and clear every slot after `count`.
+---On a refusal the array is left empty.
+---
+---Allocates nothing but the token strings, and a token string equal to one
+---that already exists is the existing string, so parsing the same text twice
+---allocates nothing the second time.
+---@param text string
+---@param array table
+---@return integer|nil count
+---@return string|nil reason
+local function tokenize(text, array)
+    local length = #text
+    local count = 0
+    local position = 1
+    local failure = nil
+    while position <= length do
+        local byte = text:byte(position)
+        if isSpace(byte) then
+            position = position + 1
+        else
+            local token, nextPosition
+            if byte == BYTE_DOUBLE_QUOTE or byte == BYTE_SINGLE_QUOTE then
+                token, nextPosition = readQuoted(text, position, length, byte)
+            else
+                token, nextPosition = readBare(text, position, length)
+            end
+            if token == nil then
+                failure = nextPosition
+                break
+            end
+            count = count + 1
+            array[count] = token
+            position = nextPosition --[[@as integer]]
+        end
+    end
+
+    local first = count + 1
+    if failure ~= nil then
+        first = 1
+    end
+    local index = first
+    while rawget(array, index) ~= nil do
+        array[index] = nil
+        index = index + 1
+    end
+    if failure ~= nil then
+        return nil, failure --[[@as string]]
+    end
+    return count
+end
+
+-- Output ---------------------------------------------------------------------
+
+---Write one line to the scope's sink, or to the default chat frame, or to
+---`print` outside the client.
+---@param scope CommandKit.Scope
+---@param text string
+local function writeLine(scope, text)
+    local sink = rawget(scope, "_sink")
+    if sink == false then
+        sink = readGlobal("DEFAULT_CHAT_FRAME")
+    end
+    if type(sink) == "table" and type(sink.AddMessage) == "function" then
+        sink:AddMessage(text)
+        return
+    end
+    print(text)
+end
+
+---Write every line of `lines` to the scope's sink.
+---@param scope CommandKit.Scope
+---@param lines string[]
+local function writeLines(scope, lines)
+    for index = 1, #lines do
+        writeLine(scope, lines[index])
+    end
+end
+
+---Build a sink that keeps what it receives, for tests. Keeps the most recent
+---`MAX_CAPTURED` lines.
+---@return CommandKit.CaptureSink
+local function newCaptureSink()
+    local messages = {}
+    local sink = {}
+
+    function sink.AddMessage(_, text)
+        if #messages >= MAX_CAPTURED then
+            table.remove(messages, 1)
+        end
+        messages[#messages + 1] = text
+    end
+
+    function sink.Messages(_)
+        local copy = {}
+        for index = 1, #messages do
+            copy[index] = messages[index]
+        end
+        return copy
+    end
+
+    function sink.Clear(_)
+        for index = #messages, 1, -1 do
+            messages[index] = nil
+        end
+    end
+
+    return sink
+end
+
+-- Argument schemas -----------------------------------------------------------
+--
+-- A command declares its arguments either as one `SchemaKit.array` schema, or
+-- as a list of per-position schemas. Tokens arrive as strings, so each
+-- position (or the array's element) is given a coercion when the command is
+-- registered, read from the schema's own description: a number schema turns
+-- the token into a number with `tonumber`, a boolean schema accepts the words
+-- in `BOOLEAN_WORDS`, and everything else stays a string. A token that does
+-- not convert stays a string, and the schema refuses it with its own message.
+
+-- The names `getmetatable` returns for SchemaKit nodes and sealed schemas,
+-- which set `__metatable`. Used only to tell a schema from a plain list.
+local SCHEMA_METATABLE_NAMES = { ["SchemaKit.Schema"] = true, ["SchemaKit.Node"] = true }
+
+---Whether `value` is a SchemaKit node or sealed schema.
+---@param value any
+---@return boolean
+local function isSchema(value)
+    return type(value) == "table" and SCHEMA_METATABLE_NAMES[getmetatable(value)] == true
+end
+
+---Seal a node or schema, or raise at the caller naming `label`.
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+---@return table schema
+local function sealSchema(value, label, level)
+    if not isSchema(value) then
+        error(label .. " must be a SchemaKit schema", level)
+    end
+    local ok, schema = pcall(rawget(SchemaKit, "Seal"), SchemaKit, value)
+    if not ok then
+        error(label .. " must be a SchemaKit schema", level)
+    end
+    return schema
+end
+
+---Whether every entry of `values` has the Lua type `typeName`.
+---@param values any[]
+---@param typeName string
+---@return boolean
+local function allOfType(values, typeName)
+    for index = 1, #values do
+        if type(values[index]) ~= typeName then
+            return false
+        end
+    end
+    return #values > 0
+end
+
+---The coercion a token needs before a schema described by `description`
+---checks it: `"number"`, `"boolean"` or `"string"` (none).
+---@param description table a SchemaKit description
+---@return string
+local function coercionOf(description)
+    local kind = description.kind
+    if kind == "number" or kind == "boolean" then
+        return kind
+    end
+    if kind == "enum" then
+        if allOfType(description.values, "number") then
+            return "number"
+        end
+        if allOfType(description.values, "boolean") then
+            return "boolean"
+        end
+    end
+    return "string"
+end
+
+---Convert one token as `coercion` says; a token that does not convert is
+---returned unchanged, for the schema to refuse.
+---@param token any
+---@param coercion string
+---@return any
+local function coerce(token, coercion)
+    if type(token) ~= "string" then
+        return token
+    end
+    if coercion == "number" then
+        local number = tonumber(token)
+        if number ~= nil then
+            return number
+        end
+    elseif coercion == "boolean" then
+        local word = BOOLEAN_WORDS[token:lower()]
+        if word ~= nil then
+            return word
+        end
+    end
+    return token
+end
+
+---Join the string forms of `values` with `separator`.
+---@param values any[]
+---@param separator string
+---@return string
+local function joinValues(values, separator)
+    local parts = {}
+    for index = 1, #values do
+        parts[index] = tostring(values[index])
+    end
+    return table.concat(parts, separator)
+end
+
+---The usage word of one argument, from its schema description: `<number>`,
+---`<integer 1..10>`, `<on|off>`, `<a|b|c>`, `<text>`; square brackets when the
+---argument may be left out.
+---@param description table a SchemaKit description
+---@return string
+local function usageWord(description)
+    local kind = description.kind
+    local word
+    if kind == "number" then
+        word = description.integer and "integer" or "number"
+        if description.min ~= nil and description.max ~= nil then
+            word = word .. " " .. tostring(description.min) .. ".." .. tostring(description.max)
+        end
+    elseif kind == "boolean" then
+        word = "on|off"
+    elseif kind == "enum" then
+        word = joinValues(description.values, "|")
+    elseif kind == "string" then
+        if type(description.oneOf) == "table" then
+            word = joinValues(description.oneOf, "|")
+        else
+            word = "text"
+        end
+    elseif kind == "array" then
+        word = usageWord(description.of):sub(2, -2) .. "..."
+        if description.min == nil or description.min == 0 then
+            return "[" .. word .. "]"
+        end
+        return "<" .. word .. ">"
+    else
+        word = kind
+    end
+    if description.optional then
+        return "[" .. word .. "]"
+    end
+    return "<" .. word .. ">"
+end
+
+---Compile a spec's `arguments` field.
+---@param arguments any
+---@param label string argument description, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return table compiled `{ mode, schemas, coercions, count, usage }`
+local function compileArguments(arguments, label, level)
+    local compiled = { mode = "none", schemas = {}, coercions = {}, count = 0, usage = "" }
+    if arguments == nil then
+        return compiled
+    end
+    if isSchema(arguments) then
+        local schema = sealSchema(arguments, label, level + 1)
+        local description = schema:Describe()
+        if description.kind ~= "array" then
+            error(label .. " must be a SchemaKit.array schema or a list of schemas", level)
+        end
+        compiled.mode = "array"
+        compiled.schemas[1] = schema
+        compiled.coercions[1] = coercionOf(description.of)
+        compiled.usage = usageWord(description)
+        return compiled
+    end
+    if type(arguments) ~= "table" or getmetatable(arguments) ~= nil then
+        error(label .. " must be a SchemaKit.array schema or a list of schemas", level)
+    end
+    local count = 0
+    for key in next, arguments do
+        if type(key) ~= "number" or key < 1 or key % 1 ~= 0 or key > MAX_POSITIONS then
+            error(label .. " must be a list of at most " .. MAX_POSITIONS .. " schemas", level)
+        end
+        count = count + 1
+    end
+    if count == 0 or arguments[count] == nil then
+        error(label .. " must be a non-empty list of schemas without holes", level)
+    end
+    local words = {}
+    for position = 1, count do
+        local schema = sealSchema(arguments[position], label .. "[" .. position .. "]", level + 1)
+        local description = schema:Describe()
+        compiled.schemas[position] = schema
+        compiled.coercions[position] = coercionOf(description)
+        words[position] = usageWord(description)
+    end
+    compiled.mode = "positions"
+    compiled.count = count
+    compiled.usage = table.concat(words, " ")
+    return compiled
+end
+
+---The message for a refused argument, from a SchemaKit failure. Read at once:
+---the failure table belongs to the schema and is reused.
+---@param prefix string `"argument 2"` or `"arguments"`
+---@param failure table
+---@return string
+local function describeFailure(prefix, failure)
+    local path = failure.path
+    local where = prefix
+    if type(path) == "string" and path ~= "" then
+        if path:sub(1, 1) == "[" then
+            where = prefix .. path
+        else
+            where = prefix .. "." .. path
+        end
+    end
+    return where
+        .. ": expected "
+        .. tostring(failure.expected)
+        .. ", found "
+        .. tostring(failure.found)
+end
+
+-- Command records ------------------------------------------------------------
+--
+-- `Register` compiles a spec into a record tree once. Records are never
+-- modified afterwards; dispatch only reads them.
+
+---The text after the command path in a usage line.
+---@param record table
+---@return string
+local function usageTail(record)
+    local usage = rawget(record, "_usage")
+    if usage ~= "" then
+        return " " .. usage
+    end
+    return ""
+end
+
+---Build the lines `context:Usage()` prints for `record`.
+---@param record table
+---@return string[]
+local function buildUsageLines(record)
+    local lines = { "Usage: " .. rawget(record, "_path") .. usageTail(record) }
+    local description = rawget(record, "_description")
+    if description ~= false then
+        lines[#lines + 1] = description
+    end
+    local names = rawget(record, "_subcommandNames")
+    local subcommands = rawget(record, "_subcommands")
+    for index = 1, #names do
+        local child = rawget(subcommands, names[index])
+        local line = "  " .. rawget(child, "_path") .. usageTail(child)
+        local childDescription = rawget(child, "_description")
+        if childDescription ~= false then
+            line = line .. " - " .. childDescription
+        end
+        lines[#lines + 1] = line
+    end
+    return lines
+end
+
+local compileSpec
+
+---Compile a spec's `subcommands` field into `record`.
+---@param record table
+---@param subcommands any
+---@param label string argument description, used in the argument errors
+---@param depth integer the nesting depth of `record`
+---@param level integer stack level the failures are reported at
+local function compileSubcommands(record, subcommands, label, depth, level)
+    if type(subcommands) ~= "table" then
+        error(label .. " must be a table", level)
+    end
+    if depth + 1 > MAX_DEPTH then
+        error(label .. " nests sub-commands deeper than " .. MAX_DEPTH .. " levels", level)
+    end
+    local keys = {}
+    for key in next, subcommands do
+        if type(key) ~= "string" then
+            error(label .. " keys must be sub-command names", level)
+        end
+        keys[#keys + 1] = key
+        if #keys > MAX_SUBCOMMANDS then
+            error(label .. " declares more than " .. MAX_SUBCOMMANDS .. " sub-commands", level)
+        end
+    end
+    table.sort(keys)
+    local children = rawget(record, "_subcommands")
+    local names = rawget(record, "_subcommandNames")
+    for index = 1, #keys do
+        local key = keys[index]
+        local childLabel = label .. "." .. key
+        local name = readCommandName(key, label .. " key", level + 1)
+        if rawget(children, name) ~= nil then
+            error(label .. ' declares "' .. name .. '" twice', level)
+        end
+        local child = compileSpec(
+            rawget(subcommands, key),
+            name,
+            rawget(record, "_path") .. " " .. name,
+            childLabel,
+            depth + 1,
+            level + 1
+        )
+        rawset(children, name, child)
+        names[#names + 1] = name
+    end
+    table.sort(names)
+end
+
+---Compile one command or sub-command spec into a record.
+---@param spec any
+---@param name string lower-case name
+---@param path string `"/cmd sub"`
+---@param label string argument description, used in the argument errors
+---@param depth integer 0 for a top-level command
+---@param level integer stack level the failures are reported at
+---@return table record
+compileSpec = function(spec, name, path, label, depth, level)
+    if type(spec) ~= "table" then
+        error(label .. " must be a table", level)
+    end
+    refuseUnknownFields(spec, SPEC_FIELDS, label, level + 1)
+    local handler = rawget(spec, "handler")
+    if handler ~= nil and type(handler) ~= "function" then
+        error(label .. ".handler must be a function", level)
+    end
+    local complete = rawget(spec, "complete")
+    if complete ~= nil and type(complete) ~= "function" then
+        error(label .. ".complete must be a function", level)
+    end
+    local usage = rawget(spec, "usage")
+    validateOptionalString(usage, label .. ".usage", level + 1)
+    local description = rawget(spec, "description")
+    validateOptionalString(description, label .. ".description", level + 1)
+    local arguments = compileArguments(rawget(spec, "arguments"), label .. ".arguments", level + 1)
+
+    local record = {
+        _schema = RECORD_SCHEMA,
+        _name = name,
+        _path = path,
+        _handler = handler or false,
+        _complete = complete or false,
+        _mode = arguments.mode,
+        _schemas = arguments.schemas,
+        _coercions = arguments.coercions,
+        _positionCount = arguments.count,
+        _usage = usage or arguments.usage,
+        _description = description or false,
+        _subcommands = {},
+        _subcommandNames = {},
+        _usageLines = false,
+        -- Set on the top-level record only, when it is registered.
+        _scope = false,
+        _key = false,
+    }
+
+    local subcommands = rawget(spec, "subcommands")
+    if subcommands ~= nil then
+        compileSubcommands(record, subcommands, label .. ".subcommands", depth, level + 1)
+    end
+    local names = rawget(record, "_subcommandNames")
+    if handler == nil then
+        if #names == 0 then
+            error(label .. " needs a handler or subcommands", level)
+        end
+        if usage == nil then
+            rawset(record, "_usage", "<" .. table.concat(names, "|") .. ">")
+        end
+    end
+    rawset(record, "_usageLines", buildUsageLines(record))
+    return record
+end
+
+---Point every record of a compiled tree at its owning scope.
+---@param record table
+---@param scope CommandKit.Scope
+local function attachScope(record, scope)
+    rawset(record, "_scope", scope)
+    local names = rawget(record, "_subcommandNames")
+    local children = rawget(record, "_subcommands")
+    for index = 1, #names do
+        attachScope(rawget(children, names[index]), scope)
+    end
+end
+
+-- Slash registration ---------------------------------------------------------
+--
+-- A slash name is bound to one slash-table key for the session: the key of its
+-- first registration. The dispatcher CommandKit writes under that key is
+-- permanent and looks the name up in `activeByName` on every call, so an
+-- unregistered name is inert and a re-registered name (by any scope) works
+-- again through the function the client may already have cached.
+
+---Upper-case `text` with every byte that is not a letter or digit replaced by
+---an underscore, for a slash-table key.
+---@param text string
+---@return string
+local function sanitizeKeyPart(text)
+    return (text:gsub("[^%w]", "_")):upper()
+end
+
+---Derive the slash-table key for `name` in `scope`: `MOLTENCODES_<ADDON>_<NAME>`
+---for an addon scope, `MOLTENCODES_<NAME>` for a manual one, with a numeric
+---suffix in the rare case two names sanitise to one key.
+---@param scope CommandKit.Scope
+---@param name string lower-case name
+---@return string key
+local function deriveKey(scope, name)
+    local addonName = rawget(scope, "_addonName")
+    local base
+    if addonName == false then
+        base = KEY_PREFIX .. sanitizeKeyPart(name)
+    else
+        base = KEY_PREFIX .. sanitizeKeyPart(addonName) .. "_" .. sanitizeKeyPart(name)
+    end
+    local key = base
+    local suffix = 1
+    while ownedKeys[key] ~= nil and ownedKeys[key] ~= name do
+        suffix = suffix + 1
+        key = base .. "_" .. suffix
+    end
+    return key
+end
+
+---Whether a slash table other than CommandKit's entries already maps
+---`upperSlash` (`"/NAME"`) through its `SLASH_<key><n>` globals.
+---
+---Best effort, and documented as such: it reads the keys of one host table
+---and, for each key CommandKit does not own, its `SLASH_<key>1..n` globals
+---until the first gap. Commands another addon keeps elsewhere are not seen.
+---@param tableName string `"SlashCmdList"` or `"SecureCmdList"`
+---@param upperSlash string
+---@return boolean
+local function hasForeignSlash(tableName, upperSlash)
+    local list = readGlobal(tableName)
+    if type(list) ~= "table" then
+        return false
+    end
+    local probe = readGlobal("issecretvalue")
+    for key in next, list do
+        if type(key) == "string" and ownedKeys[key] == nil then
+            for index = 1, MAX_SLASH_ALIASES do
+                local value = readGlobal("SLASH_" .. key .. index)
+                if type(value) ~= "string" then
+                    break
+                end
+                local secret = type(probe) == "function" and probe(value) == true
+                if not secret and value:upper() == upperSlash then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+---The permanent dispatcher written under `key`.
+---@param key string
+---@return function
+local function newSlashHandler(key)
+    return function(text, editBox)
+        dispatch.slash(key, text, editBox)
+    end
+end
+
+---Register a compiled command, or report why not.
+---@param scope CommandKit.Scope
+---@param name any
+---@param spec any
+---@param methodName string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return true|nil registered
+---@return "taken"|"full"|nil reason
+local function registerCommand(scope, name, spec, methodName, level)
+    validateScope(scope, methodName, level + 1)
+    ensureOpen(scope, methodName, level + 1)
+    local lowerName = readCommandName(name, methodName .. " name", level + 1)
+    local commands = rawget(scope, "_commands")
+    if rawget(commands, lowerName) ~= nil then
+        error(
+            methodName
+                .. ' "'
+                .. lowerName
+                .. '" is already registered in this scope; Unregister it first',
+            level
+        )
+    end
+    local slashList = readGlobal("SlashCmdList")
+    if type(slashList) ~= "table" then
+        error(methodName .. " requires the host's SlashCmdList table", level)
+    end
+    local record =
+        compileSpec(spec, lowerName, "/" .. lowerName, methodName .. " spec", 0, level + 1)
+
+    if rawget(scope, "_count") >= MAX_COMMANDS then
+        return nil, "full"
+    end
+    if activeByName[lowerName] ~= nil then
+        return nil, "taken"
+    end
+    local key = keyByName[lowerName]
+    if key == nil then
+        key = deriveKey(scope, lowerName)
+        if rawget(slashList, key) ~= nil then
+            return nil, "taken"
+        end
+    end
+    local upperSlash = "/" .. lowerName:upper()
+    if
+        hasForeignSlash("SlashCmdList", upperSlash) or hasForeignSlash("SecureCmdList", upperSlash)
+    then
+        return nil, "taken"
+    end
+
+    local handler = slashHandlers[key]
+    if handler == nil then
+        handler = newSlashHandler(key)
+        slashHandlers[key] = handler
+    end
+    ownedKeys[key] = lowerName
+    keyByName[lowerName] = key
+    rawset(record, "_key", key)
+    attachScope(record, scope)
+    rawset(slashList, key, handler)
+    writeGlobal("SLASH_" .. key .. "1", "/" .. lowerName)
+    activeByName[lowerName] = record
+    rawset(commands, lowerName, record)
+    rawset(scope, "_count", rawget(scope, "_count") + 1)
+    return true
+end
+
+---Remove one command of a scope. The slash globals stay, and turn inert.
+---@param scope CommandKit.Scope
+---@param lowerName string
+---@param record table
+local function releaseCommand(scope, lowerName, record)
+    rawset(rawget(scope, "_commands"), lowerName, nil)
+    rawset(scope, "_count", rawget(scope, "_count") - 1)
+    if activeByName[lowerName] == record then
+        activeByName[lowerName] = nil
+    end
+end
+
+-- Dispatch -------------------------------------------------------------------
+--
+-- A dispatch borrows one frame: a token array, an argument array and a
+-- context, all reused. Frames are indexed by nesting depth, so a handler that
+-- runs another command gets the next frame and nothing is shared between the
+-- two. A dispatch of text seen before allocates nothing.
+
+---Borrow the frame of the next nesting level, or `nil` past `MAX_NESTING`.
+---@return table|nil frame
+local function acquireFrame()
+    local depth = rawget(state, "frameDepth") + 1
+    if depth > MAX_NESTING then
+        return nil
+    end
+    local frame = frames[depth]
+    if frame == nil then
+        frame = {
+            tokens = {},
+            arguments = {},
+            context = setmetatable({
+                _schema = CONTEXT_SCHEMA,
+                _live = false,
+                _scope = false,
+                _record = false,
+                _raw = "",
+            }, CONTEXT_METATABLE),
+        }
+        frames[depth] = frame
+    end
+    rawset(state, "frameDepth", depth)
+    return frame
+end
+
+---Return a frame and retire its context.
+---@param frame table
+local function releaseFrame(frame)
+    local context = frame.context
+    rawset(context, "_live", false)
+    rawset(context, "_scope", false)
+    rawset(context, "_record", false)
+    rawset(context, "_raw", "")
+    rawset(state, "frameDepth", rawget(state, "frameDepth") - 1)
+end
+
+---Point a frame's context at a command.
+---@param frame table
+---@param record table
+---@param text string
+---@return CommandKit.Context
+local function openContext(frame, record, text)
+    local context = frame.context
+    rawset(context, "_scope", rawget(record, "_scope"))
+    rawset(context, "_record", record)
+    rawset(context, "_raw", text)
+    rawset(context, "_live", true)
+    return context
+end
+
+---Follow sub-command names from `tokens[1]` on.
+---@param record table the top-level record
+---@param tokens string[]
+---@param count integer
+---@return table node the deepest record reached
+---@return integer index the first token that is not a sub-command name
+local function walkSubcommands(record, tokens, count)
+    local node = record
+    local index = 1
+    while index <= count do
+        local child = rawget(rawget(node, "_subcommands"), tokens[index]:lower())
+        if child == nil then
+            break
+        end
+        node = child
+        index = index + 1
+    end
+    return node, index
+end
+
+---Write `path: reason` and the usage lines of `record`.
+---@param scope CommandKit.Scope
+---@param record table
+---@param reason string
+local function failWithUsage(scope, record, reason)
+    writeLine(scope, rawget(record, "_path") .. ": " .. reason)
+    writeLines(scope, rawget(record, "_usageLines"))
+end
+
+---Coerce and check a command's arguments in place.
+---@param scope CommandKit.Scope
+---@param record table
+---@param arguments any[]
+---@param count integer tokens after the command path
+---@return integer|nil passCount how many arguments the handler receives
+local function checkArguments(scope, record, arguments, count)
+    local mode = rawget(record, "_mode")
+    if mode == "none" then
+        return count
+    end
+    local schemas = rawget(record, "_schemas")
+    local coercions = rawget(record, "_coercions")
+    if mode == "array" then
+        local coercion = coercions[1]
+        for index = 1, count do
+            arguments[index] = coerce(arguments[index], coercion)
+        end
+        local ok, failure = schemas[1]:Check(arguments)
+        if not ok then
+            failWithUsage(scope, record, describeFailure("arguments", failure))
+            return nil
+        end
+        return count
+    end
+    local positions = rawget(record, "_positionCount")
+    if count > positions then
+        failWithUsage(scope, record, "expected at most " .. positions .. " arguments")
+        return nil
+    end
+    for position = 1, positions do
+        local value = coerce(arguments[position], coercions[position])
+        arguments[position] = value
+        local ok, failure = schemas[position]:Check(value)
+        if not ok then
+            failWithUsage(scope, record, describeFailure("argument " .. position, failure))
+            return nil
+        end
+    end
+    return positions
+end
+
+---Report a handler failure to the sink and to the host error handler.
+---@param scope CommandKit.Scope
+---@param record table
+---@param failure any
+local function reportHandlerFailure(scope, record, failure)
+    local message = rawget(record, "_path") .. " failed"
+    if type(failure) == "string" and not isSecret(failure) then
+        message = message .. ": " .. failure
+    end
+    writeLine(scope, message)
+    reportError(failure)
+end
+
+---Run one command line in a borrowed frame.
+---@param frame table
+---@param record table the top-level record
+---@param text string what the user typed after the slash name
+local function runCommand(frame, record, text)
+    local scope = rawget(record, "_scope")
+    local context = openContext(frame, record, text)
+    local tokens = frame.tokens
+    local count, reason = tokenize(text, tokens)
+    if count == nil then
+        failWithUsage(scope, record, reason --[[@as string]])
+        return
+    end
+
+    local node, index = walkSubcommands(record, tokens, count)
+    rawset(context, "_record", node)
+    local handler = rawget(node, "_handler")
+    if handler == false then
+        if index <= count then
+            failWithUsage(scope, node, 'unknown sub-command "' .. tokens[index] .. '"')
+        else
+            writeLines(scope, rawget(node, "_usageLines"))
+        end
+        return
+    end
+
+    local arguments = frame.arguments
+    local argumentCount = count - index + 1
+    for position = 1, argumentCount do
+        arguments[position] = tokens[index + position - 1]
+    end
+    local position = argumentCount + 1
+    while rawget(arguments, position) ~= nil do
+        arguments[position] = nil
+        position = position + 1
+    end
+
+    local passCount = checkArguments(scope, node, arguments, argumentCount)
+    if passCount == nil then
+        return
+    end
+    local ok, failure = pcall(handler, context, unpack(arguments, 1, passCount))
+    if not ok then
+        reportHandlerFailure(scope, node, failure)
+    end
+end
+
+---The body of every permanent slash dispatcher.
+---@param key string
+---@param text any what the client passes: the text after the slash name
+---@param _ any the edit box the command was typed in
+local function slashDispatch(key, text, _)
+    local name = ownedKeys[key]
+    if name == nil then
+        return
+    end
+    local record = activeByName[name]
+    if record == nil then
+        -- Unregistered or closed: the dispatcher stays in the client's table,
+        -- inert, until the name is registered again.
+        return
+    end
+    if type(text) ~= "string" then
+        text = ""
+    end
+    local frame = acquireFrame()
+    if frame == nil then
+        writeLine(
+            rawget(record, "_scope"),
+            rawget(record, "_path") .. ": commands nested too deeply"
+        )
+        return
+    end
+    local ok, failure = pcall(runCommand, frame, record, text)
+    releaseFrame(frame)
+    if not ok then
+        reportError(failure)
+    end
+end
+
+-- Context methods ------------------------------------------------------------
+
+---@param context any
+---@param methodName string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateContext(context, methodName, level)
+    if type(context) ~= "table" or getmetatable(context) ~= CONTEXT_METATABLE then
+        error(methodName .. " must be called on a CommandKit context", level)
+    end
+    if rawget(context, "_live") ~= true then
+        error(methodName .. " cannot be used after its command returned", level)
+    end
+end
+
+---Refuse a secret among `...`, naming its position.
+---@param methodName string qualified public method name, used in the argument error
+---@param first integer the argument number of the first value
+---@param level integer stack level the failure is reported at
+---@param ... any
+local function refuseSecretArguments(methodName, first, level, ...)
+    for index = 1, select("#", ...) do
+        if isSecret((select(index, ...))) then
+            error(
+                methodName .. " argument " .. (first + index - 1) .. " must not be a secret value",
+                level
+            )
+        end
+    end
+end
+
+---Write the arguments, converted with `tostring` and joined by spaces, to the
+---scope's sink. A secret argument is refused at the caller.
+---@param self CommandKit.Context
+---@param ... any
+local function contextPrint(self, ...)
+    validateContext(self, "CommandKit.Context:Print", 3)
+    refuseSecretArguments("CommandKit.Context:Print", 1, 3, ...)
+    local text = ""
+    for index = 1, select("#", ...) do
+        if index > 1 then
+            text = text .. " "
+        end
+        text = text .. tostring((select(index, ...)))
+    end
+    writeLine(rawget(self, "_scope"), text)
+end
+
+---Format with LocaleKit's `Format` when LocaleKit is registered (indexed
+---specifiers such as `%2$s` work), with `string.format` otherwise, and write
+---the result to the scope's sink. A secret argument is refused at the caller.
+---@param self CommandKit.Context
+---@param template string
+---@param ... any
+local function contextPrintf(self, template, ...)
+    validateContext(self, "CommandKit.Context:Printf", 3)
+    if type(template) ~= "string" then
+        error("CommandKit.Context:Printf template must be a string", 2)
+    end
+    refuseSecretArguments("CommandKit.Context:Printf", 1, 3, template)
+    refuseSecretArguments("CommandKit.Context:Printf", 2, 3, ...)
+    local LocaleKit = findOptional("localeKit", OPTIONAL_LOCALEKIT_API)
+    local text
+    if LocaleKit ~= nil and type(rawget(LocaleKit, "Format")) == "function" then
+        text = LocaleKit:Format(template, ...)
+    else
+        text = string.format(template, ...)
+    end
+    writeLine(rawget(self, "_scope"), text)
+end
+
+---Write the usage lines of the command being run.
+---@param self CommandKit.Context
+local function contextUsage(self)
+    validateContext(self, "CommandKit.Context:Usage", 3)
+    writeLines(rawget(self, "_scope"), rawget(rawget(self, "_record"), "_usageLines"))
+end
+
+---Write `<command path>: <reason>`.
+---@param self CommandKit.Context
+---@param reason string
+local function contextFail(self, reason)
+    validateContext(self, "CommandKit.Context:Fail", 3)
+    validateString(reason, "CommandKit.Context:Fail reason", 3)
+    writeLine(rawget(self, "_scope"), rawget(rawget(self, "_record"), "_path") .. ": " .. reason)
+end
+
+---The path of the command being run: `"/cmd sub"`.
+---@param self CommandKit.Context
+---@return string
+local function contextGetCommandPath(self)
+    validateContext(self, "CommandKit.Context:GetCommandPath", 3)
+    return rawget(rawget(self, "_record"), "_path")
+end
+
+---What the user typed after the slash name, unparsed.
+---@param self CommandKit.Context
+---@return string
+local function contextGetRawText(self)
+    validateContext(self, "CommandKit.Context:GetRawText", 3)
+    return rawget(self, "_raw")
+end
+
+-- Options binding ------------------------------------------------------------
+--
+-- `BindOptions` registers a command whose sub-commands read and write an
+-- OptionsKit tree. Every bound sub-command calls `tree:Describe()` once to
+-- see the tree as it is now (values, labels, hidden and disabled flags):
+-- allocating by design, because a typed command is not a hot path and a
+-- values function may answer differently each time.
+
+-- Option kinds that carry a value.
+local VALUE_KINDS = {
+    toggle = true,
+    range = true,
+    select = true,
+    multiselect = true,
+    input = true,
+    color = true,
+    keybinding = true,
+}
+
+---Index a description by path.
+---@param node table
+---@param index table<string, table>
+local function indexDescription(node, index)
+    index[node.path] = node
+    local children = node.children
+    if type(children) == "table" then
+        for position = 1, #children do
+            indexDescription(children[position], index)
+        end
+    end
+end
+
+---The description node at `path`, or `nil` after telling the user.
+---@param context CommandKit.Context
+---@param tree table
+---@param path string|nil
+---@param allowRoot boolean whether `nil` or `""` names the root group
+---@return table|nil node
+local function findOption(context, tree, path, allowRoot)
+    if path == nil or path == "" then
+        if not allowRoot then
+            contextFail(context, "expected an option path")
+            contextUsage(context)
+            return nil
+        end
+        path = ""
+    end
+    local index = {}
+    indexDescription(tree:Describe(), index)
+    local node = index[path]
+    if node == nil or node.hidden == true then
+        contextFail(context, 'unknown option "' .. path .. '"')
+        return nil
+    end
+    return node
+end
+
+---The sorted keys of a values table.
+---@param node table
+---@return any[]
+local function valueKeys(node)
+    local keys = {}
+    local sorting = node.sorting
+    if type(sorting) == "table" then
+        for index = 1, #sorting do
+            keys[index] = sorting[index]
+        end
+        return keys
+    end
+    for key in next, node.values or {} do
+        keys[#keys + 1] = key
+    end
+    table.sort(keys, function(left, right)
+        return tostring(left) < tostring(right)
+    end)
+    return keys
+end
+
+---A value as the command line shows it.
+---@param node table
+---@param value any
+---@return string
+local function formatValue(node, value)
+    if isSecret(value) then
+        return "(secret value)"
+    end
+    local kind = node.kind
+    if value == nil then
+        if kind == "toggle" then
+            return "default"
+        end
+        return "(none)"
+    end
+    if kind == "toggle" and type(value) == "boolean" then
+        return value and "on" or "off"
+    end
+    if kind == "select" then
+        local label = type(node.values) == "table" and node.values[value] or nil
+        if label ~= nil and tostring(label) ~= tostring(value) then
+            return tostring(value) .. " (" .. tostring(label) .. ")"
+        end
+        return tostring(value)
+    end
+    if kind == "multiselect" and type(value) == "table" then
+        local chosen = {}
+        local keys = valueKeys(node)
+        for index = 1, #keys do
+            if value[keys[index]] == true then
+                chosen[#chosen + 1] = tostring(keys[index])
+            end
+        end
+        if #chosen == 0 then
+            return "(none)"
+        end
+        return table.concat(chosen, ", ")
+    end
+    if kind == "color" and type(value) == "table" then
+        local text = string.format("%.2f %.2f %.2f", value.r or 0, value.g or 0, value.b or 0)
+        if value.a ~= nil then
+            text = text .. string.format(" %.2f", value.a)
+        end
+        return text
+    end
+    if kind == "keybinding" and value == "" then
+        return "(unbound)"
+    end
+    return tostring(value)
+end
+
+---Find a `select` or `multiselect` key from what the user typed: the key
+---itself (as text or as a number), else a label, ignoring case.
+---@param node table
+---@param word string
+---@return any key
+local function matchValueKey(node, word)
+    local values = node.values or {}
+    for key in next, values do
+        if tostring(key) == word then
+            return key
+        end
+    end
+    local lowerWord = word:lower()
+    for key, label in next, values do
+        if tostring(label):lower() == lowerWord then
+            return key
+        end
+    end
+    return nil
+end
+
+---The "expected one of" message of a `select` or `multiselect`.
+---@param node table
+---@return string
+local function expectedKeys(node)
+    return "expected one of: " .. joinValues(valueKeys(node), ", ")
+end
+
+---Parse a colour typed as `r g b [a]` in 0..1 or as `#rrggbb[aa]`.
+---@param node table
+---@param ... string
+---@return table|nil colour
+---@return string|nil problem
+local function parseColour(node, ...)
+    local first = ...
+    local components
+    local hex = type(first) == "string" and first:match("^#?(%x+)$") or nil
+    if hex ~= nil and select("#", ...) == 1 and (#hex == 6 or #hex == 8) then
+        components = {}
+        for index = 1, #hex / 2 do
+            components[index] = tonumber(hex:sub(index * 2 - 1, index * 2), 16) / 255
+        end
+    else
+        components = {}
+        for index = 1, select("#", ...) do
+            local number = tonumber((select(index, ...)))
+            if number == nil then
+                return nil, "expected r g b [a] between 0 and 1, or #rrggbb[aa]"
+            end
+            components[index] = number
+        end
+        if #components < 3 or #components > 4 then
+            return nil, "expected r g b [a] between 0 and 1, or #rrggbb[aa]"
+        end
+    end
+    local colour = { r = components[1], g = components[2], b = components[3] }
+    if node.hasAlpha then
+        colour.a = components[4] or 1
+    elseif components[4] ~= nil then
+        return nil, "this colour has no alpha"
+    end
+    return colour
+end
+
+---Parse the words after `set <path>` into a value of the option's kind.
+---@param node table
+---@param ... string
+---@return any value
+---@return string|nil problem
+local function parseValue(node, ...)
+    local kind = node.kind
+    local word = ...
+    local wordCount = select("#", ...)
+    if kind == "input" or kind == "keybinding" then
+        local text = table.concat({ ... }, " ")
+        if kind == "keybinding" and (text:lower() == "none" or text:lower() == "unbound") then
+            return ""
+        end
+        return text
+    end
+    if kind == "color" then
+        return parseColour(node, ...)
+    end
+    if word == nil then
+        if kind == "toggle" then
+            return nil, "expected on, off or toggle"
+        end
+        if kind == "range" then
+            return nil, "expected a number"
+        end
+        return nil, expectedKeys(node)
+    end
+    if kind == "toggle" then
+        local lowerWord = word:lower()
+        if wordCount > 1 then
+            return nil, "expected on, off or toggle"
+        end
+        if lowerWord == "toggle" then
+            return not node.value
+        end
+        if node.tristate and lowerWord == "default" then
+            return nil
+        end
+        local value = BOOLEAN_WORDS[lowerWord]
+        if value == nil then
+            return nil, "expected on, off or toggle"
+        end
+        return value
+    end
+    if kind == "range" then
+        local number = tonumber(word)
+        if number == nil or wordCount > 1 then
+            return nil, "expected a number"
+        end
+        return number
+    end
+    if kind == "select" then
+        local key = matchValueKey(node, table.concat({ ... }, " "))
+        if key == nil then
+            return nil, expectedKeys(node)
+        end
+        return key
+    end
+    -- multiselect: `<key> on|off|toggle`
+    local key = matchValueKey(node, word)
+    if key == nil then
+        return nil, expectedKeys(node)
+    end
+    local stateWord = select(2, ...)
+    local current = type(node.value) == "table" and node.value or {}
+    local enabled
+    if type(stateWord) == "string" and stateWord:lower() == "toggle" then
+        enabled = current[key] ~= true
+    elseif type(stateWord) == "string" then
+        enabled = BOOLEAN_WORDS[stateWord:lower()]
+    end
+    if enabled == nil or wordCount > 2 then
+        return nil, "expected <key> on|off|toggle"
+    end
+    local value = {}
+    for existingKey, isChosen in next, current do
+        value[existingKey] = isChosen
+    end
+    value[key] = enabled
+    return value
+end
+
+---One `list` line for a child node.
+---@param node table
+---@return string|nil
+local function listLine(node)
+    local kind = node.kind
+    local line
+    if kind == "group" then
+        line = node.path .. " - " .. tostring(node.name) .. " (group)"
+    elseif kind == "execute" then
+        line = node.path .. " - " .. tostring(node.name) .. " (exec)"
+    elseif VALUE_KINDS[kind] == true then
+        line = node.path .. " = " .. formatValue(node, node.value) .. " - " .. tostring(node.name)
+    else
+        return nil
+    end
+    if node.disabled == true then
+        line = line .. " (disabled)"
+    end
+    return line
+end
+
+---Refuse a node that is not a value option, or is disabled.
+---@param context CommandKit.Context
+---@param node table
+---@return boolean usable
+local function ensureValueOption(context, node)
+    if node.kind == "execute" then
+        contextFail(context, '"' .. node.path .. '" is a button; use exec')
+        return false
+    end
+    if VALUE_KINDS[node.kind] ~= true then
+        contextFail(context, '"' .. node.path .. '" has no value')
+        return false
+    end
+    return true
+end
+
+---Build the sub-command handlers of a bound command.
+---@param tree table
+---@return table handlers
+local function newOptionHandlers(tree)
+    local handlers = {}
+
+    function handlers.get(context, path)
+        local node = findOption(context, tree, path, false)
+        if node == nil or not ensureValueOption(context, node) then
+            return
+        end
+        contextPrint(context, node.path .. " = " .. formatValue(node, node.value))
+    end
+
+    function handlers.set(context, path, ...)
+        local node = findOption(context, tree, path, false)
+        if node == nil or not ensureValueOption(context, node) then
+            return
+        end
+        if node.disabled == true then
+            contextFail(context, '"' .. node.path .. '" is disabled')
+            return
+        end
+        local value, problem = parseValue(node, ...)
+        if problem ~= nil then
+            contextFail(context, problem)
+            return
+        end
+        local valid, message = tree:Validate(node.path, value)
+        if not valid then
+            contextFail(context, tostring(message))
+            return
+        end
+        local written, refusal = tree:Set(node.path, value)
+        if not written then
+            contextFail(context, tostring(refusal))
+            return
+        end
+        contextPrint(context, node.path .. " = " .. formatValue(node, tree:Get(node.path)))
+    end
+
+    function handlers.reset(context, path)
+        local node = findOption(context, tree, path, false)
+        if node == nil or not ensureValueOption(context, node) then
+            return
+        end
+        if node.disabled == true then
+            contextFail(context, '"' .. node.path .. '" is disabled')
+            return
+        end
+        if node.bind == nil then
+            contextFail(context, '"' .. node.path .. '" has no default to reset to')
+            return
+        end
+        local value = tree:Reset(node.path)
+        contextPrint(context, node.path .. " = " .. formatValue(node, value))
+    end
+
+    function handlers.list(context, path)
+        local node = findOption(context, tree, path, true)
+        if node == nil then
+            return
+        end
+        if node.kind ~= "group" then
+            local line = listLine(node)
+            if line ~= nil then
+                contextPrint(context, line)
+            end
+            if type(node.desc) == "string" then
+                contextPrint(context, node.desc)
+            end
+            if node.kind == "select" or node.kind == "multiselect" then
+                contextPrint(context, "values: " .. joinValues(valueKeys(node), ", "))
+            end
+            return
+        end
+        local printed = 0
+        local children = node.children or {}
+        for index = 1, #children do
+            local child = children[index]
+            if child.hidden ~= true then
+                local line = listLine(child)
+                if line ~= nil then
+                    contextPrint(context, line)
+                    printed = printed + 1
+                end
+            end
+        end
+        if printed == 0 then
+            contextPrint(context, "(no options)")
+        end
+    end
+
+    function handlers.exec(context, path, confirmation)
+        local node = findOption(context, tree, path, false)
+        if node == nil then
+            return
+        end
+        if node.kind ~= "execute" then
+            contextFail(context, '"' .. node.path .. '" is not a button')
+            return
+        end
+        if node.disabled == true then
+            contextFail(context, '"' .. node.path .. '" is disabled')
+            return
+        end
+        local confirm = node.confirm
+        if confirm ~= nil and confirm ~= false and confirmation ~= "confirm" then
+            if type(confirm) == "string" then
+                contextPrint(context, confirm)
+            end
+            contextPrint(
+                context,
+                "Type "
+                    .. contextGetCommandPath(context)
+                    .. " "
+                    .. node.path
+                    .. " confirm to run it."
+            )
+            return
+        end
+        tree:Execute(node.path)
+    end
+
+    return handlers
+end
+
+---A completion function offering the option paths `accepts` admits.
+---@param tree table
+---@param accepts fun(kind: string): boolean
+---@return function
+local function newPathCompleter(tree, accepts)
+    return function(_, _, position)
+        if position ~= 1 then
+            return nil
+        end
+        local paths = {}
+        tree:Walk(function(path, kind)
+            if accepts(kind) and not tree:IsHidden(path) then
+                paths[#paths + 1] = path
+            end
+        end)
+        return paths
+    end
+end
+
+---@param kind string
+---@return boolean
+local function acceptsValue(kind)
+    return VALUE_KINDS[kind] == true
+end
+
+---@param kind string
+---@return boolean
+local function acceptsListable(kind)
+    return kind == "group" or kind == "execute" or VALUE_KINDS[kind] == true
+end
+
+---@param kind string
+---@return boolean
+local function acceptsExecute(kind)
+    return kind == "execute"
+end
+
+---Build the command spec `BindOptions` registers.
+---@param tree table
+---@param description string|nil
+---@return CommandKit.CommandSpec
+local function newOptionsSpec(tree, description)
+    local S = SchemaKit
+    local handlers = newOptionHandlers(tree)
+    local valuePaths = newPathCompleter(tree, acceptsValue)
+    return {
+        description = description,
+        subcommands = {
+            get = {
+                handler = handlers.get,
+                arguments = { S.string() },
+                usage = "<path>",
+                description = "Print an option's value.",
+                complete = valuePaths,
+            },
+            set = {
+                handler = handlers.set,
+                usage = "<path> <value...>",
+                description = "Change an option.",
+                complete = valuePaths,
+            },
+            reset = {
+                handler = handlers.reset,
+                arguments = { S.string() },
+                usage = "<path>",
+                description = "Restore an option's default.",
+                complete = valuePaths,
+            },
+            list = {
+                handler = handlers.list,
+                arguments = { S.optional(S.string()) },
+                usage = "[path]",
+                description = "List the options of a group, or describe one option.",
+                complete = newPathCompleter(tree, acceptsListable),
+            },
+            exec = {
+                handler = handlers.exec,
+                arguments = { S.string(), S.optional(S.string({ oneOf = { "confirm" } })) },
+                usage = "<path> [confirm]",
+                description = "Run a button.",
+                complete = newPathCompleter(tree, acceptsExecute),
+            },
+        },
+    }
+end
+
+-- Completion -----------------------------------------------------------------
+--
+-- The client calls `ChatEdit_CustomTabPressed(editBox)` from its tab handler
+-- and skips its own completion when that returns `true`. The global is the
+-- documented extension point and is empty in the client, so CommandKit
+-- replaces it with a closure that remembers the previous function and calls
+-- it for any text that is not one of its commands. A secure post-hook
+-- (`hooksecurefunc`) cannot be used: its return value is discarded, so the
+-- client would complete over CommandKit's completion. The trade-off is taint:
+-- the global becomes addon code, as it does for every addon that completes
+-- chat input. The closure is removed again when the last scope disables
+-- completion and nobody has replaced the global since; otherwise it stays in
+-- the chain, forwarding. See `docs/API.md`.
+
+---The longest common prefix of `candidates`.
+---@param candidates string[]
+---@return string
+local function commonPrefix(candidates)
+    local prefix = candidates[1]
+    for index = 2, #candidates do
+        local candidate = candidates[index]
+        local length = 0
+        local limit = math.min(#prefix, #candidate)
+        while length < limit and prefix:byte(length + 1) == candidate:byte(length + 1) do
+            length = length + 1
+        end
+        prefix = prefix:sub(1, length)
+    end
+    return prefix
+end
+
+---Add `candidate` to `candidates` when it starts with `partial`, ignoring case.
+---@param candidates string[]
+---@param candidate any
+---@param lowerPartial string
+local function offer(candidates, candidate, lowerPartial)
+    if type(candidate) ~= "string" or #candidates >= MAX_COMPLETIONS then
+        return
+    end
+    if candidate:sub(1, #lowerPartial):lower() == lowerPartial then
+        candidates[#candidates + 1] = candidate
+    end
+end
+
+---Complete the word before the cursor in a borrowed frame.
+---@param frame table
+---@param record table the top-level record
+---@param editBox table
+---@param text string the whole edit-box text
+---@param argumentText string the text between the slash name and the partial word
+---@param partial string the word being completed
+---@param partialStart integer where `partial` starts in `text`
+---@return boolean handled
+local function completeInFrame(frame, record, editBox, text, argumentText, partial, partialStart)
+    local scope = rawget(record, "_scope")
+    local tokens = frame.tokens
+    local count = tokenize(argumentText, tokens)
+    if count == nil then
+        return false
+    end
+    local node, index = walkSubcommands(record, tokens, count)
+    local context = openContext(frame, node, argumentText .. partial)
+    local candidates = {}
+    local lowerPartial = partial:lower()
+    if index > count then
+        local names = rawget(node, "_subcommandNames")
+        for position = 1, #names do
+            offer(candidates, names[position], lowerPartial)
+        end
+    end
+    local complete = rawget(node, "_complete")
+    if complete ~= false then
+        local offered = complete(context, partial, count - index + 2)
+        if type(offered) == "table" then
+            for position = 1, #offered do
+                offer(candidates, offered[position], lowerPartial)
+            end
+        end
+    end
+    if #candidates == 0 then
+        return false
+    end
+    local before = text:sub(1, partialStart - 1)
+    if #candidates == 1 then
+        editBox:SetText(before .. candidates[1] .. " ")
+        return true
+    end
+    local prefix = commonPrefix(candidates)
+    if #prefix > #partial then
+        editBox:SetText(before .. prefix)
+    else
+        writeLine(scope, table.concat(candidates, "  "))
+    end
+    return true
+end
+
+---Try to complete the edit box's text. `true` when CommandKit handled it.
+---@param editBox any
+---@return boolean handled
+local function tryComplete(editBox)
+    if editBox == nil then
+        local getActiveWindow = readGlobal("ChatEdit_GetActiveWindow")
+        if type(getActiveWindow) == "function" then
+            editBox = getActiveWindow()
+        end
+    end
+    if
+        type(editBox) ~= "table"
+        or type(editBox.GetText) ~= "function"
+        or type(editBox.SetText) ~= "function"
+    then
+        return false
+    end
+    local text = editBox:GetText()
+    if type(text) ~= "string" or isSecret(text) then
+        return false
+    end
+    if type(editBox.GetCursorPosition) == "function" then
+        local cursor = editBox:GetCursorPosition()
+        if type(cursor) == "number" and cursor < #text then
+            return false
+        end
+    end
+    -- A bare `/name` without a space is the client's own slash completion.
+    local slashName, argumentStart = text:match("^/([%w_]+)%s+()")
+    if slashName == nil then
+        return false
+    end
+    local record = activeByName[slashName:lower()]
+    if record == nil or rawget(rawget(record, "_scope"), "_completion") ~= true then
+        return false
+    end
+    local lastSpace = text:find("%s[^%s]*$")
+    local partialStart = lastSpace + 1
+    local partial = text:sub(partialStart)
+    local argumentText = text:sub(argumentStart, partialStart - 1)
+    local frame = acquireFrame()
+    if frame == nil then
+        return false
+    end
+    local ok, handled =
+        pcall(completeInFrame, frame, record, editBox, text, argumentText, partial, partialStart)
+    releaseFrame(frame)
+    if not ok then
+        error(handled, 0)
+    end
+    return handled
+end
+
+---The body of the installed `ChatEdit_CustomTabPressed` replacement.
+---@param editBox any
+---@param ... any
+---@return any
+local function tabPressed(editBox, ...)
+    if completion.enabledScopes > 0 then
+        local ok, handled = pcall(tryComplete, editBox)
+        if not ok then
+            reportError(handled)
+        elseif handled then
+            return true
+        end
+    end
+    local previous = completion.previous
+    if type(previous) == "function" then
+        return previous(editBox, ...)
+    end
+    return false
+end
+
+---Install the replacement once. `false` when the host has no
+---`ChatEdit_CustomTabPressed`.
+---@return boolean
+local function installTabHandler()
+    if completion.installed then
+        return true
+    end
+    local current = readGlobal("ChatEdit_CustomTabPressed")
+    if type(current) ~= "function" then
+        return false
+    end
+    local handler = completion.handler
+    if handler == false then
+        handler = function(editBox, ...)
+            return dispatch.tabPressed(editBox, ...)
+        end
+        completion.handler = handler
+    end
+    if current ~= handler then
+        completion.previous = current
+        writeGlobal("ChatEdit_CustomTabPressed", handler)
+    end
+    completion.installed = true
+    return true
+end
+
+---Remove the replacement when it is still the installed function; otherwise
+---leave it in the chain, forwarding to the function it replaced.
+local function uninstallTabHandler()
+    if not completion.installed then
+        return
+    end
+    if readGlobal("ChatEdit_CustomTabPressed") ~= completion.handler then
+        return
+    end
+    writeGlobal("ChatEdit_CustomTabPressed", completion.previous)
+    completion.previous = false
+    completion.installed = false
+end
+
+---Turn a scope's completion off, if it was on.
+---@param scope CommandKit.Scope
+---@return boolean disabled
+local function disableCompletion(scope)
+    if rawget(scope, "_completion") ~= true then
+        return false
+    end
+    rawset(scope, "_completion", false)
+    completion.enabledScopes = completion.enabledScopes - 1
+    if completion.enabledScopes == 0 then
+        uninstallTabHandler()
+    end
+    return true
+end
+
+-- Scope methods --------------------------------------------------------------
+
+---Register `/name`. Returns `true`, `nil, "taken"` when another owner uses
+---the slash name, or `nil, "full"` when the scope holds `MAX_COMMANDS`.
+---@param self CommandKit.Scope
+---@param name string the slash name without the slash
+---@param spec CommandKit.CommandSpec
+---@return true|nil registered
+---@return "taken"|"full"|nil reason
+local function scopeRegister(self, name, spec)
+    -- Not a tail call: a tail call would hide this frame from `error` levels.
+    local registered, reason = registerCommand(self, name, spec, "CommandKit.Scope:Register", 3)
+    return registered, reason
+end
+
+---Unregister a command of this scope. Its slash globals stay, inert.
+---@param self CommandKit.Scope
+---@param name string
+---@return boolean released `false` when this scope has no such command.
+local function scopeUnregister(self, name)
+    validateScope(self, "CommandKit.Scope:Unregister", 3)
+    validateString(name, "CommandKit.Scope:Unregister name", 3)
+    local lowerName = name:lower()
+    local record = rawget(rawget(self, "_commands"), lowerName)
+    if record == nil then
+        return false
+    end
+    releaseCommand(self, lowerName, record)
+    return true
+end
+
+---Whether this scope has registered `name`.
+---@param self CommandKit.Scope
+---@param name string
+---@return boolean
+local function scopeIsRegistered(self, name)
+    validateScope(self, "CommandKit.Scope:IsRegistered", 3)
+    validateString(name, "CommandKit.Scope:IsRegistered name", 3)
+    return rawget(rawget(self, "_commands"), name:lower()) ~= nil
+end
+
+---Send this scope's output to `sink` (anything with `AddMessage`), or back to
+---`DEFAULT_CHAT_FRAME` with `nil`.
+---@param self CommandKit.Scope
+---@param sink CommandKit.Sink?
+local function scopeSetSink(self, sink)
+    validateScope(self, "CommandKit.Scope:SetSink", 3)
+    if sink == nil then
+        rawset(self, "_sink", false)
+        return
+    end
+    if type(sink) ~= "table" or type(sink.AddMessage) ~= "function" then
+        error("CommandKit.Scope:SetSink sink must be a table with an AddMessage method", 2)
+    end
+    rawset(self, "_sink", sink)
+end
+
+---Register `/commandName` with `get`, `set`, `reset`, `list` and `exec`
+---sub-commands over an OptionsKit tree.
+---@param self CommandKit.Scope
+---@param tree table an OptionsKit tree handle
+---@param commandName string
+---@param options CommandKit.BindOptions?
+---@return true|nil registered
+---@return "taken"|"full"|nil reason
+local function scopeBindOptions(self, tree, commandName, options)
+    local methodName = "CommandKit.Scope:BindOptions"
+    validateScope(self, methodName, 3)
+    ensureOpen(self, methodName, 3)
+    local OptionsKit = findOptional("optionsKit", OPTIONAL_OPTIONSKIT_API)
+    if OptionsKit == nil then
+        error(methodName .. " requires OptionsKit API 1", 2)
+    end
+    local metatable = type(tree) == "table" and getmetatable(tree) or nil
+    if type(metatable) ~= "table" or rawget(metatable, "__index") ~= rawget(OptionsKit, "Tree") then
+        error(methodName .. " tree must be an OptionsKit tree", 2)
+    end
+    local description = nil
+    if options ~= nil then
+        if type(options) ~= "table" then
+            error(methodName .. " options must be a table", 2)
+        end
+        refuseUnknownFields(options, BIND_OPTION_FIELDS, methodName .. " options", 3)
+        description = rawget(options, "description")
+        validateOptionalString(description, methodName .. " options.description", 3)
+    end
+    local registered, reason =
+        registerCommand(self, commandName, newOptionsSpec(tree, description), methodName, 3)
+    return registered, reason
+end
+
+---Complete this scope's sub-command names and arguments on Tab. Returns
+---`false` when the host has no `ChatEdit_CustomTabPressed`.
+---@param self CommandKit.Scope
+---@return boolean enabled
+local function scopeEnableCompletion(self)
+    validateScope(self, "CommandKit.Scope:EnableCompletion", 3)
+    ensureOpen(self, "CommandKit.Scope:EnableCompletion", 3)
+    if rawget(self, "_completion") == true then
+        return true
+    end
+    if not installTabHandler() then
+        return false
+    end
+    rawset(self, "_completion", true)
+    completion.enabledScopes = completion.enabledScopes + 1
+    return true
+end
+
+---Stop completing this scope's commands.
+---@param self CommandKit.Scope
+---@return boolean disabled `false` when completion was not enabled.
+local function scopeDisableCompletion(self)
+    validateScope(self, "CommandKit.Scope:DisableCompletion", 3)
+    return disableCompletion(self)
+end
+
+---Close the scope: unregister every command and turn completion off.
+---Terminal.
+---@param self CommandKit.Scope
+---@return boolean closed `false` when the scope was already closed.
+local function scopeClose(self)
+    validateScope(self, "CommandKit.Scope:Close", 3)
+    if rawget(self, "_closed") == true then
+        return false
+    end
+    rawset(self, "_closed", true)
+    disableCompletion(self)
+    local commands = rawget(self, "_commands")
+    local names = {}
+    for name in next, commands do
+        names[#names + 1] = name
+    end
+    for index = 1, #names do
+        releaseCommand(self, names[index], rawget(commands, names[index]))
+    end
+    return true
+end
+
+---@param self CommandKit.Scope
+---@return boolean
+local function scopeIsClosed(self)
+    validateScope(self, "CommandKit.Scope:IsClosed", 3)
+    return rawget(self, "_closed") == true
+end
+
+---@param self CommandKit.Scope
+---@return integer
+local function scopeGetActiveCount(self)
+    validateScope(self, "CommandKit.Scope:GetActiveCount", 3)
+    return rawget(self, "_count")
+end
+
+---@param self CommandKit.Scope
+---@return string|nil
+local function scopeGetAddonName(self)
+    validateScope(self, "CommandKit.Scope:GetAddonName", 3)
+    local addonName = rawget(self, "_addonName")
+    if addonName == false then
+        return nil
+    end
+    return addonName
+end
+
+-- Package public API ---------------------------------------------------------
+
+---@param addonName string|false
+---@return CommandKit.Scope
+local function newScope(addonName)
+    return setmetatable({
+        _schema = SCOPE_SCHEMA,
+        _addonName = addonName,
+        _closed = false,
+        _count = 0,
+        _commands = {},
+        _sink = false,
+        _completion = false,
+    }, SCOPE_METATABLE)
+end
+
+---Create a manually owned command scope, closed only by its owner.
+---@param self CommandKit
+---@return CommandKit.Scope scope
+local function createScope(self)
+    validateFacade(self, "CommandKit:CreateScope", 3)
+    return newScope(false)
+end
+
+---Return the canonical command scope of an addon, creating it on demand.
+---
+---CommandKit does not observe addon shutdown; whoever does (LifecycleKit, or
+---the addon itself on `PLAYER_LOGOUT`) closes this scope through
+---`CommandKit:CloseAddonScopes(addonName)`.
+---@param self CommandKit
+---@param addonName string addon folder name
+---@return CommandKit.Scope scope
+local function forAddon(self, addonName)
+    validateFacade(self, "CommandKit:ForAddon", 3)
+    validateString(addonName, "CommandKit:ForAddon addonName", 3)
+    local scope = rawget(addonScopes, addonName)
+    if scope == nil then
+        scope = newScope(addonName)
+        rawset(addonScopes, addonName, scope)
+    end
+    return scope
+end
+
+---Close the canonical scope of an addon, unregistering every command it owns.
+---Nothing is recorded for an addon that never asked for a scope.
+---@param self CommandKit
+---@param addonName string addon folder name
+---@return boolean closed `false` when the addon has no scope or it was already closed.
+local function closeAddonScopes(self, addonName)
+    validateFacade(self, "CommandKit:CloseAddonScopes", 3)
+    validateString(addonName, "CommandKit:CloseAddonScopes addonName", 3)
+    local scope = rawget(addonScopes, addonName)
+    if scope == nil then
+        return false
+    end
+    return scopeClose(scope)
+end
+
+---Check the text argument of `Parse` and `ParseInto`.
+---@param text any
+---@param methodName string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateText(text, methodName, level)
+    if type(text) ~= "string" then
+        error(methodName .. " text must be a string", level)
+    end
+    if isSecret(text) then
+        error(methodName .. " text must not be a secret value", level)
+    end
+end
+
+---Split `text` into arguments, allocating a new array on every call. Returns
+---the array, or `nil` and `"unterminated quote"` / `"unterminated link"`.
+---@param self CommandKit
+---@param text string
+---@return string[]|nil arguments
+---@return string|nil reason
+local function parse(self, text)
+    validateFacade(self, "CommandKit:Parse", 3)
+    validateText(text, "CommandKit:Parse", 3)
+    local array = {}
+    local count, reason = tokenize(text, array)
+    if count == nil then
+        return nil, reason
+    end
+    return array
+end
+
+---Split `text` into `array[1..count]`, clear the slots after `count`, and
+---return `count`; or `nil` and a reason, leaving `array` empty.
+---@param self CommandKit
+---@param text string
+---@param array table
+---@return integer|nil count
+---@return string|nil reason
+local function parseInto(self, text, array)
+    validateFacade(self, "CommandKit:ParseInto", 3)
+    validateText(text, "CommandKit:ParseInto", 3)
+    if type(array) ~= "table" then
+        error("CommandKit:ParseInto array must be a table", 2)
+    end
+    local count, reason = tokenize(text, array)
+    return count, reason
+end
+
+---A sink that keeps what it receives, for tests.
+---@param self CommandKit
+---@return CommandKit.CaptureSink
+local function captureSink(self)
+    validateFacade(self, "CommandKit:CaptureSink", 3)
+    return newCaptureSink()
+end
+
+-- Commit ---------------------------------------------------------------------
+
+rawset(Scope, "Register", scopeRegister)
+rawset(Scope, "Unregister", scopeUnregister)
+rawset(Scope, "IsRegistered", scopeIsRegistered)
+rawset(Scope, "SetSink", scopeSetSink)
+rawset(Scope, "BindOptions", scopeBindOptions)
+rawset(Scope, "EnableCompletion", scopeEnableCompletion)
+rawset(Scope, "DisableCompletion", scopeDisableCompletion)
+rawset(Scope, "Close", scopeClose)
+rawset(Scope, "IsClosed", scopeIsClosed)
+rawset(Scope, "GetActiveCount", scopeGetActiveCount)
+rawset(Scope, "GetAddonName", scopeGetAddonName)
+
+rawset(Context, "Print", contextPrint)
+rawset(Context, "Printf", contextPrintf)
+rawset(Context, "Usage", contextUsage)
+rawset(Context, "Fail", contextFail)
+rawset(Context, "GetCommandPath", contextGetCommandPath)
+rawset(Context, "GetRawText", contextGetRawText)
+
+rawset(CommandKit, "API", API_GENERATION)
+rawset(CommandKit, "REVISION", IMPLEMENTATION_REVISION)
+rawset(CommandKit, "MAX_COMMANDS", MAX_COMMANDS)
+rawset(CommandKit, "MAX_DEPTH", MAX_DEPTH)
+rawset(CommandKit, "CreateScope", createScope)
+rawset(CommandKit, "ForAddon", forAddon)
+rawset(CommandKit, "CloseAddonScopes", closeAddonScopes)
+rawset(CommandKit, "Parse", parse)
+rawset(CommandKit, "ParseInto", parseInto)
+rawset(CommandKit, "CaptureSink", captureSink)
+
+rawset(dispatch, "slash", slashDispatch)
+rawset(dispatch, "tabPressed", tabPressed)
+rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
+
+if not validatePublicSurface(CommandKit) or not validateCurrentState(CommandKit) then
+    error("MoltenCodes CommandKit package state is corrupted or incomplete", 2)
+end
+
+return CommandKit
