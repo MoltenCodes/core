@@ -19,14 +19,18 @@ It also covers:
   two-step shutdown wiring;
 - `Coalesce`: the payload set, `byEvent` and `nil`-payload keying, unit events, `maxKeys`, `Flush`, scope release (also mid-dispatch), refusal without SchedulerKit, caller-line errors, and an allocation guard;
 - `Derive`: recompute, debounce, `delaySeconds`, `OnChange`, `equals`, `Invalidate`, raising compute and listeners, `Close` (which disconnects the change listeners) and scope release, a compute that closes its own scope, and the synchronous path without SchedulerKit;
-- in-place upgrade from implementation revisions 1, 4, 5, 6 and 8, and the
-  refusal to downgrade a newer copy.
+- the shared `maxUnitFrames` limit: its default, `SetLimits` raising and
+  lowering it without eviction, the refusal of `EventKit.UNBOUNDED` and of
+  invalid values at the caller's line, atomic updates, and `GetLimits` copies;
+- in-place upgrade from implementation revisions 1, 4, 5, 6, 8 and 9, set limits
+  and the sentinel carried to a newer revision, and the refusal to downgrade a
+  newer copy.
 
 ## Spec files
 
 | File | Covers |
 |---|---|
-| `Bootstrap_spec.lua` | Load order, duplicate embedding, corrupted state, every in-place upgrade, no downgrade. |
+| `Bootstrap_spec.lua` | Load order, duplicate embedding, corrupted state (including a mismatched sentinel and out-of-range limits), every in-place upgrade, limits carried to a newer revision, no downgrade. |
 | `Manifest_spec.lua` | Manifest and runtime metadata agree. |
 | `Registration_spec.lua` | Lazy registration and final-listener unregistration. |
 | `Connection_spec.lua` | Connection handles: connected state and exactly-once disconnect. |
@@ -37,13 +41,14 @@ It also covers:
 | `Scope_spec.lua` | Manual and addon scopes, deferred close, `CloseAddonScopes`. |
 | `Coalesce_spec.lua` | `Coalesce`, with and without SchedulerKit. |
 | `Derive_spec.lua` | `Derive`, with and without SchedulerKit. |
+| `Limits_spec.lua` | `SetLimits`, `GetLimits`, `EventKit.UNBOUNDED` and the `maxUnitFrames` limit. |
 
 `EventKitTestEnv.LoadSourceAtRevision(revision)` runs the EventKit source again
 with only its revision changed, standing in for another embedded copy whose
 `_state` schema matches.
 
 `EventKitTestEnv.Scheduled` is a second environment that also loads
-LifecycleKit, TimerKit and SchedulerKit. The manifest names SchedulerKit under
+TimerKit and SchedulerKit (LifecycleKit is optional for both and not loaded). The manifest names SchedulerKit under
 `optionalDependencies`, so the runner puts those sources on `LUA_PATH` for this
 suite; the release load order ignores optional dependencies.
 

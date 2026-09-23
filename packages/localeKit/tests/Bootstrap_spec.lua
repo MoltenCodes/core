@@ -87,6 +87,25 @@ describe("LocaleKit bootstrap", function()
         assert.is_table(upgraded:NewLocale("Later", "frFR"))
     end)
 
+    it("keeps the UNBOUNDED sentinel and each addon's limit across an upgrade", function()
+        local LocaleKit = TestEnv.NewPackage("deDE")
+        local sentinel = LocaleKit.UNBOUNDED
+        LocaleKit:NewLocale("Open", "enUS", { isDefault = true })["Hello"] = true
+        LocaleKit:NewLocale("Tight", "enUS", { isDefault = true })["Hello"] = true
+        local open = LocaleKit:GetLocale("Open", { missing = "silent", maxMissingKeys = sentinel })
+        local tight = LocaleKit:GetLocale("Tight", { missing = "silent", maxMissingKeys = 2 })
+
+        local upgraded = TestEnv.LoadRevision(2)
+        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(sentinel, upgraded.UNBOUNDED)
+        for index = 1, 1100 do
+            local _ = open["key" .. index]
+            local _ = tight["key" .. index]
+        end
+        assert.are.equal(1100, #upgraded:MissingKeys("Open"))
+        assert.are.equal(2, #upgraded:MissingKeys("Tight"))
+    end)
+
     it("requires Registry", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()

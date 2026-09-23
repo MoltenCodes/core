@@ -88,6 +88,28 @@ describe("MediaKit bootstrap", function()
         end
     )
 
+    it("upgrades in place and keeps the set limits and the UNBOUNDED sentinel", function()
+        local MediaKit = TestEnv.NewPackage()
+        local unbounded = MediaKit.UNBOUNDED
+        MediaKit:SetLimits({ maxEntriesPerType = 4096, maxConsumers = unbounded })
+
+        local upgraded = TestEnv.LoadRevision(2)
+        assert.are.equal(unbounded, upgraded.UNBOUNDED)
+        assert.are.same(
+            { maxEntriesPerType = 4096, maxConsumers = unbounded },
+            upgraded:GetLimits()
+        )
+        assert.are.equal(unbounded, upgraded:GetLimits().maxConsumers)
+    end)
+
+    it("refuses shared state whose limits hold an invalid value", function()
+        local MediaKit = TestEnv.NewPackage()
+        rawset(MediaKit._state.limits, "maxEntriesPerType", MediaKit.UNBOUNDED)
+        TestEnv.expectErrorContaining("package state is corrupted or incomplete", function()
+            TestEnv.ReloadPackage()
+        end)
+    end)
+
     it("requires Registry", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()

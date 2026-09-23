@@ -61,42 +61,87 @@ local SCOPE_SCHEMA = 1
 local RECORD_SCHEMA = 1
 local CONTEXT_SCHEMA = 1
 
+-- Scope limits (see "Limits" in docs/API.md). Each is a default a scope
+-- option overrides with any positive integer or `CommandKit.UNBOUNDED`: all four
+-- bound what the scope's own registrations cost, never a shared resource.
+
 -- The most top-level commands one scope registers. Every slash name stays in
--- the client's tables for the session, so a scope that needs more is almost
--- certainly registering in a loop.
-local MAX_COMMANDS = 64
+-- the client's tables for the session, so a scope that needs more than this
+-- by default is almost certainly registering in a loop; `maxCommands` opens it.
+local DEFAULT_MAX_COMMANDS = 64
 
--- The deepest sub-command nesting: `/cmd one two three`.
+-- The most sub-commands one command declares at one level (`maxSubcommands`).
+local DEFAULT_MAX_SUBCOMMANDS = 64
+
+-- The most per-position argument schemas one command declares (`maxPositions`).
+local DEFAULT_MAX_POSITIONS = 16
+
+-- How many `SLASH_<key><n>` globals the taken check reads per foreign key
+-- (`maxSlashAliases`). The client itself stops at the first gap; the bound
+-- only stops a pathological one, and the scan always ends at a gap.
+local DEFAULT_MAX_SLASH_ALIASES = 16
+
+-- Package-wide limits, shared by every consumer and set through
+-- `CommandKit:SetLimits`.
+
+-- The most lines a capture sink keeps (the oldest are dropped). A sink's lines
+-- belong to whoever made it, so `UNBOUNDED` is accepted.
+local DEFAULT_MAX_CAPTURED = 256
+
+-- The most candidates one completion offers. They are printed to the chat
+-- frame as one line, so the limit has a ceiling and refuses `UNBOUNDED`.
+local DEFAULT_MAX_COMPLETIONS = 32
+local MAX_COMPLETIONS_CEILING = 256
+
+-- The emote indexes the emote check reads: `EMOTE<index>_CMD<n>` for index
+-- 1..maxEmotes (or the host's `MAXEMOTEINDEX`, when it is a smaller number)
+-- and n up to the first gap. Emote indexes have gaps, so the scan cannot stop
+-- at the first one: it needs an end, and `UNBOUNDED` is refused.
+local DEFAULT_MAX_EMOTES = 1024
+local MAX_EMOTES_CEILING = 16384
+
+-- Hard ceilings. These do not move, whatever a consumer asks for.
+
+-- The deepest sub-command nesting: `/cmd one two three`. Compiling, usage
+-- generation and dispatch recurse once per level, so the bound keeps the Lua
+-- stack a command tree can use fixed.
 local MAX_DEPTH = 3
-
--- The most sub-commands one command declares at one level.
-local MAX_SUBCOMMANDS = 64
-
--- The most per-position argument schemas one command declares.
-local MAX_POSITIONS = 16
 
 -- How many dispatches may be in progress at once: a handler that runs another
 -- slash command, which runs another, and so on. Each level reuses one frame of
--- buffers, so the bound is also the number of frames CommandKit ever keeps.
+-- buffers, so the bound is also the number of frames CommandKit ever keeps,
+-- and it stops a command that runs itself before it exhausts the C stack.
 local MAX_NESTING = 4
 
--- How many `SLASH_<key><n>` globals the taken check reads per foreign key. The
--- client itself stops at the first gap; the bound only stops a pathological one.
-local MAX_SLASH_ALIASES = 16
-
--- The emote indexes and the commands per emote the emote check reads:
--- `EMOTE<index>_CMD<n>` for index 1..MAX_EMOTES (or the host's
--- `MAXEMOTEINDEX`, when it is a smaller number) and n up to the first gap.
-local MAX_EMOTES = 1024
+-- The commands per emote the emote check reads before the first gap.
 local MAX_EMOTE_COMMANDS = 8
 
--- The most candidates one completion offers, and the most lines a capture sink
--- keeps (the oldest are dropped).
-local MAX_COMPLETIONS = 32
-local MAX_CAPTURED = 256
-
--- The longest command or sub-command name.
+-- The longest command or sub-command name. The name becomes part of a
+-- `SlashCmdList` key and of `SLASH_<key><n>` global names, which the client
+-- keeps for the session; long keys are what the bound refuses.
 local MAX_NAME_LENGTH = 32
+
+-- The package-wide limits `SetLimits` accepts, in the order `GetLimits` and
+-- the validation read them.
+local LIMIT_NAMES = { "maxCaptured", "maxCompletions", "maxEmotes" }
+-- A ceiling for the limits that refuse `UNBOUNDED`, and the reason given.
+local LIMIT_CEILINGS = {
+    maxCompletions = MAX_COMPLETIONS_CEILING,
+    maxEmotes = MAX_EMOTES_CEILING,
+}
+local LIMIT_UNBOUNDED_REFUSALS = {
+    maxCompletions = "the candidates are printed to the shared chat frame as one line",
+    maxEmotes = "emote indexes have gaps, so the scan needs an end",
+}
+
+-- The limits a scope option accepts, with their defaults.
+local SCOPE_OPTION_FIELDS = {
+    maxCommands = DEFAULT_MAX_COMMANDS,
+    maxSubcommands = DEFAULT_MAX_SUBCOMMANDS,
+    maxPositions = DEFAULT_MAX_POSITIONS,
+    maxSlashAliases = DEFAULT_MAX_SLASH_ALIASES,
+}
+local SCOPE_OPTION_NAMES = { "maxCommands", "maxSubcommands", "maxPositions", "maxSlashAliases" }
 
 -- The prefix of every slash-table key CommandKit writes.
 local KEY_PREFIX = "MOLTENCODES_"
@@ -135,6 +180,8 @@ local FACADE_METHODS = {
     "Parse",
     "ParseInto",
     "CaptureSink",
+    "SetLimits",
+    "GetLimits",
 }
 local SCOPE_METHODS = {
     "Register",
@@ -206,6 +253,21 @@ local BYTE_TEXTURE = 84 -- "T": starts a texture
 ---@field GetCommandPath fun(self: CommandKit.Context): string
 ---@field GetRawText fun(self: CommandKit.Context): string
 
+---Options accepted by `CreateScope` and `ForAddon`. Each limit is a positive
+---integer or `CommandKit.UNBOUNDED`; see "Limits" in docs/API.md.
+---@class CommandKit.ScopeOptions
+---@field maxCommands (integer|table)? Most top-level commands the scope registers; default 64.
+---@field maxSubcommands (integer|table)? Most sub-commands one command declares at one level; default 64.
+---@field maxPositions (integer|table)? Most per-position argument schemas one command declares; default 16.
+---@field maxSlashAliases (integer|table)? `SLASH_<key><n>` globals the taken check reads per foreign key; default 16.
+
+---The package-wide limits, shared by every consumer in the session.
+---`SetLimits` accepts any subset; `GetLimits` returns a fresh copy.
+---@class CommandKit.Limits
+---@field maxCaptured (integer|table)? Most lines a capture sink keeps; default 256, or `CommandKit.UNBOUNDED`.
+---@field maxCompletions integer? Most candidates one completion offers; default 32, at most 256.
+---@field maxEmotes integer? Emote indexes the emote check reads; default 1024, at most 16384.
+
 ---Option table accepted by `BindOptions`.
 ---@class CommandKit.BindOptions
 ---@field description string? The bound command's help line.
@@ -228,16 +290,19 @@ local BYTE_TEXTURE = 84 -- "T": starts a texture
 ---@class CommandKit
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
----@field MAX_COMMANDS integer The most top-level commands one scope registers.
----@field MAX_DEPTH integer The deepest sub-command nesting.
+---@field MAX_COMMANDS integer The default `maxCommands` of a scope.
+---@field MAX_DEPTH integer The deepest sub-command nesting, a hard ceiling.
+---@field UNBOUNDED table Sentinel a limit accepts to lift it, where the memory is the consumer's own.
 ---@field Scope CommandKit.Scope Shared scope prototype.
 ---@field Context CommandKit.Context Shared context prototype.
----@field CreateScope fun(self: CommandKit): CommandKit.Scope
----@field ForAddon fun(self: CommandKit, addonName: string): CommandKit.Scope
+---@field CreateScope fun(self: CommandKit, options: CommandKit.ScopeOptions?): CommandKit.Scope
+---@field ForAddon fun(self: CommandKit, addonName: string, options: CommandKit.ScopeOptions?): CommandKit.Scope
 ---@field CloseAddonScopes fun(self: CommandKit, addonName: string): boolean
 ---@field Parse fun(self: CommandKit, text: string): string[]|nil, string?
 ---@field ParseInto fun(self: CommandKit, text: string, array: table): integer|nil, string?
 ---@field CaptureSink fun(self: CommandKit): CommandKit.CaptureSink
+---@field SetLimits fun(self: CommandKit, limits: CommandKit.Limits)
+---@field GetLimits fun(self: CommandKit): CommandKit.Limits
 
 -- Dependencies ---------------------------------------------------------------
 
@@ -302,6 +367,7 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "REVISION")) ~= "number"
         or type(rawget(implementation, "MAX_COMMANDS")) ~= "number"
         or type(rawget(implementation, "MAX_DEPTH")) ~= "number"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
         or type(rawget(implementation, "Scope")) ~= "table"
         or type(rawget(implementation, "Context")) ~= "table"
     then
@@ -331,13 +397,18 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "frames")) == "table"
         and type(rawget(currentState, "frameDepth")) == "number"
         and type(rawget(currentState, "completion")) == "table"
+        and type(rawget(currentState, "unbounded")) == "table"
+        and type(rawget(currentState, "limits")) == "table"
 end
 
----Whether `implementation` carries package state of this revision's schema.
+---Whether `implementation` carries package state of this revision's schema,
+---and publishes the sentinel that state keeps.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+    local currentState = rawget(implementation, "_state")
+    return validateStateBase(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -405,6 +476,17 @@ if previousRevision == nil then
             handler = false,
             enabledScopes = 0,
         },
+        -- The `UNBOUNDED` sentinel. Kept here so every revision that inherits
+        -- this state publishes the same table, and a limit set to it by one
+        -- copy still reads as unbounded in the next.
+        unbounded = {},
+        -- The package-wide limits, shared by every consumer; `SetLimits`
+        -- writes here and a newer revision inherits what was set.
+        limits = {
+            maxCaptured = DEFAULT_MAX_CAPTURED,
+            maxCompletions = DEFAULT_MAX_COMPLETIONS,
+            maxEmotes = DEFAULT_MAX_EMOTES,
+        },
     }
     rawset(CommandKit, "Scope", Scope)
     rawset(CommandKit, "Context", Context)
@@ -426,6 +508,8 @@ local ownedKeys = rawget(state, "ownedKeys")
 local slashHandlers = rawget(state, "slashHandlers")
 local frames = rawget(state, "frames")
 local completion = rawget(state, "completion")
+local UNBOUNDED = rawget(state, "unbounded")
+local sharedLimits = rawget(state, "limits")
 rawset(SCOPE_METATABLE, "__index", Scope)
 rawset(CONTEXT_METATABLE, "__index", Context)
 
@@ -907,14 +991,16 @@ local function writeLines(scope, lines)
 end
 
 ---Build a sink that keeps what it receives, for tests. Keeps the most recent
----`MAX_CAPTURED` lines.
+---`maxCaptured` lines, read from the shared limits on every line; a sink
+---already longer than a lowered limit keeps its length instead of shrinking.
 ---@return CommandKit.CaptureSink
 local function newCaptureSink()
     local messages = {}
     local sink = {}
 
     function sink.AddMessage(_, text)
-        if #messages >= MAX_CAPTURED then
+        local maxCaptured = rawget(sharedLimits, "maxCaptured")
+        if maxCaptured ~= UNBOUNDED and #messages >= maxCaptured then
             table.remove(messages, 1)
         end
         messages[#messages + 1] = text
@@ -1084,8 +1170,9 @@ end
 ---@param arguments any
 ---@param label string argument description, used in the argument errors
 ---@param level integer stack level the failures are reported at
+---@param maxPositions number the scope's `maxPositions`, `math.huge` when unbounded
 ---@return table compiled `{ mode, schemas, coercions, defaulted, count, usage }`
-local function compileArguments(arguments, label, level)
+local function compileArguments(arguments, label, level, maxPositions)
     local compiled =
         { mode = "none", schemas = {}, coercions = {}, defaulted = {}, count = 0, usage = "" }
     if arguments == nil then
@@ -1108,8 +1195,11 @@ local function compileArguments(arguments, label, level)
     end
     local count = 0
     for key in next, arguments do
-        if type(key) ~= "number" or key < 1 or key % 1 ~= 0 or key > MAX_POSITIONS then
-            error(label .. " must be a list of at most " .. MAX_POSITIONS .. " schemas", level)
+        if type(key) ~= "number" or key < 1 or key % 1 ~= 0 or key > maxPositions then
+            if maxPositions == math.huge then
+                error(label .. " must be a list of schemas", level)
+            end
+            error(label .. " must be a list of at most " .. maxPositions .. " schemas", level)
         end
         count = count + 1
     end
@@ -1200,21 +1290,23 @@ local compileSpec
 ---@param label string argument description, used in the argument errors
 ---@param depth integer the nesting depth of `record`
 ---@param level integer stack level the failures are reported at
-local function compileSubcommands(record, subcommands, label, depth, level)
+---@param scope CommandKit.Scope the scope whose limits apply
+local function compileSubcommands(record, subcommands, label, depth, level, scope)
     if type(subcommands) ~= "table" then
         error(label .. " must be a table", level)
     end
     if depth + 1 > MAX_DEPTH then
         error(label .. " nests sub-commands deeper than " .. MAX_DEPTH .. " levels", level)
     end
+    local maxSubcommands = rawget(scope, "_maxSubcommands")
     local keys = {}
     for key in next, subcommands do
         if type(key) ~= "string" then
             error(label .. " keys must be sub-command names", level)
         end
         keys[#keys + 1] = key
-        if #keys > MAX_SUBCOMMANDS then
-            error(label .. " declares more than " .. MAX_SUBCOMMANDS .. " sub-commands", level)
+        if #keys > maxSubcommands then
+            error(label .. " declares more than " .. maxSubcommands .. " sub-commands", level)
         end
     end
     table.sort(keys)
@@ -1232,7 +1324,8 @@ local function compileSubcommands(record, subcommands, label, depth, level)
             rawget(record, "_path") .. " " .. name,
             childLabel,
             depth + 1,
-            level + 1
+            level + 1,
+            scope
         )
         rawset(children, name, child)
         names[#names + 1] = name
@@ -1246,8 +1339,9 @@ end
 ---@param label string argument description, used in the argument errors
 ---@param depth integer 0 for a top-level command
 ---@param level integer stack level the failures are reported at
+---@param scope CommandKit.Scope the scope whose limits apply
 ---@return table record
-compileSpec = function(spec, path, label, depth, level)
+compileSpec = function(spec, path, label, depth, level, scope)
     if type(spec) ~= "table" then
         error(label .. " must be a table", level)
     end
@@ -1264,7 +1358,12 @@ compileSpec = function(spec, path, label, depth, level)
     validateOptionalString(usage, label .. ".usage", level + 1)
     local description = rawget(spec, "description")
     validateOptionalString(description, label .. ".description", level + 1)
-    local arguments = compileArguments(rawget(spec, "arguments"), label .. ".arguments", level + 1)
+    local arguments = compileArguments(
+        rawget(spec, "arguments"),
+        label .. ".arguments",
+        level + 1,
+        rawget(scope, "_maxPositions")
+    )
 
     local record = {
         _schema = RECORD_SCHEMA,
@@ -1287,7 +1386,7 @@ compileSpec = function(spec, path, label, depth, level)
 
     local subcommands = rawget(spec, "subcommands")
     if subcommands ~= nil then
-        compileSubcommands(record, subcommands, label .. ".subcommands", depth, level + 1)
+        compileSubcommands(record, subcommands, label .. ".subcommands", depth, level + 1, scope)
     end
     local names = rawget(record, "_subcommandNames")
     if handler == nil then
@@ -1366,8 +1465,9 @@ end
 ---until the first gap. Commands another addon keeps elsewhere are not seen.
 ---@param tableName string `"SlashCmdList"` or `"SecureCmdList"`
 ---@param upperSlash string
+---@param maxAliases number the scope's `maxSlashAliases`, `math.huge` when unbounded
 ---@return boolean
-local function hasForeignSlash(tableName, upperSlash)
+local function hasForeignSlash(tableName, upperSlash, maxAliases)
     local list = readGlobal(tableName)
     if type(list) ~= "table" then
         return false
@@ -1375,7 +1475,7 @@ local function hasForeignSlash(tableName, upperSlash)
     local probe = readGlobal("issecretvalue")
     for key in next, list do
         if type(key) == "string" and ownedKeys[key] == nil then
-            for index = 1, MAX_SLASH_ALIASES do
+            for index = 1, maxAliases do
                 local value = readGlobal("SLASH_" .. key .. index)
                 if type(value) ~= "string" then
                     break
@@ -1395,8 +1495,9 @@ end
 ---name would never run. Reads the keys of `ChatTypeInfo` and each key's
 ---`SLASH_<TYPE>1..n` globals up to the first gap.
 ---@param upperSlash string
+---@param maxAliases number the scope's `maxSlashAliases`, `math.huge` when unbounded
 ---@return boolean
-local function isChatTypeSlash(upperSlash)
+local function isChatTypeSlash(upperSlash, maxAliases)
     local chatTypes = readGlobal("ChatTypeInfo")
     if type(chatTypes) ~= "table" then
         return false
@@ -1404,7 +1505,7 @@ local function isChatTypeSlash(upperSlash)
     local probe = readGlobal("issecretvalue")
     for chatType in next, chatTypes do
         if type(chatType) == "string" then
-            for index = 1, MAX_SLASH_ALIASES do
+            for index = 1, maxAliases do
                 local value = readGlobal("SLASH_" .. chatType .. index)
                 if type(value) ~= "string" then
                     break
@@ -1426,7 +1527,7 @@ end
 ---@param upperSlash string
 ---@return boolean
 local function isEmoteSlash(upperSlash)
-    local count = MAX_EMOTES
+    local count = rawget(sharedLimits, "maxEmotes")
     local hostCount = readGlobal("MAXEMOTEINDEX")
     if type(hostCount) == "number" and hostCount >= 0 and hostCount < count then
         count = hostCount
@@ -1482,9 +1583,9 @@ local function registerCommand(scope, name, spec, methodName, level)
     if type(slashList) ~= "table" then
         error(methodName .. " requires the host's SlashCmdList table", level)
     end
-    local record = compileSpec(spec, "/" .. lowerName, methodName .. " spec", 0, level + 1)
+    local record = compileSpec(spec, "/" .. lowerName, methodName .. " spec", 0, level + 1, scope)
 
-    if rawget(scope, "_count") >= MAX_COMMANDS then
+    if rawget(scope, "_count") >= rawget(scope, "_maxCommands") then
         return nil, "full"
     end
     if activeByName[lowerName] ~= nil then
@@ -1498,10 +1599,11 @@ local function registerCommand(scope, name, spec, methodName, level)
         end
     end
     local upperSlash = "/" .. lowerName:upper()
+    local maxAliases = rawget(scope, "_maxSlashAliases")
     if
-        hasForeignSlash("SlashCmdList", upperSlash)
-        or hasForeignSlash("SecureCmdList", upperSlash)
-        or isChatTypeSlash(upperSlash)
+        hasForeignSlash("SlashCmdList", upperSlash, maxAliases)
+        or hasForeignSlash("SecureCmdList", upperSlash, maxAliases)
+        or isChatTypeSlash(upperSlash, maxAliases)
     then
         return nil, "taken"
     end
@@ -2446,7 +2548,11 @@ end
 ---@param candidate any
 ---@param lowerPartial string
 local function offer(candidates, candidate, lowerPartial)
-    if type(candidate) ~= "string" or #candidates >= MAX_COMPLETIONS or isSecret(candidate) then
+    if
+        type(candidate) ~= "string"
+        or #candidates >= rawget(sharedLimits, "maxCompletions")
+        or isSecret(candidate)
+    then
         return
     end
     if candidate:sub(1, #lowerPartial):lower() == lowerPartial then
@@ -2638,7 +2744,7 @@ end
 
 ---Register `/name`. Returns `true`, `nil, "taken"` when another owner or a
 ---chat type uses the slash name, `nil, "emote"` when an emote does, or
----`nil, "full"` when the scope holds `MAX_COMMANDS`.
+---`nil, "full"` when the scope holds its `maxCommands`.
 ---@param self CommandKit.Scope
 ---@param name string the slash name without the slash
 ---@param spec CommandKit.CommandSpec
@@ -2801,9 +2907,68 @@ end
 
 -- Package public API ---------------------------------------------------------
 
+---Whether `value` is an exact integer of one or more. `nan` and both
+---infinities are rejected before the integer test can accept them.
+---@param value any
+---@return boolean
+local function isPositiveInteger(value)
+    return type(value) == "number"
+        and value == value
+        and value ~= math.huge
+        and value >= 1
+        and value % 1 == 0
+end
+
+---The value a scope keeps for one limit option: the integer, or `math.huge`
+---for `UNBOUNDED`, so every comparison on the registration path stays numeric.
+---@param options table|nil
+---@param field string
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+---@return number
+local function readScopeLimit(options, field, label, level)
+    local value = options ~= nil and rawget(options, field) or nil
+    if value == nil then
+        return SCOPE_OPTION_FIELDS[field]
+    end
+    if value == UNBOUNDED then
+        return math.huge
+    end
+    if not isPositiveInteger(value) then
+        error(label .. "." .. field .. " must be a positive integer or CommandKit.UNBOUNDED", level)
+    end
+    return value
+end
+
+---Check a scope option table and resolve its limits, raising at the caller
+---before anything is created.
+---@param options any
+---@param label string argument description, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return table limits field name to the resolved limit
+local function readScopeOptions(options, label, level)
+    if options ~= nil and (type(options) ~= "table" or getmetatable(options) ~= nil) then
+        error(label .. " must be a table", level)
+    end
+    if options ~= nil then
+        for key in next, options do
+            if type(key) ~= "string" or SCOPE_OPTION_FIELDS[key] == nil then
+                error(label .. "." .. tostring(key) .. " is not a recognised option", level)
+            end
+        end
+    end
+    local limits = {}
+    for index = 1, #SCOPE_OPTION_NAMES do
+        local field = SCOPE_OPTION_NAMES[index]
+        limits[field] = readScopeLimit(options, field, label, level + 1)
+    end
+    return limits
+end
+
 ---@param addonName string|false
+---@param limits table resolved scope limits from `readScopeOptions`
 ---@return CommandKit.Scope
-local function newScope(addonName)
+local function newScope(addonName, limits)
     return setmetatable({
         _schema = SCOPE_SCHEMA,
         _addonName = addonName,
@@ -2812,15 +2977,46 @@ local function newScope(addonName)
         _commands = {},
         _sink = false,
         _completion = false,
+        _maxCommands = limits.maxCommands,
+        _maxSubcommands = limits.maxSubcommands,
+        _maxPositions = limits.maxPositions,
+        _maxSlashAliases = limits.maxSlashAliases,
     }, SCOPE_METATABLE)
 end
 
 ---Create a manually owned command scope, closed only by its owner.
 ---@param self CommandKit
+---@param options CommandKit.ScopeOptions? limits of this scope
 ---@return CommandKit.Scope scope
-local function createScope(self)
+local function createScope(self, options)
     validateFacade(self, "CommandKit:CreateScope", 3)
-    return newScope(false)
+    local limits = readScopeOptions(options, "CommandKit:CreateScope options", 3)
+    return newScope(false, limits)
+end
+
+---Refuse options that disagree with the limits an existing scope was created
+---with, so a second caller never believes it opened a limit it did not.
+---@param scope CommandKit.Scope
+---@param options table|nil
+---@param limits table resolved limits of `options`
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+local function refuseConflictingOptions(scope, options, limits, label, level)
+    if options == nil then
+        return
+    end
+    for index = 1, #SCOPE_OPTION_NAMES do
+        local field = SCOPE_OPTION_NAMES[index]
+        if rawget(options, field) ~= nil and limits[field] ~= rawget(scope, "_" .. field) then
+            error(
+                label
+                    .. "."
+                    .. field
+                    .. " differs from the limit this addon's scope was created with",
+                level
+            )
+        end
+    end
 end
 
 ---Return the canonical command scope of an addon, creating it on demand.
@@ -2828,16 +3024,24 @@ end
 ---CommandKit does not observe addon shutdown; whoever does (LifecycleKit, or
 ---the addon itself on `PLAYER_LOGOUT`) closes this scope through
 ---`CommandKit:CloseAddonScopes(addonName)`.
+---
+---`options` sets the limits when this call creates the scope. On a later call
+---a limit that differs from the scope's is refused at the caller; one that
+---agrees, or none at all, is accepted.
 ---@param self CommandKit
 ---@param addonName string addon folder name
+---@param options CommandKit.ScopeOptions? limits of the scope, applied when it is created
 ---@return CommandKit.Scope scope
-local function forAddon(self, addonName)
+local function forAddon(self, addonName, options)
     validateFacade(self, "CommandKit:ForAddon", 3)
     validateString(addonName, "CommandKit:ForAddon addonName", 3)
+    local limits = readScopeOptions(options, "CommandKit:ForAddon options", 3)
     local scope = rawget(addonScopes, addonName)
     if scope == nil then
-        scope = newScope(addonName)
+        scope = newScope(addonName, limits)
         rawset(addonScopes, addonName, scope)
+    else
+        refuseConflictingOptions(scope, options, limits, "CommandKit:ForAddon options", 3)
     end
     return scope
 end
@@ -2912,6 +3116,63 @@ local function captureSink(self)
     return newCaptureSink()
 end
 
+---Check a `SetLimits` table whole, raising at the caller before anything
+---changes.
+---@param limits any
+---@param level integer stack level the failures are reported at
+local function validateLimitUpdate(limits, level)
+    if type(limits) ~= "table" or getmetatable(limits) ~= nil then
+        error("CommandKit:SetLimits limits must be a table", level)
+    end
+    for key, value in next, limits do
+        local label = "CommandKit:SetLimits limits." .. tostring(key)
+        if type(key) ~= "string" or rawget(sharedLimits, key) == nil then
+            error(label .. " is not a recognised limit", level)
+        end
+        local ceiling = LIMIT_CEILINGS[key]
+        if ceiling == nil then
+            if value ~= UNBOUNDED and not isPositiveInteger(value) then
+                error(label .. " must be a positive integer or CommandKit.UNBOUNDED", level)
+            end
+        elseif value == UNBOUNDED then
+            error(
+                label .. " cannot be CommandKit.UNBOUNDED: " .. LIMIT_UNBOUNDED_REFUSALS[key],
+                level
+            )
+        elseif not isPositiveInteger(value) or value > ceiling then
+            error(label .. " must be an integer from 1 to " .. ceiling, level)
+        end
+    end
+end
+
+---Change any subset of the package-wide limits. They are shared by every
+---consumer in the session; lowering one never drops what is already kept.
+---@param self CommandKit
+---@param limits CommandKit.Limits
+local function setLimits(self, limits)
+    validateFacade(self, "CommandKit:SetLimits", 3)
+    validateLimitUpdate(limits, 3)
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        local value = rawget(limits, name)
+        if value ~= nil then
+            rawset(sharedLimits, name, value)
+        end
+    end
+end
+
+---Return a fresh copy of the package-wide limits. Allocates one table.
+---@param self CommandKit
+---@return CommandKit.Limits
+local function getLimits(self)
+    validateFacade(self, "CommandKit:GetLimits", 3)
+    return {
+        maxCaptured = rawget(sharedLimits, "maxCaptured"),
+        maxCompletions = rawget(sharedLimits, "maxCompletions"),
+        maxEmotes = rawget(sharedLimits, "maxEmotes"),
+    }
+end
+
 -- Commit ---------------------------------------------------------------------
 
 rawset(Scope, "Register", scopeRegister)
@@ -2935,14 +3196,17 @@ rawset(Context, "GetRawText", contextGetRawText)
 
 rawset(CommandKit, "API", API_GENERATION)
 rawset(CommandKit, "REVISION", IMPLEMENTATION_REVISION)
-rawset(CommandKit, "MAX_COMMANDS", MAX_COMMANDS)
+rawset(CommandKit, "MAX_COMMANDS", DEFAULT_MAX_COMMANDS)
 rawset(CommandKit, "MAX_DEPTH", MAX_DEPTH)
+rawset(CommandKit, "UNBOUNDED", UNBOUNDED)
 rawset(CommandKit, "CreateScope", createScope)
 rawset(CommandKit, "ForAddon", forAddon)
 rawset(CommandKit, "CloseAddonScopes", closeAddonScopes)
 rawset(CommandKit, "Parse", parse)
 rawset(CommandKit, "ParseInto", parseInto)
 rawset(CommandKit, "CaptureSink", captureSink)
+rawset(CommandKit, "SetLimits", setLimits)
+rawset(CommandKit, "GetLimits", getLimits)
 
 rawset(dispatch, "slash", slashDispatch)
 rawset(dispatch, "tabPressed", tabPressed)

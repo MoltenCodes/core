@@ -12,7 +12,8 @@ The MediaKit suite covers:
 - LibSharedMedia: `"absent"` without LibStub and with a LibStub that holds no LibSharedMedia; adoption of the five shared types, signals in sorted order, adopted names refused with other data and accepted with the same, MediaKit's entry kept on a clash, invalid entries skipped, a later pack arriving through the callback, idempotence with one subscription, and a LibSharedMedia without CallbackHandler; mirroring with names LibSharedMedia holds skipped, icons and textures kept out, later registrations mirrored, idempotence, and the `langmask` built from a font's declared scripts (western only for an undeclared font); and both directions at once without an adopted entry mirrored back, a mirrored entry returning as a duplicate or a second signal;
 - allocation guards (`collectgarbage("count")` with the collector stopped) on `Fetch` and `Has` with and without options, on `List` while nothing was registered, and on `defaults:Get`;
 - secret values: a secret type, name, data or script name refused at the caller through an `issecretvalue` stub looked up at call time, and secret LibSharedMedia entries skipped;
-- duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, missing SignalKit, an incomplete facade, and an in-place upgrade that keeps entries, lists, connections, defaults, adoption, the single subscription and mirroring;
+- the limits: `GetLimits` defaults and fresh tables, `maxEntriesPerType` raised to its ceiling and lowered without removing entries, `UNBOUNDED` refused for it with the reason and honoured for `maxConsumers`, and invalid, secret or unknown values and non-facade receivers refused at the caller's line without changing anything;
+- duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, missing SignalKit, an incomplete facade, and an in-place upgrade that keeps entries, lists, connections, defaults, adoption, the single subscription and mirroring, an upgrade that keeps the set limits and the `UNBOUNDED` sentinel, and a refusal of state holding an invalid limit;
 - `error` levels: every argument failure reports the caller's own line;
 - manifest/runtime API and revision consistency, and the declared dependencies.
 
@@ -29,6 +30,7 @@ The shared fixture does not stub `GetLocale` or LibStub, so `support/MediaKitTes
 | `OnRegistered_spec.lua` | registration signals |
 | `LibSharedMedia_spec.lua` | adoption and mirroring |
 | `SecretValues_spec.lua` | secret arguments and LibSharedMedia entries |
+| `Limits_spec.lua` | `SetLimits`, `GetLimits`, the entries ceiling and `UNBOUNDED` |
 | `Allocation_spec.lua` | allocation guards |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, load order, upgrades |

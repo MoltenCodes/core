@@ -58,7 +58,9 @@ local LOCALE_CODE_PATTERN = "^%l%l%u%u$"
 -- A missing key is stored as its own value so its cost is paid once. A caller
 -- that indexes the read table with unbounded runtime data (a unit name, say)
 -- would otherwise grow it without limit, so bookkeeping stops at this many
--- missing keys per addon; later ones still read as the key.
+-- missing keys per addon; later ones still read as the key. This is the
+-- default of `GetLocale`'s `options.maxMissingKeys`: the table is the addon's
+-- own, so the addon may raise the limit or pass `LocaleKit.UNBOUNDED`.
 local MAX_MISSING_KEYS = 1024
 
 local MISSING_MODES = { report = true, silent = true, raw = true }
@@ -67,7 +69,7 @@ local DEFAULT_MISSING_MODE = "report"
 -- The complete set of fields each option table accepts. File-local constants
 -- keep option validation allocation-free.
 local NEW_LOCALE_OPTION_KEYS = { isDefault = true }
-local GET_LOCALE_OPTION_KEYS = { missing = true }
+local GET_LOCALE_OPTION_KEYS = { missing = true, maxMissingKeys = true }
 
 -- The published surface, listed once so the public-surface predicate reads as
 -- a checklist instead of a long boolean expression.
@@ -88,6 +90,7 @@ local FORMAT_PATTERN = "%%(%d*)(%$?)([-+ #0]*%d*%.?%d*)(.?)"
 ---Option table accepted by `LocaleKit:GetLocale`.
 ---@class LocaleKit.GetLocaleOptions
 ---@field missing "report"|"silent"|"raw"? What reading an undefined key does. Defaults to `"report"`; fixed by the first `GetLocale` for the addon.
+---@field maxMissingKeys (integer|table)? Positive integer or `LocaleKit.UNBOUNDED`; the most missing keys the addon's table records. Default `1024`; applies whenever given.
 
 ---The table a translation file writes through. `L["key"] = "text"` stores a
 ---translation; `L["key"] = true` stores the key as its own text.
@@ -100,6 +103,7 @@ local FORMAT_PATTERN = "%%(%d*)(%$?)([-+ #0]*%d*%.?%d*)(.?)"
 ---@class LocaleKit
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
+---@field UNBOUNDED table Sentinel for `options.maxMissingKeys`: record every missing key.
 ---@field NewLocale fun(self: LocaleKit, addonName: string, locale: string, options: LocaleKit.NewLocaleOptions?): LocaleKit.WriteProxy?
 ---@field GetLocale fun(self: LocaleKit, addonName: string, options: LocaleKit.GetLocaleOptions?): LocaleKit.Strings
 ---@field MissingKeys fun(self: LocaleKit, addonName: string): string[]
@@ -143,6 +147,7 @@ local function validatePublicSurface(implementation)
         type(implementation) ~= "table"
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
     then
         return false
     end
@@ -170,6 +175,7 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "defaultProxyMetatable")) == "table"
         and type(rawget(currentState, "reportMetatable")) == "table"
         and type(rawget(currentState, "silentMetatable")) == "table"
+        and type(rawget(currentState, "unbounded")) == "table"
         and (override == false or type(override) == "string")
 end
 
@@ -177,7 +183,9 @@ end
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+    local currentState = rawget(implementation, "_state")
+    return validateStateBase(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -226,6 +234,10 @@ if previousRevision == nil then
         silentMetatable = {},
         -- The translator's override, or `false`.
         localeOverride = false,
+        -- The `LocaleKit.UNBOUNDED` sentinel. Created once and kept in state so
+        -- every revision hands out the same table, and an addon record opened
+        -- with it stays unbounded across an upgrade.
+        unbounded = {},
     }
     rawset(LocaleKit, "_state", state)
 elseif not validateStateBase(state) then
@@ -239,6 +251,7 @@ local TRANSLATED_PROXY_METATABLE = rawget(state, "translatedProxyMetatable")
 local DEFAULT_PROXY_METATABLE = rawget(state, "defaultProxyMetatable")
 local REPORT_METATABLE = rawget(state, "reportMetatable")
 local SILENT_METATABLE = rawget(state, "silentMetatable")
+local UNBOUNDED = rawget(state, "unbounded")
 
 -- Argument checks ------------------------------------------------------------
 --
@@ -289,6 +302,37 @@ local function validateOptionKeys(options, allowedKeys, methodName, level)
     end
     if firstUnknown ~= nil then
         error(methodName .. ' options contains unknown field "' .. firstUnknown .. '"', level)
+    end
+end
+
+---Whether `value` is an exact integer of one or more. `nan` and both
+---infinities are rejected before the integer test could accept them.
+---@param value any
+---@return boolean
+local function isPositiveInteger(value)
+    return type(value) == "number"
+        and value == value
+        and value ~= math.huge
+        and value >= 1
+        and value % 1 == 0
+end
+
+---Refuse anything but a positive integer or `UNBOUNDED`. A secret raises on
+---comparison, so it is refused before any is made; the probe is looked up at
+---call time, and without it nothing is secret.
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateLimit(value, label, level)
+    if rawequal(value, UNBOUNDED) then
+        return
+    end
+    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local isSecretValue = rawget(_G, "issecretvalue")
+    local secret = type(isSecretValue) == "function" and isSecretValue(value) == true
+    if secret or not isPositiveInteger(value) then
+        error(label .. " must be a positive integer or LocaleKit.UNBOUNDED", level)
     end
 end
 
@@ -360,6 +404,7 @@ end
 ---@field missing table<string, true> keys read but never defined
 ---@field missingCount integer
 ---@field capReported boolean whether the missing-key cap has been reported
+---@field maxMissingKeys integer|table the most missing keys recorded, or `UNBOUNDED`
 ---@field mode string|false the missing-key mode fixed by the first `GetLocale`
 
 ---@param addonName string
@@ -376,6 +421,7 @@ local function newRecord(addonName, locale)
         missing = {},
         missingCount = 0,
         capReported = false,
+        maxMissingKeys = MAX_MISSING_KEYS,
         mode = false,
     }
     addons[addonName] = record
@@ -477,7 +523,8 @@ end
 
 ---Answer a read of a key the table does not hold. The key is stored as its
 ---own value, so the next read is a plain table read and the report happens
----once. Past `MAX_MISSING_KEYS` the key is returned without being stored.
+---once. Past the record's `maxMissingKeys` the key is returned without being
+---stored.
 ---@param strings table
 ---@param key any
 ---@param reports boolean
@@ -501,15 +548,17 @@ local function readMissing(strings, key, reports)
         return key
     end
 
-    if record.missingCount >= MAX_MISSING_KEYS then
+    local limit = record.maxMissingKeys
+    if limit ~= UNBOUNDED and record.missingCount >= limit then
         if reports and not record.capReported then
             record.capReported = true
             report(
                 "LocaleKit: "
                     .. record.name
                     .. " has more than "
-                    .. MAX_MISSING_KEYS
+                    .. limit
                     .. " missing translations; further ones are neither recorded nor reported"
+                    .. " (raise options.maxMissingKeys to record more)"
             )
         end
         return key
@@ -711,6 +760,13 @@ end
 ---host error handler, `"silent"` returns the key without the report, and
 ---`"raw"` returns `nil`. The first call fixes the mode; a later call naming a
 ---different mode raises, and a later call that names none accepts it.
+---
+---`options.maxMissingKeys` (a positive integer or `LocaleKit.UNBOUNDED`,
+---default 1024) bounds how many missing keys are recorded. Unlike the mode it
+---applies whenever it is given, on the first call or a later one, and a call
+---that names none keeps it: changing a limit is always safe. Lowering it
+---below the keys already recorded forgets none of them; raising it re-arms the
+---one-time cap report.
 ---@param _ LocaleKit
 ---@param addonName string
 ---@param options LocaleKit.GetLocaleOptions?
@@ -718,11 +774,16 @@ end
 local function packageGetLocale(_, addonName, options)
     validateNonEmptyString(addonName, "LocaleKit:GetLocale addonName", 3)
     local requested = nil
+    local maxMissingKeys = nil
     if options ~= nil then
         validateOptionKeys(options, GET_LOCALE_OPTION_KEYS, "LocaleKit:GetLocale", 3)
         requested = rawget(options, "missing")
         if requested ~= nil and MISSING_MODES[requested] ~= true then
             error('LocaleKit:GetLocale missing must be "report", "silent" or "raw"', 2)
+        end
+        maxMissingKeys = rawget(options, "maxMissingKeys")
+        if maxMissingKeys ~= nil then
+            validateLimit(maxMissingKeys, "LocaleKit:GetLocale options.maxMissingKeys", 3)
         end
     end
 
@@ -756,6 +817,14 @@ local function packageGetLocale(_, addonName, options)
                 .. '"',
             2
         )
+    end
+
+    -- Applied last, so a refused call changes nothing.
+    if maxMissingKeys ~= nil then
+        record.maxMissingKeys = maxMissingKeys
+        if maxMissingKeys == UNBOUNDED or record.missingCount < maxMissingKeys then
+            record.capReported = false
+        end
     end
     return record.strings
 end
@@ -863,6 +932,7 @@ rawset(SILENT_METATABLE, "__index", readMissingSilently)
 
 rawset(LocaleKit, "API", API_GENERATION)
 rawset(LocaleKit, "REVISION", IMPLEMENTATION_REVISION)
+rawset(LocaleKit, "UNBOUNDED", UNBOUNDED)
 rawset(LocaleKit, "NewLocale", packageNewLocale)
 rawset(LocaleKit, "GetLocale", packageGetLocale)
 rawset(LocaleKit, "MissingKeys", packageMissingKeys)

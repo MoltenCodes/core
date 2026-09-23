@@ -32,6 +32,8 @@ Whole-container `InitializeAll()` / `EnableAll()` operations always process the 
 
 Each module carries a `scope` whose `Timers`, `Events`, `Jobs`, `Hooks`, `Messages`, `Commands` and `Comm` fields are released automatically when the module is disabled, and records what it is meant to be (`wanted`) apart from what it is (`actual`), so a module blocked by a failed dependency comes back when that dependency is enabled. When the addon halts, or an addon a module lists in `requiresAddons` halts, the affected modules are taken down and stay blocked for the session. See [`docs/API.md`](docs/API.md).
 
+`requiresAddons` is bounded per module (16 by default); `ModuleKit:SetLimits({ maxRequiredAddons = n })` or `ModuleKit.UNBOUNDED` opens it, within LifecycleKit's own per-addon limit (see [Limits](docs/API.md#limits)).
+
 Definition-table creation is validated strictly: unknown fields and sparse list fields are rejected rather than silently ignored. Late module creation is also guarded so a new module cannot retroactively introduce an ordering predecessor for a module that has already initialized.
 
 See [`docs/API.md`](docs/API.md) for provider scopes, lifecycle behavior, failure semantics, late-module rules, and the complete public contract.

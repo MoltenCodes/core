@@ -30,7 +30,7 @@ What each piece promises:
 - **Refusals at your line.** A non-secure hook of a secure target raises unless you pass `{ forceSecure = true }`, and HookKit remembers that the target was secure before anyone tainted it. On a protected frame, replacing `OnClick`, `PreClick`, `PostClick`, `OnDoubleClick` or `OnAttributeChanged` is refused outright, and every other script needs `forceSecure`. Methods inherited through `__index` are checked on the table that holds them. A second hook of one target in one scope is refused: `Unhook` first.
 - **Unhooking never breaks someone else's hook.** The original is restored only while HookKit's function is still the installed one; otherwise HookKit's closure stays where it is, inert, forwarding every argument and result.
 - **Handler errors stay visible and contained.** A post-hook or pre-hook handler that raises is reported to the host error handler; the original still runs.
-- **Bounded and cheap.** At most 256 hooks per scope (`nil, "full"` beyond); a hooked call allocates nothing; records sit in a weak-keyed table and lookups create nothing.
+- **Bounded and cheap.** At most 256 hooks per scope (`nil, "full"` beyond), opened on purpose with `CreateScope({ maxHooks = n })` or `HookKit.UNBOUNDED`; a hooked call allocates nothing; records sit in a weak-keyed table and lookups create nothing.
 - **Secrets untouched.** Arguments and results pass through as they came; HookKit never inspects them.
 - **Owned by a scope.** `HookKit:CreateScope()` for manual ownership, `HookKit:ForAddon(name)` for the addon's canonical scope, closed by `HookKit:CloseAddonScopes(name)`.
 

@@ -17,7 +17,7 @@
 --
 -- Contents
 -- --------
---   Constants ............. package identity, bus and listener bounds
+--   Constants ............. package identity, default limits and ceilings
 --   Bootstrap ............. Registry resolution and registration
 --   Shared state .......... LuaCATS types, state creation and migration
 --   Receiver validation ... signal and connection receiver checks
@@ -28,31 +28,41 @@
 --   Bus topics ............ topic records, declaration, subscription
 --   Bus methods ........... DeclareTopic, Publish, Subscribe, Topics, ...
 --   Bus scopes ............ owner scopes over one bus
---   Facade methods ........ Bus, ForAddon, CloseAddonBus
+--   Facade methods ........ Bus, ForAddon, CloseAddonBus, SetLimits, GetLimits
 --   Commit ................ prototype/facade assignment and self-check
 
 -- Constants ------------------------------------------------------------------
 
 local PACKAGE_NAME = "signalKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 
 -- Schema of the private `_state` table. Revisions 1 to 3 carried no state at
--- all; revision 4 introduced it together with named buses.
-local STATE_SCHEMA = 1
+-- all; revision 4 introduced it together with named buses (schema 1), and
+-- revision 5 added the `UNBOUNDED` sentinel and the package-wide limits
+-- (schema 2).
+local STATE_SCHEMA = 2
 
--- Named buses are package state shared by every addon in the session, so their
--- number is bounded. Beyond it `SignalKit:Bus` answers `nil, "full"`.
-local MAXIMUM_BUSES = 64
+-- Named buses are package state shared by every addon in the session and are
+-- never freed (a closed bus stays registered under its name), so their number
+-- is bounded. Beyond `maxBuses` `SignalKit:Bus` answers `nil, "full"`. The
+-- limit is package-wide and set through `SignalKit:SetLimits`; it accepts no
+-- `UNBOUNDED` because the memory it guards belongs to every addon at once.
+local DEFAULT_MAX_BUSES = 64
+local MAX_BUSES_CEILING = 1024
 
--- Distinct topics one bus may know, declared or merely subscribed to. Beyond it
--- `DeclareTopic` and a subscription to a new topic answer `nil, "full"`.
-local MAXIMUM_TOPICS = 256
+-- Distinct topics one bus may know, declared or merely subscribed to, unless
+-- the bus was created with `options.maxTopics`. Beyond it `DeclareTopic` and a
+-- subscription to a new topic answer `nil, "full"`.
+local DEFAULT_MAX_TOPICS = 256
 
--- Live listeners one topic may hold. Beyond it a subscription answers
--- `nil, "full"`.
-local MAXIMUM_LISTENERS = 256
+-- Live listeners one topic may hold, unless the bus was created with
+-- `options.maxListeners`. Beyond it a subscription answers `nil, "full"`.
+local DEFAULT_MAX_LISTENERS = 256
+
+-- Names `SetLimits` recognises, in the order `GetLimits` reads them.
+local LIMIT_NAMES = { "maxBuses" }
 
 -- Payload values staged in the reusable `xpcall` buffer with one multiple
 -- assignment; wider payloads fall back to a `select` loop for the remainder.
@@ -134,16 +144,20 @@ local function validatePublicSurface(implementation)
         and type(rawget(implementation, "Bus")) == "function"
         and type(rawget(implementation, "ForAddon")) == "function"
         and type(rawget(implementation, "CloseAddonBus")) == "function"
+        and type(rawget(implementation, "UNBOUNDED")) == "table"
+        and type(rawget(implementation, "SetLimits")) == "function"
+        and type(rawget(implementation, "GetLimits")) == "function"
         and type(rawget(rawget(implementation, "Connection"), "Disconnect")) == "function"
         and type(rawget(rawget(implementation, "Connection"), "IsConnected")) == "function"
 end
 
----Whether `currentState` has the fields every schema-1 revision shares.
+---Whether `currentState` has the fields every state schema shares, from
+---schema 1 (revision 4) onwards.
 ---@param currentState any
 ---@return boolean
 local function validateStateBase(currentState)
     return type(currentState) == "table"
-        and rawget(currentState, "schema") == STATE_SCHEMA
+        and type(rawget(currentState, "schema")) == "number"
         and type(rawget(currentState, "buses")) == "table"
         and type(rawget(currentState, "busCount")) == "number"
         and type(rawget(currentState, "busPrototype")) == "table"
@@ -152,13 +166,44 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "scopeMetatable")) == "table"
 end
 
+---Whether `value` is a finite integer from 1 to `ceiling`. `nan` fails every
+---comparison and infinity is named because it passes the integer test.
+---@param value any
+---@param ceiling number `math.huge` for a limit without a ceiling
+---@return boolean
+local function isIntegerUpTo(value, ceiling)
+    return type(value) == "number"
+        and value ~= math.huge
+        and value >= 1
+        and value <= ceiling
+        and value == math.floor(value)
+end
+
+---Whether `currentState` has this revision's schema: the base fields, the
+---`UNBOUNDED` sentinel and a valid set of package-wide limits.
+---@param currentState any
+---@return boolean
+local function validateState(currentState)
+    if
+        not validateStateBase(currentState)
+        or rawget(currentState, "schema") ~= STATE_SCHEMA
+        or type(rawget(currentState, "unbounded")) ~= "table"
+    then
+        return false
+    end
+    local limits = rawget(currentState, "limits")
+    return type(limits) == "table" and isIntegerUpTo(rawget(limits, "maxBuses"), MAX_BUSES_CEILING)
+end
+
 ---Whether `implementation` carries package state of this revision's schema,
----with every bus and scope method committed.
+---with every bus and scope method committed and the published sentinel the
+---one the state keeps.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
-    return validateStateBase(currentState)
+    return validateState(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
         and type(rawget(currentState, "isolate")) == "function"
         and hasMethods(rawget(currentState, "busPrototype"), BUS_METHODS)
         and hasMethods(rawget(currentState, "scopePrototype"), BUS_SCOPE_METHODS)
@@ -216,6 +261,13 @@ end
 ---Options accepted by `SignalKit:Bus`.
 ---@class SignalKit.BusOptions
 ---@field openTopics boolean? `true` lets `Publish` use topics that were never declared. Defaults to `false`.
+---@field maxTopics (integer|table)? Positive integer or `SignalKit.UNBOUNDED`: distinct topics the bus may know. Default `256`.
+---@field maxListeners (integer|table)? Positive integer or `SignalKit.UNBOUNDED`: live listeners one topic may hold. Default `256`.
+
+---The package-wide limits. `SetLimits` accepts any subset; `GetLimits`
+---returns a fresh copy.
+---@class SignalKit.Limits
+---@field maxBuses integer Named buses the session may hold; default `64`, at most `1024`. `UNBOUNDED` is refused.
 
 ---A named message bus shared by everything in the session that asks for its
 ---name. Obtained from `SignalKit:Bus(name)` or `SignalKit:ForAddon(addonName)`.
@@ -252,6 +304,9 @@ end
 ---@field Bus fun(self: SignalKit, name: string, options: SignalKit.BusOptions?): SignalKit.Bus|nil, "full"?
 ---@field ForAddon fun(self: SignalKit, addonName: string): SignalKit.Bus|nil, "full"?
 ---@field CloseAddonBus fun(self: SignalKit, addonName: string): boolean
+---@field UNBOUNDED table Sentinel a bus option takes to lift a per-bus limit.
+---@field SetLimits fun(self: SignalKit, limits: table)
+---@field GetLimits fun(self: SignalKit): SignalKit.Limits
 
 local Connection = rawget(SignalKit, "Connection")
 local state = rawget(SignalKit, "_state")
@@ -276,7 +331,32 @@ local function newState()
         -- Delivery closures read the isolation function from here, so a newer
         -- copy replaces it for subscriptions that already exist.
         isolate = false,
+        -- `SignalKit.UNBOUNDED`. It lives in the state so that every revision
+        -- publishes the same table and a comparison against it keeps working
+        -- across an upgrade.
+        unbounded = {},
+        -- The package-wide limits `SetLimits` writes; a newer copy inherits
+        -- what a consumer set.
+        limits = { maxBuses = DEFAULT_MAX_BUSES },
     }
+end
+
+---Bring schema-1 state (revision 4) to schema 2 in place: add the sentinel
+---and the package-wide limits, and give every existing bus the default
+---per-bus limits it was created under.
+---@param oldState table
+local function upgradeSchemaOne(oldState)
+    rawset(oldState, "unbounded", {})
+    rawset(oldState, "limits", { maxBuses = DEFAULT_MAX_BUSES })
+    for _, bus in pairs(rawget(oldState, "buses")) do
+        if type(bus) == "table" then
+            rawset(bus, "_maxTopics", DEFAULT_MAX_TOPICS)
+            rawset(bus, "_maxListeners", DEFAULT_MAX_LISTENERS)
+            rawset(bus, "_maxTopicsStated", false)
+            rawset(bus, "_maxListenersStated", false)
+        end
+    end
+    rawset(oldState, "schema", STATE_SCHEMA)
 end
 
 if previousRevision == nil then
@@ -299,6 +379,12 @@ else
     if type(Connection) ~= "table" or not validateStateBase(state) then
         error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
     end
+    if rawget(state, "schema") == 1 then
+        upgradeSchemaOne(state)
+    end
+    if not validateState(state) then
+        error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
+    end
 end
 
 local SIGNAL_METATABLE = { __index = SignalKit }
@@ -307,6 +393,8 @@ local BUS_PROTOTYPE = rawget(state, "busPrototype")
 local BUS_METATABLE = rawget(state, "busMetatable")
 local SCOPE_PROTOTYPE = rawget(state, "scopePrototype")
 local SCOPE_METATABLE = rawget(state, "scopeMetatable")
+local UNBOUNDED = rawget(state, "unbounded")
+local sharedLimits = rawget(state, "limits")
 
 -- Receiver validation ---------------------------------------------------------
 --
@@ -873,7 +961,8 @@ local function obtainTopicRecord(bus, topic)
     end
 
     local count = rawget(bus, "_topicCount")
-    if count >= MAXIMUM_TOPICS then
+    local maxTopics = rawget(bus, "_maxTopics")
+    if maxTopics ~= UNBOUNDED and count >= maxTopics then
         return nil
     end
 
@@ -911,9 +1000,12 @@ local function subscribe(bus, label, level, topic, callback, once, scope)
         rawset(record, "signal", signal)
     end
 
-    local listeners = rawget(signal, "_listeners")
-    if #listeners - tombstoneCount(signal) >= MAXIMUM_LISTENERS then
-        return nil, "full"
+    local maxListeners = rawget(bus, "_maxListeners")
+    if maxListeners ~= UNBOUNDED then
+        local listeners = rawget(signal, "_listeners")
+        if #listeners - tombstoneCount(signal) >= maxListeners then
+            return nil, "full"
+        end
     end
 
     local connection = connect(
@@ -1334,13 +1426,35 @@ end
 
 -- Facade methods ---------------------------------------------------------------
 
----Validate a `SignalKit:Bus` options table and return its topic policy.
+---The options a `SignalKit:Bus` call stated. A field is `nil` when the caller
+---did not state it.
+---@class SignalKit.StatedBusOptions
+---@field openTopics boolean|nil
+---@field maxTopics integer|table|nil
+---@field maxListeners integer|table|nil
+
+---Validate one per-bus limit option: a positive integer or `UNBOUNDED`.
+---@param value any
+---@param name string option name, for the message
+---@param level integer stack level the failure is reported at
+local function validateBusLimit(value, name, level)
+    if value ~= nil and value ~= UNBOUNDED and not isIntegerUpTo(value, math.huge) then
+        error(
+            "SignalKit:Bus options." .. name .. " must be a positive integer or SignalKit.UNBOUNDED",
+            level
+        )
+    end
+end
+
+---Validate a `SignalKit:Bus` options table.
 ---@param options any
 ---@param level integer stack level the failures are reported at
 ---@return boolean|nil openTopics `nil` when the caller did not state one.
+---@return integer|table|nil maxTopics `nil` when the caller did not state one.
+---@return integer|table|nil maxListeners `nil` when the caller did not state one.
 local function readBusOptions(options, level)
     if options == nil then
-        return nil
+        return nil, nil, nil
     end
     if type(options) ~= "table" then
         error("SignalKit:Bus options must be a table or nil", level)
@@ -1349,17 +1463,51 @@ local function readBusOptions(options, level)
     if openTopics ~= nil and type(openTopics) ~= "boolean" then
         error("SignalKit:Bus options.openTopics must be a boolean or nil", level)
     end
-    return openTopics
+    local maxTopics = rawget(options, "maxTopics")
+    validateBusLimit(maxTopics, "maxTopics", level + 1)
+    local maxListeners = rawget(options, "maxListeners")
+    validateBusLimit(maxListeners, "maxListeners", level + 1)
+    return openTopics, maxTopics, maxListeners
+end
+
+---Whether a caller stating `value` for `limitName` disagrees with what an
+---earlier caller stated for the existing `bus`.
+---
+---A bus created without stating a limit carries the default; the first caller
+---that states it sets it, whichever order the addons load in. A second,
+---different statement is refused at the caller, because two owners
+---disagreeing about a shared bus is a mistake one of them has to see.
+---@param bus SignalKit.Bus
+---@param limitName "maxTopics"|"maxListeners"
+---@param value integer|table|nil
+---@return boolean
+local function conflictsWithStatedLimit(bus, limitName, value)
+    return value ~= nil
+        and rawget(bus, "_" .. limitName .. "Stated") == true
+        and rawget(bus, "_" .. limitName) ~= value
+end
+
+---Record `value` as the stated `limitName` of `bus` when the caller stated one.
+---@param bus SignalKit.Bus
+---@param limitName "maxTopics"|"maxListeners"
+---@param value integer|table|nil
+local function applyStatedLimit(bus, limitName, value)
+    if value ~= nil then
+        rawset(bus, "_" .. limitName, value)
+        rawset(bus, "_" .. limitName .. "Stated", true)
+    end
 end
 
 ---Return the bus called `name`, creating it on the first request.
 ---@param name string
 ---@param openTopics boolean|nil
+---@param maxTopics integer|table|nil
+---@param maxListeners integer|table|nil
 ---@param label string qualified public method name
 ---@param level integer stack level the failures are reported at
 ---@return SignalKit.Bus|nil bus
 ---@return "full"|nil reason
-local function obtainBus(name, openTopics, label, level)
+local function obtainBus(name, openTopics, maxTopics, maxListeners, label, level)
     local buses = rawget(state, "buses")
     local bus = rawget(buses, name)
     if bus ~= nil then
@@ -1369,11 +1517,24 @@ local function obtainBus(name, openTopics, label, level)
                 level
             )
         end
+        -- Both statements are checked before either is applied, so a refused
+        -- call changes nothing.
+        if conflictsWithStatedLimit(bus, "maxTopics", maxTopics) then
+            error(label .. ' bus "' .. name .. '" already exists with a different maxTopics', level)
+        end
+        if conflictsWithStatedLimit(bus, "maxListeners", maxListeners) then
+            error(
+                label .. ' bus "' .. name .. '" already exists with a different maxListeners',
+                level
+            )
+        end
+        applyStatedLimit(bus, "maxTopics", maxTopics)
+        applyStatedLimit(bus, "maxListeners", maxListeners)
         return bus, nil
     end
 
     local count = rawget(state, "busCount")
-    if count >= MAXIMUM_BUSES then
+    if count >= rawget(sharedLimits, "maxBuses") then
         return nil, "full"
     end
 
@@ -1383,6 +1544,10 @@ local function obtainBus(name, openTopics, label, level)
         _closed = false,
         _topics = {},
         _topicCount = 0,
+        _maxTopics = maxTopics or DEFAULT_MAX_TOPICS,
+        _maxTopicsStated = maxTopics ~= nil,
+        _maxListeners = maxListeners or DEFAULT_MAX_LISTENERS,
+        _maxListenersStated = maxListeners ~= nil,
     }, BUS_METATABLE)
     rawset(buses, name, bus)
     rawset(state, "busCount", count + 1)
@@ -1399,8 +1564,8 @@ end
 local function facadeBus(self, name, options)
     validateFacade(self, "SignalKit:Bus", 3)
     validateNonEmptyString(name, "SignalKit:Bus name", 3)
-    local openTopics = readBusOptions(options, 3)
-    local bus, reason = obtainBus(name, openTopics, "SignalKit:Bus", 3)
+    local openTopics, maxTopics, maxListeners = readBusOptions(options, 3)
+    local bus, reason = obtainBus(name, openTopics, maxTopics, maxListeners, "SignalKit:Bus", 3)
     return bus, reason
 end
 
@@ -1415,7 +1580,7 @@ end
 local function facadeForAddon(self, addonName)
     validateFacade(self, "SignalKit:ForAddon", 3)
     validateNonEmptyString(addonName, "SignalKit:ForAddon addonName", 3)
-    local bus, reason = obtainBus(addonName, nil, "SignalKit:ForAddon", 3)
+    local bus, reason = obtainBus(addonName, nil, nil, nil, "SignalKit:ForAddon", 3)
     return bus, reason
 end
 
@@ -1443,6 +1608,68 @@ local function facadeCloseAddonBus(self, addonName)
         end
     end
     return true
+end
+
+---Validate a whole `SetLimits` table before any of it is applied.
+---
+---`maxBuses` guards a session-wide registry whose buses are never freed, so it
+---refuses `UNBOUNDED` and accepts a larger integer only up to its ceiling.
+---@param limits any
+---@param level integer stack level the failures are reported at
+local function validateLimitUpdate(limits, level)
+    if type(limits) ~= "table" then
+        error("SignalKit:SetLimits limits must be a table", level)
+    end
+    local key = next(limits)
+    while key ~= nil do
+        if key ~= "maxBuses" then
+            error(
+                "SignalKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
+                level
+            )
+        end
+        local value = rawget(limits, key)
+        if value == UNBOUNDED then
+            error(
+                "SignalKit:SetLimits limits.maxBuses cannot be SignalKit.UNBOUNDED:"
+                    .. " buses are shared by every addon and never freed",
+                level
+            )
+        end
+        if not isIntegerUpTo(value, MAX_BUSES_CEILING) then
+            error(
+                "SignalKit:SetLimits limits.maxBuses must be an integer from 1 to "
+                    .. MAX_BUSES_CEILING,
+                level
+            )
+        end
+        key = next(limits, key)
+    end
+end
+
+---Change any subset of the package-wide limits. The limits are shared by every
+---consumer in the session. Lowering one never closes a bus; further buses are
+---refused until the count is below it again.
+---@param self SignalKit
+---@param limits table
+local function facadeSetLimits(self, limits)
+    validateFacade(self, "SignalKit:SetLimits", 3)
+    validateLimitUpdate(limits, 3)
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        local value = rawget(limits, name)
+        if value ~= nil then
+            rawset(sharedLimits, name, value)
+        end
+    end
+end
+
+---Return a fresh copy of the package-wide limits. Allocates one table.
+---@param self SignalKit
+---@return SignalKit.Limits
+local function facadeGetLimits(self)
+    validateFacade(self, "SignalKit:GetLimits", 3)
+    return { maxBuses = rawget(sharedLimits, "maxBuses") }
 end
 
 -- Commit -----------------------------------------------------------------------
@@ -1481,6 +1708,9 @@ rawset(SignalKit, "DisconnectAll", disconnectAll)
 rawset(SignalKit, "Bus", facadeBus)
 rawset(SignalKit, "ForAddon", facadeForAddon)
 rawset(SignalKit, "CloseAddonBus", facadeCloseAddonBus)
+rawset(SignalKit, "UNBOUNDED", UNBOUNDED)
+rawset(SignalKit, "SetLimits", facadeSetLimits)
+rawset(SignalKit, "GetLimits", facadeGetLimits)
 
 if not validatePublicSurface(SignalKit) or not validateCurrentState(SignalKit) then
     error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)

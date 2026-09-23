@@ -2,7 +2,7 @@
 
 Package: `signalKit`  
 API generation: `1`  
-Implementation revision: `4`
+Implementation revision: `5`
 
 SignalKit provides deterministic callback dispatch with explicit connection lifetimes, and named message buses built on the same signals.
 
@@ -211,14 +211,14 @@ isolation, and never a second dispatch model.
 
 ### Bounds
 
-| Bound | Value | Refusal |
+| Bound | Default | Refusal |
 |---|---:|---|
 | Buses in the session (`maxBuses`) | 64 | `SignalKit:Bus` and `SignalKit:ForAddon` return `nil, "full"` |
 | Topics one bus knows, declared or subscribed (`maxTopics`) | 256 | `DeclareTopic`, and a subscription to a new topic, return `nil, "full"` |
 | Live listeners per topic (`maxListeners`) | 256 | `Subscribe` and `SubscribeOnce` return `nil, "full"` |
 
-The bounds are fixed package constants. A disconnected listener frees its slot
-at once.
+Each bound can be opened; see [Limits](#limits). A disconnected listener frees
+its slot at once.
 
 ### `SignalKit:Bus(name, options)`
 
@@ -232,7 +232,13 @@ request for the same name, from any addon, returns the same bus.
   that were never declared. It is read only when the bus is created; stating a
   different policy for an existing bus raises at the caller, and omitting
   `options` accepts the existing policy.
-- Returns `nil, "full"` when 64 buses already exist.
+- `options.maxTopics` and `options.maxListeners` (a positive integer or
+  `SignalKit.UNBOUNDED`, default 256 each) set the bus's topic and per-topic
+  listener bounds. The first caller that states one sets it for the shared
+  bus, whichever order the addons load in; stating a different value later
+  raises at the caller and changes nothing, and omitting it accepts what the
+  bus has. See [Limits](#limits).
+- Returns `nil, "full"` when `maxBuses` buses (64 by default) already exist.
 
 `SignalKit:Bus` must be called on the facade with a colon. A dot call, or a
 call through a signal instance (which inherits the facade's methods), raises at
@@ -265,7 +271,7 @@ two-step arrangement as EventKit's `CloseAddonScopes`.
 ### Topic policy: `bus:DeclareTopic(topic, options)`
 
 Declares `topic` on the bus and returns `true`, or `nil, "full"` when the bus
-already knows 256 topics.
+already knows its `maxTopics` topics (256 by default).
 
 | Option | Type | Meaning |
 |---|---|---|
@@ -390,6 +396,66 @@ compaction is amortized `O(1)` per disconnect.
 
 `CreateScope` on a closed bus raises at the caller.
 
+## Limits
+
+SignalKit follows the framework rule "bounded by default, opened on purpose":
+every bound below holds unless the consumer's code says otherwise, and a bound
+reached is refused with `nil, "full"`, never grown silently.
+
+| Limit | Default | How to open | UNBOUNDED allowed? |
+|---|---:|---|---|
+| `maxBuses` — named buses in the session | 64 | `SignalKit:SetLimits({ maxBuses = n })`, `n` from 1 to 1024 | No: buses are shared by every addon and never freed |
+| `maxTopics` — topics one bus knows | 256 | `SignalKit:Bus(name, { maxTopics = n })` | Yes: the topics are the bus owner's own registrations |
+| `maxListeners` — live listeners per topic | 256 | `SignalKit:Bus(name, { maxListeners = n })` | Yes: the listeners are the subscribers' own registrations |
+
+```lua
+-- A bus whose owner expects many topics and many listeners per topic.
+local bus = SignalKit:Bus("MyAddon", {
+    maxTopics = 1024,
+    maxListeners = SignalKit.UNBOUNDED,
+})
+
+-- A package-wide limit: read it back as a fresh table.
+SignalKit:SetLimits({ maxBuses = 128 })
+local limits = SignalKit:GetLimits() -- { maxBuses = 128 }
+```
+
+### `SignalKit.UNBOUNDED`
+
+One sentinel table, the same in every embedded copy and kept across upgrades,
+so `options.maxTopics == SignalKit.UNBOUNDED` stays true after a newer revision
+loads. A per-bus option set to it lifts that bound for that bus only.
+
+### `SignalKit:SetLimits(limits)`
+
+Changes any subset of the package-wide limits; `maxBuses` is the only one.
+The whole table is validated before anything changes, so one invalid entry
+leaves every limit as it was. An unknown name, a value that is not an integer
+from 1 to 1024, `SignalKit.UNBOUNDED` for `maxBuses`, a non-table argument or a
+call without the facade receiver raises at the caller. Returns nothing.
+
+**The limits are shared by every consumer in the session**: every embedded
+copy and every addon uses one set, and a newer revision inherits the values a
+consumer set. A library should rely on the default; an addon that raises
+`maxBuses` raises it for everybody.
+
+`maxBuses` refuses `UNBOUNDED` because a bus, once created, is never freed: a
+closed bus stays registered under its name so late publishers do not fail. The
+1024 ceiling keeps that session-wide table bounded while leaving room for
+sixteen times the default.
+
+### `SignalKit:GetLimits()`
+
+Returns a fresh table `{ maxBuses = n }`. It allocates one table per call, so
+read it once rather than on a hot path.
+
+### Lowering a limit
+
+Lowering a limit never evicts: buses, topics and listeners already present stay,
+and further additions are refused with `nil, "full"` until the count is below
+the new bound. A per-bus limit is read on every declaration and subscription,
+so it takes effect at once.
+
 ## Embedded copies and revision upgrades
 
 Registry owns the stable `SignalKit` package table for `(signal, API 1)`. SignalKit instances use that shared table as their method prototype, so existing signal instances observe compatible package-method upgrades loaded into the same API generation.
@@ -409,5 +475,12 @@ their policies, scopes and subscriptions all survive, and existing buses and
 scopes gain the newer methods because they resolve through the shared method
 tables. Each delivery closure reads the isolation function from that state, so
 a newer revision replaces it for subscriptions that already exist.
+
+Revision 5 moved the state to schema 2, which adds the `SignalKit.UNBOUNDED`
+sentinel and the package-wide limits (`maxBuses`). An upgrade over revision 4
+creates both with the defaults and gives every existing bus the default
+`maxTopics` and `maxListeners`, recorded as not yet stated, so the first
+caller that states one still sets it. A later revision inherits the sentinel
+identity, the limits a consumer set, and each bus's own limits.
 
 As with every Registry-managed package, a revision is selected before package initialization completes. Package initialization is therefore written so that all fallible dependency validation occurs before registration and the post-registration commit path performs only local deterministic mutations.

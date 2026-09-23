@@ -58,6 +58,9 @@ Each module exposes:
 | `Activate()` | Catch this module up to already-reached LifecycleKit phases. |
 | `Resolve(name)` | Resolve an injectable with this module as scope context. |
 
+The package facade also exposes `ModuleKit.UNBOUNDED`, `ModuleKit:SetLimits(limits)`
+and `ModuleKit:GetLimits()`; see [Limits](#limits).
+
 Each module also carries one field:
 
 | Field | Purpose |
@@ -333,8 +336,9 @@ addon:CreateModule("Bridge", {
 
 `CreateModule` declares each of them on the owning addon's LifecycleKit
 instance (`DependsOn`), so the addon hears when one halts. A module lists at
-most **16** addons, LifecycleKit's bound on one addon's declared dependencies;
-that bound is per addon, so when the addon has already declared 16 others,
+most `maxRequiredAddons` addons, **16** by default, which matches LifecycleKit's
+bound on one addon's declared dependencies (see [Limits](#limits)); that bound
+is per addon, so when the addon has already declared 16 others,
 `CreateModule` raises and the module is not created. An addon the addon
 already declared costs nothing more. Naming the module's own addon raises.
 
@@ -513,6 +517,59 @@ Lifecycle subscriptions dispatch through revision-independent shared runtime sta
 Each container records which lifecycle phases have already been dispatched into it. An upgrade re-subscribes only to phases that have not been dispatched yet, so it never replays `loaded` or `ready` into a container that already received them. Without that, an upgrade would run module hooks out of package bootstrap and the replayed `ready` phase would re-enable modules the addon had deliberately disabled. Phases that have not been reached are still subscribed to, so an upgraded container keeps its shutdown cleanup.
 
 Errors raised out of a phase dispatch leave ModuleKit with the original Lua error object. What happens to them beyond that is EventKit's contract: EventKit isolates listeners at the event-bus boundary and reports the error through the host error handler, so one addon's failing module cannot stop delivery to another addon.
+
+## Limits
+
+ModuleKit bounds what a module may declare, and the bound holds unless the
+addon opens it on purpose.
+
+| Limit | Default | How to open | UNBOUNDED allowed? |
+|---|---|---|---|
+| `maxRequiredAddons` | 16 | `ModuleKit:SetLimits({ maxRequiredAddons = n })` | Yes, unless LifecycleKit reports an integer `maxDependencies` |
+
+```lua
+ModuleKit:SetLimits({ maxRequiredAddons = 24 })
+ModuleKit:SetLimits({ maxRequiredAddons = ModuleKit.UNBOUNDED })
+local limits = ModuleKit:GetLimits() -- a fresh table on every call
+```
+
+`maxRequiredAddons` is the most addons one module may name in
+`requiresAddons`. A definition over it is refused at the `CreateModule` line
+(`requiresAddons must list at most 16 addons (ModuleKit:SetLimits
+maxRequiredAddons)`) and the module is not created.
+
+`SetLimits` accepts any subset of the limits and raises at the caller's line
+on an unknown name or an invalid value, before changing anything: a value must
+be a positive integer or `ModuleKit.UNBOUNDED`, the package's sentinel for
+"no limit". `GetLimits` returns a new table on every call, so it allocates;
+read it at setup, not per frame. **The limits are shared by every consumer in
+the session**: every embedded copy and every addon uses one set, so a library
+should rely on the default, and an addon that raises a limit raises it for
+everybody. Lowering a limit never removes what modules already declared; it
+only refuses later definitions over it.
+
+**Coupling to LifecycleKit.** Every required addon is also declared on the
+owning addon's LifecycleKit instance, and LifecycleKit bounds one addon's
+declared dependencies as a whole (`maxDependencies`, 16). ModuleKit's limit is
+per module, LifecycleKit's per addon, so LifecycleKit's is the one that decides
+in the end: past it `CreateModule` raises `already declares the most addon
+dependencies LifecycleKit accepts` whatever `maxRequiredAddons` says. When the
+loaded LifecycleKit reports its limit through `LifecycleKit:GetLimits()`,
+`SetLimits` checks against it at call time: a value above it is refused (`must
+be an integer from 1 to <n>, LifecycleKit's maxDependencies`) and
+`ModuleKit.UNBOUNDED` is refused (`cannot be ModuleKit.UNBOUNDED: LifecycleKit
+accepts at most <n> dependencies per addon`) unless LifecycleKit reports its own
+`UNBOUNDED`. A LifecycleKit that reports no limit is not consulted, and raising
+`maxRequiredAddons` past 16 then only helps once LifecycleKit's own limit is
+opened.
+
+The sentinel and the limits live in the package state, so an in-place upgrade
+keeps both: a newer compatible revision inherits the limits a consumer set, and
+`ModuleKit.UNBOUNDED` keeps its identity across every revision.
+
+ModuleKit keeps no hard ceiling of its own: the other collections it retains
+(containers, modules, edges, providers) are the consumer's own declarations and
+grow only with them.
 
 ## Dependencies
 

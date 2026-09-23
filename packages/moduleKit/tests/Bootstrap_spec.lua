@@ -310,3 +310,90 @@ describe("ModuleKit in-place upgrade", function()
         assert.is_true(rawget(rawget(addon, "_dispatched"), "shutdown"))
     end)
 end)
+
+describe("ModuleKit limits across an in-place upgrade", function()
+    after_each(TestEnv.Reset)
+
+    it("registers itself as ModuleKit API 1 revision 14", function()
+        local ModuleKit, Registry = TestEnv.NewPackage()
+        local _, revision = Registry:Get("moduleKit", 1)
+
+        assert.are.equal(14, ModuleKit.REVISION)
+        assert.are.equal(14, revision)
+    end)
+
+    it("keeps set limits and the sentinel when a newer revision loads", function()
+        local ModuleKit = TestEnv.NewPackage()
+        local sentinel = ModuleKit.UNBOUNDED
+        ModuleKit:SetLimits({ maxRequiredAddons = 5 })
+
+        local upgraded = TestEnv.LoadRevision(ModuleKit.REVISION + 1)
+
+        assert.are.equal(ModuleKit, upgraded)
+        assert.are.equal(15, upgraded.REVISION)
+        assert.are.equal(sentinel, upgraded.UNBOUNDED)
+        assert.are.equal(5, upgraded:GetLimits().maxRequiredAddons)
+    end)
+
+    it("keeps ModuleKit.UNBOUNDED as a set limit when a newer revision loads", function()
+        local ModuleKit, _, _, _, LifecycleKit = TestEnv.NewPackage()
+        rawset(LifecycleKit, "GetLimits", nil)
+        ModuleKit:SetLimits({ maxRequiredAddons = ModuleKit.UNBOUNDED })
+
+        local upgraded = TestEnv.LoadRevision(ModuleKit.REVISION + 1)
+
+        assert.are.equal(ModuleKit.UNBOUNDED, upgraded:GetLimits().maxRequiredAddons)
+    end)
+
+    it("leaves a newer revision's limits alone when an older copy loads after it", function()
+        TestEnv.LoadDependencies()
+        local newer = TestEnv.LoadRevision(15)
+        newer:SetLimits({ maxRequiredAddons = 3 })
+
+        local selected = TestEnv.LoadRevision(14)
+
+        assert.are.equal(newer, selected)
+        assert.are.equal(15, selected.REVISION)
+        assert.are.equal(3, selected:GetLimits().maxRequiredAddons)
+    end)
+
+    it("creates the sentinel and the default limits over revision-13 state", function()
+        TestEnv.LoadDependencies()
+        local previous = TestEnv.LoadRevision(13)
+        local addon = previous:ForAddon("MyAddon")
+        -- Revision 13 kept neither the sentinel nor the limits.
+        local state = rawget(previous, "_state")
+        rawset(state, "unbounded", nil)
+        rawset(state, "limits", nil)
+        rawset(previous, "UNBOUNDED", nil)
+        rawset(previous, "SetLimits", nil)
+        rawset(previous, "GetLimits", nil)
+
+        local upgraded = require("ModuleKit")
+
+        assert.are.equal(previous, upgraded)
+        assert.are.equal(14, upgraded.REVISION)
+        assert.are.equal(addon, upgraded:ForAddon("MyAddon"))
+        assert.are.equal("table", type(upgraded.UNBOUNDED))
+        assert.are.equal(rawget(state, "unbounded"), upgraded.UNBOUNDED)
+        assert.are.same({ maxRequiredAddons = 16 }, upgraded:GetLimits())
+        TestEnv.expectErrorContaining("requiresAddons must list at most 16 addons", function()
+            local names = {}
+            for index = 1, 17 do
+                names[index] = "Required" .. index
+            end
+            addon:CreateModule("Seventeen", { requiresAddons = names })
+        end)
+    end)
+
+    it("refuses to inherit corrupted limits", function()
+        local ModuleKit = TestEnv.NewPackage()
+        local state = rawget(ModuleKit, "_state")
+        rawset(rawget(state, "limits"), "maxRequiredAddons", 0)
+        rawset(state, "runtimeRevision", ModuleKit.REVISION - 1)
+
+        TestEnv.expectErrorContaining("package state is corrupted or incomplete", function()
+            TestEnv.requireAfterFailedLoad("ModuleKit")
+        end)
+    end)
+end)

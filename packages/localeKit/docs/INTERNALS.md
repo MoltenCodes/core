@@ -14,6 +14,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | `translatedProxyMetatable`, `defaultProxyMetatable` | The two write-proxy metatables. |
 | `reportMetatable`, `silentMetatable` | The two read-table metatables. |
 | `localeOverride` | The translator's override, or `false`. |
+| `unbounded` | The `LocaleKit.UNBOUNDED` sentinel, created once so every revision publishes the same table and a record's `maxMissingKeys` keeps meaning "unbounded" after an upgrade. The current-state predicate requires the facade field to be this table. |
 | `runtimeRevision`, `schema` | Bookkeeping shared with every Kit. |
 
 The four metatables are created once and kept, and carry `__metatable` so callers can neither read nor replace them. Every loading revision writes its own functions into their `__index` and `__newindex` fields, so proxies and read tables created by an older copy run the newer behaviour without being replaced.
@@ -29,7 +30,8 @@ A record is created by the first `NewLocale` that returns a proxy, with every fi
 | `defaultLocale` | The `isDefault` locale, or `false`. |
 | `strings` | The read table `GetLocale` returns. |
 | `missing`, `missingCount` | The set of keys read but never defined, and its size. |
-| `capReported` | Whether the 1024-key cap has been reported. |
+| `capReported` | Whether the missing-key limit has been reported. Cleared when `GetLocale` raises the limit above `missingCount`. |
+| `maxMissingKeys` | The most missing keys recorded: `MAX_MISSING_KEYS` (1024) until a `GetLocale` names another positive integer or the `unbounded` sentinel. |
 | `mode` | `"report"`, `"silent"`, `"raw"`, or `false` before the first `GetLocale`. |
 | `schema` | The record layout version, `1`. |
 
@@ -50,7 +52,7 @@ A proxy is an empty table per call. Nothing is ever stored in it, so `__newindex
 
 A key `issecretvalue` reports as secret is returned before any of this, because storing it or concatenating it into the report would raise.
 
-Past `MAX_MISSING_KEYS` (1024) `readMissing` returns the key without storing it, so `__index` runs on every read of such a key; that costs a call but no allocation, and it bounds the table's growth.
+Past the record's `maxMissingKeys` (default `MAX_MISSING_KEYS`, 1024; never for the `unbounded` sentinel) `readMissing` returns the key without storing it, so `__index` runs on every read of such a key; that costs a call but no allocation, and it bounds the table's growth.
 
 ## Format
 

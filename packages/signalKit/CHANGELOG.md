@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 — 2026-09-23
+
+- Every bus bound can now be opened on purpose, per the design constitution's "bounded by default, opened on purpose". The defaults are unchanged and a bound reached is still refused with `nil, "full"`.
+- Added the `SignalKit:Bus` options `maxTopics` and `maxListeners`: a positive integer or `SignalKit.UNBOUNDED`, default 256 each. The first caller that states a limit for a shared bus sets it, in either load order; a different statement later raises at the caller and changes nothing. Invalid values raise at the caller.
+- Added `SignalKit:SetLimits({ maxBuses = n })` and `SignalKit:GetLimits()`. `maxBuses` (default 64) is shared by every consumer in the session, accepts an integer from 1 to 1024 and refuses `SignalKit.UNBOUNDED`, because buses are shared by every addon and never freed. `SetLimits` validates the whole table first and raises at the caller on an unknown name or an invalid value; `GetLimits` returns a fresh table.
+- Added `SignalKit.UNBOUNDED`, one sentinel table kept in the package state so every embedded copy and revision shares it.
+- Lowering a limit never evicts; further additions are refused until the count is below it.
+- Implementation revision 5, with package state schema 2. An upgrade over revision 4 adds the sentinel and the default limits and gives every existing bus the default per-bus limits, recorded as not yet stated. A newer revision inherits the sentinel identity, the limits a consumer set and each bus's own limits. The public-surface predicate now requires `UNBOUNDED`, `SetLimits` and `GetLimits`, and the state predicate checks the sentinel identity and the limits.
+- `SignalKit` API generation 1 is unchanged.
+
 ## 0.4.0 — 2026-09-23
 
 - Added named message buses. `SignalKit:Bus(name, options)` returns the bus shared by everything in the session that asks for that name, so two modules or two addons that hold no common reference can communicate. Each topic is dispatched through an ordinary SignalKit signal, created on its first subscription, so ordering, mutation-during-dispatch and re-entrancy semantics are exactly a signal's.

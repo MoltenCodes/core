@@ -15,6 +15,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | `addonScopes` | Addon name to that addon's canonical scope. At most one per addon name. |
 | `secureStatus` | Weak-keyed: hooked object to `{ [method] = boolean }`, whether the target was secure the first time HookKit checked it. For a method that is not a raw field, `findHolder` walks at most `MAX_INDEX_DEPTH` (8) `__index` tables to the table holding it, and that table is what `issecurevariable` is asked about. |
 | `secureScripts` | Weak-keyed: frame to `{ [script] = count }` of active `SecureHookScript` records across every scope. A script pre-hook or replacement is refused while the count is positive; release decrements it and deletes empty tables. |
+| `unbounded` | The `HookKit.UNBOUNDED` sentinel, created once so every revision publishes the same table and a scope's `_maxHooks` keeps meaning "unbounded" after an upgrade. The current-state predicate requires the facade field to be this table. |
 
 The scope prototype is published as `HookKit.Scope`, like EventKit's and TimerKit's.
 
@@ -27,10 +28,11 @@ A scope is one table with a fixed set of private fields, all created by `newScop
 | `_schema` | The scope layout version, `1`. |
 | `_addonName` | The owning addon name, or `false` for a manual scope. |
 | `_closed` | Whether `Close` (or `CloseAddonScopes`) ran. |
+| `_maxHooks` | The scope's limit: a positive integer (default `MAX_HOOKS`, 256) or the `unbounded` sentinel. Set at creation; `ForAddon` rewrites it when given `options.maxHooks`. |
 | `_sequence` | The creation counter records are stamped with. |
 | `_records` | Weak-keyed: hooked object (or `_G`) to `{ [method or script] = record }`. |
 
-There is no stored hook count. `countRecords` walks `_records`, which holds at most `MAX_HOOKS` entries, so a record that disappears with its garbage-collected object stops counting at once instead of holding a slot for ever.
+There is no stored hook count. `countRecords` walks `_records`, which holds at most `_maxHooks` entries, so a record that disappears with its garbage-collected object stops counting at once instead of holding a slot for ever. `hasRoom` returns `true` without counting when `_maxHooks` is the `unbounded` sentinel, so an unbounded scope never pays a walk per install.
 
 Reads never create anything: `findRecord` returns `nil` after at most two raw reads. Only `storeRecord` creates the per-object method table, and `removeRecord` deletes it when its last record goes. This is the fix for the auto-vivifying registry pattern older hook libraries use.
 
@@ -72,7 +74,7 @@ The original is passed first to a replacement handler because Lua 5.1 cannot app
 1. Validate the receiver, that the scope is open, the object or frame, the name, the handler, and that the target is not already hooked in this scope; for field hooks, that the target is a function; for script hooks, that the frame may be touched and has the frame methods the semantic calls.
 2. Read the option table.
 3. Refuse: the secure target (`wasSecure`, which fills the memo on first use) or the protected-frame rules.
-4. Check the capacity (`nil, "full"`).
+4. Check the capacity against the scope's `_maxHooks` (`nil, "full"`).
 5. Build the record and closure, perform the host write (`hooksecurefunc`, `rawset`, `HookScript` or `SetScript`), and only then store the record. A host call that raises leaves nothing recorded.
 
 Every public method calls its installer and returns the results through locals rather than as a tail call: a Lua 5.1 tail call replaces the public method's frame, and `error` levels counted from the installer would then land on the tail-call marker instead of the caller's line.

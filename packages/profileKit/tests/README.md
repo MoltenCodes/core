@@ -16,13 +16,18 @@ The ProfileKit suite covers:
   once;
 - the section cap: `nil, "capped"` beyond `DEFAULT_MAX_SECTIONS`, existing
   sections still returned, and `Measure` running unmeasured for a refused name;
+- the limits: `GetLimits` defaults and fresh tables, `SetLimits` raising and
+  lowering `maxSections` (lowering evicts nothing), `UNBOUNDED` honoured, and
+  invalid values, unknown names and non-facade receivers refused at the
+  caller's line without changing anything;
 - `Report` ordering and fresh tables, `Reset`, and `Disable` then `Enable`
   keeping sections and statistics;
 - `Enable` declining with `"unavailable"` on a host without `debugprofilestop`;
 - allocation guards on the disabled and the enabled hot paths;
 - duplicate embedded loading, refusal to downgrade, an in-place upgrade to the
-  next revision (the real source with its revision constant rewritten), and a
-  corrupted-state refusal;
+  next revision (the real source with its revision constant rewritten) that
+  keeps the set limits and the `UNBOUNDED` sentinel, and corrupted-state
+  refusals;
 - `error` levels: every argument failure reports the caller's own line;
 - manifest/runtime API and revision consistency.
 
@@ -36,6 +41,7 @@ the clock calls `ProfileKitTestEnv.NewPackageWithoutProfilingClock()`, because
 | `Measure_spec.lua` | `Measure` results, errors, recursion and self-ended spans |
 | `Disabled_spec.lua` | the no-op bindings and both allocation guards |
 | `Cap_spec.lua` | the section cap |
+| `Limits_spec.lua` | `SetLimits`, `GetLimits` and `UNBOUNDED` for `maxSections` |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades, corrupted state |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement, declared dependencies |

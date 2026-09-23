@@ -39,8 +39,11 @@ is an ordinary signal underneath, with the same ordering and re-entrancy rules.
 - `SignalKit:ForAddon(addonName)` is an addon's default bus, closed by
   `SignalKit:CloseAddonBus(addonName)` at shutdown; `bus:CreateScope()` groups
   subscriptions for one-call teardown.
-- Buses (64), topics per bus (256) and listeners per topic (256) are bounded;
-  a steady-state publish allocates nothing.
+- Buses (64), topics per bus (256) and listeners per topic (256) are bounded
+  by default and opened on purpose: `maxTopics` and `maxListeners` are bus
+  options that accept `SignalKit.UNBOUNDED`, and `maxBuses` is set through
+  `SignalKit:SetLimits` (see "Limits" in `docs/API.md`). A steady-state publish
+  allocates nothing.
 
 ```lua
 local bus = SignalKit:ForAddon("MyAddon")

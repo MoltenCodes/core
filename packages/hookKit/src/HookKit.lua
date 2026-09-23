@@ -59,14 +59,19 @@ local STATE_SCHEMA = 1
 local SCOPE_SCHEMA = 1
 local RECORD_SCHEMA = 1
 
--- The most hooks one scope holds at once. A module or addon that needs more
--- than this is almost certainly hooking in a loop by mistake, and every
--- secure post-hook it installs stays in the host's call chain for the session.
+-- The most hooks one scope holds at once unless its owner opens it with
+-- `options.maxHooks`. A module or addon that needs more than this is almost
+-- certainly hooking in a loop by mistake, and every secure post-hook it
+-- installs stays in the host's call chain for the session. The hooks are the
+-- owner's own, so the owner may raise the limit or pass `HookKit.UNBOUNDED`.
 local MAX_HOOKS = 256
 
 -- How many `__index` tables the secure-status check follows to find the table
 -- that actually holds an inherited method. Real frames and mixins are one or
--- two levels deep; the bound only stops a pathological or cyclic chain.
+-- two levels deep; the bound only stops a pathological or cyclic chain. It is
+-- a hard ceiling rather than a limit: it bounds a walk, not retained memory,
+-- and without it a cyclic `__index` chain would never end (docs/API.md,
+-- "Limits").
 local MAX_INDEX_DEPTH = 8
 
 -- The kind string each semantic records, as `Hooks()` and `IsHooked` report it.
@@ -103,6 +108,7 @@ local PROTECTED_SCRIPTS = {
 -- The complete set of fields a hook option table accepts. A file-local
 -- constant keeps option validation allocation-free.
 local HOOK_OPTION_KEYS = { forceSecure = true }
+local SCOPE_OPTION_KEYS = { maxHooks = true }
 
 -- The published surface, listed once so the public-surface predicate reads as
 -- a checklist instead of a long boolean expression.
@@ -123,6 +129,7 @@ local SCOPE_METHODS = {
     "IsClosed",
     "GetActiveCount",
     "GetAddonName",
+    "GetMaxHooks",
 }
 
 -- Weak keys for every table keyed by a hooked object, so HookKit never keeps a
@@ -148,6 +155,10 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field method string The method, global or script name.
 ---@field kind HookKit.Kind
 
+---Option table accepted by `HookKit:CreateScope` and `HookKit:ForAddon`.
+---@class HookKit.ScopeOptions
+---@field maxHooks (integer|table)? Positive integer or `HookKit.UNBOUNDED`; the most hooks the scope holds at once. Default `HookKit.MAX_HOOKS` (256).
+
 ---The owner of a set of hooks, released together by `UnhookAll` or `Close`.
 ---@class HookKit.Scope
 ---@field SecureHook fun(self: HookKit.Scope, objectOrGlobalName: table|string, methodOrHandler: string|function, handler: function?): true|nil, "full"?
@@ -165,15 +176,17 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field IsClosed fun(self: HookKit.Scope): boolean
 ---@field GetActiveCount fun(self: HookKit.Scope): integer
 ---@field GetAddonName fun(self: HookKit.Scope): string?
+---@field GetMaxHooks fun(self: HookKit.Scope): integer|table
 
 ---The HookKit package facade published through Registry.
 ---@class HookKit
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
----@field MAX_HOOKS integer The most hooks one scope holds at once.
+---@field MAX_HOOKS integer The default `maxHooks`: the most hooks a scope holds at once unless opened.
+---@field UNBOUNDED table Sentinel for `options.maxHooks`: the scope holds any number of hooks.
 ---@field Scope HookKit.Scope Shared scope prototype.
----@field CreateScope fun(self: HookKit): HookKit.Scope
----@field ForAddon fun(self: HookKit, addonName: string): HookKit.Scope
+---@field CreateScope fun(self: HookKit, options: HookKit.ScopeOptions?): HookKit.Scope
+---@field ForAddon fun(self: HookKit, addonName: string, options: HookKit.ScopeOptions?): HookKit.Scope
 ---@field CloseAddonScopes fun(self: HookKit, addonName: string): boolean
 
 -- Dependencies ---------------------------------------------------------------
@@ -249,6 +262,7 @@ local function validatePublicSurface(implementation)
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
         or type(rawget(implementation, "MAX_HOOKS")) ~= "number"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
         or type(rawget(implementation, "Scope")) ~= "table"
     then
         return false
@@ -270,13 +284,16 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "addonScopes")) == "table"
         and type(rawget(currentState, "secureStatus")) == "table"
         and type(rawget(currentState, "secureScripts")) == "table"
+        and type(rawget(currentState, "unbounded")) == "table"
 end
 
 ---Whether `implementation` carries package state of this revision's schema.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+    local currentState = rawget(implementation, "_state")
+    return validateStateBase(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -326,6 +343,10 @@ if previousRevision == nil then
         -- pre-hook or replacement calls `SetScript`, which may drop the host's
         -- `HookScript` hooks, so it is refused while this count is positive.
         secureScripts = setmetatable({}, WEAK_KEYS),
+        -- The `HookKit.UNBOUNDED` sentinel. Created once and kept in state so
+        -- every revision hands out the same table, and a scope opened with it
+        -- stays unbounded across an upgrade.
+        unbounded = {},
     }
     rawset(HookKit, "Scope", Scope)
     rawset(HookKit, "_state", state)
@@ -341,6 +362,7 @@ local dispatch = rawget(state, "dispatch")
 local addonScopes = rawget(state, "addonScopes")
 local secureStatus = rawget(state, "secureStatus")
 local secureScripts = rawget(state, "secureScripts")
+local UNBOUNDED = rawget(state, "unbounded")
 rawset(SCOPE_METATABLE, "__index", Scope)
 
 -- Error reporting ------------------------------------------------------------
@@ -451,15 +473,13 @@ local function validateHandler(value, methodName, level)
     end
 end
 
----Validate an option table and return whether it asks for `forceSecure`.
+---Refuse an option table that is not a table or holds a field `allowedKeys`
+---does not list.
 ---@param options any
+---@param allowedKeys table<string, true>
 ---@param methodName string qualified public method name, used in the argument errors
 ---@param level integer stack level the failures are reported at
----@return boolean forceSecure
-local function readHookOptions(options, methodName, level)
-    if options == nil then
-        return false
-    end
+local function validateOptionKeys(options, allowedKeys, methodName, level)
     if type(options) ~= "table" then
         error(methodName .. " options must be a table", level)
     end
@@ -468,7 +488,7 @@ local function readHookOptions(options, methodName, level)
     -- the smallest key seen instead of collecting and sorting every offender.
     local firstUnknown = nil
     for key in next, options do
-        if HOOK_OPTION_KEYS[key] ~= true then
+        if allowedKeys[key] ~= true then
             local text = type(key) == "string" and key or ("<" .. type(key) .. ">")
             if firstUnknown == nil or text < firstUnknown then
                 firstUnknown = text
@@ -478,12 +498,62 @@ local function readHookOptions(options, methodName, level)
     if firstUnknown ~= nil then
         error(methodName .. ' options contains unknown field "' .. firstUnknown .. '"', level)
     end
+end
+
+---Validate an option table and return whether it asks for `forceSecure`.
+---@param options any
+---@param methodName string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return boolean forceSecure
+local function readHookOptions(options, methodName, level)
+    if options == nil then
+        return false
+    end
+    validateOptionKeys(options, HOOK_OPTION_KEYS, methodName, level + 1)
 
     local forceSecure = rawget(options, "forceSecure")
     if forceSecure ~= nil and type(forceSecure) ~= "boolean" then
         error(methodName .. " options.forceSecure must be a boolean", level)
     end
     return forceSecure == true
+end
+
+---Whether `value` is an exact integer of one or more. `nan` and both
+---infinities are rejected before the integer test could accept them.
+---@param value any
+---@return boolean
+local function isPositiveInteger(value)
+    return type(value) == "number"
+        and value == value
+        and value ~= math.huge
+        and value >= 1
+        and value % 1 == 0
+end
+
+---Validate a scope option table and return its `maxHooks`, or `nil` when the
+---table does not name one.
+---@param options any
+---@param methodName string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return integer|table|nil maxHooks
+local function readScopeOptions(options, methodName, level)
+    if options == nil then
+        return nil
+    end
+    validateOptionKeys(options, SCOPE_OPTION_KEYS, methodName, level + 1)
+
+    local maxHooks = rawget(options, "maxHooks")
+    if maxHooks == nil or rawequal(maxHooks, UNBOUNDED) then
+        return maxHooks
+    end
+    -- The secret check comes first: arithmetic on a secret raises.
+    if isSecret(maxHooks) or not isPositiveInteger(maxHooks) then
+        error(
+            methodName .. " options.maxHooks must be a positive integer or HookKit.UNBOUNDED",
+            level
+        )
+    end
+    return maxHooks
 end
 
 -- Target inspection ----------------------------------------------------------
@@ -645,8 +715,9 @@ end
 ---
 ---Counted rather than stored: the record table is weak-keyed, so the records of
 ---a hooked table that was garbage-collected disappear without HookKit being
----told, and a stored count would keep charging them against `MAX_HOOKS`. A
----scope holds at most `MAX_HOOKS` records, and neither caller is a hot path.
+---told, and a stored count would keep charging them against the scope's
+---`maxHooks`. Neither caller is a hot path, and an unbounded scope's capacity
+---check never counts (see `hasRoom`).
 ---@param scope HookKit.Scope
 ---@return integer
 local function countRecords(scope)
@@ -893,7 +964,11 @@ end
 ---@param scope HookKit.Scope
 ---@return boolean
 local function hasRoom(scope)
-    return countRecords(scope) < MAX_HOOKS
+    local maxHooks = rawget(scope, "_maxHooks")
+    if maxHooks == UNBOUNDED then
+        return true
+    end
+    return countRecords(scope) < maxHooks
 end
 
 ---Install a secure post-hook of a table field or global.
@@ -1125,7 +1200,8 @@ local function collectRecords(scope)
     local count = 0
     for object, byMethod in next, rawget(scope, "_records") do
         for method, record in next, byMethod do
-            -- Insertion sort by sequence: a scope holds at most MAX_HOOKS.
+            -- Insertion sort by sequence: a scope holds at most its maxHooks,
+            -- 256 unless its owner opened it.
             local position = count + 1
             local sequence = rawget(record, "_sequence")
             while position > 1 and rawget(records[position - 1], "_sequence") > sequence do
@@ -1413,14 +1489,25 @@ local function scopeGetAddonName(self)
     return addonName
 end
 
+---The most hooks this scope holds at once: a positive integer, or
+---`HookKit.UNBOUNDED`.
+---@param self HookKit.Scope
+---@return integer|table maxHooks
+local function scopeGetMaxHooks(self)
+    validateScope(self, "HookKit.Scope:GetMaxHooks", 3)
+    return rawget(self, "_maxHooks")
+end
+
 -- Package public API ---------------------------------------------------------
 
 ---@param addonName string|false
+---@param maxHooks integer|table positive integer or `UNBOUNDED`
 ---@return HookKit.Scope
-local function newScope(addonName)
+local function newScope(addonName, maxHooks)
     return setmetatable({
         _schema = SCOPE_SCHEMA,
         _addonName = addonName,
+        _maxHooks = maxHooks,
         _closed = false,
         _sequence = 0,
         _records = setmetatable({}, WEAK_KEYS),
@@ -1440,9 +1527,17 @@ local function validateFacade(receiver, label, level)
 end
 
 ---Create a manually owned hook scope, closed only by its owner.
+---
+---`options.maxHooks` opens the scope's limit: a larger positive integer, or
+---`HookKit.UNBOUNDED` for no limit. The hooks are the owner's own, so nothing
+---but the owner pays for them.
+---@param self HookKit
+---@param options HookKit.ScopeOptions?
 ---@return HookKit.Scope scope
-local function createScope()
-    return newScope(false)
+local function createScope(self, options)
+    validateFacade(self, "HookKit:CreateScope", 3)
+    local maxHooks = readScopeOptions(options, "HookKit:CreateScope", 3)
+    return newScope(false, maxHooks or MAX_HOOKS)
 end
 
 ---Return the canonical hook scope of an addon, creating it on demand.
@@ -1450,16 +1545,26 @@ end
 ---HookKit does not observe addon shutdown; whoever does (LifecycleKit, or the
 ---addon itself on `PLAYER_LOGOUT`) closes this scope through
 ---`HookKit:CloseAddonScopes(addonName)`.
+---
+---The scope is shared by every file of the addon, so `options.maxHooks`
+---applies whenever it is given, on the first call or a later one, and a call
+---that names none keeps the current limit. Lowering the limit below the hooks
+---already held removes none of them; further hooks are refused until the count
+---drops under it.
 ---@param self HookKit
 ---@param addonName string addon folder name
+---@param options HookKit.ScopeOptions?
 ---@return HookKit.Scope scope
-local function forAddon(self, addonName)
+local function forAddon(self, addonName, options)
     validateFacade(self, "HookKit:ForAddon", 3)
     validateName(addonName, "HookKit:ForAddon addonName", 3)
+    local maxHooks = readScopeOptions(options, "HookKit:ForAddon", 3)
     local scope = rawget(addonScopes, addonName)
     if scope == nil then
-        scope = newScope(addonName)
+        scope = newScope(addonName, maxHooks or MAX_HOOKS)
         rawset(addonScopes, addonName, scope)
+    elseif maxHooks ~= nil then
+        rawset(scope, "_maxHooks", maxHooks)
     end
     return scope
 end
@@ -1499,10 +1604,12 @@ rawset(Scope, "Close", scopeClose)
 rawset(Scope, "IsClosed", scopeIsClosed)
 rawset(Scope, "GetActiveCount", scopeGetActiveCount)
 rawset(Scope, "GetAddonName", scopeGetAddonName)
+rawset(Scope, "GetMaxHooks", scopeGetMaxHooks)
 
 rawset(HookKit, "API", API_GENERATION)
 rawset(HookKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(HookKit, "MAX_HOOKS", MAX_HOOKS)
+rawset(HookKit, "UNBOUNDED", UNBOUNDED)
 rawset(HookKit, "CreateScope", createScope)
 rawset(HookKit, "ForAddon", forAddon)
 rawset(HookKit, "CloseAddonScopes", closeAddonScopes)

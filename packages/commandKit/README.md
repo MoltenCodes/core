@@ -41,6 +41,7 @@ What each piece promises:
 - **Declarative sub-commands.** Up to three levels deep, with usage lines generated from the argument schemas (`<number 0.5..2>`, `[TOP|CENTER]`) and descriptions.
 - **Two kinds of failure, two channels.** A bad spec raises at your line when you register it; a bad thing the user typed is printed to the sink with the usage. A handler that raises is reported to the sink and to the host error handler.
 - **Cheap dispatch.** A slash command allocates nothing when its text has been seen before, unless a table default is filled (each dispatch gets a fresh copy); the parser has no state outside the call; everything is bounded (64 commands per scope, 3 sub-command levels, 4 nested dispatches).
+- **Bounded by default, opened on purpose.** Scope options (`maxCommands`, `maxSubcommands`, `maxPositions`, `maxSlashAliases`), `CommandKit:SetLimits{}` and `CommandKit.UNBOUNDED` lift the defaults where the memory is yours; see [Limits](docs/API.md#limits).
 - **Options from the command line.** `scope:BindOptions(tree, "myaddon_options")` gives `get`, `set`, `reset`, `list` and `exec` over an OptionsKit tree, with values parsed per option kind and the tree's own validation messages.
 - **Completion on request.** `scope:EnableCompletion()` completes sub-command names and option paths on Tab through the client's `ChatEdit_CustomTabPressed` extension point.
 

@@ -22,6 +22,8 @@
 --   Addon public API ...... Methods installed on the shared Addon prototype.
 --   Addon creation ........ Container identity and LifecycleKit subscriptions,
 --                           including the halted notices.
+--   Package-wide limits ... `SetLimits` / `GetLimits` and the coupling to
+--                           LifecycleKit's dependency limit.
 --   Commit ................ Publishing the public surface and runtime dispatch.
 --
 -- `docs/INTERNALS.md` explains the graph algorithm, the failure model, the
@@ -30,14 +32,21 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 13
+local IMPLEMENTATION_REVISION = 14
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
 
--- The most addons one module may name in `requiresAddons`. It matches the
--- number of dependencies LifecycleKit lets one addon declare with `DependsOn`.
-local MAX_REQUIRED_ADDONS = 16
+-- The default of `maxRequiredAddons`, the most addons one module may name in
+-- `requiresAddons`. It matches the number of dependencies LifecycleKit lets
+-- one addon declare with `DependsOn`, which bounds the addon as a whole
+-- whatever this limit says. `ModuleKit:SetLimits` opens it.
+local DEFAULT_MAX_REQUIRED_ADDONS = 16
+
+-- The package-wide limits `SetLimits` accepts, in the order `GetLimits`
+-- reports them.
+local LIMIT_NAMES = { "maxRequiredAddons" }
+local KNOWN_LIMITS = { maxRequiredAddons = true }
 
 -- The `blockedBy` value of every wanted module once its own addon has halted.
 local OWN_ADDON_HALTED = "halted"
@@ -67,7 +76,7 @@ local OWN_ADDON_HALTED = "halted"
 ---@field before string[]? modules this one must precede
 ---@field after string[]? modules this one must follow
 ---@field inject table<string, string>? alias-to-provider/module-name map
----@field requiresAddons string[]? other addons this module cannot work without, at most 16
+---@field requiresAddons string[]? other addons this module cannot work without, at most `maxRequiredAddons` (default 16; see `ModuleKit:SetLimits`)
 ---@field onInitialize fun(self: ModuleKit.Module, injections: table<string, any>)?
 ---@field onEnable fun(self: ModuleKit.Module)?
 ---@field onDisable fun(self: ModuleKit.Module)?
@@ -144,13 +153,21 @@ local OWN_ADDON_HALTED = "halted"
 ---@class ModuleKit.ErrorRecord
 ---@field value any the original Lua error object
 
+---The package-wide limits, shared by every consumer in the session.
+---`SetLimits` accepts any subset; `GetLimits` returns a fresh copy.
+---@class ModuleKit.Limits
+---@field maxRequiredAddons integer|table Most addons one module may name in `requiresAddons`: a positive integer or `ModuleKit.UNBOUNDED`; default 16. Never above LifecycleKit's `maxDependencies` when LifecycleKit reports one.
+
 ---The ModuleKit package facade published through Registry.
 ---@class ModuleKit
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
+---@field UNBOUNDED table Sentinel that lifts a limit whose retention is the consumer's own.
 ---@field Addon ModuleKit.Addon Shared container prototype.
 ---@field Module ModuleKit.Module Shared module prototype.
 ---@field ForAddon fun(self: ModuleKit, addonName: string): ModuleKit.Addon
+---@field SetLimits fun(self: ModuleKit, limits: ModuleKit.Limits|table)
+---@field GetLimits fun(self: ModuleKit): ModuleKit.Limits
 
 -- Dependencies --------------------------------------------------------------
 
@@ -203,6 +220,9 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "Addon")) ~= "table"
         or type(rawget(implementation, "Module")) ~= "table"
         or type(rawget(implementation, "ForAddon")) ~= "function"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
+        or type(rawget(implementation, "SetLimits")) ~= "function"
+        or type(rawget(implementation, "GetLimits")) ~= "function"
     then
         return false
     end
@@ -258,14 +278,48 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "addons")) == "table"
 end
 
+---Whether `value` is an exact integer of one or more. `nan` and both
+---infinities are rejected before the integer test can accept them.
+---@param value any
+---@return boolean
+local function isPositiveInteger(value)
+    return type(value) == "number"
+        and value == value
+        and value ~= math.huge
+        and value ~= -math.huge
+        and value >= 1
+        and value % 1 == 0
+end
+
+---Whether `limits` holds a valid value for every package-wide limit.
+---@param limits any
+---@param unbounded table the package's `UNBOUNDED` sentinel
+---@return boolean
+local function validateLimitsState(limits, unbounded)
+    if type(limits) ~= "table" then
+        return false
+    end
+    for index = 1, #LIMIT_NAMES do
+        local value = rawget(limits, LIMIT_NAMES[index])
+        if value ~= unbounded and not isPositiveInteger(value) then
+            return false
+        end
+    end
+    return true
+end
+
 ---Whether `implementation` carries runtime state this revision has committed.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     local dispatch = type(currentState) == "table" and rawget(currentState, "dispatch") or nil
+    local unbounded = type(currentState) == "table" and rawget(currentState, "unbounded") or nil
     return validateStateBase(currentState)
         and rawget(currentState, "runtimeRevision") == IMPLEMENTATION_REVISION
+        and type(unbounded) == "table"
+        and rawget(implementation, "UNBOUNDED") == unbounded
+        and validateLimitsState(rawget(currentState, "limits"), unbounded)
         and type(dispatch) == "table"
         and type(rawget(dispatch, "initializeAll")) == "function"
         and type(rawget(dispatch, "enableAll")) == "function"
@@ -339,6 +393,11 @@ if previousRevision == nil then
         dispatch = {},
         scopeMetatable = {},
         runtimeRevision = 0,
+        -- The sentinel and the package-wide limits live here, so every later
+        -- revision shares the sentinel's identity and inherits the limits a
+        -- consumer set.
+        unbounded = {},
+        limits = { maxRequiredAddons = DEFAULT_MAX_REQUIRED_ADDONS },
     }
 
     rawset(ModuleKit, "Addon", Addon)
@@ -358,7 +417,24 @@ else
     if type(rawget(state, "scopeMetatable")) ~= "table" then
         rawset(state, "scopeMetatable", {})
     end
+    -- Revisions 1 to 13 kept no sentinel and no limits: the fields are
+    -- additive, so the schema stays 1 and they are created here with the
+    -- defaults those revisions enforced as constants.
+    if type(rawget(state, "unbounded")) ~= "table" then
+        rawset(state, "unbounded", {})
+    end
+    if type(rawget(state, "limits")) ~= "table" then
+        rawset(state, "limits", { maxRequiredAddons = DEFAULT_MAX_REQUIRED_ADDONS })
+    end
+    if not validateLimitsState(rawget(state, "limits"), rawget(state, "unbounded")) then
+        error("MoltenCodes ModuleKit package state is corrupted or incomplete", 2)
+    end
 end
+
+-- The sentinel and the limits table are shared by every revision; this copy
+-- reads and writes them in place.
+local UNBOUNDED = rawget(state, "unbounded")
+local sharedLimits = rawget(state, "limits")
 
 -- Every module scope shares this metatable. It lives in shared state, and each
 -- revision installs its own `__index` on it, so scopes created by an older copy
@@ -2453,11 +2529,12 @@ local function addRequiredAddon(module, addonName)
     end
 
     local required = rawget(module, "_requiredAddons")
-    if #required >= MAX_REQUIRED_ADDONS then
+    local maxRequiredAddons = rawget(sharedLimits, "maxRequiredAddons")
+    if maxRequiredAddons ~= UNBOUNDED and #required >= maxRequiredAddons then
         error(
             "ModuleKit module definition requiresAddons must list at most "
-                .. MAX_REQUIRED_ADDONS
-                .. " addons",
+                .. tostring(maxRequiredAddons)
+                .. " addons (ModuleKit:SetLimits maxRequiredAddons)",
             5
         )
     end
@@ -3141,6 +3218,116 @@ local function forAddon(_, addonName)
     return createAddon(addonName)
 end
 
+-- Package-wide limits ------------------------------------------------------
+
+---LifecycleKit's per-addon dependency limit, when the loaded LifecycleKit
+---reports one through `GetLimits`, or `nil` when it reports none or reports
+---its own `UNBOUNDED`.
+---
+---Read at call time rather than at load: LifecycleKit may be upgraded in
+---place, and its limit may be changed, after ModuleKit loaded. `GetLimits` is
+---optional because LifecycleKit revisions without it are supported.
+---@return integer|nil ceiling
+local function lifecycleDependencyCeiling()
+    local getLimits = rawget(LifecycleKit, "GetLimits")
+    if type(getLimits) ~= "function" then
+        return nil
+    end
+    local limits = getLimits(LifecycleKit)
+    if type(limits) ~= "table" then
+        return nil
+    end
+    local value = rawget(limits, "maxDependencies")
+    if isPositiveInteger(value) then
+        return value
+    end
+    return nil
+end
+
+---Refuse `limits` unless every entry names a known limit with a valid value.
+---Nothing is changed here, so a refusal leaves every limit as it was.
+---@param limits any
+---@param level integer error level of the `SetLimits` caller
+local function validateLimitUpdate(limits, level)
+    if type(limits) ~= "table" then
+        error("ModuleKit:SetLimits limits must be a table", level)
+    end
+    local ceiling = lifecycleDependencyCeiling()
+    local key = next(limits)
+    while key ~= nil do
+        if type(key) ~= "string" or KNOWN_LIMITS[key] ~= true then
+            error(
+                "ModuleKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
+                level
+            )
+        end
+        local value = rawget(limits, key)
+        if value == UNBOUNDED then
+            if ceiling ~= nil then
+                error(
+                    "ModuleKit:SetLimits limits."
+                        .. key
+                        .. " cannot be ModuleKit.UNBOUNDED: LifecycleKit accepts at most "
+                        .. ceiling
+                        .. " dependencies per addon",
+                    level
+                )
+            end
+        elseif not isPositiveInteger(value) then
+            error(
+                "ModuleKit:SetLimits limits."
+                    .. key
+                    .. " must be a positive integer or ModuleKit.UNBOUNDED",
+                level
+            )
+        elseif ceiling ~= nil and value > ceiling then
+            error(
+                "ModuleKit:SetLimits limits."
+                    .. key
+                    .. " must be an integer from 1 to "
+                    .. ceiling
+                    .. ", LifecycleKit's maxDependencies",
+                level
+            )
+        end
+        key = next(limits, key)
+    end
+end
+
+---Change any subset of the package-wide limits. Affects every consumer in the
+---session. Lowering a limit never removes what modules already declared.
+---@param self ModuleKit
+---@param limits ModuleKit.Limits|table
+local function setLimits(self, limits)
+    if self ~= ModuleKit then
+        error(
+            "ModuleKit:SetLimits must be called on the ModuleKit facade; use ModuleKit:SetLimits(...)",
+            2
+        )
+    end
+    validateLimitUpdate(limits, 3)
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        local value = rawget(limits, name)
+        if value ~= nil then
+            rawset(sharedLimits, name, value)
+        end
+    end
+end
+
+---Return a fresh copy of the package-wide limits. Allocates one table.
+---@param self ModuleKit
+---@return ModuleKit.Limits limits
+local function getLimits(self)
+    if self ~= ModuleKit then
+        error(
+            "ModuleKit:GetLimits must be called on the ModuleKit facade; use ModuleKit:GetLimits()",
+            2
+        )
+    end
+    return { maxRequiredAddons = rawget(sharedLimits, "maxRequiredAddons") }
+end
+
 ---Move every live container's LifecycleKit subscriptions onto this revision.
 local function migrateAddonSubscriptions()
     local addons = rawget(state, "addons")
@@ -3214,7 +3401,10 @@ rawset(SCOPE_METATABLE, "__index", scopeIndex)
 
 rawset(ModuleKit, "API", API_GENERATION)
 rawset(ModuleKit, "REVISION", IMPLEMENTATION_REVISION)
+rawset(ModuleKit, "UNBOUNDED", UNBOUNDED)
 rawset(ModuleKit, "ForAddon", forAddon)
+rawset(ModuleKit, "SetLimits", setLimits)
+rawset(ModuleKit, "GetLimits", getLimits)
 
 -- Lifecycle subscriptions installed by revision 1 closed over that revision's
 -- local implementation functions. Revision 2 moves them behind shared-state

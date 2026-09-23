@@ -12,11 +12,14 @@ Package facade:
 | `Enable()` | Start measuring. Returns `true`, or `false, "unavailable"` without `debugprofilestop`. |
 | `Disable()` | Stop measuring. Keeps statistics; abandons open measurements. |
 | `IsEnabled()` | Return whether ProfileKit is measuring. |
-| `Section(name)` | Return the section called `name`, creating it on first use; `nil, "capped"` beyond the cap. |
+| `Section(name)` | Return the section called `name`, creating it on first use; `nil, "capped"` beyond `maxSections`. |
 | `Measure(name, fn, ...)` | Call `fn(...)` inside section `name` and return all of its results. |
 | `Report()` | Return a fresh array of `{ name, count, total, max, last }`, sorted by `total` descending. |
 | `Reset()` | Zero every section's statistics and abandon open measurements. |
-| `DEFAULT_MAX_SECTIONS` | `256`, the number of sections one session may create. |
+| `SetLimits(limits)` | Change the shared `maxSections` limit. Returns nothing. |
+| `GetLimits()` | A fresh table `{ maxSections = ... }`; allocates. |
+| `DEFAULT_MAX_SECTIONS` | `256`, the default of `maxSections`. |
+| `UNBOUNDED` | Sentinel that lifts `maxSections`; the same table for every revision. |
 | `API`, `REVISION` | API generation `1` and implementation revision. |
 
 Sections:
@@ -91,14 +94,14 @@ measures from the first `Begin`. Use a different section for an inner span, or
 
 `End` on a section that is not begun returns `nil, "idle"`.
 
-### The section cap
+### The section limit
 
-At most `DEFAULT_MAX_SECTIONS` (256) sections exist per session. Sections are
-never freed, because callers hold them, so the cap is what stops code that
-builds section names from data from growing ProfileKit without limit.
-`Section(name)` for a new name at the cap returns `nil, "capped"`; existing
+By default at most `DEFAULT_MAX_SECTIONS` (256) sections exist per session.
+Sections are never freed, because callers hold them, so the limit is what stops
+code that builds section names from data from growing ProfileKit without limit.
+`Section(name)` for a new name at the limit returns `nil, "capped"`; existing
 names are still returned. `Reset` keeps sections, so they keep counting against
-the cap. API generation 1 has no setter for the cap.
+the limit. The limit is opened with `SetLimits`; see [Limits](#limits).
 
 ## `Measure(name, fn, ...)`
 
@@ -122,7 +125,7 @@ across `pcall`. Inside a SchedulerKit job, measure with a section's `Begin` and
 `End` around the non-yielding part instead.
 
 `Measure` runs `fn` **unmeasured** in three cases, and still returns its
-results: the name is refused by the cap; the section is already begun, by a
+results: the name is refused by the `maxSections` limit; the section is already begun, by a
 manual `Begin` or by an outer `Measure` of the same name (recursion is measured
 once, at the outermost call); and ProfileKit is disabled. If `fn` itself calls
 `Disable`, `Reset` or the section's `End`, the span is not recorded a second
@@ -155,12 +158,42 @@ a hot path.
 Zeroes `count`, `total`, `max` and `last` of every section and abandons open
 measurements. Sections and the enabled state are kept.
 
+## Limits
+
+| Limit | Default | How to open | UNBOUNDED allowed? |
+|---|---|---|---|
+| `maxSections` | 256 (`DEFAULT_MAX_SECTIONS`) | `ProfileKit:SetLimits({ maxSections = n })` | Yes |
+
+```lua
+ProfileKit:SetLimits({ maxSections = 1024 })
+ProfileKit:SetLimits({ maxSections = ProfileKit.UNBOUNDED })
+local limits = ProfileKit:GetLimits() -- a fresh table; allocates
+```
+
+`SetLimits` accepts any subset of the limits and returns nothing. It raises at
+the caller's line, **before changing anything**, when `limits` is not a table,
+names an unknown limit (`ProfileKit:SetLimits limits.<name> is not a recognised
+limit`) or gives a value that is neither a positive integer nor
+`ProfileKit.UNBOUNDED` (`ProfileKit:SetLimits limits.maxSections must be a
+positive integer or ProfileKit.UNBOUNDED`). `GetLimits` returns a new table on
+every call, with `ProfileKit.UNBOUNDED` itself for a lifted limit.
+
+**The limits are shared by every consumer in the session**: every embedded copy
+and every addon uses one set, like the sections themselves. A library should
+rely on the default; an addon that raises the limit raises it for everybody.
+
+`UNBOUNDED` is allowed because the only memory it lets grow is the sections
+consumers create by name — one small table each — and no client resource.
+Lowering the limit below the sections that already exist removes none of them;
+new names are refused with `nil, "capped"` until the count is under the limit
+again.
+
 ## Refusal reasons
 
 | Reason | Returned by | Meaning |
 |---|---|---|
 | `"unavailable"` | `Enable` | The host has no `debugprofilestop`. |
-| `"capped"` | `Section` | A new section would exceed `DEFAULT_MAX_SECTIONS`. |
+| `"capped"` | `Section` | A new section would exceed the `maxSections` limit. |
 | `"active"` | `Begin` | The section is already begun. |
 | `"idle"` | `End` | The section is not begun, or its measurement was abandoned. |
 | `"clockReset"` | `End` | The clock went backwards; the sample was dropped. |
@@ -174,6 +207,10 @@ Argument errors are raised at the caller's line:
 - `ProfileKit:Measure fn must be a function`
 - `ProfileKit.Section:Begin must be called on a ProfileKit section` (enabled only)
 - `ProfileKit.Section:End must be called on a ProfileKit section` (enabled only)
+- `ProfileKit:SetLimits limits must be a table`
+- `ProfileKit:SetLimits limits.<name> is not a recognised limit`
+- `ProfileKit:SetLimits limits.maxSections must be a positive integer or ProfileKit.UNBOUNDED`
+- `ProfileKit:SetLimits must be called on the ProfileKit facade; use ProfileKit:SetLimits(...)` (and the same for `GetLimits`)
 
 ## Cost
 
@@ -185,11 +222,13 @@ Argument errors are raised at the caller's line:
 | Enabled `Measure` | One table lookup, two clock reads, one `pcall`. No allocation after the section exists. |
 | `Section` (new name) | One table. |
 | `Report` | One array and one table per section, plus a sort. |
+| `GetLimits` | One table. |
 
 ## Upgrades
 
 ProfileKit bootstraps through `Registry:Bootstrap`. Sections, their statistics,
-the section prototype and the enabled state live in the shared package state,
+the section prototype, the enabled state, the limits a consumer set and the
+`UNBOUNDED` sentinel live in the shared package state,
 so an in-place upgrade keeps all of them: a section created by an older embedded
 copy resolves to the newer copy's methods, and a measurement begun under the
 older copy is ended by the newer one. The newer copy re-binds the measuring or

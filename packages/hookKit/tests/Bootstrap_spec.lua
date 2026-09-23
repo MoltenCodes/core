@@ -120,6 +120,22 @@ describe("HookKit bootstrap", function()
         assert.are.equal(0, scope:GetActiveCount())
     end)
 
+    it("keeps the UNBOUNDED sentinel and every scope's limit across an upgrade", function()
+        local HookKit = TestEnv.NewPackage()
+        local sentinel = HookKit.UNBOUNDED
+        local opened = HookKit:CreateScope({ maxHooks = sentinel })
+        local raised = HookKit:ForAddon("MyAddon", { maxHooks = 300 })
+        local default = HookKit:CreateScope()
+
+        local upgraded = TestEnv.LoadRevision(2)
+        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(sentinel, upgraded.UNBOUNDED)
+        assert.are.equal(sentinel, opened:GetMaxHooks())
+        assert.are.equal(300, raised:GetMaxHooks())
+        assert.are.equal(upgraded.MAX_HOOKS, default:GetMaxHooks())
+        assert.are.equal(sentinel, upgraded:CreateScope({ maxHooks = sentinel }):GetMaxHooks())
+    end)
+
     it("requires Registry", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()

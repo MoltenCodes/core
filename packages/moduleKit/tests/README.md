@@ -20,7 +20,8 @@ The ModuleKit suite covers:
 - module scopes (`Scope_spec.lua`): lazy creation, release on disable, `DisableAll`, shutdown and a failed `OnEnable`, absent Kits, and the enable window (TimerKit and SchedulerKit are recording fakes registered through Registry; EventKit is covered both by a fake and by the real `EventKit:CreateScope()`; HookKit, the SignalKit bus, CommandKit and CommKit are covered against the real Kits);
 - intent versus fact (`EnableState_spec.lua`): recovery after a dependency enables, explicit disable winning over recovery, the `ready` phase respecting an explicit disable, and both fields surviving an in-place upgrade;
 - dependency cycles reported at the caller's line from every entry method (`Cycle_spec.lua`);
-- halted addons (`Halted_spec.lua`): the addon's own halt, a required addon's halt, a halt raised from inside `OnEnable`, `requiresAddons` validation and LifecycleKit's dependency bound, and the halted state across an in-place upgrade.
+- halted addons (`Halted_spec.lua`): the addon's own halt, a required addon's halt, a halt raised from inside `OnEnable`, `requiresAddons` validation and LifecycleKit's dependency bound, and the halted state across an in-place upgrade;
+- package-wide limits (`Limits_spec.lua`): the `maxRequiredAddons` default, a lower and a higher limit, `ModuleKit.UNBOUNDED`, the coupling to LifecycleKit's reported `maxDependencies`, invalid values refused at the caller without changing anything, and the facade receiver check; the upgrade cases live in `Bootstrap_spec.lua`.
 
 Spec files:
 
@@ -36,5 +37,6 @@ Spec files:
 | `EnableState_spec.lua` | intent versus fact: `wanted`, `actual`, `blockedBy` and recovery |
 | `Scope_spec.lua` | module scopes over fakes and the real EventKit, HookKit, SignalKit bus, CommandKit and CommKit |
 | `Halted_spec.lua` | the addon's own halt, a required addon's halt, halts raised inside `OnEnable`, `requiresAddons`, upgrades |
-| `Bootstrap_spec.lua` | duplicate loading, Registry publication, dispatch repair, in-place upgrades |
+| `Limits_spec.lua` | `SetLimits` / `GetLimits`, `maxRequiredAddons`, `ModuleKit.UNBOUNDED` and the LifecycleKit coupling |
+| `Bootstrap_spec.lua` | duplicate loading, Registry publication, dispatch repair, in-place upgrades, revision 14, limits and the sentinel carried across upgrades from revision 13 and to a newer revision |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |

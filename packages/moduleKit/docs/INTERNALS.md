@@ -30,13 +30,23 @@ Registry owns one implementation table for `(moduleKit, API 1)`. ModuleKit store
 ModuleKit facade
 ├── Addon            -- shared method prototype
 ├── Module           -- shared method prototype
+├── UNBOUNDED        -- the sentinel, the same table as _state.unbounded
 └── _state
     ├── schema
     ├── runtimeRevision
     ├── addons[name] -- containers
     ├── dispatch     -- initializeAll / enableAll / shutdown / halted / dependencyHalted
-    └── scopeMetatable -- shared by every module scope; each revision installs its __index
+    ├── scopeMetatable -- shared by every module scope; each revision installs its __index
+    ├── unbounded    -- the UNBOUNDED sentinel, created once so every revision shares its identity
+    └── limits       -- { maxRequiredAddons }, written in place by SetLimits
 ```
+
+`unbounded` and `limits` were added by revision 14. They are additive, so the
+schema stays 1: an upgrade from an earlier revision creates them with the
+default that revision enforced as a constant, and refuses a `limits` table it
+cannot trust. `SetLimits` asks `LifecycleKit:GetLimits()` at call time, not at
+load, because LifecycleKit can be upgraded in place and its limit changed after
+ModuleKit loaded.
 
 Existing containers and modules therefore survive an in-place upgrade: their metatables point at the shared prototypes, and the newer copy replaces methods on those prototypes rather than replacing objects.
 

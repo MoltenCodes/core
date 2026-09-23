@@ -8,23 +8,22 @@
 --- SchedulerKit is an optional partner of EventKit: `Coalesce` and `Derive`
 --- find it through `Registry:Find` when they are called. The manifest declares
 --- it under `optionalDependencies`, so the test runner puts SchedulerKit and
---- the LifecycleKit and TimerKit it needs on `LUA_PATH` for this suite while
---- the release load order ignores them.
+--- the TimerKit it needs on `LUA_PATH` for this suite while the release load
+--- order ignores them. LifecycleKit is optional for both, so it is not loaded.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local EventKitTestEnv = FrameworkTestEnv.New({
     modules = { "Registry", "SignalKit", "EventKit" },
 })
 
----An environment that also loads SchedulerKit and its dependencies, for the
----coalescing specs. LifecycleKit needs EventKit, so the chain is in
----dependency order; use `NewEventKit` to get the two packages the specs use.
+---An environment that also loads SchedulerKit and its required dependencies,
+---for the coalescing specs. The chain is in dependency order; use
+---`NewEventKit` to get the two packages the specs use.
 local Scheduled = FrameworkTestEnv.New({
     modules = {
         "Registry",
         "SignalKit",
         "EventKit",
-        "LifecycleKit",
         "TimerKit",
         "SchedulerKit",
     },

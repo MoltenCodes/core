@@ -17,6 +17,7 @@
 --   Validation ............ public-surface and shared-state predicates
 --   Bootstrap ............. registration and inherited state
 --   Argument checks ....... errors reported at the caller's line
+--   Limits ................ validating and reading the shared section limit
 --   Recording ............. one sample into a section, abandoning open ones
 --   Section methods ....... measuring and no-op Begin/End
 --   Measure ............... measuring and pass-through Measure
@@ -32,10 +33,15 @@ local IMPLEMENTATION_REVISION = 1
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
--- How many distinct sections one session may create. Sections are never freed,
--- because callers hold them, so the bound is what keeps a loop that builds
--- section names from data from growing the package state without limit.
+-- How many distinct sections one session may create unless a consumer opens
+-- the limit with `SetLimits`. Sections are never freed, because callers hold
+-- them, so the bound is what keeps a loop that builds section names from data
+-- from growing the package state without limit.
 local DEFAULT_MAX_SECTIONS = 256
+
+-- The limits `SetLimits` accepts, in the order `GetLimits` reports them.
+local LIMIT_NAMES = { "maxSections" }
+local LIMIT_NAME_SET = { maxSections = true }
 
 -- Refusal reasons. Plain strings, so a caller compares them without importing
 -- anything; the API documentation lists each one.
@@ -74,11 +80,16 @@ local REASON_CLOCK_RESET = "clockReset"
 ---@field max number Worst single measurement (the spike).
 ---@field last number Most recent measurement.
 
+---The shared limits. `SetLimits` accepts any subset; `GetLimits` returns all.
+---@class ProfileKit.Limits
+---@field maxSections integer|table Most sections one session creates: a positive integer or `ProfileKit.UNBOUNDED`; default `256`.
+
 ---The ProfileKit package facade published through Registry.
 ---@class ProfileKit
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
----@field DEFAULT_MAX_SECTIONS integer How many sections one session may create.
+---@field DEFAULT_MAX_SECTIONS integer Default of the `maxSections` limit (`256`).
+---@field UNBOUNDED table Sentinel that lifts a limit; the same table for every revision.
 ---@field Enable fun(self: ProfileKit): boolean, ProfileKit.Reason?
 ---@field Disable fun(self: ProfileKit)
 ---@field IsEnabled fun(self: ProfileKit): boolean
@@ -86,6 +97,8 @@ local REASON_CLOCK_RESET = "clockReset"
 ---@field Measure fun(self: ProfileKit, name: string, fn: function, ...: any): ...
 ---@field Report fun(self: ProfileKit): ProfileKit.ReportEntry[]
 ---@field Reset fun(self: ProfileKit)
+---@field SetLimits fun(self: ProfileKit, limits: ProfileKit.Limits)
+---@field GetLimits fun(self: ProfileKit): ProfileKit.Limits
 
 -- Dependencies ---------------------------------------------------------------
 
@@ -136,6 +149,7 @@ local function validatePublicSurface(implementation)
         and rawget(implementation, "API") == API_GENERATION
         and type(rawget(implementation, "REVISION")) == "number"
         and type(rawget(implementation, "DEFAULT_MAX_SECTIONS")) == "number"
+        and type(rawget(implementation, "UNBOUNDED")) == "table"
         and type(rawget(implementation, "Enable")) == "function"
         and type(rawget(implementation, "Disable")) == "function"
         and type(rawget(implementation, "IsEnabled")) == "function"
@@ -143,6 +157,33 @@ local function validatePublicSurface(implementation)
         and type(rawget(implementation, "Measure")) == "function"
         and type(rawget(implementation, "Report")) == "function"
         and type(rawget(implementation, "Reset")) == "function"
+        and type(rawget(implementation, "SetLimits")) == "function"
+        and type(rawget(implementation, "GetLimits")) == "function"
+end
+
+---Whether `value` is an exact integer of one or more. `nan` fails every
+---comparison and both infinities are refused before the integer test.
+---@param value any
+---@return boolean
+local function isPositiveInteger(value)
+    return type(value) == "number" and value >= 1 and value ~= math.huge and value % 1 == 0
+end
+
+---Whether `limits` holds a valid value for every limit this revision knows.
+---@param limits any
+---@param unbounded any the package's sentinel
+---@return boolean
+local function validateLimitsTable(limits, unbounded)
+    if type(limits) ~= "table" then
+        return false
+    end
+    for index = 1, #LIMIT_NAMES do
+        local value = rawget(limits, LIMIT_NAMES[index])
+        if value ~= unbounded and not isPositiveInteger(value) then
+            return false
+        end
+    end
+    return true
 end
 
 ---Whether `currentState` has the fields every API 1 revision shares.
@@ -152,18 +193,22 @@ local function validateStateBase(currentState)
     return type(currentState) == "table"
         and rawget(currentState, "schema") == STATE_SCHEMA
         and type(rawget(currentState, "enabled")) == "boolean"
-        and type(rawget(currentState, "maxSections")) == "number"
+        and type(rawget(currentState, "unbounded")) == "table"
+        and validateLimitsTable(rawget(currentState, "limits"), rawget(currentState, "unbounded"))
         and type(rawget(currentState, "sections")) == "table"
         and type(rawget(currentState, "sectionsByName")) == "table"
         and type(rawget(currentState, "sectionPrototype")) == "table"
         and type(rawget(currentState, "sectionMetatable")) == "table"
 end
 
----Whether `implementation` carries package state of this revision's schema.
+---Whether `implementation` carries package state of this revision's schema,
+---and publishes the sentinel that state owns.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+    local currentState = rawget(implementation, "_state")
+    return validateStateBase(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -200,7 +245,11 @@ if previousRevision == nil then
     state = {
         schema = STATE_SCHEMA,
         enabled = false,
-        maxSections = DEFAULT_MAX_SECTIONS,
+        -- The sentinel `SetLimits` accepts to lift a limit. It lives here, not
+        -- in a file local, so every embedded revision hands out the same table.
+        unbounded = {},
+        -- The shared limits, kept across upgrades like everything else here.
+        limits = { maxSections = DEFAULT_MAX_SECTIONS },
         sections = {},
         sectionsByName = {},
         sectionPrototype = sectionPrototype,
@@ -215,6 +264,8 @@ local SECTION_PROTOTYPE = rawget(state, "sectionPrototype")
 local SECTION_METATABLE = rawget(state, "sectionMetatable")
 local sections = rawget(state, "sections")
 local sectionsByName = rawget(state, "sectionsByName")
+local sharedLimits = rawget(state, "limits")
+local UNBOUNDED = rawget(state, "unbounded")
 rawset(SECTION_METATABLE, "__index", SECTION_PROTOTYPE)
 
 -- Argument checks ------------------------------------------------------------
@@ -249,6 +300,54 @@ local function validateSection(section, methodName, level)
     if getmetatable(section) ~= SECTION_METATABLE then
         error(methodName .. " must be called on a ProfileKit section", level)
     end
+end
+
+-- Limits -------------------------------------------------------------------------
+
+---@param receiver any the table the method was called on
+---@param label string public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateFacade(receiver, label, level)
+    if receiver ~= ProfileKit then
+        error(label .. " must be called on the ProfileKit facade; use " .. label .. "(...)", level)
+    end
+end
+
+---Refuse a `SetLimits` argument before any limit changes, so a call with one
+---bad entry leaves every limit as it was.
+---@param limits any
+---@param level integer stack level the failure is reported at
+local function validateLimitUpdate(limits, level)
+    if type(limits) ~= "table" then
+        error("ProfileKit:SetLimits limits must be a table", level)
+    end
+    local key = next(limits)
+    while key ~= nil do
+        if type(key) ~= "string" or LIMIT_NAME_SET[key] ~= true then
+            error(
+                "ProfileKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
+                level
+            )
+        end
+        local value = rawget(limits, key)
+        if value ~= UNBOUNDED and not isPositiveInteger(value) then
+            error(
+                "ProfileKit:SetLimits limits."
+                    .. key
+                    .. " must be a positive integer or ProfileKit.UNBOUNDED",
+                level
+            )
+        end
+        key = next(limits, key)
+    end
+end
+
+---Whether one more section fits under the current `maxSections` limit.
+---@param count integer sections that exist now
+---@return boolean
+local function hasRoomForSection(count)
+    local maxSections = rawget(sharedLimits, "maxSections")
+    return maxSections == UNBOUNDED or count < maxSections
 end
 
 -- Recording ------------------------------------------------------------------
@@ -359,7 +458,7 @@ end
 ---@return ProfileKit.Reason? reason `"capped"` when `maxSections` is reached
 local function createSection(name)
     local count = #sections
-    if count >= rawget(state, "maxSections") then
+    if not hasRoomForSection(count) then
         return nil, REASON_CAPPED
     end
 
@@ -518,7 +617,7 @@ end
 ---Zero every section's statistics and abandon open measurements.
 ---
 ---Sections themselves are kept, because callers hold them, and they keep
----counting against the cap.
+---counting against the `maxSections` limit.
 ---@param _ ProfileKit
 local function reset(_)
     abandonOpenMeasurements()
@@ -531,17 +630,47 @@ local function reset(_)
     end
 end
 
+---Change any subset of the shared limits. Affects every consumer.
+---
+---The whole table is checked before anything changes. Lowering a limit below
+---the sections that already exist removes none of them; new names are refused
+---with `"capped"` until the count is under the limit again.
+---@param self ProfileKit
+---@param limits ProfileKit.Limits
+local function setLimits(self, limits)
+    validateFacade(self, "ProfileKit:SetLimits", 3)
+    validateLimitUpdate(limits, 3)
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        local value = rawget(limits, name)
+        if value ~= nil then
+            rawset(sharedLimits, name, value)
+        end
+    end
+end
+
+---Return a fresh copy of the shared limits. Allocates one table per call.
+---@param self ProfileKit
+---@return ProfileKit.Limits limits
+local function getLimits(self)
+    validateFacade(self, "ProfileKit:GetLimits", 3)
+    return { maxSections = rawget(sharedLimits, "maxSections") }
+end
+
 -- Commit ---------------------------------------------------------------------------
 
 rawset(ProfileKit, "API", API_GENERATION)
 rawset(ProfileKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(ProfileKit, "DEFAULT_MAX_SECTIONS", DEFAULT_MAX_SECTIONS)
+rawset(ProfileKit, "UNBOUNDED", UNBOUNDED)
 rawset(ProfileKit, "Enable", enable)
 rawset(ProfileKit, "Disable", disable)
 rawset(ProfileKit, "IsEnabled", isEnabled)
 rawset(ProfileKit, "Section", getSection)
 rawset(ProfileKit, "Report", report)
 rawset(ProfileKit, "Reset", reset)
+rawset(ProfileKit, "SetLimits", setLimits)
+rawset(ProfileKit, "GetLimits", getLimits)
 
 -- An upgrade inherits the enabled flag. A copy loaded into a host without the
 -- clock cannot honour it, so it comes up disabled instead of binding measuring

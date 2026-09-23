@@ -5,9 +5,9 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.5.2`
+- Version: `0.6.0`
 - API generation: `1`
-- Implementation revision: `9`
+- Implementation revision: `10`
 - Runtime dependencies: Registry API 2, SignalKit API 1
 - Optional partner: SchedulerKit API 1, found at call time by `Coalesce` and `Derive`
 
@@ -18,7 +18,9 @@ session. That shapes three of its guarantees:
   the host error handler and never stops delivery to the others.
 - **Unit-filter Frames are bounded and reused.** A unit group is released when
   its last listener goes and its Frame returns to a free list; EventKit creates
-  at most 64 Frames for unit filters in a session.
+  at most 64 Frames for unit filters in a session by default, raised for the
+  whole session with `EventKit:SetLimits{ maxUnitFrames = n }` up to 512 (see
+  "Limits" in [`docs/API.md`](docs/API.md)).
 - **`ConnectUnit` accepts at most two unit tokens**, because
   `Frame:RegisterUnitEvent` has two filter slots. A third is an error rather
   than something the client silently drops.

@@ -22,6 +22,32 @@ describe("CommandKit bootstrap", function()
         assert.are.equal(CommandKit.REVISION, revision)
         assert.are.equal(64, CommandKit.MAX_COMMANDS)
         assert.are.equal(3, CommandKit.MAX_DEPTH)
+        assert.are.equal("table", type(CommandKit.UNBOUNDED))
+        assert.are.equal("function", type(CommandKit.SetLimits))
+        assert.are.equal("function", type(CommandKit.GetLimits))
+    end)
+
+    it("upgrades in place and keeps the UNBOUNDED sentinel and the set limits", function()
+        local CommandKit = TestEnv.NewPackage()
+        local sentinel = CommandKit.UNBOUNDED
+        CommandKit:SetLimits({ maxCaptured = sentinel, maxCompletions = 8 })
+
+        local upgraded = TestEnv.LoadRevision(2)
+        assert.are.equal(sentinel, upgraded.UNBOUNDED)
+        assert.are.same(
+            { maxCaptured = sentinel, maxCompletions = 8, maxEmotes = 1024 },
+            upgraded:GetLimits()
+        )
+    end)
+
+    it("refuses a facade whose UNBOUNDED disagrees with its package state", function()
+        local CommandKit = TestEnv.NewPackage()
+        rawset(CommandKit, "UNBOUNDED", {})
+        package.loaded["CommandKit"] = nil
+
+        local ok, value = pcall(require, "CommandKit")
+        assert.is_false(ok)
+        assert.is_true(tostring(value):find("MoltenCodes CommandKit", 1, true) ~= nil)
     end)
 
     it("loads and dispatches with Registry and SchemaKit alone", function()

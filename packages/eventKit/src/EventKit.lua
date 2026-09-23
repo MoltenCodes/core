@@ -33,15 +33,16 @@
 --   Subscription .......... shared validation and connect path
 --   Coalescing ............ Coalesce and Derive over SchedulerKit, when present
 --   Public API ............ package-level subscriptions and scopes
+--   Limits ................ SetLimits and GetLimits over the shared limits
 --   Scope methods ......... the handle a scope owner receives
 --   Commit ................ prototype/facade assignment and self-check
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 9
+local IMPLEMENTATION_REVISION = 10
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
-local STATE_SCHEMA = 5
+local STATE_SCHEMA = 6
 
 -- Coalesce and Derive find SchedulerKit through `Registry:Find` when they are
 -- called. EventKit never depends on SchedulerKit: SchedulerKit depends on
@@ -56,8 +57,12 @@ local MAXIMUM_UNIT_TOKENS = 2
 
 -- WoW Frames cannot be destroyed, so the only real bound is on how many EventKit
 -- ever creates. Released groups return their Frame to a free list that is
--- therefore bounded by the same number.
-local MAXIMUM_UNIT_GROUP_FRAMES = 64
+-- therefore bounded by the same number. The bound is the shared `maxUnitFrames`
+-- limit: this default, raised through `SetLimits` up to the ceiling. It never
+-- accepts `EventKit.UNBOUNDED`, because every Frame it admits lives for the rest
+-- of the session whatever the consumer does afterwards.
+local DEFAULT_MAX_UNIT_FRAMES = 64
+local MAX_UNIT_FRAMES_CEILING = 512
 
 -- Payloads up to this size are staged in reusable upvalues; larger ones use one
 -- reusable buffer table. Neither path allocates per event.
@@ -136,6 +141,9 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "Scope")) ~= "table"
         or type(rawget(implementation, "Coalesce")) ~= "function"
         or type(rawget(implementation, "Derive")) ~= "function"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
+        or type(rawget(implementation, "SetLimits")) ~= "function"
+        or type(rawget(implementation, "GetLimits")) ~= "function"
     then
         return false
     end
@@ -157,6 +165,20 @@ local function validatePublicSurface(implementation)
         and type(rawget(scope, "Derive")) == "function"
 end
 
+---Whether `limits` holds every shared limit with a value this revision accepts.
+---@param limits any
+---@return boolean
+local function validateLimitsState(limits)
+    if type(limits) ~= "table" then
+        return false
+    end
+    local maxUnitFrames = rawget(limits, "maxUnitFrames")
+    return type(maxUnitFrames) == "number"
+        and maxUnitFrames % 1 == 0
+        and maxUnitFrames >= 1
+        and maxUnitFrames <= MAX_UNIT_FRAMES_CEILING
+end
+
 ---Whether `implementation` carries package state of this revision's schema.
 ---@param implementation table
 ---@return boolean
@@ -164,6 +186,9 @@ local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     return type(currentState) == "table"
         and rawget(currentState, "schema") == STATE_SCHEMA
+        and type(rawget(currentState, "unbounded")) == "table"
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
+        and validateLimitsState(rawget(currentState, "limits"))
         and type(rawget(currentState, "regularChannels")) == "table"
         and type(rawget(currentState, "unitGroups")) == "table"
         and type(rawget(currentState, "unitFrames")) == "table"
@@ -277,10 +302,17 @@ end
 ---@field channels table<string, EventKit.Channel>
 ---@field frame WowFrame? `nil` once the group has released its Frame.
 
+---The shared limits. `SetLimits` accepts any subset; `GetLimits` returns a copy.
+---@class EventKit.Limits
+---@field maxUnitFrames integer Unit-filter Frames EventKit may ever create in the session; default 64, at most 512, never `EventKit.UNBOUNDED`.
+
 ---The shared EventKit package table.
 ---@class EventKit
 ---@field API integer EventKit API generation.
 ---@field REVISION integer EventKit implementation revision.
+---@field UNBOUNDED table The package sentinel for "no limit", where a limit accepts it. No EventKit limit does yet.
+---@field SetLimits fun(self: EventKit, limits: EventKit.Limits)
+---@field GetLimits fun(self: EventKit): EventKit.Limits
 ---@field Connection EventKit.Connection Shared method prototype for connection handles.
 ---@field Scope EventKit.Scope Shared method prototype for scopes.
 ---@field Connect fun(self: EventKit, eventName: string, callback: EventKit.Listener): EventKit.Connection
@@ -326,6 +358,11 @@ if previousRevision == nil then
         composites = {},
         compositeMetatables = {},
         compositePrototypes = {},
+        -- The package sentinel published as `EventKit.UNBOUNDED`, kept here so
+        -- every revision hands out the same table, and the shared limits
+        -- `SetLimits` writes, which a newer revision inherits.
+        unbounded = {},
+        limits = { maxUnitFrames = DEFAULT_MAX_UNIT_FRAMES },
     }
 
     rawset(EventKit, "Connection", Connection)
@@ -383,6 +420,16 @@ else
         rawset(state, "composites", {})
         rawset(state, "compositeMetatables", {})
         rawset(state, "compositePrototypes", {})
+        rawset(state, "schema", 5)
+        schema = 5
+    end
+
+    if schema == 5 then
+        -- Revisions 7 to 9 had no sentinel and a fixed Frame cap of 64, which
+        -- becomes the default of the shared `maxUnitFrames` limit. Frames
+        -- they already created stay counted against it.
+        rawset(state, "unbounded", {})
+        rawset(state, "limits", { maxUnitFrames = DEFAULT_MAX_UNIT_FRAMES })
         rawset(state, "schema", STATE_SCHEMA)
         schema = STATE_SCHEMA
     end
@@ -400,6 +447,12 @@ else
 end
 
 local CONNECTION_METATABLE = { __index = Connection }
+
+-- The sentinel and the shared limits outlive this copy: a newer revision reads
+-- the same tables, so a consumer's `SetLimits` and its `UNBOUNDED` comparisons
+-- survive an in-place upgrade.
+local UNBOUNDED = rawget(state, "unbounded")
+local sharedLimits = rawget(state, "limits")
 
 -- Coalesce and Derive handles are validated by metatable identity, so their
 -- metatables live in shared state beside the scope metatable.
@@ -647,12 +700,13 @@ local function acquireUnitFrame(group)
     end
 
     local created = rawget(state, "unitFrameCount")
-    if created >= MAXIMUM_UNIT_GROUP_FRAMES then
+    local maxUnitFrames = rawget(sharedLimits, "maxUnitFrames")
+    if created >= maxUnitFrames then
         error(
             "EventKit: refusing to create more than "
-                .. MAXIMUM_UNIT_GROUP_FRAMES
-                .. " unit-filter Frames; disconnect unused unit subscriptions or "
-                .. "reuse unit sets",
+                .. maxUnitFrames
+                .. " unit-filter Frames; disconnect unused unit subscriptions, "
+                .. "reuse unit sets or raise EventKit:SetLimits{ maxUnitFrames }",
             0
         )
     end
@@ -2012,6 +2066,104 @@ local function closeAddonScopes(self, addonName)
     return closeScope(scope)
 end
 
+-- Limits --------------------------------------------------------------------
+
+-- Every limit name maps to its ceiling. A ceiling guards a resource the client
+-- never gives back, so the limit has no `UNBOUNDED` value.
+local LIMIT_CEILINGS = {
+    maxUnitFrames = MAX_UNIT_FRAMES_CEILING,
+}
+
+-- Why a limit refuses `EventKit.UNBOUNDED`, quoted in the refusal.
+local UNBOUNDED_REFUSALS = {
+    maxUnitFrames = "the client never frees a Frame",
+}
+
+---Reject a `SetLimits` table before anything in it is applied.
+---@param limits any
+---@param level integer stack level the failure is reported at
+local function validateLimitUpdate(limits, level)
+    if type(limits) ~= "table" then
+        error("EventKit:SetLimits limits must be a table", level)
+    end
+    local key = next(limits)
+    while key ~= nil do
+        if type(key) ~= "string" or LIMIT_CEILINGS[key] == nil then
+            error(
+                "EventKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
+                level
+            )
+        end
+        local value = rawget(limits, key)
+        if value == UNBOUNDED then
+            error(
+                "EventKit:SetLimits limits."
+                    .. key
+                    .. " cannot be EventKit.UNBOUNDED: "
+                    .. UNBOUNDED_REFUSALS[key],
+                level
+            )
+        end
+        local ceiling = LIMIT_CEILINGS[key]
+        -- `nan` fails every comparison and `math.huge % 1` is `nan`, so the
+        -- range test below refuses both infinities and `nan`.
+        if
+            type(value) ~= "number"
+            or not (value % 1 == 0)
+            or not (value >= 1)
+            or not (value <= ceiling)
+        then
+            error(
+                "EventKit:SetLimits limits." .. key .. " must be an integer from 1 to " .. ceiling,
+                level
+            )
+        end
+        key = next(limits, key)
+    end
+end
+
+---Change any subset of the shared limits. Affects every consumer in the session.
+---
+---The whole table is validated first, so nothing changes when one value is
+---refused. Lowering a limit below current usage evicts nothing; further
+---creation is refused until usage drops below it.
+---@param self EventKit
+---@param limits EventKit.Limits
+local function setLimits(self, limits)
+    if self ~= EventKit then
+        error(
+            "EventKit:SetLimits must be called on the EventKit facade; "
+                .. "use EventKit:SetLimits(limits)",
+            2
+        )
+    end
+    validateLimitUpdate(limits, 3)
+    local key = next(LIMIT_CEILINGS)
+    while key ~= nil do
+        local value = rawget(limits, key)
+        if value ~= nil then
+            rawset(sharedLimits, key, value)
+        end
+        key = next(LIMIT_CEILINGS, key)
+    end
+end
+
+---Return a fresh copy of the shared limits. Allocates one table per call.
+---@param self EventKit
+---@return EventKit.Limits
+local function getLimits(self)
+    if self ~= EventKit then
+        error(
+            "EventKit:GetLimits must be called on the EventKit facade; "
+                .. "use EventKit:GetLimits()",
+            2
+        )
+    end
+    return {
+        maxUnitFrames = rawget(sharedLimits, "maxUnitFrames"),
+    }
+end
+
 -- Scope methods -------------------------------------------------------------
 
 ---Subscribe to every future occurrence of `eventName` inside this scope.
@@ -2188,6 +2340,9 @@ rawset(EventKit, "ForAddon", forAddon)
 rawset(EventKit, "CloseAddonScopes", closeAddonScopes)
 rawset(EventKit, "Coalesce", coalesceEvents)
 rawset(EventKit, "Derive", deriveValue)
+rawset(EventKit, "UNBOUNDED", UNBOUNDED)
+rawset(EventKit, "SetLimits", setLimits)
+rawset(EventKit, "GetLimits", getLimits)
 
 rawset(state, "dispatchRegular", dispatchRegular)
 rawset(state, "dispatchUnit", dispatchUnit)

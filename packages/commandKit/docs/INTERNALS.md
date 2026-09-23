@@ -19,6 +19,8 @@ This document describes implementation invariants for maintainers. It is not an 
 | `slashHandlers` | Slash-table key to the permanent dispatcher closure written under it. One closure per key for the session. |
 | `frames`, `frameDepth` | The dispatch frames, one per nesting level up to `MAX_NESTING` (4), and how many are in use. |
 | `completion` | `installed`, `previous` (the function the replacement forwards to, or `false`), `handler` (the replacement closure, or `false` before the first install) and `enabledScopes`. |
+| `unbounded` | The `CommandKit.UNBOUNDED` sentinel, created once so every revision publishes the same table; the state predicate checks the facade field against it. |
+| `limits` | The package-wide limits `SetLimits` writes: `maxCaptured` (an integer or the sentinel), `maxCompletions` and `maxEmotes` (integers under their ceilings). Read where they apply, so a change takes effect at the next capture, completion or registration. |
 
 `keyByName`, `ownedKeys` and `slashHandlers` grow with the number of distinct slash names registered in the session, which is bounded by what addons register; each entry is a few strings and one closure.
 
@@ -33,6 +35,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | `_commands` | Lower-case name to top-level record. |
 | `_sink` | The sink, or `false` for `DEFAULT_CHAT_FRAME`. |
 | `_completion` | Whether this scope counts in `completion.enabledScopes`. |
+| `_maxCommands`, `_maxSubcommands`, `_maxPositions`, `_maxSlashAliases` | The scope's limits, resolved from its options at creation: an integer, or `math.huge` for `CommandKit.UNBOUNDED`, so every comparison on the registration path stays numeric. |
 
 ## Record layout
 

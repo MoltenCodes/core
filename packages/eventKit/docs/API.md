@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **9**.
+Implementation revision: **10**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -221,8 +221,9 @@ supplies the subscriptions; SchedulerKit supplies when things run.
 
 ### SchedulerKit is optional
 
-EventKit does not depend on SchedulerKit: SchedulerKit depends on LifecycleKit,
-which depends on EventKit, so the reverse would be a cycle. Both methods find
+EventKit does not depend on SchedulerKit: coalescing is the one feature that
+needs a scheduler, and requiring it would triple EventKit's footprint for every
+addon that only wants events. Both methods find
 SchedulerKit API 1 through `Registry:Find` **when they are called**, so it may
 load after EventKit.
 
@@ -365,12 +366,13 @@ free list. The next unit set to be subscribed re-purposes a free Frame:
 `RegisterUnitEvent` re-points it and `UnregisterEvent` clears it again.
 
 WoW Frames cannot be destroyed, so the meaningful bound is on how many EventKit
-ever creates. That number is capped at **64**. Past the cap, with no free Frame
-available, `ConnectUnit`/`OnceUnit` raise:
+ever creates. That number is the shared `maxUnitFrames` limit, **64** by default
+(see [Limits](#limits)). Past it, with no free Frame available,
+`ConnectUnit`/`OnceUnit` raise:
 
 ```text
 EventKit: refusing to create more than 64 unit-filter Frames; disconnect unused
-unit subscriptions or reuse unit sets
+unit subscriptions, reuse unit sets or raise EventKit:SetLimits{ maxUnitFrames }
 ```
 
 Because released Frames are reused, the cap constrains only how many *distinct
@@ -381,6 +383,50 @@ EventKit created.
 
 Before revision 2, unit groups were never released: their Frames were retained
 for the package lifetime and `state.unitGroups` only ever grew.
+
+## Limits
+
+EventKit keeps one package-wide limit. It is shared by **every consumer in the
+session**: every embedded copy and every addon read the same value, so an addon
+that raises it raises it for everybody, and a library should rely on the
+default.
+
+| Limit | Default | How to open | UNBOUNDED allowed? |
+|---|---|---|---|
+| `maxUnitFrames` | 64 | `EventKit:SetLimits{ maxUnitFrames = n }`, `n` an integer from 1 to 512 | No: the client never frees a Frame, so every Frame admitted lives for the rest of the session. The ceiling is 512. |
+
+```lua
+EventKit:SetLimits({ maxUnitFrames = 128 })
+local limits = EventKit:GetLimits() -- a fresh table: { maxUnitFrames = 128 }
+```
+
+`SetLimits(limits)` accepts any subset of the limits and returns nothing. It
+raises at the caller's line, before changing anything, on a non-table argument,
+an unrecognised name (`EventKit:SetLimits limits.<name> is not a recognised
+limit`), a value that is not an integer from 1 to the ceiling (`... must be an
+integer from 1 to 512`), and `EventKit.UNBOUNDED` (`... cannot be
+EventKit.UNBOUNDED: the client never frees a Frame`). `GetLimits()` returns a
+fresh table on every call, so it allocates; read it at configuration time, not
+per event.
+
+Lowering the limit below the Frames already created evicts nothing: existing
+unit subscriptions keep their Frames, released Frames are still reused, and a
+new Frame is refused until the limit is raised again.
+
+`EventKit.UNBOUNDED` is the package's sentinel for "no limit", one table shared
+by every revision. No EventKit limit accepts it today; it exists so every Kit
+exposes the same escape-hatch vocabulary, and the refusal above names it.
+
+Two bounds stay fixed, because they are not retention a consumer can own:
+
+- **Two unit tokens** per `ConnectUnit`: `Frame:RegisterUnitEvent` has exactly
+  two filter slots (see [The two-token limit](#the-two-token-limit)).
+- **32 distinct events** per `Coalesce` or `Derive` call: an argument bound on
+  one call rather than a retained collection; a caller needing more makes more
+  than one handle.
+
+Scopes have no connection cap: a scope's connections are its owner's own
+registrations and are released with it.
 
 ## Dispatch semantics
 
@@ -454,6 +500,13 @@ one would.
 ## Embedded copies and upgrades
 
 Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
+
+Revision 10 moved `_state` from schema 5 to schema 6, adding the package
+sentinel (`unbounded`, published as `EventKit.UNBOUNDED`) and the shared limits
+(`limits`). A revision-10 copy loading over revisions 7 to 9 adds both in place,
+with `maxUnitFrames` at the former fixed cap of 64; Frames the older copy
+created stay counted against it. A newer copy inherits the sentinel's identity
+and the limits a consumer set.
 
 Revisions 8 and 9 kept `_state` at schema 5. A copy loading over revision 7 or
 8 adopts the state as it is; handles the older copy created close through the

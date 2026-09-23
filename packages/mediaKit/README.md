@@ -44,7 +44,7 @@ end)
 
 What each piece promises:
 
-- **`Register`** takes one of seven fixed types, a name and a path or FileDataID. A name holding different data is refused with `nil, "taken"`; the same name with the same data again returns `true` and changes nothing; past 1024 entries of a type it returns `nil, "full"`.
+- **`Register`** takes one of seven fixed types, a name and a path or FileDataID. A name holding different data is refused with `nil, "taken"`; the same name with the same data again returns `true` and changes nothing; past 1024 entries of a type it returns `nil, "full"`; `MediaKit:SetLimits({ maxEntriesPerType = n })` raises that bound up to 16384.
 - **`Fetch`** and **`Has`** are argument checks and one table read, and allocate nothing. A font that does not render the client's script is `nil` unless `anyScript` is asked for. A font registered without `scripts` renders Latin only; declare the scripts of anything wider.
 - **`List`** returns a cached sorted array, shared by every caller and read-only, rebuilt only after a registration of its type.
 - **`OnRegistered`** returns a SignalKit connection fired with `(type, name, data)` for every new entry, whatever its origin.

@@ -99,6 +99,29 @@ describe("ProfileKit bootstrap", function()
         )
     end)
 
+    it("upgrades in place, keeping the set limits and the UNBOUNDED sentinel", function()
+        local ProfileKit = Env.NewPackage()
+        local unbounded = ProfileKit.UNBOUNDED
+        ProfileKit:SetLimits({ maxSections = 3 })
+
+        local upgraded = loadSourceAsRevision(2)
+        assert.are.equal(unbounded, upgraded.UNBOUNDED)
+        assert.are.same({ maxSections = 3 }, upgraded:GetLimits())
+
+        upgraded:SetLimits({ maxSections = unbounded })
+        local again = loadSourceAsRevision(3)
+        assert.are.equal(unbounded, again.UNBOUNDED)
+        assert.are.equal(unbounded, again:GetLimits().maxSections)
+    end)
+
+    it("refuses shared state whose limits hold an invalid value", function()
+        local ProfileKit = Env.NewPackage()
+        rawset(ProfileKit._state.limits, "maxSections", 0)
+        Env.expectErrorContaining("package state is corrupted or incomplete", function()
+            Env.ReloadPackage()
+        end)
+    end)
+
     it("upgrades a disabled copy into a disabled binding", function()
         local ProfileKit = Env.NewPackage()
         local section = ProfileKit:Section("quiet")

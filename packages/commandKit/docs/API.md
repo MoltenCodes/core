@@ -44,14 +44,17 @@ Package facade:
 
 | Field | Purpose |
 |---|---|
-| `CreateScope()` | A manually owned scope. |
-| `ForAddon(addonName)` | The addon's canonical scope, created on demand. |
+| `CreateScope(options?)` | A manually owned scope; `options` sets its limits (see [Limits](#limits)). |
+| `ForAddon(addonName, options?)` | The addon's canonical scope, created on demand; `options` sets its limits when this call creates it. |
 | `CloseAddonScopes(addonName)` | Close the addon's scope. `false` when it has none or it was closed. |
 | `Parse(text)` | A new array of arguments, or `nil, reason`. |
 | `ParseInto(text, array)` | Fill `array`; return the count, or `nil, reason`. |
 | `CaptureSink()` | A sink that keeps its lines, for tests. |
-| `MAX_COMMANDS` | `64`: the most top-level commands one scope registers. |
-| `MAX_DEPTH` | `3`: the deepest sub-command nesting. |
+| `SetLimits(limits)` | Change any subset of the package-wide limits, shared by every consumer. |
+| `GetLimits()` | A fresh table of the package-wide limits (allocates). |
+| `UNBOUNDED` | The sentinel a limit accepts to lift it, where the memory is the consumer's own. |
+| `MAX_COMMANDS` | `64`: the default `maxCommands` of a scope. |
+| `MAX_DEPTH` | `3`: the deepest sub-command nesting, a hard ceiling. |
 | `Scope`, `Context` | The shared prototypes of scopes and contexts. |
 
 Scope:
@@ -152,7 +155,7 @@ local registered, reason = commands:Register("myaddon", {
 })
 if not registered then
     -- "taken": another addon or a chat type owns /myaddon; "emote": an emote
-    -- does; "full": 64 commands already.
+    -- does; "full": the scope's maxCommands (64 by default) already.
     print("MyAddon could not register its command: " .. reason)
 end
 
@@ -203,15 +206,15 @@ The key is `MOLTENCODES_<ADDON>_<NAME>` for a `ForAddon` scope and `MOLTENCODES_
 | `true` | Registered. |
 | `nil, "taken"` | Another scope has registered the name, another addon uses it, or a chat type does (`/s`, `/g`, `/w`, …). |
 | `nil, "emote"` | An emote uses it (`/dance`). |
-| `nil, "full"` | The scope holds `MAX_COMMANDS` commands. |
+| `nil, "full"` | The scope holds its `maxCommands` commands (64 unless opened). |
 
 The spec is checked in full first; every problem with it raises at your line (below). Registering one name twice in one scope raises (`Unregister` it first); registering it from a second scope returns `nil, "taken"`.
 
 **The taken check is best effort.** The client resolves a typed `/name` in this order: chat types, then slash commands, then emotes. A command named like a chat type would never run, and one named like an emote would hide it, so CommandKit refuses both. It compares `/NAME` without case with:
 
-- for every key of `SlashCmdList` and `SecureCmdList` it did not write, the `SLASH_<key>1`, `SLASH_<key>2`, … globals up to the first gap (`nil, "taken"`);
+- for every key of `SlashCmdList` and `SecureCmdList` it did not write, the `SLASH_<key>1`, `SLASH_<key>2`, … globals up to the first gap, at most the scope's `maxSlashAliases` (`nil, "taken"`);
 - for every key of `ChatTypeInfo`, the `SLASH_<TYPE>1`, … globals the same way (`nil, "taken"`);
-- `EMOTE<n>_CMD<m>` for `n` from 1 to `MAXEMOTEINDEX` when the host has it, else 1024, and `m` up to the first gap, at most 8 (`nil, "emote"`).
+- `EMOTE<n>_CMD<m>` for `n` from 1 to `MAXEMOTEINDEX` when the host has it and it is smaller, else the `maxEmotes` limit (1024), and `m` up to the first gap, at most 8 (`nil, "emote"`).
 
 Every global is read by its constructed name with `rawget`; nothing scans the whole global table. A registration made some other way, such as a command table another library keeps, is not seen, and a command another addon registers *after* yours is outside CommandKit's reach: that addon's registration is what overwrites.
 
@@ -233,14 +236,14 @@ A slash name keeps the key of its first registration for the session. When any s
 | `arguments` | `SchemaKit.array` schema, or a list of schemas | The arguments' schemas; see below. |
 | `usage` | string | What to type after the command path, for the usage line. Generated from `arguments` when absent. |
 | `description` | string | One line of help. |
-| `subcommands` | table of name → spec | Named sub-commands, at most `MAX_DEPTH` (3) levels below the command and 64 per level. |
+| `subcommands` | table of name → spec | Named sub-commands, at most `MAX_DEPTH` (3) levels below the command and the scope's `maxSubcommands` (64) per level. |
 | `complete` | `fun(context, text, position): string[]?` | Candidates for tab completion of argument `position` (1-based), starting with `text`. |
 
 A spec with an unknown field raises (`CommandKit.Scope:Register spec.subcommands.frame contains unknown field "desc"`), as does a sub-command key that is not a valid name, two keys equal without case, a spec with neither `handler` nor `subcommands`, `arguments` without a `handler` to receive them, and nesting deeper than three levels. The spec is compiled into records once; later edits to your tables have no effect. Functions are kept by reference.
 
 ### Arguments
 
-A **list of schemas** declares one schema per position, at most 16. The handler receives exactly that many arguments. A missing `optional` position is `nil`, or a fresh copy of its default when it was declared with one (`SchemaKit.optional(SchemaKit.number(), 10)`). Typing more tokens than positions is refused (`expected at most 2 arguments`).
+A **list of schemas** declares one schema per position, at most the scope's `maxPositions` (16). The handler receives exactly that many arguments. A missing `optional` position is `nil`, or a fresh copy of its default when it was declared with one (`SchemaKit.optional(SchemaKit.number(), 10)`). Typing more tokens than positions is refused (`expected at most 2 arguments`).
 
 A **`SchemaKit.array` schema** checks the whole argument list at once; its `min` and `max` bound the count. The handler receives every token.
 
@@ -328,7 +331,7 @@ A sink is anything with an `AddMessage(sink, text)` method; a chat frame is one.
 
 | Method | Purpose |
 |---|---|
-| `AddMessage(text)` | Keep `text`. The latest 256 lines are kept; older ones are dropped. |
+| `AddMessage(text)` | Keep `text`. The latest `maxCaptured` lines (256 unless opened) are kept; older ones are dropped. |
 | `Messages()` | A fresh array of the kept lines, oldest first. |
 | `Clear()` | Forget every line. |
 
@@ -372,7 +375,7 @@ When the cursor is at the end of `/name <text>` and `/name` belongs to a scope w
 - what the reached command's `complete(context, text, position)` returns (strings only; others are ignored), where `position` is the argument number being typed;
 - for a bound command, the option paths each sub-command accepts (value options for `get`, `set` and `reset`, buttons for `exec`, everything visible for `list`).
 
-Candidates are matched on their start, without case, at most 32 of them. One candidate replaces the word and adds a space; several fill in their longest common start, and when that adds nothing they are listed on the sink. With no candidate, or for any other text, the Tab press goes to the previous handler. An error in a `complete` function is reported to the host error handler and the Tab press goes on to the previous handler.
+Candidates are matched on their start, without case, at most `maxCompletions` (32) of them. One candidate replaces the word and adds a space; several fill in their longest common start, and when that adds nothing they are listed on the sink. With no candidate, or for any other text, the Tab press goes to the previous handler. An error in a `complete` function is reported to the host error handler and the Tab press goes on to the previous handler.
 
 **How it is installed, and the trade-off.** The client calls `ChatEdit_CustomTabPressed(editBox)` from its tab handler and skips its own completion when it returns `true`; the global is the client's documented extension point and does nothing by itself. A secure post-hook (`hooksecurefunc`) cannot be used, because a post-hook's return value is discarded and the client would complete over CommandKit's result. CommandKit therefore replaces the global once, remembering the previous function and calling it for everything it does not complete — the chain other completion libraries use too. The global becomes addon code; the client calls it through its secure-call wrapper, which keeps that taint away from the rest of its tab handling. When the last scope turns completion off, CommandKit writes the previous function back if its replacement is still the installed one; if another addon has replaced the global since, CommandKit's function stays in that addon's chain, forwarding every call.
 
@@ -413,19 +416,48 @@ What the user types is never an error: it is printed to the sink. Errors raised 
 | `Parse` | As `ParseInto`, plus the array. |
 | Usage, bound sub-commands, completion | Allocate; not hot paths. |
 
-## Bounds
+## Limits
 
-| Bound | Value | Refusal |
-|---|---|---|
-| Top-level commands per scope | 64 (`CommandKit.MAX_COMMANDS`) | `nil, "full"` |
-| Sub-command levels | 3 (`CommandKit.MAX_DEPTH`) | `Register` raises |
-| Sub-commands per level | 64 | `Register` raises |
-| Per-position argument schemas | 16 | `Register` raises |
-| Name length | 32 bytes | `Register` raises |
-| Nested dispatches | 4 | the fifth prints a message and does nothing |
-| Completion candidates | 32 | the rest are not offered |
-| Capture sink lines | 256 | the oldest are dropped |
-| `SLASH_<key><n>` read per foreign key | 16 | the rest are not read |
+Everything CommandKit keeps or scans is bounded by default, and every bound that is not a hard ceiling can be opened on purpose.
+
+| Limit | Default | How to open | UNBOUNDED allowed? | At the limit |
+|---|---|---|---|---|
+| `maxCommands`: top-level commands per scope | 64 (`CommandKit.MAX_COMMANDS`) | scope option | yes: the scope's own commands | `nil, "full"` |
+| `maxSubcommands`: sub-commands per level | 64 | scope option | yes: the scope's own spec | `Register` raises |
+| `maxPositions`: per-position argument schemas | 16 | scope option | yes: the scope's own spec | `Register` raises |
+| `maxSlashAliases`: `SLASH_<key><n>` read per foreign key | 16 | scope option | yes: the scan still stops at the first gap | the rest are not read |
+| `maxCaptured`: lines a capture sink keeps | 256 | `SetLimits` | yes: the sink's lines belong to whoever made it | the oldest are dropped |
+| `maxCompletions`: candidates one completion offers | 32 | `SetLimits`, at most 256 | no: the candidates are printed to the shared chat frame as one line | the rest are not offered |
+| `maxEmotes`: emote indexes the emote check reads | 1024 (or a smaller `MAXEMOTEINDEX`) | `SetLimits`, at most 16384 | no: emote indexes have gaps, so the scan needs an end | the rest are not read |
+
+Scope limits are options of the scope that owns the registrations:
+
+```lua
+local scope = CommandKit:CreateScope({ maxCommands = 128, maxPositions = CommandKit.UNBOUNDED })
+local addonScope = CommandKit:ForAddon("MyAddon", { maxSubcommands = 100 })
+```
+
+Each option is a positive integer or `CommandKit.UNBOUNDED`; anything else, and an unknown option name, raises at the caller. `ForAddon` applies `options` when its call creates the scope; a later call whose option differs from the scope's limit raises (`CommandKit:ForAddon options.maxCommands differs from the limit this addon's scope was created with`), and one that agrees, or passes none, returns the scope.
+
+Package-wide limits are set with `SetLimits` and read back with `GetLimits`:
+
+```lua
+CommandKit:SetLimits({ maxCaptured = CommandKit.UNBOUNDED, maxCompletions = 64 })
+local limits = CommandKit:GetLimits() -- a fresh table on every call
+```
+
+`SetLimits` accepts any subset. It raises at the caller on a table that is not one, an unknown name (`CommandKit:SetLimits limits.<name> is not a recognised limit`), a value that is not a positive integer or `CommandKit.UNBOUNDED` (`must be a positive integer or CommandKit.UNBOUNDED`), a value above a ceiling (`must be an integer from 1 to <ceiling>`) and `UNBOUNDED` where it is refused (`cannot be CommandKit.UNBOUNDED: <reason>`), and it checks the whole table before changing anything, so a refused call changes nothing. **These limits are shared by every consumer in the session**: every embedded copy and every addon reads one set, so a library should rely on the defaults and an addon that raises a limit raises it for everybody. `GetLimits` returns `CommandKit.UNBOUNDED` itself for an unbounded limit.
+
+Lowering a limit never drops what is already kept: a scope past a lowered limit keeps its commands and refuses the next one, and a capture sink already longer than a lowered `maxCaptured` keeps its length instead of shrinking.
+
+Hard ceilings stay, because no setting makes them safe to lift:
+
+| Ceiling | Value | Why | Refusal |
+|---|---|---|---|
+| Sub-command levels | 3 (`CommandKit.MAX_DEPTH`) | Compiling, usage generation and dispatch recurse once per level, so the bound fixes the Lua stack one command tree can use. | `Register` raises |
+| Nested dispatches | 4 | Each level holds one reused frame and one protected call; the bound is the number of frames kept and stops a command that runs itself before it exhausts the C stack. | the fifth prints a message and does nothing |
+| Name length | 32 bytes | The name becomes part of the `SlashCmdList` key and the `SLASH_<key><n>` global names the client keeps for the session. | `Register` raises |
+| Commands per emote read | 8 | The client defines a handful of commands per emote; the bound only stops a pathological one. | the rest are not read |
 
 ## Deviations from the planned contract
 
@@ -436,11 +468,11 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **The taken check reads `SlashCmdList`, `SecureCmdList` and `ChatTypeInfo`** and their `SLASH_<key><n>` globals, and the `EMOTE<n>_CMD<m>` globals, best effort as documented, rather than every `SLASH_*` global: scanning the global table would be unbounded. An emote's name is refused with `nil, "emote"`, an addition to the planned results.
 - **`BindOptions` adds `exec`** beside `get`, `set`, `reset` and `list`, honours `confirm` with an explicit word, and parses values per option kind before OptionsKit's schema and `validate` check them; it calls `Describe` once per run.
 - **Completion is opt-in per scope** (`EnableCompletion`), because it replaces a client global; the plan made it optional without naming the switch.
-- **Additions:** `scope:IsRegistered`, `scope:DisableCompletion`, `scope:GetAddonName`, `CommandKit.MAX_COMMANDS`, `CommandKit.MAX_DEPTH` and the `CommandKit.Context` prototype; argument tokens are converted for number and boolean schemas; textures are single tokens; `Print` writes no prefix.
+- **Additions:** `scope:IsRegistered`, `scope:DisableCompletion`, `scope:GetAddonName`, `CommandKit.MAX_COMMANDS`, `CommandKit.MAX_DEPTH`, the `CommandKit.Context` prototype, and the limits (scope options, `SetLimits`, `GetLimits` and `CommandKit.UNBOUNDED`); argument tokens are converted for number and boolean schemas; textures are single tokens; `Print` writes no prefix.
 - **Localised help** is the addon's: usage and description strings are passed in already translated, and `Printf` goes through LocaleKit. CommandKit's own fixed words stay English.
 
 ## Embedded copies and upgrades
 
-Several addons may embed CommandKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: scopes, commands, the slash dispatchers already in the client's tables and the completion replacement stay, because every one of them calls through shared package state that the newer copy rewrites. Scopes and contexts gain the newer copy's methods through the shared `CommandKit.Scope` and `CommandKit.Context` prototypes.
+Several addons may embed CommandKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: scopes, commands, the slash dispatchers already in the client's tables and the completion replacement stay, because every one of them calls through shared package state that the newer copy rewrites. Scopes and contexts gain the newer copy's methods through the shared `CommandKit.Scope` and `CommandKit.Context` prototypes. The `CommandKit.UNBOUNDED` sentinel and the package-wide limits live in the package state too, so a newer copy publishes the same sentinel and inherits every limit a consumer set, and a scope keeps the limits it was created with.
 
 Nothing survives `/reload`: commands are registered again when the addon loads.

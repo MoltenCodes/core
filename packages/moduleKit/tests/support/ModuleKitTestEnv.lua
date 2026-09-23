@@ -152,4 +152,63 @@ function ModuleKitTestEnv.NewPackageWithoutHookKit()
     return require("ModuleKit")
 end
 
+---Load every module of the chain except ModuleKit, as `NewPackage` does, so a
+---spec can then load a ModuleKit copy of its choosing.
+function ModuleKitTestEnv.LoadDependencies()
+    ModuleKitTestEnv.Reset()
+    ModuleKitTestEnv.InstallWowApi()
+    require("Registry")
+    require("SignalKit")
+    require("EventKit")
+    local LifecycleKit = require("LifecycleKit")
+    require("HookKit")
+    require("SchemaKit")
+    require("CommandKit")
+    return LifecycleKit
+end
+
+---Run ModuleKit's source as if it declared implementation revision `revision`.
+---
+---This is how an upgrade spec models an embedded copy older or newer than the
+---one under test without keeping a second copy of the source. It bypasses
+---`require`, so `package.loaded.ModuleKit` is left alone.
+---@param revision integer
+---@return table ModuleKit the facade that copy returned
+function ModuleKitTestEnv.LoadRevision(revision)
+    local path = nil
+    for template in package.path:gmatch("[^;]+") do
+        local candidate = template:gsub("%?", "ModuleKit")
+        local file = io.open(candidate, "r")
+        if file ~= nil then
+            file:close()
+            path = candidate
+            break
+        end
+    end
+    if path == nil then
+        error("ModuleKitTestEnv.LoadRevision could not find ModuleKit.lua on package.path", 2)
+    end
+
+    local file = assert(io.open(path, "r"))
+    local text = file:read("*a")
+    file:close()
+
+    local patched, replacements = text:gsub(
+        "local IMPLEMENTATION_REVISION = %d+",
+        "local IMPLEMENTATION_REVISION = " .. revision
+    )
+    if replacements ~= 1 then
+        error("ModuleKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
+    end
+
+    local chunk, failure = loadstring(patched, "@" .. path)
+    if chunk == nil then
+        error(
+            "ModuleKitTestEnv.LoadRevision could not compile " .. path .. ": " .. tostring(failure),
+            2
+        )
+    end
+    return chunk()
+end
+
 return ModuleKitTestEnv

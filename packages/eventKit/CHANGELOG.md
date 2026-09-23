@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 — 2026-09-23
+
+- Added `EventKit:SetLimits(limits)` and `EventKit:GetLimits()`, per design principle 4a (bounded by default, opened on purpose). The one package-wide limit, `maxUnitFrames`, replaces the fixed cap of 64 unit-filter Frames: its default stays 64 and it accepts an integer from 1 to 512. The limit is shared by every consumer in the session. `SetLimits` validates the whole table before changing anything and raises at the caller's line on a non-table, an unrecognised name or an out-of-range value. `GetLimits` returns a fresh table.
+- Added `EventKit.UNBOUNDED`, the package sentinel. `maxUnitFrames` refuses it (`EventKit:SetLimits limits.maxUnitFrames cannot be EventKit.UNBOUNDED: the client never frees a Frame`), because every Frame admitted lives for the rest of the session.
+- Lowering `maxUnitFrames` below the Frames already created evicts nothing; a new Frame is refused until usage drops below it or the limit is raised. The refusal message now names `EventKit:SetLimits{ maxUnitFrames }`.
+- Scopes have no connection cap, so they gain no `maxConnections` option. The two-token `ConnectUnit` limit (two `RegisterUnitEvent` filter slots) and the 32-event bound on one `Coalesce` or `Derive` call stay fixed; `docs/API.md` has a new "Limits" section listing all of them.
+- Implementation revision 10. `_state` moves from schema 5 to schema 6, adding `unbounded` and `limits`; a copy loading over revisions 7 to 9 adds both in place with `maxUnitFrames` at 64, and a newer copy inherits the sentinel and the limits a consumer set. The public-surface predicate now requires `UNBOUNDED`, `SetLimits` and `GetLimits`, and the state predicate checks the sentinel's identity and the limits' range.
+- `EventKit` API generation 1 is unchanged.
+
 ## 0.5.2 — 2026-09-23
 
 - `DeriveHandle:Close()` now disconnects the handle's `OnChange` listeners. It used to drop them without disconnecting, so a connection returned by `OnChange` kept answering `IsConnected() == true` for a value that would never change again.

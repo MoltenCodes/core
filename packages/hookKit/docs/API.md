@@ -61,10 +61,11 @@ Package facade:
 
 | Member | Purpose |
 |---|---|
-| `CreateScope()` | Create a manually owned hook scope. |
-| `ForAddon(addonName)` | Return the canonical scope of an addon, creating it on demand. |
+| `CreateScope([options])` | Create a manually owned hook scope. `options.maxHooks` opens its limit (see [Limits](#limits)). |
+| `ForAddon(addonName[, options])` | Return the canonical scope of an addon, creating it on demand. `options.maxHooks`, when given, sets its limit. |
 | `CloseAddonScopes(addonName)` | Close that addon's scope; returns `false` when it has none or it was already closed. |
-| `MAX_HOOKS` | `256`, the most hooks one scope holds at once. |
+| `MAX_HOOKS` | `256`, the default `maxHooks`: the most hooks one scope holds at once unless opened. |
+| `UNBOUNDED` | Sentinel for `options.maxHooks`: the scope holds any number of hooks. |
 | `API`, `REVISION` | API generation and implementation revision. |
 
 Scope methods:
@@ -86,8 +87,9 @@ Scope methods:
 | `IsClosed()` | Whether the scope is closed. |
 | `GetActiveCount()` | The number of hooks the scope holds. |
 | `GetAddonName()` | The owning addon name, or `nil` for a manual scope. |
+| `GetMaxHooks()` | The scope's limit: a positive integer, or `HookKit.UNBOUNDED`. |
 
-Every hook method returns `true` when it installed the hook and `nil, "full"` when the scope already holds `MAX_HOOKS` hooks. Everything else that stops a hook raises at the caller's line (see [Refusals](#refusals)).
+Every hook method returns `true` when it installed the hook and `nil, "full"` when the scope already holds its `maxHooks` hooks (256 unless opened). Everything else that stops a hook raises at the caller's line (see [Refusals](#refusals)).
 
 A kind is one of `"secure"`, `"secureScript"`, `"hook"`, `"rawHook"`, `"hookScript"` and `"rawHookScript"`. For a global, `object` in a `Hooks()` row is `_G`.
 
@@ -208,7 +210,29 @@ A scope does not keep a hooked table alive: its records are keyed by object in a
 - **One closure and one record per hook**, created when the hook is installed. A secure hook's closure lives for the session.
 - **`IsHooked`, `Original` and `GetActiveCount`** allocate nothing. A lookup of an object the scope never hooked creates nothing.
 - **`Hooks()`, `UnhookAll()` and `Close()`** allocate one array per call (plus one row per hook for `Hooks()`); they are for diagnostics and teardown.
-- **`GetActiveCount()` and the `MAX_HOOKS` check count the records** (at most 256) rather than reading a stored counter, so the records of a garbage-collected object stop counting at once.
+- **`GetActiveCount()` and the `maxHooks` check count the records** rather than reading a stored counter, so the records of a garbage-collected object stop counting at once. The count walks every record, so it grows with the limit a scope was opened to; a scope opened with `HookKit.UNBOUNDED` skips the check entirely. `Hooks()`, `UnhookAll()` and `Close()` sort by insertion, which is quadratic in the hooks held; that is negligible at 256 and worth knowing at thousands.
+
+## Limits
+
+HookKit follows the framework rule "bounded by default, opened on purpose" (`docs/DESIGN_CONSTITUTION.md`, principle 4a).
+
+| Limit | Default | How to open | UNBOUNDED allowed? |
+|---|---|---|---|
+| `maxHooks`, hooks one scope holds at once | `256` (`HookKit.MAX_HOOKS`) | `HookKit:CreateScope({ maxHooks = n })` or `HookKit:ForAddon(addonName, { maxHooks = n })` | Yes: `{ maxHooks = HookKit.UNBOUNDED }`. The hooks are the scope owner's own registrations. |
+
+```lua
+local hooks = HookKit:ForAddon("MyAddon", { maxHooks = 1024 })
+local everything = HookKit:CreateScope({ maxHooks = HookKit.UNBOUNDED })
+print(hooks:GetMaxHooks()) -- 1024
+```
+
+- **A hook beyond the limit is refused with `nil, "full"`**, never installed silently and never dropped; the target is left untouched.
+- **`maxHooks` is a positive integer or `HookKit.UNBOUNDED`.** Zero, a negative, fractional, infinite or NaN number, any other type, a secret value and an unknown option field raise at the caller's line: `HookKit:CreateScope options.maxHooks must be a positive integer or HookKit.UNBOUNDED`. Nothing changes when the options are refused.
+- **The limit is per scope.** A manual scope's limit is fixed at `CreateScope`. An addon's canonical scope is shared by every file of the addon, so `ForAddon` applies `options.maxHooks` whenever it is given, on the first call or a later one; a call that names none keeps the current limit. Lowering it below the hooks already held removes none of them: further hooks are refused until enough are unhooked.
+- **Why open it deliberately.** The limit is a guard against hooking in a loop by mistake, and every secure post-hook stays in the host's call chain for the session even after `Unhook`. Raising it costs only the owner's own memory and the counting described under [Cost](#cost).
+- **`HookKit.UNBOUNDED` is one table shared by every embedded copy.** It lives in the package state, so a scope opened with it stays unbounded across an in-place upgrade.
+
+One bound stays a hard ceiling. The secure-target check follows at most **8** `__index` tables (`MAX_INDEX_DEPTH`) to find the table that actually holds an inherited method. It bounds a walk, not retained memory, and exists so a cyclic `__index` chain cannot loop for ever; real frames and mixins are one or two levels deep. A method deeper than that cannot be located and is treated as not secure, so it is not refused (see [Refusals](#refusals)).
 
 ## Deviations from the planned contract
 
@@ -218,9 +242,9 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **Scripts of protected frames:** only the click and attribute scripts are refused outright; every other script of a protected frame needs `forceSecure`, and none is replaced in combat lockdown. See [Refusals](#refusals).
 - **A script pre-hook or replacement is refused while HookKit holds a `SecureHookScript` post-hook on that script**, because `SetScript` may drop it.
 - **`CloseAddonScopes` records nothing for an addon without a scope** and returns `false`, as SignalKit's `CloseAddonBus` does, instead of recording a closed scope.
-- **Additions:** `RawHookScript`; `Original`; `IsClosed`, `GetActiveCount`, `GetAddonName` and `HookKit:CloseAddonScopes` (the TimerKit and EventKit scope vocabulary); the global-name forms of the hook and lookup methods; the kind as `IsHooked`'s second result; `HookKit.MAX_HOOKS`.
+- **Additions:** `RawHookScript`; `Original`; `IsClosed`, `GetActiveCount`, `GetAddonName` and `HookKit:CloseAddonScopes` (the TimerKit and EventKit scope vocabulary); the global-name forms of the hook and lookup methods; the kind as `IsHooked`'s second result; `HookKit.MAX_HOOKS`; `options.maxHooks`, `HookKit.UNBOUNDED` and `GetMaxHooks` (see [Limits](#limits)).
 - **`securecallfunction` is not used** and ClientKit supplies only `IsSecret`; see [The taint model](#the-taint-model-read-this-first).
 
 ## Upgrades
 
-Every installed closure calls through the shared `_state.dispatch` table, and scopes keep their metatable across upgrades. A newer compatible revision therefore replaces the behaviour behind hooks an older copy installed — including the permanent secure closures — without touching the host's chain, and existing scopes gain the new methods in place.
+Every installed closure calls through the shared `_state.dispatch` table, and scopes keep their metatable across upgrades. A newer compatible revision therefore replaces the behaviour behind hooks an older copy installed — including the permanent secure closures — without touching the host's chain, and existing scopes gain the new methods in place. The `HookKit.UNBOUNDED` sentinel and each scope's `maxHooks` are kept, so a scope opened by an older copy stays open.

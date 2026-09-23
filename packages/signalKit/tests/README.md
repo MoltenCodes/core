@@ -17,6 +17,11 @@ Coverage includes:
 - allocation guards for `Fire()` and `Disconnect()` using `collectgarbage("count")`
   deltas with tolerance;
 - the in-place upgrade path for signals created by implementation revision 1;
+- limits: the `maxTopics` and `maxListeners` bus options with integers and
+  `SignalKit.UNBOUNDED`, the first-statement rule on a shared bus,
+  `SetLimits`/`GetLimits` for `maxBuses` with its 1024 ceiling and refused
+  `UNBOUNDED`, refusal of invalid values at the calling line, atomic updates,
+  and no eviction when a limit is lowered;
 - named buses: sharing by name, the bus, topic and listener bounds, declared
   versus undeclared topics and `openTopics`, argument-count and validator
   refusal at the publishing line, secret refusal reasons, `Subscribe`,
@@ -27,8 +32,9 @@ Coverage includes:
   `Publish`;
 - bus scopes, `ForAddon` and `CloseAddonBus`;
 - Registry bootstrap and duplicate embedding, the upgrade from a revision-3 copy
-  without state, buses carried into a newer revision, and refusal to reinterpret
-  a newer revision's state;
+  without state, the upgrade from revision-4 state (sentinel and limits added),
+  buses, set limits and the sentinel identity carried into a newer revision,
+  and refusal to reinterpret a newer revision's state;
 - runtime API/revision metadata consistency with the package manifest.
 
 Spec files:
@@ -45,7 +51,8 @@ Spec files:
 | `Bus_spec.lua` | buses, topic policy, subscriptions, bus dispatch semantics |
 | `BusIsolation_spec.lua` | listener isolation on both paths, the `Publish` allocation guard |
 | `BusScope_spec.lua` | bus scopes, `ForAddon`, `CloseAddonBus` |
-| `Bootstrap_spec.lua` | Registry bootstrap, duplicate embedding, revision upgrades |
+| `Limits_spec.lua` | bus limit options, `UNBOUNDED`, `SetLimits`/`GetLimits`, refusal at the caller |
+| `Bootstrap_spec.lua` | Registry bootstrap, duplicate embedding, revision upgrades, limits and sentinel carried |
 | `Manifest_spec.lua` | runtime metadata against `package.manifest.json` |
 
 All executable specs use Busted's `*_spec.lua` convention and are discovered through the repository package-aware test runner.

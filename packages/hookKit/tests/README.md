@@ -7,10 +7,11 @@ The HookKit suite covers:
 - raw replacements: the original passed first, the handler's results returned, the handler calling the original, errors propagating to the caller, restoration and inert forwarding;
 - script hooks: pre-hook order and result, a script with no previous handler, restoration with `SetScript`, staying inert under a later `SetScript`, `RawHookScript`, the protected-script refusal (even with `forceSecure`), the `forceSecure` requirement for other scripts of a protected frame, the combat-lockdown refusal, inert release in lockdown, a host `SetScript` that raises, the refusal of a pre-hook on a script HookKit secure-hooked in any scope (and the pre-hook-first order that is allowed, whose post-hook survives the pre-hook's release), and forbidden frames;
 - secure-target refusal and `forceSecure` for methods and globals, inherited methods checked on the table that holds them (addon mixins allowed, secure tables refused, `__index` functions and chains deeper than eight not checkable), the secure status remembered from before the first non-secure hook, a host without `issecurevariable`, and option validation;
+- limits: the default of 256 enforced with `"full"`, `options.maxHooks` smaller and larger, `HookKit.UNBOUNDED` holding 600 hooks, `ForAddon` applying the option whenever given and keeping it when omitted, lowering below the hooks held removing none, invalid, unknown and secret values refused at the caller with nothing changed, and the sentinel and every scope's limit kept across an upgrade;
 - scopes: double-hook refusal, targets that are not functions, `MAX_HOOKS` and `"full"`, `Hooks()` order and kinds, no records created by lookups, `UnhookAll` (also when one release raises), terminal `Close` refusing every hook method at the caller, `ForAddon` and `CloseAddonScopes` (nothing recorded for an addon without a scope, facade receiver required), and a hooked table that is garbage-collected;
 - secret values: arguments and results passing through every semantic untouched without a single `issecretvalue` probe on the call path, a secret error object reaching the host unchanged, and secret names refused with and without ClientKit;
 - allocation guards (`collectgarbage("count")` with the collector stopped) on a hooked call of every semantic, on an inert closure, and on `IsHooked`, `Original` and `GetActiveCount`;
-- duplicate embedded loading, Registry publication, loading without ClientKit, yielding to a newer revision, a missing Registry, an incomplete facade, and an in-place upgrade to revision 2 that keeps every kind of hook active and releasable;
+- duplicate embedded loading, Registry publication, loading without ClientKit, yielding to a newer revision, a missing Registry, an incomplete facade, and an in-place upgrade to revision 2 that keeps every kind of hook active and releasable, and one that keeps `UNBOUNDED` and each scope's `maxHooks`;
 - `error` levels: every argument failure and refusal reports the caller's own line;
 - manifest/runtime API and revision consistency.
 
@@ -25,6 +26,7 @@ ClientKit is declared under `optionalDependencies`, so the runner puts it on `LU
 | `Hook_spec.lua` | safe pre-hooks and raw replacements of fields |
 | `HookScript_spec.lua` | script pre-hooks, replacements and the protected-frame rules |
 | `Scope_spec.lua` | scopes, capacity, `Hooks()`, `UnhookAll`, `Close`, addon scopes |
+| `Limits_spec.lua` | `options.maxHooks`, `HookKit.UNBOUNDED`, `GetMaxHooks`, invalid values |
 | `SecretValues_spec.lua` | secrets passing through; secret names refused |
 | `Allocation_spec.lua` | allocation guards |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |

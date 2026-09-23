@@ -48,14 +48,27 @@ local STATE_SCHEMA = 1
 local RECORD_SCHEMA = 1
 local DEFAULTS_SCHEMA = 1
 
--- The most entries one media type holds, counting built-ins and adopted
--- entries. Registration is load-time data, so this is a guard against a
--- runaway loop, not a budget any real pack comes near.
+-- The default of the `maxEntriesPerType` limit: the most entries one media
+-- type holds, counting built-ins and adopted entries. Registration is
+-- load-time data, so this is a guard against a runaway loop, not a budget any
+-- real pack comes near. Published as `MAX_ENTRIES_PER_TYPE`.
 local MAX_ENTRIES_PER_TYPE = 1024
 
--- The most defaults objects `Defaults` creates. Consumers are addons and
--- modules, so this too only stops a loop that invents consumer names.
+-- The highest `maxEntriesPerType` `SetLimits` accepts. Entries are never
+-- removed, every addon's `List` sorts and returns all of them, and mirrored
+-- entries land in LibSharedMedia, which has no way to unregister. Sixteen
+-- times the default covers every media pack seen in the wild many times over
+-- while keeping one sorted list a bounded amount of work.
+local MAX_ENTRIES_PER_TYPE_CEILING = 16384
+local ENTRIES_UNBOUNDED_REASON = "entries are never removed and are mirrored into LibSharedMedia"
+
+-- The default of the `maxConsumers` limit: the most defaults objects
+-- `Defaults` creates. Consumers are addons and modules, so this only stops a
+-- loop that invents consumer names.
 local MAX_CONSUMERS = 1024
+
+-- The limits `SetLimits` accepts, in the order `GetLimits` reports them.
+local LIMIT_NAMES = { "maxEntriesPerType", "maxConsumers" }
 
 -- The fixed set of media types, sorted, and the same names as a set so that
 -- refusing an unknown one allocates nothing.
@@ -199,6 +212,8 @@ local FACADE_METHODS = {
     "AdoptLibSharedMedia",
     "MirrorToLibSharedMedia",
     "IsFileDataID",
+    "SetLimits",
+    "GetLimits",
 }
 local DEFAULTS_METHODS = { "Set", "Get" }
 
@@ -240,11 +255,17 @@ local tableSort = table.sort
 ---@field HashTable fun(self: table, mediaType: string): table<string, MediaKit.Data>?
 ---@field RegisterCallback fun(owner: table, eventName: string, callback: function)?
 
+---The shared limits. `SetLimits` accepts any subset; `GetLimits` returns all.
+---@class MediaKit.Limits
+---@field maxEntriesPerType integer Most entries one media type holds, built-ins and adopted entries included: an integer from 1 to 16384; default `1024`. `UNBOUNDED` is refused.
+---@field maxConsumers integer|table Most defaults objects `Defaults` creates: a positive integer or `MediaKit.UNBOUNDED`; default `1024`.
+
 ---The MediaKit package facade published through Registry.
 ---@class MediaKit
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
----@field MAX_ENTRIES_PER_TYPE integer Most entries one media type holds (`1024`).
+---@field MAX_ENTRIES_PER_TYPE integer Default of the `maxEntriesPerType` limit (`1024`).
+---@field UNBOUNDED table Sentinel that lifts a limit where allowed; the same table for every revision.
 ---@field Register fun(self: MediaKit, mediaType: MediaKit.MediaType, name: string, data: MediaKit.Data, options: MediaKit.RegisterOptions?): true|nil, ("taken"|"full")?
 ---@field Fetch fun(self: MediaKit, mediaType: MediaKit.MediaType, name: string, options: MediaKit.LookupOptions?): MediaKit.Data?
 ---@field Has fun(self: MediaKit, mediaType: MediaKit.MediaType, name: string, options: MediaKit.LookupOptions?): boolean
@@ -254,6 +275,8 @@ local tableSort = table.sort
 ---@field AdoptLibSharedMedia fun(self: MediaKit): boolean, (integer|"absent")
 ---@field MirrorToLibSharedMedia fun(self: MediaKit): boolean, (integer|"absent")
 ---@field IsFileDataID fun(self: MediaKit, data: any): boolean
+---@field SetLimits fun(self: MediaKit, limits: MediaKit.Limits)
+---@field GetLimits fun(self: MediaKit): MediaKit.Limits
 
 ---One entry. Private.
 ---@class MediaKit.Entry
@@ -327,6 +350,7 @@ local function validatePublicSurface(implementation)
         type(implementation) ~= "table"
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
     then
         return false
     end
@@ -336,6 +360,29 @@ local function validatePublicSurface(implementation)
         end
     end
     return true
+end
+
+---Whether `value` is an exact integer of one or more. `nan` fails every
+---comparison and both infinities are refused before the integer test.
+---@param value any
+---@return boolean
+local function isPositiveInteger(value)
+    return type(value) == "number" and value >= 1 and value ~= math.huge and value % 1 == 0
+end
+
+---Whether `limits` holds a valid value for every limit this revision knows.
+---@param limits any
+---@param unbounded any the package's sentinel
+---@return boolean
+local function validateLimitsTable(limits, unbounded)
+    if type(limits) ~= "table" then
+        return false
+    end
+    local maxEntriesPerType = rawget(limits, "maxEntriesPerType")
+    local maxConsumers = rawget(limits, "maxConsumers")
+    return isPositiveInteger(maxEntriesPerType)
+        and maxEntriesPerType <= MAX_ENTRIES_PER_TYPE_CEILING
+        and (maxConsumers == unbounded or isPositiveInteger(maxConsumers))
 end
 
 ---Whether `currentState` has the fields every API 1 revision shares.
@@ -361,7 +408,10 @@ local function validateStateBase(currentState)
         end
     end
     local libSharedMedia = rawget(currentState, "libSharedMedia")
+    local unbounded = rawget(currentState, "unbounded")
     return type(rawget(currentState, "runtimeRevision")) == "number"
+        and type(unbounded) == "table"
+        and validateLimitsTable(rawget(currentState, "limits"), unbounded)
         and type(rawget(currentState, "consumers")) == "table"
         and type(rawget(currentState, "consumerCount")) == "number"
         and type(rawget(currentState, "defaultsPrototype")) == "table"
@@ -372,11 +422,14 @@ local function validateStateBase(currentState)
         and type(rawget(libSharedMedia, "callback")) == "function"
 end
 
----Whether `implementation` carries package state of this revision's schema.
+---Whether `implementation` carries package state of this revision's schema,
+---and publishes the sentinel that state owns.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+    local currentState = rawget(implementation, "_state")
+    return validateStateBase(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -435,6 +488,14 @@ if previousRevision == nil then
     state = {
         schema = STATE_SCHEMA,
         runtimeRevision = 0,
+        -- The sentinel `SetLimits` accepts to lift a limit. It lives here, not
+        -- in a file local, so every embedded revision hands out the same table.
+        unbounded = {},
+        -- The shared limits, kept across upgrades like everything else here.
+        limits = {
+            maxEntriesPerType = MAX_ENTRIES_PER_TYPE,
+            maxConsumers = MAX_CONSUMERS,
+        },
         -- Media type to its record. Entries live for the session.
         types = types,
         -- Consumer name to its defaults object, and how many there are.
@@ -471,6 +532,8 @@ local dispatch = rawget(state, "dispatch")
 local libSharedMedia = rawget(state, "libSharedMedia")
 local DefaultsPrototype = rawget(state, "defaultsPrototype")
 local DEFAULTS_METATABLE = rawget(state, "defaultsMetatable")
+local sharedLimits = rawget(state, "limits")
+local UNBOUNDED = rawget(state, "unbounded")
 
 -- Host facilities ------------------------------------------------------------
 
@@ -708,7 +771,7 @@ local function registerEntry(mediaType, name, data, scriptMask, origin)
         end
         return STATUS_TAKEN
     end
-    if record.count >= MAX_ENTRIES_PER_TYPE then
+    if record.count >= rawget(sharedLimits, "maxEntriesPerType") then
         return STATUS_FULL
     end
 
@@ -1011,8 +1074,8 @@ end
 ---Register `data` as `name` of `mediaType`.
 ---
 ---Returns `true`, or `nil, "taken"` when the name holds different data (or,
----for a font, different scripts), or `nil, "full"` past
----`MAX_ENTRIES_PER_TYPE`. Registering the same name with the same data again
+---for a font, different scripts), or `nil, "full"` at the
+---`maxEntriesPerType` limit. Registering the same name with the same data again
 ---is a no-op returning `true`.
 ---@param _ MediaKit
 ---@param mediaType MediaKit.MediaType
@@ -1113,8 +1176,9 @@ local function packageDefaults(_, consumerName)
         return defaults
     end
     local consumerCount = rawget(state, "consumerCount")
-    if consumerCount >= MAX_CONSUMERS then
-        error("MediaKit:Defaults refuses more than " .. MAX_CONSUMERS .. " consumers", 2)
+    local maxConsumers = rawget(sharedLimits, "maxConsumers")
+    if maxConsumers ~= UNBOUNDED and consumerCount >= maxConsumers then
+        error("MediaKit:Defaults refuses more than " .. maxConsumers .. " consumers", 2)
     end
     defaults = setmetatable({
         _schema = DEFAULTS_SCHEMA,
@@ -1190,6 +1254,89 @@ local function packageIsFileDataID(_, data)
     return isFileDataID(data)
 end
 
+---@param receiver any the table the method was called on
+---@param label string public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateFacade(receiver, label, level)
+    if receiver ~= MediaKit then
+        error(label .. " must be called on the MediaKit facade; use " .. label .. "(...)", level)
+    end
+end
+
+---Refuse one `SetLimits` value. `maxEntriesPerType` has a ceiling and refuses
+---`UNBOUNDED`; `maxConsumers` accepts any positive integer or `UNBOUNDED`.
+---@param name string a recognised limit name
+---@param value any
+---@param level integer stack level the failure is reported at
+local function validateLimitValue(name, value, level)
+    local label = "MediaKit:SetLimits limits." .. name
+    if isSecret(value) then
+        error(label .. " must not be a secret value", level)
+    end
+    if name == "maxEntriesPerType" then
+        if value == UNBOUNDED then
+            error(label .. " cannot be MediaKit.UNBOUNDED: " .. ENTRIES_UNBOUNDED_REASON, level)
+        end
+        if not isPositiveInteger(value) or value > MAX_ENTRIES_PER_TYPE_CEILING then
+            error(label .. " must be an integer from 1 to " .. MAX_ENTRIES_PER_TYPE_CEILING, level)
+        end
+    elseif value ~= UNBOUNDED and not isPositiveInteger(value) then
+        error(label .. " must be a positive integer or MediaKit.UNBOUNDED", level)
+    end
+end
+
+---Refuse a `SetLimits` argument before any limit changes, so a call with one
+---bad entry leaves every limit as it was.
+---@param limits any
+---@param level integer stack level the failure is reported at
+local function validateLimitUpdate(limits, level)
+    if type(limits) ~= "table" then
+        error("MediaKit:SetLimits limits must be a table", level)
+    end
+    for key, value in next, limits do
+        if isSecret(key) then
+            error("MediaKit:SetLimits limits must not have a secret key", level)
+        end
+        if type(key) ~= "string" or (key ~= "maxEntriesPerType" and key ~= "maxConsumers") then
+            error(
+                "MediaKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
+                level
+            )
+        end
+        validateLimitValue(key, value, level + 1)
+    end
+end
+
+---Change any subset of the shared limits. Affects every consumer.
+---
+---The whole table is checked before anything changes. Lowering a limit below
+---what already exists removes nothing: further entries are refused with
+---`"full"`, further consumers raise, until the count is under the limit.
+---@param self MediaKit
+---@param limits MediaKit.Limits
+local function packageSetLimits(self, limits)
+    validateFacade(self, "MediaKit:SetLimits", 3)
+    validateLimitUpdate(limits, 3)
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        local value = rawget(limits, name)
+        if value ~= nil then
+            rawset(sharedLimits, name, value)
+        end
+    end
+end
+
+---Return a fresh copy of the shared limits. Allocates one table per call.
+---@param self MediaKit
+---@return MediaKit.Limits limits
+local function packageGetLimits(self)
+    validateFacade(self, "MediaKit:GetLimits", 3)
+    return {
+        maxEntriesPerType = rawget(sharedLimits, "maxEntriesPerType"),
+        maxConsumers = rawget(sharedLimits, "maxConsumers"),
+    }
+end
+
 -- Commit ---------------------------------------------------------------------
 
 rawset(dispatch, "mirrorEntry", mirrorEntry)
@@ -1204,6 +1351,7 @@ rawset(DEFAULTS_METATABLE, "__metatable", "MediaKit.Defaults")
 rawset(MediaKit, "API", API_GENERATION)
 rawset(MediaKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(MediaKit, "MAX_ENTRIES_PER_TYPE", MAX_ENTRIES_PER_TYPE)
+rawset(MediaKit, "UNBOUNDED", UNBOUNDED)
 rawset(MediaKit, "Register", packageRegister)
 rawset(MediaKit, "Fetch", packageFetch)
 rawset(MediaKit, "Has", packageHas)
@@ -1213,6 +1361,8 @@ rawset(MediaKit, "Defaults", packageDefaults)
 rawset(MediaKit, "AdoptLibSharedMedia", packageAdoptLibSharedMedia)
 rawset(MediaKit, "MirrorToLibSharedMedia", packageMirrorToLibSharedMedia)
 rawset(MediaKit, "IsFileDataID", packageIsFileDataID)
+rawset(MediaKit, "SetLimits", packageSetLimits)
+rawset(MediaKit, "GetLimits", packageGetLimits)
 
 if previousRevision == nil then
     -- The client's own media, once per session. An upgrade inherits them.

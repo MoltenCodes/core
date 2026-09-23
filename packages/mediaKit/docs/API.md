@@ -47,7 +47,10 @@ MediaKit reads three host globals, each at call time rather than at load (the bu
 | `AdoptLibSharedMedia()` | Adopt LibSharedMedia's entries read-only and follow new ones. |
 | `MirrorToLibSharedMedia()` | Register our entries into LibSharedMedia and keep doing so. |
 | `IsFileDataID(data)` | Whether `data` is a FileDataID rather than a path. |
-| `MAX_ENTRIES_PER_TYPE` | `1024`. |
+| `SetLimits(limits)` | Change the shared limits (`maxEntriesPerType`, `maxConsumers`). Returns nothing. |
+| `GetLimits()` | A fresh table of both limits; allocates. |
+| `MAX_ENTRIES_PER_TYPE` | `1024`, the default of `maxEntriesPerType`. |
+| `UNBOUNDED` | Sentinel that lifts `maxConsumers`; the same table for every revision. |
 | `API`, `REVISION` | `1`, `1`. |
 
 ## Media types
@@ -113,7 +116,7 @@ MediaKit:Register("font", "MyPack Sans", [[Interface\AddOns\MyPack\Sans.ttf]], {
 |---|---|
 | `true` | The entry was added, **or** the name already holds the same data (and, for a font, the same set of scripts; an undeclared font's set is `{ "latin" }`). The second case changes nothing and fires nothing. |
 | `nil, "taken"` | The name already holds different data or scripts, whoever registered it: another addon, the built-ins, or LibSharedMedia through adoption. The first registration stays. |
-| `nil, "full"` | The type already holds `MAX_ENTRIES_PER_TYPE` (1024) entries, counting built-ins and adopted ones. |
+| `nil, "full"` | The type already holds `maxEntriesPerType` entries (default `MAX_ENTRIES_PER_TYPE`, 1024), counting built-ins and adopted ones. See [Limits](#limits). |
 
 A path and a FileDataID are never "the same data", even for the same file. Script sets compare as sets: order and repeats do not matter.
 
@@ -173,7 +176,7 @@ Returns the defaults object of `consumerName`, the same object on every call. Th
 | `defaults:Set(type, name)` | Choose `name` for `type`, or clear the choice with `nil`. The name need not be registered yet. |
 | `defaults:Get(type)` | The first name this client can use (`Has(type, name)` is true) of, in order: the consumer's choice, the type's built-in fallback below, the first name of `List(type)` (for fonts, filtered to the client's script, adopted LibSharedMedia fonts included). `nil` only when the type holds nothing this client can use. |
 
-Because `Get` checks at every call, a choice from a pack that loads later is answered as soon as the pack registers it, and a font the client cannot render yields the next step instead. Only fonts reach the third step, on a client whose script no built-in font renders. `Get` allocates nothing while the list is cached. At most 1024 consumers are created; the next new name raises at the caller.
+Because `Get` checks at every call, a choice from a pack that loads later is answered as soon as the pack registers it, and a font the client cannot render yields the next step instead. Only fonts reach the third step, on a client whose script no built-in font renders. `Get` allocates nothing while the list is cached. At most `maxConsumers` consumers are created (default 1024; see [Limits](#limits)); the next new name raises at the caller with `MediaKit:Defaults refuses more than <n> consumers`.
 
 ### Built-in media
 
@@ -213,7 +216,7 @@ local found, added = MediaKit:AdoptLibSharedMedia()
 - Registers one callback for `LibSharedMedia_Registered` through LibSharedMedia's CallbackHandler (`RegisterCallback`), so packs registering later are adopted as they arrive. A LibSharedMedia without `RegisterCallback` is read on each call only.
 - Returns `true` and the number of entries this call added, or `false, "absent"` when LibStub or LibSharedMedia-3.0 is not loaded. A second call re-reads the tables and never subscribes twice.
 
-Adopted entries are **read-only**: `Register` with the same name and data returns `true` and changes nothing, with other data `nil, "taken"`. They appear in `List`, `Fetch`, `Has` and `OnRegistered` like any other entry. An adopted font is offered on every client, because LibSharedMedia already refused, at its own registration, the fonts this client's locale cannot render. Entries whose name is not a non-empty string, whose data is not a path or FileDataID, or that are secret are skipped. When MediaKit already holds a name with other data, MediaKit's entry stays and LibSharedMedia's is not adopted. Adoption stops quietly at `MAX_ENTRIES_PER_TYPE`.
+Adopted entries are **read-only**: `Register` with the same name and data returns `true` and changes nothing, with other data `nil, "taken"`. They appear in `List`, `Fetch`, `Has` and `OnRegistered` like any other entry. An adopted font is offered on every client, because LibSharedMedia already refused, at its own registration, the fonts this client's locale cannot render. Entries whose name is not a non-empty string, whose data is not a path or FileDataID, or that are secret are skipped. When MediaKit already holds a name with other data, MediaKit's entry stays and LibSharedMedia's is not adopted. Adoption stops quietly at the `maxEntriesPerType` limit.
 
 ### `MediaKit:MirrorToLibSharedMedia()`
 
@@ -237,6 +240,30 @@ With both directions on, nothing bounces:
 
 On Retail 12.x the client hands tainted code secret values that raise when compared or used as table keys. MediaKit asks `issecretvalue` about a type, name, data or script name before any comparison and refuses a secret one at the caller (`MediaKit:Register name must not be a secret value`); `IsFileDataID` answers `false` for a secret, and adoption skips secret LibSharedMedia entries. `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
+## Limits
+
+| Limit | Default | How to open | UNBOUNDED allowed? |
+|---|---|---|---|
+| `maxEntriesPerType` | 1024 (`MAX_ENTRIES_PER_TYPE`) | `MediaKit:SetLimits({ maxEntriesPerType = n })`, `n` from 1 to 16384 | No: entries are never removed and are mirrored into LibSharedMedia |
+| `maxConsumers` | 1024 | `MediaKit:SetLimits({ maxConsumers = n })` | Yes |
+
+```lua
+MediaKit:SetLimits({ maxEntriesPerType = 4096 })
+MediaKit:SetLimits({ maxConsumers = MediaKit.UNBOUNDED })
+local limits = MediaKit:GetLimits() -- a fresh table; allocates
+```
+
+`SetLimits` accepts any subset of the limits and returns nothing. It raises at the caller's line, **before changing anything**, when `limits` is not a table, names an unknown limit (`MediaKit:SetLimits limits.<name> is not a recognised limit`), or gives a secret or invalid value: `maxEntriesPerType` must be an integer from 1 to 16384, and `maxConsumers` a positive integer or `MediaKit.UNBOUNDED`. `GetLimits` returns a new table on every call, with `MediaKit.UNBOUNDED` itself for a lifted limit.
+
+**The limits are shared by every consumer in the session**: every embedded copy and every addon uses one set, like the entries themselves. A library or media pack should rely on the defaults; an addon that raises a limit raises it for everybody.
+
+Why the two limits differ:
+
+- **`maxEntriesPerType` refuses `UNBOUNDED`** and stops at a ceiling of 16384. Entries are never removed, every addon's `List` (and so every media dropdown) sorts and returns all of them, and mirrored entries land in LibSharedMedia, which has no way to unregister. The memory and the list work belong to every consumer, not to the one that registered. Sixteen times the default covers any real media collection.
+- **`maxConsumers` accepts `UNBOUNDED`.** A defaults object holds only its own consumer's choices and nobody else sees it, so the memory is the consumers' own.
+
+Lowering a limit removes nothing: entries and defaults objects that exist stay, a further entry is refused with `nil, "full"`, and a further consumer name raises, until the count is under the limit again.
+
 ## Error behaviour
 
 Argument failures report the line that called the public method, never a line inside MediaKit. Messages name the method (`MediaKit:Register`, `MediaKit.Defaults:Set`) and the argument. Option tables refuse unknown fields and name the alphabetically first one; a key or script that is not a string is named by its type (`<number>`), so no `__tostring` runs. Calling a defaults method with `.` instead of `:` raises `MediaKit.Defaults:Get must be called on a defaults object; use defaults:Get(...)`.
@@ -254,10 +281,11 @@ Argument failures report the line that called the public method, never a line in
 | `defaults:Get` | At most two `Has` checks and a cached `List`. No allocation while the list is cached. |
 | `AdoptLibSharedMedia` | O(n log n) per type for n LibSharedMedia entries; one temporary name array per type. |
 | `MirrorToLibSharedMedia` | O(n) per type after the list is built. |
+| `GetLimits` | One table. |
 
 ## Embedded copies and upgrades
 
-Several addons may embed MediaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: entries, cached lists, signals and their connections, defaults objects, and the LibSharedMedia adoption, subscription and mirroring all survive. The callback LibSharedMedia holds dispatches through package state, so a newer revision replaces its behaviour without subscribing again. Built-ins are registered by the first copy only.
+Several addons may embed MediaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: entries, cached lists, signals and their connections, defaults objects, the limits a consumer set, the `UNBOUNDED` sentinel, and the LibSharedMedia adoption, subscription and mirroring all survive. The callback LibSharedMedia holds dispatches through package state, so a newer revision replaces its behaviour without subscribing again. Built-ins are registered by the first copy only.
 
 Nothing survives `/reload`: packs register again.
 
@@ -268,7 +296,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **LibStub directly, not through the LibStub bridge.** Point 3 says "through the LibStub bridge". MediaKit reads `rawget(_G, "LibStub")` itself: it needs LibSharedMedia's methods and callback, which the bridge's Registry entry does not add, and depending on `interopKit` would make every media pack embed it.
 - **Mirroring is explicit.** Point 2 says MediaKit mirrors into LibSharedMedia "when it is present". Because LibSharedMedia may load after MediaKit, and writing into another library should be the embedding addon's decision, mirroring starts at `MirrorToLibSharedMedia()` and continues from then on. The method is an addition to point 4's surface.
 - **`Defaults(consumerName)`** is the surface for point 2's "per-consumer defaults", with `Set` and `Get`; `Get` falls back to the **built-in media**, which MediaKit registers at load. These are the client's own files, so the non-goal "shipping media" holds.
-- **Additions:** `options.anyScript` on `Fetch`, `Has` and `List`; the `nil, "full"` result; `true` for an identical re-registration; `MAX_ENTRIES_PER_TYPE`; the count returned by the two LibSharedMedia methods; a 1024-consumer bound on `Defaults`.
+- **Additions:** `options.anyScript` on `Fetch`, `Has` and `List`; the `nil, "full"` result; `true` for an identical re-registration; `MAX_ENTRIES_PER_TYPE`; the count returned by the two LibSharedMedia methods; a 1024-consumer bound on `Defaults`; `SetLimits`, `GetLimits` and `UNBOUNDED`, which open both bounds.
 - **Listener errors propagate** to the registering caller, as SignalKit's `Fire` does, after the entry is stored; they are not isolated.
 - **No built-in CJK or Korean font**; see [Built-in media](#built-in-media). `defaults:Get` falls back to the first usable listed font instead.
 - **An undeclared font renders `latin` only**, matching LibSharedMedia's default, so a Latin font is never offered to a CJK or Korean client by omission.

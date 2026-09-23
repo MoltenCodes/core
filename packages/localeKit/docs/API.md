@@ -40,6 +40,7 @@ LocaleKit reads three host functions, each at call time rather than at load, and
 | `MissingKeys(addonName)` | Return the sorted keys read but never defined. |
 | `Format(template, ...)` | Format with sequential and indexed specifiers. |
 | `SetLocaleOverride(locale?)` | Use `locale` instead of the client's for addons registered from now on. |
+| `UNBOUNDED` | Sentinel for `GetLocale`'s `options.maxMissingKeys`: record every missing key. |
 
 ## The client locale
 
@@ -110,6 +111,7 @@ Raises when the addon registered nothing yet (`LocaleKit:GetLocale found no loca
 | Option | Default | Meaning |
 |---|---|---|
 | `missing` | `"report"` | What reading an undefined key does. |
+| `maxMissingKeys` | `1024` | The most missing keys recorded for the addon: a positive integer or `LocaleKit.UNBOUNDED`. See [Limits](#limits). |
 
 ### Missing keys
 
@@ -123,7 +125,7 @@ A **secret key** (Retail 12.x; a unit name read in combat, say) cannot be stored
 
 Because the key is stored on the first read, each key is reported once per session and costs a plain table read afterwards. A key that is not a string reads as `nil` and is not recorded. When a translation or default file defines a key after it was read as missing, the new text replaces the stored key and the key leaves `MissingKeys`.
 
-Recording is bounded: past **1024** missing keys per addon, further missing keys still read as themselves but are not stored, recorded or reported, and the cap itself is reported once. This keeps a read table indexed with runtime data (a unit name, say) from growing without limit.
+Recording is bounded: past **1024** missing keys per addon (or the addon's `maxMissingKeys`), further missing keys still read as themselves but are not stored, recorded or reported, and the cap itself is reported once, in `"report"` mode, naming the limit and how to raise it. This keeps a read table indexed with runtime data (a unit name, say) from growing without limit. See [Limits](#limits) to open it.
 
 ### The mode is fixed by the first call
 
@@ -182,6 +184,27 @@ LocaleKit:SetLocaleOverride("koKR")
 
 Makes every addon registered from now on use `locale` as its client locale; `enGB` is folded to `enUS`. `nil` clears the override. An addon already registered keeps the locale it was registered with, because its read table has already been built for it. The override is shared by every addon in the session and replaces AceLocale's `GAME_LOCALE` global, which LocaleKit does not read.
 
+## Limits
+
+LocaleKit follows the framework rule "bounded by default, opened on purpose" (`docs/DESIGN_CONSTITUTION.md`, principle 4a).
+
+| Limit | Default | How to open | UNBOUNDED allowed? |
+|---|---|---|---|
+| `maxMissingKeys`, missing keys recorded per addon | `1024` | `LocaleKit:GetLocale(addonName, { maxMissingKeys = n })` | Yes: `{ maxMissingKeys = LocaleKit.UNBOUNDED }`. The read table is the addon's own. |
+
+```lua
+local L = LocaleKit:GetLocale("MyAddon", { maxMissingKeys = 4096 })
+local everything = LocaleKit:GetLocale("MyAddon", { maxMissingKeys = LocaleKit.UNBOUNDED })
+```
+
+- **Reaching the limit is observable.** In `"report"` mode the first key past it is reported once (`LocaleKit: MyAddon has more than 1024 missing translations; further ones are neither recorded nor reported (raise options.maxMissingKeys to record more)`), and every further key still reads as itself; it is neither stored nor added to `MissingKeys`. `"silent"` mode reports nothing, by definition, and `"raw"` records nothing at all, so the limit does not apply to it.
+- **The limit applies whenever it is given.** Unlike the mode, which the first call fixes, `maxMissingKeys` may be set by the first `GetLocale` or any later one; a call that names none keeps it. Lowering it below the keys already recorded forgets none of them; raising it records again and re-arms the one-time report.
+- **Invalid values raise at the caller and change nothing:** zero, a negative, fractional, infinite or NaN number, any other type and a secret value (`LocaleKit:GetLocale options.maxMissingKeys must be a positive integer or LocaleKit.UNBOUNDED`). A call refused for its mode does not change the limit either.
+- **Why open it deliberately.** `UNBOUNDED` is right for an addon whose read table is only ever indexed with literal keys, where the set is finite anyway; an addon that indexes it with runtime data (unit or item names) should keep a bound, because every distinct name read would otherwise stay in the table until `/reload`.
+- **`LocaleKit.UNBOUNDED` is one table shared by every embedded copy.** It lives in the package state, so an addon opened with it stays unbounded across an in-place upgrade.
+
+LocaleKit has no package-wide limit and no other retained collection that grows with runtime data: translation strings are written by the addon's own files.
+
 ## Error behaviour
 
 Argument failures report the line that called the public method, and write-proxy failures report the assignment line, never a line inside LocaleKit. Messages name the method (`LocaleKit:NewLocale`, `LocaleKit:GetLocale`, `LocaleKit:Format`) or `LocaleKit translation` for a proxy write. Option tables refuse unknown fields and name the alphabetically first one; a key that is not a string is named by its type (`<number key>`), so no `__tostring` runs.
@@ -200,6 +223,6 @@ Argument failures report the line that called the public method, and write-proxy
 
 ## Embedded copies and upgrades
 
-Several addons may embed LocaleKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: read tables, their modes, recorded missing keys, proxies an older copy handed out and the override all survive, and the newer implementation runs behind them.
+Several addons may embed LocaleKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: read tables, their modes and `maxMissingKeys` limits, recorded missing keys, proxies an older copy handed out, the override and the `LocaleKit.UNBOUNDED` sentinel all survive, and the newer implementation runs behind them.
 
 Nothing survives `/reload`: translation files run again.

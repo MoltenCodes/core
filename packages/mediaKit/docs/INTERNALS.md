@@ -9,7 +9,9 @@ This document describes implementation invariants for maintainers. It is not an 
 | Field | Meaning |
 |---|---|
 | `types` | Media type to its type record; all seven exist from the first load. |
-| `consumers`, `consumerCount` | Consumer name to defaults object, and how many (bounded at 1024). |
+| `consumers`, `consumerCount` | Consumer name to defaults object, and how many (bounded by `limits.maxConsumers`). |
+| `limits` | The shared limits `SetLimits` writes: `maxEntriesPerType` (an integer up to 16384) and `maxConsumers` (an integer or the sentinel). |
+| `unbounded` | The `UNBOUNDED` sentinel, created once so every revision publishes the same table. |
 | `defaultsPrototype`, `defaultsMetatable` | Shared by every defaults object. The metatable's `__metatable` is `"MediaKit.Defaults"`, which is also how a receiver is recognised. |
 | `dispatch` | `mirrorEntry` and `onLibSharedMediaRegistered`, rewritten by every loading revision. |
 | `libSharedMedia` | The bridge state below. |
@@ -24,7 +26,7 @@ One per media type, every field present from construction:
 | Field | Meaning |
 |---|---|
 | `entries` | Name to entry `{ data, scriptMask, origin }`. |
-| `count` | Number of entries, compared with `MAX_ENTRIES_PER_TYPE`. |
+| `count` | Number of entries, compared with `limits.maxEntriesPerType` at every registration. |
 | `version` | Incremented by every added entry. |
 | `signal` | The SignalKit signal `OnRegistered` connects to. |
 | `allList`, `allListVersion` | The sorted array of every name, and the `version` it was built at. |

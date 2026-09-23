@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 — 2026-09-23
+
+- Added `ModuleKit:SetLimits(limits)` and `ModuleKit:GetLimits()`, per design principle 4a (bounded by default, opened on purpose). The one limit is `maxRequiredAddons`, the most addons one module may name in `requiresAddons`, default 16 as before. `SetLimits` accepts any subset, validates the whole table before changing anything, and raises at the caller's line on an unknown name or a value that is not a positive integer or `ModuleKit.UNBOUNDED`. `GetLimits` returns a fresh table. The limits are shared by every consumer in the session; lowering one never removes what modules already declared.
+- Added `ModuleKit.UNBOUNDED`, the package's sentinel for "no limit". It is required by the public-surface predicate, and the state predicate checks it is the one kept in package state.
+- Coupled to LifecycleKit's per-addon `maxDependencies`: when the loaded LifecycleKit reports it through `GetLimits`, `SetLimits` refuses a value above it and refuses `UNBOUNDED` unless LifecycleKit reports its own. A LifecycleKit without `GetLimits` is not consulted, and its per-addon bound still refuses `CreateModule` past 16 declared addons.
+- A definition over the limit is still refused at the `CreateModule` line; the message now names the limit: `requiresAddons must list at most 16 addons (ModuleKit:SetLimits maxRequiredAddons)`.
+- Implementation revision 14. Package state gains `unbounded` and `limits`; the fields are additive, so the schema stays 1, and an upgrade from revisions 1 to 13 creates them with the default those revisions enforced as a constant. A newer revision inherits the limits a consumer set and the sentinel's identity. An upgrade refuses a `limits` table it cannot trust.
+- New `Limits_spec.lua` (12 specs) and six upgrade specs in `Bootstrap_spec.lua`, including a revision-13 state upgrade and a future revision over this one; `ModuleKitTestEnv` gains `LoadDependencies` and `LoadRevision`.
+- `ModuleKit` API generation 1 is unchanged.
+
 ## 0.6.5 — 2026-09-23
 
 - A dependency cycle, a missing hard dependency or a shut-down container found by `InitializeAll()`, `EnableAll()`, `Initialize()` or `Activate()` is raised at the caller's line, as `Enable()` already was since 0.6.3. `InitializeAll()` and `EnableAll()` reached the graph check through a tail call, so the error carried no position at all, and the `automatic` recursion of `Initialize()` and `Activate()` reported a line inside ModuleKit. The whole-container passes now take the level from the public method, which no longer tail-calls them; `initializeWithPolicy` adds its recursion depth to the level as `enableWithPolicy` does; `hardDependencies` and `ensureNotShutdown` take the level from their callers.

@@ -37,7 +37,8 @@ Three contracts are worth knowing before the first section:
   `false, "unavailable"` and ProfileKit stays disabled.
 - **Bounded.** At most `ProfileKit.DEFAULT_MAX_SECTIONS` (256) sections exist
   per session. A further name gets `nil, "capped"` from `Section`, and `Measure`
-  runs it unmeasured.
+  runs it unmeasured. Open it on purpose with
+  `ProfileKit:SetLimits({ maxSections = n })` or `ProfileKit.UNBOUNDED`.
 
 Not in scope: memory profiling, per-frame graphs, sampling, and anything that
 ships enabled.
