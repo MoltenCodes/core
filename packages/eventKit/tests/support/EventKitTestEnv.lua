@@ -6,32 +6,11 @@
 --- environment for the specs that need SchedulerKit.
 ---
 --- SchedulerKit is an optional partner of EventKit: `Coalesce` and `Derive`
---- find it through `Registry:Find` when they are called. The manifest schema
---- has no field for an optional dependency, so the test runner, which builds
---- `LUA_PATH` from the manifest dependency closure, does not put SchedulerKit
---- (or the LifecycleKit and TimerKit it needs) on the path. This file adds
---- their source directories, located relative to this file rather than to the
---- working directory.
+--- find it through `Registry:Find` when they are called. The manifest declares
+--- it under `optionalDependencies`, so the test runner puts SchedulerKit and
+--- the LifecycleKit and TimerKit it needs on `LUA_PATH` for this suite while
+--- the release load order ignores them.
 local FrameworkTestEnv = require("FrameworkTestEnv")
-
----Append the `src` directory of each named sibling package to `package.path`.
----@param packageNames string[]
-local function addSiblingSources(packageNames)
-    local source = debug.getinfo(1, "S").source
-    local packagesDirectory = source:match("^@(.*)[/\\]eventKit[/\\]tests[/\\]support[/\\][^/\\]+$")
-    if packagesDirectory == nil then
-        packagesDirectory = "packages"
-    end
-
-    for index = 1, #packageNames do
-        local entry = packagesDirectory .. "/" .. packageNames[index] .. "/src/?.lua"
-        if not package.path:find(entry, 1, true) then
-            package.path = package.path .. ";" .. entry
-        end
-    end
-end
-
-addSiblingSources({ "lifecycleKit", "timerKit", "schedulerKit" })
 
 local EventKitTestEnv = FrameworkTestEnv.New({
     modules = { "Registry", "SignalKit", "EventKit" },

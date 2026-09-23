@@ -227,17 +227,34 @@ class OptionalDependencyTests(ManifestRepositoryTests):
         self.assertEqual(1, len(errors))
         self.assertIn('must not optionally depend on itself', errors[0])
 
-    def test_cycle_through_an_optional_edge_is_reported(self):
-        self.write_manifest("baseKit", optional_dependencies={"cacheKit": {"api": 1}})
-        self.write_manifest("cacheKit", dependencies={"baseKit": {"api": 1}})
+    def test_cycle_closed_by_an_optional_edge_is_accepted(self):
+        """The eventKit -> schedulerKit case: a required chain back, found at call time."""
+        self.write_manifest("registryKit")
+        self.write_manifest(
+            "eventKit",
+            dependencies={"registryKit": {"api": 1}},
+            optional_dependencies={"schedulerKit": {"api": 1}},
+        )
+        self.write_manifest("lifecycleKit", dependencies={"eventKit": {"api": 1}})
+        self.write_manifest("timerKit", dependencies={"lifecycleKit": {"api": 1}})
+        self.write_manifest("schedulerKit", dependencies={"timerKit": {"api": 1}})
 
-        errors = self.validate()
+        self.assertEqual([], self.validate())
 
-        self.assertTrue(any("dependency cycle detected" in error for error in errors))
-
-    def test_cycle_of_optional_edges_only_is_reported(self):
+    def test_cycle_of_optional_edges_only_is_accepted(self):
         self.write_manifest("baseKit", optional_dependencies={"cacheKit": {"api": 1}})
         self.write_manifest("cacheKit", optional_dependencies={"baseKit": {"api": 1}})
+
+        self.assertEqual([], self.validate())
+
+    def test_required_cycle_is_still_reported_beside_optional_edges(self):
+        self.write_manifest(
+            "baseKit",
+            dependencies={"cacheKit": {"api": 1}},
+            optional_dependencies={"eventKit": {"api": 1}},
+        )
+        self.write_manifest("cacheKit", dependencies={"baseKit": {"api": 1}})
+        self.write_manifest("eventKit")
 
         errors = self.validate()
 

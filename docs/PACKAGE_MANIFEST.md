@@ -94,7 +94,9 @@ A dependency names the exact API generation required by the consumer:
 
 The dependency package must exist, expose an API generation, and expose the same API generation requested by the consumer.
 
-Runtime package dependency cycles are invalid.
+Cycles among required dependencies are invalid; see
+[Optional dependencies](#optional-dependencies) for the one kind of cycle that
+is allowed.
 
 ## Optional dependencies
 
@@ -146,8 +148,12 @@ Validation rules:
 - a package may not list the same package in both `dependencies` and
   `optionalDependencies`;
 - a package may not optionally depend on itself;
-- the combined graph of required and optional dependencies must have no
-  cycles. An optional edge still means "this package calls into that one";
+- the graph of **required** dependencies must have no cycles. A cycle that
+  passes through at least one optional edge is allowed: the optional edge is
+  resolved at call time, after every file has loaded, which is what
+  `Registry:Find` is for. EventKit, for example, can optionally use
+  SchedulerKit even though SchedulerKit requires TimerKit, which requires
+  LifecycleKit, which requires EventKit;
 - `optionalDependencies` must come **after** the top-level `api` field in the
   file. Every `tests/Manifest_spec.lua` reads the package's API generation with
   the first `"api"` in the file, so an optional-dependency object written above

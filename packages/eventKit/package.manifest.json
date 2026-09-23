@@ -13,5 +13,10 @@
     "signalKit": {
       "api": 1
     }
+  },
+  "optionalDependencies": {
+    "schedulerKit": {
+      "api": 1
+    }
   }
 }

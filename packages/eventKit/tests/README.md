@@ -19,9 +19,9 @@ It also covers:
 - in-place upgrade from implementation revision 6.
 
 `EventKitTestEnv.Scheduled` is a second environment that also loads
-LifecycleKit, TimerKit and SchedulerKit, whose sources it adds to
-`package.path` because the runner's path follows manifest dependencies and
-SchedulerKit is only an optional partner.
+LifecycleKit, TimerKit and SchedulerKit. The manifest names SchedulerKit under
+`optionalDependencies`, so the runner puts those sources on `LUA_PATH` for this
+suite; the release load order ignores optional dependencies.
 
 `EventKitTestEnv.lua` supplies a narrow fake WoW Frame boundary. Production APIs are not added solely for tests.
 

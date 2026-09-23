@@ -414,6 +414,26 @@ class OptionalDependencyPathTests(PackageFixture):
             module.suite_source_packages("eventKit", manifests),
         )
 
+    def test_optional_edge_back_into_the_required_chain_adds_that_chain(self):
+        """eventKit optionally uses schedulerKit, which requires eventKit's dependants."""
+        self.create_package("registry")
+        self.create_package("signalKit", dependencies={"registry": {"api": 1}})
+        self.create_package(
+            "eventKit",
+            dependencies={"registry": {"api": 1}, "signalKit": {"api": 1}},
+            optional_dependencies={"schedulerKit": {"api": 1}},
+        )
+        self.create_package("lifecycleKit", dependencies={"eventKit": {"api": 1}})
+        self.create_package("timerKit", dependencies={"lifecycleKit": {"api": 1}})
+        self.create_package("schedulerKit", dependencies={"timerKit": {"api": 1}})
+        manifests, errors = module.load_valid_manifests()
+
+        self.assertEqual([], errors)
+        self.assertEqual(
+            ["eventKit", "registry", "signalKit", "lifecycleKit", "timerKit", "schedulerKit"],
+            module.suite_source_packages("eventKit", manifests),
+        )
+
     def test_run_puts_optional_sources_on_the_suite_path(self):
         self.create_graph()
         manifests, _ = module.load_valid_manifests()

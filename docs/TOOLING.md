@@ -67,8 +67,8 @@ are read by the same code, but the tools use them differently:
 | Tool | `dependencies` | `optionalDependencies` |
 |---|---|---|
 | `validation/validate_manifests.py` | shape, existence, API generation, no self-edge | the same, plus "not also a required dependency" |
-| cycle detection | combined graph | combined graph |
-| `test/run.py` | closure on the suite's `LUA_PATH` | each one and its required closure on the suite's `LUA_PATH`, after the required closure |
+| cycle detection | rejected | not followed: a cycle closed by an optional edge is allowed |
+| `test/run.py` | closure on the suite's `LUA_PATH` | each one and its required closure on the suite's `LUA_PATH`, after the required closure (for a cycle closed by an optional edge, that closure includes the package's own dependants) |
 | `package/build.py` | load order, `--package` closure | ignored; recorded under `optionalDependencies` in `manifest.json` for information |
 | `validate_repository.py` (`src/.luarc.json`) | closure listed | ignored |
 

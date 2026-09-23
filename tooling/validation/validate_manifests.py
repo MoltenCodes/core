@@ -255,9 +255,13 @@ def validate_graph(manifests: dict[str, dict[str, Any]]) -> list[str]:
     Required and optional dependencies are checked the same way: each must name
     an existing package that exposes the requested API generation, and neither
     may name the package itself. A package may not list the same dependency in
-    both maps. Cycles are searched for in the combined graph, because an
-    optional edge still means "this package calls into that one", and a cycle
-    through it makes the two impossible to reason about or test in isolation.
+    both maps.
+
+    Cycles are searched for in the *required* graph only. A required edge means
+    "loaded first and resolved at file scope", so a required cycle can never
+    load. An optional edge is resolved at call time through ``Registry:Find``,
+    after every file has loaded, so a cycle that passes through at least one
+    optional edge is exactly the case ``Find`` exists for and is allowed.
     """
     errors: list[str] = []
 
@@ -313,7 +317,10 @@ def _depend_verb(field: str) -> str:
 
 
 def _find_cycles(manifests: dict[str, dict[str, Any]]) -> list[str]:
-    """Report every cycle in the graph of required and optional dependencies."""
+    """Report every cycle in the graph of required dependencies.
+
+    Optional edges are not followed: a cycle that needs one to close is legal.
+    """
     errors: list[str] = []
     visiting: set[str] = set()
     visited: set[str] = set()
@@ -335,10 +342,7 @@ def _find_cycles(manifests: dict[str, dict[str, Any]]) -> list[str]:
 
         visiting.add(name)
         stack.append(name)
-        edges = sorted(
-            {dep for field in DEPENDENCY_FIELDS for dep in dependency_names(manifests[name], field)}
-        )
-        for dep in edges:
+        for dep in dependency_names(manifests[name], "dependencies"):
             if dep != name and dep in manifests:
                 visit(dep)
         stack.pop()
