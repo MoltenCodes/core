@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — 2026-09-23
+
+- Added generations. Every pool has one — `generation` on `New` and `NewTablePool`, defaulting to the PoolKit revision that created the pool — and `Pool:GetGeneration()` / `Pool:SetGeneration(n)`. Raising it destroys retained objects of older generations at once and destroys, instead of retaining, borrowed ones when they come back, so an object built by a superseded factory is never handed out again after an in-place upgrade. Lowering it is refused. Stamps live in a weak-keyed side table and never touch the object; a pool that never raises its generation writes none.
+- Added pools for objects the host can never free, such as Frames. `maxCreated` caps factory calls over the pool's life and makes `maxRetained` default to the cap; `maxActive` caps objects out at once. At capacity `Acquire()` returns `nil, "exhausted"`, and `Acquire(onAvailable)` either queues the request and returns `nil, "waiting"` or refuses it with `nil, "queueFull"`. The queue is a ring of `maxWaiting` slots allocated once with the pool, so it never grows and allocates nothing per acquire; freed capacity goes to the oldest request first. Added `Pool:GetWaitingCount()` and `Pool:CancelWaiting(callback)`; `Close()` fails queued requests with `"closed"`. Without the new options `Acquire` behaves exactly as before.
+- Added cascading release: `Pool:AttachChild(parent, child, childPool)` and `Pool:DetachChild(child)`. Releasing a parent releases its children first, most recently attached first, grandchildren included; a child released on its own leaves its parent in constant time, and a cycle terminates.
+- Added deferred release: `Pool:ReleaseAfter(object, animationGroup)` parks an object until the group's `OnFinished` fires, hooking each group once ever, and releases at once when the group is not playing. `Release` completes a parked release early and `Close` completes all of them. Added `Pool:GetParkedCount()`. PoolKit still has no WoW or scheduler dependency: it calls only the group's `HookScript` and `IsPlaying`.
+- Failures on paths no caller can observe — a queued callback, the factory while serving the queue, a release completed by `OnFinished` — are reported through the host error handler.
+- Implementation revision 4; shared state schema 2. Pools built by an older revision cannot be enumerated, so every pool method upgrades such a pool the first time it touches it, keeping its objects and counters and taking the previous revision as its generation. A bootstrap spec loads revision 4 over hand-built revision-3 state and pools and retires their objects through `SetGeneration`. Forty-two new specs cover generations, the creation cap, the live limit, the waiting ring (FIFO, wrap-around, cancellation, refusal, close, failures, zero allocation), cascading and deferred release, and the upgrade.
+- Added a table-of-contents header to `src/PoolKit.lua`.
+- `PoolKit` API generation 1 is unchanged; the additions are compatible.
+
 ## 0.3.0 — 2026-09-22
 
 - Moved the bootstrap handshake onto `Registry:Bootstrap`. The package lookup, the refusal to reinterpret a newer revision's private state, the registration and the inherited-revision reporting now live in Registry; what stays here is the dependency check, the public-surface predicate, the state predicate and the migration itself.

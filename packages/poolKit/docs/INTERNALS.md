@@ -13,6 +13,8 @@ Each pool uses:
 
 `Acquire` and the normal retained `Release` path perform O(1) table operations and create no framework-owned temporary tables. User callbacks may allocate independently.
 
+Revision 4 adds a few constant-cost checks to those paths, each a `rawget` and a comparison against a `false` or `0` default: the pool schema (see *Lazy pool upgrade*), the creation cap and live limit in `hasCapacity`, the waiting count, the child and attachment tables, and the generation (`isStale` compares `_generation` with `_baseGeneration` and reads a stamp only when they differ). Draining the waiting queue, cascading to children and completing a deferred release are the only loops, each bounded by the queue size or the number of attached children.
+
 `Acquire` also compares `_maxActiveWarning` against the new active count. The field is `false` when leak warnings are not configured, so the default path is one `rawget` and one comparison, and the message-building work lives in a separate function that the hot path never enters.
 
 `_active` is intentionally the one unbounded structure in a pool. It must hold strong references for ownership, duplicate-release, and foreign-object checks to stay correct, and PoolKit cannot reclaim an object the caller never returns. The bound therefore belongs to the caller; `GetActiveCount` and `maxActiveWarning` make it observable.
@@ -52,3 +54,23 @@ Note for maintainers: with the current public surface, same-pool nesting is not 
 ## Table-pool fast path
 
 `NewTablePool` marks its built-in create/reset lifecycle as trusted. Those callbacks use only framework-owned `{}` allocation and `next/rawset` shallow clearing, so the hot path skips generic protected-callback and callback-phase bookkeeping. Generic pools never receive this optimization because user callbacks require rollback and re-entrancy enforcement.
+
+## Lazy pool upgrade
+
+Pools are not registered anywhere, so a bootstrap cannot migrate them. Every pool carries `_schema`, and `validatePool` — which every pool method calls first — runs `upgradePool` when it is not `POOL_SCHEMA`. The upgrade writes the defaults that reproduce the older revision's behaviour and takes `state.legacyGeneration` (the revision the shared state was migrated from) as the pool's generation. In steady state this is one field comparison per call and allocates nothing. `AttachChild` upgrades its `childPool` argument the same way, since that pool is not the receiver.
+
+## Generations
+
+`_generation` is the current generation and `_baseGeneration` the one the pool was built with. An object without a stamp belongs to the base generation, so a pool that never raises its generation never writes a stamp and `_stamps` stays `false`. The first `SetGeneration` raise creates the weak-keyed `_stamps` table; from then on `createObject` stamps each new object. A raise compacts `_available` in place, publishes the new count, and only then runs `destroy` for the stale objects, so a destroy callback observes a consistent pool.
+
+## Waiting ring
+
+`_waiting` is an array of `_maxWaiting` slots filled with `false` at construction, with `_waitingHead` and `_waitingCount`. Enqueue, dequeue and requeue-at-front only overwrite existing slots, so their cost is independent of history and they never allocate. `removeWaiter` shifts the requests behind the removed one towards the head, which is O(`maxWaiting`) and keeps FIFO order. `drainWaiting` dequeues before it runs any user code, so a callback that re-enters the pool sees a consistent queue.
+
+## Children
+
+A parent pool's `_children` holds five maps keyed by child: `first` (keyed by parent), `nextSibling`, `previousSibling`, `childPool` and `parent`; `false` marks an absent sibling. The child's own pool records the parent's pool in `_attachedTo`, so releasing a child on its own unlinks it in constant time. `releaseChildren` unlinks each child before releasing it, so the loop always advances and the child's own release does not look for a parent. The release transaction marks the parent `RELEASING` before cascading, which is what makes a cycle of attachments terminate.
+
+## Deferred release
+
+A parked object is `PARKED` in `_active`, counted in `_parkedCount` rather than `_activeCount`, and mapped to its animation group in the pool's `_parked`. The shared state maps each group to its pending pool and object (`deferredPool`, `deferredObject`) and remembers every group PoolKit ever hooked in the weak-keyed `hookedGroups`, so a group is hooked once however often its Frame is reused. The hook is one shared function that calls `state.dispatch.animationFinished`, so a newer revision replaces the behaviour behind hooks an older revision installed. The routine that takes an object out of the parked state clears every mapping before the release runs, so a failure during the release cannot leave a stale mapping behind.
