@@ -552,6 +552,57 @@ the WowAce directory item W6 (a shared validation core).
    a note on how a renderer (widgetKit, package E) consumes Describe.
 9. Status: planned (package C3).
 
+**commandKit** — facade `CommandKit`
+
+1. Package `commandKit`, facade `CommandKit`, API generation 1.
+2. Purpose: slash commands done once: registration that follows the module
+   that owns it, an argument parser that understands quotes and WoW
+   hyperlinks so a shift-clicked item does not break a command, sub-commands
+   with usage and help generated from their declarations, output sinks
+   (chat frame, a custom frame, a capture for tests), tab completion, and a
+   binding that drives an optionsKit tree from the command line. Non-goals:
+   a console UI, macros, anything that sends chat to other players.
+3. Dependencies: registry API 2, schemaKit API 1 (argument schemas);
+   optionsKit API 1 optional through `Registry:Find` (binding), localeKit
+   API 1 optional (localised help), clientKit API 1 optional (`IsSecret`).
+4. Surface: `CommandKit:CreateScope()` / `ForAddon(addonName)` → scope
+   with `Register(name, spec)` where `spec` has `handler(context, ...)`, an
+   optional `arguments` schema (a `SchemaKit.array` or per-position list),
+   `usage`, `description`, `subcommands = { name = spec }`, `complete(text)`
+   for custom completion; the slash global `SLASH_<KEY>1` and
+   `SlashCmdList[<KEY>]` are written through `rawset` with a key derived
+   from the addon and command names, refused when the slash name is already
+   taken by another owner (`nil, "taken"`); `Unregister(name)`, `Close()`
+   removes every command of the scope (the slash global is left pointing at
+   an inert function because the client's table cannot be cleaned;
+   documented); `CommandKit:Parse(text)` → arguments array honouring
+   `"quoted strings"` and `|H...|h[...]|h` hyperlinks as single tokens,
+   allocating one array per call (documented) plus `CommandKit:ParseInto(text,
+   array)` for the allocation-free form; `context:Print(...)`,
+   `context:Printf(format, ...)`, `context:Usage()`, `context:Fail(reason)`
+   to the scope's sink; `scope:SetSink(sink)` where a sink is
+   `{ AddMessage = fn }`; `CommandKit:CaptureSink()` for tests;
+   `scope:BindOptions(optionsTree, commandName)` generating `get`, `set`,
+   `reset`, `list` sub-commands over an optionsKit tree with values parsed
+   through the option's schema; tab completion through `ChatEdit` hooks when
+   `ChatEdit_CustomTabPressed` exists (optional, documented).
+5. Ownership: commands belong to a scope; moduleKit's `module.scope` gains
+   `Commands` lazily; lifecycleKit closes the addon's command scopes at
+   shutdown through `CloseAddonScopes` (two-step, as for EventKit).
+6. Performance: dispatch is one table lookup on the slash key and one on
+   the sub-command; parsing allocates only in the `Parse` form; bounded
+   commands per scope (`maxCommands` 64) and sub-command depth 3.
+7. Tests: registration writes the two globals, taken slash refused, parse
+   with quotes, hyperlinks, mixed and malformed input, sub-command dispatch
+   and usage, schema-validated arguments refused with a message, sink
+   capture, BindOptions get/set/reset/list against a real optionsKit tree,
+   completion with a stubbed ChatEdit, Close leaves an inert global,
+   upgrade, manifest, error levels.
+8. Docs: README, API.md with a full `/myaddon` example, CHANGELOG;
+   EMBEDDING.md host row (`SlashCmdList`, `SLASH_*`, `DEFAULT_CHAT_FRAME`,
+   `ChatEdit_CustomTabPressed`).
+9. Status: planned (package C3).
+
 #### Package D — interoperability and distribution
 
 - [ ] `codecKit` — serialise, compress and channel-encode as three stages
