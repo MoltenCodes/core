@@ -59,7 +59,7 @@ Package facade:
 | `Anchor` | `FromRect`, `Normalize`, `Apply`, `Read`, `POINTS`. |
 | `Widget`, `Container`, `Binding`, `Rendering` | The shared prototypes, for introspection. |
 | `MAX_CREATED`, `MAX_CHILDREN`, `MAX_CALLBACKS` | `256`, `256`, `16`: the defaults. See [Limits](#limits). |
-| `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limit `maxCreatedCeiling`; `GetLimits` returns a fresh table. |
+| `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits `maxCreatedCeiling` and `maxDropdownEntries`; `GetLimits` returns a fresh table. |
 | `UNBOUNDED` | Sentinel `maxCallbacks` and `SetMaxChildren` accept to lift a bound. |
 | `API`, `REVISION` | `1`, `1`. |
 
@@ -178,7 +178,7 @@ Every retained collection WidgetKit keeps is bounded by default. A bound on some
 | `maxCallbacks`, named callbacks per widget | `16` | `RegisterType(..., { maxCallbacks = n })` | yes | none: the callbacks are your own functions |
 | `maxChildren`, children per container | `256` | `container:SetMaxChildren(n)` | yes | none: the children are widgets you created |
 | layout nesting depth | `32` | not configurable | no | a hard ceiling: each level is a nested Lua call chain through a layout and its hooks, and one scratch table per level is retained; past it `PerformLayout` returns `false, "depth"` |
-| entries in one `Dropdown` list | `1024` | not configurable | no | a hard ceiling matching OptionsKit's default `values` bound; `SetList` raises past it |
+| `maxDropdownEntries`, entries in one `Dropdown` list | `1024` | `WidgetKit:SetLimits({ maxDropdownEntries = n })`, read by each `SetList` | yes | none: the list keeps a fixed 16 row frames and scrolls, so an entry is two array slots of your own keys and labels, never a frame; 1024 matches OptionsKit's default `values` bound, so open both together |
 
 ```lua
 WidgetKit:SetLimits({ maxCreatedCeiling = 8192 })
@@ -317,7 +317,7 @@ Text setters take `(text, options?)`: a string or a number is shown, `nil` clear
 | | `SetMaxLetters(letters)` | `0` for no limit, or a positive integer. |
 | | `SetFocus()` | Gives the box the keyboard and makes the widget WidgetKit's focused widget. |
 | | `SetLabel(text, options?)`, `GetLabel()` | The text above the box. |
-| `Dropdown` | `SetList(values, order?)` | `values` maps keys (strings or numbers) to string labels, at most 1024 entries. `order` lists keys in display order, skipping keys without a label; without it entries are sorted by label, then by key (numbers first). Every entry is checked before anything changes. |
+| `Dropdown` | `SetList(values, order?)` | `values` maps keys (strings or numbers) to string labels, at most `maxDropdownEntries` (1024 unless `SetLimits` opened it); past it `SetList` raises and keeps the list it had. `order` lists keys in display order, skipping keys without a label; without it entries are sorted by label, then by key (numbers first). Every entry is checked before anything changes. |
 | | `SetValue(key)`, `GetValue()` | A string, a number or `nil`; a key not in the list shows no label. |
 | | `GetNumEntries()` | The number of entries. |
 | | `Open()`, `Close()`, `IsOpen()` | `Open` returns `false` when disabled or empty, `true` otherwise. |

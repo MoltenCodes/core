@@ -12,7 +12,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | `dispatch` | Every function another Kit calls back into, by name. |
 | `trampolines` | The closures handed to EventKit, TimerKit, SchedulerKit and HookKit, created once per session; each only looks its target up in `dispatch`. |
 | `metatables` | One metatable per object kind (`scope`, `connection`, `handle`, `syncSet`), whose `__index` is the shared prototype. |
-| `addonScopes` | Addon name to canonical scope. |
+| `addonScopes` | Addon name to canonical scope. Only `CloseAddonScopes` closes one, since CommKit subscribes to no shutdown signal; a closed scope stays in the map, so closing is terminal and the map grows only with `ForAddon` calls. |
 | `limits`, `statistics` | The shared limits and counters. |
 | `queues` | Per priority: `ring` (pipes in service order), `cursor` (the next pipe), `pipes` (key to pipe), `messages`, `bytes`. |
 | `blockedPipes` | Pipes set aside after a throttle, waiting for `blockedUntil`. |

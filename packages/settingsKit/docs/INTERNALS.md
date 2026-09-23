@@ -124,7 +124,7 @@ A view never holds its saved table. `resolveContainer(node)` walks from the root
 
 Resolving on every access is what keeps views valid when saved tables are replaced or emptied: `ResetProfile` and `CopyProfile` empty and refill the profile's table in place, `ResetDatabase` empties the whole saved variable in place and recreates its sections, and a view resolves whatever is there now. A detached root (`dead`) resolves to `nil`, so a stale view reads defaults and cannot resurrect a deleted profile.
 
-Views are built recursively down to SchemaKit's `MAX_DEPTH` (16), the deepest value SchemaKit follows; a record or map below that is read as a plain value. Record child views are built when their parent is built (at `Open`, and when a profile view is first built by `SetProfile`); keyed-section entry views on the first read of each key.
+Views are built recursively down to SchemaKit's `maxDepth` limit (16 by default) as it stood when the database was opened, the deepest value SchemaKit follows; scans, comparisons and `CopyProfile` read the limit again through `SchemaKit:GetLimits()` each time they start (`readMaxDepth`), so `SchemaKit:SetLimits{ maxDepth }` reaches them without reopening; a record or map below that is read as a plain value. Record child views are built when their parent is built (at `Open`, and when a profile view is first built by `SetProfile`); keyed-section entry views on the first read of each key.
 
 ### A read
 

@@ -6,7 +6,7 @@ CommKit sends and receives addon messages of any length. It registers prefixes w
 local CommKit = MoltenCodes.Registry:Get("commKit", 1)
 local CodecKit = MoltenCodes.Registry:Get("codecKit", 1)
 
-local comm = CommKit:ForAddon("MyAddon") -- closed at the addon's shutdown
+local comm = CommKit:ForAddon("MyAddon") -- closed by CommKit:CloseAddonScopes("MyAddon")
 
 -- Receiving: the callback only ever sees whole messages.
 comm:Register("MyAddon", function(prefix, text, distribution, sender)
@@ -57,17 +57,21 @@ troubleshooting. This package's load order inside a consuming addon is:
 Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\signalKit\SignalKit.lua
 Libs\MoltenCodes\eventKit\EventKit.lua
-Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
 Libs\MoltenCodes\timerKit\TimerKit.lua
 Libs\MoltenCodes\schedulerKit\SchedulerKit.lua
 Libs\MoltenCodes\poolKit\PoolKit.lua
 Libs\MoltenCodes\commKit\CommKit.lua
 ```
 
+Minimum footprint: embed 7 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`, `eventKit/EventKit.lua`, `timerKit/TimerKit.lua`, `schedulerKit/SchedulerKit.lua`, `poolKit/PoolKit.lua`, `commKit/CommKit.lua`.
+
 Direct runtime dependencies: Registry API 2, SignalKit API 1, EventKit API 1,
-LifecycleKit API 1, SchedulerKit API 1 and PoolKit API 1; TimerKit comes with
-SchedulerKit. Every file above is required; omitting one makes this package
-raise at load.
+TimerKit API 1, SchedulerKit API 1 and PoolKit API 1. Every file above is
+required; omitting one makes this package raise at load.
+
+CommKit does not observe addon shutdown. LifecycleKit, when you embed it, calls
+`CommKit:CloseAddonScopes(addonName)` at logout; without it, call that from your
+own `PLAYER_LOGOUT` handler.
 
 Optional: CodecKit API 1 (required by `SyncSet`), HookKit API 1 (measures
 traffic other code sends) and SchemaKit API 1 (validates `SyncSet` fields).

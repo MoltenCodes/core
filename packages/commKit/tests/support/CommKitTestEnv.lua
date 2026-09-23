@@ -34,7 +34,6 @@ local ALL_MODULES = {
     "Registry",
     "SignalKit",
     "EventKit",
-    "LifecycleKit",
     "TimerKit",
     "SchedulerKit",
     "PoolKit",

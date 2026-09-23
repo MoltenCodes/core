@@ -237,6 +237,8 @@ first use) and then the list. The catcher is a full-screen frame at the
 `dispatch.closeOpenDropdown`, so a newer copy's code runs for a catcher an older
 copy created. The widget's own frame closes its list from `OnHide`.
 
+The entries themselves are two parallel arrays, `_keys` and `_labels`; the rows only show a window of them from `_offset`. That is why `state.limits.maxDropdownEntries` (1024 by default) may be `UNBOUNDED`: a longer list costs array slots, never frames. `SetList` reads the limit once when it starts, so a `SetLimits` applies to the next list and never cuts one already set.
+
 ## Frames WidgetKit creates
 
 Every base widget builds its frames in its constructor with `CreateFrame`,

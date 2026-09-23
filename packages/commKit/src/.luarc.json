@@ -8,7 +8,6 @@
       "../../registry/src",
       "../../signalKit/src",
       "../../eventKit/src",
-      "../../lifecycleKit/src",
       "../../poolKit/src",
       "../../timerKit/src",
       "../../schedulerKit/src"

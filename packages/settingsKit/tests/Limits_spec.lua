@@ -82,6 +82,49 @@ describe("SettingsKit limits", function()
         assert.are.equal(65536, #db.profile.data)
     end)
 
+    ---Return a chain of `depth` nested tables, the outermost counted as 1.
+    ---@param depth integer
+    ---@return table
+    local function nested(depth)
+        local value = { leaf = true }
+        for _ = 2, depth do
+            value = { inner = value }
+        end
+        return value
+    end
+
+    it("follows SchemaKit's maxDepth as set at write time, not at load", function()
+        local db = SettingsKit:Open("MyAddonDB", schema())
+        TestEnv.expectErrorContaining("refused a table too large or too deep to scan", function()
+            db.profile.data = nested(20)
+        end)
+
+        S:SetLimits({ maxDepth = 32 })
+        db.profile.data = nested(20)
+        assert.is_true(db.profile.data.inner ~= nil)
+
+        S:SetLimits({ maxDepth = 8 })
+        TestEnv.expectErrorContaining("refused a table too large or too deep to scan", function()
+            db.profile.data = nested(10)
+        end)
+    end)
+
+    it("bounds CopyProfile by SchemaKit's maxDepth when it runs", function()
+        S:SetLimits({ maxDepth = 32 })
+        local db = SettingsKit:Open("MyAddonDB", schema())
+        db:SetProfile("Deep")
+        db.profile.data = nested(20)
+        db:SetProfile("Default")
+
+        S:SetLimits({ maxDepth = 16 })
+        TestEnv.expectErrorContaining("CopyProfile from nests more than 16 tables", function()
+            db:CopyProfile("Deep")
+        end)
+        S:SetLimits({ maxDepth = 32 })
+        db:CopyProfile("Deep")
+        assert.is_true(db.profile.data.inner ~= nil)
+    end)
+
     it("honours maxScannedEntries given to Open", function()
         local db = SettingsKit:Open("MyAddonDB", schema(), { maxScannedEntries = 10 })
         TestEnv.expectErrorContaining("refused a table too large or too deep to scan", function()

@@ -28,12 +28,15 @@ describe("CommKit manifest metadata", function()
             "registry",
             "signalKit",
             "eventKit",
-            "lifecycleKit",
+            "timerKit",
             "schedulerKit",
             "poolKit",
         }) do
             assert.is_truthy(required:find('"' .. name .. '"', 1, true), name)
         end
+        -- Addon shutdown reaches CommKit through `CloseAddonScopes`, called by
+        -- LifecycleKit when it is loaded, so CommKit does not depend on it.
+        assert.is_nil(text:find('"lifecycleKit"', 1, true))
         for _, name in ipairs({ "codecKit", "hookKit", "schemaKit" }) do
             assert.is_truthy(optional:find('"' .. name .. '"', 1, true), name)
             assert.is_nil(required:find('"' .. name .. '"', 1, true), name)

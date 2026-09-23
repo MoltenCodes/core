@@ -46,6 +46,8 @@ Libs\MoltenCodes\poolKit\PoolKit.lua
 Libs\MoltenCodes\codecKit\CodecKit.lua
 ```
 
+Minimum footprint: embed 3 files: `registry/Registry.lua`, `poolKit/PoolKit.lua`, `codecKit/CodecKit.lua`.
+
 Direct runtime dependencies: Registry API 2 and PoolKit API 1.
 Every file above is required; omitting one makes this package raise at
 load.

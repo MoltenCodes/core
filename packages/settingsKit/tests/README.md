@@ -37,6 +37,6 @@ The SettingsKit suite covers:
 | `Validate_spec.lua` | `db:Validate` |
 | `Allocation_spec.lua` | allocation guards |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |
-| `Limits_spec.lua` | `maxScannedEntries`, `SetLimits`/`GetLimits`, `UNBOUNDED`, limits across an upgrade |
+| `Limits_spec.lua` | `maxScannedEntries`, `SetLimits`/`GetLimits`, `UNBOUNDED`, SchemaKit's `maxDepth` followed by writes and `CopyProfile` after `SchemaKit:SetLimits`, limits across an upgrade |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |
 | `Manifest_spec.lua` | manifest and runtime metadata |

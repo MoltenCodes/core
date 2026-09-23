@@ -62,6 +62,8 @@ Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\clientKit\ClientKit.lua
 ```
 
+Minimum footprint: embed 2 files: `registry/Registry.lua`, `clientKit/ClientKit.lua`.
+
 Direct runtime dependencies: Registry API 2.
 Every file above is required; omitting one makes this package raise at
 load.

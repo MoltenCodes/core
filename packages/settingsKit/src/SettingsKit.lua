@@ -301,9 +301,21 @@ then
     error("MoltenCodes SettingsKit requires SignalKit API 1 to be loaded first", 2)
 end
 
--- The deepest value SchemaKit follows. Views are built to the same depth, and
--- every deep copy, comparison and scan in this file stops there.
-local MAX_DEPTH = rawget(SchemaKit, "MAX_DEPTH")
+---The deepest value SchemaKit follows now: its `maxDepth` limit, which
+---`SchemaKit:SetLimits` may change at any time, so it is read when a check
+---starts rather than once at load. Every scan, comparison and depth test in
+---this file stops there, and views are built to the depth in force when the
+---database is opened. A SchemaKit revision without `GetLimits` has only the
+---fixed `MAX_DEPTH`. Allocates one table (`GetLimits` returns a fresh one),
+---so only paths that walk tables call it.
+---@return integer
+local function readMaxDepth()
+    local getLimits = rawget(SchemaKit, "GetLimits")
+    if type(getLimits) == "function" then
+        return getLimits(SchemaKit).maxDepth
+    end
+    return rawget(SchemaKit, "MAX_DEPTH")
+end
 
 ---Read a host global without triggering a metatable, or `nil`.
 ---@param name string
@@ -701,9 +713,9 @@ end
 
 -- Plain tables ---------------------------------------------------------------
 
----Deep-copy a table of plain data. Defaults nest at most `MAX_DEPTH` tables
----(SchemaKit refuses deeper ones), and saved tables are copied only after
----`deepestTable` has measured them, so the recursion is bounded.
+---Deep-copy a table of plain data. Defaults nest at most SchemaKit's
+---`maxDepth` tables (SchemaKit refuses deeper ones), and saved tables are
+---copied only after `isTooDeep` has measured them, so the recursion is bounded.
 ---@param value any
 ---@return any
 local function copyPlain(value)
@@ -717,17 +729,18 @@ local function copyPlain(value)
     return copy
 end
 
----Whether a saved table nests more than `MAX_DEPTH` tables, which also catches
+---Whether a saved table nests more than `maxDepth` tables, which also catches
 ---a table that contains itself.
 ---@param value table
 ---@param depth integer depth of `value`, counting the outermost as 1
+---@param maxDepth integer SchemaKit's `maxDepth` when the check started
 ---@return boolean
-local function isTooDeep(value, depth)
-    if depth > MAX_DEPTH then
+local function isTooDeep(value, depth, maxDepth)
+    if depth > maxDepth then
         return true
     end
     for _, item in next, value do
-        if type(item) == "table" and isTooDeep(item, depth + 1) then
+        if type(item) == "table" and isTooDeep(item, depth + 1, maxDepth) then
             return true
         end
     end
@@ -741,21 +754,22 @@ end
 ---@param right any
 ---@param isSecretValue (fun(value: any): boolean)|nil
 ---@param depth integer
+---@param maxDepth integer SchemaKit's `maxDepth` when the comparison started
 ---@return boolean
-local function deepEqual(left, right, isSecretValue, depth)
+local function deepEqual(left, right, isSecretValue, depth, maxDepth)
     if isSecretValue ~= nil and (isSecretValue(left) or isSecretValue(right)) then
         return false
     end
     if type(left) ~= "table" or type(right) ~= "table" then
         return left == right
     end
-    if depth > MAX_DEPTH then
+    if depth > maxDepth then
         return false
     end
 
     local count = 0
     for key, item in next, left do
-        if not deepEqual(item, rawget(right, key), isSecretValue, depth + 1) then
+        if not deepEqual(item, rawget(right, key), isSecretValue, depth + 1, maxDepth) then
             return false
         end
         count = count + 1
@@ -815,10 +829,11 @@ end
 ---@param value table
 ---@param isSecretValue (fun(value: any): boolean)|nil
 ---@param depth integer
+---@param maxDepth integer SchemaKit's `maxDepth` when the scan started
 ---@param budget integer entries still allowed to be visited
 ---@return "secret"|"view"|"metatable"|"size"|nil problem, integer budget
-local function scanValue(value, isSecretValue, depth, budget)
-    if depth > MAX_DEPTH then
+local function scanValue(value, isSecretValue, depth, maxDepth, budget)
+    if depth > maxDepth then
         return "size", budget
     end
     ---@type "secret"|"view"|"metatable"|"size"|nil
@@ -835,7 +850,7 @@ local function scanValue(value, isSecretValue, depth, budget)
             return "secret", budget
         end
         if type(item) == "table" then
-            problem, budget = scanValue(item, isSecretValue, depth + 1, budget)
+            problem, budget = scanValue(item, isSecretValue, depth + 1, maxDepth, budget)
             if problem ~= nil then
                 return problem, budget
             end
@@ -947,15 +962,16 @@ end
 ---@param description SchemaKit.Description
 ---@param value any
 ---@param depth integer
+---@param maxDepth integer SchemaKit's `maxDepth` when the database was opened
 ---@return any
-local function fillDefaults(description, value, depth)
+local function fillDefaults(description, value, depth, maxDepth)
     if value == nil then
         if description.default == nil then
             return nil
         end
         value = copyPlain(description.default)
     end
-    if type(value) ~= "table" or depth > MAX_DEPTH then
+    if type(value) ~= "table" or depth > maxDepth then
         return value
     end
 
@@ -964,18 +980,23 @@ local function fillDefaults(description, value, depth)
         local fieldNames = description.fieldNames or {}
         for index = 1, #fieldNames do
             local name = fieldNames[index]
-            local filled = fillDefaults(description.fields[name], rawget(value, name), depth + 1)
+            local filled =
+                fillDefaults(description.fields[name], rawget(value, name), depth + 1, maxDepth)
             if filled ~= nil then
                 rawset(value, name, filled)
             end
         end
     elseif kind == "map" then
         for key, entry in next, value do
-            rawset(value, key, fillDefaults(description.values, entry, depth + 1))
+            rawset(value, key, fillDefaults(description.values, entry, depth + 1, maxDepth))
         end
     elseif kind == "array" then
         for index = 1, #value do
-            rawset(value, index, fillDefaults(description.of, rawget(value, index), depth + 1))
+            rawset(
+                value,
+                index,
+                fillDefaults(description.of, rawget(value, index), depth + 1, maxDepth)
+            )
         end
     end
     return value
@@ -990,8 +1011,9 @@ end
 ---@param description SchemaKit.Description
 ---@param depth integer depth of the value, the scope's own table being 1
 ---@param label string the schema path, for the refusal
+---@param maxDepth integer SchemaKit's `maxDepth` when the database was opened
 ---@return SettingsKit.Plan|nil plan, string|nil refusal
-local function compilePlan(description, depth, label)
+local function compilePlan(description, depth, label, maxDepth)
     ---@type SettingsKit.Plan
     local plan = {
         proxied = false,
@@ -1001,9 +1023,9 @@ local function compilePlan(description, depth, label)
         values = false,
         max = false,
         keyKind = false,
-        default = fillDefaults(description, nil, depth),
+        default = fillDefaults(description, nil, depth, maxDepth),
     }
-    if depth > MAX_DEPTH then
+    if depth > maxDepth then
         return plan
     end
 
@@ -1019,16 +1041,17 @@ local function compilePlan(description, depth, label)
             if field.optional ~= true then
                 return nil, fieldLabel .. " must be optional: a saved variable starts empty"
             end
-            local fieldPlan, refusal = compilePlan(field, depth + 1, fieldLabel)
+            local fieldPlan, refusal = compilePlan(field, depth + 1, fieldLabel, maxDepth)
             if fieldPlan == nil then
                 return nil, refusal
             end
             plan.fieldNames[index] = name
             plan.fields[name] = fieldPlan
         end
-        plan.ownDefaults = fillDefaults(description, {}, depth)
+        plan.ownDefaults = fillDefaults(description, {}, depth, maxDepth)
     elseif description.kind == "map" then
-        local valuesPlan, refusal = compilePlan(description.values, depth + 1, label .. "[*]")
+        local valuesPlan, refusal =
+            compilePlan(description.values, depth + 1, label .. "[*]", maxDepth)
         if valuesPlan == nil then
             return nil, refusal
         end
@@ -1560,7 +1583,13 @@ local function refuseWrite(node, key, value)
     if isSecretValue ~= nil and isSecretValue(value) then
         problem = "secret"
     elseif type(value) == "table" then
-        problem = scanValue(value, isSecretValue, 1, rawget(node.db, "_maxScannedEntries"))
+        problem = scanValue(
+            value,
+            isSecretValue,
+            1,
+            readMaxDepth(),
+            rawget(node.db, "_maxScannedEntries")
+        )
     end
     if problem ~= nil then
         return refusalLabel(node) .. node.displayPath .. formatKey(key) .. VALUE_REFUSALS[problem]
@@ -1681,14 +1710,16 @@ end
 
 local compactValue
 
----The recursion follows the plan, which `compilePlan` stops at `MAX_DEPTH`,
----so it needs no depth bound of its own.
+---The recursion follows the plan, which `compilePlan` stops at the depth in
+---force when the database was opened, so it needs no depth bound of its own;
+---`maxDepth` bounds only the comparison of a leaf value with its default.
 ---@param plan SettingsKit.Plan a record plan
 ---@param container table
 ---@param defaults table|false
 ---@param isSecretValue (fun(value: any): boolean)|nil
+---@param maxDepth integer SchemaKit's `maxDepth` when the compaction started
 ---@return integer removed
-local function compactRecord(plan, container, defaults, isSecretValue)
+local function compactRecord(plan, container, defaults, isSecretValue, maxDepth)
     local removed = 0
     local fieldNames = plan.fieldNames --[[@as string[] ]]
     for index = 1, #fieldNames do
@@ -1700,7 +1731,15 @@ local function compactRecord(plan, container, defaults, isSecretValue)
                 default = rawget(defaults, name)
             end
             removed = removed
-                + compactValue(plan.fields[name], container, name, value, default, isSecretValue)
+                + compactValue(
+                    plan.fields[name],
+                    container,
+                    name,
+                    value,
+                    default,
+                    isSecretValue,
+                    maxDepth
+                )
         end
     end
     return removed
@@ -1710,8 +1749,9 @@ end
 ---@param container table
 ---@param defaults table|false|nil
 ---@param isSecretValue (fun(value: any): boolean)|nil
+---@param maxDepth integer SchemaKit's `maxDepth` when the compaction started
 ---@return integer removed
-local function compactMap(plan, container, defaults, isSecretValue)
+local function compactMap(plan, container, defaults, isSecretValue, maxDepth)
     local removed = 0
     local valuesPlan = plan.values --[[@as SettingsKit.Plan]]
     for key, entry in next, container do
@@ -1722,7 +1762,8 @@ local function compactMap(plan, container, defaults, isSecretValue)
         if default == nil then
             default = valuesPlan.default
         end
-        removed = removed + compactValue(valuesPlan, container, key, entry, default, isSecretValue)
+        removed = removed
+            + compactValue(valuesPlan, container, key, entry, default, isSecretValue, maxDepth)
     end
     return removed
 end
@@ -1734,8 +1775,9 @@ end
 ---@param value any
 ---@param default any
 ---@param isSecretValue (fun(value: any): boolean)|nil
+---@param maxDepth integer SchemaKit's `maxDepth` when the compaction started
 ---@return integer removed
-compactValue = function(plan, container, key, value, default, isSecretValue)
+compactValue = function(plan, container, key, value, default, isSecretValue, maxDepth)
     if plan.proxied ~= false and type(value) == "table" then
         local removed
         if plan.proxied == KIND_RECORD then
@@ -1743,9 +1785,9 @@ compactValue = function(plan, container, key, value, default, isSecretValue)
             if childDefaults == nil then
                 childDefaults = plan.ownDefaults
             end
-            removed = compactRecord(plan, value, childDefaults, isSecretValue)
+            removed = compactRecord(plan, value, childDefaults, isSecretValue, maxDepth)
         else
-            removed = compactMap(plan, value, default, isSecretValue)
+            removed = compactMap(plan, value, default, isSecretValue, maxDepth)
         end
         if default ~= nil and next(value) == nil then
             rawset(container, key, nil)
@@ -1754,7 +1796,7 @@ compactValue = function(plan, container, key, value, default, isSecretValue)
         return removed
     end
 
-    if default ~= nil and deepEqual(value, default, isSecretValue, 1) then
+    if default ~= nil and deepEqual(value, default, isSecretValue, 1, maxDepth) then
         rawset(container, key, nil)
         return 1
     end
@@ -1765,21 +1807,23 @@ end
 ---@param raw table
 ---@param scope table
 ---@param isSecretValue (fun(value: any): boolean)|nil
+---@param maxDepth integer SchemaKit's `maxDepth` when the compaction started
 ---@return integer removed
-local function compactScope(raw, scope, isSecretValue)
+local function compactScope(raw, scope, isSecretValue, maxDepth)
     local plan = scope.plan
     local section = rawget(raw, scope.sectionName)
     if type(section) ~= "table" then
         return 0
     end
     if scope.name == "global" then
-        return compactRecord(plan, section, plan.ownDefaults, isSecretValue)
+        return compactRecord(plan, section, plan.ownDefaults, isSecretValue, maxDepth)
     end
 
     local removed = 0
     for sectionKey, container in next, section do
         if type(container) == "table" then
-            removed = removed + compactRecord(plan, container, plan.ownDefaults, isSecretValue)
+            removed = removed
+                + compactRecord(plan, container, plan.ownDefaults, isSecretValue, maxDepth)
             -- An empty profile is still a profile; an empty character, realm,
             -- class or faction entry is just an absent one.
             if scope.name ~= "profile" and next(container) == nil then
@@ -1796,11 +1840,12 @@ end
 local function compactDatabase(db)
     local raw = db._raw
     local isSecretValue = readIsSecret()
+    local maxDepth = readMaxDepth()
     local removed = 0
     for index = 1, #SCOPE_NAMES do
         local scope = rawget(db._scopes, SCOPE_NAMES[index])
         if scope ~= nil then
-            removed = removed + compactScope(raw, scope, isSecretValue)
+            removed = removed + compactScope(raw, scope, isSecretValue, maxDepth)
         end
     end
     return removed
@@ -2121,8 +2166,9 @@ local function databaseCopyProfile(self, from)
     if type(source) ~= "table" then
         error("SettingsKit.Database:CopyProfile from names a profile that does not exist", 2)
     end
-    if isTooDeep(source, 1) then
-        error("SettingsKit.Database:CopyProfile from nests more than " .. MAX_DEPTH .. " tables", 2)
+    local maxDepth = readMaxDepth()
+    if isTooDeep(source, 1, maxDepth) then
+        error("SettingsKit.Database:CopyProfile from nests more than " .. maxDepth .. " tables", 2)
     end
 
     ensureProfile(raw, current)
@@ -2501,7 +2547,8 @@ local function buildScopes(schema, keys, name, level)
                     level
                 )
             end
-            local plan, refusal = compilePlan(description, 1, "schema." .. scopeName)
+            local plan, refusal =
+                compilePlan(description, 1, "schema." .. scopeName, readMaxDepth())
             if plan == nil then
                 error("SettingsKit:Open " .. tostring(refusal), level)
             end

@@ -23,12 +23,15 @@
 -- The send driver is a SchedulerKit job that exists only while something is
 -- queued, so an idle CommKit costs no per-frame handler.
 --
--- CommKit needs Registry API 2, SignalKit API 1, EventKit API 1, LifecycleKit
--- API 1, SchedulerKit API 1 and PoolKit API 1. TimerKit API 1 is in
--- SchedulerKit's dependency closure and is found through `Registry:Find` when
--- first needed. CodecKit API 1 (SyncSet payloads and hashes), HookKit API 1
--- (the outside-traffic hook) and SchemaKit API 1 (SyncSet validation) are
--- optional and found at call time.
+-- CommKit needs Registry API 2, SignalKit API 1, EventKit API 1, TimerKit
+-- API 1, SchedulerKit API 1 and PoolKit API 1. CodecKit API 1 (SyncSet
+-- payloads and hashes), HookKit API 1 (the outside-traffic hook) and SchemaKit
+-- API 1 (SyncSet validation) are optional and found at call time.
+--
+-- CommKit does not observe addon shutdown. Whoever does closes an addon's
+-- scope through `CommKit:CloseAddonScopes`: LifecycleKit at logout when it is
+-- loaded, or the addon's own `PLAYER_LOGOUT` handler without it (design
+-- constitution, principle 4b).
 --
 -- Contents
 -- --------
@@ -39,7 +42,7 @@
 --   Bootstrap ............. Registry registration and inherited state
 --   Host access ........... errors, secrets, isolated calls, the chat API
 --   Argument checks ....... receivers, strings, callbacks, option tables
---   Found packages ........ TimerKit, CodecKit, HookKit, SchemaKit
+--   Found packages ........ CodecKit, HookKit, SchemaKit
 --   Kit-owned scopes ...... the EventKit, TimerKit and SchedulerKit scopes
 --   Budget ................ the shared token bucket and its degraded modes
 --   Queues and pipes ...... priorities, destinations, bounds
@@ -65,17 +68,15 @@ local API_GENERATION = 1
 local IMPLEMENTATION_REVISION = 1
 
 -- The API generation of every package CommKit uses: required (Registry,
--- SignalKit, EventKit, LifecycleKit, SchedulerKit, PoolKit), found through
--- SchedulerKit's closure (TimerKit) and optional (CodecKit, HookKit,
--- SchemaKit).
+-- SignalKit, EventKit, TimerKit, SchedulerKit, PoolKit) and optional
+-- (CodecKit, HookKit, SchemaKit).
 local DEPENDENCY_API = {
     registry = 2,
     signalKit = 1,
     eventKit = 1,
-    lifecycleKit = 1,
+    timerKit = 1,
     schedulerKit = 1,
     poolKit = 1,
-    timerKit = 1,
     codecKit = 1,
     hookKit = 1,
     schemaKit = 1,
@@ -686,18 +687,14 @@ then
     error("MoltenCodes CommKit requires EventKit API 1 to be loaded first", 2)
 end
 
--- LifecycleKit closes an addon's scope at shutdown.
-local LifecycleKit = getPackage(Registry, "lifecycleKit", DEPENDENCY_API.lifecycleKit)
-local LifecycleInstance = type(LifecycleKit) == "table" and rawget(LifecycleKit, "Instance") or nil
+-- TimerKit runs the reassembly expiry timer and the frame-rate sampler.
+local TimerKit = getPackage(Registry, "timerKit", DEPENDENCY_API.timerKit)
 if
-    type(LifecycleKit) ~= "table"
-    or rawget(LifecycleKit, "API") ~= DEPENDENCY_API.lifecycleKit
-    or type(rawget(LifecycleKit, "ForAddon")) ~= "function"
-    or type(LifecycleInstance) ~= "table"
-    or type(rawget(LifecycleInstance, "IsShutdown")) ~= "function"
-    or type(rawget(LifecycleInstance, "OnShutdown")) ~= "function"
+    type(TimerKit) ~= "table"
+    or rawget(TimerKit, "API") ~= DEPENDENCY_API.timerKit
+    or type(rawget(TimerKit, "CreateScope")) ~= "function"
 then
-    error("MoltenCodes CommKit requires LifecycleKit API 1 to be loaded first", 2)
+    error("MoltenCodes CommKit requires TimerKit API 1 to be loaded first", 2)
 end
 
 -- SchedulerKit runs the send driver.
@@ -1275,10 +1272,8 @@ end
 
 -- Found packages -------------------------------------------------------------
 --
--- TimerKit is in SchedulerKit's dependency closure, so it is always loaded
--- before CommKit; it is not a direct dependency, so it is found with
--- `Registry:Find` when first needed, as TestKit does. CodecKit, HookKit and
--- SchemaKit are optional dependencies found at call time.
+-- CodecKit, HookKit and SchemaKit are optional dependencies found at call
+-- time with `Registry:Find`.
 
 ---Find a package by id and API generation, or `nil`.
 ---@param packageName string
@@ -1333,7 +1328,6 @@ end
 local function getTimerScope()
     local scope = rawget(kitScopes, "timer")
     if scope == false or scope:IsClosed() then
-        local TimerKit = requireFound("timerKit", "TimerKit", DEPENDENCY_API.timerKit, "CommKit", 2)
         scope = TimerKit:CreateScope()
         rawset(kitScopes, "timer", scope)
     end
@@ -3668,8 +3662,8 @@ local function releaseRegistrations(scope)
     return released
 end
 
----Close a scope: cancel its sends, close its SyncSets, disconnect its
----registrations and stop observing its addon's shutdown. Terminal.
+---Close a scope: cancel its sends, close its SyncSets and disconnect its
+---registrations. Terminal.
 ---@param scope CommKit.Scope
 ---@param reason string the reason cancelled sends report
 ---@return boolean closed `false` when it was already closed
@@ -3680,11 +3674,6 @@ local function closeScope(scope, reason)
     rawset(scope, "_closed", true)
     cancelPending(scope, reason)
     releaseRegistrations(scope)
-    local subscription = rawget(scope, "_shutdownSubscription")
-    rawset(scope, "_shutdownSubscription", false)
-    if subscription ~= false then
-        subscription:Disconnect()
-    end
     return true
 end
 
@@ -4223,7 +4212,6 @@ local function newScope(addonName, maxRegistrations)
         _registrations = {},
         _pending = {},
         _syncSets = {},
-        _shutdownSubscription = false,
     }, SCOPE_METATABLE)
 end
 
@@ -4236,9 +4224,13 @@ function FacadeMethods.CreateScope(self, options)
     return newScope(false, readScopeOptions(options, "CommKit:CreateScope", 3))
 end
 
----Return the canonical scope of an addon, creating it on demand. It is closed
----when the addon's LifecycleKit instance shuts down; sends still queued are
----cancelled with the reason `"shutdown"`.
+---Return the canonical scope of an addon, creating it on demand.
+---
+---CommKit does not observe addon shutdown. Whoever does closes this scope
+---through `CommKit:CloseAddonScopes(addonName)`: LifecycleKit at logout when it
+---is loaded, or the addon's own `PLAYER_LOGOUT` handler without it. Closing is
+---terminal, as in TimerKit and SchedulerKit: a later `ForAddon` returns the
+---closed scope.
 ---
 ---`options` apply when this call creates the scope. A later call may repeat
 ---them or omit them; passing a different `maxRegistrations` raises, so two
@@ -4273,19 +4265,13 @@ function FacadeMethods.ForAddon(self, addonName, options)
 
     scope = newScope(addonName, maxRegistrations)
     rawset(addonScopes, addonName, scope)
-    local lifecycle = LifecycleKit:ForAddon(addonName)
-    if lifecycle:IsShutdown() then
-        rawset(scope, "_closed", true)
-        return scope
-    end
-    local subscription = lifecycle:OnShutdown(function()
-        rawget(dispatch, "closeScope")(scope, REASON.shutdown)
-    end)
-    rawset(scope, "_shutdownSubscription", subscription)
     return scope
 end
 
----Close the canonical scope of an addon, as its shutdown does.
+---Close the canonical scope of an addon: cancel its queued sends with the
+---reason `"shutdown"`, close its SyncSets and disconnect its registrations.
+---LifecycleKit calls this at logout; an addon without LifecycleKit calls it
+---from its own `PLAYER_LOGOUT` handler.
 ---@param self CommKit
 ---@param addonName string addon folder name
 ---@return boolean closed `false` when the addon has no scope or it was already closed
@@ -4495,7 +4481,6 @@ rawset(dispatch, "onEnteringWorld", onEnteringWorld)
 rawset(dispatch, "chargeOutsideAddon", chargeOutsideAddon)
 rawset(dispatch, "chargeOutsideChat", chargeOutsideChat)
 rawset(dispatch, "receiveSync", receiveSync)
-rawset(dispatch, "closeScope", closeScope)
 
 -- The trampolines are created once per session and handed to EventKit,
 -- TimerKit, SchedulerKit and HookKit; they only look up the dispatch table.

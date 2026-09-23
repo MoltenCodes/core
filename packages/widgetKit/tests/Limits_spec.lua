@@ -19,6 +19,17 @@ local function assertReportedAt(expectedLine, message, ok, value)
     assert.are.equal(SOURCE .. ":" .. expectedLine .. ": " .. message, value)
 end
 
+---A dropdown value table of `count` entries.
+---@param count integer
+---@return table<integer, string>
+local function entries(count)
+    local values = {}
+    for index = 1, count do
+        values[index] = "Entry " .. index
+    end
+    return values
+end
+
 ---A constructor building one plain widget per call.
 ---@return table widget
 local function plainConstructor()
@@ -37,7 +48,10 @@ describe("WidgetKit limits", function()
 
     it("publishes one UNBOUNDED sentinel and the default limits", function()
         assert.are.equal("table", type(WidgetKit.UNBOUNDED))
-        assert.are.same({ maxCreatedCeiling = 4096 }, WidgetKit:GetLimits())
+        assert.are.same(
+            { maxCreatedCeiling = 4096, maxDropdownEntries = 1024 },
+            WidgetKit:GetLimits()
+        )
         assert.are_not.equal(WidgetKit:GetLimits(), WidgetKit:GetLimits())
     end)
 
@@ -138,7 +152,10 @@ describe("WidgetKit limits", function()
             tableOk,
             tableValue
         )
-        assert.are.same({ maxCreatedCeiling = 4096 }, WidgetKit:GetLimits())
+        assert.are.same(
+            { maxCreatedCeiling = 4096, maxDropdownEntries = 1024 },
+            WidgetKit:GetLimits()
+        )
 
         WidgetKit:SetLimits({ maxCreatedCeiling = 16384 })
         WidgetKit:SetLimits({})
@@ -255,7 +272,7 @@ describe("WidgetKit limits", function()
 
     it("keeps the sentinel, the limits and opened bounds across an in-place upgrade", function()
         local sentinel = WidgetKit.UNBOUNDED
-        WidgetKit:SetLimits({ maxCreatedCeiling = 10000 })
+        WidgetKit:SetLimits({ maxCreatedCeiling = 10000, maxDropdownEntries = sentinel })
         WidgetKit:RegisterType("Many", plainConstructor, 1, { maxCallbacks = sentinel })
         local group = WidgetKit:Create("Group") ---@cast group -nil
         group:SetMaxChildren(sentinel)
@@ -264,7 +281,10 @@ describe("WidgetKit limits", function()
         assert.are.equal(2, upgraded.REVISION)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
         assert.are.equal(sentinel, upgraded._state.unbounded)
-        assert.are.same({ maxCreatedCeiling = 10000 }, upgraded:GetLimits())
+        assert.are.same(
+            { maxCreatedCeiling = 10000, maxDropdownEntries = sentinel },
+            upgraded:GetLimits()
+        )
         assert.are.equal(sentinel, group:GetMaxChildren())
 
         local many = upgraded:Create("Many") ---@cast many -nil
@@ -272,5 +292,65 @@ describe("WidgetKit limits", function()
             many:SetCallback("C" .. index, function() end)
         end
         assert.is_true(upgraded:RegisterType("Big", plainConstructor, 1, { maxCreated = 9000 }))
+        local dropdown = upgraded:Create("Dropdown") ---@cast dropdown -nil
+        dropdown:SetList(entries(2000))
+        assert.are.equal(2000, dropdown:GetNumEntries())
+    end)
+
+    it("refuses a dropdown list past the default of 1024 entries", function()
+        local dropdown = WidgetKit:Create("Dropdown") ---@cast dropdown -nil
+        dropdown:SetList(entries(1024))
+        assert.are.equal(1024, dropdown:GetNumEntries())
+        TestEnv.expectErrorContaining(
+            "holds at most 1024 entries (WidgetKit:SetLimits maxDropdownEntries)",
+            function()
+                dropdown:SetList(entries(1025))
+            end
+        )
+        assert.are.equal(1024, dropdown:GetNumEntries())
+    end)
+
+    it("honours a raised, lowered or UNBOUNDED maxDropdownEntries", function()
+        local dropdown = WidgetKit:Create("Dropdown") ---@cast dropdown -nil
+        WidgetKit:SetLimits({ maxDropdownEntries = 3000 })
+        assert.are.equal(3000, WidgetKit:GetLimits().maxDropdownEntries)
+        dropdown:SetList(entries(3000))
+        assert.are.equal(3000, dropdown:GetNumEntries())
+
+        WidgetKit:SetLimits({ maxDropdownEntries = 2 })
+        TestEnv.expectErrorContaining("holds at most 2 entries", function()
+            dropdown:SetList(entries(3))
+        end)
+        -- The list already set is kept; the limit applies to the next list.
+        assert.are.equal(3000, dropdown:GetNumEntries())
+
+        WidgetKit:SetLimits({ maxDropdownEntries = WidgetKit.UNBOUNDED })
+        assert.are.equal(WidgetKit.UNBOUNDED, WidgetKit:GetLimits().maxDropdownEntries)
+        dropdown:SetList(entries(5000))
+        assert.are.equal(5000, dropdown:GetNumEntries())
+        -- Rows stay the fixed visible set however long the list is.
+        dropdown:Open()
+        assert.is_true(#dropdown._rows <= 16)
+    end)
+
+    it("refuses an invalid maxDropdownEntries at the caller's line and changes nothing", function()
+        for _, invalid in ipairs({ 0, -1, 1.5, 0 / 0, math.huge, "8", {} }) do
+            local line
+            local ok, value = pcall(function()
+                line = currentLine() + 1
+                WidgetKit:SetLimits({ maxCreatedCeiling = 8192, maxDropdownEntries = invalid })
+            end)
+            assertReportedAt(
+                line,
+                "WidgetKit:SetLimits limits.maxDropdownEntries must be a positive integer"
+                    .. " or WidgetKit.UNBOUNDED",
+                ok,
+                value
+            )
+        end
+        assert.are.same(
+            { maxCreatedCeiling = 4096, maxDropdownEntries = 1024 },
+            WidgetKit:GetLimits()
+        )
     end)
 end)

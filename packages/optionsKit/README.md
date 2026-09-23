@@ -99,6 +99,8 @@ Libs\MoltenCodes\schemaKit\SchemaKit.lua
 Libs\MoltenCodes\optionsKit\OptionsKit.lua
 ```
 
+Minimum footprint: embed 4 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`, `schemaKit/SchemaKit.lua`, `optionsKit/OptionsKit.lua`.
+
 Direct runtime dependencies: Registry API 2, SchemaKit API 1 and SignalKit API 1.
 All four files above are required; omitting any of the first three makes this
 package raise at load.

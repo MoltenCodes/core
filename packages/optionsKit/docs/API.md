@@ -428,7 +428,7 @@ OptionsKit:Define("MyAddon", tree, {
 
 `OptionsKit.UNBOUNDED` is one table kept in the package state, so every embedded copy and every revision publishes the same sentinel; asking for it as `maxDepth` raises `OptionsKit:Define options.maxDepth cannot be OptionsKit.UNBOUNDED: the tree is built on the Lua stack, so the ceiling is 32`. A tree keeps the limits it was defined under across an in-place upgrade.
 
-Opening `maxDynamicEntries` past `1024` is honoured by OptionsKit, but a renderer may still bound what it can show: WidgetKit's dropdown holds at most 1024 entries (a fixed ceiling in WidgetKit), so a `select` with more values cannot be drawn by WidgetKit's options renderer.
+Opening `maxDynamicEntries` past `1024` is honoured by OptionsKit, but a renderer has its own bound on what it shows: WidgetKit's dropdown holds 1024 entries by default, so open `WidgetKit:SetLimits{ maxDropdownEntries }` to the same value (or `WidgetKit.UNBOUNDED`) when WidgetKit renders the tree.
 
 ## Secret values
 

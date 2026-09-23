@@ -16,7 +16,7 @@
     "eventKit": {
       "api": 1
     },
-    "lifecycleKit": {
+    "timerKit": {
       "api": 1
     },
     "schedulerKit": {

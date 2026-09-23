@@ -288,6 +288,7 @@ local WEAK_KEYS = { __mode = "k" }
 ---The package-wide limits. `SetLimits` accepts any subset; `GetLimits` returns a fresh copy.
 ---@class WidgetKit.Limits
 ---@field maxCreatedCeiling integer The largest `maxCreated` a registration may ask for, and the most an upgrade grows a cap to; default 4096, from 256 to 16384.
+---@field maxDropdownEntries integer|table The most entries one `Dropdown:SetList` accepts: a positive integer or `WidgetKit.UNBOUNDED`; default 1024.
 
 ---Options for the text setters of every widget.
 ---@class WidgetKit.TextOptions
@@ -672,6 +673,7 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "unbounded")) == "table"
         and type(rawget(currentState, "limits")) == "table"
         and type(rawget(rawget(currentState, "limits"), "maxCreatedCeiling")) == "number"
+        and rawget(rawget(currentState, "limits"), "maxDropdownEntries") ~= nil
 end
 
 ---Whether `implementation` carries package state of this revision's schema,
@@ -757,6 +759,14 @@ if previousRevision == nil then
         -- `SetLimits` writes here and an upgrade inherits what was set.
         limits = {
             maxCreatedCeiling = MAX_CREATED_CEILING.default,
+            -- The most entries one dropdown list holds. The list keeps a
+            -- fixed number of row frames and scrolls through the entries, so
+            -- an entry costs two array slots of the consumer's own keys and
+            -- labels, never a frame: `UNBOUNDED` is allowed. 1024 matches
+            -- OptionsKit's default `values` bound. A literal rather than a
+            -- file-scope constant: the main chunk is at Lua 5.1's limit of
+            -- 200 local variables.
+            maxDropdownEntries = 1024,
         },
     }
     rawset(WidgetKit, "Widget", WidgetBase)
@@ -2387,9 +2397,10 @@ local function getStatistics(self)
     return statistics
 end
 
----Change `maxCreatedCeiling`, the one package-wide limit. Validated before
----anything changes; affects every consumer in the session. Caps already given
----to registered types are kept.
+---Change any subset of the package-wide limits: `maxCreatedCeiling` and
+---`maxDropdownEntries`. Every entry is validated before anything changes;
+---affects every consumer in the session. Caps already given to registered
+---types, and lists already set, are kept.
 ---@param limits WidgetKit.Limits
 local function setLimits(self, limits)
     validateFacade(self, "WidgetKit:SetLimits", 3)
@@ -2398,14 +2409,38 @@ local function setLimits(self, limits)
     end
     local key = next(limits)
     while key ~= nil do
-        if key ~= "maxCreatedCeiling" then
+        if key ~= "maxCreatedCeiling" and key ~= "maxDropdownEntries" then
             error("WidgetKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", 2)
         end
         key = next(limits, key)
     end
 
+    -- `maxDropdownEntries`: a positive integer or `WidgetKit.UNBOUNDED`, since
+    -- the entries are the consumer's own keys and labels, not frames.
+    local dropdownEntries = rawget(limits, "maxDropdownEntries")
+    if
+        dropdownEntries ~= nil
+        and dropdownEntries ~= UNBOUNDED
+        and (
+            isSecret(dropdownEntries)
+            or type(dropdownEntries) ~= "number"
+            or dropdownEntries ~= dropdownEntries
+            or dropdownEntries < 1
+            or dropdownEntries == math.huge
+            or dropdownEntries ~= math.floor(dropdownEntries)
+        )
+    then
+        error(
+            "WidgetKit:SetLimits limits.maxDropdownEntries must be a positive integer"
+                .. " or WidgetKit.UNBOUNDED",
+            2
+        )
+    end
     local ceiling = rawget(limits, "maxCreatedCeiling")
     if ceiling == nil then
+        if dropdownEntries ~= nil then
+            rawset(rawget(state, "limits"), "maxDropdownEntries", dropdownEntries)
+        end
         return
     end
     if ceiling == UNBOUNDED then
@@ -2431,6 +2466,9 @@ local function setLimits(self, limits)
         )
     end
     rawset(rawget(state, "limits"), "maxCreatedCeiling", ceiling)
+    if dropdownEntries ~= nil then
+        rawset(rawget(state, "limits"), "maxDropdownEntries", dropdownEntries)
+    end
 end
 
 ---Return a fresh copy of the package-wide limits.
@@ -2439,6 +2477,7 @@ local function getLimits(self)
     validateFacade(self, "WidgetKit:GetLimits", 3)
     return {
         maxCreatedCeiling = rawget(rawget(state, "limits"), "maxCreatedCeiling"),
+        maxDropdownEntries = rawget(rawget(state, "limits"), "maxDropdownEntries"),
     }
 end
 
@@ -4441,9 +4480,6 @@ do --
 
     local DROPDOWN_ROW_HEIGHT = 18
 
-    -- The most entries a dropdown list holds, matching OptionsKit's `values` bound.
-    local MAX_DROPDOWN_ENTRIES = 1024
-
     -- Rows a dropdown list shows at once; the rest is reached with the wheel.
     local DROPDOWN_VISIBLE_ROWS = 16
 
@@ -4549,6 +4585,11 @@ do --
         -- entry leaves the dropdown as it was.
         local keys, labels = {}, {}
         local count = 0
+        -- Read when the list is set, so `SetLimits` applies to the next list.
+        local maxEntries = rawget(rawget(state, "limits"), "maxDropdownEntries")
+        if maxEntries == UNBOUNDED then
+            maxEntries = math.huge
+        end
         local function add(key, label)
             -- `add` runs one call below `SetList`, so its caller is level 3.
             refuseSecret(key, "WidgetKit Dropdown:SetList key", 4)
@@ -4559,11 +4600,11 @@ do --
             if type(label) ~= "string" then
                 error("WidgetKit Dropdown:SetList labels must be strings", 3)
             end
-            if count >= MAX_DROPDOWN_ENTRIES then
+            if count >= maxEntries then
                 error(
                     "WidgetKit Dropdown:SetList holds at most "
-                        .. MAX_DROPDOWN_ENTRIES
-                        .. " entries",
+                        .. maxEntries
+                        .. " entries (WidgetKit:SetLimits maxDropdownEntries)",
                     3
                 )
             end

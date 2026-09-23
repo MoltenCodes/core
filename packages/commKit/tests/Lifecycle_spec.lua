@@ -169,13 +169,11 @@ describe("CommKit scopes", function()
         assert.are.equal("sent", survivor:GetState())
     end)
 
-    it("closes an addon scope at shutdown, mid-send", function()
+    it("closes an addon scope through CloseAddonScopes, mid-send", function()
         CommKit:SetLimits({ burst = 400, maxCps = 100 })
         local scope = CommKit:ForAddon("MyAddon")
         assert.are.equal(scope, CommKit:ForAddon("MyAddon"))
         assert.are.equal("MyAddon", scope:GetAddonName())
-        TestEnv.LoadAddon("MyAddon")
-        TestEnv.Login()
         local reasons = {}
         local handle = scope:Send({
             prefix = PREFIX,
@@ -187,25 +185,30 @@ describe("CommKit scopes", function()
         })
         TestEnv.Advance(0)
         assert.are.equal("sending", handle:GetState())
-        TestEnv.Logout()
+        assert.is_true(CommKit:CloseAddonScopes("MyAddon"))
         assert.is_true(scope:IsClosed())
         assert.are.same({ "cancelled:shutdown" }, reasons)
         assert.are.equal(scope, CommKit:ForAddon("MyAddon"))
         assert.is_true(CommKit:ForAddon("MyAddon"):IsClosed())
     end)
 
-    it("returns an addon scope already closed after the addon shut down", function()
-        local loaded
-        CommKit, loaded = TestEnv.Load()
-        loaded.LifecycleKit:ForAddon("Late")
-        TestEnv.LoadAddon("Late")
-        TestEnv.Logout()
+    it("keeps a closed addon scope canonical, as TimerKit and SchedulerKit do", function()
+        CommKit:ForAddon("Late")
+        CommKit:CloseAddonScopes("Late")
         local scope = CommKit:ForAddon("Late")
         assert.is_true(scope:IsClosed())
         assert.are.same(
             { nil, "closed" },
             { scope:Send({ prefix = PREFIX, text = "x", distribution = "PARTY" }) }
         )
+    end)
+
+    it("leaves an addon scope open at logout until CloseAddonScopes is called", function()
+        local scope = CommKit:ForAddon("MyAddon")
+        TestEnv.Logout()
+        assert.is_false(scope:IsClosed())
+        assert.is_true(CommKit:CloseAddonScopes("MyAddon"))
+        assert.is_true(scope:IsClosed())
     end)
 
     it("closes an addon's scope through CloseAddonScopes", function()

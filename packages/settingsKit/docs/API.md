@@ -268,7 +268,7 @@ A fresh array of every profile name, sorted with `<`, always including the curre
 
 ### `db:CopyProfile(from)`
 
-Replaces the current profile's contents with a deep copy of profile `from` and fires `OnProfileCopied(db, from, current)`. The current profile keeps its table, so `db.profile` is unchanged. Copying the current profile onto itself, a profile that does not exist, or one nesting more than 16 tables is refused.
+Replaces the current profile's contents with a deep copy of profile `from` and fires `OnProfileCopied(db, from, current)`. The current profile keeps its table, so `db.profile` is unchanged. Copying the current profile onto itself, a profile that does not exist, or one nesting more than SchemaKit's `maxDepth` tables (16 by default, read when `CopyProfile` runs) is refused.
 
 ### `db:ResetProfile()`
 
@@ -340,9 +340,9 @@ Every bound SettingsKit keeps holds unless you open it. A bound on something you
 | `maxScannedEntries` | `65536` | `Open(name, schema, { maxScannedEntries = n })` | yes | none: the scanned table is your own data |
 | `maxProfileNameLength` | `64` | `SettingsKit:SetLimits({ maxProfileNameLength = n })` | no | `64` to `1024`: profile names are typed by players and shown in option screens and dropdowns; below 64 a `"<name> - <realm>"` character profile may not fit |
 | `pathKeyLimit` | `32` | `SettingsKit:SetLimits({ pathKeyLimit = n })` | no | `1` to `1024`: paths show keys other players can send, and every message must stay short and printable |
-| table depth of a scanned or copied value | `SchemaKit.MAX_DEPTH` (16) | not configurable here | no | follows SchemaKit's depth, which bounds recursion on the Lua C stack |
+| table depth of a scanned, compared or copied value, and of the views a database builds | SchemaKit's `maxDepth` (16 by default) | `SchemaKit:SetLimits{ maxDepth = n }`, read when each scan, comparison, `CopyProfile` or `Open` starts | no | follows SchemaKit's ceiling of 64: every one of these walks recurses once per nested table |
 
-`maxScannedEntries` bounds the scan every table value goes through before it is stored: secret values, views and metatables anywhere inside it. The scan is what keeps a hostile or cyclic table from stalling the writer, so a database opened with `SettingsKit.UNBOUNDED` scans a table of any size to its end; it still stops at the depth bound. It is kept per database, and like every other option it is read by the first `Open` of a name only.
+`maxScannedEntries` bounds the scan every table value goes through before it is stored: secret values, views and metatables anywhere inside it. The scan is what keeps a hostile or cyclic table from stalling the writer, so a database opened with `SettingsKit.UNBOUNDED` scans a table of any size to its end; it still stops at the depth bound. A database's views and defaults are built to the `maxDepth` in force when it is opened; writes, compaction and `CopyProfile` use the value in force when they run. It is kept per database, and like every other option it is read by the first `Open` of a name only.
 
 ```lua
 SettingsKit:SetLimits({ maxProfileNameLength = 128 })

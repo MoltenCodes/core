@@ -12,20 +12,19 @@ Runtime files must be loaded in dependency order:
 Registry.lua
 SignalKit.lua
 EventKit.lua
-LifecycleKit.lua
 TimerKit.lua
 SchedulerKit.lua
 PoolKit.lua
 CommKit.lua
 ```
 
-CommKit depends on Registry API 2, SignalKit API 1, EventKit API 1, LifecycleKit API 1, SchedulerKit API 1 and PoolKit API 1. TimerKit API 1 is not a direct dependency: SchedulerKit requires it, so it is always loaded, and CommKit finds it through `Registry:Find` for the expiry and drop-report timers and the frame-rate ticker. Portable WoW code resolves the package through Registry:
+CommKit depends on Registry API 2, SignalKit API 1, EventKit API 1, TimerKit API 1 (the expiry and drop-report timers and the frame-rate ticker), SchedulerKit API 1 and PoolKit API 1: seven files with CommKit itself. It does not depend on LifecycleKit; see [Scopes and shutdown](#scopes-and-shutdown). Portable WoW code resolves the package through Registry:
 
 ```lua
 local CommKit = MoltenCodes.Registry:Get("commKit", 1)
 ```
 
-Loading CommKit without one of its dependencies raises at load time with the missing package named: `MoltenCodes CommKit requires SignalKit API 1 to be loaded first`, and so on for EventKit, LifecycleKit, SchedulerKit and PoolKit; without Registry, `MoltenCodes CommKit requires Registry API 2 to be loaded first`; without `GetTimePreciseSec`, which SchedulerKit also requires, `MoltenCodes CommKit requires GetTimePreciseSec`.
+Loading CommKit without one of its dependencies raises at load time with the missing package named: `MoltenCodes CommKit requires SignalKit API 1 to be loaded first`, and so on for EventKit, TimerKit, SchedulerKit and PoolKit; without Registry, `MoltenCodes CommKit requires Registry API 2 to be loaded first`; without `GetTimePreciseSec`, which SchedulerKit also requires, `MoltenCodes CommKit requires GetTimePreciseSec`.
 
 ### Optional facilities
 
@@ -61,8 +60,8 @@ Events, through a Kit-owned EventKit scope: `CHAT_MSG_ADDON` and `CHAT_MSG_ADDON
 | Member | Returns | Purpose |
 |---|---|---|
 | `CreateScope([options])` | scope | A manually owned scope; `options.maxRegistrations` (see [Limits](#limits)). |
-| `ForAddon(addonName[, options])` | scope | The addon's canonical scope, closed when its LifecycleKit instance shuts down; `options` apply when this call creates it. |
-| `CloseAddonScopes(addonName)` | boolean | Close that scope as shutdown does; `false` when there is none or it is closed. |
+| `ForAddon(addonName[, options])` | scope | The addon's canonical scope, closed by `CloseAddonScopes`; `options` apply when this call creates it. |
+| `CloseAddonScopes(addonName)` | boolean | Close that scope at the addon's shutdown; `false` when there is none or it is closed. |
 | `GetQueueDepth([priority])` | messages, bytes | Queued messages and text bytes in one priority, or in all. |
 | `GetBudget()` | available, bytesPerSecond, capacity, mode | The shared bucket now. |
 | `SetLimits(limits)` | nothing | Change any subset of the [limits](#limits). |
@@ -180,7 +179,7 @@ queued ──→ sending ──→ sent
 | State | Reason |
 |---|---|
 | `"sent"` | `nil` |
-| `"cancelled"` | `"cancelled"` (`handle:Cancel()`, `scope:CancelAll()`), `"closed"` (`scope:Close()`), `"shutdown"` (the addon's shutdown or `CloseAddonScopes`) |
+| `"cancelled"` | `"cancelled"` (`handle:Cancel()`, `scope:CancelAll()`), `"closed"` (`scope:Close()`), `"shutdown"` (`CloseAddonScopes`, which LifecycleKit calls at the addon's shutdown) |
 | `"failed"` | the key of `Enum.SendAddonMessageResult` the client returned (`"NotInGroup"`, `"InvalidChatType"`, ...), `"GeneralError"` for a legacy `false`, `"error"` when the send function raised (the error is reported), `"unavailable"` when the send function disappeared, `"tooLarge"` when `SetLimits` lowered `maxReassemblyBytesPerSender` below what the message, not yet started, declares |
 
 A result the enum does not name — one a client newer than this file added — is treated like a throttle: the pipe is set aside and the chunk retried, rather than the message failed.
@@ -452,7 +451,9 @@ local limits = CommKit:GetLimits() -- a fresh table
 
 ## Scopes and shutdown
 
-`ForAddon(addonName)` binds the scope to `LifecycleKit:ForAddon(addonName)`: when the addon shuts down, the scope closes, its pending sends complete as `"cancelled"` with the reason `"shutdown"`, its SyncSets close and its registrations disconnect. A scope requested after the addon shut down is returned closed. `CloseAddonScopes(addonName)` does the same on demand, so LifecycleKit can also call it in its shutdown sequence, as it does for HookKit and CommandKit.
+CommKit does not observe addon shutdown; the scope `ForAddon(addonName)` returns stays open until `CloseAddonScopes(addonName)` closes it. That call is the second half of the two-step TimerKit, SchedulerKit, EventKit, HookKit and CommandKit use: LifecycleKit makes it at `PLAYER_LOGOUT` when it is loaded, and an addon without LifecycleKit makes it from its own `PLAYER_LOGOUT` handler. Closing cancels the scope's pending sends, which complete as `"cancelled"` with the reason `"shutdown"`, closes its SyncSets and disconnects its registrations.
+
+Closing is terminal, as in TimerKit and SchedulerKit: the closed scope stays the addon's canonical scope, so a later `ForAddon(addonName)` returns it closed and its `Register`, `Send` and `SyncSet` return `nil, "closed"`. An addon that never asked for a scope has nothing to close, so the addon-scope map grows only with `ForAddon` calls.
 
 ## Secret values
 

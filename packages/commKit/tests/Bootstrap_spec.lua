@@ -104,14 +104,13 @@ describe("CommKit bootstrap", function()
     end)
 
     it("names each required package that is missing", function()
-        local chain =
-            { "Registry", "SignalKit", "EventKit", "LifecycleKit", "TimerKit", "SchedulerKit" }
+        local chain = { "Registry", "SignalKit", "EventKit", "TimerKit", "SchedulerKit" }
         local expected = {
             [1] = "SignalKit API 1",
             [2] = "EventKit API 1",
-            [3] = "LifecycleKit API 1",
-            [5] = "SchedulerKit API 1",
-            [6] = "PoolKit API 1",
+            [3] = "TimerKit API 1",
+            [4] = "SchedulerKit API 1",
+            [5] = "PoolKit API 1",
         }
         for loadedCount, message in pairs(expected) do
             TestEnv.Reset()
@@ -133,7 +132,6 @@ describe("CommKit bootstrap", function()
             "Registry",
             "SignalKit",
             "EventKit",
-            "LifecycleKit",
             "TimerKit",
             "SchedulerKit",
             "PoolKit",
