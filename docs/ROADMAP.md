@@ -952,6 +952,31 @@ without it.
       limits, commKit's LifecycleKit dependency removed, footprint lines,
       the dropdown limit) landed.
 
+#### Package G — distribution
+
+Decided 2026-09-23 with the project owner. Two release questions the release
+workflow had left open are settled: (1) both kinds of tag exist, a per-package
+`<kit>-v<version>` tag that releases one Kit and a bundle `v<version>` tag that
+seals a set of Kit versions tested together, the way Ace3 versions each library
+and ships as one; (2) the packager's required TOC becomes a real standalone
+"MoltenCodes" addon that loads every release Kit, so an addon author may embed
+the Kits or depend on the installed addon, and Registry lets both coexist.
+
+- [ ] **tooling / workflow** — `release.yml` triggers on `v*.*.*` and on
+      `<kit>-v*.*.*`; `check_tag` validates both forms (a package tag against
+      that package's manifest and a `### <kit>-v<version>` section); a package
+      tag builds and publishes that Kit alone.
+- [ ] **tooling** — `library_toc` produces the standalone addon's TOC (title,
+      notes, version placeholder, the site fields, `## Interface` from the
+      supported-client table, every release Kit in load order); the builder
+      writes it into the bundle root so the GitHub artifact installs as an
+      addon too; the packager job uses the same generator.
+- [ ] **docs** — RELEASES.md states the two tag kinds and the standalone
+      addon; EMBEDDING.md gains "Embed or depend": `## OptionalDeps:
+      MoltenCodes`, how Registry picks the newest copy, and what to do when an
+      addon embeds Kits while the standalone addon is also installed; the root
+      README says the framework installs as an addon or embeds.
+
 ### Standing obligations
 
 These apply to every phase rather than being completed once.
