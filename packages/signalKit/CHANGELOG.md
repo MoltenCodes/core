@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — 2026-09-23
+
+- Added named message buses. `SignalKit:Bus(name, options)` returns the bus shared by everything in the session that asks for that name, so two modules or two addons that hold no common reference can communicate. Each topic is dispatched through an ordinary SignalKit signal, created on its first subscription, so ordering, mutation-during-dispatch and re-entrancy semantics are exactly a signal's.
+- Added a validated topic policy. `bus:DeclareTopic(topic, options)` takes an exact argument count or a validator in `options.arguments`, plus `options.description`. `bus:Publish` on an undeclared topic, or with arguments that fail the policy, raises at the publishing line; `options.openTopics = true` on the bus lifts the declaration requirement for prototypes. Subscribing never requires a declaration, so load order does not matter. `bus:Topics()` lists declared topics, sorted.
+- Added `bus:Subscribe`, `bus:SubscribeOnce` (both returning the existing SignalKit connection handle), `bus:Unsubscribe(topic, callback)` and `bus:CreateScope()`, whose scopes offer `Subscribe`, `SubscribeOnce`, `DisconnectAll`, `Close` and `IsClosed`, mirroring EventKit's scopes.
+- Added `SignalKit:ForAddon(addonName)`, an addon's default bus, and `SignalKit:CloseAddonBus(addonName)`, which closes it terminally at shutdown.
+- Bus listener errors are isolated and reported through the host error handler, through `securecallfunction` when the client provides it and `xpcall` otherwise; they never reach the publisher. Raw signals are unchanged and still propagate listener errors to the caller of `Fire`.
+- Bounded by default: 64 buses, 256 topics per bus, 256 listeners per topic, each refused with `nil, "full"`. A steady-state publish allocates nothing on either isolation path; a spec guards it.
+- Implementation revision 4, with private package state (`_state`, schema 1) introduced to carry buses, topics, scopes and subscriptions through in-place upgrades. An upgrade over revisions 1 to 3 creates the state and leaves existing signals and connections untouched. The public-surface predicate now requires `Bus`, `ForAddon` and `CloseAddonBus`.
+- `SignalKit` API generation 1 is unchanged; every existing signal method behaves as before.
+
 ## 0.3.0 — 2026-09-22
 
 - Moved the bootstrap handshake onto `Registry:Bootstrap`. The package lookup, the refusal to reinterpret a newer revision's private state, the registration and the inherited-revision reporting now live in Registry; what stays here is the dependency check, the public-surface predicate, the state predicate and the migration itself.

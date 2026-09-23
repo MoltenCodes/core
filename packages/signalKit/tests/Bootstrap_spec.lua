@@ -39,14 +39,14 @@ describe("SignalKit package bootstrap", function()
         end)
     end)
 
-    it("registers itself as SignalKit API 1 revision 3", function()
+    it("registers itself as SignalKit API 1 revision 4", function()
         local SignalKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("signalKit", 1)
 
         assert.are.equal(SignalKit, selected)
-        assert.are.equal(3, revision)
+        assert.are.equal(4, revision)
         assert.are.equal(1, SignalKit.API)
-        assert.are.equal(3, SignalKit.REVISION)
+        assert.are.equal(4, SignalKit.REVISION)
     end)
 
     it("reuses the same package facade on duplicate embedding", function()
@@ -70,6 +70,106 @@ describe("SignalKit package bootstrap", function()
 
         assert.are.equal(first, second)
         assert.are.equal(1, calls)
+    end)
+
+    it("does not reset buses, topics or subscriptions on duplicate embedding", function()
+        local first = TestEnv.NewPackage()
+        local bus = first:Bus("Kept")
+        bus:DeclareTopic("Topic", { arguments = 1 })
+        local received
+        bus:Subscribe("Topic", function(value)
+            received = value
+        end)
+
+        local second = TestEnv.ReloadPackage()
+        second:Bus("Kept"):Publish("Topic", "still here")
+
+        assert.are.equal(bus, second:Bus("Kept"))
+        assert.are.equal("still here", received)
+    end)
+
+    it("does not reinterpret private state owned by a newer compatible revision", function()
+        local SignalKit, Registry = TestEnv.NewPackage()
+        local shippedRevision = SignalKit.REVISION
+        local upgraded, previous = Registry:Register("signalKit", 1, 99)
+        assert.are.equal(SignalKit, upgraded)
+        assert.are.equal(shippedRevision, previous)
+
+        local futureState = { schema = 999 }
+        rawset(SignalKit, "REVISION", 99)
+        rawset(SignalKit, "_state", futureState)
+
+        local reloaded = TestEnv.ReloadPackage()
+
+        assert.are.equal(SignalKit, reloaded)
+        assert.are.equal(99, reloaded.REVISION)
+        assert.are.equal(futureState, rawget(reloaded, "_state"))
+        assert.are.same({ schema = 999 }, futureState)
+    end)
+
+    it("upgrades a revision-3 copy, which had no buses and no state, in place", function()
+        TestEnv.Reset()
+        require("Registry")
+        local SignalKit = TestEnv.LoadRevision(3)
+        -- Strip what revision 3 never had, so the facade looks like it did.
+        rawset(SignalKit, "_state", nil)
+        rawset(SignalKit, "Bus", nil)
+        rawset(SignalKit, "ForAddon", nil)
+        rawset(SignalKit, "CloseAddonBus", nil)
+        local signal = SignalKit:New()
+        local calls = 0
+        signal:Connect(function()
+            calls = calls + 1
+        end)
+
+        local upgraded = TestEnv.ReloadPackage()
+        signal:Fire()
+        local bus = upgraded:Bus("New", { openTopics = true })
+        local received
+        bus:Subscribe("Topic", function(value)
+            received = value
+        end)
+        bus:Publish("Topic", "delivered")
+
+        assert.are.equal(SignalKit, upgraded)
+        assert.are.equal(4, upgraded.REVISION)
+        assert.are.equal(1, calls)
+        assert.are.equal("delivered", received)
+    end)
+
+    it("carries buses, topics, scopes and subscriptions into a newer revision", function()
+        local SignalKit = TestEnv.NewPackage()
+        TestEnv.InstallHostErrorHandler()
+        local bus = SignalKit:Bus("Carried")
+        bus:DeclareTopic("Topic", { arguments = 1 })
+        local scope = bus:CreateScope()
+        local received = {}
+        local connection = scope:Subscribe("Topic", function(value)
+            received[#received + 1] = value
+        end)
+
+        local upgraded = TestEnv.LoadRevision(5)
+        bus:Publish("Topic", "after upgrade")
+
+        assert.are.equal(SignalKit, upgraded)
+        assert.are.equal(5, upgraded.REVISION)
+        assert.are.equal(bus, upgraded:Bus("Carried"))
+        assert.are.same({ "Topic" }, bus:Topics())
+        assert.are.same({ "after upgrade" }, received)
+        assert.has_error(function()
+            bus:Publish("Topic")
+        end)
+        assert.are.equal(1, scope:DisconnectAll())
+        assert.is_false(connection:IsConnected())
+    end)
+
+    it("rejects a same-revision facade whose bus state is incomplete", function()
+        local SignalKit = TestEnv.NewPackage()
+        rawset(rawget(SignalKit, "_state"), "busPrototype", {})
+
+        expectErrorContaining("corrupted or incomplete", function()
+            TestEnv.ReloadPackage()
+        end)
     end)
 
     it("keeps the connection method table stable on duplicate embedding", function()

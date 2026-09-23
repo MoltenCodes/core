@@ -1,6 +1,6 @@
 # SignalKit
 
-SignalKit is the framework's small, deterministic observer primitive for pure-Lua communication.
+SignalKit is the framework's small, deterministic observer primitive for pure-Lua communication, and the home of its named message buses.
 
 It is intentionally independent from World of Warcraft's event system. Higher-level packages can use SignalKit for lifecycle notifications, state changes, completion callbacks, and internal framework events without coupling themselves to Frames or `RegisterEvent`.
 
@@ -20,6 +20,39 @@ SignalKit centralizes those semantics:
 - calling a signal or connection method without its receiver is reported as a
   SignalKit error at the calling line.
 
+## Named message buses
+
+A signal is anonymous, so two modules or two addons that share no reference
+cannot use one to talk. A bus gives signals names: `SignalKit:Bus(name)`
+returns the same bus to everyone who asks for that name, and each topic on it
+is an ordinary signal underneath, with the same ordering and re-entrancy rules.
+
+- Topics are declared with an argument count or a validator; publishing an
+  undeclared topic, or arguments that fail the policy, raises at the publishing
+  line. Buses created with `openTopics = true` skip the declaration, for
+  prototypes.
+- Subscribers may subscribe before the topic is declared, so load order never
+  matters.
+- Bus listeners are isolated from each other and from the publisher: a failure
+  is reported through the host error handler, using `securecallfunction` when
+  the client provides it.
+- `SignalKit:ForAddon(addonName)` is an addon's default bus, closed by
+  `SignalKit:CloseAddonBus(addonName)` at shutdown; `bus:CreateScope()` groups
+  subscriptions for one-call teardown.
+- Buses (64), topics per bus (256) and listeners per topic (256) are bounded;
+  a steady-state publish allocates nothing.
+
+```lua
+local bus = SignalKit:ForAddon("MyAddon")
+bus:DeclareTopic("ProfileChanged", { arguments = 1 })
+
+SignalKit:Bus("MyAddon"):Subscribe("ProfileChanged", function(profileName)
+    print("profile is now", profileName)
+end)
+
+bus:Publish("ProfileChanged", "Default")
+```
+
 ## Example
 
 ```lua
@@ -38,7 +71,7 @@ connection:Disconnect()
 
 ## Runtime dependency
 
-SignalKit depends on Registry API 2 only for embedded-package identity and revision selection. Its callback implementation uses standard Lua only and has no WoW API dependency.
+SignalKit depends on Registry API 2 only for embedded-package identity and revision selection. Its callback implementation uses standard Lua only. At the bus boundary it uses `securecallfunction` and `geterrorhandler` when the client provides them, and falls back to `xpcall` and `print` otherwise.
 
 Registry must be loaded before `SignalKit.lua`.
 
@@ -54,7 +87,7 @@ This keeps the hot dispatch path allocation-free while making both connection an
 
 ## Documentation
 
-- [`docs/API.md`](docs/API.md) — complete API and mutation semantics.
+- [`docs/API.md`](docs/API.md) — complete API, mutation semantics and named buses.
 - [`CHANGELOG.md`](CHANGELOG.md) — package evolution.
 - [`tests/README.md`](tests/README.md) — behavior covered by executable specs.
 
