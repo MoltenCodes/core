@@ -16,7 +16,7 @@ SchedulerKit is **not** a preemptive thread scheduler. A Lua callback must eithe
 - explicit cancellation handles;
 - delayed and fixed-delay repeating jobs through TimerKit;
 - manual and addon-owned cancellation scopes;
-- addon scopes closed through `SchedulerKit:CloseAddonScopes(addonName)`, which LifecycleKit calls at shutdown when it is loaded (without LifecycleKit, call it yourself on `PLAYER_LOGOUT`);
+- addon scopes closed through `SchedulerKit:CloseAddonScopes(addonName)`; an addon scope closes at logout whenever LifecycleKit or EventKit is loaded, and otherwise by your own call (see "At logout" in [`docs/API.md`](docs/API.md));
 - callback-error isolation, captured tracebacks, and per-job diagnostics;
 - the coalescing family: `Debounce` (quiet-period calls with `leading` and `maxWaitSeconds`), `Coalesce` (keys collected once per interval), `Watch` (shared-ticker polling), and named **lanes** that ration a scarce resource with an in-flight cap, a minimum interval, retry with backoff and a bounded queue;
 - stale delayed-callback protection;
@@ -71,6 +71,7 @@ Minimum footprint: Embed 3 files: Registry, TimerKit, SchedulerKit.
 
 Direct runtime dependencies: Registry API 2, TimerKit API 1.
 Every file above is required; omitting one makes this package raise at
-load. LifecycleKit is not a dependency: when an addon also embeds it,
-LifecycleKit closes the addon's scheduler scope at logout through
-`SchedulerKit:CloseAddonScopes`.
+load. LifecycleKit and EventKit are optional, never dependencies: when an
+addon also embeds LifecycleKit, it closes the addon's scheduler scope at
+logout through `SchedulerKit:CloseAddonScopes`; with EventKit alone,
+SchedulerKit's own `PLAYER_LOGOUT` connection does.

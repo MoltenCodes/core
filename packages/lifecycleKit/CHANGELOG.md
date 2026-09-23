@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 — 2026-09-23
+
+- Added `LifecycleKit.CLOSES_ADDON_SCOPES`, the read-only set of package ids whose addon scopes (for `signalKit`, the addon bus) shutdown closes: `timerKit`, `schedulerKit`, `eventKit`, `hookKit`, `commandKit`, `commKit`, `signalKit`. It is the contract the scope-owning Kits read to learn that LifecycleKit closes their addon scopes at logout; a revision without the field closes none as far as a reader is concerned, and the Kit then arranges the closing itself. With TimerKit 0.6.0, SchedulerKit 0.8.0 and EventKit 0.7.0, an addon scope closes at logout whatever revisions are paired, where pairing TimerKit 0.5.0 or SchedulerKit 0.6.0/0.7.0 with a LifecycleKit older than 0.5.0 used to leave it open. LifecycleKit 0.6.0 pairs with any revision of the other Kits.
+- The view refuses every write, including an overwrite of an existing entry, and hides its metatable; it is read with ordinary indexing. Documented under "Addon-scope capability" in `docs/API.md`.
+- Implementation revision 13. The state schema is unchanged: the capability set and its view live in `_state.addonScopeCapabilities`, seeded into older state and rewritten on every bootstrap, so every copy publishes the same table. `CLOSES_ADDON_SCOPES` joins the public-surface check, so a newer copy without it is refused. An upgrade from revision 12 replaces its host watchers like the older ones.
+- Specs: new `Capabilities_spec.lua` (published, listed, read-only, one table across reloads, seeded into older state, and a cross-check that it names exactly the packages shutdown calls into); `Bootstrap_spec.lua` refuses a newer revision without the field; `OwnedScopes_spec.lua` covers the upgrade from revision 12 as well.
+- `LifecycleKit` API generation 1 is unchanged; the addition is compatible.
+
 ## 0.5.0 — 2026-09-23
 
 - The dependency between LifecycleKit and TimerKit / SchedulerKit is inverted (design constitution, principle 4b). TimerKit 0.5.0 and SchedulerKit 0.6.0 no longer require LifecycleKit and no longer subscribe their addon scopes to its shutdown; LifecycleKit now calls into them. Both are declared under `optionalDependencies` and found through `Registry:Find("timerKit", 1)` and `Registry:Find("schedulerKit", 1)` at shutdown, with the same method-presence check as the other optional Kits.

@@ -18,7 +18,7 @@ PoolKit.lua
 CommKit.lua
 ```
 
-CommKit depends on Registry API 2, SignalKit API 1, EventKit API 1, TimerKit API 1 (the expiry and drop-report timers and the frame-rate ticker), SchedulerKit API 1 and PoolKit API 1: seven files with CommKit itself. It does not depend on LifecycleKit; see [Scopes and shutdown](#scopes-and-shutdown). Portable WoW code resolves the package through Registry:
+CommKit depends on Registry API 2, SignalKit API 1, EventKit API 1, TimerKit API 1 (the expiry and drop-report timers and the frame-rate ticker), SchedulerKit API 1 and PoolKit API 1: seven files with CommKit itself. It does not depend on LifecycleKit; see [Scopes and shutdown](#scopes-and-shutdown) and [At logout](#at-logout). Portable WoW code resolves the package through Registry:
 
 ```lua
 local CommKit = MoltenCodes.Registry:Get("commKit", 1)
@@ -33,13 +33,14 @@ Loading CommKit without one of its dependencies raises at load time with the mis
 | CodecKit API 1 | `SyncSet` frames and content hashes | `scope:SyncSet` raises at the caller: `CommKit.Scope:SyncSet requires CodecKit API 1, which is not loaded`. Sending and receiving strings is unaffected. |
 | HookKit API 1 | measuring traffic other code sends | Outside traffic is not charged to the budget. |
 | SchemaKit API 1 | `SyncSet` `options.schema` | A `schema` option raises at the caller. |
+| LifecycleKit API 1 | closing an addon scope at logout after the addon's shutdown callbacks (see [At logout](#at-logout)) | CommKit's own `PLAYER_LOGOUT` watcher closes it instead. |
 | `GetFramerate` | the low-frame-rate mode | The mode never engages. |
 | `UnitInParty`, `UnitInRaid` | evicting the streams of a sender who left the group | No eviction; streams still expire. |
 | `securecallfunction` | isolating callbacks | Callbacks run under `pcall`; an error is still reported. |
 | `issecretvalue` | refusing secret arguments and dropping secret payloads | Nothing is treated as secret. |
 | `geterrorhandler` | reporting callback errors and dropped streams | Reports are printed. |
 
-CodecKit, HookKit and SchemaKit are found with `Registry:Find` when they are used, so they may load in any order. Host functions are read with `rawget` on the global table when they are used.
+CodecKit, HookKit, SchemaKit and LifecycleKit are found with `Registry:Find` when they are used, so they may load in any order. Host functions are read with `rawget` on the global table when they are used.
 
 ### The client API CommKit calls
 
@@ -179,7 +180,7 @@ queued ──→ sending ──→ sent
 | State | Reason |
 |---|---|
 | `"sent"` | `nil` |
-| `"cancelled"` | `"cancelled"` (`handle:Cancel()`, `scope:CancelAll()`), `"closed"` (`scope:Close()`), `"shutdown"` (`CloseAddonScopes`, which LifecycleKit calls at the addon's shutdown) |
+| `"cancelled"` | `"cancelled"` (`handle:Cancel()`, `scope:CancelAll()`), `"closed"` (`scope:Close()`), `"shutdown"` (`CloseAddonScopes`, called at logout; see [At logout](#at-logout)) |
 | `"failed"` | the key of `Enum.SendAddonMessageResult` the client returned (`"NotInGroup"`, `"InvalidChatType"`, ...), `"GeneralError"` for a legacy `false`, `"error"` when the send function raised (the error is reported), `"unavailable"` when the send function disappeared, `"tooLarge"` when `SetLimits` lowered `maxReassemblyBytesPerSender` below what the message, not yet started, declares |
 
 A result the enum does not name — one a client newer than this file added — is treated like a throttle: the pipe is set aside and the chunk retried, rather than the message failed.
@@ -451,9 +452,24 @@ local limits = CommKit:GetLimits() -- a fresh table
 
 ## Scopes and shutdown
 
-CommKit does not observe addon shutdown; the scope `ForAddon(addonName)` returns stays open until `CloseAddonScopes(addonName)` closes it. That call is the second half of the two-step TimerKit, SchedulerKit, EventKit, HookKit and CommandKit use: LifecycleKit makes it at `PLAYER_LOGOUT` when it is loaded, and an addon without LifecycleKit makes it from its own `PLAYER_LOGOUT` handler. Closing cancels the scope's pending sends, which complete as `"cancelled"` with the reason `"shutdown"`, closes its SyncSets and disconnects its registrations.
+CommKit does not observe addon shutdown; the scope `ForAddon(addonName)` returns stays open until `CloseAddonScopes(addonName)` closes it. That call is the second half of the two-step TimerKit, SchedulerKit, EventKit, HookKit and CommandKit use, and `ForAddon` makes sure somebody makes it at logout: see [At logout](#at-logout). Closing cancels the scope's pending sends, which complete as `"cancelled"` with the reason `"shutdown"`, closes its SyncSets and disconnects its registrations.
 
 Closing is terminal, as in TimerKit and SchedulerKit: the closed scope stays the addon's canonical scope, so a later `ForAddon(addonName)` returns it closed and its `Register`, `Send` and `SyncSet` return `nil, "closed"`. An addon that never asked for a scope has nothing to close, so the addon-scope map grows only with `ForAddon` calls.
+
+## At logout
+
+An addon scope is closed at logout whatever LifecycleKit and CommKit revisions an addon set pairs. CommKit never depends on LifecycleKit (design constitution, principle 4b); `ForAddon` finds it with `Registry:Find` and decides who closes the scope:
+
+| Case | Registered | Who closes the addon scope |
+|---|---|---|
+| (a) | LifecycleKit whose `LifecycleKit.CLOSES_ADDON_SCOPES` names `commKit` (0.6.0 and later) | LifecycleKit, after the addon's shutdown callbacks. `ForAddon` only makes sure the addon has a LifecycleKit instance (`LifecycleKit:ForAddon(addonName)`), because LifecycleKit closes the scopes of the addons it tracks. |
+| (b) | LifecycleKit without that field (older revisions) | CommKit subscribes once to `LifecycleKit:ForAddon(addonName):OnShutdown` and calls `CloseAddonScopes` there. The subscription is kept on the scope and disconnected when the scope closes first. |
+| (c) | no LifecycleKit | One package-level `Once("PLAYER_LOGOUT")` connection in CommKit's own EventKit scope, made on the first `ForAddon` that needs it, closes every addon scope in this case, in addon-name order. |
+| (d) | — | Does not arise: EventKit is a required dependency, so case (c) is always available and an addon never has to close its scope itself. |
+
+The decision is made at the first `ForAddon(addonName)` and taken again by every later `ForAddon` while it is (c), so a LifecycleKit that loads after the first call still takes the scope over. The (c) watcher leaves a scope that moved to (a) or (b) to LifecycleKit. A failure in LifecycleKit while deciding goes to the host error handler; `ForAddon` still returns the scope, and the next call asks again.
+
+In case (b) CommKit's `OnShutdown` subscription is made at the first `ForAddon`, so it runs before the addon's own shutdown callbacks subscribed later, which then find the scope closed and their pending sends cancelled. Only case (a) guarantees that shutdown callbacks can still send, which is why LifecycleKit 0.6.0 announces the list. Manual scopes are never closed at logout.
 
 ## Secret values
 
@@ -492,4 +508,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 ## Upgrades
 
-The package state (`_state`) holds the queues, the bucket, the limits, the statistics, the reassembly streams, the prefix signals, the Kit-owned scopes and the pools, and all of it is kept across an in-place upgrade: a newer compatible revision replaces the functions on the shared prototypes and in the dispatch table, and every callback CommKit handed to EventKit, TimerKit, SchedulerKit and HookKit calls through that table, so queued sends, open streams, registrations and SyncSets keep working under the new code. The wire protocol belongs to API generation 1, not to the revision.
+The package state (`_state`) holds the queues, the bucket, the limits, the statistics, the reassembly streams, the prefix signals, the Kit-owned scopes and the pools, and all of it is kept across an in-place upgrade: a newer compatible revision replaces the functions on the shared prototypes and in the dispatch table, and every callback CommKit handed to EventKit, TimerKit, SchedulerKit and HookKit calls through that table, so queued sends, open streams, registrations and SyncSets keep working under the new code.
+
+Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: the subscription calls the facade and the watcher calls through the `logout` trampoline, so both run the newest code, and nothing is subscribed twice. The wire protocol belongs to API generation 1, not to the revision.

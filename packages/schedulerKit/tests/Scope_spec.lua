@@ -126,8 +126,9 @@ describe("SchedulerKit scopes", function()
         assert.are.equal(first, second)
         assert.are.equal("Example", first:GetAddonName())
 
-        -- SchedulerKit does not observe logout; LifecycleKit calls
-        -- CloseAddonScopes at shutdown, and its own suite covers that.
+        -- With neither LifecycleKit nor EventKit loaded nobody observes
+        -- logout, so the scope stays open until the addon's own call
+        -- (LogoutCoverage_spec.lua covers the other routes).
         TestEnv.Logout()
         assert.is_false(first:IsClosed())
         assert.are.equal("pending", job:GetState())

@@ -74,7 +74,7 @@ describe("TimerKit bootstrap", function()
 
         local upgraded = require("TimerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(6, upgraded.REVISION)
+        assert.are.equal(7, upgraded.REVISION)
         assert.are.equal(timerPrototype, upgraded.Timer)
 
         -- A timer object created by revision 1 gains the revision-2 user-data
@@ -162,7 +162,7 @@ describe("TimerKit bootstrap", function()
         local upgraded = require("TimerKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(6, upgraded.REVISION)
+        assert.are.equal(7, upgraded.REVISION)
         assert.are.equal(1, disconnects)
         assert.is_nil(rawget(carried, "_shutdownSubscription"))
         assert.is_nil(rawget(failing, "_shutdownSubscription"))

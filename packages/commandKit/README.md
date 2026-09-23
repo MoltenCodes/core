@@ -75,15 +75,11 @@ any order:
 - ClientKit API 1, used to recognise a secret value; without it CommandKit asks
   the host's `issecretvalue` directly.
 
-Register commands at load or in your addon's loaded phase. Addon scopes are
-closed by whoever observes the addon's shutdown. Without LifecycleKit, close
-yours on logout:
-
-```lua
-EventKit:Once("PLAYER_LOGOUT", function()
-    CommandKit:CloseAddonScopes("MyAddon")
-end)
-```
+Register commands at load or in your addon's loaded phase. At logout an addon
+scope is closed by LifecycleKit, or by CommandKit's own `PLAYER_LOGOUT` watcher
+when only EventKit is loaded; with neither, call
+`CommandKit:CloseAddonScopes("MyAddon")` yourself (see "At logout" in
+[`docs/API.md`](docs/API.md#at-logout)).
 
 Closing leaves the slash name in the client's tables pointing at a dispatcher
 that does nothing: the client caches slash functions, so the entry cannot be

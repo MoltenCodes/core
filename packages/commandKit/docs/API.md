@@ -35,6 +35,8 @@ CommandKit does not rely on `require()` at runtime.
 | OptionsKit API 1, through `Registry:Find` | `BindOptions` | `BindOptions` raises at the caller. |
 | LocaleKit API 1, through `Registry:Find` | `context:Printf` | `string.format`, without indexed specifiers. |
 | ClientKit API 1, through `Registry:Find` | every secret check but the taken check, which asks `issecretvalue` directly | The host's `issecretvalue`; without that, nothing is secret. |
+| LifecycleKit API 1, through `Registry:Find` | closing an addon scope at logout (see [At logout](#at-logout)) | EventKit's `PLAYER_LOGOUT` closes it instead. |
+| EventKit API 1, through `Registry:Find` | closing an addon scope at logout when LifecycleKit is absent | Without either, the consumer closes it (case d). |
 
 Host globals are read with `rawget` when they are used, never cached at load.
 
@@ -379,6 +381,21 @@ Candidates are matched on their start, without case, at most `maxCompletions` (3
 
 **How it is installed, and the trade-off.** The client calls `ChatEdit_CustomTabPressed(editBox)` from its tab handler and skips its own completion when it returns `true`; the global is the client's documented extension point and does nothing by itself. A secure post-hook (`hooksecurefunc`) cannot be used, because a post-hook's return value is discarded and the client would complete over CommandKit's result. CommandKit therefore replaces the global once, remembering the previous function and calling it for everything it does not complete — the chain other completion libraries use too. The global becomes addon code; the client calls it through its secure-call wrapper, which keeps that taint away from the rest of its tab handling. When the last scope turns completion off, CommandKit writes the previous function back if its replacement is still the installed one; if another addon has replaced the global since, CommandKit's function stays in that addon's chain, forwarding every call.
 
+## At logout
+
+An addon scope is closed at logout whenever the framework can observe logout at all, whichever LifecycleKit, EventKit and CommandKit revisions an addon set pairs. CommandKit never depends on LifecycleKit (design constitution, principle 4b); `ForAddon` finds the other two Kits with `Registry:Find` and decides who closes the scope:
+
+| Case | Registered | Who closes the addon scope |
+|---|---|---|
+| (a) | LifecycleKit whose `LifecycleKit.CLOSES_ADDON_SCOPES` names `commandKit` (0.6.0 and later) | LifecycleKit, after the addon's shutdown callbacks. `ForAddon` only makes sure the addon has a LifecycleKit instance (`LifecycleKit:ForAddon(addonName)`), because LifecycleKit closes the scopes of the addons it tracks. |
+| (b) | LifecycleKit without that field (older revisions) | CommandKit subscribes once to `LifecycleKit:ForAddon(addonName):OnShutdown` and calls `CloseAddonScopes` there. The subscription is kept on the scope and disconnected when the scope closes first. |
+| (c) | EventKit, no LifecycleKit | One package-level EventKit `Once("PLAYER_LOGOUT")` connection, in CommandKit's own EventKit scope and made on the first `ForAddon` that needs it, closes every addon scope in cases (c) and (d), in addon-name order. |
+| (d) | neither | Nothing is subscribed. The consumer closes the scope itself on `PLAYER_LOGOUT`: `CommandKit:CloseAddonScopes("MyAddon")`. |
+
+The decision is made at the first `ForAddon(addonName)` and taken again by every later `ForAddon` while it is (c) or (d), so a LifecycleKit that loads after the first call still takes the scope over. The (c) watcher leaves a scope that moved to (a) or (b) to LifecycleKit. A failure in another Kit while deciding goes to the host error handler; `ForAddon` still returns the scope, and the next call asks again.
+
+In case (b) CommandKit's `OnShutdown` subscription is made at the first `ForAddon`, so it runs before the addon's own shutdown callbacks subscribed later, which then find the scope already closed. Only case (a) guarantees that shutdown callbacks can still use it, which is why LifecycleKit 0.6.0 announces the list. Manual scopes are never closed at logout. Closing leaves every slash name inert, as `Close` always does (see [Inert globals and re-registration](#inert-globals-and-re-registration)).
+
 ## Secret values
 
 On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). CommandKit asks ClientKit's `IsSecret` when ClientKit is registered, and the host's `issecretvalue` otherwise.
@@ -474,5 +491,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 ## Embedded copies and upgrades
 
 Several addons may embed CommandKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: scopes, commands, the slash dispatchers already in the client's tables and the completion replacement stay, because every one of them calls through shared package state that the newer copy rewrites. Scopes and contexts gain the newer copy's methods through the shared `CommandKit.Scope` and `CommandKit.Context` prototypes. The `CommandKit.UNBOUNDED` sentinel and the package-wide limits live in the package state too, so a newer copy publishes the same sentinel and inherits every limit a consumer set, and a scope keeps the limits it was created with.
+
+Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
 
 Nothing survives `/reload`: commands are registered again when the addon loads.

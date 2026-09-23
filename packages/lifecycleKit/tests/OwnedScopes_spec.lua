@@ -50,7 +50,7 @@ describe("LifecycleKit shutdown of addon-owned scopes", function()
         assert.are.same({}, TestEnv.TakeReportedErrors())
     end)
 
-    it("leaves other addons' and manual timer and scheduler scopes open", function()
+    it("leaves manual scopes open and closes every addon's timer and scheduler scope", function()
         LifecycleKit:ForAddon("MyAddon")
         TimerKit:ForAddon("MyAddon")
         local manualTimers = TimerKit:CreateScope()
@@ -62,9 +62,10 @@ describe("LifecycleKit shutdown of addon-owned scopes", function()
         assert.is_true(TimerKit:ForAddon("MyAddon"):IsClosed())
         assert.is_false(manualTimers:IsClosed())
         assert.is_true(manualTicker:IsPending())
-        -- OtherAddon never asked LifecycleKit for an instance, so nobody
-        -- observed its shutdown and its scope stays open.
-        assert.is_false(otherJobs:IsClosed())
+        -- OtherAddon never asked LifecycleKit for an instance, but
+        -- SchedulerKit's ForAddon made sure it has one (it reads
+        -- CLOSES_ADDON_SCOPES), so the shutdown pass reaches its scope too.
+        assert.is_true(otherJobs:IsClosed())
     end)
 
     it("runs shutdown callbacks while the addon's timers and jobs are still live", function()
@@ -557,12 +558,13 @@ end)
 describe("LifecycleKit upgrade from an older schema-3 revision", function()
     after_each(TestEnv.Reset)
 
-    -- Revisions 7 to 11 already wrote schema 3, but each one's logout watcher
-    -- calls its own handler, and every one of them misses scopes later
+    -- Revisions 7 to 12 already wrote schema 3, but each one's logout watcher
+    -- calls its own handler, and revisions 7 to 11 miss scopes later
     -- revisions close: none closes a TimerKit or SchedulerKit scope. The
     -- upgrade must replace that watcher, or logout would keep running the
-    -- older code.
-    for oldRevision = 7, 11 do
+    -- older code. Revision 12 closes the same scopes as 13; its watcher is
+    -- replaced all the same, so the running handler is always the newest.
+    for oldRevision = 7, 12 do
         it(
             "replaces revision " .. oldRevision .. "'s host watchers so logout closes what it owns",
             function()
@@ -631,7 +633,8 @@ describe("LifecycleKit upgrade from an older schema-3 revision", function()
                 local subscription = SignalKit:ForAddon("CarriedOver"):Subscribe("Anything", noop)
 
                 assert.are.equal(old, upgraded)
-                assert.are.equal(12, upgraded.REVISION)
+                assert.are.equal(13, upgraded.REVISION)
+                assert.is_true(upgraded.CLOSES_ADDON_SCOPES.timerKit)
                 assert.is_false(oldLogoutWatcher:IsConnected())
 
                 TestEnv.Logout()

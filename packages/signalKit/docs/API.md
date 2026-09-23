@@ -267,9 +267,43 @@ delivers nothing and skips the topic policy, because other addons' shutdown
 paths may still publish into it; the topic is still checked to be a non-empty
 string.
 
-SignalKit does not observe addon shutdown itself. Whoever does — LifecycleKit,
-in the framework — calls `CloseAddonBus` at the addon's shutdown, the same
-two-step arrangement as EventKit's `CloseAddonScopes`.
+SignalKit does not observe addon shutdown itself. Whoever does calls
+`CloseAddonBus` at the addon's shutdown, the same two-step arrangement as
+EventKit's `CloseAddonScopes`, and `ForAddon` makes sure somebody does: see
+[At logout](#at-logout).
+
+### At logout
+
+An addon's bus is closed at logout whenever the framework can observe logout
+at all, whichever LifecycleKit, EventKit and SignalKit revisions an addon set
+pairs. SignalKit depends on neither Kit (design constitution, principle 4b);
+`SignalKit:ForAddon` finds them with `Registry:Find` and decides who closes the
+bus named after the addon:
+
+| Case | Registered | Who closes the addon's bus |
+|---|---|---|
+| (a) | LifecycleKit whose `LifecycleKit.CLOSES_ADDON_SCOPES` names `signalKit` (0.6.0 and later) | LifecycleKit, after the addon's shutdown callbacks and last of the addon's scopes. `ForAddon` only makes sure the addon has a LifecycleKit instance (`LifecycleKit:ForAddon(addonName)`), because LifecycleKit closes the buses of the addons it tracks. |
+| (b) | LifecycleKit without that field (older revisions) | SignalKit subscribes once to `LifecycleKit:ForAddon(addonName):OnShutdown` and calls `CloseAddonBus` there. The subscription is kept on the bus and disconnected when the bus closes first. |
+| (c) | EventKit, no LifecycleKit | One package-level EventKit `Once("PLAYER_LOGOUT")` connection, in SignalKit's own EventKit scope and made on the first `ForAddon` that needs it, closes every addon bus in cases (c) and (d), in name order. |
+| (d) | neither | Nothing is subscribed. The consumer closes the bus itself on `PLAYER_LOGOUT`: `SignalKit:CloseAddonBus("MyAddon")`. |
+
+The decision is made at the first `ForAddon(addonName)` and taken again by
+every later `ForAddon` while it is (c) or (d), so a LifecycleKit that loads
+after the first call still takes the bus over. The (c) watcher leaves a bus
+that moved to (a) or (b) to LifecycleKit. A failure in another Kit while
+deciding goes to the host error handler; `ForAddon` still returns the bus, and
+the next call asks again.
+
+Only a bus `ForAddon` has returned is closed at logout. A bus obtained only
+through `SignalKit:Bus(name)` is a shared bus, not an addon's, and stays open
+even when its name is an addon's; once `ForAddon` names it, it is that addon's
+bus.
+
+In case (b) SignalKit's `OnShutdown` subscription is made at the first
+`ForAddon`, so it runs before the addon's own shutdown callbacks subscribed
+later, which then find the bus closed. Only case (a) guarantees that shutdown
+callbacks can still publish to their subscribers, which is why LifecycleKit
+0.6.0 announces the list.
 
 ### Topic policy: `bus:DeclareTopic(topic, options)`
 
@@ -500,5 +534,18 @@ creates both with the defaults and gives every existing bus the default
 `maxTopics` and `maxListeners`, recorded as not yet stated, so the first
 caller that states one still sets it. A later revision inherits the sentinel
 identity, the limits a consumer set, and each bus's own limits.
+
+Revision 6 moved the state to schema 3, which adds the logout watcher
+(`logoutWatch`) and gives every bus two fields: who closes it at logout
+(`_logoutCloser`, `false` for a bus `ForAddon` has not returned) and the case
+(b) `OnShutdown` subscription. An upgrade over revision 5 adds both with
+`false`, because revision 5 did not record which buses `ForAddon` returned:
+such a bus is taken for the addon's at its next `ForAddon`. An upgrade over
+revision 6 or later arranges the [logout close](#at-logout) of every open addon
+bus it inherits while it loads, and keeps the subscriptions and the watcher
+without subscribing again: the subscription calls the facade and the watcher
+calls through `logoutWatch.close`, which the newer copy replaces. That
+arrangement runs after the commit and under `pcall`, so a failure in another
+Kit is reported and never fails the load.
 
 As with every Registry-managed package, a revision is selected before package initialization completes. Package initialization is therefore written so that all fallible dependency validation occurs before registration and the post-registration commit path performs only local deterministic mutations.

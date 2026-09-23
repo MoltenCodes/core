@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 — 2026-09-23
+
+- An addon's bus is now closed at logout whenever the framework can observe logout, whichever revisions are paired. `SignalKit:ForAddon(addonName)` finds LifecycleKit and EventKit with `Registry:Find` and leaves the bus to a LifecycleKit whose `CLOSES_ADDON_SCOPES` names `signalKit` (making sure the addon has a LifecycleKit instance), subscribes once to an older LifecycleKit's `OnShutdown`, or, without LifecycleKit, connects one package-level `PLAYER_LOGOUT` watcher in SignalKit's own EventKit scope. With neither, nothing is subscribed and the consumer calls `CloseAddonBus` on `PLAYER_LOGOUT`, as before. The decision is taken again by later `ForAddon` calls until LifecycleKit has taken the bus over. Only buses `ForAddon` returned are closed at logout; a bus obtained only through `SignalKit:Bus` is not. See "At logout" in `docs/API.md`.
+- `CloseAddonBus` disconnects the `OnShutdown` subscription of a bus that closes before logout.
+- LifecycleKit API 1 and EventKit API 1 are declared under `optionalDependencies`. Both depend on SignalKit, so these are cycles through optional edges, which the manifest rules allow; SignalKit still requires only Registry API 2.
+- Implementation revision 6, with package state schema 3: the `logoutWatch` table and, on every bus, `_logoutCloser` and `_shutdownSubscription`. An upgrade over revision 5 adds them (no bus is taken for an addon's until its next `ForAddon`, because revision 5 did not record that); an upgrade over revision 6 or later arranges the logout close of the open addon buses it inherits and keeps the subscriptions and the watcher. The state predicate now requires `logoutWatch` and its `close` function.
+- 153 specs; `LogoutClose_spec.lua` covers the four cases, a bus first obtained through `Bus`, re-evaluation, a failure in another Kit, the subscription disconnected by an early `CloseAddonBus`, and the upgrades. The bootstrap specs now expect revision 6 and schema 3 and load revision 7 as the newer copy.
+- `SignalKit` API generation 1 is unchanged.
+
 ## 0.5.0 — 2026-09-23
 
 - Every bus bound can now be opened on purpose, per the design constitution's "bounded by default, opened on purpose". The defaults are unchanged and a bound reached is still refused with `nil, "full"`.

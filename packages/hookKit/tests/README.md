@@ -11,13 +11,14 @@ The HookKit suite covers:
 - scopes: double-hook refusal, targets that are not functions, `MAX_HOOKS` and `"full"`, `Hooks()` order and kinds, no records created by lookups, `UnhookAll` (also when one release raises), terminal `Close` refusing every hook method at the caller, `ForAddon` and `CloseAddonScopes` (nothing recorded for an addon without a scope, facade receiver required), and a hooked table that is garbage-collected;
 - secret values: arguments and results passing through every semantic untouched without a single `issecretvalue` probe on the call path, a secret error object reaching the host unchanged, and secret names refused with and without ClientKit;
 - allocation guards (`collectgarbage("count")` with the collector stopped) on a hooked call of every semantic, on an inert closure, and on `IsHooked`, `Original` and `GetActiveCount`;
-- duplicate embedded loading, Registry publication, loading without ClientKit, yielding to a newer revision, a missing Registry, an incomplete facade, and an in-place upgrade to revision 2 that keeps every kind of hook active and releasable, and one that keeps `UNBOUNDED` and each scope's `maxHooks`;
+- closing addon scopes at logout: a LifecycleKit that names `hookKit` in `CLOSES_ADDON_SCOPES` left to close the scope after the shutdown callbacks (also for an addon without its own LifecycleKit instance), an older LifecycleKit's `OnShutdown` subscription (made once, disconnected by an early `CloseAddonScopes` or `Close`, and also used for a list that does not name `hookKit`), the one `PLAYER_LOGOUT` watcher through EventKit, nothing arranged without either, the decision taken again when LifecycleKit loads later, a failure in another Kit reported, the upgrade of a revision-1 scope layout, and the subscription and watcher kept across an upgrade;
+- duplicate embedded loading, Registry publication, loading without ClientKit, yielding to a newer revision, a missing Registry, an incomplete facade, and an in-place upgrade to the next revision that keeps every kind of hook active and releasable, and one that keeps `UNBOUNDED` and each scope's `maxHooks`;
 - `error` levels: every argument failure and refusal reports the caller's own line;
 - manifest/runtime API and revision consistency.
 
 The shared fixture does not model `hooksecurefunc`, `issecurevariable`, `InCombatLockdown` or frame scripts, so `support/HookKitTestEnv.lua` stubs them for this suite only and removes the globals again in `Reset`. Its `hooksecurefunc` carries up to four results so a hooked call through it allocates nothing, and its `issecurevariable` follows the client: a raw field is secure when it holds a function a spec marked with `MarkSecure`, and an absent raw key is secure. `NewFrame` builds a fake frame whose methods live in its metatable, as a real frame's do, whose `SetScript` drops the script's `HookScript` post-hooks (the case HookKit must never cause), and `RunScript` fires a script followed by its `HookScript` post-hooks.
 
-ClientKit is declared under `optionalDependencies`, so the runner puts it on `LUA_PATH`; `NewPackageWithoutClientKit` loads Registry and HookKit alone.
+ClientKit, EventKit and LifecycleKit are declared under `optionalDependencies`, so the runner puts them on `LUA_PATH`; `NewPackageWithoutClientKit` loads Registry and HookKit alone, and `LoadEventKit` and `LoadLifecycleKit` add the other two after HookKit. `SetClosesAddonScopes` writes `LifecycleKit.CLOSES_ADDON_SCOPES` onto the loaded facade with `rawset`, or removes it to model a LifecycleKit older than 0.6.0.
 
 | Spec | Covers |
 |---|---|
@@ -30,5 +31,6 @@ ClientKit is declared under `optionalDependencies`, so the runner puts it on `LU
 | `SecretValues_spec.lua` | secrets passing through; secret names refused |
 | `Allocation_spec.lua` | allocation guards |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |
+| `LogoutClose_spec.lua` | who closes an addon scope at logout, in each of the four cases, and across upgrades |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |
 | `Manifest_spec.lua` | manifest and runtime metadata |

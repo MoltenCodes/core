@@ -314,7 +314,7 @@ describe("CommandKit limits", function()
                 scope:Register("c" .. index, { handler = noop })
             end
 
-            local upgraded = TestEnv.LoadRevision(2)
+            local upgraded = TestEnv.LoadRevision(CommandKit.REVISION + 1)
             assert.are.equal(CommandKit, upgraded)
             assert.are.equal(sentinel, upgraded.UNBOUNDED)
             assert.are.same(

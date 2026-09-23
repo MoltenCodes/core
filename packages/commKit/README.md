@@ -69,9 +69,9 @@ Direct runtime dependencies: Registry API 2, SignalKit API 1, EventKit API 1,
 TimerKit API 1, SchedulerKit API 1 and PoolKit API 1. Every file above is
 required; omitting one makes this package raise at load.
 
-CommKit does not observe addon shutdown. LifecycleKit, when you embed it, calls
-`CommKit:CloseAddonScopes(addonName)` at logout; without it, call that from your
-own `PLAYER_LOGOUT` handler.
+At logout an addon scope is closed by LifecycleKit when it is loaded, and by
+CommKit's own `PLAYER_LOGOUT` watcher otherwise (see "At logout" in
+[`docs/API.md`](docs/API.md#at-logout)); you never close it yourself.
 
 Optional: CodecKit API 1 (required by `SyncSet`), HookKit API 1 (measures
 traffic other code sends) and SchemaKit API 1 (validates `SyncSet` fields).

@@ -9,12 +9,13 @@ This document describes implementation invariants for maintainers. It is not an 
 | Field | Meaning |
 |---|---|
 | `schema` | The state layout version, `1`. |
-| `dispatch` | `isolatedCall` and `replacementCall`; every closure HookKit installs calls through it. |
+| `dispatch` | `isolatedCall`, `replacementCall` and `closeAddonScopesAtLogout`; every closure HookKit installs, and the logout watcher's trampoline, call through it. |
 | `runtimeRevision` | The revision that last committed its functions. |
 | `scopeMetatable` | The metatable every scope shares; its `__index` is `HookKit.Scope`. |
 | `addonScopes` | Addon name to that addon's canonical scope. At most one per addon name. |
 | `secureStatus` | Weak-keyed: hooked object to `{ [method] = boolean }`, whether the target was secure the first time HookKit checked it. For a method that is not a raw field, `findHolder` walks at most `MAX_INDEX_DEPTH` (8) `__index` tables to the table holding it, and that table is what `issecurevariable` is asked about. |
 | `secureScripts` | Weak-keyed: frame to `{ [script] = count }` of active `SecureHookScript` records across every scope. A script pre-hook or replacement is refused while the count is positive; release decrements it and deletes empty tables. |
+| `logoutWatch` | `{ scope, connection, trampoline }`: HookKit's own EventKit scope, its one `PLAYER_LOGOUT` `Once` connection and the trampoline handed to it, each `false` until the first `ForAddon` in case (c) of "At logout" creates it. Added by revision 2; an upgrade over revision 1 adds it. |
 | `unbounded` | The `HookKit.UNBOUNDED` sentinel, created once so every revision publishes the same table and a scope's `_maxHooks` keeps meaning "unbounded" after an upgrade. The current-state predicate requires the facade field to be this table. |
 
 The scope prototype is published as `HookKit.Scope`, like EventKit's and TimerKit's.
@@ -25,12 +26,14 @@ A scope is one table with a fixed set of private fields, all created by `newScop
 
 | Field | Meaning |
 |---|---|
-| `_schema` | The scope layout version, `1`. |
+| `_schema` | The scope layout version, `2` (revision 2 added the two logout fields). |
 | `_addonName` | The owning addon name, or `false` for a manual scope. |
 | `_closed` | Whether `Close` (or `CloseAddonScopes`) ran. |
 | `_maxHooks` | The scope's limit: a positive integer (default `MAX_HOOKS`, 256) or the `unbounded` sentinel. Set at creation and never rewritten; a later `ForAddon` naming a different value is refused. |
 | `_sequence` | The creation counter records are stamped with. |
 | `_records` | Weak-keyed: hooked object (or `_G`) to `{ [method or script] = record }`. |
+| `_logoutCloser` | Who closes the scope at logout: `false` for a manual scope, else `"lifecycleKit"`, `"onShutdown"`, `"playerLogout"` or `"none"` (the cases of "At logout" in `API.md`). Only `"none"` and `"playerLogout"` are decided again. |
+| `_shutdownSubscription` | The LifecycleKit `OnShutdown` subscription of case (b), or `false`. `Close` disconnects it. |
 
 There is no stored hook count. `countRecords` walks `_records`, which holds at most `_maxHooks` entries, so a record that disappears with its garbage-collected object stops counting at once instead of holding a slot for ever. `hasRoom` returns `true` without counting when `_maxHooks` is the `unbounded` sentinel, so an unbounded scope never pays a walk per install.
 
@@ -86,3 +89,5 @@ Every public method calls its installer and returns the results through locals r
 ## Upgrades
 
 The bootstrap follows the Registry pattern. A copy that inherits state validates the shared fields and reuses `scopeMetatable`, `addonScopes`, `secureStatus` and `dispatch`, then rewrites the prototype methods and the dispatch functions. Closures installed by an older copy capture the shared `dispatch` table, not a function, so they run the newest behaviour. A revision that changes the record or scope layout must migrate by `_schema`, lazily or by walking `addonScopes`; manual scopes are reachable only through their owners, so a lazy migration on first use is the one that covers them.
+
+Revision 2 does this for scope layout 2: it walks `addonScopes` and gives every layout-1 scope `_logoutCloser = "none"` and `_shutdownSubscription = false`, and adds `logoutWatch` to the state. A manual layout-1 scope is left as built: the logout code reads both fields with `rawget` and treats a missing one as "nothing to do". After committing, an upgrading copy arranges the logout close of every open addon scope, in addon-name order.

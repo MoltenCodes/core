@@ -58,11 +58,7 @@ method, script or addon name. HookKit looks it up with `Registry:Find` when it
 validates a name, so it may load in any order; without it HookKit asks the
 host's `issecretvalue` directly.
 
-Addon scopes are closed by whoever observes the addon's shutdown. Without
-LifecycleKit, close yours on logout:
-
-```lua
-EventKit:Once("PLAYER_LOGOUT", function()
-    HookKit:CloseAddonScopes("MyAddon")
-end)
-```
+At logout an addon scope is closed by LifecycleKit, or by HookKit's own
+`PLAYER_LOGOUT` watcher when only EventKit is loaded; with neither, call
+`HookKit:CloseAddonScopes("MyAddon")` yourself (see "At logout" in
+[`docs/API.md`](docs/API.md#at-logout)).

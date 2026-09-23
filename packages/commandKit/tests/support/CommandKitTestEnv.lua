@@ -28,6 +28,11 @@
 --- needs), `NewPackageWithLocaleKit` adds LocaleKit, `NewPackageWithClientKit`
 --- adds ClientKit, and `NewPackageAlone` models an addon that embeds only
 --- Registry, SchemaKit and CommandKit.
+---
+--- EventKit and LifecycleKit are optional dependencies too: they decide who
+--- closes an addon scope at logout. `LoadEventKit` and `LoadLifecycleKit` load
+--- them on top of the chain, after CommandKit, as an addon that embeds them
+--- later would; `Reset` unloads them again.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local CommandKitTestEnv = FrameworkTestEnv.New({
@@ -46,7 +51,19 @@ local CHAT_GLOBALS = {
 }
 
 --- Every module a variant of `NewPackage` may load, cleared by `Reset`.
-local EXTRA_MODULES = { "LocaleKit", "ClientKit" }
+local EXTRA_MODULES = { "LocaleKit", "ClientKit", "LifecycleKit", "EventKit" }
+
+--- What LifecycleKit 0.6.0 publishes as `CLOSES_ADDON_SCOPES`: the package ids
+--- whose addon scopes (or bus) it closes at shutdown.
+local CLOSES_ADDON_SCOPES = {
+    timerKit = true,
+    schedulerKit = true,
+    eventKit = true,
+    hookKit = true,
+    commandKit = true,
+    commKit = true,
+    signalKit = true,
+}
 
 local chatLines = {}
 local originalTabCalls = 0
@@ -176,6 +193,42 @@ function CommandKitTestEnv.NewPackageAlone()
     local SchemaKit = require("SchemaKit")
     local CommandKit = require("CommandKit")
     return CommandKit, Registry, SchemaKit
+end
+
+---Load EventKit (and SignalKit, which it requires) on top of the chain.
+---@return table EventKit
+function CommandKitTestEnv.LoadEventKit()
+    require("SignalKit")
+    return require("EventKit")
+end
+
+---Load LifecycleKit (and SignalKit and EventKit, which it requires) on top of
+---the chain, then make it announce `CLOSES_ADDON_SCOPES` or not.
+---
+---`closesAddonScopes` `true` models LifecycleKit 0.6.0 and later, `false` an
+---older revision without the field. The field is written onto the loaded
+---facade with `rawset`, whatever the revision on `LUA_PATH` publishes.
+---@param closesAddonScopes boolean|table
+---@return table LifecycleKit
+---@return table EventKit
+function CommandKitTestEnv.LoadLifecycleKit(closesAddonScopes)
+    local EventKit = CommandKitTestEnv.LoadEventKit()
+    local LifecycleKit = require("LifecycleKit")
+    CommandKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
+    return LifecycleKit, EventKit
+end
+
+---Make `LifecycleKit` announce, or stop announcing, `CLOSES_ADDON_SCOPES`.
+---@param LifecycleKit table
+---@param closesAddonScopes boolean|table `true` for the full list, `false` for none, or a list of its own
+function CommandKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
+    local value = nil
+    if closesAddonScopes == true then
+        value = CLOSES_ADDON_SCOPES
+    elseif type(closesAddonScopes) == "table" then
+        value = closesAddonScopes
+    end
+    rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", value)
 end
 
 ---Read a global, for specs that inspect the slash tables.

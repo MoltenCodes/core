@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **10**.
+Implementation revision: **11**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -146,8 +146,8 @@ delivery in flight. A failure while sweeping after the dispatch has nobody to be
 raised to, so it goes to the host error handler.
 
 This is what lets an addon connect `PLAYER_LOGOUT` through its own scope to save
-its state, even though LifecycleKit's logout handling closes that scope and runs
-first. EventKit counts dispatches with two field writes per event, so the
+its state, even though the logout handling that closes that scope (LifecycleKit's,
+or EventKit's own; see [At logout](#at-logout)) may run first. EventKit counts dispatches with two field writes per event, so the
 per-event path still allocates nothing.
 
 `DisconnectAll()` and `connection:Disconnect()` are not deferred: they are
@@ -160,21 +160,43 @@ caller's line, like the package-level methods.
 ### Addon scopes and shutdown: the two-step
 
 `ForAddon(addonName)` is idempotent: every call with the same name returns the
-same scope. TimerKit closes its addon scopes itself because it depends on
-LifecycleKit. EventKit cannot: LifecycleKit depends on EventKit, so the reverse
-dependency would be a cycle. Closing an addon scope is therefore a separate,
-public step taken by whoever observes the addon's shutdown:
+same scope. LifecycleKit depends on EventKit, so EventKit cannot depend on
+LifecycleKit; closing an addon scope is therefore a separate, public step:
 
 1. The addon's code subscribes through `EventKit:ForAddon("MyAddon")`.
-2. On that addon's shutdown, the observer calls
-   `EventKit:CloseAddonScopes("MyAddon")`.
+2. At logout, `EventKit:CloseAddonScopes("MyAddon")` closes the scope.
 
-LifecycleKit makes that call: when an addon reaches `shutdown`, after its
-shutdown callbacks have run, LifecycleKit calls
-`EventKit:CloseAddonScopes(addonName)`. An addon using LifecycleKit writes no
-teardown for its scoped events.
+EventKit observes `PLAYER_LOGOUT` itself, so it always arranges the second
+step; see [At logout](#at-logout). An addon writes no teardown for its scoped
+events, with or without LifecycleKit.
 
-A consumer that does not use LifecycleKit wires the second step itself:
+#### At logout
+
+**An addon scope always closes at logout**, whatever LifecycleKit revision is
+paired with this one. The first `ForAddon(addonName)` for an addon looks for
+LifecycleKit through `Registry:Find` and takes the first case that applies:
+
+1. **LifecycleKit lists `"eventKit"` in `LifecycleKit.CLOSES_ADDON_SCOPES`**
+   (LifecycleKit 0.6.0 and later). EventKit connects nothing of its own and
+   makes sure the addon is known to LifecycleKit (it calls
+   `LifecycleKit:ForAddon(addonName)` once): LifecycleKit calls `CloseAddonScopes` when the addon reaches `shutdown`,
+   after its shutdown callbacks have run and after the addon's TimerKit and
+   SchedulerKit scopes, before its HookKit, CommandKit and CommKit scopes and
+   its SignalKit bus. This is the case with ordering guarantees, and it
+   covers an addon that never used LifecycleKit itself.
+2. **An older LifecycleKit, without that field.** EventKit asks it for
+   `LifecycleKit:ForAddon(addonName):OnShutdown(...)`, once per addon, and
+   closes the scope from that callback. This is compatibility only; every
+   LifecycleKit that knows scopes also makes the call itself, and the second
+   close answers `false`. The subscription is kept on the scope; closing the
+   scope disconnects it. If a LifecycleKit that lists EventKit replaces the
+   older one before logout, the callback leaves the call to it.
+3. **No LifecycleKit.** EventKit keeps one package-level `PLAYER_LOGOUT`
+   one-shot, connected by the first `ForAddon` that needs it, which closes
+   every addon scope neither case above covers, in addon-name order.
+4. **The host refused that registration.** Nothing is connected and
+   `ForAddon` works as always; the next `ForAddon` for that addon tries again.
+   Until one succeeds, call `CloseAddonScopes` yourself on `PLAYER_LOGOUT`:
 
 ```lua
 EventKit:Once("PLAYER_LOGOUT", function()
@@ -182,10 +204,18 @@ EventKit:Once("PLAYER_LOGOUT", function()
 end)
 ```
 
-That handler runs inside the `PLAYER_LOGOUT` dispatch, so it closes the scope
-without taking the logout away from the scope's own listeners: see *Closing
-during a dispatch*. Before revision 6 this wiring, like LifecycleKit's, silently
-dropped a scoped `PLAYER_LOGOUT` listener connected after it.
+Every case closes the scope inside the `PLAYER_LOGOUT` dispatch, so the
+connections are swept only after that dispatch completes: a scoped
+`PLAYER_LOGOUT` listener still runs, whether it was connected before or after
+the listener that closed its scope (see *Closing during a dispatch*). From the
+moment the scope closes it refuses new connections, so a listener that runs
+after the close cannot connect through it. Before revision 6 a close from a
+`PLAYER_LOGOUT` handler silently dropped a scoped `PLAYER_LOGOUT` listener
+connected after it.
+
+The routing costs one field read per `ForAddon` once decided. EventKit
+allocates one closure and one LifecycleKit subscription per addon in case 2,
+and one connection for the whole package in case 3.
 
 Closing is terminal, as shutdown is. The closed scope stays the addon's
 canonical scope, so a later `ForAddon("MyAddon")` returns it and refuses new
@@ -431,7 +461,9 @@ Two bounds stay fixed, because they are not retention a consumer can own:
   needs more makes more than one handle.
 
 Scopes have no connection cap: a scope's connections are its owner's own
-registrations and are released with it.
+registrations and are released with it. The logout routing holds at most one
+LifecycleKit subscription per addon scope, released when the scope closes, and
+one `PLAYER_LOGOUT` connection for the package.
 
 ## Dispatch semantics
 
@@ -505,6 +537,14 @@ one would.
 ## Embedded copies and upgrades
 
 Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
+
+Revision 11 moved `_state` from schema 6 to schema 7, adding the package's
+`PLAYER_LOGOUT` connection (`logoutConnection`) and the two handlers the
+logout routes resolve when they fire (`closeOnLogout`, `closeOnShutdown`);
+addon scopes gain `_logoutRoute` and `_logoutSubscription`. A revision-11 copy
+loading over revision 10 or older routes every carried addon scope as a first
+`ForAddon` would (see [At logout](#at-logout)); a scope a revision 11 or later
+copy already routed keeps its route, its subscription and the connection.
 
 Revision 10 moved `_state` from schema 5 to schema 6, adding the package
 sentinel (`unbounded`, published as `EventKit.UNBOUNDED`) and the shared limits

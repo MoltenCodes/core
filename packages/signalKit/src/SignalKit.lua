@@ -15,6 +15,13 @@
 -- bus boundary. Registry is used for embedded-package identity and revision
 -- reconciliation.
 --
+-- SignalKit does not observe addon shutdown and depends on neither
+-- LifecycleKit nor EventKit, yet an addon's bus is closed at logout whenever
+-- the framework can observe logout at all (design constitution, principle
+-- 4b). `ForAddon` arranges it through whichever of LifecycleKit API 1 and
+-- EventKit API 1 is registered, both found through `Registry:Find`: see
+-- "Logout close" below and "At logout" in `docs/API.md`.
+--
 -- Contents
 -- --------
 --   Constants ............. package identity, default limits and ceilings
@@ -28,6 +35,7 @@
 --   Bus topics ............ topic records, declaration, subscription
 --   Bus methods ........... DeclareTopic, Publish, Subscribe, Topics, ...
 --   Bus scopes ............ owner scopes over one bus
+--   Logout close .......... who closes an addon's bus at logout
 --   Facade methods ........ Bus, ForAddon, CloseAddonBus, SetLimits, GetLimits
 --   Commit ................ prototype/facade assignment and self-check
 
@@ -35,14 +43,40 @@
 
 local PACKAGE_NAME = "signalKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 
 -- Schema of the private `_state` table. Revisions 1 to 3 carried no state at
--- all; revision 4 introduced it together with named buses (schema 1), and
+-- all; revision 4 introduced it together with named buses (schema 1),
 -- revision 5 added the `UNBOUNDED` sentinel and the package-wide limits
--- (schema 2).
-local STATE_SCHEMA = 2
+-- (schema 2), and revision 6 the logout watcher and the two logout fields of
+-- every bus (schema 3).
+local STATE_SCHEMA = 3
+
+-- Who closes an addon's bus at logout, as the bus's `_logoutCloser` records it
+-- (docs/API.md, "At logout"). A bus nobody asked for through `ForAddon`
+-- records `false`: it is closed only by an explicit `CloseAddonBus`.
+--
+--   "lifecycleKit"   LifecycleKit names SignalKit in `CLOSES_ADDON_SCOPES` and
+--                    closes the bus after the addon's shutdown callbacks.
+--   "onShutdown"     an older LifecycleKit is registered: SignalKit subscribed
+--                    to the addon's `OnShutdown`, kept in
+--                    `_shutdownSubscription`.
+--   "playerLogout"   no LifecycleKit, but EventKit: the package-level
+--                    `PLAYER_LOGOUT` watcher closes the bus.
+--   "none"           neither was registered; the next `ForAddon` asks again.
+--
+-- Only "none" and "playerLogout" are asked again: a LifecycleKit that loads
+-- later still takes the bus over, so its shutdown callbacks run before the bus
+-- closes. The API generations of the two Kits asked share the table.
+local LOGOUT = {
+    lifecycleKitApi = 1,
+    eventKitApi = 1,
+    byLifecycle = "lifecycleKit",
+    byShutdownCallback = "onShutdown",
+    byEvent = "playerLogout",
+    byNobody = "none",
+}
 
 -- Named buses are package state shared by every addon in the session and are
 -- never freed (a closed bus stays registered under its name), so their number
@@ -188,6 +222,7 @@ local function validateState(currentState)
         not validateStateBase(currentState)
         or rawget(currentState, "schema") ~= STATE_SCHEMA
         or type(rawget(currentState, "unbounded")) ~= "table"
+        or type(rawget(currentState, "logoutWatch")) ~= "table"
     then
         return false
     end
@@ -205,6 +240,7 @@ local function validateCurrentState(implementation)
     return validateState(currentState)
         and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
         and type(rawget(currentState, "isolate")) == "function"
+        and type(rawget(rawget(currentState, "logoutWatch"), "close")) == "function"
         and hasMethods(rawget(currentState, "busPrototype"), BUS_METHODS)
         and hasMethods(rawget(currentState, "scopePrototype"), BUS_SCOPE_METHODS)
 end
@@ -338,6 +374,11 @@ local function newState()
         -- The package-wide limits `SetLimits` writes; a newer copy inherits
         -- what a consumer set.
         limits = { maxBuses = DEFAULT_MAX_BUSES },
+        -- The package-level `PLAYER_LOGOUT` watcher (see "Logout close"): the
+        -- EventKit scope that owns it, the connection once made, the
+        -- trampoline handed to EventKit, and the function it calls, which a
+        -- newer copy replaces.
+        logoutWatch = { scope = false, connection = false, trampoline = false, close = false },
     }
 end
 
@@ -354,6 +395,26 @@ local function upgradeSchemaOne(oldState)
             rawset(bus, "_maxListeners", DEFAULT_MAX_LISTENERS)
             rawset(bus, "_maxTopicsStated", false)
             rawset(bus, "_maxListenersStated", false)
+        end
+    end
+    rawset(oldState, "schema", 2)
+end
+
+---Bring schema-2 state (revision 5) to schema 3 in place: add the logout
+---watcher, and give every existing bus the two logout fields. Revision 5 did
+---not record which buses `ForAddon` returned, so none is taken for an addon's
+---bus until the next `ForAddon` names it.
+---@param oldState table
+local function upgradeSchemaTwo(oldState)
+    rawset(
+        oldState,
+        "logoutWatch",
+        { scope = false, connection = false, trampoline = false, close = false }
+    )
+    for _, bus in pairs(rawget(oldState, "buses")) do
+        if type(bus) == "table" then
+            rawset(bus, "_logoutCloser", false)
+            rawset(bus, "_shutdownSubscription", false)
         end
     end
     rawset(oldState, "schema", STATE_SCHEMA)
@@ -382,6 +443,9 @@ else
     if rawget(state, "schema") == 1 then
         upgradeSchemaOne(state)
     end
+    if rawget(state, "schema") == 2 then
+        upgradeSchemaTwo(state)
+    end
     if not validateState(state) then
         error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
     end
@@ -395,6 +459,7 @@ local SCOPE_PROTOTYPE = rawget(state, "scopePrototype")
 local SCOPE_METATABLE = rawget(state, "scopeMetatable")
 local UNBOUNDED = rawget(state, "unbounded")
 local sharedLimits = rawget(state, "limits")
+local logoutWatch = rawget(state, "logoutWatch")
 
 -- Receiver validation ---------------------------------------------------------
 --
@@ -1424,6 +1489,216 @@ local function busCreateScope(self)
     return newScope(self)
 end
 
+-- Logout close -----------------------------------------------------------------
+--
+-- SignalKit never observes logout itself and depends on neither LifecycleKit
+-- nor EventKit (design constitution, principle 4b). What it does instead is
+-- make sure that somebody who does observe logout closes each addon's bus,
+-- whichever revisions of the other Kits are loaded. `ForAddon` asks, in this
+-- order:
+--
+--   (a) LifecycleKit is registered and its `CLOSES_ADDON_SCOPES` names
+--       "signalKit": it closes the bus after the addon's shutdown callbacks.
+--       SignalKit only makes sure the addon has a LifecycleKit instance,
+--       because LifecycleKit closes the buses of the addons it tracks.
+--   (b) LifecycleKit is registered without that field (an older revision):
+--       SignalKit subscribes to the addon's `OnShutdown` and closes the bus
+--       from there. The subscription is kept on the bus, so closing the bus
+--       earlier disconnects it.
+--   (c) no LifecycleKit, but EventKit: one package-level `PLAYER_LOGOUT`
+--       watcher, in SignalKit's own EventKit scope, closes the addon buses
+--       that nobody else closes.
+--   (d) neither: nothing is arranged, and the consumer calls
+--       `SignalKit:CloseAddonBus(addonName)` itself on `PLAYER_LOGOUT`.
+--
+-- Outcomes (c) and (d) are asked again by every later `ForAddon`, so a
+-- LifecycleKit that loads after the first call still takes the bus over. A
+-- bus obtained only through `SignalKit:Bus` is never closed at logout.
+--
+-- The functions are fields of one table, as in the other scope-owning Kits.
+
+local LogoutClose = {}
+
+---Find an optional package through `Registry:Find`, or `nil` when it is not
+---registered (or the Registry revision has no `Find`).
+---@param packageName string
+---@param api integer
+---@return table|nil
+function LogoutClose.findOptional(packageName, api)
+    local findPackage = rawget(Registry, "Find")
+    if type(findPackage) ~= "function" then
+        return nil
+    end
+    local found = findPackage(Registry, packageName, api)
+    if type(found) == "table" then
+        return found
+    end
+    return nil
+end
+
+---Whether `LifecycleKit` announces that it closes SignalKit's addon buses.
+---
+---The field is a read-only table, so it is indexed normally rather than with
+---`rawget`: a proxy answers through `__index`. A revision without the field
+---closes none.
+---@param LifecycleKit table
+---@return boolean
+function LogoutClose.lifecycleClosesBuses(LifecycleKit)
+    local closes = rawget(LifecycleKit, "CLOSES_ADDON_SCOPES")
+    return type(closes) == "table" and closes[PACKAGE_NAME] == true
+end
+
+---Make the package-level `PLAYER_LOGOUT` watcher exist, once per session.
+---
+---The watcher lives in SignalKit's own EventKit scope and calls through a
+---trampoline kept in state, which looks up `logoutWatch.close`, so a newer
+---SignalKit revision replaces what an older revision's watcher does.
+---@param EventKit table
+function LogoutClose.ensureWatch(EventKit)
+    if rawget(logoutWatch, "connection") ~= false then
+        return
+    end
+    local trampoline = rawget(logoutWatch, "trampoline")
+    if trampoline == false then
+        trampoline = function()
+            rawget(logoutWatch, "close")()
+        end
+        rawset(logoutWatch, "trampoline", trampoline)
+    end
+    local eventScope = rawget(logoutWatch, "scope")
+    if eventScope == false or eventScope:IsClosed() then
+        eventScope = EventKit:CreateScope()
+        rawset(logoutWatch, "scope", eventScope)
+    end
+    rawset(logoutWatch, "connection", eventScope:Once("PLAYER_LOGOUT", trampoline))
+end
+
+---Subscribe to the addon's LifecycleKit shutdown and close its bus there.
+---
+---The callback calls the facade method, so the SignalKit revision loaded at
+---logout does the closing.
+---@param LifecycleKit table
+---@param addonName string
+---@return table subscription LifecycleKit subscription handle
+function LogoutClose.subscribeShutdown(LifecycleKit, addonName)
+    local instance = LifecycleKit:ForAddon(addonName)
+    return instance:OnShutdown(function()
+        SignalKit:CloseAddonBus(addonName)
+    end)
+end
+
+---Arrange, once, who closes the addon bus `bus` at logout.
+---
+---Does nothing for a closed bus, and nothing once LifecycleKit has taken the
+---bus over; see the section comment for the four outcomes.
+---@param addonName string
+---@param bus SignalKit.Bus
+function LogoutClose.arrange(addonName, bus)
+    local closer = rawget(bus, "_logoutCloser")
+    if closer ~= LOGOUT.byNobody and closer ~= LOGOUT.byEvent then
+        return
+    end
+    if rawget(bus, "_closed") == true then
+        return
+    end
+
+    local LifecycleKit = LogoutClose.findOptional("lifecycleKit", LOGOUT.lifecycleKitApi)
+    if LifecycleKit ~= nil then
+        if LogoutClose.lifecycleClosesBuses(LifecycleKit) then
+            LifecycleKit:ForAddon(addonName)
+            rawset(bus, "_logoutCloser", LOGOUT.byLifecycle)
+        else
+            local subscription = LogoutClose.subscribeShutdown(LifecycleKit, addonName)
+            rawset(bus, "_shutdownSubscription", subscription)
+            rawset(bus, "_logoutCloser", LOGOUT.byShutdownCallback)
+        end
+        return
+    end
+
+    if closer == LOGOUT.byEvent then
+        return
+    end
+    local EventKit = LogoutClose.findOptional("eventKit", LOGOUT.eventKitApi)
+    if EventKit ~= nil then
+        LogoutClose.ensureWatch(EventKit)
+        rawset(bus, "_logoutCloser", LOGOUT.byEvent)
+    end
+end
+
+---Take `bus` for the addon bus of `addonName` and arrange its logout close,
+---without letting a failure in another Kit break the caller: the failure goes
+---to the host error handler and the bus stays undecided, so the next
+---`ForAddon` asks again.
+---@param addonName string
+---@param bus SignalKit.Bus
+function LogoutClose.arrangeProtected(addonName, bus)
+    local closer = rawget(bus, "_logoutCloser")
+    if closer == false or closer == nil then
+        rawset(bus, "_logoutCloser", LOGOUT.byNobody)
+        rawset(bus, "_shutdownSubscription", false)
+    end
+    local ok, failure = pcall(LogoutClose.arrange, addonName, bus)
+    if not ok then
+        reportListenerError(failure)
+    end
+end
+
+---Disconnect the `OnShutdown` subscription of an addon bus, if it has one.
+---
+---Called when the bus closes: a bus closed before logout needs no shutdown
+---callback, and one closing from inside that callback finds it already
+---delivered.
+---@param bus SignalKit.Bus
+function LogoutClose.releaseSubscription(bus)
+    local subscription = rawget(bus, "_shutdownSubscription")
+    if subscription == nil or subscription == false then
+        return
+    end
+    rawset(bus, "_shutdownSubscription", false)
+    subscription:Disconnect()
+end
+
+---The `PLAYER_LOGOUT` watcher's work: close every addon bus nobody else
+---closes, in name order so the outcome does not depend on hash order.
+---
+---A bus LifecycleKit took over (outcomes a and b) is left to it, so its
+---shutdown callbacks still run first. Every close is attempted; each failure
+---goes to the host error handler.
+function LogoutClose.closeAtLogout()
+    local names = {}
+    for name, bus in pairs(rawget(state, "buses")) do
+        local closer = rawget(bus, "_logoutCloser")
+        if closer == LOGOUT.byEvent or closer == LOGOUT.byNobody then
+            names[#names + 1] = name
+        end
+    end
+    table.sort(names)
+    for index = 1, #names do
+        local ok, failure = pcall(SignalKit.CloseAddonBus, SignalKit, names[index])
+        if not ok then
+            reportListenerError(failure)
+        end
+    end
+end
+
+---Arrange the logout close of every open addon bus an upgrade inherited, in
+---name order, rather than waiting for a `ForAddon` call the addon may never
+---make again. Buses a revision before 6 created are not known to be addon
+---buses and wait for their `ForAddon`.
+function LogoutClose.arrangeInherited()
+    local names = {}
+    for name, bus in pairs(rawget(state, "buses")) do
+        local closer = rawget(bus, "_logoutCloser")
+        if closer ~= false and closer ~= nil and rawget(bus, "_closed") ~= true then
+            names[#names + 1] = name
+        end
+    end
+    table.sort(names)
+    for index = 1, #names do
+        LogoutClose.arrangeProtected(names[index], rawget(rawget(state, "buses"), names[index]))
+    end
+end
+
 -- Facade methods ---------------------------------------------------------------
 
 ---The options a `SignalKit:Bus` call stated. A field is `nil` when the caller
@@ -1548,6 +1823,9 @@ local function obtainBus(name, openTopics, maxTopics, maxListeners, label, level
         _maxTopicsStated = maxTopics ~= nil,
         _maxListeners = maxListeners or DEFAULT_MAX_LISTENERS,
         _maxListenersStated = maxListeners ~= nil,
+        -- See "Logout close": `false` until `ForAddon` names this bus.
+        _logoutCloser = false,
+        _shutdownSubscription = false,
     }, BUS_METATABLE)
     rawset(buses, name, bus)
     rawset(state, "busCount", count + 1)
@@ -1571,8 +1849,10 @@ end
 
 ---Return the default bus of an addon: the bus named after it.
 ---
----SignalKit does not observe addon shutdown; whoever does closes this bus
----through `SignalKit:CloseAddonBus(addonName)`.
+---SignalKit does not observe addon shutdown, but every call makes sure
+---somebody who does closes this bus through `SignalKit:CloseAddonBus(addonName)`:
+---LifecycleKit, SignalKit's own `PLAYER_LOGOUT` watcher through EventKit, or,
+---with neither loaded, the addon itself (docs/API.md, "At logout").
 ---@param self SignalKit
 ---@param addonName string addon folder name
 ---@return SignalKit.Bus|nil bus `nil` when `maxBuses` buses already exist.
@@ -1581,6 +1861,9 @@ local function facadeForAddon(self, addonName)
     validateFacade(self, "SignalKit:ForAddon", 3)
     validateNonEmptyString(addonName, "SignalKit:ForAddon addonName", 3)
     local bus, reason = obtainBus(addonName, nil, nil, nil, "SignalKit:ForAddon", 3)
+    if bus ~= nil then
+        LogoutClose.arrangeProtected(addonName, bus)
+    end
     return bus, reason
 end
 
@@ -1601,6 +1884,7 @@ local function facadeCloseAddonBus(self, addonName)
     end
 
     rawset(bus, "_closed", true)
+    LogoutClose.releaseSubscription(bus)
     for _, record in pairs(rawget(bus, "_topics")) do
         local signal = rawget(record, "signal")
         if signal ~= false then
@@ -1697,6 +1981,7 @@ rawset(SCOPE_PROTOTYPE, "Close", scopeClose)
 rawset(SCOPE_PROTOTYPE, "IsClosed", scopeIsClosed)
 
 rawset(state, "isolate", isolate)
+rawset(logoutWatch, "close", LogoutClose.closeAtLogout)
 
 rawset(SignalKit, "API", API_GENERATION)
 rawset(SignalKit, "REVISION", IMPLEMENTATION_REVISION)
@@ -1714,6 +1999,10 @@ rawset(SignalKit, "GetLimits", facadeGetLimits)
 
 if not validatePublicSurface(SignalKit) or not validateCurrentState(SignalKit) then
     error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
+end
+
+if previousRevision ~= nil then
+    LogoutClose.arrangeInherited()
 end
 
 return SignalKit

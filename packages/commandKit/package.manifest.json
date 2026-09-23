@@ -2,10 +2,10 @@
   "name": "commandKit",
   "displayName": "CommandKit",
   "description": "Slash commands for World of Warcraft addons: hyperlink-aware argument parsing, sub-commands with generated usage, schema-checked arguments, output sinks, tab completion and an OptionsKit command line.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "api": 1,
-  "revision": 1,
+  "revision": 2,
   "dependencies": {
     "registry": {
       "api": 2
@@ -22,6 +22,12 @@
       "api": 1
     },
     "clientKit": {
+      "api": 1
+    },
+    "eventKit": {
+      "api": 1
+    },
+    "lifecycleKit": {
       "api": 1
     }
   }

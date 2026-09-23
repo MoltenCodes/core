@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 — 2026-09-23
+
+- CommKit addon scopes are now closed at logout whatever revisions are paired, and an addon without LifecycleKit no longer closes its scope itself. `CommKit:ForAddon(addonName)` finds LifecycleKit with `Registry:Find` and leaves the scope to a LifecycleKit whose `CLOSES_ADDON_SCOPES` names `commKit` (making sure the addon has a LifecycleKit instance), subscribes once to an older LifecycleKit's `OnShutdown`, or, without LifecycleKit, connects one package-level `PLAYER_LOGOUT` watcher in CommKit's own EventKit scope; EventKit is required, so that case is always available. The decision is taken again by later `ForAddon` calls until LifecycleKit has taken the scope over. See "At logout" in `docs/API.md`.
+- `Close` and `CloseAddonScopes` disconnect the `OnShutdown` subscription of a scope that closes before logout.
+- LifecycleKit API 1 is declared under `optionalDependencies` (a cycle through an optional edge, which the manifest rules allow); CommKit's six required dependencies are unchanged.
+- Implementation revision 2, scope layout 2 (`_logoutCloser`, `_shutdownSubscription`), the `kitScopes.logout` connection slot and the `logout` trampoline. An upgrade over revision 1 migrates every addon scope in place and arranges the logout close of the open ones while it loads; a later revision keeps the subscriptions and the watcher without subscribing again. The executed code changed, so this is the first revision boundary of the 0.1.0 line: the upgrade specs now load the next revision instead of revision 2.
+- 185 specs; `LogoutClose_spec.lua` covers the three cases that can arise, re-evaluation, a failure in LifecycleKit, the subscription disconnected by an early close, and the upgrades. The spec that left an addon scope open at logout until `CloseAddonScopes` now checks that the watcher closes it.
+
 ## 0.1.0 — 2026-09-23
 
 First release: CommKit API generation 1, implementation revision 1.

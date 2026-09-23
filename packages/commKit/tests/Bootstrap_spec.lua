@@ -76,9 +76,10 @@ describe("CommKit bootstrap", function()
         assert.are.equal("sending", handle:GetState())
         TestEnv.Loopback("Friend-Realm")
 
-        local upgraded = TestEnv.LoadRevision(2)
+        local nextRevision = CommKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
         assert.are.equal(CommKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.same(
             prototypes,
             { upgraded.Scope, upgraded.SendHandle, upgraded.Connection, upgraded.SyncSet }

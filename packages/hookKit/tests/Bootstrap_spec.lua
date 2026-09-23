@@ -58,67 +58,71 @@ describe("HookKit bootstrap", function()
         assert.are.equal(99, reloaded.REVISION)
     end)
 
-    it("upgrades in place and keeps every hook active and releasable", function()
-        local HookKit = TestEnv.NewPackage()
-        local scopePrototype = HookKit.Scope
-        local calls = {}
-        local function record(name)
-            return function()
-                calls[#calls + 1] = name
+    it(
+        "upgrades in place to the next revision and keeps every hook active and releasable",
+        function()
+            local HookKit = TestEnv.NewPackage()
+            local scopePrototype = HookKit.Scope
+            local calls = {}
+            local function record(name)
+                return function()
+                    calls[#calls + 1] = name
+                end
             end
+
+            local target = {
+                Pre = function()
+                    return "pre"
+                end,
+                Raw = function()
+                    return "raw"
+                end,
+                Post = function()
+                    return "post"
+                end,
+            }
+            local originalPre = target.Pre
+            local frame = TestEnv.NewFrame()
+            frame:SetScript("OnShow", record("previous OnShow"))
+
+            local scope = HookKit:ForAddon("MyAddon")
+            scope:Hook(target, "Pre", record("pre handler"))
+            scope:RawHook(target, "Raw", function(original)
+                calls[#calls + 1] = "raw handler"
+                return original()
+            end)
+            scope:SecureHook(target, "Post", record("post handler"))
+            scope:HookScript(frame, "OnShow", record("script handler"))
+            scope:SecureHookScript(frame, "OnHide", record("secure script handler"))
+
+            local nextRevision = HookKit.REVISION + 1
+            local upgraded = TestEnv.LoadRevision(nextRevision)
+            assert.are.equal(HookKit, upgraded)
+            assert.are.equal(nextRevision, upgraded.REVISION)
+            assert.are.equal(scopePrototype, upgraded.Scope)
+            assert.are.equal(scope, upgraded:ForAddon("MyAddon"))
+            assert.are.equal(5, scope:GetActiveCount())
+
+            assert.are.equal("pre", target.Pre())
+            assert.are.equal("raw", target.Raw())
+            assert.are.equal("post", target.Post())
+            TestEnv.RunScript(frame, "OnShow")
+            TestEnv.RunScript(frame, "OnHide")
+            assert.are.same({
+                "pre handler",
+                "raw handler",
+                "post handler",
+                "script handler",
+                "previous OnShow",
+                "secure script handler",
+            }, calls)
+
+            assert.is_true(scope:Unhook(target, "Pre"))
+            assert.are.equal(originalPre, target.Pre)
+            assert.is_true(upgraded:CloseAddonScopes("MyAddon"))
+            assert.are.equal(0, scope:GetActiveCount())
         end
-
-        local target = {
-            Pre = function()
-                return "pre"
-            end,
-            Raw = function()
-                return "raw"
-            end,
-            Post = function()
-                return "post"
-            end,
-        }
-        local originalPre = target.Pre
-        local frame = TestEnv.NewFrame()
-        frame:SetScript("OnShow", record("previous OnShow"))
-
-        local scope = HookKit:ForAddon("MyAddon")
-        scope:Hook(target, "Pre", record("pre handler"))
-        scope:RawHook(target, "Raw", function(original)
-            calls[#calls + 1] = "raw handler"
-            return original()
-        end)
-        scope:SecureHook(target, "Post", record("post handler"))
-        scope:HookScript(frame, "OnShow", record("script handler"))
-        scope:SecureHookScript(frame, "OnHide", record("secure script handler"))
-
-        local upgraded = TestEnv.LoadRevision(2)
-        assert.are.equal(HookKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
-        assert.are.equal(scopePrototype, upgraded.Scope)
-        assert.are.equal(scope, upgraded:ForAddon("MyAddon"))
-        assert.are.equal(5, scope:GetActiveCount())
-
-        assert.are.equal("pre", target.Pre())
-        assert.are.equal("raw", target.Raw())
-        assert.are.equal("post", target.Post())
-        TestEnv.RunScript(frame, "OnShow")
-        TestEnv.RunScript(frame, "OnHide")
-        assert.are.same({
-            "pre handler",
-            "raw handler",
-            "post handler",
-            "script handler",
-            "previous OnShow",
-            "secure script handler",
-        }, calls)
-
-        assert.is_true(scope:Unhook(target, "Pre"))
-        assert.are.equal(originalPre, target.Pre)
-        assert.is_true(upgraded:CloseAddonScopes("MyAddon"))
-        assert.are.equal(0, scope:GetActiveCount())
-    end)
+    )
 
     it("keeps the UNBOUNDED sentinel and every scope's limit across an upgrade", function()
         local HookKit = TestEnv.NewPackage()
@@ -127,8 +131,9 @@ describe("HookKit bootstrap", function()
         local raised = HookKit:ForAddon("MyAddon", { maxHooks = 300 })
         local default = HookKit:CreateScope()
 
-        local upgraded = TestEnv.LoadRevision(2)
-        assert.are.equal(2, upgraded.REVISION)
+        local nextRevision = HookKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
         assert.are.equal(sentinel, opened:GetMaxHooks())
         assert.are.equal(300, raised:GetMaxHooks())

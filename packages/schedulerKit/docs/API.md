@@ -400,12 +400,12 @@ local work = SchedulerKit:ForAddon("MyAddon")
 
 ### Addon scopes and shutdown: the two-step
 
-SchedulerKit requires Registry and TimerKit and nothing else, so it does not observe addon shutdown. Closing an addon scope is a separate, public step taken by whoever does:
+SchedulerKit requires Registry and TimerKit and nothing else, so it does not depend on anything that observes addon shutdown. Closing an addon scope is a separate, public step:
 
 1. work is scheduled through `SchedulerKit:ForAddon("MyAddon")`;
-2. when the addon shuts down, its observer calls `SchedulerKit:CloseAddonScopes("MyAddon")`.
+2. at logout, `SchedulerKit:CloseAddonScopes("MyAddon")` closes the scope.
 
-**LifecycleKit calls `CloseAddonScopes` at shutdown; without LifecycleKit, call it yourself on `PLAYER_LOGOUT`.** LifecycleKit makes the call after the addon's shutdown callbacks have run, right after closing the addon's TimerKit scope and before its EventKit, HookKit, CommandKit and CommKit scopes and its SignalKit bus, so no job runs into a listener that is being torn down.
+Who takes the second step is arranged by SchedulerKit itself whenever the framework can observe logout; see [At logout](#at-logout).
 
 `CloseAddonScopes(addonName)`:
 
@@ -417,7 +417,20 @@ SchedulerKit requires Registry and TimerKit and nothing else, so it does not obs
 
 Closing is terminal: the closed scope stays the canonical addon scope, so a later `ForAddon(addonName)` returns it and refuses new work. A job may close its own addon scope while it runs; it is cancelled with the rest and never resumed again. Manual scopes and the package-level convenience scope are never closed by `CloseAddonScopes`.
 
-Revision 9 and older required LifecycleKit and subscribed each addon scope to its addon's shutdown themselves. An embedded copy of this revision that upgrades one of them in place disconnects those subscriptions; the carried scopes stay open and canonical, and their work keeps running, until `CloseAddonScopes` is called. A pairing of this revision with a LifecycleKit older than 0.5.0 closes no scheduler scope at logout, since that LifecycleKit does not know the call.
+Revision 9 and older required LifecycleKit and subscribed each addon scope to its addon's shutdown themselves. An embedded copy of this revision that upgrades one of them in place disconnects those subscriptions and then routes the carried scopes as described under [At logout](#at-logout); they stay open and canonical, and their work keeps running, until they are closed. Revisions 10 and 11 decided no route: their scopes are routed the same way when revision 12 upgrades them. A scope a revision 12 or later copy already routed keeps its route, its `OnShutdown` subscription and the package's `PLAYER_LOGOUT` connection, whose callbacks resolve the running revision's code when they fire. With a LifecycleKit older than 0.5.0 (which does not know `CloseAddonScopes`), case 2 closes the scope.
+
+### At logout
+
+**An addon scope closes at logout whenever LifecycleKit or EventKit is loaded, and otherwise by your own call**, whatever revisions of them are paired with this one. The first `ForAddon(addonName)` for an addon looks for the optional Kits through `Registry:Find` and takes the first case that applies:
+
+1. **LifecycleKit lists `"schedulerKit"` in `LifecycleKit.CLOSES_ADDON_SCOPES`** (LifecycleKit 0.6.0 and later). SchedulerKit subscribes nothing and makes sure the addon is known to LifecycleKit (it calls `LifecycleKit:ForAddon(addonName)` once): LifecycleKit calls `CloseAddonScopes` when the addon reaches `shutdown`, after its shutdown callbacks have run, right after closing the addon's TimerKit scope and before its EventKit, HookKit, CommandKit and CommKit scopes and its SignalKit bus, so no job runs into a listener that is being torn down. This is the case with ordering guarantees, and it covers an addon that never used LifecycleKit itself.
+2. **An older LifecycleKit, without that field.** SchedulerKit asks it for `LifecycleKit:ForAddon(addonName):OnShutdown(...)`, once per addon, and closes the scope from that callback, among the addon's shutdown callbacks, as SchedulerKit 0.5.x did. This is compatibility only: LifecycleKit is found through `Registry:Find` and never becomes a dependency. The subscription is kept on the scope; closing the scope (`CloseAddonScopes` or `Scope:Close()`) disconnects it. If a LifecycleKit that lists SchedulerKit replaces the older one before logout, the callback leaves the call to it.
+3. **No LifecycleKit, but EventKit.** SchedulerKit keeps one package-level `PLAYER_LOGOUT` one-shot, in an EventKit scope of its own, created by the first `ForAddon` that needs it. At logout it closes every addon scope that neither case above covers, in addon-name order; a failure does not stop the others and reaches the host error handler through EventKit. EventKit runs `PLAYER_LOGOUT` listeners in connection order, so the scope closes when this listener runs: after any listener connected before the addon's first `ForAddon`, before any connected after it. Use LifecycleKit when the addon's own logout code must run while its jobs are live.
+4. **Neither.** Nothing is subscribed and `ForAddon` works as always. Call `SchedulerKit:CloseAddonScopes("MyAddon")` yourself on `PLAYER_LOGOUT`.
+
+The decision is made once per addon, except for case 4, which the next `ForAddon` for that addon examines again, because a Kit loaded after the first call can make logout observable. A LifecycleKit 0.5.0 or later that loads after case 4 was chosen closes the scope anyway once the addon asks it for an instance, because it calls `CloseAddonScopes` for every addon it knows. Closing the scope twice is harmless: the second call answers `false`.
+
+The routing costs one field read per `ForAddon` once decided. SchedulerKit allocates one closure and one LifecycleKit subscription per addon in case 2, and one EventKit scope and connection for the whole package in case 3.
 
 ## Package-level convenience scope
 
@@ -774,6 +787,10 @@ local limits = SchedulerKit:GetLimits()
 - State written before revision 11 is seeded with these defaults, the
   constants those revisions enforced.
 
+Outside these limits, the logout routing (see [At logout](#at-logout)) holds
+at most one LifecycleKit subscription per addon scope, released when the scope
+closes, and one EventKit connection for the package.
+
 ## Embedded copies and live compatible revisions
 
 SchedulerKit is registered as `schedulerKit`, API generation `1`, through Registry API 2.
@@ -783,6 +800,13 @@ The facade, Job/Scope/Context prototypes, metatables, ready queues, scopes, acti
 The installed OnUpdate trampoline does not permanently close over one implementation revision. It resolves the current shared dispatch function on every scheduler frame. TimerKit delay callbacks use the same dispatch indirection.
 
 A future compatible SchedulerKit revision can therefore update execution behavior while preserving existing facade, Job, Scope, Context, queue, and addon-scope identity.
+
+Revision 12 adds the logout routing: `logoutConnection` and `logoutEventScope`
+in package state, `_logoutRoute` and `_logoutSubscription` on addon scopes, and
+`closeOnShutdown` / `closeOnLogout` in the shared dispatch table, which the
+LifecycleKit subscriptions and the EventKit connection resolve when they fire.
+Older state is seeded in place and its addon scopes routed; see
+[At logout](#at-logout).
 
 Revision 8 changes only behaviour, plus one field: each lane keeps the set of
 its admitted jobs (`_admitted`) so `Close()` can cancel pending retries. A lane

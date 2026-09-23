@@ -26,7 +26,10 @@
 ---
 --- CodecKit, HookKit and SchemaKit are declared under `optionalDependencies`,
 --- so the test runner puts them on `LUA_PATH`; `Load` leaves each out on
---- request to model an addon that embeds none.
+--- request to model an addon that embeds none. LifecycleKit is optional too:
+--- it decides who closes an addon scope at logout. `Load` leaves it out unless
+--- asked, and `LoadLifecycleKit` adds it after CommKit, as an addon that
+--- embeds it later would.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 --- Every module any spec loads, in load order. `Reset` clears all of them.
@@ -41,6 +44,23 @@ local ALL_MODULES = {
     "HookKit",
     "SchemaKit",
     "CommKit",
+}
+
+--- LifecycleKit loads after CommKit when a spec asks for it. It is kept out of
+--- `ALL_MODULES`, whose last entry is the package `ReloadPackage` reloads, so
+--- `Reset` unloads it separately.
+local LIFECYCLE_MODULE = "LifecycleKit"
+
+--- What LifecycleKit 0.6.0 publishes as `CLOSES_ADDON_SCOPES`: the package ids
+--- whose addon scopes (or bus) it closes at shutdown.
+local CLOSES_ADDON_SCOPES = {
+    timerKit = true,
+    schedulerKit = true,
+    eventKit = true,
+    hookKit = true,
+    commandKit = true,
+    commKit = true,
+    signalKit = true,
 }
 
 local CommKitTestEnv = FrameworkTestEnv.New({ modules = ALL_MODULES })
@@ -239,6 +259,7 @@ local baseReset = CommKitTestEnv.Reset
 
 ---Clear every module, global and stub this environment owns.
 function CommKitTestEnv.Reset()
+    package.loaded[LIFECYCLE_MODULE] = nil
     baseReset()
     for index = 1, #CHAT_GLOBALS do
         setGlobal(CHAT_GLOBALS[index], nil)
@@ -252,6 +273,7 @@ end
 ---@field hookKit boolean? Load HookKit and a `hooksecurefunc` stub; defaults to `false`.
 ---@field schemaKit boolean? Load SchemaKit; defaults to `false`.
 ---@field secureCall boolean? Install the fixture's `securecallfunction`; defaults to `false`.
+---@field lifecycleKit (boolean|table)? Load LifecycleKit after CommKit; `true` makes it announce `CLOSES_ADDON_SCOPES`, `false` models an older revision without it. Defaults to `nil`: not loaded.
 
 ---Reset, install the host stubs, then load the module chain.
 ---@param options CommKitTestEnv.LoadOptions?
@@ -282,7 +304,37 @@ function CommKitTestEnv.Load(options)
             loaded[name] = require(name)
         end
     end
+    if options.lifecycleKit ~= nil then
+        loaded.LifecycleKit = CommKitTestEnv.LoadLifecycleKit(options.lifecycleKit)
+    end
     return loaded.CommKit, loaded
+end
+
+---Load LifecycleKit on top of a loaded chain, then make it announce
+---`CLOSES_ADDON_SCOPES` or not (see `SetClosesAddonScopes`).
+---@param closesAddonScopes boolean|table
+---@return table LifecycleKit
+function CommKitTestEnv.LoadLifecycleKit(closesAddonScopes)
+    local LifecycleKit = require(LIFECYCLE_MODULE)
+    CommKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
+    return LifecycleKit
+end
+
+---Make `LifecycleKit` announce, or stop announcing, `CLOSES_ADDON_SCOPES`.
+---
+---`true` models LifecycleKit 0.6.0 and later, `false` an older revision
+---without the field. The field is written onto the loaded facade with
+---`rawset`, whatever the revision on `LUA_PATH` publishes.
+---@param LifecycleKit table
+---@param closesAddonScopes boolean|table `true` for the full list, `false` for none, or a list of its own
+function CommKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
+    local value = nil
+    if closesAddonScopes == true then
+        value = CLOSES_ADDON_SCOPES
+    elseif type(closesAddonScopes) == "table" then
+        value = closesAddonScopes
+    end
+    rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", value)
 end
 
 ---The default chain: everything but HookKit and SchemaKit. The package under

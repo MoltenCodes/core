@@ -106,6 +106,23 @@ Shutdown callbacks run before any of the seven is closed, so an `OnShutdown` cal
 
 Shutdown therefore runs these steps per addon, in this order: the addon's combat queue is closed (each pending deferred call receives `(instance, false, "shutdown")`), the shutdown callbacks run, then the TimerKit scope, the SchedulerKit scope, the EventKit scope, the HookKit scope, the CommandKit scope, the CommKit scope and the SignalKit bus are closed. Every step runs even when an earlier one failed. Errors follow a first-error-wins policy in that order: a deferred-call error is re-raised before a shutdown callback error, which is re-raised before a TimerKit, then a SchedulerKit, then an EventKit, then a HookKit, then a CommandKit, then a CommKit, then a SignalKit closing failure. Either way every addon's lifecycle has advanced first.
 
+### Addon-scope capability: `CLOSES_ADDON_SCOPES`
+
+`LifecycleKit.CLOSES_ADDON_SCOPES` names the packages whose addon scopes (for SignalKit, the addon bus) shutdown closes. It is the contract the scope-owning Kits read to decide whether LifecycleKit covers their addon scopes at logout or whether they have to arrange it themselves:
+
+```lua
+LifecycleKit.CLOSES_ADDON_SCOPES
+-- { timerKit = true, schedulerKit = true, eventKit = true, hookKit = true,
+--   commandKit = true, commKit = true, signalKit = true }
+```
+
+- **Read it with ordinary indexing**, `capabilities[packageId] == true`. It is a read-only view: every write raises (`LifecycleKit.CLOSES_ADDON_SCOPES is read-only; field "<key>" cannot be written`), including an overwrite of an existing entry, and `getmetatable` answers `false`. Because the view holds no keys of its own, `rawget`, `next` and `pairs` see nothing through it.
+- **It names exactly what shutdown closes**: the seven steps above, one package id each. A package id not listed is not closed by this revision.
+- **A LifecycleKit without the field closes none of them** as far as a reader is concerned. That is every revision before 13 (0.6.0), including those that do call some `CloseAddonScopes`: a reader then arranges the closing itself, typically through `LifecycleKit:ForAddon(addonName):OnShutdown(...)`, and a second close answers `false`.
+- **It stays identical across upgrades.** The table and its contents live in the package state; every revision from 13 on publishes the same table, rewritten to name what that revision closes, and it is part of the public surface a newer copy must publish.
+
+TimerKit 0.6.0, SchedulerKit 0.8.0 and EventKit 0.7.0 read it at an addon's first `ForAddon` (see "At logout" in their `docs/API.md`). **LifecycleKit 0.6.0 pairs with any revision of the other Kits**: a Kit that reads the field leaves the closing to LifecycleKit; one that has `CloseAddonScopes` but does not read the field is closed by the calls above; one without `CloseAddonScopes` closes its scopes from its own shutdown subscription, as before.
+
 If shutdown occurs before `loaded` or `ready` was reached (for example, a lifecycle was created for a load-on-demand addon that never loaded), pending subscriptions for those now-impossible phases are disconnected without invocation. New subscriptions to an earlier phase that is already impossible because shutdown occurred are returned already disconnected. Shutdown also disconnects the addon's `OnHalted`, `OnDependencyHalted`, `OnCombatStart` and `OnCombatEnd` subscriptions.
 
 ## Halted state
@@ -254,7 +271,7 @@ LifecycleKit API 1 requires:
 - SignalKit API 1
 - EventKit API 1
 
-It optionally uses TimerKit API 1, SchedulerKit API 1, HookKit API 1, CommandKit API 1 and CommKit API 1, each found through `Registry:Find` (Registry revision 7; an older Registry's `Get` is the equivalent fallback) when an addon shuts down. Without them nothing changes except that there are no timers to cancel, no jobs to cancel, no hooks to undo, no commands to make inert and no addon-message scopes to close. TimerKit and SchedulerKit do not depend on LifecycleKit: LifecycleKit calls into them, which is what lets each embed without it.
+It optionally uses TimerKit API 1, SchedulerKit API 1, HookKit API 1, CommandKit API 1 and CommKit API 1, each found through `Registry:Find` (Registry revision 7; an older Registry's `Get` is the equivalent fallback) when an addon shuts down. Without them nothing changes except that there are no timers to cancel, no jobs to cancel, no hooks to undo, no commands to make inert and no addon-message scopes to close. TimerKit and SchedulerKit do not depend on LifecycleKit: LifecycleKit calls into them, which is what lets each embed without it. They, and EventKit, find LifecycleKit the same way and read `CLOSES_ADDON_SCOPES` to learn that it does.
 
 LifecycleKit does not create WoW Frames directly. All frame/event registration remains inside EventKit.
 
@@ -264,6 +281,6 @@ Host API read directly: `C_AddOns.IsAddOnLoaded` (falling back to the legacy `Is
 
 Compatible embedded copies share one LifecycleKit facade and state through Registry. Pending phase subscriptions created by the previous compatible implementation revision remain valid across an in-place upgrade; the upgrade releases per-instance state that the newer revision no longer owns.
 
-Revisions 8 to 12 keep schema 3. Upgrading from revision 7, 8, 9, 10 or 11 replaces its shared host watchers, which would otherwise keep calling the older revision's handlers: revision 7's logout handler closes no HookKit scope and no bus, revision 8's no CommandKit scope, revision 9's no CommKit scope, and no revision before 12 closes a TimerKit or SchedulerKit scope.
+Revisions 8 to 13 keep schema 3. Upgrading from revision 7, 8, 9, 10, 11 or 12 replaces its shared host watchers, which would otherwise keep calling the older revision's handlers: revision 7's logout handler closes no HookKit scope and no bus, revision 8's no CommandKit scope, revision 9's no CommKit scope, and no revision before 12 closes a TimerKit or SchedulerKit scope. Revision 13 adds `CLOSES_ADDON_SCOPES` without a schema change: an upgrade seeds the capability set into the state (`addonScopeCapabilities`) and publishes it.
 
 Revision 7 changed the package state from schema 2 to schema 3. Upgrading from an older revision adds the shared combat flag (seeded from `InCombatLockdown()`), the instance list (inherited instances in name order) and every instance's combat queue, dependency list and halted flag, and replaces the older revision's shared host watchers with its own, because a watcher keeps calling the handler of the revision that installed it. Pending deferred calls and notice subscriptions are carried across a same-revision reload unchanged. Bootstrap is idempotent for the current implementation revision: if a prior live upgrade accepted the Registry revision but host event registration failed before shared watchers were fully established, a later compatible copy retries the missing watcher setup instead of silently returning an incomplete runtime state. If a one-shot global phase passed while that watcher was absent, bootstrap also reconciles existing instances from the observable host/package state.

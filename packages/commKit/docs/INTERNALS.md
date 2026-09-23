@@ -10,9 +10,9 @@ This document describes implementation invariants for maintainers. It is not an 
 |---|---|
 | `schema`, `runtimeRevision` | The state layout (1) and the revision that last committed its functions. |
 | `dispatch` | Every function another Kit calls back into, by name. |
-| `trampolines` | The closures handed to EventKit, TimerKit, SchedulerKit and HookKit, created once per session; each only looks its target up in `dispatch`. |
+| `trampolines` | The closures handed to EventKit, TimerKit, SchedulerKit and HookKit, created once per session; each only looks its target up in `dispatch`. `logout` (revision 2) calls `dispatch.closeAddonScopesAtLogout`. |
 | `metatables` | One metatable per object kind (`scope`, `connection`, `handle`, `syncSet`), whose `__index` is the shared prototype. |
-| `addonScopes` | Addon name to canonical scope. Only `CloseAddonScopes` closes one, since CommKit subscribes to no shutdown signal; a closed scope stays in the map, so closing is terminal and the map grows only with `ForAddon` calls. |
+| `addonScopes` | Addon name to canonical scope. Only `CloseAddonScopes` closes one, called by LifecycleKit, by CommKit's `OnShutdown` subscription or by its `PLAYER_LOGOUT` watcher ("At logout" in `API.md`); a closed scope stays in the map, so closing is terminal and the map grows only with `ForAddon` calls. Each scope carries `_logoutCloser` (`false` for a manual scope, else `"lifecycleKit"`, `"onShutdown"`, `"playerLogout"` or `"none"`) and `_shutdownSubscription` (the case (b) subscription or `false`, disconnected by `closeScope`); they are scope layout 2, and an upgrade over revision 1 adds them to every addon scope and arranges the open ones. |
 | `limits`, `statistics` | The shared limits and counters. |
 | `queues` | Per priority: `ring` (pipes in service order), `cursor` (the next pipe), `pipes` (key to pipe), `messages`, `bytes`. |
 | `blockedPipes` | Pipes set aside after a throttle, waiting for `blockedUntil`. |
@@ -26,7 +26,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | `expiry` | The one expiry timer and its due time. |
 | `dropReports` | `bySender` (sender to `{ reportedAt, pending, reasons }`), `count`, and the one flush timer and its due time. |
 | `prefixSignals`, `prefixCounts`, `clientPrefixes`, `registrationTotal`, `chatConnections` | Per prefix, the SignalKit signal and the live registration count; prefixes registered with the client; the total; the EventKit connections for the chat and roster events. |
-| `kitScopes` | CommKit's own EventKit, TimerKit and SchedulerKit scopes, and the `PLAYER_ENTERING_WORLD` connection. |
+| `kitScopes` | CommKit's own EventKit, TimerKit and SchedulerKit scopes, the `PLAYER_ENTERING_WORLD` connection, and `logout`, the one `PLAYER_LOGOUT` `Once` connection of case (c), or `false` (revision 2; an upgrade over revision 1 adds it). |
 | `pools` | PoolKit table pools: `records` (queued messages), `streams` and `parts` (reassembly). |
 
 ## Sending
@@ -63,4 +63,4 @@ Registrations and `OnChanged` listeners are SignalKit connections whose listener
 
 ## The local-variable budget
 
-Lua 5.1 allows 200 local variables in one function, and the file's main chunk is one function. Constants are therefore grouped into tables (`WIRE`, `REASON`, `POLICY`, `SYNC`, `FNV`, ...) and public methods are defined on method tables (`ScopeMethods`, ...) that `commitMethods` copies onto the prototypes. Helpers used by one function only live in `do` blocks with the function forward-declared (`assignStreamId`, `hashValue`, `noteDrop`, `receiveSync`, ...). The main chunk holds at most 189 live locals (counted from `luac -l -l`); a change that adds file-scope locals should group them the same way.
+Lua 5.1 allows 200 local variables in one function, and the file's main chunk is one function. Constants are therefore grouped into tables (`WIRE`, `REASON`, `POLICY`, `SYNC`, `FNV`, ...) and public methods are defined on method tables (`ScopeMethods`, ...) that `commitMethods` copies onto the prototypes. Helpers used by one function only live in `do` blocks with the function forward-declared (`assignStreamId`, `hashValue`, `noteDrop`, `receiveSync`, ...). The main chunk held at most 189 live locals (counted from `luac -l -l`) before revision 2 added the two tables `LOGOUT` and `LogoutClose`, so 191 now; a change that adds file-scope locals should group them the same way.

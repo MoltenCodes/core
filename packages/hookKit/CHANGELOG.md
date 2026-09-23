@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 — 2026-09-23
+
+- HookKit addon scopes are now closed at logout whenever the framework can observe logout, whichever revisions are paired. `HookKit:ForAddon(addonName)` finds LifecycleKit and EventKit with `Registry:Find` and leaves the scope to a LifecycleKit whose `CLOSES_ADDON_SCOPES` names `hookKit` (making sure the addon has a LifecycleKit instance), subscribes once to an older LifecycleKit's `OnShutdown`, or, without LifecycleKit, connects one package-level `PLAYER_LOGOUT` watcher in HookKit's own EventKit scope. With neither, nothing is subscribed and the consumer calls `CloseAddonScopes` on `PLAYER_LOGOUT`, as before. The decision is taken again by later `ForAddon` calls until LifecycleKit has taken the scope over. See "At logout" in `docs/API.md`.
+- `Close` and `CloseAddonScopes` disconnect the `OnShutdown` subscription of a scope that closes before logout.
+- LifecycleKit API 1 and EventKit API 1 are declared under `optionalDependencies`; HookKit still requires only Registry API 2.
+- Implementation revision 2, scope layout 2 (`_logoutCloser`, `_shutdownSubscription`), and the `logoutWatch` state field. An upgrade over revision 1 migrates every addon scope in place and arranges the logout close of the open ones while it loads; a later revision keeps the subscriptions and the watcher without subscribing again. The executed code changed, so this is the first revision boundary of the 0.1.0 line: the upgrade specs now load the next revision instead of revision 2.
+- 109 specs; `LogoutClose_spec.lua` covers the four cases, re-evaluation, a failure in another Kit, the subscription disconnected by an early close, and both upgrades.
+
 ## 0.1.0 — 2026-09-23
 
 - Added HookKit API generation 1, implementation revision 1.

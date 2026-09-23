@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 — 2026-09-23
+
+- An addon scope now closes at logout whenever LifecycleKit or EventKit is loaded, whatever revisions are paired; 0.5.0 left it open when paired with a LifecycleKit older than 0.5.0 or loaded without LifecycleKit. The first `TimerKit:ForAddon(addonName)` decides who calls `CloseAddonScopes`, finding the optional Kits through `Registry:Find`: a LifecycleKit that lists `"timerKit"` in `CLOSES_ADDON_SCOPES` (LifecycleKit 0.6.0) makes the call itself; the Kit subscribes nothing and only calls `LifecycleKit:ForAddon(addonName)` once, so an addon that never used LifecycleKit is still closed, and nothing else is subscribed; an older LifecycleKit gets one `OnShutdown` subscription per addon, kept on the scope and disconnected when the scope closes, and it steps aside if a capable LifecycleKit replaced it before logout; without LifecycleKit, one package-level EventKit `PLAYER_LOGOUT` one-shot, in an EventKit scope of TimerKit's own, closes every addon scope neither LifecycleKit route covers; with neither, nothing is subscribed and the addon makes the call. The last outcome is examined again at the next `ForAddon`. Documented under "At logout" in `docs/API.md`, including the ordering each case gives.
+- LifecycleKit and EventKit are declared under `optionalDependencies`. TimerKit still embeds as two files and depends on Registry alone.
+- `Scope:Close()` on an addon scope, and `CloseAddonScopes`, release the scope's LifecycleKit subscription.
+- Implementation revision 7. Package state gains `logoutConnection` and `logoutEventScope` without a schema change, and the shared dispatch table gains `closeOnShutdown` and `closeOnLogout`, which the subscriptions and the connection resolve when they fire. An in-place upgrade from revision 6 or older routes every carried addon scope as a first `ForAddon` would (after releasing revision 5's own subscriptions, as before); a scope already routed keeps its subscription or connection.
+- Specs: new `LogoutCoverage_spec.lua` (the four cases against the real LifecycleKit and EventKit, a LifecycleKit with its capability field removed, subscription release on `CloseAddonScopes` and `Close`, a capable LifecycleKit replacing an older one, connection order against scoped `PLAYER_LOGOUT` listeners, a failing close, re-examination after EventKit or LifecycleKit loads, and upgrades that route, or carry the routes of, an older copy). The test environment gains `LoadEventKit`, `LoadLifecycleKit` and `LoadRevision`.
+- `TimerKit` API generation 1 is unchanged.
+
 ## 0.5.0 — 2026-09-23
 
 - TimerKit no longer requires LifecycleKit (design constitution, principle 4b). The manifest lists Registry API 2 only, the load-time LifecycleKit facade check is gone, and TimerKit embeds as two files: Registry and TimerKit.

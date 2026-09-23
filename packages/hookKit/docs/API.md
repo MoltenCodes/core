@@ -52,8 +52,10 @@ HookKit does not rely on `require()` at runtime. Loading it without Registry rai
 | `Frame:HookScript` | `SecureHookScript` | Refused at the caller for that frame. |
 | `Frame:GetScript`, `Frame:SetScript` | `HookScript`, `RawHookScript` | Refused at the caller for that frame. |
 | ClientKit API 1 | `IsSecret`, to refuse a secret method, script or addon name | `issecretvalue` is asked directly; without it nothing is secret. |
+| LifecycleKit API 1 | closing an addon scope at logout (see [At logout](#at-logout)) | EventKit's `PLAYER_LOGOUT` closes it instead. |
+| EventKit API 1 | closing an addon scope at logout when LifecycleKit is absent | Without either, the consumer closes it (case d). |
 
-The host functions are read once when the file loads. ClientKit is looked up with `Registry:Find("clientKit", 1)` when a name is validated, never on a hooked call, so it may load after HookKit.
+The host functions are read once when the file loads. ClientKit is looked up with `Registry:Find("clientKit", 1)` when a name is validated, never on a hooked call, so it may load after HookKit. LifecycleKit and EventKit are looked up with `Registry:Find` by `ForAddon`, so they may load in any order too.
 
 ## Public surface
 
@@ -192,17 +194,26 @@ The scope model is the one TimerKit and EventKit share. `ForAddon(addonName)` is
 1. The addon hooks through `HookKit:ForAddon("MyAddon")`.
 2. On that addon's shutdown, the observer calls `HookKit:CloseAddonScopes("MyAddon")`.
 
-A consumer that does not use LifecycleKit wires the second step itself:
-
-```lua
-EventKit:Once("PLAYER_LOGOUT", function()
-    HookKit:CloseAddonScopes("MyAddon")
-end)
-```
+`ForAddon` makes sure somebody takes the second step whenever the framework can observe logout; see [At logout](#at-logout).
 
 Closing is terminal. The closed scope stays the addon's canonical scope, so a later `ForAddon("MyAddon")` returns it and refuses new hooks. Calling `CloseAddonScopes` for an addon that never asked for a scope records nothing and returns `false`, so the addon-scope map grows only with `ForAddon` calls. Manual scopes are never closed by `CloseAddonScopes`.
 
 A scope does not keep a hooked table alive: its records are keyed by object in a weak-keyed table and never reference the object. In Lua 5.1 that only helps when your handler does not itself capture the object, because a weak-keyed table cannot collect a key its value references.
+
+## At logout
+
+An addon scope is closed at logout whenever the framework can observe logout at all, whichever LifecycleKit, EventKit and HookKit revisions an addon set pairs. HookKit never depends on LifecycleKit (design constitution, principle 4b); `ForAddon` finds the other two Kits with `Registry:Find` and decides who closes the scope:
+
+| Case | Registered | Who closes the addon scope |
+|---|---|---|
+| (a) | LifecycleKit whose `LifecycleKit.CLOSES_ADDON_SCOPES` names `hookKit` (0.6.0 and later) | LifecycleKit, after the addon's shutdown callbacks. `ForAddon` only makes sure the addon has a LifecycleKit instance (`LifecycleKit:ForAddon(addonName)`), because LifecycleKit closes the scopes of the addons it tracks. |
+| (b) | LifecycleKit without that field (older revisions) | HookKit subscribes once to `LifecycleKit:ForAddon(addonName):OnShutdown` and calls `CloseAddonScopes` there. The subscription is kept on the scope and disconnected when the scope closes first. |
+| (c) | EventKit, no LifecycleKit | One package-level `EventKit` `Once("PLAYER_LOGOUT")` connection, in HookKit's own EventKit scope and made on the first `ForAddon` that needs it, closes every addon scope in cases (c) and (d), in addon-name order. |
+| (d) | neither | Nothing is subscribed. The consumer closes the scope itself on `PLAYER_LOGOUT`: `HookKit:CloseAddonScopes("MyAddon")`. |
+
+The decision is made at the first `ForAddon(addonName)` and taken again by every later `ForAddon` while it is (c) or (d), so a LifecycleKit that loads after the first call still takes the scope over: an addon's files each call `ForAddon`, and the first one usually runs before a later-loading addon embeds LifecycleKit. The (c) watcher leaves a scope that moved to (a) or (b) to LifecycleKit. A failure in another Kit while deciding goes to the host error handler; `ForAddon` still returns the scope, and the next call asks again.
+
+In case (b) HookKit's `OnShutdown` subscription is made at the first `ForAddon`, so it runs before the addon's own shutdown callbacks subscribed later: those callbacks then find the hooks already undone. Only case (a) guarantees that shutdown callbacks can still rely on their hooks, which is why LifecycleKit 0.6.0 announces the list. Manual scopes are never closed at logout.
 
 ## Cost
 
@@ -248,3 +259,5 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 ## Upgrades
 
 Every installed closure calls through the shared `_state.dispatch` table, and scopes keep their metatable across upgrades. A newer compatible revision therefore replaces the behaviour behind hooks an older copy installed — including the permanent secure closures — without touching the host's chain, and existing scopes gain the new methods in place. The `HookKit.UNBOUNDED` sentinel and each scope's `maxHooks` are kept, so a scope opened by an older copy stays open.
+
+Revision 2 upgrades the addon scopes revision 1 built (scope layout 1) in place and arranges their [logout close](#at-logout) while it loads, for every open one, instead of waiting for a `ForAddon` the addon may never call again. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or `dispatch`, so they run the newest code, and nothing is subscribed twice.

@@ -32,7 +32,7 @@ describe("CommandKit bootstrap", function()
         local sentinel = CommandKit.UNBOUNDED
         CommandKit:SetLimits({ maxCaptured = sentinel, maxCompletions = 8 })
 
-        local upgraded = TestEnv.LoadRevision(2)
+        local upgraded = TestEnv.LoadRevision(CommandKit.REVISION + 1)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
         assert.are.same(
             { maxCaptured = sentinel, maxCompletions = 8, maxEmotes = 1024 },
@@ -100,9 +100,10 @@ describe("CommandKit bootstrap", function()
         TestEnv.RunSlash("/live run before")
         scope:Unregister("dropped")
 
-        local upgraded = TestEnv.LoadRevision(2)
+        local nextRevision = CommandKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
         assert.are.equal(CommandKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(scopePrototype, upgraded.Scope)
         assert.are.equal(contextPrototype, upgraded.Context)
         assert.are.equal(scope, upgraded:ForAddon("MyAddon"))

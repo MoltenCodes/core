@@ -39,6 +39,10 @@ is an ordinary signal underneath, with the same ordering and re-entrancy rules.
 - `SignalKit:ForAddon(addonName)` is an addon's default bus, closed by
   `SignalKit:CloseAddonBus(addonName)` at shutdown; `bus:CreateScope()` groups
   subscriptions for one-call teardown.
+- At logout an addon's bus is closed by LifecycleKit, or by SignalKit's own
+  `PLAYER_LOGOUT` watcher when only EventKit is loaded; with neither, call
+  `SignalKit:CloseAddonBus("MyAddon")` yourself (see "At logout" in
+  [`docs/API.md`](docs/API.md#at-logout)).
 - Buses (64), topics per bus (256) and listeners per topic (256) are bounded
   by default and opened on purpose: `maxTopics` and `maxListeners` are bus
   options that accept `SignalKit.UNBOUNDED`, and `maxBuses` is set through
@@ -76,7 +80,7 @@ connection:Disconnect()
 
 SignalKit depends on Registry API 2 only for embedded-package identity and revision selection. Its callback implementation uses standard Lua only. At the bus boundary it uses `securecallfunction` and `geterrorhandler` when the client provides them, and falls back to `xpcall` and `print` otherwise.
 
-Registry must be loaded before `SignalKit.lua`.
+Registry must be loaded before `SignalKit.lua`. LifecycleKit API 1 and EventKit API 1 are optional: `SignalKit:ForAddon` finds them with `Registry:Find` to arrange an addon bus's close at logout, so they may load in any order.
 
 ## Performance model
 

@@ -9,12 +9,31 @@
 --- find it through `Registry:Find` when they are called. The manifest declares
 --- it under `optionalDependencies`, so the test runner puts SchedulerKit and
 --- the TimerKit it needs on `LUA_PATH` for this suite while the release load
---- order ignores them. LifecycleKit is optional for both, so it is not loaded.
+--- order ignores them.
+---
+--- LifecycleKit is optional too: an addon scope asks it, through
+--- `Registry:Find`, whether it closes the scope at logout. The manifest
+--- declares it under `optionalDependencies`, so it is on `LUA_PATH` as well;
+--- `LoadLifecycleKit` loads it on top of the chain and `Reset` unloads it.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local EventKitTestEnv = FrameworkTestEnv.New({
     modules = { "Registry", "SignalKit", "EventKit" },
 })
+
+local resetFixture = EventKitTestEnv.Reset
+
+---Reset the shared fixture and unload LifecycleKit.
+function EventKitTestEnv.Reset()
+    resetFixture()
+    package.loaded["LifecycleKit"] = nil
+end
+
+---Load LifecycleKit after the chain `NewPackage` loaded.
+---@return table LifecycleKit
+function EventKitTestEnv.LoadLifecycleKit()
+    return require("LifecycleKit")
+end
 
 ---An environment that also loads SchedulerKit and its required dependencies,
 ---for the coalescing specs. The chain is in dependency order; use

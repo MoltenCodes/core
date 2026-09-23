@@ -31,8 +31,18 @@ Coverage includes:
   and the `securecallfunction` paths, and an allocation guard on steady-state
   `Publish`;
 - bus scopes, `ForAddon` and `CloseAddonBus`;
+- closing an addon's bus at logout: a LifecycleKit that names `signalKit` in
+  `CLOSES_ADDON_SCOPES` left to close it after the shutdown callbacks (also for
+  an addon without its own LifecycleKit instance), an older LifecycleKit's
+  `OnShutdown` subscription (made once, disconnected by an early
+  `CloseAddonBus`, also used for a list that does not name `signalKit`), the one
+  `PLAYER_LOGOUT` watcher through EventKit closing addon buses and no other bus,
+  nothing arranged without either, the decision taken again when LifecycleKit
+  loads later, a failure in another Kit reported, the upgrade from revision-5
+  state, and the subscription and watcher kept across an upgrade;
 - Registry bootstrap and duplicate embedding, the upgrade from a revision-3 copy
-  without state, the upgrade from revision-4 state (sentinel and limits added),
+  without state, the upgrade from revision-4 state (sentinel, limits and the
+  logout watcher added),
   buses, set limits and the sentinel identity carried into a newer revision,
   and refusal to reinterpret a newer revision's state;
 - runtime API/revision metadata consistency with the package manifest.
@@ -52,7 +62,15 @@ Spec files:
 | `BusIsolation_spec.lua` | listener isolation on both paths, the `Publish` allocation guard |
 | `BusScope_spec.lua` | bus scopes, `ForAddon`, `CloseAddonBus` |
 | `Limits_spec.lua` | bus limit options, `UNBOUNDED`, `SetLimits`/`GetLimits`, refusal at the caller |
+| `LogoutClose_spec.lua` | who closes an addon's bus at logout, in each of the four cases, and across upgrades |
 | `Bootstrap_spec.lua` | Registry bootstrap, duplicate embedding, revision upgrades, limits and sentinel carried |
 | `Manifest_spec.lua` | runtime metadata against `package.manifest.json` |
+
+EventKit and LifecycleKit are declared under `optionalDependencies`, so the
+runner puts them on `LUA_PATH`. `LoadEventKit` and `LoadLifecycleKit` install
+the World of Warcraft stubs they need and load them after SignalKit;
+`SetClosesAddonScopes` writes `LifecycleKit.CLOSES_ADDON_SCOPES` onto the
+loaded facade with `rawset`, or removes it to model a LifecycleKit older than
+0.6.0.
 
 All executable specs use Busted's `*_spec.lua` convention and are discovered through the repository package-aware test runner.

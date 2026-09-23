@@ -30,11 +30,12 @@
 --   Instance creation ..... ForAddon's slow path
 --   Public instance API ... queries, subscriptions, combat gate, halting
 --   Public package API .... ForAddon, IsInCombat, SetLimits, GetLimits
---   Commit ................ prototype/facade assignment and self-check
+--   Commit ................ prototype/facade assignment, the
+--                           CLOSES_ADDON_SCOPES capability and self-check
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 12
+local IMPLEMENTATION_REVISION = 13
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
@@ -47,6 +48,24 @@ local OPTIONAL_SCHEDULER_KIT_API = 1
 local OPTIONAL_HOOK_KIT_API = 1
 local OPTIONAL_COMMAND_KIT_API = 1
 local OPTIONAL_COMM_KIT_API = 1
+
+-- The package ids whose addon scopes (for SignalKit, the addon bus) shutdown
+-- closes, in `closeAddonOwnedScopes` order. Published read-only as
+-- `LifecycleKit.CLOSES_ADDON_SCOPES`: a scope-owning Kit reads it to decide
+-- whether LifecycleKit covers its addon scopes at logout or whether it has to
+-- arrange that itself. An older revision without the field closes none of
+-- them as far as such a reader is concerned. Every revision from 13 on
+-- publishes the same set; a revision that stops closing one of them has to
+-- drop it from this list.
+local CLOSED_ADDON_SCOPE_PACKAGES = {
+    "timerKit",
+    "schedulerKit",
+    "eventKit",
+    "hookKit",
+    "commandKit",
+    "commKit",
+    "signalKit",
+}
 
 -- Schema 3 added the combat state (`inCombat`) and the creation-ordered
 -- instance list (`instances`). Schema 2 state is migrated in place.
@@ -152,6 +171,7 @@ local UNBOUNDED_COMPACTION_FLOOR = DEFAULT_COMBAT_QUEUE_LIMIT
 ---@field UNBOUNDED table Sentinel a limit takes to be lifted.
 ---@field SetLimits fun(self: LifecycleKit, limits: table)
 ---@field GetLimits fun(self: LifecycleKit): LifecycleKit.Limits
+---@field CLOSES_ADDON_SCOPES table<string, boolean> Read-only set of the package ids whose addon scopes (or, for `signalKit`, bus) shutdown closes.
 
 ---The package-wide limits. `SetLimits` accepts any subset; `GetLimits` returns
 ---a fresh copy of all of them.
@@ -296,6 +316,7 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "UNBOUNDED")) ~= "table"
         or type(rawget(implementation, "SetLimits")) ~= "function"
         or type(rawget(implementation, "GetLimits")) ~= "function"
+        or type(rawget(implementation, "CLOSES_ADDON_SCOPES")) ~= "table"
     then
         return false
     end
@@ -341,6 +362,17 @@ local function validateLimitState(currentState)
     return true
 end
 
+---Whether `currentState` carries the addon-scope capability set and its
+---read-only view (added in revision 13 without a schema change).
+---@param currentState table
+---@return boolean
+local function validateCapabilityState(currentState)
+    local capabilities = rawget(currentState, "addonScopeCapabilities")
+    return type(capabilities) == "table"
+        and type(rawget(capabilities, "entries")) == "table"
+        and type(rawget(capabilities, "view")) == "table"
+end
+
 ---Whether `implementation` carries package state of this revision's schema.
 ---@param implementation table
 ---@return boolean
@@ -348,6 +380,7 @@ local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     return type(currentState) == "table"
         and validateLimitState(currentState)
+        and validateCapabilityState(currentState)
         and rawget(currentState, "schema") == STATE_SCHEMA
         and type(rawget(currentState, "addons")) == "table"
         and type(rawget(currentState, "instances")) == "table"
@@ -487,6 +520,40 @@ if type(state) == "table" then
 end
 local UNBOUNDED = rawget(state, "unbounded")
 local sharedLimits = rawget(state, "limits")
+
+---Refuse every write to `LifecycleKit.CLOSES_ADDON_SCOPES`.
+---
+---The view holds no keys of its own, so `__newindex` sees every assignment,
+---including one that would overwrite an existing entry.
+---@param _ table
+---@param key any
+local function refuseCapabilityWrite(_, key)
+    error(
+        'LifecycleKit.CLOSES_ADDON_SCOPES is read-only; field "'
+            .. tostring(key)
+            .. '" cannot be written',
+        2
+    )
+end
+
+-- Revision 13 publishes `CLOSES_ADDON_SCOPES` without a schema change. The
+-- entries and the read-only view over them live in the state, so every
+-- revision from 13 on hands out the same table and a reader that kept it
+-- across an upgrade still reads the current set. The entries are rewritten on
+-- every bootstrap, so they always describe the copy that is running.
+if rawget(state, "addonScopeCapabilities") == nil then
+    local entries = {}
+    rawset(state, "addonScopeCapabilities", {
+        entries = entries,
+        view = setmetatable({}, {
+            __index = entries,
+            __newindex = refuseCapabilityWrite,
+            __metatable = false,
+        }),
+    })
+end
+local addonScopeCapabilities = rawget(state, "addonScopeCapabilities")
+local CLOSES_ADDON_SCOPES = rawget(addonScopeCapabilities, "view")
 
 local INSTANCE_METATABLE = { __index = Instance }
 local SUBSCRIPTION_METATABLE = { __index = Subscription }
@@ -1116,11 +1183,11 @@ end
 ---Close the addon's canonical CommKit scope: its pending sends are cancelled,
 ---its SyncSets closed and its prefix registrations disconnected.
 ---
----CommKit depends on LifecycleKit and already closes the scope of
----`CommKit:ForAddon` from its own `OnShutdown` subscription, which runs among
----the shutdown callbacks. Calling `CloseAddonScopes` here as well pins the
----step to its place in the shutdown order whatever CommKit revision is loaded;
----when the scope is already closed it answers `false`, a normal result.
+---CommKit does not depend on LifecycleKit; it learns from
+---`CLOSES_ADDON_SCOPES` that this step exists and subscribes nothing of its
+---own, so this call is what closes the scope, at its place in the shutdown
+---order. A CommKit revision that closed the scope itself answers `false`
+---here, a normal result.
 ---Without CommKit, or with a revision that has no `CloseAddonScopes`, there is
 ---nothing to close. A failure is returned as an error record for the
 ---first-error policy.
@@ -2223,10 +2290,22 @@ rawset(LifecycleKit, "UNBOUNDED", UNBOUNDED)
 rawset(LifecycleKit, "SetLimits", setLimits)
 rawset(LifecycleKit, "GetLimits", getLimits)
 
+-- The capability set is rewritten in place so it names exactly what this
+-- copy's `closeAddonOwnedScopes` closes.
+local capabilityEntries = rawget(addonScopeCapabilities, "entries")
+for packageId in pairs(capabilityEntries) do
+    rawset(capabilityEntries, packageId, nil)
+end
+for index = 1, #CLOSED_ADDON_SCOPE_PACKAGES do
+    rawset(capabilityEntries, CLOSED_ADDON_SCOPE_PACKAGES[index], true)
+end
+rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", CLOSES_ADDON_SCOPES)
+
 if
     not validatePublicSurface(LifecycleKit)
     or not validateCurrentState(LifecycleKit)
     or rawget(LifecycleKit, "UNBOUNDED") ~= UNBOUNDED
+    or rawget(LifecycleKit, "CLOSES_ADDON_SCOPES") ~= CLOSES_ADDON_SCOPES
 then
     error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
 end

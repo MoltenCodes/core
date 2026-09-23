@@ -18,6 +18,12 @@
 -- (`BindOptions`), LocaleKit API 1 (`Printf`) and ClientKit API 1 (`IsSecret`)
 -- are optional and found through `Registry:Find` when they are used.
 --
+-- CommandKit does not depend on LifecycleKit, yet an addon scope is closed at
+-- logout whenever the framework can observe logout at all (design
+-- constitution, principle 4b). `ForAddon` arranges it through whichever of
+-- LifecycleKit API 1 and EventKit API 1 is registered, both found through
+-- `Registry:Find`: see "Logout close" below and "At logout" in `docs/API.md`.
+--
 -- Contents
 -- --------
 --   Constants ............. identity, bounds, field lists, method lists
@@ -36,6 +42,7 @@
 --   Context methods ....... what a handler receives
 --   Options binding ....... get, set, reset, list and exec over OptionsKit
 --   Completion ............ the ChatEdit_CustomTabPressed replacement chain
+--   Logout close .......... who closes an addon scope at logout
 --   Scope methods ......... the handle a scope owner receives
 --   Package public API .... the facade published through Registry
 --   Commit ................ prototype/facade assignment and self-check
@@ -46,7 +53,7 @@
 
 local PACKAGE_NAME = "commandKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local OPTIONAL_OPTIONSKIT_API = 1
@@ -56,10 +63,39 @@ local STATE_SCHEMA = 1
 
 -- Every scope, command record and context carries the layout it was built
 -- with, so a later revision that changes a layout can upgrade old objects
--- instead of guessing from which fields exist.
-local SCOPE_SCHEMA = 1
+-- instead of guessing from which fields exist. Scope layout 2 (revision 2)
+-- added the two logout fields, `_logoutCloser` and `_shutdownSubscription`.
+local SCOPE_SCHEMA = 2
 local RECORD_SCHEMA = 1
 local CONTEXT_SCHEMA = 1
+
+-- Who closes an addon scope at logout, as its `_logoutCloser` records it
+-- (docs/API.md, "At logout"). A manual scope records `false`: nobody closes it
+-- but its owner.
+--
+--   "lifecycleKit"   LifecycleKit names CommandKit in `CLOSES_ADDON_SCOPES`
+--                    and closes the scope after the addon's shutdown callbacks.
+--   "onShutdown"     an older LifecycleKit is registered: CommandKit
+--                    subscribed to the addon's `OnShutdown`, kept in
+--                    `_shutdownSubscription`.
+--   "playerLogout"   no LifecycleKit, but EventKit: the package-level
+--                    `PLAYER_LOGOUT` watcher closes the scope.
+--   "none"           neither was registered; the next `ForAddon` asks again.
+--
+-- Only "none" and "playerLogout" are asked again: a LifecycleKit that loads
+-- later still takes the scope over, so its shutdown callbacks run before the
+-- scope closes.
+--
+-- The values, and the API generations of the two Kits asked, share one table:
+-- the main chunk is close to Lua 5.1's limit of 200 locals.
+local LOGOUT = {
+    lifecycleKitApi = 1,
+    eventKitApi = 1,
+    byLifecycle = "lifecycleKit",
+    byShutdownCallback = "onShutdown",
+    byEvent = "playerLogout",
+    byNobody = "none",
+}
 
 -- Scope limits (see "Limits" in docs/API.md). Each is a default a scope
 -- option overrides with any positive integer or `CommandKit.UNBOUNDED`: all four
@@ -411,6 +447,7 @@ local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     return validateStateBase(currentState)
         and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
+        and type(rawget(currentState, "logoutWatch")) == "table"
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -489,12 +526,31 @@ if previousRevision == nil then
             maxCompletions = DEFAULT_MAX_COMPLETIONS,
             maxEmotes = DEFAULT_MAX_EMOTES,
         },
+        -- The package-level `PLAYER_LOGOUT` watcher (see "Logout close"): the
+        -- EventKit scope that owns it, the connection once made, and the
+        -- trampoline handed to EventKit, which calls through `dispatch`.
+        logoutWatch = { scope = false, connection = false, trampoline = false },
     }
     rawset(CommandKit, "Scope", Scope)
     rawset(CommandKit, "Context", Context)
     rawset(CommandKit, "_state", state)
 elseif type(Scope) ~= "table" or type(Context) ~= "table" or not validateStateBase(state) then
     error("MoltenCodes CommandKit package state is corrupted or incomplete", 2)
+end
+
+-- Revision 1 kept no logout watcher and built scope layout 1. The watcher
+-- table is added, and every addon scope gains the two logout fields: nobody
+-- has arranged its logout close yet, which the bottom of this file and the
+-- next `ForAddon` do. A manual scope needs neither field and is left as built.
+if rawget(state, "logoutWatch") == nil then
+    rawset(state, "logoutWatch", { scope = false, connection = false, trampoline = false })
+end
+for _, addonScope in next, rawget(state, "addonScopes") do
+    if rawget(addonScope, "_schema") == 1 then
+        rawset(addonScope, "_logoutCloser", LOGOUT.byNobody)
+        rawset(addonScope, "_shutdownSubscription", false)
+        rawset(addonScope, "_schema", SCOPE_SCHEMA)
+    end
 end
 
 -- The metatables and prototypes are kept across upgrades, so scopes and
@@ -2742,6 +2798,192 @@ local function disableCompletion(scope)
     return true
 end
 
+-- Logout close ---------------------------------------------------------------
+--
+-- CommandKit never observes logout itself and never depends on LifecycleKit
+-- (design constitution, principle 4b). What it does instead is make sure that
+-- somebody who does observe logout closes each addon scope, whichever revisions
+-- of the other Kits are loaded. `ForAddon` asks, in this order:
+--
+--   (a) LifecycleKit is registered and its `CLOSES_ADDON_SCOPES` names
+--       "commandKit": it closes the scope after the addon's shutdown
+--       callbacks. CommandKit only makes sure the addon has a LifecycleKit
+--       instance, because LifecycleKit closes the scopes of the addons it
+--       tracks.
+--   (b) LifecycleKit is registered without that field (an older revision):
+--       CommandKit subscribes to the addon's `OnShutdown` and closes the scope
+--       from there. The subscription is kept on the scope, so closing the
+--       scope earlier disconnects it.
+--   (c) no LifecycleKit, but EventKit: one package-level `PLAYER_LOGOUT`
+--       watcher, in CommandKit's own EventKit scope, closes the addon scopes
+--       that nobody else closes.
+--   (d) neither: nothing is arranged, and the consumer calls
+--       `CommandKit:CloseAddonScopes(addonName)` itself on `PLAYER_LOGOUT`.
+--
+-- Outcomes (c) and (d) are asked again by every later `ForAddon`, so a
+-- LifecycleKit that loads after the first call still takes the scope over.
+--
+-- The functions are fields of one table rather than locals of their own: the
+-- main chunk is close to Lua 5.1's limit of 200 locals.
+
+local LogoutClose = {}
+
+---Whether `LifecycleKit` announces that it closes CommandKit's addon scopes.
+---
+---The field is a read-only table, so it is indexed normally rather than with
+---`rawget`: a proxy answers through `__index`. A revision without the field
+---closes none.
+---@param LifecycleKit table
+---@return boolean
+function LogoutClose.lifecycleClosesCommandScopes(LifecycleKit)
+    local closes = rawget(LifecycleKit, "CLOSES_ADDON_SCOPES")
+    return type(closes) == "table" and closes[PACKAGE_NAME] == true
+end
+
+---Make the package-level `PLAYER_LOGOUT` watcher exist, once per session.
+---
+---The watcher lives in CommandKit's own EventKit scope and calls through a
+---trampoline kept in state, which looks `dispatch` up, so a newer CommandKit
+---revision replaces what an older revision's watcher does.
+---@param EventKit table
+function LogoutClose.ensureWatch(EventKit)
+    local watch = rawget(state, "logoutWatch")
+    if rawget(watch, "connection") ~= false then
+        return
+    end
+    local trampoline = rawget(watch, "trampoline")
+    if trampoline == false then
+        trampoline = function()
+            rawget(dispatch, "closeAddonScopesAtLogout")()
+        end
+        rawset(watch, "trampoline", trampoline)
+    end
+    local eventScope = rawget(watch, "scope")
+    if eventScope == false or eventScope:IsClosed() then
+        eventScope = EventKit:CreateScope()
+        rawset(watch, "scope", eventScope)
+    end
+    rawset(watch, "connection", eventScope:Once("PLAYER_LOGOUT", trampoline))
+end
+
+---Subscribe to the addon's LifecycleKit shutdown and close its scope there.
+---
+---The callback calls the facade method, so the CommandKit revision loaded at
+---logout does the closing.
+---@param LifecycleKit table
+---@param addonName string
+---@return table subscription LifecycleKit subscription handle
+function LogoutClose.subscribeShutdown(LifecycleKit, addonName)
+    local instance = LifecycleKit:ForAddon(addonName)
+    return instance:OnShutdown(function()
+        CommandKit:CloseAddonScopes(addonName)
+    end)
+end
+
+---Arrange, once, who closes the addon scope `scope` at logout.
+---
+---Does nothing for a closed scope, and nothing once LifecycleKit has taken
+---the scope over; see the section comment for the four outcomes.
+---@param addonName string
+---@param scope CommandKit.Scope
+function LogoutClose.arrange(addonName, scope)
+    local closer = rawget(scope, "_logoutCloser")
+    if closer ~= LOGOUT.byNobody and closer ~= LOGOUT.byEvent then
+        return
+    end
+    if rawget(scope, "_closed") == true then
+        return
+    end
+
+    local LifecycleKit = findOptional("lifecycleKit", LOGOUT.lifecycleKitApi)
+    if LifecycleKit ~= nil then
+        if LogoutClose.lifecycleClosesCommandScopes(LifecycleKit) then
+            LifecycleKit:ForAddon(addonName)
+            rawset(scope, "_logoutCloser", LOGOUT.byLifecycle)
+        else
+            local subscription = LogoutClose.subscribeShutdown(LifecycleKit, addonName)
+            rawset(scope, "_shutdownSubscription", subscription)
+            rawset(scope, "_logoutCloser", LOGOUT.byShutdownCallback)
+        end
+        return
+    end
+
+    if closer == LOGOUT.byEvent then
+        return
+    end
+    local EventKit = findOptional("eventKit", LOGOUT.eventKitApi)
+    if EventKit ~= nil then
+        LogoutClose.ensureWatch(EventKit)
+        rawset(scope, "_logoutCloser", LOGOUT.byEvent)
+    end
+end
+
+---Arrange the logout close without letting a failure in another Kit break the
+---caller: the failure goes to the host error handler and the scope stays
+---undecided, so the next `ForAddon` asks again.
+---@param addonName string
+---@param scope CommandKit.Scope
+function LogoutClose.arrangeProtected(addonName, scope)
+    local ok, failure = pcall(LogoutClose.arrange, addonName, scope)
+    if not ok then
+        reportError(failure)
+    end
+end
+
+---Disconnect the `OnShutdown` subscription of an addon scope, if it has one.
+---
+---Called when the scope closes by any path: a scope closed before logout needs
+---no shutdown callback, and one closing from inside that callback finds it
+---already delivered.
+---@param scope CommandKit.Scope
+function LogoutClose.releaseSubscription(scope)
+    local subscription = rawget(scope, "_shutdownSubscription")
+    if subscription == nil or subscription == false then
+        return
+    end
+    rawset(scope, "_shutdownSubscription", false)
+    subscription:Disconnect()
+end
+
+---The `PLAYER_LOGOUT` watcher's work: close every addon scope nobody else
+---closes, in addon-name order so the outcome does not depend on hash order.
+---
+---A scope LifecycleKit took over (outcomes a and b) is left to it, so its
+---shutdown callbacks still run first. Every close is attempted; each failure
+---goes to the host error handler.
+function LogoutClose.closeAtLogout()
+    local names = {}
+    for addonName, scope in next, addonScopes do
+        local closer = rawget(scope, "_logoutCloser")
+        if closer == LOGOUT.byEvent or closer == LOGOUT.byNobody then
+            names[#names + 1] = addonName
+        end
+    end
+    table.sort(names)
+    for index = 1, #names do
+        local ok, failure = pcall(CommandKit.CloseAddonScopes, CommandKit, names[index])
+        if not ok then
+            reportError(failure)
+        end
+    end
+end
+
+---Arrange the logout close of every open addon scope an upgrade inherited, in
+---addon-name order: an older revision never arranged it, and the addon may
+---never call `ForAddon` again.
+function LogoutClose.arrangeInherited()
+    local inherited = {}
+    for addonName, scope in next, addonScopes do
+        if rawget(scope, "_closed") ~= true then
+            inherited[#inherited + 1] = addonName
+        end
+    end
+    table.sort(inherited)
+    for index = 1, #inherited do
+        LogoutClose.arrangeProtected(inherited[index], rawget(addonScopes, inherited[index]))
+    end
+end
+
 -- Scope methods --------------------------------------------------------------
 
 ---Register `/name`. Returns `true`, `nil, "taken"` when another owner or a
@@ -2870,6 +3112,7 @@ local function scopeClose(self)
         return false
     end
     rawset(self, "_closed", true)
+    LogoutClose.releaseSubscription(self)
     disableCompletion(self)
     local commands = rawget(self, "_commands")
     local names = {}
@@ -2983,6 +3226,10 @@ local function newScope(addonName, limits)
         _maxSubcommands = limits.maxSubcommands,
         _maxPositions = limits.maxPositions,
         _maxSlashAliases = limits.maxSlashAliases,
+        -- See "Logout close": `false` for a manual scope, nobody yet for an
+        -- addon scope, until `ForAddon` arranges it.
+        _logoutCloser = addonName ~= false and LOGOUT.byNobody or false,
+        _shutdownSubscription = false,
     }, SCOPE_METATABLE)
 end
 
@@ -3023,9 +3270,11 @@ end
 
 ---Return the canonical command scope of an addon, creating it on demand.
 ---
----CommandKit does not observe addon shutdown; whoever does (LifecycleKit, or
----the addon itself on `PLAYER_LOGOUT`) closes this scope through
----`CommandKit:CloseAddonScopes(addonName)`.
+---CommandKit does not observe addon shutdown, but every call makes sure
+---somebody who does closes this scope through
+---`CommandKit:CloseAddonScopes(addonName)`: LifecycleKit, CommandKit's own
+---`PLAYER_LOGOUT` watcher through EventKit, or, with neither loaded, the addon
+---itself (docs/API.md, "At logout").
 ---
 ---`options` sets the limits when this call creates the scope. On a later call
 ---a limit that differs from the scope's is refused at the caller; one that
@@ -3045,6 +3294,7 @@ local function forAddon(self, addonName, options)
     else
         refuseConflictingOptions(scope, options, limits, "CommandKit:ForAddon options", 3)
     end
+    LogoutClose.arrangeProtected(addonName, scope)
     return scope
 end
 
@@ -3212,10 +3462,15 @@ rawset(CommandKit, "GetLimits", getLimits)
 
 rawset(dispatch, "slash", slashDispatch)
 rawset(dispatch, "tabPressed", tabPressed)
+rawset(dispatch, "closeAddonScopesAtLogout", LogoutClose.closeAtLogout)
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(CommandKit) or not validateCurrentState(CommandKit) then
     error("MoltenCodes CommandKit package state is corrupted or incomplete", 2)
+end
+
+if previousRevision ~= nil then
+    LogoutClose.arrangeInherited()
 end
 
 return CommandKit

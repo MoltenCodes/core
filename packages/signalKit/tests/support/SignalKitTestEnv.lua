@@ -4,7 +4,14 @@
 --- capture live in the shared `FrameworkTestEnv` fixture at `tests/support/`.
 --- What stays here is this package's own module load order and the helpers
 --- only its specs describe: a host with `securecallfunction`, allocation
---- measurement and loading the source as another revision.
+--- measurement, loading the source as another revision, and loading the two
+--- optional Kits that decide who closes an addon's bus at logout.
+---
+--- EventKit and LifecycleKit are declared under `optionalDependencies`, so the
+--- test runner puts them on `LUA_PATH`. `LoadEventKit` and `LoadLifecycleKit`
+--- install the World of Warcraft stubs they need and load them on top of the
+--- chain, after SignalKit, as an addon that embeds them would; `Reset` unloads
+--- them again.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local SignalKitTestEnv = FrameworkTestEnv.New({
@@ -14,6 +21,70 @@ local SignalKitTestEnv = FrameworkTestEnv.New({
     wowApi = false,
     legacyRegistryState = true,
 })
+
+--- Modules a spec may load on top of the chain, in the order `Reset` unloads
+--- them. They are not in the chain, so the shared `Reset` would leave them in
+--- `package.loaded` bound to a Registry that no longer exists.
+local OPTIONAL_MODULES = { "LifecycleKit", "EventKit" }
+
+--- What LifecycleKit 0.6.0 publishes as `CLOSES_ADDON_SCOPES`: the package ids
+--- whose addon scopes (or bus) it closes at shutdown.
+local CLOSES_ADDON_SCOPES = {
+    timerKit = true,
+    schedulerKit = true,
+    eventKit = true,
+    hookKit = true,
+    commandKit = true,
+    commKit = true,
+    signalKit = true,
+}
+
+local sharedReset = SignalKitTestEnv.Reset
+
+---Clear every module, global and stub this environment owns, including the
+---optional Kits a spec loaded.
+function SignalKitTestEnv.Reset()
+    for index = 1, #OPTIONAL_MODULES do
+        package.loaded[OPTIONAL_MODULES[index]] = nil
+    end
+    sharedReset()
+end
+
+---Install the World of Warcraft stubs EventKit needs, then load it.
+---@return table EventKit
+function SignalKitTestEnv.LoadEventKit()
+    SignalKitTestEnv.InstallWowApi()
+    return require("EventKit")
+end
+
+---Load LifecycleKit (and EventKit, which it requires) on top of the chain,
+---then make it announce `CLOSES_ADDON_SCOPES` or not.
+---
+---`closesAddonScopes` `true` models LifecycleKit 0.6.0 and later, `false` an
+---older revision without the field. The field is written onto the loaded
+---facade with `rawset`, whatever the revision on `LUA_PATH` publishes.
+---@param closesAddonScopes boolean|table
+---@return table LifecycleKit
+---@return table EventKit
+function SignalKitTestEnv.LoadLifecycleKit(closesAddonScopes)
+    local EventKit = SignalKitTestEnv.LoadEventKit()
+    local LifecycleKit = require("LifecycleKit")
+    SignalKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
+    return LifecycleKit, EventKit
+end
+
+---Make `LifecycleKit` announce, or stop announcing, `CLOSES_ADDON_SCOPES`.
+---@param LifecycleKit table
+---@param closesAddonScopes boolean|table `true` for the full list, `false` for none, or a list of its own
+function SignalKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
+    local value = nil
+    if closesAddonScopes == true then
+        value = CLOSES_ADDON_SCOPES
+    elseif type(closesAddonScopes) == "table" then
+        value = closesAddonScopes
+    end
+    rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", value)
+end
 
 ---Load the module chain on a host that has `geterrorhandler` and
 ---`securecallfunction`, so bus deliveries take the modern-client path.

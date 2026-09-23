@@ -11,7 +11,8 @@ The suite covers:
 - cancellation and ownership scopes;
 - self-cancellation followed by cooperative yield;
 - lazy package bootstrap plus per-scope TimerKit allocation;
-- addon scopes closed through `CloseAddonScopes` (the two-step); the logout integration with LifecycleKit lives in LifecycleKit's suite;
+- addon scopes closed through `CloseAddonScopes` (the two-step); the shutdown order against LifecycleKit lives in LifecycleKit's suite;
+- who closes an addon scope at logout: a LifecycleKit that lists SchedulerKit in `CLOSES_ADDON_SCOPES`, an older LifecycleKit through `OnShutdown`, EventKit's `PLAYER_LOGOUT` without LifecycleKit, or nobody, re-examined when a Kit loads later and carried across an upgrade;
 - callback/error isolation and tracebacks captured at the point of failure;
 - delayed wakeups carried on TimerKit's public user-data seam;
 - scopes closed from inside a running job, including during an `Every` callback;
@@ -34,6 +35,7 @@ Spec files:
 | `Delayed_spec.lua` | delayed and repeating work through TimerKit, the user-data seam, stale wakeups, scopes closed mid-callback |
 | `Limits_spec.lua` | `SetLimits` / `GetLimits`, `UNBOUNDED`, ceilings, the 33rd lane, wide debounce calls direct and through a lane, atomic validation |
 | `Scope_spec.lua` | lazy TimerKit scopes, cancellation, terminal close, self-closing jobs, addon scopes and `CloseAddonScopes` |
+| `LogoutCoverage_spec.lua` | the four logout routes, re-examination, subscription release on close, carrying routes across an upgrade |
 | `Errors_spec.lua` | error isolation, `nil`/`false` error objects, tracebacks, arming and re-arm failures |
 | `ErrorLevels_spec.lua` | `ShouldYield`, `Yield` and context receiver guards at the caller's line |
 | `Property_spec.lua` | randomized scope and package active-count invariants |

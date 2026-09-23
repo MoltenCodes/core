@@ -253,12 +253,21 @@ local timers = TimerKit:ForAddon("MyAddon")
 
 ### Addon scopes and shutdown: the two-step
 
-TimerKit requires Registry and nothing else, so it does not observe addon shutdown. Closing an addon scope is a separate, public step taken by whoever does:
+TimerKit requires Registry and nothing else, so it does not depend on anything that observes addon shutdown. Closing an addon scope is a separate, public step:
 
 1. timers are created through `TimerKit:ForAddon("MyAddon")`;
-2. when the addon shuts down, its observer calls `TimerKit:CloseAddonScopes("MyAddon")`.
+2. at logout, `TimerKit:CloseAddonScopes("MyAddon")` closes the scope.
 
-**LifecycleKit calls `CloseAddonScopes` at shutdown; without LifecycleKit, call it yourself on `PLAYER_LOGOUT`.** LifecycleKit makes the call after the addon's shutdown callbacks have run, and before it closes the addon's SchedulerKit, EventKit, HookKit, CommandKit and CommKit scopes and its SignalKit bus, so no timer fires into a listener that is being torn down. An addon using LifecycleKit writes no teardown for its scoped timers. An addon without it closes the scope from its own logout handler, through EventKit when it embeds it or through a frame of its own:
+Who takes the second step is arranged by TimerKit itself whenever the framework can observe logout; see [At logout](#at-logout).
+
+### At logout
+
+**An addon scope closes at logout whenever LifecycleKit or EventKit is loaded, and otherwise by your own call**, whatever revisions of them are paired with this one. The first `ForAddon(addonName)` for an addon looks for the optional Kits through `Registry:Find` and takes the first case that applies:
+
+1. **LifecycleKit lists `"timerKit"` in `LifecycleKit.CLOSES_ADDON_SCOPES`** (LifecycleKit 0.6.0 and later). TimerKit subscribes nothing and makes sure the addon is known to LifecycleKit (it calls `LifecycleKit:ForAddon(addonName)` once): LifecycleKit calls `CloseAddonScopes` when the addon reaches `shutdown`, after its shutdown callbacks have run and before it closes the addon's SchedulerKit, EventKit, HookKit, CommandKit and CommKit scopes and its SignalKit bus, so no timer fires into a listener that is being torn down. This is the case with ordering guarantees, and it covers an addon that never used LifecycleKit itself.
+2. **An older LifecycleKit, without that field.** TimerKit asks it for `LifecycleKit:ForAddon(addonName):OnShutdown(...)`, once per addon, and closes the scope from that callback, among the addon's shutdown callbacks, as TimerKit 0.4.x did. This is compatibility only: LifecycleKit is found through `Registry:Find` and never becomes a dependency. The subscription is kept on the scope; closing the scope (`CloseAddonScopes` or `Scope:Close()`) disconnects it. If a LifecycleKit that lists TimerKit replaces the older one before logout, the callback leaves the call to it.
+3. **No LifecycleKit, but EventKit.** TimerKit keeps one package-level `PLAYER_LOGOUT` one-shot, in an EventKit scope of its own, created by the first `ForAddon` that needs it. At logout it closes every addon scope that neither case above covers, in addon-name order; a failure does not stop the others and reaches the host error handler through EventKit. EventKit runs `PLAYER_LOGOUT` listeners in connection order, so the scope closes when this listener runs: after any listener connected before the addon's first `ForAddon`, before any connected after it. Use LifecycleKit when the addon's own logout code must run while its timers are live.
+4. **Neither.** Nothing is subscribed and `ForAddon` works as always. Call `CloseAddonScopes` yourself on `PLAYER_LOGOUT`, for example from a frame of your own:
 
 ```lua
 local logoutFrame = CreateFrame("Frame")
@@ -267,6 +276,10 @@ logoutFrame:SetScript("OnEvent", function()
     TimerKit:CloseAddonScopes("MyAddon")
 end)
 ```
+
+The decision is made once per addon, except for case 4, which the next `ForAddon` for that addon examines again, because a Kit loaded after the first call (an addon later in the load order embedding EventKit, say) can make logout observable. A LifecycleKit 0.5.0 or later that loads after case 4 was chosen closes the scope anyway once the addon asks it for an instance, because it calls `CloseAddonScopes` for every addon it knows. Closing the scope twice is harmless: the second call answers `false`.
+
+The routing costs one field read per `ForAddon` once decided. TimerKit allocates one closure and one LifecycleKit subscription per addon in case 2, and one EventKit scope and connection for the whole package in case 3.
 
 `CloseAddonScopes(addonName)`:
 
@@ -280,7 +293,7 @@ Closing is terminal: the closed scope stays the canonical addon scope, so a late
 
 Manual scopes and TimerKit's package-level convenience scope are never closed by `CloseAddonScopes`.
 
-Revision 5 and older required LifecycleKit and subscribed each addon scope to its addon's shutdown themselves. An embedded copy of this revision that upgrades one of them in place disconnects those subscriptions; the carried scopes stay open and canonical until `CloseAddonScopes` is called. A pairing of this revision with a LifecycleKit older than 0.5.0 closes no timer scope at logout, since that LifecycleKit does not know the call.
+Revision 5 and older required LifecycleKit and subscribed each addon scope to its addon's shutdown themselves. An embedded copy of this revision that upgrades one of them in place disconnects those subscriptions and then routes the carried scopes as described under [At logout](#at-logout); they stay open and canonical until they are closed. Revision 6 decided no route: its scopes are routed the same way when revision 7 upgrades it. A scope a revision 7 or later copy already routed keeps its route, its `OnShutdown` subscription and the package's `PLAYER_LOGOUT` connection, whose callbacks resolve the running revision's code when they fire. With a LifecycleKit older than 0.5.0 (which does not know `CloseAddonScopes`), case 2 closes the scope.
 
 ## Package-level convenience timers
 
@@ -303,6 +316,9 @@ grows only with the consumer's calls:
   it completes or is cancelled; idle and completed timers are not retained;
 - the addon-scope map holds one scope per name passed to `ForAddon`, and
   `CloseAddonScopes` records nothing for a name that never had one;
+- the logout routing holds at most one LifecycleKit subscription per addon
+  scope (released when the scope closes) and one EventKit connection for the
+  package;
 - the internal convenience scope behind `TimerKit:After` / `Every` is one scope,
   replaced only when it is closed.
 
@@ -320,6 +336,8 @@ GetTimePreciseSec()   -- optional; deadlines only, never used to schedule
 ```
 
 It does not inspect native timer userdata or depend on undocumented implementation fields. This is important because modern WoW timer handles are native FunctionContainer userdata.
+
+LifecycleKit API 1 and EventKit API 1 are optional. TimerKit finds them through `Registry:Find` (an older Registry's `Get` is the equivalent fallback) only inside `ForAddon`, to arrange the logout closing described under [At logout](#at-logout); nothing else reads them.
 
 The native boundary is intentionally narrow so TimerKit behavior can be tested with a deterministic adapter outside the game client.
 

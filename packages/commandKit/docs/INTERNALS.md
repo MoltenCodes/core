@@ -9,7 +9,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | Field | Meaning |
 |---|---|
 | `schema` | The state layout version, `1`. |
-| `dispatch` | `slash` and `tabPressed`; every closure CommandKit leaves in the client's tables calls through it. |
+| `dispatch` | `slash`, `tabPressed` and `closeAddonScopesAtLogout`; every closure CommandKit leaves in the client's tables, and the logout watcher's trampoline, call through it. |
 | `runtimeRevision` | The revision that last committed its functions. |
 | `scopeMetatable`, `contextMetatable` | The metatables every scope and context shares; their `__index` is `CommandKit.Scope` and `CommandKit.Context`. |
 | `addonScopes` | Addon name to that addon's canonical scope. Only `ForAddon` adds to it. |
@@ -20,6 +20,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | `frames`, `frameDepth` | The dispatch frames, one per nesting level up to `MAX_NESTING` (4), and how many are in use. |
 | `completion` | `installed`, `previous` (the function the replacement forwards to, or `false`), `handler` (the replacement closure, or `false` before the first install) and `enabledScopes`. |
 | `unbounded` | The `CommandKit.UNBOUNDED` sentinel, created once so every revision publishes the same table; the state predicate checks the facade field against it. |
+| `logoutWatch` | `{ scope, connection, trampoline }`: CommandKit's own EventKit scope, its one `PLAYER_LOGOUT` `Once` connection and the trampoline handed to it, each `false` until the first `ForAddon` in case (c) of "At logout" creates it. Added by revision 2; an upgrade over revision 1 adds it. |
 | `limits` | The package-wide limits `SetLimits` writes: `maxCaptured` (an integer or the sentinel), `maxCompletions` and `maxEmotes` (integers under their ceilings). Read where they apply, so a change takes effect at the next capture, completion or registration. |
 
 `keyByName`, `ownedKeys` and `slashHandlers` grow with the number of distinct slash names registered in the session, which is bounded by what addons register; each entry is a few strings and one closure.
@@ -28,9 +29,11 @@ This document describes implementation invariants for maintainers. It is not an 
 
 | Field | Meaning |
 |---|---|
-| `_schema` | The scope layout version, `1`. |
+| `_schema` | The scope layout version, `2` (revision 2 added the two logout fields). |
 | `_addonName` | The owning addon name, or `false` for a manual scope. |
 | `_closed` | Whether `Close` (or `CloseAddonScopes`) ran. |
+| `_logoutCloser` | Who closes the scope at logout: `false` for a manual scope, else `"lifecycleKit"`, `"onShutdown"`, `"playerLogout"` or `"none"` (the cases of "At logout" in `API.md`). Only `"none"` and `"playerLogout"` are decided again. |
+| `_shutdownSubscription` | The LifecycleKit `OnShutdown` subscription of case (b), or `false`. `Close` disconnects it. |
 | `_count` | The number of registered top-level commands. |
 | `_commands` | Lower-case name to top-level record. |
 | `_sink` | The sink, or `false` for `DEFAULT_CHAT_FRAME`. |
@@ -130,3 +133,5 @@ function(editBox, ...) return dispatch.tabPressed(editBox, ...) end
 ## Upgrades
 
 Revision 1 creates the state above; a later revision validates it with `validateStateBase` and rewrites `dispatch`, the prototypes and `runtimeRevision`. Dispatchers and the tab replacement installed by an older copy call through `dispatch`, so they run the newer code at once; scopes and contexts reach the newer methods through the shared metatables. A revision that changes a layout checks the `_schema` of each scope, record and context it inherits.
+
+Revision 2 does this for scope layout 2: it walks `addonScopes`, gives every layout-1 scope `_logoutCloser = "none"` and `_shutdownSubscription = false`, adds `logoutWatch` to the state, and after committing arranges the logout close of every open addon scope in addon-name order. A manual layout-1 scope is left as built; the logout code reads both fields with `rawget` and treats a missing one as "nothing to do". The logout functions are fields of one `LogoutClose` table and the logout constants one `LOGOUT` table, because the main chunk is close to Lua 5.1's limit of 200 locals.

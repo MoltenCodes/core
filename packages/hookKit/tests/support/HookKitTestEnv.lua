@@ -24,11 +24,33 @@
 --- ClientKit is an optional dependency of HookKit, declared under
 --- `optionalDependencies`, so the test runner puts it on `LUA_PATH` for this
 --- suite; `NewPackageWithoutClientKit` models an addon that embeds none.
+---
+--- EventKit and LifecycleKit are optional dependencies too: they decide who
+--- closes an addon scope at logout. `LoadEventKit` and `LoadLifecycleKit` load
+--- them (and SignalKit, which both require) on top of the chain, after HookKit,
+--- as an addon that embeds them later would; `Reset` unloads them again.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local HookKitTestEnv = FrameworkTestEnv.New({
     modules = { "Registry", "ClientKit", "HookKit" },
 })
+
+--- Modules a spec may load on top of the chain, in the order `Reset` unloads
+--- them. They are not in the chain, so the shared `Reset` would leave them in
+--- `package.loaded` bound to a Registry that no longer exists.
+local OPTIONAL_MODULES = { "LifecycleKit", "EventKit", "SignalKit" }
+
+--- What LifecycleKit 0.6.0 publishes as `CLOSES_ADDON_SCOPES`: the package ids
+--- whose addon scopes (or bus) it closes at shutdown.
+local CLOSES_ADDON_SCOPES = {
+    timerKit = true,
+    schedulerKit = true,
+    eventKit = true,
+    hookKit = true,
+    commandKit = true,
+    commKit = true,
+    signalKit = true,
+}
 
 --- The host globals this environment installs and removes.
 local HOOK_GLOBALS = { "hooksecurefunc", "issecurevariable", "InCombatLockdown" }
@@ -126,6 +148,9 @@ local sharedReset = HookKitTestEnv.Reset
 ---Clear every module, global and stub this environment owns, including the
 ---HookKit host globals.
 function HookKitTestEnv.Reset()
+    for index = 1, #OPTIONAL_MODULES do
+        package.loaded[OPTIONAL_MODULES[index]] = nil
+    end
     sharedReset()
     for index = 1, #HOOK_GLOBALS do
         setGlobal(HOOK_GLOBALS[index], nil)
@@ -169,6 +194,42 @@ function HookKitTestEnv.NewPackageWithoutHookApi()
     require("Registry")
     require("ClientKit")
     return require("HookKit")
+end
+
+---Load EventKit (and SignalKit, which it requires) on top of the chain.
+---@return table EventKit
+function HookKitTestEnv.LoadEventKit()
+    require("SignalKit")
+    return require("EventKit")
+end
+
+---Load LifecycleKit (and SignalKit and EventKit, which it requires) on top of
+---the chain, then make it announce `CLOSES_ADDON_SCOPES` or not.
+---
+---`closesAddonScopes` `true` models LifecycleKit 0.6.0 and later, `false` an
+---older revision without the field. The field is written onto the loaded
+---facade with `rawset`, whatever the revision on `LUA_PATH` publishes.
+---@param closesAddonScopes boolean
+---@return table LifecycleKit
+---@return table EventKit
+function HookKitTestEnv.LoadLifecycleKit(closesAddonScopes)
+    local EventKit = HookKitTestEnv.LoadEventKit()
+    local LifecycleKit = require("LifecycleKit")
+    HookKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
+    return LifecycleKit, EventKit
+end
+
+---Make `LifecycleKit` announce, or stop announcing, `CLOSES_ADDON_SCOPES`.
+---@param LifecycleKit table
+---@param closesAddonScopes boolean|table `true` for the full list, `false` for none, or a list of its own
+function HookKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
+    local value = nil
+    if closesAddonScopes == true then
+        value = CLOSES_ADDON_SCOPES
+    elseif type(closesAddonScopes) == "table" then
+        value = closesAddonScopes
+    end
+    rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", value)
 end
 
 ---Mark `fn` as a function the host considers secure, and return it.

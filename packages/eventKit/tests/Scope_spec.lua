@@ -384,10 +384,11 @@ describe("EventKit addon scopes", function()
         )
     end)
 
-    it("supports the documented two-step shutdown wiring without LifecycleKit", function()
-        -- EventKit cannot depend on LifecycleKit, so whoever observes the
-        -- addon's shutdown closes its scope. Here the consumer wires it to
-        -- PLAYER_LOGOUT itself; LifecycleKit makes the same call on shutdown.
+    it("keeps hand-written two-step wiring working beside its own logout close", function()
+        -- Before revision 11 a consumer without LifecycleKit wired the second
+        -- step to PLAYER_LOGOUT itself. EventKit now closes the scope from its
+        -- own one-shot as well (LogoutCoverage_spec.lua); the old wiring still
+        -- works, and the second close is a harmless `false`.
         local scope = EventKit:ForAddon("MyAddon")
         local combatEvents = 0
         scope:Connect("PLAYER_REGEN_DISABLED", function()

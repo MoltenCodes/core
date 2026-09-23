@@ -12,13 +12,16 @@
 -- Owner scopes group connections so one call tears down everything an owner
 -- subscribed to. They mirror TimerKit's scope model: `CreateScope` for manual
 -- ownership, `ForAddon` for the canonical per-addon scope. EventKit sits below
--- LifecycleKit, so addon scopes are closed through `CloseAddonScopes` by
--- whoever observes the addon's shutdown rather than by EventKit itself.
+-- LifecycleKit, so addon scopes are closed through `CloseAddonScopes`: by a
+-- LifecycleKit that lists EventKit in `CLOSES_ADDON_SCOPES`, from an older
+-- LifecycleKit's `OnShutdown`, or, without LifecycleKit, from EventKit's own
+-- `PLAYER_LOGOUT` connection, after that dispatch completes.
 --
 -- Contents
 -- --------
 --   Constants ............. package identity, host limits, staging sizes
---   Dependencies .......... Registry, SignalKit
+--   Dependencies .......... Registry, SignalKit; SchedulerKit and
+--                           LifecycleKit (optional)
 --   Public-surface validation  facade shape accepted from other copies
 --   Bootstrap ............. Registry registration
 --   Shared state .......... LuaCATS types, state creation and migration
@@ -31,6 +34,8 @@
 --   Connections ........... connection lifecycle and handle methods
 --   Dispatch .............. OnEvent to channel fan-out
 --   Subscription .......... shared validation and connect path
+--   Logout coverage ....... who closes an addon scope at logout, decided at
+--                           the first ForAddon (LifecycleKit or EventKit)
 --   Coalescing ............ Coalesce and Derive over SchedulerKit, when present
 --   Public API ............ package-level subscriptions and scopes
 --   Limits ................ SetLimits and GetLimits over the shared limits
@@ -39,15 +44,30 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 10
+local IMPLEMENTATION_REVISION = 11
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
-local STATE_SCHEMA = 6
+local STATE_SCHEMA = 7
 
 -- Coalesce and Derive find SchedulerKit through `Registry:Find` when they are
 -- called. EventKit never depends on SchedulerKit: SchedulerKit depends on
 -- LifecycleKit, which depends on EventKit.
 local OPTIONAL_SCHEDULER_API = 1
+
+-- LifecycleKit is optional as well: it depends on EventKit, so EventKit only
+-- finds it through `Registry:Find` when an addon asks for its scope, to learn
+-- whether LifecycleKit closes that scope at logout.
+local OPTIONAL_LIFECYCLE_KIT_API = 1
+local LOGOUT_EVENT = "PLAYER_LOGOUT"
+
+-- How an addon scope is closed at logout, recorded on the scope as
+-- `_logoutRoute`. `false` means "not decided yet" (a scope an older revision
+-- created); `LOGOUT_ROUTE_NONE` (EventKit could not connect its own logout
+-- listener) is re-examined at the next `ForAddon`.
+local LOGOUT_ROUTE_LIFECYCLE = "lifecycleKit"
+local LOGOUT_ROUTE_SHUTDOWN_SUBSCRIPTION = "onShutdown"
+local LOGOUT_ROUTE_EVENT = "playerLogout"
+local LOGOUT_ROUTE_NONE = "none"
 
 -- One Coalesce or Derive call listens to at most this many distinct events.
 -- Per call, not per session: the handle holds one connection per event until
@@ -207,6 +227,9 @@ local function validateCurrentState(implementation)
         and type(rawget(currentState, "composites")) == "table"
         and type(rawget(currentState, "compositeMetatables")) == "table"
         and type(rawget(currentState, "compositePrototypes")) == "table"
+        and rawget(currentState, "logoutConnection") ~= nil
+        and type(rawget(currentState, "closeOnLogout")) == "function"
+        and type(rawget(currentState, "closeOnShutdown")) == "function"
 end
 
 -- Bootstrap -----------------------------------------------------------------
@@ -366,6 +389,11 @@ if previousRevision == nil then
         -- `SetLimits` writes, which a newer revision inherits.
         unbounded = {},
         limits = { maxUnitFrames = DEFAULT_MAX_UNIT_FRAMES },
+        -- The one `PLAYER_LOGOUT` connection that closes addon scopes when no
+        -- LifecycleKit does, `false` until an addon needs it. The handlers the
+        -- logout routes resolve when they run (`closeOnLogout`,
+        -- `closeOnShutdown`) are installed at commit, like `isolate`.
+        logoutConnection = false,
     }
 
     rawset(EventKit, "Connection", Connection)
@@ -433,6 +461,17 @@ else
         -- they already created stay counted against it.
         rawset(state, "unbounded", {})
         rawset(state, "limits", { maxUnitFrames = DEFAULT_MAX_UNIT_FRAMES })
+        rawset(state, "schema", 6)
+        schema = 6
+    end
+
+    if schema == 6 then
+        -- Revision 10 had no logout fallback. Its addon scopes are given a
+        -- logout route at the end of the bootstrap; the two handlers are
+        -- installed with the other shared functions.
+        if rawget(state, "logoutConnection") == nil then
+            rawset(state, "logoutConnection", false)
+        end
         rawset(state, "schema", STATE_SCHEMA)
         schema = STATE_SCHEMA
     end
@@ -1291,11 +1330,28 @@ function sweepPendingScopes()
     rawset(state, "pendingScopeCount", 0)
 end
 
+---Disconnect the LifecycleKit `OnShutdown` subscription an addon scope holds,
+---if any. Best-effort: the subscription only closes a scope, and closing a
+---closed scope is a no-op, so one that cannot be disconnected is harmless.
+---@param scope EventKit.Scope
+local function releaseLogoutSubscription(scope)
+    local subscription = rawget(scope, "_logoutSubscription")
+    if type(subscription) ~= "table" then
+        return
+    end
+    rawset(scope, "_logoutSubscription", false)
+    local disconnectSubscription = subscription.Disconnect
+    if type(disconnectSubscription) == "function" then
+        pcall(disconnectSubscription, subscription)
+    end
+end
+
 ---Terminally close `scope`, disconnecting everything it owns.
 ---
 ---Inside a dispatch the scope is closed at once but its connections are swept
 ---when the outermost dispatch returns: `Close` prevents future deliveries and
----never the one in flight.
+---never the one in flight. An addon scope also lets go of its LifecycleKit
+---shutdown subscription, which has nothing left to do.
 ---@param scope EventKit.Scope
 ---@return boolean closed `false` when the scope was already closed.
 local function closeScope(scope)
@@ -1306,6 +1362,7 @@ local function closeScope(scope)
     -- Terminal before cleanup begins, so nothing reached during the sweep can
     -- add a replacement connection.
     rawset(scope, "_closed", true)
+    releaseLogoutSubscription(scope)
 
     if rawget(state, "dispatchDepth") > 0 then
         if rawget(scope, "_head") ~= false then
@@ -1331,6 +1388,193 @@ local function newScope(addonName)
         _activeCount = 0,
         _closed = false,
     }, SCOPE_METATABLE)
+end
+
+-- Logout coverage -----------------------------------------------------------
+--
+-- An addon scope must close at logout whenever the framework can observe
+-- logout, whatever LifecycleKit revision is paired with EventKit. EventKit
+-- observes `PLAYER_LOGOUT` itself, so it always can. The first `ForAddon` for
+-- an addon picks the first of these that applies and records it on the scope
+-- as `_logoutRoute`:
+--
+--   1. LifecycleKit lists "eventKit" in `CLOSES_ADDON_SCOPES`: it calls
+--      `CloseAddonScopes` at shutdown, after the addon's shutdown callbacks.
+--      Nothing is subscribed; `LifecycleKit:ForAddon` is called once so the
+--      addon has an instance and its shutdown pass reaches this scope.
+--   2. An older LifecycleKit, without that capability: one `OnShutdown`
+--      subscription per addon closes the scope among the shutdown callbacks.
+--      The handle is kept on the scope, so closing the scope disconnects it.
+--   3. No LifecycleKit: one package-level `PLAYER_LOGOUT` one-shot closes
+--      every addon scope that neither LifecycleKit route covers.
+--
+-- Every route closes inside the `PLAYER_LOGOUT` dispatch, so the deferred
+-- sweep (see "Dispatch") disconnects after that dispatch completes and a
+-- scoped `PLAYER_LOGOUT` listener still runs, whether it was connected before
+-- or after the closing one. Only when EventKit cannot connect its own
+-- listener is the outcome "none"; it is examined again at the next
+-- `ForAddon`. Callbacks resolve their handler through `state` when they run,
+-- so a newer revision upgrades them in place.
+
+---Silent lookup of an optional package, through `Registry:Find` (or `Get` on a
+---Registry older than revision 7, which also answers `nil` for a missing one).
+---@param packageName string
+---@param api integer
+---@return table|nil implementation
+local function findOptionalPackage(packageName, api)
+    local find = rawget(Registry, "Find")
+    if type(find) ~= "function" then
+        find = getPackage
+    end
+    local implementation = find(Registry, packageName, api)
+    if type(implementation) ~= "table" then
+        return nil
+    end
+    return implementation
+end
+
+---Whether `LifecycleKit` closes EventKit's addon scopes at shutdown itself.
+---
+---`CLOSES_ADDON_SCOPES` is a read-only view, so it is read by ordinary
+---indexing; a revision without the field closes none.
+---@param LifecycleKit table
+---@return boolean
+local function lifecycleClosesAddonScopes(LifecycleKit)
+    local capabilities = rawget(LifecycleKit, "CLOSES_ADDON_SCOPES")
+    return type(capabilities) == "table" and capabilities[PACKAGE_NAME] == true
+end
+
+---Close an addon scope from a LifecycleKit `OnShutdown` callback (route 2).
+---
+---When a LifecycleKit that closes EventKit's scopes itself has replaced the
+---older one in the meantime, it makes the call after the shutdown callbacks,
+---so this one steps aside and keeps that ordering.
+---@param addonName string
+---@return boolean closed
+local function closeOnShutdown(addonName)
+    local scope = rawget(rawget(state, "addonScopes"), addonName)
+    if scope == nil then
+        return false
+    end
+    -- The subscription is one-shot and has fired; nothing is left to release.
+    rawset(scope, "_logoutSubscription", false)
+    local LifecycleKit = findOptionalPackage("lifecycleKit", OPTIONAL_LIFECYCLE_KIT_API)
+    if LifecycleKit ~= nil and lifecycleClosesAddonScopes(LifecycleKit) then
+        return false
+    end
+    return closeScope(scope)
+end
+
+---Close, at `PLAYER_LOGOUT`, every addon scope no LifecycleKit route covers
+---(route 3), in addon-name order. The listener runs inside the dispatch, so
+---each scope refuses new connections at once and is swept after the dispatch;
+---every scope's own `PLAYER_LOGOUT` listeners still receive the event.
+local function closeOnLogout()
+    rawset(state, "logoutConnection", false)
+
+    local addonScopes = rawget(state, "addonScopes")
+    local names = {}
+    for addonName in pairs(addonScopes) do
+        names[#names + 1] = addonName
+    end
+    table.sort(names)
+
+    local firstError = nil
+    for index = 1, #names do
+        local scope = rawget(addonScopes, names[index])
+        local route = rawget(scope, "_logoutRoute")
+        if route ~= LOGOUT_ROUTE_LIFECYCLE and route ~= LOGOUT_ROUTE_SHUTDOWN_SUBSCRIPTION then
+            local ok, closeError = pcall(closeScope, scope)
+            if not ok and firstError == nil then
+                firstError = { value = closeError }
+            end
+        end
+    end
+    if firstError ~= nil then
+        error(firstError.value, 0)
+    end
+end
+
+---Subscribe the addon scope to an older LifecycleKit's shutdown (route 2).
+---@param LifecycleKit table
+---@param addonName string
+---@return table|nil subscription `nil` when LifecycleKit refused
+local function subscribeToShutdown(LifecycleKit, addonName)
+    local ok, subscription = pcall(function()
+        return LifecycleKit:ForAddon(addonName):OnShutdown(function()
+            local handler = rawget(state, "closeOnShutdown")
+            if type(handler) == "function" then
+                handler(addonName)
+            end
+        end)
+    end)
+    if not ok or type(subscription) ~= "table" then
+        return nil
+    end
+    return subscription
+end
+
+---Make sure EventKit's own `PLAYER_LOGOUT` one-shot is connected (route 3),
+---creating it on first need.
+---@return boolean covered `false` when the host refused the registration
+local function ensureLogoutConnection()
+    local existing = rawget(state, "logoutConnection")
+    if type(existing) == "table" and rawget(existing, "_connected") == true then
+        return true
+    end
+
+    local ok, connection = pcall(function()
+        local channel = createRegularChannel(LOGOUT_EVENT, "EventKit:ForAddon", 2)
+        return connectToChannel(channel, function()
+            local handler = rawget(state, "closeOnLogout")
+            if type(handler) == "function" then
+                handler()
+            end
+        end, true, false)
+    end)
+    if not ok then
+        return false
+    end
+    rawset(state, "logoutConnection", connection)
+    return true
+end
+
+---Decide who closes `scope` at logout, unless that is already decided.
+---
+---Called by `ForAddon` for every scope it returns, so the common case costs one
+---field read.
+---@param scope EventKit.Scope an addon scope
+local function ensureLogoutRoute(scope)
+    local route = rawget(scope, "_logoutRoute")
+    if (route ~= false and route ~= LOGOUT_ROUTE_NONE) or rawget(scope, "_closed") == true then
+        return
+    end
+
+    local LifecycleKit = findOptionalPackage("lifecycleKit", OPTIONAL_LIFECYCLE_KIT_API)
+    if LifecycleKit ~= nil then
+        if lifecycleClosesAddonScopes(LifecycleKit) then
+            -- LifecycleKit closes the scopes of the addons it has an
+            -- instance for, so make sure this addon has one. Nothing is
+            -- subscribed; a refusal only leaves the addon unknown to it.
+            pcall(function()
+                LifecycleKit:ForAddon(rawget(scope, "_addonName"))
+            end)
+            rawset(scope, "_logoutRoute", LOGOUT_ROUTE_LIFECYCLE)
+            return
+        end
+        local subscription = subscribeToShutdown(LifecycleKit, rawget(scope, "_addonName"))
+        if subscription ~= nil then
+            rawset(scope, "_logoutSubscription", subscription)
+            rawset(scope, "_logoutRoute", LOGOUT_ROUTE_SHUTDOWN_SUBSCRIPTION)
+            return
+        end
+    end
+
+    if ensureLogoutConnection() then
+        rawset(scope, "_logoutRoute", LOGOUT_ROUTE_EVENT)
+        return
+    end
+    rawset(scope, "_logoutRoute", LOGOUT_ROUTE_NONE)
 end
 
 -- Coalescing ------------------------------------------------------------------
@@ -2024,9 +2268,10 @@ end
 
 ---Return the canonical connection scope for an addon, creating it on demand.
 ---
----EventKit does not observe addon shutdown itself; LifecycleKit depends on
----EventKit, not the other way round. Whoever observes the shutdown closes this
----scope through `EventKit:CloseAddonScopes(addonName)`.
+---The scope is closed at logout through `EventKit:CloseAddonScopes(addonName)`:
+---by LifecycleKit when it is loaded, otherwise by EventKit's own
+---`PLAYER_LOGOUT` listener. See "Logout coverage" above and docs/API.md,
+---"At logout".
 ---@param _ EventKit
 ---@param addonName string addon folder name
 ---@return EventKit.Scope scope
@@ -2037,8 +2282,11 @@ local function forAddon(_, addonName)
     local scope = rawget(addonScopes, addonName)
     if scope == nil then
         scope = newScope(addonName)
+        rawset(scope, "_logoutRoute", false)
+        rawset(scope, "_logoutSubscription", false)
         rawset(addonScopes, addonName, scope)
     end
+    ensureLogoutRoute(scope)
     return scope
 end
 
@@ -2350,6 +2598,8 @@ rawset(EventKit, "GetLimits", getLimits)
 rawset(state, "dispatchRegular", dispatchRegular)
 rawset(state, "dispatchUnit", dispatchUnit)
 rawset(state, "isolate", isolate)
+rawset(state, "closeOnLogout", closeOnLogout)
+rawset(state, "closeOnShutdown", closeOnShutdown)
 
 local composites = rawget(state, "composites")
 rawset(composites, "onEvent", onCompositeEvent)
@@ -2364,6 +2614,31 @@ rawset(EventKit, "_DispatchUnit", dispatchUnit)
 
 if not validatePublicSurface(EventKit) or not validateCurrentState(EventKit) then
     error("MoltenCodes EventKit package state is corrupted or incomplete", 2)
+end
+
+-- Addon scopes an older revision created have no logout route yet. They are
+-- given one now, in addon-name order, exactly as a first `ForAddon` would;
+-- scopes whose route a revision 11+ copy already decided keep it, with any
+-- subscription or connection it made.
+local function routeInheritedAddonScopes()
+    local addonScopes = rawget(state, "addonScopes")
+    local names = {}
+    for addonName, scope in pairs(addonScopes) do
+        if type(scope) == "table" and rawget(scope, "_logoutRoute") == nil then
+            names[#names + 1] = addonName
+        end
+    end
+    table.sort(names)
+    for index = 1, #names do
+        local scope = rawget(addonScopes, names[index])
+        rawset(scope, "_logoutRoute", false)
+        rawset(scope, "_logoutSubscription", false)
+        ensureLogoutRoute(scope)
+    end
+end
+
+if previousRevision ~= nil and previousRevision < IMPLEMENTATION_REVISION then
+    routeInheritedAddonScopes()
 end
 
 return EventKit

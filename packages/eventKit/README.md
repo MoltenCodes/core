@@ -55,15 +55,17 @@ local events = EventKit:ForAddon("MyAddon")
 events:Connect("PLAYER_REGEN_DISABLED", onCombat)
 events:ConnectUnit("UNIT_HEALTH", onHealth, "player")
 
--- On the addon's shutdown LifecycleKit calls this; without LifecycleKit, the addon does:
-EventKit:CloseAddonScopes("MyAddon")
+-- The scope closes at logout by itself: LifecycleKit calls
+-- EventKit:CloseAddonScopes("MyAddon") when it is loaded, EventKit's own
+-- PLAYER_LOGOUT listener does when it is not.
 ```
 
 `EventKit:CreateScope()` returns a manually owned scope with the same methods.
-EventKit sits below LifecycleKit, so it cannot close addon scopes on shutdown by
-itself; the two-step above is documented in [`docs/API.md`](docs/API.md).
-Closing a scope never cuts short the event being dispatched: a scoped
-`PLAYER_LOGOUT` listener still runs even when shutdown closes its scope first.
+An addon scope always closes at logout, with or without LifecycleKit, which
+EventKit finds through `Registry:Find` without depending on it (see "At logout"
+in [`docs/API.md`](docs/API.md)). Closing a scope never cuts short the event
+being dispatched: a scoped `PLAYER_LOGOUT` listener still runs even when its
+scope is closed first.
 
 Bursts of events coalesce into one callback, and derived values recompute once
 per burst, when SchedulerKit is loaded (found at call time; EventKit does not
@@ -104,4 +106,6 @@ Direct runtime dependencies: Registry API 2, SignalKit API 1.
 Every file above is required; omitting one makes this package raise at
 load. SchedulerKit is optional and is not part of this load order: when an
 addon also embeds it (after TimerKit, its one required dependency besides
-Registry), `Coalesce` and `Derive` find it when they are called.
+Registry), `Coalesce` and `Derive` find it when they are called. LifecycleKit
+is optional too: when it is loaded, `ForAddon` leaves the logout closing of
+addon scopes to it.

@@ -251,8 +251,9 @@ describe("CommKit limits", function()
         local scope = CommKit:CreateScope({ maxRegistrations = sentinel })
         local bounded = CommKit:ForAddon("MyAddon", { maxRegistrations = 3 })
 
-        local upgraded = TestEnv.LoadRevision(2)
-        assert.are.equal(2, upgraded.REVISION)
+        local nextRevision = CommKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
         assert.are.equal(sentinel, upgraded._state.unbounded)
         local limits = upgraded:GetLimits()

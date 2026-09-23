@@ -22,7 +22,12 @@ It also covers:
 - the shared `maxUnitFrames` limit: its default, `SetLimits` raising and
   lowering it without eviction, the refusal of `EventKit.UNBOUNDED` and of
   invalid values at the caller's line, atomic updates, and `GetLimits` copies;
-- in-place upgrade from implementation revisions 1, 4, 5, 6, 8 and 9, set limits
+- who closes an addon scope at logout: a LifecycleKit that lists EventKit in
+  `CLOSES_ADDON_SCOPES`, an older LifecycleKit through `OnShutdown`, or
+  EventKit's own `PLAYER_LOGOUT` one-shot, with scoped logout listeners still
+  delivered, a refused registration retried, and routes given to or carried
+  from an older copy;
+- in-place upgrade from implementation revisions 1, 4, 5, 6, 8, 9 and 10, set limits
   and the sentinel carried to a newer revision, and the refusal to downgrade a
   newer copy.
 
@@ -38,6 +43,7 @@ It also covers:
 | `Once_spec.lua` | One-shot subscriptions. |
 | `UnitEvents_spec.lua` | Unit filters, the two-token limit, unit-group release and the Frame cap. |
 | `Errors_spec.lua` | Argument, receiver and host-environment errors and their levels; refused registrations; listener isolation. |
+| `LogoutCoverage_spec.lua` | The logout routes, subscription release, scoped `PLAYER_LOGOUT` listeners around the close, re-examination, routes across an upgrade. |
 | `Scope_spec.lua` | Manual and addon scopes, deferred close, `CloseAddonScopes`. |
 | `Coalesce_spec.lua` | `Coalesce`, with and without SchedulerKit. |
 | `Derive_spec.lua` | `Derive`, with and without SchedulerKit. |

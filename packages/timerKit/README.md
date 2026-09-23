@@ -13,15 +13,15 @@ local ticker = timers:Every(5, function(timer)
     print("tick")
 end)
 
--- LifecycleKit closes the addon scope at logout. Without LifecycleKit:
--- TimerKit:CloseAddonScopes("MyAddon") from your PLAYER_LOGOUT handler.
+-- The scope closes at logout whenever LifecycleKit or EventKit is loaded.
+-- With neither: TimerKit:CloseAddonScopes("MyAddon") on PLAYER_LOGOUT.
 ```
 
 `timer:GetRemaining()` and `timer:GetDeadline()` answer "how long until this fires?" for a running timer and return `nil` otherwise. They read `GetTimePreciseSec`, which is optional: on a host without it TimerKit still loads, and both methods return `nil`.
 
 TimerKit adds a logical timer state machine, restart/cancel generation guards, deterministic scope cleanup, and per-addon ownership without exposing native FunctionContainer details to consumers.
 
-Use `TimerKit:CreateScope()` for manually owned groups and `TimerKit:ForAddon(addonName)` for the addon's canonical scope. TimerKit requires only Registry, so it does not watch addon shutdown itself: `TimerKit:CloseAddonScopes(addonName)` closes the addon scope and cancels every timer in it. LifecycleKit makes that call at shutdown when it is loaded; without LifecycleKit, call it yourself on `PLAYER_LOGOUT`. Package-level `TimerKit:After` / `Every` are convenience methods backed by an internal manual scope and are therefore not tied to an addon.
+Use `TimerKit:CreateScope()` for manually owned groups and `TimerKit:ForAddon(addonName)` for the addon's canonical scope. `TimerKit:CloseAddonScopes(addonName)` closes the addon scope and cancels every timer in it. An addon scope closes at logout whenever LifecycleKit or EventKit is loaded, and otherwise by your own call: TimerKit finds either through `Registry:Find` without depending on it (see "At logout" in [`docs/API.md`](docs/API.md)). Package-level `TimerKit:After` / `Every` are convenience methods backed by an internal manual scope and are therefore not tied to an addon.
 
 A caller that needs to carry its own bookkeeping on a timer attaches it through `timer:SetUserData(value)` and reads it back with `timer:GetUserData()`. One opaque value per timer, stored by reference, never read or cleared by TimerKit. This is the supported alternative to writing private fields onto a timer handle.
 
@@ -44,6 +44,7 @@ Minimum footprint: Embed 2 files: Registry, TimerKit.
 
 Direct runtime dependencies: Registry API 2.
 Both files are required; omitting Registry makes this package raise at
-load. LifecycleKit is not a dependency: when an addon also embeds it,
-LifecycleKit closes the addon's timer scope at logout through
-`TimerKit:CloseAddonScopes`.
+load. LifecycleKit and EventKit are optional, never dependencies: when an
+addon also embeds LifecycleKit, it closes the addon's timer scope at logout
+through `TimerKit:CloseAddonScopes`; with EventKit alone, TimerKit's own
+`PLAYER_LOGOUT` connection does.

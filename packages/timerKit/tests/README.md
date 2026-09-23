@@ -8,7 +8,8 @@ The TimerKit suite covers:
 - restart/cancel re-entrancy and stale native callback suppression;
 - manual and addon-owned scope lifecycle;
 - best-effort scope cleanup after native cancellation failures;
-- addon scopes closed through `CloseAddonScopes` (the two-step), and addon-scope isolation; the logout integration with LifecycleKit lives in LifecycleKit's suite;
+- addon scopes closed through `CloseAddonScopes` (the two-step), and addon-scope isolation; the shutdown order against LifecycleKit lives in LifecycleKit's suite;
+- who closes an addon scope at logout: a LifecycleKit that lists TimerKit in `CLOSES_ADDON_SCOPES`, an older LifecycleKit through `OnShutdown`, EventKit's `PLAYER_LOGOUT` without LifecycleKit, or nobody, re-examined when a Kit loads later and carried across an upgrade;
 - native creation rollback and strict public input validation;
 - `error` levels: every argument failure reports the caller's own line;
 - opaque per-timer user data attached through the public handle;
@@ -26,6 +27,7 @@ Spec files:
 | `Repeating_spec.lua` | repeating timers, self-cancel and self-restart, errors in a repeating callback |
 | `Reentrancy_spec.lua` | completion before user code, restart from a callback, stale native callbacks |
 | `Scope_spec.lua` | active tracking, bulk cancel, terminal close, package-level convenience recovery |
+| `LogoutCoverage_spec.lua` | the four logout routes, re-examination, subscription release on close, carrying routes across an upgrade |
 | `AddonScopes_spec.lua` | canonical per-addon scopes, `CloseAddonScopes`, terminal closure, unknown addons, facade receiver, manual scopes |
 | `Errors_spec.lua` | definition validation, non-finite delays, native creation and cancellation failures |
 | `ErrorLevels_spec.lua` | every argument failure at the caller's line |

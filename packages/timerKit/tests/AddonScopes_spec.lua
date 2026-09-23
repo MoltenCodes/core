@@ -1,10 +1,10 @@
 local TestEnv = require("TimerKitTestEnv")
 
--- TimerKit keeps one canonical scope per addon but does not observe addon
--- shutdown: whoever does closes the scope through `CloseAddonScopes`.
--- LifecycleKit makes that call at logout, and its own suite covers that
--- integration; here the call is made by hand, as an addon without LifecycleKit
--- makes it from its `PLAYER_LOGOUT` handler.
+-- TimerKit keeps one canonical scope per addon, closed through
+-- `CloseAddonScopes`. Who makes that call at logout is covered by
+-- LogoutCoverage_spec.lua; here only Registry and TimerKit are loaded, so
+-- nobody observes logout and the call is made by hand, as an addon with
+-- neither LifecycleKit nor EventKit makes it from its own logout handler.
 describe("TimerKit addon scopes", function()
     after_each(TestEnv.Reset)
 
