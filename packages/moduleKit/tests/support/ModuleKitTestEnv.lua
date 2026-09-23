@@ -97,6 +97,35 @@ end
 
 ModuleKitTestEnv.RunSlash = runSlash
 
+-- CommKit ------------------------------------------------------------------
+--
+-- CommKit is an optional dependency, and it requires LifecycleKit, TimerKit,
+-- SchedulerKit and PoolKit. It cannot sit in the module chain above: it must
+-- load after LifecycleKit, and TimerKit and SchedulerKit in the chain would
+-- replace the stand-ins other specs register. `LoadCommKit` loads the four on
+-- top of a chain `NewPackage` already loaded; the runner puts them on
+-- `LUA_PATH` as CommKit's required closure, and `Reset` clears them.
+
+--- The modules `LoadCommKit` adds, in load order.
+local COMM_KIT_MODULES = { "TimerKit", "SchedulerKit", "PoolKit", "CommKit" }
+
+---Clear the modules `LoadCommKit` added from `package.loaded`.
+local function unloadCommKit()
+    for index = #COMM_KIT_MODULES, 1, -1 do
+        package.loaded[COMM_KIT_MODULES[index]] = nil
+    end
+end
+
+---Load CommKit and its remaining dependencies after `NewPackage`.
+---@return table CommKit
+function ModuleKitTestEnv.LoadCommKit()
+    local loaded
+    for index = 1, #COMM_KIT_MODULES do
+        loaded = require(COMM_KIT_MODULES[index])
+    end
+    return loaded
+end
+
 ---Install the shared fixture's WoW API plus an empty `SlashCmdList`.
 function ModuleKitTestEnv.InstallWowApi()
     installFixtureWowApi()
@@ -106,6 +135,7 @@ end
 ---Reset the shared fixture and remove the slash-command globals.
 function ModuleKitTestEnv.Reset()
     resetFixture()
+    unloadCommKit()
     removeSlashApi()
 end
 

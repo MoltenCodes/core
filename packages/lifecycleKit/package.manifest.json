@@ -2,10 +2,10 @@
   "name": "lifecycleKit",
   "displayName": "LifecycleKit",
   "description": "Per-addon loading, readiness, and shutdown lifecycle coordination for MoltenCodes packages, with a shared combat gate (lockdown state and bounded out-of-combat queue) and a halted state announced to dependents.",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "license": "MIT",
   "api": 1,
-  "revision": 9,
+  "revision": 10,
   "dependencies": {
     "registry": {
       "api": 2
@@ -18,6 +18,9 @@
     }
   },
   "optionalDependencies": {
+    "commKit": {
+      "api": 1
+    },
     "commandKit": {
       "api": 1
     },

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3 — 2026-09-23
+
+- Shutdown now also closes the addon's canonical CommKit scope (`CommKit:CloseAddonScopes(addonName)`), after the CommandKit scope and before the SignalKit bus. The order is now EventKit scope, HookKit scope, CommandKit scope, CommKit scope, SignalKit bus; every step runs, and the first failure wins in that order. CommKit already closes that scope from its own `OnShutdown` subscription; this step pins it to its place in the order, and `false` (already closed, or no scope) is a normal result.
+- CommKit is an optional dependency (`optionalDependencies`), found through `Registry:Find("commKit", 1)`. Without it, or with a CommKit that has no `CloseAddonScopes`, shutdown is unchanged.
+- An in-place upgrade from revision 9 replaces its shared host watchers, as the upgrades from revisions 7 and 8 do; the upgrade spec now runs for each of the three.
+- New specs in `OwnedScopes_spec.lua` against the real CommKit: a scoped prefix registration is gone after logout; a CommKit without `CloseAddonScopes` leaves shutdown unchanged; a comm-scope failure wins over a bus failure. The failure-order spec covers all five steps. The test environment loads CommKit and its remaining dependencies after the chain (`LoadCommKit`), because CommKit requires LifecycleKit.
+- Implementation revision 10. API generation 1 is unchanged.
+
 ## 0.4.2 — 2026-09-23
 
 - Shutdown now also closes the addon's canonical CommandKit scope (`CommandKit:CloseAddonScopes(addonName)`), after the HookKit scope and before the SignalKit bus, so slash commands registered through `CommandKit:ForAddon` go inert at logout. The order is now EventKit scope, HookKit scope, CommandKit scope, SignalKit bus, and the first failure wins in that order. A halted addon's CommandKit scope is closed at logout too.

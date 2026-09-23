@@ -62,7 +62,7 @@ nothing, so a later read tries again.
 `_scopeOpen` is set immediately before `OnEnable` is invoked and cleared by
 `closeModuleScope`, which runs after a successful `OnDisable`, after a failed
 `OnEnable`, and at shutdown or halt whatever `OnDisable` did. Closing walks the
-fields in a fixed, alphabetical order (commands, events, hooks, jobs, messages, timers;
+fields in a fixed, alphabetical order (comm, commands, events, hooks, jobs, messages, timers;
 they are independent, so any fixed order would do), closes each one even when an earlier
 `Close` raised, and hands back the first failure; `disableOne` re-raises it only
 after the module has become `disabled`, so a scope failure never leaves a module

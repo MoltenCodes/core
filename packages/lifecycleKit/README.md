@@ -59,7 +59,7 @@ end)
 
 `WhenOutOfCombat` runs at once out of combat; in combat it queues the call (at most 64 per addon by default, `nil, "full"` beyond) and returns a handle with `Cancel()`. `LifecycleKit:IsInCombat()` answers from the shared state.
 
-At shutdown, after the shutdown callbacks, LifecycleKit closes what the addon owns through the lower Kits: its EventKit scope (`EventKit:ForAddon(name)`), its HookKit scope (`HookKit:ForAddon(name)`, when HookKit is loaded), its CommandKit scope (`CommandKit:ForAddon(name)`, when CommandKit is loaded) and its SignalKit bus (`SignalKit:ForAddon(name)`), in that order. Connections, hooks and subscriptions made through them need no teardown code.
+At shutdown, after the shutdown callbacks, LifecycleKit closes what the addon owns through the lower Kits: its EventKit scope (`EventKit:ForAddon(name)`), its HookKit scope (`HookKit:ForAddon(name)`, when HookKit is loaded), its CommandKit scope (`CommandKit:ForAddon(name)`, when CommandKit is loaded), its CommKit scope (`CommKit:ForAddon(name)`, when CommKit is loaded) and its SignalKit bus (`SignalKit:ForAddon(name)`), in that order. Connections, hooks and subscriptions made through them need no teardown code.
 
 `LifecycleKit:ForAddon(name)` is idempotent: every caller in the same runtime receives the same lifecycle instance for that addon name.
 
@@ -82,6 +82,6 @@ Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
 
 Direct runtime dependencies: EventKit API 1, Registry API 2, SignalKit API 1.
 Every file above is required; omitting one makes this package raise at
-load. HookKit API 1 and CommandKit API 1 are optional: when the addon embeds
-them, shutdown also undoes the addon's scoped hooks and leaves its scoped
-slash commands inert.
+load. HookKit API 1, CommandKit API 1 and CommKit API 1 are optional: when
+the addon embeds them, shutdown also undoes the addon's scoped hooks, leaves
+its scoped slash commands inert and closes its addon-message scope.

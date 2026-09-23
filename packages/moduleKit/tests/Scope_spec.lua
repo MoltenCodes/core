@@ -444,3 +444,42 @@ describe("ModuleKit module scopes over the real CommandKit", function()
         assert.are.same({}, observed)
     end)
 end)
+
+-- CommKit is an optional dependency declared in the manifest, so the real
+-- `CommKit:CreateScope()` and its required closure are on this package's test
+-- path. It loads after the chain; see `ModuleKitTestEnv.LoadCommKit`.
+describe("ModuleKit module scopes over the real CommKit", function()
+    after_each(TestEnv.Reset)
+
+    it("disconnects a module's prefix registrations once the module is disabled", function()
+        local ModuleKit = TestEnv.NewPackage()
+        TestEnv.LoadCommKit()
+        local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Sync")
+        local comm
+        module.OnEnable = function(self)
+            comm = self.scope.Comm
+            assert.is_not_nil(comm:Register("MySync", function() end))
+        end
+
+        module:Enable()
+        assert.are.equal(1, comm:GetRegistrationCount())
+        module:Disable()
+
+        assert.are.equal(0, comm:GetRegistrationCount())
+        assert.is_true(comm:IsClosed())
+        assert.is_nil(rawget(module.scope, "Comm"))
+    end)
+
+    it("reads nil when CommKit is not loaded", function()
+        local ModuleKit = TestEnv.NewPackage()
+        local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Bare")
+        local observed = {}
+        module.OnEnable = function(self)
+            observed.comm = self.scope.Comm
+        end
+
+        module:Enable()
+
+        assert.are.same({}, observed)
+    end)
+end)

@@ -11,9 +11,9 @@
 --   Validation helpers ... Argument checks and definition-mutability rules.
 --   Graph ................ Edge construction, cycle reporting, topological order.
 --   Dependency injection . Provider registration, scoped resolution, cycles.
---   Module scopes ........ Per-module command, event, hook, job, message and
---                          timer scopes released on disable, resolved through
---                          `Registry:Find`.
+--   Module scopes ........ Per-module addon-message, command, event, hook,
+--                          job, message and timer scopes released on disable,
+--                          resolved through `Registry:Find`.
 --   Lifecycle operations . Single-module transitions, dependency policies,
 --                          intent versus fact, recovery of blocked dependents,
 --                          halted addons, whole-container passes and deferred
@@ -30,7 +30,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 9
+local IMPLEMENTATION_REVISION = 10
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -131,6 +131,7 @@ local OWN_ADDON_HALTED = "halted"
 ---@field Jobs table? a SchedulerKit scope (`SchedulerKit:CreateScope()`)
 ---@field Hooks table? a HookKit scope (`HookKit:CreateScope()`)
 ---@field Commands table? a CommandKit scope (`CommandKit:CreateScope()`)
+---@field Comm table? a CommKit scope (`CommKit:CreateScope()`)
 ---@field Messages table? a scope over the addon's SignalKit bus (`SignalKit:ForAddon(addonName):CreateScope()`); also `nil` when the bus cannot be had
 
 ---Intent and fact of one module's enable state, as `GetEnableState` reports it.
@@ -1040,8 +1041,8 @@ end
 
 -- Module scopes -------------------------------------------------------------
 --
--- A module registers slash commands, timers, events, scheduler jobs, hooks and
--- bus subscriptions through `module.scope` and ModuleKit releases all of them when
+-- A module registers addon-message prefixes, slash commands, timers, events,
+-- scheduler jobs, hooks and bus subscriptions through `module.scope` and ModuleKit releases all of them when
 -- the module is disabled, so a module needs no `OnDisable` just to clean up.
 -- ModuleKit has no hard dependency on the Kits behind the scope: each is
 -- resolved through `Registry:Find` on first use, and a field whose Kit is not
@@ -1049,10 +1050,11 @@ end
 
 ---The order scope fields are closed in. It is alphabetical, which is all it
 ---needs to be: the fields are independent of each other.
-local SCOPE_FIELDS = { "Commands", "Events", "Hooks", "Jobs", "Messages", "Timers" }
+local SCOPE_FIELDS = { "Comm", "Commands", "Events", "Hooks", "Jobs", "Messages", "Timers" }
 
 ---The Kit behind each scope field.
 local SCOPE_PACKAGES = {
+    Comm = "commKit",
     Commands = "commandKit",
     Events = "eventKit",
     Hooks = "hookKit",
@@ -1060,8 +1062,8 @@ local SCOPE_PACKAGES = {
     Messages = "signalKit",
     Timers = "timerKit",
 }
--- commandKit, eventKit, hookKit, schedulerKit, signalKit and timerKit are all
--- API generation 1.
+-- commKit, commandKit, eventKit, hookKit, schedulerKit, signalKit and timerKit
+-- are all API generation 1.
 local SCOPE_PACKAGE_API = 1
 
 ---Silent optional-dependency lookup.

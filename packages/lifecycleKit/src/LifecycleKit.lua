@@ -13,8 +13,8 @@
 -- --------
 --   Constants ............. package identity, state schema, default bounds
 --   Public types .......... LuaCATS classes and aliases for the public surface
---   Dependencies .......... Registry, SignalKit, EventKit; HookKit and
---                           CommandKit (optional)
+--   Dependencies .......... Registry, SignalKit, EventKit; HookKit,
+--                           CommandKit and CommKit (optional)
 --   Public-surface validation  facade shape accepted from other copies
 --   Bootstrap ............. Registry registration, prototypes, package state,
 --                           the combat-lockdown probe the state is seeded from
@@ -33,14 +33,16 @@
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 9
+local IMPLEMENTATION_REVISION = 10
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
--- HookKit and CommandKit are optional: each is found through `Registry:Find`
--- at shutdown, so an addon that embeds neither shuts down exactly as before.
+-- HookKit, CommandKit and CommKit are optional: each is found through
+-- `Registry:Find` at shutdown, so an addon that embeds none of them shuts down
+-- exactly as before.
 local OPTIONAL_HOOK_KIT_API = 1
 local OPTIONAL_COMMAND_KIT_API = 1
+local OPTIONAL_COMM_KIT_API = 1
 
 -- Schema 3 added the combat state (`inCombat`) and the creation-ordered
 -- instance list (`instances`). Schema 2 state is migrated in place.
@@ -524,11 +526,11 @@ end
 ---
 ---Every older revision's shared host watchers are replaced, because a watcher
 ---keeps calling the handler of the revision that connected it: revision 7's
----logout handler, for one, closes no HookKit scope and no SignalKit bus, and
----revision 8's closes no CommandKit scope. The bootstrap tail installs this
----revision's watchers again and reconciles any one-shot phase that passed in
----between. Revisions 7 and 8 already wrote schema 3, so that is all their
----state needs.
+---logout handler, for one, closes no HookKit scope and no SignalKit bus,
+---revision 8's closes no CommandKit scope and revision 9's no CommKit scope.
+---The bootstrap tail installs this revision's watchers again and reconciles
+---any one-shot phase that passed in between. Revisions 7 to 9 already wrote
+---schema 3, so that is all their state needs.
 ---
 ---Schema 2 (revisions 4 to 6) lacks the combat flag, the instance list and
 ---every per-instance field of the combat gate and the halted state. Revision 3
@@ -969,6 +971,33 @@ local function closeAddonCommandScopes(instance)
     return nil
 end
 
+---Close the addon's canonical CommKit scope: its pending sends are cancelled,
+---its SyncSets closed and its prefix registrations disconnected.
+---
+---CommKit depends on LifecycleKit and already closes the scope of
+---`CommKit:ForAddon` from its own `OnShutdown` subscription, which runs among
+---the shutdown callbacks. Calling `CloseAddonScopes` here as well pins the
+---step to its place in the shutdown order whatever CommKit revision is loaded;
+---when the scope is already closed it answers `false`, a normal result.
+---Without CommKit, or with a revision that has no `CloseAddonScopes`, there is
+---nothing to close. A failure is returned as an error record for the
+---first-error policy.
+---@param instance LifecycleKit.Instance
+---@return LifecycleKit.ErrorRecord|nil
+local function closeAddonCommScopes(instance)
+    local CommKit = findOptionalPackage("commKit", OPTIONAL_COMM_KIT_API)
+    local closeAddonScopes = CommKit ~= nil and rawget(CommKit, "CloseAddonScopes") or nil
+    if type(closeAddonScopes) ~= "function" then
+        return nil
+    end
+
+    local ok, closeError = pcall(closeAddonScopes, CommKit, rawget(instance, "_addonName"))
+    if not ok then
+        return newErrorRecord(closeError)
+    end
+    return nil
+end
+
 ---Close the addon's SignalKit bus, disconnecting every subscription on it.
 ---
 ---SignalKit is a required dependency, and Registry keeps its facade identity
@@ -1000,7 +1029,9 @@ end
 ---   that are being torn down;
 ---2. the HookKit scope, so the addon's hooks stop running;
 ---3. the CommandKit scope, so the addon's slash commands become inert;
----4. the SignalKit bus last, because other addons' shutdown paths may still
+---4. the CommKit scope, so the addon's addon messages stop being sent and
+---   received;
+---5. the SignalKit bus last, because other addons' shutdown paths may still
 ---   publish on it. Publishing on a closed bus delivers nothing and does not
 ---   raise, so closing it last only keeps it useful for longer.
 ---
@@ -1011,8 +1042,9 @@ local function closeAddonOwnedScopes(instance)
     local eventError = closeAddonEventScope(instance)
     local hookError = closeAddonHookScopes(instance)
     local commandError = closeAddonCommandScopes(instance)
+    local commError = closeAddonCommScopes(instance)
     local busError = closeAddonBus(instance)
-    return eventError or hookError or commandError or busError
+    return eventError or hookError or commandError or commError or busError
 end
 
 ---Drop every pending listener of the signals a terminal state makes unreachable.
@@ -1048,8 +1080,8 @@ end
 ---
 ---Order, and therefore first-error precedence: the combat queue is closed
 ---(each pending call learns it will never run), then the shutdown callbacks
----run, then the addon's EventKit scope, HookKit scope, CommandKit scope and
----SignalKit bus are closed, in that order (see `closeAddonOwnedScopes`).
+---run, then the addon's EventKit scope, HookKit scope, CommandKit scope,
+---CommKit scope and SignalKit bus are closed, in that order (see `closeAddonOwnedScopes`).
 ---
 ---A halted addon never reaches `shutdown`: halted is terminal. Its scopes and
 ---its bus are still closed at logout so they end with the session like

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.2 — 2026-09-23
+
+- Added `module.scope.Comm`, a CommKit scope (`CommKit:CreateScope()`) created on first read and closed with the other scope fields, so a module's prefix registrations, SyncSets and pending sends end when it is disabled. Fields now close in the fixed order comm, commands, events, hooks, jobs, messages, timers.
+- CommKit is declared under `optionalDependencies`; without it `Comm` reads as `nil`. The test environment loads CommKit and its remaining dependencies after the module chain (`LoadCommKit`), because CommKit requires LifecycleKit and the real TimerKit and SchedulerKit would displace the stand-ins other scope specs register.
+- Two new specs in `Scope_spec.lua`, one against the real CommKit.
+- Implementation revision 10. `ModuleKit` API generation 1 is unchanged.
+
 ## 0.6.1 — 2026-09-23
 
 - Added `module.scope.Commands`, a CommandKit scope (`CommandKit:CreateScope()`) created on first read and closed with the other scope fields, so a module's slash commands go inert when it is disabled. Fields now close in the fixed order commands, events, hooks, jobs, messages, timers.
