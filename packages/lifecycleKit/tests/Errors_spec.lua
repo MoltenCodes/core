@@ -301,3 +301,160 @@ describe("LifecycleKit callback error propagation", function()
         assert.is_false(replayMessage)
     end)
 end)
+
+-- The combat gate and halted-state methods validate their arguments at the
+-- caller too, pinned the same way as the phase subscriptions above.
+describe("LifecycleKit combat and halt argument error positions", function()
+    local LifecycleKit, life
+    before_each(function()
+        LifecycleKit = TestEnv.NewPackage()
+        life = LifecycleKit:ForAddon("MyAddon")
+    end)
+    after_each(TestEnv.Reset)
+
+    it("reports WhenOutOfCombat argument errors at the caller", function()
+        local source = debug.getinfo(1, "S").short_src
+        local callLine
+        local ok, message = pcall(function()
+            callLine = debug.getinfo(1, "l").currentline + 1
+            life:WhenOutOfCombat(5)
+        end)
+        assert.is_false(ok)
+        assert.are.equal(
+            source
+                .. ":"
+                .. callLine
+                .. ": LifecycleKit.Instance:WhenOutOfCombat callback must be a function",
+            message
+        )
+    end)
+
+    it("reports OnCombatStart and OnCombatEnd argument errors at the caller", function()
+        local source = debug.getinfo(1, "S").short_src
+        local startLine, endLine
+        local startOk, startMessage = pcall(function()
+            startLine = debug.getinfo(1, "l").currentline + 1
+            life:OnCombatStart("no")
+        end)
+        local endOk, endMessage = pcall(function()
+            endLine = debug.getinfo(1, "l").currentline + 1
+            life:OnCombatEnd({})
+        end)
+
+        assert.is_false(startOk)
+        assert.are.equal(
+            source
+                .. ":"
+                .. startLine
+                .. ": LifecycleKit.Instance:OnCombatStart callback must be a function",
+            startMessage
+        )
+        assert.is_false(endOk)
+        assert.are.equal(
+            source
+                .. ":"
+                .. endLine
+                .. ": LifecycleKit.Instance:OnCombatEnd callback must be a function",
+            endMessage
+        )
+    end)
+
+    it("reports OnHalted and OnDependencyHalted argument errors at the caller", function()
+        local source = debug.getinfo(1, "S").short_src
+        local haltedLine, dependencyLine
+        local haltedOk, haltedMessage = pcall(function()
+            haltedLine = debug.getinfo(1, "l").currentline + 1
+            life:OnHalted(false)
+        end)
+        local dependencyOk, dependencyMessage = pcall(function()
+            dependencyLine = debug.getinfo(1, "l").currentline + 1
+            life:OnDependencyHalted(1)
+        end)
+
+        assert.is_false(haltedOk)
+        assert.are.equal(
+            source
+                .. ":"
+                .. haltedLine
+                .. ": LifecycleKit.Instance:OnHalted callback must be a function",
+            haltedMessage
+        )
+        assert.is_false(dependencyOk)
+        assert.are.equal(
+            source
+                .. ":"
+                .. dependencyLine
+                .. ": LifecycleKit.Instance:OnDependencyHalted callback must be a function",
+            dependencyMessage
+        )
+    end)
+
+    it("reports Halt argument errors at the caller", function()
+        local source = debug.getinfo(1, "S").short_src
+        local callLine
+        local ok, message = pcall(function()
+            callLine = debug.getinfo(1, "l").currentline + 1
+            life:Halt("")
+        end)
+
+        assert.is_false(ok)
+        assert.are.equal(
+            source
+                .. ":"
+                .. callLine
+                .. ": LifecycleKit.Instance:Halt reason must be a non-empty string",
+            message
+        )
+        assert.is_false(life:IsHalted())
+    end)
+
+    it("reports DependsOn argument errors at the caller", function()
+        local source = debug.getinfo(1, "S").short_src
+        local nameLine, selfLine
+        local nameOk, nameMessage = pcall(function()
+            nameLine = debug.getinfo(1, "l").currentline + 1
+            life:DependsOn(nil)
+        end)
+        local selfOk, selfMessage = pcall(function()
+            selfLine = debug.getinfo(1, "l").currentline + 1
+            life:DependsOn("MyAddon")
+        end)
+
+        assert.is_false(nameOk)
+        assert.are.equal(
+            source
+                .. ":"
+                .. nameLine
+                .. ": LifecycleKit.Instance:DependsOn addonName must be a non-empty string",
+            nameMessage
+        )
+        assert.is_false(selfOk)
+        assert.are.equal(
+            source
+                .. ":"
+                .. selfLine
+                .. ": LifecycleKit.Instance:DependsOn addonName must name another addon",
+            selfMessage
+        )
+    end)
+
+    it("reports SetCombatQueueLimit argument errors at the caller", function()
+        local source = debug.getinfo(1, "S").short_src
+        for _, invalid in ipairs({ 0, -1, 1.5, "8", math.huge, 0 / 0 }) do
+            local callLine
+            local ok, message = pcall(function()
+                callLine = debug.getinfo(1, "l").currentline + 1
+                life:SetCombatQueueLimit(invalid)
+            end)
+            assert.is_false(ok)
+            assert.are.equal(
+                source
+                    .. ":"
+                    .. callLine
+                    .. ": LifecycleKit.Instance:SetCombatQueueLimit limit must be a positive integer",
+                message
+            )
+        end
+        assert.are.equal(64, life:GetCombatQueueLimit())
+    end)
+end)

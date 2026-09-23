@@ -1,16 +1,18 @@
 # LifecycleKit API
 
-LifecycleKit API generation **1** provides per-addon lifecycle coordination over MoltenCodes EventKit and SignalKit.
+LifecycleKit API generation **1** provides per-addon lifecycle coordination over MoltenCodes EventKit and SignalKit: four lifecycle phases, a halted state an addon can declare, and a combat gate shared by every addon.
 
 ## State model
 
-A lifecycle instance reports one of four states:
+A lifecycle instance reports one of five states:
 
 ```text
 loading → loaded → ready → shutdown
+   │         │        │
+   └─────────┴────────┴──→ halted      (Halt; terminal for the session)
 ```
 
-`loaded` is reached when `ADDON_LOADED` is observed for the configured addon. `ready` is reached after the addon is loaded and the player is logged in. `shutdown` is reached when `PLAYER_LOGOUT` is observed.
+`loaded` is reached when `ADDON_LOADED` is observed for the configured addon. `ready` is reached after the addon is loaded and the player is logged in. `shutdown` is reached when `PLAYER_LOGOUT` is observed. `halted` is reached when the addon calls `Halt` before shutdown; see [Halted state](#halted-state).
 
 A load-on-demand addon may be created after `PLAYER_LOGIN`. LifecycleKit probes `IsLoggedIn()` and, when available, `C_AddOns.IsAddOnLoaded()` so it can catch up without waiting for events that will not repeat.
 
@@ -49,9 +51,11 @@ instance:GetState()
 instance:IsLoaded()
 instance:IsReady()
 instance:IsShutdown()
+instance:IsHalted()
+instance:GetHaltReason()
 ```
 
-`GetState()` returns `"loading"`, `"loaded"`, `"ready"`, or `"shutdown"`.
+`GetState()` returns `"loading"`, `"loaded"`, `"ready"`, `"shutdown"`, or `"halted"`. `halted` takes precedence over every phase.
 
 The boolean query methods report whether that phase itself has been reached. They do not infer earlier phases solely from a later state, which keeps behavior well-defined even in unusual host/test sequences.
 
@@ -84,9 +88,95 @@ What happens to a dispatched error after it leaves LifecycleKit is EventKit's co
 
 When an addon reaches `shutdown`, LifecycleKit also closes that addon's canonical EventKit scope (`EventKit:ForAddon(addonName)`) after the shutdown callbacks have run, so event connections made through the scope need no teardown code in the addon. EventKit cannot do this itself: it loads before LifecycleKit and never observes shutdown. With an EventKit revision that has no `CloseAddonScopes`, nothing is closed and shutdown is otherwise unchanged. Closing the scope never takes the logout away from the scope's own listeners: LifecycleKit's watcher runs inside EventKit's `PLAYER_LOGOUT` dispatch, and EventKit defers the disconnects until that dispatch returns, so a scoped `PLAYER_LOGOUT` listener still runs once.
 
-Errors follow a first-error-wins policy. If an addon's shutdown callback raises, that error is the one re-raised; a failure while closing the scope is re-raised only when no shutdown callback failed. Either way every addon's lifecycle has advanced first.
+Shutdown runs three steps per addon, in this order: the addon's combat queue is closed (each pending deferred call receives `(instance, false, "shutdown")`), the shutdown callbacks run, and the EventKit scope is closed. Errors follow a first-error-wins policy in that order: a deferred-call error is re-raised before a shutdown callback error, which is re-raised before a scope-closing failure. Either way every addon's lifecycle has advanced first.
 
-If shutdown occurs before `loaded` or `ready` was reached (for example, a lifecycle was created for a load-on-demand addon that never loaded), pending subscriptions for those now-impossible phases are disconnected without invocation. New subscriptions to an earlier phase that is already impossible because shutdown occurred are returned already disconnected.
+If shutdown occurs before `loaded` or `ready` was reached (for example, a lifecycle was created for a load-on-demand addon that never loaded), pending subscriptions for those now-impossible phases are disconnected without invocation. New subscriptions to an earlier phase that is already impossible because shutdown occurred are returned already disconnected. Shutdown also disconnects the addon's `OnHalted`, `OnDependencyHalted`, `OnCombatStart` and `OnCombatEnd` subscriptions.
+
+## Halted state
+
+```lua
+instance:Halt(reason)                    -- boolean
+instance:OnHalted(callback)              -- Subscription; callback(instance, reason)
+instance:DependsOn(otherAddonName)       -- true | false | nil, "full" | "halted" | "shutdown"
+instance:OnDependencyHalted(callback)    -- Subscription; callback(instance, otherAddonName, reason)
+```
+
+An addon calls `Halt(reason)` when it cannot work: a failed dependency, a broken saved-variables file, an incompatible client. `reason` must be a non-empty string; it is kept for `GetHaltReason()` and passed to every subscriber. `Halt` returns `true` for the call that halted, and `false` when the addon is already halted or already shut down (shutdown is terminal too, so it cannot be followed by a halt).
+
+Halting, in order:
+
+1. The state becomes `halted`, and every phase the addon has not reached becomes unreachable. Its pending `OnLoaded` / `OnReady` / `OnShutdown` subscriptions are disconnected without invocation, exactly as shutdown does for the phases it rules out, and so are its `OnCombatStart`, `OnCombatEnd` and `OnDependencyHalted` subscriptions.
+2. The addon's combat queue is closed: each pending deferred call receives `(instance, false, "halted")`.
+3. The `OnHalted` subscribers run with `(instance, reason)`.
+4. Every live addon that declared this one with `DependsOn` receives `OnDependencyHalted` with `(dependent, haltedAddonName, reason)`.
+
+Every subscriber is given its delivery even when some fail, then the first error is re-raised from `Halt` with its original Lua error object, after the state is committed.
+
+**Halted is terminal for the session.** API 1 offers no `Resume`: an addon that halted because something was broken cannot prove the breakage is gone, and a resumable state would need every dependent to handle a second transition. Reloading the UI starts a fresh session. Later host events do not move a halted addon: `ADDON_LOADED`, `PLAYER_LOGIN` and `PLAYER_LOGOUT` leave `IsLoaded()`, `IsReady()` and `IsShutdown()` as they were at the halt. The one exception is the addon's EventKit scope, which is still closed at logout, like every other addon's.
+
+A halted addon does not close its EventKit scope at the halt. Event connections it made stay live until logout, so it can still, for example, report its failure once the player logs in.
+
+Phase subscriptions after a halt follow the shutdown rule: a phase reached before the halt still replays, and every other phase returns an already-disconnected subscription. `OnHalted` replays for a halted addon, synchronously, with the reason, like the phase subscriptions. For an addon that has shut down, `OnHalted` returns an already-disconnected subscription.
+
+### Dependencies between addons
+
+`DependsOn(otherAddonName)` records that this addon cannot work without another one. The name is matched exactly, like `ForAddon`, and the other addon does not need a lifecycle instance yet. The call returns `true` when it recorded the dependency and `false` when it was already recorded. An addon records at most **16** dependencies; the 17th is refused with `nil, "full"`. A halted or shut-down addon refuses new dependencies with `nil, "halted"` or `nil, "shutdown"`. Declaring the addon itself raises an argument error.
+
+If the dependency has already halted, `DependsOn` delivers `OnDependencyHalted` at once. `OnDependencyHalted` is a repeating subscription, and it replays every recorded dependency that has already halted when it is made, so the order of `DependsOn` and `OnDependencyHalted` does not matter: each subscriber hears of each halted dependency exactly once. A failing replay is re-raised from `OnDependencyHalted` after the other replays, and, as with a failing dispatch, the subscription stays connected.
+
+A dependent may itself `Halt` from inside `OnDependencyHalted`; its own dependents are then told in turn. Dependents that are already halted or shut down are not told.
+
+## Combat gate
+
+```lua
+LifecycleKit:IsInCombat()                 -- boolean
+instance:WhenOutOfCombat(callback)        -- DeferredCall | nil, "full" | "halted" | "shutdown"
+instance:OnCombatStart(callback)          -- Subscription; callback(instance)
+instance:OnCombatEnd(callback)            -- Subscription; callback(instance)
+instance:SetCombatQueueLimit(limit)
+instance:GetCombatQueueLimit()            -- integer, 64 by default
+```
+
+During combat lockdown the client refuses protected frame work (showing, moving or re-anchoring secure frames, changing secure attributes, key bindings) from addon code. The rule an addon follows is *persist intent always, apply only out of combat*; see the taint section of [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md). The combat gate is that rule as a service, so each addon does not track `PLAYER_REGEN_*` itself.
+
+### One lockdown state
+
+`IsInCombat()` reads one state shared by every addon. It is kept by one package-level pair of watchers on `PLAYER_REGEN_DISABLED` and `PLAYER_REGEN_ENABLED`, installed with the other shared watchers by the first `ForAddon`. The state is seeded from `InCombatLockdown()` when the package loads and again at `PLAYER_LOGIN`, because the host may load an addon mid-combat (a `/reload` in combat), and a combat that began before the watchers existed sends no `PLAYER_REGEN_DISABLED` to them. Before the first `ForAddon`, and after logout, nothing watches the events and `IsInCombat()` asks `InCombatLockdown()` directly. A host without `InCombatLockdown` is treated as never in combat.
+
+The state flips to `true` on `PLAYER_REGEN_DISABLED`. The host sends that event just before lockdown begins, so inside it `InCombatLockdown()` still answers `false` while `IsInCombat()` already answers `true`: from that moment on protected work belongs in the queue.
+
+### `WhenOutOfCombat(callback)`
+
+Out of combat, `callback(instance, true)` runs at once, before `WhenOutOfCombat` returns, and an error it raises leaves `WhenOutOfCombat` unchanged. The returned handle is already spent.
+
+In combat, the callback is queued and `WhenOutOfCombat` returns a pending `DeferredCall`. Queued callbacks run on the next `PLAYER_REGEN_ENABLED`, first in, first out, as `callback(instance, true)`. They run for every addon that is not halted or shut down, including one still `loading`: the caller asked for the call explicitly.
+
+When the queue is closed, which happens at shutdown and at halt, each pending callback is called once with `(instance, false, "shutdown")` or `(instance, false, "halted")` instead, so work that needed the out-of-combat window learns it will not get one. After that, `WhenOutOfCombat` refuses with `nil, "shutdown"` or `nil, "halted"` and does not call the callback.
+
+Every queued callback runs protected. When several fail, every other queued callback, in this addon and in every other addon, still runs, and the first error is re-raised afterwards with its original Lua error object: the same first-error policy as the phase callbacks. Raised inside the host event, it is reported through EventKit's listener isolation.
+
+If a queued callback puts the player back into combat, the drain stops: the remaining calls stay queued for the next combat end.
+
+**Bounded.** An addon may have at most `GetCombatQueueLimit()` calls waiting, 64 unless changed with `SetCombatQueueLimit(limit)` (a positive integer). Beyond it `WhenOutOfCombat` returns `nil, "full"` and drops nothing already queued. Lowering the limit below the number already waiting drops nothing either; new calls are refused until the queue is below it. The queue array is reused across combats.
+
+### `DeferredCall`
+
+```lua
+call:Cancel()     -- boolean
+call:IsPending()  -- boolean
+```
+
+`Cancel()` returns `true` only for the call that cancelled a pending call; the callback then never runs and its place in the queue is freed. Cancelling only flags the slot, so it allocates nothing and moves nothing; the slot is reclaimed the next time the queue needs room. `IsPending()` is `true` while the callback waits for the end of combat.
+
+### Combat notices
+
+`OnCombatStart` and `OnCombatEnd` are repeating subscriptions, delivered after the shared state flipped: inside them `IsInCombat()` already answers `true` and `false` respectively. Addons are served in the order their lifecycle instances were created. On combat end, an addon's queued calls run before its `OnCombatEnd` subscribers. A redundant host event, one that does not change the state, is not announced.
+
+Notices are delivered only to addons that have reached `loaded` and are not halted or shut down. Before its `ADDON_LOADED` an addon has no saved variables and owns no frames, so a combat notice would invite work against state that does not exist yet. A subscription made while `loading` stays connected and starts receiving once the addon has loaded.
+
+Failing notice subscribers are isolated and reported with the same first-error policy as the queued calls.
+
+A combat transition allocates nothing once the subscriptions exist; only queuing a call allocates its handle.
 
 ## Subscription
 
@@ -96,6 +186,20 @@ subscription:IsConnected()  -- boolean
 ```
 
 `Disconnect()` is idempotent and returns `true` only when it changed a pending subscription to disconnected.
+
+Phase subscriptions (`OnLoaded`, `OnReady`, `OnShutdown`, `OnHalted`) are one-shot: they disconnect themselves when delivered. Notice subscriptions (`OnCombatStart`, `OnCombatEnd`, `OnDependencyHalted`) repeat until they are disconnected or the addon halts or shuts down; a notice subscription made after that is returned already disconnected.
+
+## Argument errors
+
+Every public method validates its arguments and raises at the caller's own file and line:
+
+| Call | Message |
+|---|---|
+| `LifecycleKit:ForAddon` | `addonName must be a non-empty string` |
+| `OnLoaded`, `OnReady`, `OnShutdown`, `OnHalted`, `OnDependencyHalted`, `OnCombatStart`, `OnCombatEnd`, `WhenOutOfCombat` | `callback must be a function` |
+| `Halt` | `reason must be a non-empty string` |
+| `DependsOn` | `addonName must be a non-empty string`, `addonName must name another addon` |
+| `SetCombatQueueLimit` | `limit must be a positive integer` |
 
 ## Dependencies
 
@@ -107,6 +211,10 @@ LifecycleKit API 1 requires:
 
 LifecycleKit does not create WoW Frames directly. All frame/event registration remains inside EventKit.
 
+Host API read directly: `C_AddOns.IsAddOnLoaded` (falling back to the legacy `IsAddOnLoaded`), `IsLoggedIn`, and `InCombatLockdown`. Every one is optional; without it LifecycleKit assumes not loaded, not logged in, and not in combat respectively. Host events observed through EventKit: `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED`.
+
 ## Embedded bootstrap recovery
 
-Compatible embedded copies share one LifecycleKit facade and state through Registry. Pending phase subscriptions created by the previous compatible implementation revision remain valid across an in-place upgrade; the upgrade releases per-instance state that the newer revision no longer owns. Bootstrap is idempotent for the current implementation revision: if a prior live upgrade accepted the Registry revision but host event registration failed before shared watchers were fully established, a later compatible copy retries the missing watcher setup instead of silently returning an incomplete runtime state. If a one-shot global phase passed while that watcher was absent, bootstrap also reconciles existing instances from the observable host/package state.
+Compatible embedded copies share one LifecycleKit facade and state through Registry. Pending phase subscriptions created by the previous compatible implementation revision remain valid across an in-place upgrade; the upgrade releases per-instance state that the newer revision no longer owns.
+
+Revision 7 changed the package state from schema 2 to schema 3. Upgrading from an older revision adds the shared combat flag (seeded from `InCombatLockdown()`), the creation-ordered instance list and every instance's combat queue, dependency list and halted flag, and replaces the older revision's shared host watchers with its own, because a watcher keeps calling the handler of the revision that installed it. Pending deferred calls and notice subscriptions are carried across a same-revision reload unchanged. Bootstrap is idempotent for the current implementation revision: if a prior live upgrade accepted the Registry revision but host event registration failed before shared watchers were fully established, a later compatible copy retries the missing watcher setup instead of silently returning an incomplete runtime state. If a one-shot global phase passed while that watcher was absent, bootstrap also reconciles existing instances from the observable host/package state.

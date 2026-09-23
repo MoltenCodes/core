@@ -20,6 +20,45 @@ end)
 
 A lifecycle instance moves through `loading`, `loaded`, `ready`, and `shutdown`. Phase subscriptions are one-shot and replay synchronously for late subscribers, so consumers do not need to race WoW events.
 
+```text
+loading → loaded → ready → shutdown
+   │         │        │
+   └─────────┴────────┴──→ halted      (Halt; terminal for the session)
+```
+
+An addon that cannot work declares it, and the addons that depend on it are told:
+
+```lua
+lifecycle:OnLoaded(function(self)
+    if not MyAddonDB or MyAddonDB.version == nil then
+        self:Halt("saved variables are unreadable")
+    end
+end)
+
+local consumer = LifecycleKit:ForAddon("MyPlugin")
+consumer:DependsOn("MyAddon")
+consumer:OnDependencyHalted(function(self, dependencyName, reason)
+    self:Halt(dependencyName .. " halted: " .. reason)
+end)
+```
+
+The combat gate keeps one lockdown state for every addon and defers protected frame work until combat ends:
+
+```lua
+lifecycle:WhenOutOfCombat(function(self, ran, reason)
+    if ran then
+        MyAddonSecureButton:SetAttribute("spell", MyAddonDB.spell)
+    end
+    -- ran is false, with reason "shutdown" or "halted", when the queue closed first
+end)
+
+lifecycle:OnCombatStart(function(self)
+    MyAddonOptionsFrame:Hide()
+end)
+```
+
+`WhenOutOfCombat` runs at once out of combat; in combat it queues the call (at most 64 per addon by default, `nil, "full"` beyond) and returns a handle with `Cancel()`. `LifecycleKit:IsInCombat()` answers from the shared state.
+
 `LifecycleKit:ForAddon(name)` is idempotent: every caller in the same runtime receives the same lifecycle instance for that addon name.
 
 The name is matched exactly against the folder name WoW reports in `ADDON_LOADED`, so pass the addon's own name — inside an addon file, `local addonName = ...`.

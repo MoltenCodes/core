@@ -15,6 +15,48 @@ local function requireAfterFailedLoad(moduleName)
     return require(moduleName)
 end
 
+-- Instance prototypes that model other revisions' published surfaces. Only the
+-- presence of each method matters to the bootstrap checks under test.
+local REVISION_6_METHODS = {
+    "GetAddonName",
+    "GetState",
+    "IsLoaded",
+    "IsReady",
+    "IsShutdown",
+    "OnLoaded",
+    "OnReady",
+    "OnShutdown",
+}
+
+local REVISION_7_METHODS = {
+    "IsHalted",
+    "GetHaltReason",
+    "OnHalted",
+    "Halt",
+    "DependsOn",
+    "OnDependencyHalted",
+    "WhenOutOfCombat",
+    "OnCombatStart",
+    "OnCombatEnd",
+    "SetCombatQueueLimit",
+    "GetCombatQueueLimit",
+}
+
+local function addMethods(prototype, methodNames)
+    for index = 1, #methodNames do
+        prototype[methodNames[index]] = function() end
+    end
+    return prototype
+end
+
+local function newRevision6InstancePrototype()
+    return addMethods({}, REVISION_6_METHODS)
+end
+
+local function newInstancePrototype()
+    return addMethods(newRevision6InstancePrototype(), REVISION_7_METHODS)
+end
+
 describe("LifecycleKit package bootstrap", function()
     after_each(TestEnv.Reset)
 
@@ -49,13 +91,13 @@ describe("LifecycleKit package bootstrap", function()
         end)
     end)
 
-    it("registers LifecycleKit API 1 revision 6", function()
+    it("registers LifecycleKit API 1 revision 7", function()
         local LifecycleKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("lifecycleKit", 1)
         assert.are.equal(LifecycleKit, selected)
-        assert.are.equal(6, revision)
+        assert.are.equal(7, revision)
         assert.are.equal(1, LifecycleKit.API)
-        assert.are.equal(6, LifecycleKit.REVISION)
+        assert.are.equal(7, LifecycleKit.REVISION)
     end)
 
     it("reuses facade and addon instances across duplicate embedding", function()
@@ -87,27 +129,42 @@ describe("LifecycleKit package bootstrap", function()
         require("SignalKit")
         require("EventKit")
 
-        local future = Registry:Register("lifecycleKit", 1, 7)
+        local future = Registry:Register("lifecycleKit", 1, 8)
         future.API = 1
-        future.REVISION = 7
-        future.Instance = {
-            GetAddonName = function() end,
-            GetState = function() end,
-            IsLoaded = function() end,
-            IsReady = function() end,
-            IsShutdown = function() end,
-            OnLoaded = function() end,
-            OnReady = function() end,
-            OnShutdown = function() end,
-        }
+        future.REVISION = 8
+        future.Instance = newInstancePrototype()
         future.Subscription = { Disconnect = function() end, IsConnected = function() end }
+        future.DeferredCall = { Cancel = function() end, IsPending = function() end }
         future.ForAddon = function() end
+        future.IsInCombat = function() end
 
         local loaded = require("LifecycleKit")
         local selected, revision = Registry:Get("lifecycleKit", 1)
         assert.are.equal(future, loaded)
         assert.are.equal(future, selected)
-        assert.are.equal(7, revision)
+        assert.are.equal(8, revision)
+    end)
+
+    it("refuses a newer revision that lacks the combat gate surface", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        local Registry = require("Registry")
+        require("SignalKit")
+        require("EventKit")
+
+        -- A revision 8 that publishes only the revision 6 surface is not a
+        -- compatible successor: consumers of revision 7 would call methods it
+        -- does not have.
+        local future = Registry:Register("lifecycleKit", 1, 8)
+        future.API = 1
+        future.REVISION = 8
+        future.Instance = newRevision6InstancePrototype()
+        future.Subscription = { Disconnect = function() end, IsConnected = function() end }
+        future.ForAddon = function() end
+
+        expectErrorContaining("corrupted or incomplete", function()
+            require("LifecycleKit")
+        end)
     end)
 
     it("retries shared watcher setup after a same-revision bootstrap failure", function()
@@ -179,16 +236,7 @@ describe("LifecycleKit package bootstrap", function()
         local old = Registry:Register("lifecycleKit", 1, 3)
         old.API = 1
         old.REVISION = 3
-        old.Instance = {
-            GetAddonName = function() end,
-            GetState = function() end,
-            IsLoaded = function() end,
-            IsReady = function() end,
-            IsShutdown = function() end,
-            OnLoaded = function() end,
-            OnReady = function() end,
-            OnShutdown = function() end,
-        }
+        old.Instance = newRevision6InstancePrototype()
         old.Subscription = { Disconnect = function() end, IsConnected = function() end }
         old.ForAddon = function() end
 
@@ -216,7 +264,7 @@ describe("LifecycleKit package bootstrap", function()
         local upgraded = require("LifecycleKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(6, upgraded.REVISION)
+        assert.are.equal(7, upgraded.REVISION)
         assert.are.equal(instance, upgraded:ForAddon("CarriedOver"))
         assert.is_nil(rawget(instance, "_phaseErrors"))
 
@@ -229,5 +277,130 @@ describe("LifecycleKit package bootstrap", function()
         TestEnv.Login()
         assert.is_true(instance:IsReady())
         assert.are.equal(1, readyCalls)
+    end)
+    -- Models the shared state a revision 6 copy leaves behind: schema 2, no
+    -- combat flag or instance list, instances without the gate fields, and
+    -- host watchers that call revision 6's handlers.
+    local function registerRevision6(Registry, SignalKit, EventKit)
+        local old = Registry:Register("lifecycleKit", 1, 6)
+        old.API = 1
+        old.REVISION = 6
+        old.Instance = newRevision6InstancePrototype()
+        old.Subscription = { Disconnect = function() end, IsConnected = function() end }
+        old.ForAddon = function() end
+
+        local oldHandlerCalls = { count = 0 }
+        local function oldHandler()
+            oldHandlerCalls.count = oldHandlerCalls.count + 1
+        end
+
+        local instance = setmetatable({
+            _addonName = "CarriedOver",
+            _loaded = false,
+            _ready = false,
+            _shutdown = false,
+            _signals = {
+                loaded = SignalKit:New(),
+                ready = SignalKit:New(),
+                shutdown = SignalKit:New(),
+            },
+            _phaseCaptures = {},
+        }, { __index = old.Instance })
+        old._state = {
+            schema = 2,
+            addons = { CarriedOver = instance },
+            globalWatchers = {
+                addonLoaded = EventKit:Connect("ADDON_LOADED", oldHandler),
+                playerLogin = EventKit:Once("PLAYER_LOGIN", oldHandler),
+                playerLogout = EventKit:Once("PLAYER_LOGOUT", oldHandler),
+            },
+            loginSeen = false,
+            shutdownSeen = false,
+        }
+        return old, instance, oldHandlerCalls
+    end
+
+    it("upgrades revision 6 state to schema 3 and carries pending phases", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        local Registry = require("Registry")
+        local SignalKit = require("SignalKit")
+        local EventKit = require("EventKit")
+        local old, instance, oldHandlerCalls = registerRevision6(Registry, SignalKit, EventKit)
+        local oldLoadedWatcher = old._state.globalWatchers.addonLoaded
+
+        -- A pending subscription revision 6 created: a SignalKit once-listener
+        -- on the instance's own signal, which the upgrade must not strand.
+        local loadedCalls = 0
+        instance._signals.loaded:Once(function()
+            loadedCalls = loadedCalls + 1
+        end)
+
+        TestEnv.SetCombatLockdown(true)
+        local upgraded = require("LifecycleKit")
+
+        assert.are.equal(old, upgraded)
+        assert.are.equal(7, upgraded.REVISION)
+        assert.are.equal(3, upgraded._state.schema)
+        assert.are.same({ instance }, upgraded._state.instances)
+        assert.is_true(upgraded:IsInCombat())
+        assert.are.equal(instance, upgraded:ForAddon("CarriedOver"))
+        assert.are.equal("table", type(upgraded.DeferredCall))
+
+        -- Revision 6's watchers are replaced, so its handlers no longer run.
+        assert.is_false(oldLoadedWatcher:IsConnected())
+        TestEnv.LoadAddon("CarriedOver")
+        TestEnv.Login()
+        assert.are.equal(0, oldHandlerCalls.count)
+        assert.are.equal(1, loadedCalls)
+        assert.are.equal("ready", instance:GetState())
+
+        -- The carried-over instance has a working combat gate and can halt.
+        local ran = false
+        local handle = instance:WhenOutOfCombat(function()
+            ran = true
+        end)
+        assert.is_true(handle:IsPending())
+        TestEnv.LeaveCombat()
+        assert.is_true(ran)
+        assert.is_true(instance:Halt("carried over and broken"))
+        assert.are.equal("halted", instance:GetState())
+    end)
+
+    it("rejects older-revision state whose schema it does not know", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        local Registry = require("Registry")
+        local SignalKit = require("SignalKit")
+        local EventKit = require("EventKit")
+        local old = registerRevision6(Registry, SignalKit, EventKit)
+        old._state.schema = 1
+
+        expectErrorContaining("corrupted or incomplete", function()
+            require("LifecycleKit")
+        end)
+    end)
+
+    it("repairs missing combat watchers and reconciles the combat state", function()
+        local LifecycleKit = TestEnv.NewPackage()
+        local life = LifecycleKit:ForAddon("MyAddon")
+        TestEnv.LoadAddon("MyAddon")
+        local starts = 0
+        life:OnCombatStart(function()
+            starts = starts + 1
+        end)
+
+        local watchers = LifecycleKit._state.globalWatchers
+        watchers.combatStart:Disconnect()
+        watchers.combatStart = nil
+        TestEnv.SetCombatLockdown(true)
+
+        package.loaded["LifecycleKit"] = nil
+        assert.are.equal(LifecycleKit, require("LifecycleKit"))
+
+        assert.is_true(LifecycleKit:IsInCombat())
+        assert.are.equal(1, starts)
+        TestEnv.LeaveCombat()
+        assert.is_false(LifecycleKit:IsInCombat())
     end)
 end)
