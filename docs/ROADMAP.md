@@ -32,6 +32,7 @@ those defaults when they are documented and observable.
 - [x] `clientKit`
 - [x] `cacheKit`
 - [x] `profileKit`
+- [x] `readinessKit`
 
 These entries describe packages present in this repository snapshot. A checked
 item means its implementation is part of the repository; it does not mean the
@@ -197,12 +198,12 @@ namespaces follow in v2; event coalescing and scheduler lanes are one design.
       clear-on-event.
 - [x] `profileKit` — zero-cost-when-off performance sections with count, total
       and spike, and a report.
-- [ ] **schedulerKit** — `Debounce`, `Coalesce`, `Watch`, and lanes that
+- [x] **schedulerKit** — `Debounce`, `Coalesce`, `Watch`, and lanes that
       ration a shared resource (in flight, interval, retry, backoff), designed
       with **eventKit** coalescing and `Derive` as one family.
-- [ ] `readinessKit` — gates for host data that arrives after load, with
+- [x] `readinessKit` — gates for host data that arrives after load, with
       timeouts and negative caching.
-- [ ] **lifecycleKit** — the combat gate (one lockdown state, a bounded
+- [x] **lifecycleKit** — the combat gate (one lockdown state, a bounded
       "run when out of combat" queue) and a halted state announced to
       dependents.
 
@@ -333,7 +334,7 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
    interval), waiter cap, ReprobeOn with and without eventKit, WhenAll,
    Close, upgrade, manifest, error levels.
 8. Docs: README, API.md, CHANGELOG; EMBEDDING.md host row.
-9. Status: planned (package B2).
+9. Status: implemented (package B2, 0.1.0).
 
 #### Package C — the consumer story
 
@@ -433,4 +434,4 @@ duplicating those specifications.
 ---
 
 Last roadmap baseline update: 2026-09-23 (phases 0 through 3 complete; phase 4
-package A and package B1 complete, package B2 in progress).
+packages A and B complete, package C is next).

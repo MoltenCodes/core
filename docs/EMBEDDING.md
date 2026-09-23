@@ -135,6 +135,7 @@ registry
    lifecycleKit
     ├──→ moduleKit
     ├──→ timerKit
+    │       ├──→ readinessKit
     │       ↓
     └──→ schedulerKit
 ```
@@ -153,6 +154,7 @@ moduleKit/ModuleKit.lua
 poolKit/PoolKit.lua
 profileKit/ProfileKit.lua
 timerKit/TimerKit.lua
+readinessKit/ReadinessKit.lua
 schedulerKit/SchedulerKit.lua
 ```
 
@@ -448,7 +450,8 @@ actually touch, which is deliberately small:
 |---|---|---|
 | `registry`, `signalKit`, `poolKit`, `moduleKit` | nothing but Lua 5.1 | — |
 | `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript` | `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`) |
-| `lifecycleKit` | EventKit's surface | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn` |
+| `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat) |
+| `readinessKit` | TimerKit's surface | `GetTimePreciseSec` (negative cache disabled, timeouts counted in polls), EventKit API 1 through `Registry:Find` (`gate:ReprobeOn` raises at the caller) |
 | `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | `GetTimePreciseSec` (`GetRemaining` and `GetDeadline` then return `nil`) |
 | `clientKit` | nothing but Lua 5.1 | `WOW_PROJECT_ID` (flavour `"classic"`), `GetBuildInfo` (interface `0`), `issecretvalue` (`IsSecret` false), `C_EventUtils.IsEventValid` (`IsEventValid` nil), `IsForbidden` / `CanBeAccessedInContext` (`CanAccessFrame` true), `C_AddOns` / `C_Spell` / `C_Item` (legacy globals, then nil or false) |
 | `cacheKit` | nothing but Lua 5.1 | `GetTimePreciseSec` (age limits disabled: TTL caches never expire), EventKit API 1 (`cache:ClearOn` raises at the caller) |
@@ -746,6 +749,15 @@ addon's state depend on which copy won.
 The framework is allocation-conscious on its hot paths, and it stays that way
 only if you use the parts that exist rather than rebuilding them.
 
+- **Do not do work per high-frequency event.** `UNIT_HEALTH`, `BAG_UPDATE`,
+  `UNIT_AURA` and their kind arrive in bursts. `EventKit:Coalesce` delivers one
+  callback per interval with the set of payloads, and `EventKit:Derive` keeps a
+  value recomputed from a set of events. Both need SchedulerKit loaded; without
+  it `Derive` recomputes on every event and `Coalesce` is refused.
+- **Ration a server resource through a lane.** Inspect requests, `/who`, addon
+  messages and other calls the server throttles go through one shared
+  `SchedulerKit:Lane` (in-flight cap, minimum interval, retry with backoff)
+  rather than a private token bucket per addon.
 - **Do not run your own `OnUpdate`.** Every per-frame handler in the session
   costs the client a call whether or not it has work. SchedulerKit installs one
   `OnUpdate` for the whole session, only while ready work exists, and removes it

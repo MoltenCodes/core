@@ -15,6 +15,7 @@ packages/
 ├── clientKit/
 ├── cacheKit/
 ├── profileKit/
+├── readinessKit/
 ├── <future-package>/
 └── ...
 ```
@@ -23,7 +24,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -72,6 +73,7 @@ registry
    lifecycleKit
     ├──→ moduleKit
     └──→ timerKit
+            ├──→ readinessKit
             ↓
        schedulerKit
 ```
@@ -187,3 +189,5 @@ The first dependency layer above Registry is `signalKit`. SignalKit uses Registr
 `cacheKit` depends only on Registry API 2. It gives consumers bounded caches (LRU by count, TTL by age, memoisation, snapshots with diffs) so that "bounded by default" is a structure rather than a rule to remember. Clearing on a host event is resolved at call time through `Registry:Find("eventKit", 1)`, so EventKit is optional and never an edge in the load order.
 
 `profileKit` depends only on Registry API 2. It measures named sections with count, total, spike and last time from `debugprofilestop`, costs a table read and a call while disabled, and refuses sections beyond a fixed cap instead of growing.
+
+`readinessKit` depends directly on Registry API 2 and TimerKit API 1. It owns named gates for host data that arrives after load: one probe per gate, polling on one TimerKit repeating timer per pending gate in a Kit-owned scope, timeouts, negative caching and bounded FIFO waiters. It sits above TimerKit because a timeout needs a timer, and LifecycleKit's phases stay one-shot. Re-probing on a host event resolves EventKit at call time through `Registry:Find("eventKit", 1)`, so it adds no edge to the load order.

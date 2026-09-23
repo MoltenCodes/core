@@ -68,3 +68,4 @@ move-folders:
   MoltenCodes/packages/clientKit/src: MoltenCodes/clientKit
   MoltenCodes/packages/cacheKit/src: MoltenCodes/cacheKit
   MoltenCodes/packages/profileKit/src: MoltenCodes/profileKit
+  MoltenCodes/packages/readinessKit/src: MoltenCodes/readinessKit

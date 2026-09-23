@@ -19,3 +19,4 @@ Current packages:
 - [`clientKit`](clientKit/) — client flavour, build floor, probed capability flags, secret-value and frame-access probes, shims with one shape per host call.
 - [`cacheKit`](cacheKit/) — bounded LRU and TTL caches, memoisation, snapshots with diffs, clear-on-event.
 - [`profileKit`](profileKit/) — zero-cost-when-off performance sections with count, total, spike and a report.
+- [`readinessKit`](readinessKit/) — named readiness gates for late host data: polling, timeouts, negative caching, bounded waiters.

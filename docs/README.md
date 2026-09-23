@@ -42,6 +42,7 @@ Current package entry points:
 - [`ClientKit`](../packages/clientKit/README.md) — client flavour, capability flags, secret-value and frame-access probes, shims.
 - [`CacheKit`](../packages/cacheKit/README.md) — bounded LRU and TTL caches, memoisation, snapshots with diffs.
 - [`ProfileKit`](../packages/profileKit/README.md) — zero-cost-when-off performance sections and a sorted report.
+- [`ReadinessKit`](../packages/readinessKit/README.md) — named readiness gates for late host data: polling, timeouts, negative caching, bounded waiters.
 
 Each package keeps its complete public contract under its own `docs/API.md`.
 

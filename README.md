@@ -19,6 +19,7 @@ This repository is a monorepo. Every publishable runtime package lives under `pa
 | [`clientKit`](packages/clientKit/) | Implemented | Client flavour, build floor, probed capability flags, secret-value and frame-access probes, and shims with one shape per host call. |
 | [`cacheKit`](packages/cacheKit/) | Implemented | Bounded LRU and TTL caches, memoisation, snapshots with diffs and clear-on-event. |
 | [`profileKit`](packages/profileKit/) | Implemented | Zero-cost-when-off performance sections with count, total, spike and a sorted report. |
+| [`readinessKit`](packages/readinessKit/) | Implemented | Named readiness gates for host data that arrives after load: polling, timeouts, negative caching and bounded waiters. |
 
 ## Using the framework in an addon
 
@@ -101,7 +102,8 @@ python3 -m tooling.spell
 │   ├── poolKit/
 │   ├── clientKit/
 │   ├── cacheKit/
-│   └── profileKit/
+│   ├── profileKit/
+│   └── readinessKit/
 ├── pyproject.toml           # Python tooling metadata and the supported floor
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua
