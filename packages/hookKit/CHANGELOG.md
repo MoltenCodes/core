@@ -1,0 +1,13 @@
+# Changelog
+
+## 0.1.0 — 2026-09-23
+
+- Added HookKit API generation 1, implementation revision 1.
+- Added `HookKit:CreateScope()`, `HookKit:ForAddon(addonName)` and `HookKit:CloseAddonScopes(addonName)`, mirroring the TimerKit and EventKit scope model; `HookKit.MAX_HOOKS` is 256 per scope, beyond which a hook method returns `nil, "full"`.
+- Added the three hook semantics as scope methods: secure post-hooks (`SecureHook`, `SecureHookScript`) over `hooksecurefunc` and `Frame:HookScript`, made reversible by an active flag on a closure that stays installed; safe pre-hooks (`Hook`, `HookScript`) whose handler errors are reported and whose original always runs with its results untouched; raw replacements (`RawHook`, `RawHookScript`) whose handler receives the original as its first argument.
+- Added `Unhook`, `UnhookAll`, `IsHooked`, `Original`, `Hooks`, `Close`, `IsClosed`, `GetActiveCount` and `GetAddonName`. `Unhook` restores the original only while the installed function is still HookKit's, deletes the field instead when the original came through `__index`, and otherwise leaves the closure inert and forwarding.
+- Non-secure hooks of secure targets are refused unless `options.forceSecure` is passed; the secure status is read with `issecurevariable` and remembered from before HookKit's first non-secure hook. Replacing `OnClick`, `PreClick`, `PostClick`, `OnDoubleClick` or `OnAttributeChanged` on a protected frame is refused outright; other scripts of a protected frame need `forceSecure` and are refused during combat lockdown. Double hooks of one target in one scope are refused.
+- Hook records live in a weak-keyed table per scope, never auto-vivified on reads. A hooked call allocates nothing; secret arguments pass through untouched.
+- ClientKit API 1 is an optional dependency, found with `Registry:Find` when a name is validated, for `IsSecret`.
+- `docs/API.md` leads with the taint each semantic causes.
+- 72 specs, including an allocation guard on hooked calls and an in-place upgrade spec.
