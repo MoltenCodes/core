@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — 2026-09-23
+
+- TimerKit no longer requires LifecycleKit (design constitution, principle 4b). The manifest lists Registry API 2 only, the load-time LifecycleKit facade check is gone, and TimerKit embeds as two files: Registry and TimerKit.
+- `TimerKit:ForAddon(addonName)` still returns one canonical scope per addon, but no longer subscribes to the addon's shutdown. Added `TimerKit:CloseAddonScopes(addonName)`, the second half of the two-step EventKit, HookKit, CommandKit and CommKit already use: it cancels every timer of the addon's scope and closes it terminally, returns `false` when the addon never had a scope (recording nothing) or it was already closed, and must be called on the facade. LifecycleKit 0.5.0 makes the call at shutdown; without LifecycleKit an addon calls it on `PLAYER_LOGOUT`.
+- Behaviour change for an addon that asks for its scope after its lifecycle already shut down: revision 5 handed back a closed scope, this revision hands back an open one until `CloseAddonScopes` is called.
+- Implementation revision 6. An in-place upgrade from revision 5 or older disconnects the LifecycleKit shutdown subscription each carried addon scope held (best-effort; one that cannot be disconnected only closes an already closed scope at shutdown) and keeps the scopes and their timers working. `CloseAddonScopes` joins the public-surface check.
+- Specs: the module chain is Registry and TimerKit. `Lifecycle_spec.lua` became `AddonScopes_spec.lua` (the two-step by hand, terminal closure, unknown addons, facade receiver, self-close from a callback, cancellation failures); the logout integration specs moved to LifecycleKit's suite, where both Kits load. New bootstrap specs cover loading with Registry alone and the revision-5 upgrade; `ErrorLevels_spec.lua` covers the new method's argument and receiver errors.
+- `TimerKit` API generation 1 is unchanged; the addition is compatible.
+
 ## 0.4.1 — 2026-09-23
 
 - TimerKit no longer fails to load on a host without `GetTimePreciseSec`. 0.4.0 made the clock a load requirement, which contradicted the documented host requirements and added a client facility inside API generation 1. The clock is optional again: without it every timer behaves as before and `GetRemaining()` / `GetDeadline()` return `nil`, documented in `docs/API.md` and the README.

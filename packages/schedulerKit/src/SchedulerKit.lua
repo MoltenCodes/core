@@ -2,16 +2,25 @@
 --
 -- Cooperative, frame-budgeted scheduling for World of Warcraft addons.
 -- SchedulerKit combines deterministic priority queues, resumable coroutine
--- jobs, cancellation scopes, TimerKit-backed delays, and LifecycleKit cleanup
--- while keeping the WoW OnUpdate/profiling boundary narrow and testable.
+-- jobs, cancellation scopes and TimerKit-backed delays while keeping the WoW
+-- OnUpdate/profiling boundary narrow and testable.
+--
+-- SchedulerKit requires Registry and TimerKit and nothing else. It keeps one
+-- canonical scope per addon (`ForAddon`) but does not observe addon shutdown
+-- itself: whoever does closes that scope through `CloseAddonScopes`.
+-- LifecycleKit makes that call at `PLAYER_LOGOUT` when it is loaded; an addon
+-- without LifecycleKit makes it from its own `PLAYER_LOGOUT` handler
+-- (design constitution, principle 4b).
 --
 -- Contents
 -- --------
 --   Constants ............. package identity, priorities, defaults
 --   Public types .......... LuaCATS declarations for the published surface
---   Dependencies .......... Registry, LifecycleKit, TimerKit, WoW globals
+--   Dependencies .......... Registry, TimerKit, WoW globals
 --   Validation ............ public-surface and shared-state validation
---   Bootstrap ............. Registry registration and revision migration
+--   Bootstrap ............. Registry registration and revision migration,
+--                           including the release of revision-9 shutdown
+--                           subscriptions
 --   Generic helpers ....... argument validation, clocks, error reporting
 --   Scope ownership ....... intrusive active-job links
 --   Ready queues .......... per-priority FIFOs and lane occupancy
@@ -29,9 +38,8 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 9
+local IMPLEMENTATION_REVISION = 10
 local REQUIRED_REGISTRY_API = 2
-local REQUIRED_LIFECYCLE_API = 1
 local REQUIRED_TIMER_API = 1
 local STATE_SCHEMA = 1
 
@@ -153,7 +161,8 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@field GetErrorTraceback fun(self: SchedulerKit.Job): string?
 ---@field Cancel fun(self: SchedulerKit.Job): boolean
 
----An ownership scope for jobs, closed manually or by addon shutdown.
+---An ownership scope for jobs, closed by its owner or, for an addon scope,
+---through `SchedulerKit:CloseAddonScopes`.
 ---@class SchedulerKit.Scope
 ---@field Schedule fun(self: SchedulerKit.Scope, callback: SchedulerKit.Callback, options: SchedulerKit.ScheduleOptions?): SchedulerKit.Job
 ---@field NextFrame fun(self: SchedulerKit.Scope, callback: SchedulerKit.Callback, options: SchedulerKit.ScheduleOptions?): SchedulerKit.Job
@@ -284,6 +293,7 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@field Every fun(self: SchedulerKit, interval: number, callback: SchedulerKit.Callback, options: SchedulerKit.ScheduleOptions?): SchedulerKit.Job
 ---@field CreateScope fun(self: SchedulerKit): SchedulerKit.Scope
 ---@field ForAddon fun(self: SchedulerKit, addonName: string): SchedulerKit.Scope
+---@field CloseAddonScopes fun(self: SchedulerKit, addonName: string): boolean
 ---@field SetFrameBudget fun(self: SchedulerKit, milliseconds: number): SchedulerKit
 ---@field GetFrameBudget fun(self: SchedulerKit): number
 ---@field SetRunawayThreshold fun(self: SchedulerKit, milliseconds: number): SchedulerKit
@@ -318,25 +328,6 @@ local bootstrapPackage = rawget(Registry, "Bootstrap")
 local getPackage = rawget(Registry, "Get")
 if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
     error("MoltenCodes SchedulerKit requires a valid Registry API 2 facade", 2)
-end
-
-local LifecycleKit, lifecycleRevision = getPackage(Registry, "lifecycleKit", REQUIRED_LIFECYCLE_API)
-local LifecycleInstance = type(LifecycleKit) == "table" and rawget(LifecycleKit, "Instance") or nil
-local LifecycleSubscription = type(LifecycleKit) == "table" and rawget(LifecycleKit, "Subscription")
-    or nil
-if
-    type(LifecycleKit) ~= "table"
-    or type(lifecycleRevision) ~= "number"
-    or rawget(LifecycleKit, "API") ~= REQUIRED_LIFECYCLE_API
-    or rawget(LifecycleKit, "REVISION") ~= lifecycleRevision
-    or type(rawget(LifecycleKit, "ForAddon")) ~= "function"
-    or type(LifecycleInstance) ~= "table"
-    or type(rawget(LifecycleInstance, "IsShutdown")) ~= "function"
-    or type(rawget(LifecycleInstance, "OnShutdown")) ~= "function"
-    or type(LifecycleSubscription) ~= "table"
-    or type(rawget(LifecycleSubscription, "Disconnect")) ~= "function"
-then
-    error("MoltenCodes SchedulerKit requires a valid LifecycleKit API 1 facade", 2)
 end
 
 local TimerKit, timerRevision = getPackage(Registry, "timerKit", REQUIRED_TIMER_API)
@@ -416,6 +407,7 @@ local function validatePublicSurface(implementation)
         and type(rawget(implementation, "Every")) == "function"
         and type(rawget(implementation, "CreateScope")) == "function"
         and type(rawget(implementation, "ForAddon")) == "function"
+        and type(rawget(implementation, "CloseAddonScopes")) == "function"
         and type(rawget(implementation, "SetFrameBudget")) == "function"
         and type(rawget(implementation, "GetFrameBudget")) == "function"
         and type(rawget(implementation, "SetRunawayThreshold")) == "function"
@@ -716,6 +708,26 @@ for index = 1, #FAMILY_KINDS do
         rawset(prototypes, kind, {})
     end
     rawset(rawget(metatables, kind), "__index", rawget(prototypes, kind))
+end
+
+-- Revision 10 no longer requires LifecycleKit. Revisions 9 and older
+-- subscribed every addon scope to its addon's shutdown; this revision leaves
+-- the scope open until whoever observes the shutdown calls `CloseAddonScopes`
+-- (LifecycleKit does so at logout). An inherited subscription is disconnected
+-- here so the scope is not closed from two places. The release is
+-- best-effort: a subscription that cannot be disconnected is dropped all the
+-- same, because its wrapper resolves `dispatch.closeScope` at call time and
+-- closing a closed scope is a no-op.
+if previousRevision ~= nil and previousRevision < IMPLEMENTATION_REVISION then
+    for _, addonScope in pairs(rawget(state, "addonScopes")) do
+        if type(addonScope) == "table" then
+            local subscription = rawget(addonScope, "_shutdownSubscription")
+            rawset(addonScope, "_shutdownSubscription", nil)
+            if type(subscription) == "table" and type(subscription.Disconnect) == "function" then
+                pcall(subscription.Disconnect, subscription)
+            end
+        end
+    end
 end
 
 local JOB_METATABLE = rawget(state, "jobMetatable")
@@ -1021,24 +1033,6 @@ local function unlinkActive(scope, job)
     rawset(job, "_active", false)
     rawset(scope, "_activeCount", rawget(scope, "_activeCount") - 1)
     rawset(state, "activeCount", rawget(state, "activeCount") - 1)
-end
-
----Drop the LifecycleKit shutdown subscription an addon scope holds.
----@param scope SchedulerKit.Scope
----@return SchedulerKit.ErrorRecord|nil errorRecord
-local function disconnectShutdownSubscription(scope)
-    local subscription = rawget(scope, "_shutdownSubscription")
-    if subscription == false then
-        return nil
-    end
-    rawset(scope, "_shutdownSubscription", false)
-    local ok, value = pcall(function()
-        return subscription:Disconnect()
-    end)
-    if not ok then
-        return { value = value }
-    end
-    return nil
 end
 
 -- Ready queues --------------------------------------------------------------
@@ -1403,7 +1397,6 @@ local function newScope(addonName)
         _head = false,
         _tail = false,
         _timerScope = false,
-        _shutdownSubscription = false,
         _familyHead = false,
         _familyTail = false,
     }, SCOPE_METATABLE)
@@ -4048,7 +4041,7 @@ local function cancelAll(scope)
     return true
 end
 
----Terminally close `scope`, its jobs, its subscription and its timer scope.
+---Terminally close `scope`, its jobs, its coalescing handles and its timer scope.
 ---@param scope SchedulerKit.Scope
 ---@return boolean closed `false` when the scope was already closed.
 local function closeScope(scope)
@@ -4069,11 +4062,6 @@ local function closeScope(scope)
         firstError = familyError
     end
 
-    local subscriptionError = disconnectShutdownSubscription(scope)
-    if firstError == nil and subscriptionError ~= nil then
-        firstError = subscriptionError
-    end
-
     local timerScope = rawget(scope, "_timerScope")
     if timerScope ~= false then
         local timerOk, timerError = pcall(function()
@@ -4088,45 +4076,6 @@ local function closeScope(scope)
         error(firstError.value, 0)
     end
     return true
-end
-
----Build the addon-owned scope for `addonName` and bind it to addon shutdown.
----@param addonName string
----@return SchedulerKit.Scope
-local function createAddonScope(addonName)
-    local lifecycle = LifecycleKit:ForAddon(addonName)
-    local scope = newScope(addonName)
-    local addonScopes = rawget(state, "addonScopes")
-    rawset(addonScopes, addonName, scope)
-
-    if lifecycle:IsShutdown() then
-        rawset(scope, "_closed", true)
-        return scope
-    end
-
-    local ok, subscription = pcall(function()
-        return lifecycle:OnShutdown(function()
-            local dispatch = rawget(state, "dispatch")
-            local close = type(dispatch) == "table" and rawget(dispatch, "closeScope") or nil
-            if type(close) ~= "function" then
-                error("MoltenCodes SchedulerKit runtime dispatch is corrupted", 0)
-            end
-            return close(scope)
-        end)
-    end)
-    if not ok then
-        rawset(addonScopes, addonName, nil)
-        local timerScope = rawget(scope, "_timerScope")
-        if timerScope ~= false then
-            pcall(function()
-                return timerScope:Close()
-            end)
-        end
-        error(subscription, 0)
-    end
-
-    rawset(scope, "_shutdownSubscription", subscription)
-    return scope
 end
 
 -- Context public methods ----------------------------------------------------
@@ -4429,18 +4378,54 @@ local function createScope()
     return newScope(nil)
 end
 
----Return the shared LifecycleKit-owned scheduler scope for an addon.
+---Return the canonical scheduler scope for an addon, creating it on demand.
+---
+---SchedulerKit does not observe addon shutdown itself. Whoever does closes
+---this scope through `SchedulerKit:CloseAddonScopes(addonName)`: LifecycleKit
+---at logout when it is loaded, or the addon's own `PLAYER_LOGOUT` handler
+---without it.
 ---@param _ SchedulerKit
----@param addonName string addon folder name, as LifecycleKit matches it
+---@param addonName string addon folder name
 ---@return SchedulerKit.Scope scope
 local function forAddon(_, addonName)
     validateNonEmptyString(addonName, "SchedulerKit:ForAddon addonName", 3)
     local addonScopes = rawget(state, "addonScopes")
     local scope = rawget(addonScopes, addonName)
-    if scope ~= nil then
-        return scope
+    if scope == nil then
+        scope = newScope(addonName)
+        rawset(addonScopes, addonName, scope)
     end
-    return createAddonScope(addonName)
+    return scope
+end
+
+---Close the canonical scope of an addon: cancel its jobs, close its coalescing
+---handles and its TimerKit delay scope.
+---
+---Closing is terminal, exactly like `Scope:Close()`: the closed scope stays
+---the canonical scope, so a later `ForAddon(addonName)` returns it and refuses
+---new work. An addon that never asked for a scope has nothing to close:
+---nothing is recorded, so the addon-scope map grows only with `ForAddon`
+---calls. A job may close its own addon scope while it runs; it is cancelled
+---with the rest and is not resumed again. The first cleanup failure is
+---re-raised after every step has run, as for `Scope:Close()`.
+---@param self SchedulerKit
+---@param addonName string addon folder name
+---@return boolean closed `false` when the addon has no scope or it was already closed.
+local function closeAddonScopes(self, addonName)
+    if self ~= SchedulerKit then
+        error(
+            "SchedulerKit:CloseAddonScopes must be called on the SchedulerKit facade; "
+                .. "use SchedulerKit:CloseAddonScopes(addonName)",
+            2
+        )
+    end
+    validateNonEmptyString(addonName, "SchedulerKit:CloseAddonScopes addonName", 3)
+
+    local scope = rawget(rawget(state, "addonScopes"), addonName)
+    if scope == nil then
+        return false
+    end
+    return closeScope(scope)
 end
 
 ---Set the addon CPU milliseconds one driver pass may spend.
@@ -4532,6 +4517,7 @@ rawset(SchedulerKit, "After", packageAfter)
 rawset(SchedulerKit, "Every", packageEvery)
 rawset(SchedulerKit, "CreateScope", createScope)
 rawset(SchedulerKit, "ForAddon", forAddon)
+rawset(SchedulerKit, "CloseAddonScopes", closeAddonScopes)
 rawset(SchedulerKit, "SetFrameBudget", setFrameBudget)
 rawset(SchedulerKit, "GetFrameBudget", getFrameBudget)
 rawset(SchedulerKit, "SetRunawayThreshold", setRunawayThreshold)
@@ -4551,6 +4537,9 @@ end
 local dispatch = rawget(state, "dispatch")
 rawset(dispatch, "runFrame", runFrame)
 rawset(dispatch, "wakeDelayed", wakeDelayed)
+-- No revision from 10 on calls `closeScope` through dispatch. It stays
+-- published for the shutdown wrappers of revision 9 and older, in case one
+-- could not be disconnected during the upgrade (see the revision-10 migration).
 rawset(dispatch, "closeScope", closeScope)
 
 -- A compatible reload may inherit a frame whose OnUpdate trampoline is already

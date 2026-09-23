@@ -13,8 +13,9 @@
 -- --------
 --   Constants ............. package identity, state schema, default bounds
 --   Public types .......... LuaCATS classes and aliases for the public surface
---   Dependencies .......... Registry, SignalKit, EventKit; HookKit,
---                           CommandKit and CommKit (optional)
+--   Dependencies .......... Registry, SignalKit, EventKit; TimerKit,
+--                           SchedulerKit, HookKit, CommandKit and CommKit
+--                           (optional)
 --   Public-surface validation  facade shape accepted from other copies
 --   Bootstrap ............. Registry registration, prototypes, package state,
 --                           the combat-lockdown probe the state is seeded from
@@ -28,18 +29,21 @@
 --   Shared event coordination  the package-wide host watchers
 --   Instance creation ..... ForAddon's slow path
 --   Public instance API ... queries, subscriptions, combat gate, halting
---   Public package API .... ForAddon, IsInCombat
+--   Public package API .... ForAddon, IsInCombat, SetLimits, GetLimits
 --   Commit ................ prototype/facade assignment and self-check
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 11
+local IMPLEMENTATION_REVISION = 12
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
--- HookKit, CommandKit and CommKit are optional: each is found through
--- `Registry:Find` at shutdown, so an addon that embeds none of them shuts down
--- exactly as before.
+-- TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are optional: each is
+-- found through `Registry:Find` at shutdown, so an addon that embeds none of
+-- them shuts down exactly as before. TimerKit and SchedulerKit do not depend on
+-- LifecycleKit; LifecycleKit calls into them (design constitution, 4b).
+local OPTIONAL_TIMER_KIT_API = 1
+local OPTIONAL_SCHEDULER_KIT_API = 1
 local OPTIONAL_HOOK_KIT_API = 1
 local OPTIONAL_COMMAND_KIT_API = 1
 local OPTIONAL_COMM_KIT_API = 1
@@ -49,12 +53,25 @@ local OPTIONAL_COMM_KIT_API = 1
 local STATE_SCHEMA = 3
 local PREVIOUS_STATE_SCHEMA = 2
 
--- How many deferred calls one addon may have waiting for the end of combat.
--- An addon can raise or lower it with `SetCombatQueueLimit`.
+-- How many deferred calls one addon may have waiting for the end of combat,
+-- unless changed. `SetLimits{ defaultCombatQueueLimit = ... }` changes the
+-- value new instances start with; an addon changes its own with
+-- `SetCombatQueueLimit`. Both accept `LifecycleKit.UNBOUNDED`: the queue holds
+-- that addon's own callbacks and nothing else's (design constitution, 4a).
 local DEFAULT_COMBAT_QUEUE_LIMIT = 64
 
--- How many other addons one addon may declare with `DependsOn`.
-local MAX_DEPENDENCIES = 16
+-- How many other addons one addon may declare with `DependsOn`, unless changed
+-- through `SetLimits{ maxDependencies = ... }`, which also accepts
+-- `LifecycleKit.UNBOUNDED`: the list is the declaring addon's own.
+local DEFAULT_MAX_DEPENDENCIES = 16
+
+-- Names `SetLimits` recognises, in the order `GetLimits` reads them.
+local LIMIT_NAMES = { "maxDependencies", "defaultCombatQueueLimit" }
+
+-- The combat queue of an `UNBOUNDED` addon is compacted once its array holds
+-- this many slots and at least twice as many as are still pending, so
+-- reclaiming cancelled slots stays amortised constant time per call.
+local UNBOUNDED_COMPACTION_FLOOR = DEFAULT_COMBAT_QUEUE_LIMIT
 
 -- Public types --------------------------------------------------------------
 --
@@ -109,8 +126,8 @@ local MAX_DEPENDENCIES = 16
 ---@field WhenOutOfCombat fun(self: LifecycleKit.Instance, callback: LifecycleKit.DeferredCallback): LifecycleKit.DeferredCall|nil, string|nil
 ---@field OnCombatStart fun(self: LifecycleKit.Instance, callback: LifecycleKit.CombatCallback): LifecycleKit.Subscription
 ---@field OnCombatEnd fun(self: LifecycleKit.Instance, callback: LifecycleKit.CombatCallback): LifecycleKit.Subscription
----@field SetCombatQueueLimit fun(self: LifecycleKit.Instance, limit: integer)
----@field GetCombatQueueLimit fun(self: LifecycleKit.Instance): integer
+---@field SetCombatQueueLimit fun(self: LifecycleKit.Instance, limit: integer|table)
+---@field GetCombatQueueLimit fun(self: LifecycleKit.Instance): integer|table
 
 ---A subscription handle: one-shot for phases, repeating for combat and
 ---dependency notifications.
@@ -132,6 +149,15 @@ local MAX_DEPENDENCIES = 16
 ---@field DeferredCall LifecycleKit.DeferredCall Shared deferred-call prototype.
 ---@field ForAddon fun(self: LifecycleKit, addonName: string): LifecycleKit.Instance
 ---@field IsInCombat fun(self: LifecycleKit): boolean
+---@field UNBOUNDED table Sentinel a limit takes to be lifted.
+---@field SetLimits fun(self: LifecycleKit, limits: table)
+---@field GetLimits fun(self: LifecycleKit): LifecycleKit.Limits
+
+---The package-wide limits. `SetLimits` accepts any subset; `GetLimits` returns
+---a fresh copy of all of them.
+---@class LifecycleKit.Limits
+---@field maxDependencies integer|table Addons one addon may declare with `DependsOn`: a positive integer or `LifecycleKit.UNBOUNDED`; default `16`.
+---@field defaultCombatQueueLimit integer|table The combat-queue limit new instances start with: a positive integer or `LifecycleKit.UNBOUNDED`; default `64`.
 
 -- Dependencies --------------------------------------------------------------
 
@@ -267,6 +293,9 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "DeferredCall")) ~= "table"
         or type(rawget(implementation, "ForAddon")) ~= "function"
         or type(rawget(implementation, "IsInCombat")) ~= "function"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
+        or type(rawget(implementation, "SetLimits")) ~= "function"
+        or type(rawget(implementation, "GetLimits")) ~= "function"
     then
         return false
     end
@@ -280,12 +309,45 @@ local function validatePublicSurface(implementation)
         and type(rawget(DeferredCall, "IsPending")) == "function"
 end
 
+---Whether `value` is a positive integer or the `UNBOUNDED` sentinel `sentinel`.
+---@param value any
+---@param sentinel table
+---@return boolean
+local function isLimitValue(value, sentinel)
+    if value == sentinel then
+        return true
+    end
+    return type(value) == "number"
+        and value >= 1
+        and value ~= math.huge
+        and math.floor(value) == value
+end
+
+---Whether `currentState` carries the `UNBOUNDED` sentinel and a valid set of
+---package-wide limits (added in revision 12 without a schema change).
+---@param currentState table
+---@return boolean
+local function validateLimitState(currentState)
+    local sentinel = rawget(currentState, "unbounded")
+    local limits = rawget(currentState, "limits")
+    if type(sentinel) ~= "table" or type(limits) ~= "table" then
+        return false
+    end
+    for index = 1, #LIMIT_NAMES do
+        if not isLimitValue(rawget(limits, LIMIT_NAMES[index]), sentinel) then
+            return false
+        end
+    end
+    return true
+end
+
 ---Whether `implementation` carries package state of this revision's schema.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     return type(currentState) == "table"
+        and validateLimitState(currentState)
         and rawget(currentState, "schema") == STATE_SCHEMA
         and type(rawget(currentState, "addons")) == "table"
         and type(rawget(currentState, "instances")) == "table"
@@ -375,6 +437,16 @@ if previousRevision == nil then
         -- The one lockdown state every addon shares. The host may load an
         -- addon mid-combat, so it starts from the host's own answer.
         inCombat = isHostInCombatLockdown(),
+        -- `LifecycleKit.UNBOUNDED`. It lives in the state so that every
+        -- revision publishes the same table and a comparison against it keeps
+        -- working across an upgrade.
+        unbounded = {},
+        -- The package-wide limits `SetLimits` writes; a newer copy inherits
+        -- what a consumer set.
+        limits = {
+            maxDependencies = DEFAULT_MAX_DEPENDENCIES,
+            defaultCombatQueueLimit = DEFAULT_COMBAT_QUEUE_LIMIT,
+        },
     }
 
     rawset(LifecycleKit, "Instance", Instance)
@@ -397,6 +469,24 @@ else
         error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
     end
 end
+
+-- Revision 12 added the `UNBOUNDED` sentinel and the package-wide limits
+-- without changing the schema. State an older revision wrote is seeded with
+-- the defaults those revisions enforced as constants, so behaviour carries
+-- over unchanged until a consumer calls `SetLimits`.
+if type(state) == "table" then
+    if rawget(state, "unbounded") == nil then
+        rawset(state, "unbounded", {})
+    end
+    if rawget(state, "limits") == nil then
+        rawset(state, "limits", {
+            maxDependencies = DEFAULT_MAX_DEPENDENCIES,
+            defaultCombatQueueLimit = DEFAULT_COMBAT_QUEUE_LIMIT,
+        })
+    end
+end
+local UNBOUNDED = rawget(state, "unbounded")
+local sharedLimits = rawget(state, "limits")
 
 local INSTANCE_METATABLE = { __index = Instance }
 local SUBSCRIPTION_METATABLE = { __index = Subscription }
@@ -470,7 +560,7 @@ local function installGateFields(instance)
     rawset(instance, "_combatQueue", {})
     rawset(instance, "_combatQueueLength", 0)
     rawset(instance, "_combatPending", 0)
-    rawset(instance, "_combatQueueLimit", DEFAULT_COMBAT_QUEUE_LIMIT)
+    rawset(instance, "_combatQueueLimit", rawget(sharedLimits, "defaultCombatQueueLimit"))
     rawset(instance, "_draining", false)
     -- One reusable capture record per combat signal keeps the per-combat
     -- announcements free of allocation.
@@ -527,11 +617,13 @@ end
 ---Every older revision's shared host watchers are replaced, because a watcher
 ---keeps calling the handler of the revision that connected it: revision 7's
 ---logout handler, for one, closes no HookKit scope and no SignalKit bus,
----revision 8's closes no CommandKit scope and revision 9's no CommKit scope.
----Revision 10's handlers match this revision's, but its watchers are replaced
----all the same, so the running handlers are always the newest copy's. The
----bootstrap tail installs this revision's watchers again and reconciles any
----one-shot phase that passed in between. Revisions 7 to 10 already wrote schema 3, so that is all their state needs.
+---revision 8's closes no CommandKit scope, revision 9's no CommKit scope, and
+---no revision before 12 closes a TimerKit or SchedulerKit scope. Revision
+---10's and 11's watchers are replaced for the same reason, so the running
+---handlers are always the newest copy's. The bootstrap tail installs this
+---revision's watchers again and reconciles any one-shot phase that passed in
+---between. Revisions 7 to 11 already wrote schema 3, so that is all their
+---state needs.
 ---
 ---Schema 2 (revisions 4 to 6) lacks the combat flag, the instance list and
 ---every per-instance field of the combat gate and the halted state. Revision 3
@@ -902,6 +994,55 @@ local function markLoaded(instance)
     return firstError
 end
 
+---Close the addon's canonical TimerKit scope, cancelling every timer it owns.
+---
+---TimerKit does not depend on LifecycleKit and never observes shutdown, so
+---this is the second half of the two-step `TimerKit:ForAddon` documents. A
+---TimerKit revision older than 0.5.0 has no `CloseAddonScopes`; it closes its
+---addon scopes itself from a shutdown subscription, among the shutdown
+---callbacks, so there is nothing to do here. Without TimerKit there is nothing
+---to close either; `false` (the addon never had a scope) is a normal result.
+---A failure is returned as an error record for the first-error policy.
+---@param instance LifecycleKit.Instance
+---@return LifecycleKit.ErrorRecord|nil
+local function closeAddonTimerScopes(instance)
+    local TimerKit = findOptionalPackage("timerKit", OPTIONAL_TIMER_KIT_API)
+    local closeAddonScopes = TimerKit ~= nil and rawget(TimerKit, "CloseAddonScopes") or nil
+    if type(closeAddonScopes) ~= "function" then
+        return nil
+    end
+
+    local ok, closeError = pcall(closeAddonScopes, TimerKit, rawget(instance, "_addonName"))
+    if not ok then
+        return newErrorRecord(closeError)
+    end
+    return nil
+end
+
+---Close the addon's canonical SchedulerKit scope: its jobs are cancelled, its
+---coalescing handles closed and its delay timers released.
+---
+---SchedulerKit does not depend on LifecycleKit either, so this is the second
+---half of the two-step `SchedulerKit:ForAddon` documents. A SchedulerKit
+---revision older than 0.6.0 has no `CloseAddonScopes` and closes its addon
+---scopes itself; without SchedulerKit there is nothing to close. A failure is
+---returned as an error record for the first-error policy.
+---@param instance LifecycleKit.Instance
+---@return LifecycleKit.ErrorRecord|nil
+local function closeAddonSchedulerScopes(instance)
+    local SchedulerKit = findOptionalPackage("schedulerKit", OPTIONAL_SCHEDULER_KIT_API)
+    local closeAddonScopes = SchedulerKit ~= nil and rawget(SchedulerKit, "CloseAddonScopes") or nil
+    if type(closeAddonScopes) ~= "function" then
+        return nil
+    end
+
+    local ok, closeError = pcall(closeAddonScopes, SchedulerKit, rawget(instance, "_addonName"))
+    if not ok then
+        return newErrorRecord(closeError)
+    end
+    return nil
+end
+
 ---Close the addon's canonical EventKit scope once its shutdown phase has run.
 ---
 ---EventKit cannot observe addon shutdown itself because it sits below
@@ -1022,17 +1163,20 @@ local function closeAddonBus(instance)
     return nil
 end
 
----Release everything the addon owns through the lower Kits' addon scopes.
+---Release everything the addon owns through the other Kits' addon scopes.
 ---
 ---The order is deliberate, and it is also the first-error precedence:
 ---
----1. the EventKit scope, so no host event fires into hooks or subscribers
+---1. the TimerKit scope and
+---2. the SchedulerKit scope first, so no timer fires and no job runs into
+---   event listeners, hooks or subscribers that are being torn down;
+---3. the EventKit scope, so no host event fires into hooks or subscribers
 ---   that are being torn down;
----2. the HookKit scope, so the addon's hooks stop running;
----3. the CommandKit scope, so the addon's slash commands become inert;
----4. the CommKit scope, so the addon's addon messages stop being sent and
+---4. the HookKit scope, so the addon's hooks stop running;
+---5. the CommandKit scope, so the addon's slash commands become inert;
+---6. the CommKit scope, so the addon's addon messages stop being sent and
 ---   received;
----5. the SignalKit bus last, because other addons' shutdown paths may still
+---7. the SignalKit bus last, because other addons' shutdown paths may still
 ---   publish on it. Publishing on a closed bus delivers nothing and does not
 ---   raise, so closing it last only keeps it useful for longer.
 ---
@@ -1040,12 +1184,20 @@ end
 ---@param instance LifecycleKit.Instance
 ---@return LifecycleKit.ErrorRecord|nil firstError
 local function closeAddonOwnedScopes(instance)
+    local timerError = closeAddonTimerScopes(instance)
+    local schedulerError = closeAddonSchedulerScopes(instance)
     local eventError = closeAddonEventScope(instance)
     local hookError = closeAddonHookScopes(instance)
     local commandError = closeAddonCommandScopes(instance)
     local commError = closeAddonCommScopes(instance)
     local busError = closeAddonBus(instance)
-    return eventError or hookError or commandError or commError or busError
+    return timerError
+        or schedulerError
+        or eventError
+        or hookError
+        or commandError
+        or commError
+        or busError
 end
 
 ---Drop every pending listener of the signals a terminal state makes unreachable.
@@ -1081,8 +1233,9 @@ end
 ---
 ---Order, and therefore first-error precedence: the combat queue is closed
 ---(each pending call learns it will never run), then the shutdown callbacks
----run, then the addon's EventKit scope, HookKit scope, CommandKit scope,
----CommKit scope and SignalKit bus are closed, in that order (see `closeAddonOwnedScopes`).
+---run, then the addon's TimerKit scope, SchedulerKit scope, EventKit scope,
+---HookKit scope, CommandKit scope, CommKit scope and SignalKit bus are closed,
+---in that order (see `closeAddonOwnedScopes`).
 ---
 ---A halted addon never reaches `shutdown`: halted is terminal. Its scopes and
 ---its bus are still closed at logout so they end with the session like
@@ -1721,7 +1874,8 @@ local function dependsOn(self, addonName)
     end
 
     local dependencies = rawget(self, "_dependencies")
-    if #dependencies >= MAX_DEPENDENCIES then
+    local maxDependencies = rawget(sharedLimits, "maxDependencies")
+    if maxDependencies ~= UNBOUNDED and #dependencies >= maxDependencies then
         return nil, "full"
     end
     rawset(dependencies, #dependencies + 1, addonName)
@@ -1812,15 +1966,20 @@ local function whenOutOfCombat(self, callback)
     end
 
     local limit = rawget(self, "_combatQueueLimit")
-    if rawget(self, "_combatPending") >= limit then
+    local pending = rawget(self, "_combatPending")
+    local compactAt = limit
+    if limit == UNBOUNDED then
+        compactAt = math.max(UNBOUNDED_COMPACTION_FLOOR, 2 * pending)
+    elseif pending >= limit then
         return nil, "full"
     end
 
     -- Cancelled slots are only reclaimed here, so outside a drain the array
-    -- never grows past the limit. A drain in progress owns the indices, so it
-    -- is left alone; that only happens when a host enters combat inside a
-    -- drain (see `drainCombatQueue`), and the drain compacts when it stops.
-    if rawget(self, "_combatQueueLength") >= limit and rawget(self, "_draining") ~= true then
+    -- never grows past the limit (for an `UNBOUNDED` queue, past twice the
+    -- pending count). A drain in progress owns the indices, so it is left
+    -- alone; that only happens when a host enters combat inside a drain (see
+    -- `drainCombatQueue`), and the drain compacts when it stops.
+    if rawget(self, "_combatQueueLength") >= compactAt and rawget(self, "_draining") ~= true then
         compactCombatQueue(self)
     end
 
@@ -1862,25 +2021,25 @@ end
 ---Set how many deferred calls this addon may have waiting at once.
 ---
 ---Lowering the limit below the number already waiting drops nothing; new calls
----are refused until the queue is below the new limit.
+---are refused until the queue is below the new limit. `LifecycleKit.UNBOUNDED`
+---lifts the limit: the queue holds only this addon's own callbacks.
 ---@param self LifecycleKit.Instance
----@param limit integer a positive integer
+---@param limit integer|table a positive integer or `LifecycleKit.UNBOUNDED`
 local function setCombatQueueLimit(self, limit)
-    if
-        type(limit) ~= "number"
-        or limit < 1
-        or limit ~= limit
-        or limit == math.huge
-        or math.floor(limit) ~= limit
-    then
-        error("LifecycleKit.Instance:SetCombatQueueLimit limit must be a positive integer", 2)
+    if not isLimitValue(limit, UNBOUNDED) then
+        error(
+            "LifecycleKit.Instance:SetCombatQueueLimit limit must be a positive integer"
+                .. " or LifecycleKit.UNBOUNDED",
+            2
+        )
     end
     rawset(self, "_combatQueueLimit", limit)
 end
 
----Return how many deferred calls this addon may have waiting at once.
+---Return how many deferred calls this addon may have waiting at once, or
+---`LifecycleKit.UNBOUNDED`.
 ---@param self LifecycleKit.Instance
----@return integer limit
+---@return integer|table limit
 local function getCombatQueueLimit(self)
     return rawget(self, "_combatQueueLimit")
 end
@@ -1954,6 +2113,80 @@ local function isInCombat(_)
     return isHostInCombatLockdown()
 end
 
+---Validate a whole `SetLimits` table before any of it is applied, so a
+---refused call changes nothing.
+---@param limits any
+---@param level integer stack level the failures are reported at
+local function validateLimitUpdate(limits, level)
+    if type(limits) ~= "table" then
+        error("LifecycleKit:SetLimits limits must be a table", level)
+    end
+    local key = next(limits)
+    while key ~= nil do
+        if key ~= "maxDependencies" and key ~= "defaultCombatQueueLimit" then
+            error(
+                "LifecycleKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
+                level
+            )
+        end
+        if not isLimitValue(rawget(limits, key), UNBOUNDED) then
+            error(
+                "LifecycleKit:SetLimits limits."
+                    .. key
+                    .. " must be a positive integer or LifecycleKit.UNBOUNDED",
+                level
+            )
+        end
+        key = next(limits, key)
+    end
+end
+
+---Change any subset of the package-wide limits, shared by every addon in the
+---session. The whole table is validated first, so a refused call changes
+---nothing.
+---
+---Lowering `maxDependencies` forgets no dependency already declared; further
+---`DependsOn` calls answer `nil, "full"` until the list is below it.
+---`defaultCombatQueueLimit` is the limit instances created from now on start
+---with; instances that already exist keep theirs (`SetCombatQueueLimit`
+---changes one).
+---@param self LifecycleKit
+---@param limits table any subset of `LifecycleKit.Limits`
+local function setLimits(self, limits)
+    if self ~= LifecycleKit then
+        error(
+            "LifecycleKit:SetLimits must be called on the LifecycleKit facade; "
+                .. "use LifecycleKit:SetLimits(limits)",
+            2
+        )
+    end
+    validateLimitUpdate(limits, 3)
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        local value = rawget(limits, name)
+        if value ~= nil then
+            rawset(sharedLimits, name, value)
+        end
+    end
+end
+
+---Return a fresh copy of the package-wide limits. Allocates one table.
+---@param self LifecycleKit
+---@return LifecycleKit.Limits
+local function getLimits(self)
+    if self ~= LifecycleKit then
+        error(
+            "LifecycleKit:GetLimits must be called on the LifecycleKit facade; "
+                .. "use LifecycleKit:GetLimits()",
+            2
+        )
+    end
+    return {
+        maxDependencies = rawget(sharedLimits, "maxDependencies"),
+        defaultCombatQueueLimit = rawget(sharedLimits, "defaultCombatQueueLimit"),
+    }
+end
+
 -- Commit --------------------------------------------------------------------
 
 rawset(Subscription, "Disconnect", disconnectSubscription)
@@ -1986,8 +2219,15 @@ rawset(LifecycleKit, "API", API_GENERATION)
 rawset(LifecycleKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(LifecycleKit, "ForAddon", forAddon)
 rawset(LifecycleKit, "IsInCombat", isInCombat)
+rawset(LifecycleKit, "UNBOUNDED", UNBOUNDED)
+rawset(LifecycleKit, "SetLimits", setLimits)
+rawset(LifecycleKit, "GetLimits", getLimits)
 
-if not validatePublicSurface(LifecycleKit) or not validateCurrentState(LifecycleKit) then
+if
+    not validatePublicSurface(LifecycleKit)
+    or not validateCurrentState(LifecycleKit)
+    or rawget(LifecycleKit, "UNBOUNDED") ~= UNBOUNDED
+then
     error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
 end
 

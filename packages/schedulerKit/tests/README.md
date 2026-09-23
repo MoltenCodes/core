@@ -1,6 +1,6 @@
 # SchedulerKit Tests
 
-SchedulerKit is tested outside the WoW client through a deterministic fake Frame, independently controllable CPU and wall clocks, C_Timer boundary, and addon lifecycle environment. Driving the two clocks apart is what makes a client hitch reproducible in a spec.
+SchedulerKit is tested outside the WoW client through a deterministic fake Frame, independently controllable CPU and wall clocks, and C_Timer boundary. Driving the two clocks apart is what makes a client hitch reproducible in a spec.
 
 The suite covers:
 
@@ -11,7 +11,7 @@ The suite covers:
 - cancellation and ownership scopes;
 - self-cancellation followed by cooperative yield;
 - lazy package bootstrap plus per-scope TimerKit allocation;
-- LifecycleKit shutdown cleanup;
+- addon scopes closed through `CloseAddonScopes` (the two-step); the logout integration with LifecycleKit lives in LifecycleKit's suite;
 - callback/error isolation and tracebacks captured at the point of failure;
 - delayed wakeups carried on TimerKit's public user-data seam;
 - scopes closed from inside a running job, including during an `Every` callback;
@@ -32,7 +32,7 @@ Spec files:
 | `Priority_spec.lua` | FIFO within a priority, weighted service, IDLE work and its starvation guard, the fairness cursor |
 | `Cooperative_spec.lua` | yielding, the CPU-time frame budget, the resume ceiling, runaway-slice demotion |
 | `Delayed_spec.lua` | delayed and repeating work through TimerKit, the user-data seam, stale wakeups, scopes closed mid-callback |
-| `Scope_spec.lua` | lazy TimerKit scopes, cancellation, terminal close, self-closing jobs, addon scopes at shutdown |
+| `Scope_spec.lua` | lazy TimerKit scopes, cancellation, terminal close, self-closing jobs, addon scopes and `CloseAddonScopes` |
 | `Errors_spec.lua` | error isolation, `nil`/`false` error objects, tracebacks, arming and re-arm failures |
 | `ErrorLevels_spec.lua` | `ShouldYield`, `Yield` and context receiver guards at the caller's line |
 | `Property_spec.lua` | randomized scope and package active-count invariants |

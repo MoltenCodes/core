@@ -10,14 +10,11 @@ Runtime files must be loaded in dependency order:
 
 ```text
 Registry.lua
-SignalKit.lua
-EventKit.lua
-LifecycleKit.lua
 TimerKit.lua
 ReadinessKit.lua
 ```
 
-ReadinessKit depends directly on Registry API 2 and TimerKit API 1; SignalKit, EventKit and LifecycleKit are TimerKit's own dependencies. Portable WoW code resolves the package through Registry:
+These three files are the minimum footprint. ReadinessKit depends directly on Registry API 2 and TimerKit API 1, and TimerKit requires only Registry. An addon that uses `gate:ReprobeOn` also embeds SignalKit and EventKit, anywhere after Registry and before the first `ReprobeOn` call. Portable WoW code resolves the package through Registry:
 
 ```lua
 local ReadinessKit = MoltenCodes.Registries[2]:Get("readinessKit", 1)
@@ -32,7 +29,7 @@ ReadinessKit does not rely on `require()` at runtime. Loading it without Registr
 | `GetTimePreciseSec` | negative caching, the timeout window | ReadinessKit loads normally. `Probe()` always runs the probe (no negative cache), and a timeout is counted in polls: the gate times out on the poll at which polls × `intervalSeconds` reaches `timeoutSeconds`. |
 | EventKit API 1 | `gate:ReprobeOn` | `ReprobeOn` raises at the caller: `ReadinessKit.Gate:ReprobeOn requires EventKit API 1, which is not loaded (absent)`. Everything else works. |
 
-EventKit is looked up with `Registry:Find("eventKit", 1)` when `ReprobeOn` is called, not at load. The package manifest lists it under `optionalDependencies`, which load order and bundles ignore. TimerKit's own dependency chain already embeds EventKit, so the lookup fails only when the EventKit registered is retired or of another generation; the reason `Registry:Find` gives (`absent`, `generation_mismatch` or `retired`) is part of the message.
+EventKit is looked up with `Registry:Find("eventKit", 1)` when `ReprobeOn` is called, not at load. The package manifest lists it under `optionalDependencies`, which load order and bundles ignore. The lookup fails when the addon does not embed EventKit, or when the EventKit registered is retired or of another generation; the reason `Registry:Find` gives (`absent`, `generation_mismatch` or `retired`) is part of the message.
 
 ## Public surface
 

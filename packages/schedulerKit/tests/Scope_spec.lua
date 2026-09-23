@@ -4,7 +4,7 @@ describe("SchedulerKit scopes", function()
     after_each(TestEnv.Reset)
 
     it("allocates TimerKit scope only when delayed work is first used", function()
-        local SchedulerKit, _, _, _, _, TimerKit = TestEnv.NewPackage()
+        local SchedulerKit, _, TimerKit = TestEnv.NewPackage()
         local originalCreateScope = TimerKit.CreateScope
         local createCalls = 0
         TimerKit.CreateScope = function(...)
@@ -117,10 +117,8 @@ describe("SchedulerKit scopes", function()
         assert.is_false(job:HasError())
     end)
 
-    it("uses canonical addon scopes and closes them at shutdown", function()
+    it("uses canonical addon scopes and keeps them open until CloseAddonScopes", function()
         local SchedulerKit = TestEnv.NewPackage()
-        TestEnv.MarkAddonLoaded("Example")
-        TestEnv.Login()
 
         local first = SchedulerKit:ForAddon("Example")
         local second = SchedulerKit:ForAddon("Example")
@@ -128,20 +126,113 @@ describe("SchedulerKit scopes", function()
         assert.are.equal(first, second)
         assert.are.equal("Example", first:GetAddonName())
 
+        -- SchedulerKit does not observe logout; LifecycleKit calls
+        -- CloseAddonScopes at shutdown, and its own suite covers that.
         TestEnv.Logout()
-        assert.is_true(first:IsClosed())
-        assert.are.equal("cancelled", job:GetState())
+        assert.is_false(first:IsClosed())
+        assert.are.equal("pending", job:GetState())
     end)
 
-    it("returns a closed scope if addon lifecycle is already shutdown", function()
-        local SchedulerKit, _, _, _, LifecycleKit = TestEnv.NewPackage()
-        TestEnv.MarkAddonLoaded("Late")
-        TestEnv.Login()
-        local lifecycle = LifecycleKit:ForAddon("Late")
-        TestEnv.Logout()
-        assert.is_true(lifecycle:IsShutdown())
+    it(
+        "closes the addon scope, its delays and its family handles through CloseAddonScopes",
+        function()
+            local SchedulerKit = TestEnv.NewPackage()
+            local scope = SchedulerKit:ForAddon("Example")
+            local job = scope:Schedule(function() end)
+            local delayed = scope:After(5, function() end)
+            local debounced = scope:Debounce(function() end, 1)
+            debounced()
 
-        local scope = SchedulerKit:ForAddon("Late")
+            assert.is_true(SchedulerKit:CloseAddonScopes("Example"))
+
+            assert.is_true(scope:IsClosed())
+            assert.are.equal("cancelled", job:GetState())
+            assert.are.equal("cancelled", delayed:GetState())
+            assert.are.equal(0, scope:GetActiveCount())
+            assert.are.equal(0, SchedulerKit:GetActiveCount())
+            for index, native in ipairs(TestEnv.NativeTimers()) do
+                assert.is_true(native.cancelled, "native timer " .. index .. " is still armed")
+            end
+        end
+    )
+
+    it("keeps the closed addon scope canonical and terminal", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local scope = SchedulerKit:ForAddon("Example")
+        SchedulerKit:CloseAddonScopes("Example")
+
+        assert.are.equal(scope, SchedulerKit:ForAddon("Example"))
+        assert.is_false(SchedulerKit:CloseAddonScopes("Example"))
+        assert.has_error(function()
+            scope:Schedule(function() end)
+        end)
+    end)
+
+    it("returns false and records nothing for an addon that never had a scope", function()
+        local SchedulerKit = TestEnv.NewPackage()
+
+        assert.is_false(SchedulerKit:CloseAddonScopes("Unknown"))
+
+        local scope = SchedulerKit:ForAddon("Unknown")
+        assert.is_false(scope:IsClosed())
+        assert.is_not_nil(scope:Schedule(function() end))
+    end)
+
+    it("lets a running job close its own addon scope", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local scope = SchedulerKit:ForAddon("Example")
+        local passes = 0
+        local job = scope:Schedule(function(context)
+            passes = passes + 1
+            SchedulerKit:CloseAddonScopes("Example")
+            context:Yield()
+            passes = passes + 1
+        end)
+        local sibling = scope:Schedule(function() end)
+
+        TestEnv.Tick()
+        TestEnv.Tick()
+
+        assert.are.equal(1, passes)
+        assert.are.equal("cancelled", job:GetState())
+        assert.are.equal("cancelled", sibling:GetState())
         assert.is_true(scope:IsClosed())
+    end)
+
+    it("isolates addon scopes and manual scopes from each other's closure", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local first = SchedulerKit:ForAddon("First")
+        local second = SchedulerKit:ForAddon("Second")
+        local manual = SchedulerKit:CreateScope()
+        first:Schedule(function() end)
+        local secondJob = second:Schedule(function() end)
+        local manualJob = manual:Schedule(function() end)
+
+        SchedulerKit:CloseAddonScopes("First")
+
+        assert.is_true(first:IsClosed())
+        assert.is_false(second:IsClosed())
+        assert.is_false(manual:IsClosed())
+        assert.are.equal("pending", secondJob:GetState())
+        assert.are.equal("pending", manualJob:GetState())
+    end)
+
+    it("must be called on the SchedulerKit facade with an addon name", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        SchedulerKit:ForAddon("Example")
+
+        TestEnv.expectErrorContaining("must be called on the SchedulerKit facade", function()
+            SchedulerKit.CloseAddonScopes({}, "Example")
+        end)
+        TestEnv.expectErrorContaining("must be called on the SchedulerKit facade", function()
+            SchedulerKit.CloseAddonScopes("Example")
+        end)
+        TestEnv.expectErrorContaining(
+            "SchedulerKit:CloseAddonScopes addonName must be a non-empty string",
+            function()
+                SchedulerKit:CloseAddonScopes("")
+            end
+        )
+        assert.is_false(SchedulerKit:ForAddon("Example"):IsClosed())
     end)
 end)

@@ -57,9 +57,9 @@ lifecycle:OnCombatStart(function(self)
 end)
 ```
 
-`WhenOutOfCombat` runs at once out of combat; in combat it queues the call (at most 64 per addon by default, `nil, "full"` beyond) and returns a handle with `Cancel()`. `LifecycleKit:IsInCombat()` answers from the shared state.
+`WhenOutOfCombat` runs at once out of combat; in combat it queues the call (at most 64 per addon by default, `nil, "full"` beyond; `SetCombatQueueLimit` and `LifecycleKit:SetLimits` open it, `LifecycleKit.UNBOUNDED` included) and returns a handle with `Cancel()`. `LifecycleKit:IsInCombat()` answers from the shared state.
 
-At shutdown, after the shutdown callbacks, LifecycleKit closes what the addon owns through the lower Kits: its EventKit scope (`EventKit:ForAddon(name)`), its HookKit scope (`HookKit:ForAddon(name)`, when HookKit is loaded), its CommandKit scope (`CommandKit:ForAddon(name)`, when CommandKit is loaded), its CommKit scope (`CommKit:ForAddon(name)`, when CommKit is loaded) and its SignalKit bus (`SignalKit:ForAddon(name)`), in that order. Connections, hooks and subscriptions made through them need no teardown code.
+At shutdown, after the shutdown callbacks, LifecycleKit closes what the addon owns through the other Kits: its TimerKit scope (`TimerKit:ForAddon(name)`, when TimerKit is loaded), its SchedulerKit scope (`SchedulerKit:ForAddon(name)`, when SchedulerKit is loaded), its EventKit scope (`EventKit:ForAddon(name)`), its HookKit scope (`HookKit:ForAddon(name)`, when HookKit is loaded), its CommandKit scope (`CommandKit:ForAddon(name)`, when CommandKit is loaded), its CommKit scope (`CommKit:ForAddon(name)`, when CommKit is loaded) and its SignalKit bus (`SignalKit:ForAddon(name)`), in that order. Timers, jobs, connections, hooks and subscriptions made through them need no teardown code.
 
 `LifecycleKit:ForAddon(name)` is idempotent: every caller in the same runtime receives the same lifecycle instance for that addon name.
 
@@ -80,8 +80,12 @@ Libs\MoltenCodes\eventKit\EventKit.lua
 Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
 ```
 
+Minimum footprint: Embed 4 files: Registry, SignalKit, EventKit, LifecycleKit.
+
 Direct runtime dependencies: EventKit API 1, Registry API 2, SignalKit API 1.
 Every file above is required; omitting one makes this package raise at
-load. HookKit API 1, CommandKit API 1 and CommKit API 1 are optional: when
-the addon embeds them, shutdown also undoes the addon's scoped hooks, leaves
-its scoped slash commands inert and closes its addon-message scope.
+load. TimerKit API 1, SchedulerKit API 1, HookKit API 1, CommandKit API 1 and
+CommKit API 1 are optional: when the addon embeds them, shutdown also cancels
+the addon's scoped timers and jobs, undoes its scoped hooks, leaves its scoped
+slash commands inert and closes its addon-message scope. TimerKit and
+SchedulerKit may load before or after LifecycleKit; neither depends on it.

@@ -17,7 +17,7 @@ The ReadinessKit suite covers:
 - `error` levels: every argument failure reports the caller's own line;
 - manifest/runtime API and revision consistency.
 
-TimerKit depends on LifecycleKit, EventKit and SignalKit, so the whole chain is in the manifest dependency closure the runner puts on `LUA_PATH` (EventKit is also listed under `optionalDependencies`). EventKit therefore cannot be absent in this suite; `support/ReadinessKitTestEnv.lua` models the absent case by making `Registry:Find` refuse EventKit, which is exactly the lookup ReadinessKit performs.
+The required closure is Registry and TimerKit; EventKit is listed under `optionalDependencies`, so the runner puts it and SignalKit on `LUA_PATH` as well. The module chain in `support/ReadinessKitTestEnv.lua` loads Registry, SignalKit, EventKit, TimerKit and ReadinessKit, as an addon that uses `ReprobeOn` would; `NewPackageWithoutEventKit` loads the three-file minimum footprint (Registry, TimerKit, ReadinessKit), so the absent case is a real absence and `Registry:Find` reports `absent`.
 
 The allocation guard calls the native ticker's callback directly rather than through the fixture's `FireNative`, because that helper checks its argument with luassert and allocates on every call.
 

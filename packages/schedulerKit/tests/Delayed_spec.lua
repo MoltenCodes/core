@@ -67,7 +67,7 @@ describe("SchedulerKit delayed and repeating work", function()
     end)
 
     it("carries the waking job through TimerKit's public user-data seam", function()
-        local SchedulerKit, _, _, _, _, TimerKit = TestEnv.NewPackage()
+        local SchedulerKit, _, TimerKit = TestEnv.NewPackage()
         local scope = SchedulerKit:CreateScope()
         local seen = {}
         local seenCount = 0

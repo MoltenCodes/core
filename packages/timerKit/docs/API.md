@@ -12,7 +12,8 @@ Package facade:
 | `After(delay, callback)` | Create and immediately start a one-shot timer. |
 | `Every(interval, callback)` | Create and immediately start a repeating timer. |
 | `CreateScope()` | Create a manually owned timer scope. |
-| `ForAddon(addonName)` | Return the shared LifecycleKit-owned scope for an addon. |
+| `ForAddon(addonName)` | Return the canonical scope for an addon, creating it on demand. |
+| `CloseAddonScopes(addonName)` | Close that addon's scope; returns `false` when it has none or it was already closed. |
 
 Timer handles:
 
@@ -248,11 +249,38 @@ Bulk cleanup runs in deterministic timer-creation order. If native cancellation 
 local timers = TimerKit:ForAddon("MyAddon")
 ```
 
-`ForAddon` is idempotent for an addon name. Its scope is tied to `LifecycleKit:ForAddon(addonName)` and closes when the addon lifecycle reaches shutdown.
+`ForAddon` is idempotent for an addon name: every call with the same name returns the same scope.
 
-After shutdown the same closed scope remains the canonical addon scope; callers cannot accidentally create timers that outlive a terminal lifecycle.
+### Addon scopes and shutdown: the two-step
 
-Manual scopes and TimerKit's package-level convenience scope are not closed by addon lifecycle events.
+TimerKit requires Registry and nothing else, so it does not observe addon shutdown. Closing an addon scope is a separate, public step taken by whoever does:
+
+1. timers are created through `TimerKit:ForAddon("MyAddon")`;
+2. when the addon shuts down, its observer calls `TimerKit:CloseAddonScopes("MyAddon")`.
+
+**LifecycleKit calls `CloseAddonScopes` at shutdown; without LifecycleKit, call it yourself on `PLAYER_LOGOUT`.** LifecycleKit makes the call after the addon's shutdown callbacks have run, and before it closes the addon's SchedulerKit, EventKit, HookKit, CommandKit and CommKit scopes and its SignalKit bus, so no timer fires into a listener that is being torn down. An addon using LifecycleKit writes no teardown for its scoped timers. An addon without it closes the scope from its own logout handler, through EventKit when it embeds it or through a frame of its own:
+
+```lua
+local logoutFrame = CreateFrame("Frame")
+logoutFrame:RegisterEvent("PLAYER_LOGOUT")
+logoutFrame:SetScript("OnEvent", function()
+    TimerKit:CloseAddonScopes("MyAddon")
+end)
+```
+
+`CloseAddonScopes(addonName)`:
+
+- must be called on the facade (`TimerKit:CloseAddonScopes(...)`); any other receiver raises;
+- validates `addonName` as a non-empty string;
+- returns `false` when the addon never asked for a scope, and records nothing, so the addon-scope map grows only with `ForAddon` calls;
+- returns `false` when the scope is already closed;
+- otherwise cancels every running timer of the scope in creation order, closes it and returns `true`. A native cancellation failure does not stop the sweep: every timer is cancelled logically and the first error is re-raised afterwards, as for `Scope:Close()`.
+
+Closing is terminal: the closed scope stays the canonical addon scope, so a later `ForAddon(addonName)` returns it and refuses new timers. A timer callback may close its own addon scope; the firing timer is cancelled with the rest, so a ticker does not tick again.
+
+Manual scopes and TimerKit's package-level convenience scope are never closed by `CloseAddonScopes`.
+
+Revision 5 and older required LifecycleKit and subscribed each addon scope to its addon's shutdown themselves. An embedded copy of this revision that upgrades one of them in place disconnects those subscriptions; the carried scopes stay open and canonical until `CloseAddonScopes` is called. A pairing of this revision with a LifecycleKit older than 0.5.0 closes no timer scope at logout, since that LifecycleKit does not know the call.
 
 ## Package-level convenience timers
 
@@ -261,7 +289,7 @@ TimerKit:After(1, callback)
 TimerKit:Every(5, callback)
 ```
 
-These methods use an internal manual scope. They are intentionally **not addon-owned**, because TimerKit cannot infer ownership from arbitrary callers. Framework and addon code that requires deterministic shutdown cleanup should prefer `ForAddon` or an explicitly managed scope.
+These methods use an internal manual scope. They are intentionally **not addon-owned**, because TimerKit cannot infer ownership from arbitrary callers. Framework and addon code that requires deterministic shutdown cleanup should prefer `ForAddon` (closed through `CloseAddonScopes`) or an explicitly managed scope.
 
 If the internal convenience scope is explicitly reached through `timer:GetScope()` and closed, the next package-level timer operation creates a fresh internal scope rather than permanently disabling the facade.
 

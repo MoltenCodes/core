@@ -90,6 +90,11 @@ Libs\MoltenCodes\testKit\TestKit.lua
 Libs\MoltenCodes\testKit\FixtureFidelity.lua
 ```
 
+Minimum footprint: Embed 7 files: Registry, SignalKit, EventKit, LifecycleKit,
+TimerKit, SchedulerKit, TestKit (plus the optional `FixtureFidelity.lua`).
+TimerKit and SchedulerKit no longer require LifecycleKit, so the two may load
+before or after it; the list above is one valid order.
+
 Direct runtime dependencies: Registry API 2, LifecycleKit API 1, SchedulerKit
 API 1. EventKit and TimerKit are already in their closures; TestKit finds them
 through `Registry:Find` when it first needs them. Every file above except the

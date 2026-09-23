@@ -54,19 +54,19 @@ troubleshooting. This package's load order inside a consuming addon is:
 
 ```toc
 Libs\MoltenCodes\registry\Registry.lua
-Libs\MoltenCodes\signalKit\SignalKit.lua
-Libs\MoltenCodes\eventKit\EventKit.lua
-Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
 Libs\MoltenCodes\timerKit\TimerKit.lua
 Libs\MoltenCodes\readinessKit\ReadinessKit.lua
 ```
+
+Minimum footprint: Embed 3 files: Registry, TimerKit, ReadinessKit.
 
 Direct runtime dependencies: Registry API 2, TimerKit API 1.
 Every file above is required; omitting one makes this package raise at
 load.
 
-Optional: EventKit API 1, used only by `gate:ReprobeOn`. TimerKit's own
-dependencies already embed it, so in practice it is always present; ReadinessKit
-still lists it only under `optionalDependencies` and looks it up with
-`Registry:Find` when `ReprobeOn` is called, so an incompatible or retired
-EventKit only disables re-probing.
+Optional: EventKit API 1, used only by `gate:ReprobeOn`. To re-probe on host
+events, embed SignalKit and EventKit as well, after Registry and before
+ReadinessKit (Registry, SignalKit, EventKit, TimerKit, ReadinessKit: five
+files). ReadinessKit lists EventKit only under `optionalDependencies` and looks
+it up with `Registry:Find` when `ReprobeOn` is called, so without EventKit, or
+with an incompatible or retired one, only re-probing is unavailable.

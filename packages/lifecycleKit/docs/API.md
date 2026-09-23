@@ -86,21 +86,25 @@ The two paths differ only in *where* the error surfaces, which follows from when
 
 What happens to a dispatched error after it leaves LifecycleKit is EventKit's contract: EventKit isolates listeners at the event-bus boundary and reports the error through the host error handler, so one addon's failing lifecycle callback cannot stop event delivery to another addon.
 
-When an addon reaches `shutdown`, LifecycleKit also closes that addon's canonical EventKit scope (`EventKit:ForAddon(addonName)`) after the shutdown callbacks have run, so event connections made through the scope need no teardown code in the addon. EventKit cannot do this itself: it loads before LifecycleKit and never observes shutdown. With an EventKit revision that has no `CloseAddonScopes`, nothing is closed and shutdown is otherwise unchanged. Closing the scope never takes the logout away from the scope's own listeners: LifecycleKit's watcher runs inside EventKit's `PLAYER_LOGOUT` dispatch, and EventKit defers the disconnects until that dispatch returns, so a scoped `PLAYER_LOGOUT` listener still runs once. An addon that never asked for an EventKit scope has none to close; EventKit 0.5.1 (revision 8) answers `false` and records nothing, where earlier revisions recorded a closed scope.
+When an addon reaches `shutdown`, LifecycleKit first closes the addon's canonical TimerKit scope (`TimerKit:CloseAddonScopes(addonName)`), which cancels every timer made through `TimerKit:ForAddon(addonName)`, and then its canonical SchedulerKit scope (`SchedulerKit:CloseAddonScopes(addonName)`), which cancels its jobs (lane submissions included), closes its `Debounce` and `Coalesce` handles, cancels its watches and releases its delay timers. Neither Kit depends on LifecycleKit, so neither observes shutdown: this is the second half of the two-step both document. TimerKit and SchedulerKit are optional: each is found through `Registry:Find` (`"timerKit"`, `"schedulerKit"`, API 1) at shutdown, and without it, or with a revision that has no `CloseAddonScopes` (TimerKit before 0.5.0, SchedulerKit before 0.6.0, which close their addon scopes themselves from a shutdown subscription), that step does nothing; `false` from `CloseAddonScopes` (no scope, or already closed) is not a failure.
+
+After those two, LifecycleKit closes that addon's canonical EventKit scope (`EventKit:ForAddon(addonName)`) after the shutdown callbacks have run, so event connections made through the scope need no teardown code in the addon. EventKit cannot do this itself: it loads before LifecycleKit and never observes shutdown. With an EventKit revision that has no `CloseAddonScopes`, nothing is closed and shutdown is otherwise unchanged. Closing the scope never takes the logout away from the scope's own listeners: LifecycleKit's watcher runs inside EventKit's `PLAYER_LOGOUT` dispatch, and EventKit defers the disconnects until that dispatch returns, so a scoped `PLAYER_LOGOUT` listener still runs once. An addon that never asked for an EventKit scope has none to close; EventKit 0.5.1 (revision 8) answers `false` and records nothing, where earlier revisions recorded a closed scope.
 
 The same two-step applies to the addon's HookKit scope, its CommandKit scope, its CommKit scope and its SignalKit bus. After the EventKit scope, LifecycleKit closes the addon's canonical HookKit scope (`HookKit:CloseAddonScopes(addonName)`), which undoes every hook made through `HookKit:ForAddon(addonName)`, then its canonical CommandKit scope (`CommandKit:CloseAddonScopes(addonName)`), which leaves every slash command registered through `CommandKit:ForAddon(addonName)` inert, then its canonical CommKit scope (`CommKit:CloseAddonScopes(addonName)`), which cancels its pending sends, closes its SyncSets and disconnects its prefix registrations, and then its bus (`SignalKit:CloseAddonBus(addonName)`), which disconnects every subscription on the bus named after the addon, including those made through its scopes. HookKit, CommandKit and CommKit are optional: each is found through `Registry:Find` (`"hookKit"`, `"commandKit"`, `"commKit"`, API 1) at shutdown, and without it, or with a revision that has no `CloseAddonScopes`, that step does nothing; `false` from `CloseAddonScopes` (no scope, or already closed) is not a failure. CommKit depends on LifecycleKit and already closes the scope of `CommKit:ForAddon` from its own `OnShutdown` subscription, which runs among the shutdown callbacks; the CommKit step pins it to its place in this order whatever CommKit revision is loaded, and usually answers `false`. A SignalKit revision without `CloseAddonBus` skips the last step the same way, and an addon that never asked for a bus has nothing to close (`CloseAddonBus` answers `false`, which is not a failure).
 
-The five are closed in this order for a reason:
+The seven are closed in this order for a reason:
 
-1. **EventKit scope first**, so no host event fires into hooks or bus subscribers that are being torn down.
-2. **HookKit scope next**, so the addon's hooks stop running.
-3. **CommandKit scope next**, so the addon's slash commands become inert.
-4. **CommKit scope next**, so the addon's addon messages stop being sent and received.
-5. **SignalKit bus last**, because other addons' shutdown paths may still publish on it. Publishing on a closed bus delivers nothing and does not raise, so closing it last only keeps it useful for as long as possible.
+1. **TimerKit scope first** and
+2. **SchedulerKit scope second**, so no timer fires and no job runs into event listeners, hooks or bus subscribers that are being torn down.
+3. **EventKit scope next**, so no host event fires into hooks or bus subscribers that are being torn down.
+4. **HookKit scope next**, so the addon's hooks stop running.
+5. **CommandKit scope next**, so the addon's slash commands become inert.
+6. **CommKit scope next**, so the addon's addon messages stop being sent and received.
+7. **SignalKit bus last**, because other addons' shutdown paths may still publish on it. Publishing on a closed bus delivers nothing and does not raise, so closing it last only keeps it useful for as long as possible.
 
-Shutdown callbacks run before any of the five is closed, so an `OnShutdown` callback can still rely on its event connections, hooks, slash commands and addon-message scope and can still publish on its bus.
+Shutdown callbacks run before any of the seven is closed, so an `OnShutdown` callback can still rely on its timers, jobs, event connections, hooks, slash commands and addon-message scope and can still publish on its bus.
 
-Shutdown therefore runs these steps per addon, in this order: the addon's combat queue is closed (each pending deferred call receives `(instance, false, "shutdown")`), the shutdown callbacks run, then the EventKit scope, the HookKit scope, the CommandKit scope, the CommKit scope and the SignalKit bus are closed. Every step runs even when an earlier one failed. Errors follow a first-error-wins policy in that order: a deferred-call error is re-raised before a shutdown callback error, which is re-raised before an EventKit, then a HookKit, then a CommandKit, then a CommKit, then a SignalKit closing failure. Either way every addon's lifecycle has advanced first.
+Shutdown therefore runs these steps per addon, in this order: the addon's combat queue is closed (each pending deferred call receives `(instance, false, "shutdown")`), the shutdown callbacks run, then the TimerKit scope, the SchedulerKit scope, the EventKit scope, the HookKit scope, the CommandKit scope, the CommKit scope and the SignalKit bus are closed. Every step runs even when an earlier one failed. Errors follow a first-error-wins policy in that order: a deferred-call error is re-raised before a shutdown callback error, which is re-raised before a TimerKit, then a SchedulerKit, then an EventKit, then a HookKit, then a CommandKit, then a CommKit, then a SignalKit closing failure. Either way every addon's lifecycle has advanced first.
 
 If shutdown occurs before `loaded` or `ready` was reached (for example, a lifecycle was created for a load-on-demand addon that never loaded), pending subscriptions for those now-impossible phases are disconnected without invocation. New subscriptions to an earlier phase that is already impossible because shutdown occurred are returned already disconnected. Shutdown also disconnects the addon's `OnHalted`, `OnDependencyHalted`, `OnCombatStart` and `OnCombatEnd` subscriptions.
 
@@ -124,7 +128,7 @@ Halting, in order:
 
 Every subscriber is given its delivery even when some fail, then the first error is re-raised from `Halt` with its original Lua error object, after the state is committed.
 
-**Halted is terminal for the session.** API 1 offers no `Resume`: an addon that halted because something was broken cannot prove the breakage is gone, and a resumable state would need every dependent to handle a second transition. Reloading the UI starts a fresh session. Later host events do not move a halted addon: `ADDON_LOADED`, `PLAYER_LOGIN` and `PLAYER_LOGOUT` leave `IsLoaded()`, `IsReady()` and `IsShutdown()` as they were at the halt. The one exception is what the addon owns through the lower Kits — its EventKit scope, its HookKit scope, its CommandKit scope, its CommKit scope and its SignalKit bus — which are still closed at logout, in the shutdown order, like every other addon's.
+**Halted is terminal for the session.** API 1 offers no `Resume`: an addon that halted because something was broken cannot prove the breakage is gone, and a resumable state would need every dependent to handle a second transition. Reloading the UI starts a fresh session. Later host events do not move a halted addon: `ADDON_LOADED`, `PLAYER_LOGIN` and `PLAYER_LOGOUT` leave `IsLoaded()`, `IsReady()` and `IsShutdown()` as they were at the halt. The one exception is what the addon owns through the other Kits — its TimerKit scope, its SchedulerKit scope, its EventKit scope, its HookKit scope, its CommandKit scope, its CommKit scope and its SignalKit bus — which are still closed at logout, in the shutdown order, like every other addon's.
 
 A halted addon does not close any of them at the halt. Event connections, hooks, slash commands, addon-message registrations and bus subscriptions it made stay live until logout, so it can still, for example, report its failure once the player logs in.
 
@@ -132,7 +136,7 @@ Phase subscriptions after a halt follow the shutdown rule: a phase reached befor
 
 ### Dependencies between addons
 
-`DependsOn(otherAddonName)` records that this addon cannot work without another one. The name is matched exactly, like `ForAddon`, and the other addon does not need a lifecycle instance yet. The call returns `true` when it recorded the dependency and `false` when it was already recorded. An addon records at most **16** dependencies; the 17th is refused with `nil, "full"`. A halted or shut-down addon refuses new dependencies with `nil, "halted"` or `nil, "shutdown"`. Declaring the addon itself raises an argument error.
+`DependsOn(otherAddonName)` records that this addon cannot work without another one. The name is matched exactly, like `ForAddon`, and the other addon does not need a lifecycle instance yet. The call returns `true` when it recorded the dependency and `false` when it was already recorded. An addon records at most `maxDependencies` dependencies, **16** unless changed with `LifecycleKit:SetLimits` (see [Limits](#limits)); the next one is refused with `nil, "full"`. A halted or shut-down addon refuses new dependencies with `nil, "halted"` or `nil, "shutdown"`. Declaring the addon itself raises an argument error.
 
 If the dependency has already halted, `DependsOn` delivers `OnDependencyHalted` at once. `OnDependencyHalted` is a repeating subscription, and it replays every recorded dependency that has already halted when it is made, so the order of `DependsOn` and `OnDependencyHalted` does not matter: each subscriber hears of each halted dependency exactly once. A failing replay is re-raised from `OnDependencyHalted` after the other replays, and, as with a failing dispatch, the subscription stays connected. A replay that ends the subscription, typically by halting the dependent in response, stops the replay: a halted addon hears of no further dependency.
 
@@ -146,7 +150,7 @@ instance:WhenOutOfCombat(callback)        -- DeferredCall | nil, "full" | "halte
 instance:OnCombatStart(callback)          -- Subscription; callback(instance)
 instance:OnCombatEnd(callback)            -- Subscription; callback(instance)
 instance:SetCombatQueueLimit(limit)
-instance:GetCombatQueueLimit()            -- integer, 64 by default
+instance:GetCombatQueueLimit()            -- integer or LifecycleKit.UNBOUNDED, 64 by default
 ```
 
 During combat lockdown the client refuses protected frame work (showing, moving or re-anchoring secure frames, changing secure attributes, key bindings) from addon code. The rule an addon follows is *persist intent always, apply only out of combat*; see the taint section of [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md). The combat gate is that rule as a service, so each addon does not track `PLAYER_REGEN_*` itself.
@@ -169,7 +173,7 @@ Every queued callback runs protected. When several fail, every other queued call
 
 The client never delivers `PLAYER_REGEN_DISABLED` synchronously inside another event handler, so a drain is never interrupted by a new combat. As a defensive guard, should a host ever do so, the drain stops and the remaining calls stay queued for the next combat end rather than running protected work in combat.
 
-**Bounded.** An addon may have at most `GetCombatQueueLimit()` calls waiting, 64 unless changed with `SetCombatQueueLimit(limit)` (a positive integer). Beyond it `WhenOutOfCombat` returns `nil, "full"` and drops nothing already queued. Lowering the limit below the number already waiting drops nothing either; new calls are refused until the queue is below it. The queue array is reused across combats.
+**Bounded.** An addon may have at most `GetCombatQueueLimit()` calls waiting: the package's `defaultCombatQueueLimit` (64 unless changed with `LifecycleKit:SetLimits`) when the instance was created, or what `SetCombatQueueLimit(limit)` set (a positive integer or `LifecycleKit.UNBOUNDED`). With `UNBOUNDED` nothing is refused as `"full"`; the queue holds only this addon's own callbacks, and cancelled slots are still reclaimed as it grows. Beyond it `WhenOutOfCombat` returns `nil, "full"` and drops nothing already queued. Lowering the limit below the number already waiting drops nothing either; new calls are refused until the queue is below it. The queue array is reused across combats.
 
 ### `DeferredCall`
 
@@ -213,7 +217,34 @@ Every public method validates its arguments and raises at the caller's own file 
 | `OnLoaded`, `OnReady`, `OnShutdown`, `OnHalted`, `OnDependencyHalted`, `OnCombatStart`, `OnCombatEnd`, `WhenOutOfCombat` | `callback must be a function` |
 | `Halt` | `reason must be a non-empty string` |
 | `DependsOn` | `addonName must be a non-empty string`, `addonName must name another addon` |
-| `SetCombatQueueLimit` | `limit must be a positive integer` |
+| `SetCombatQueueLimit` | `limit must be a positive integer or LifecycleKit.UNBOUNDED` |
+| `LifecycleKit:SetLimits` | `limits must be a table`, `limits.<name> is not a recognised limit`, `limits.<name> must be a positive integer or LifecycleKit.UNBOUNDED`, `must be called on the LifecycleKit facade` |
+| `LifecycleKit:GetLimits` | `must be called on the LifecycleKit facade` |
+
+## Limits
+
+LifecycleKit keeps two lists per addon, and both are bounded by default and opened on purpose (design constitution, principle 4a):
+
+| Limit | Default | Guards | `UNBOUNDED` |
+|---|---|---|---|
+| `maxDependencies` | 16 | the addons one addon may declare with `DependsOn` | accepted: the list is the declaring addon's own |
+| `defaultCombatQueueLimit` | 64 | the combat-queue limit a new instance starts with | accepted: the queue holds only that addon's own callbacks |
+
+```lua
+LifecycleKit:SetLimits({ maxDependencies = 32 })
+LifecycleKit:SetLimits({ defaultCombatQueueLimit = LifecycleKit.UNBOUNDED })
+local limits = LifecycleKit:GetLimits() -- { maxDependencies = 32, defaultCombatQueueLimit = UNBOUNDED }
+instance:SetCombatQueueLimit(LifecycleKit.UNBOUNDED) -- one addon only
+```
+
+- `LifecycleKit:SetLimits(limits)` changes any subset of the two. The limits are package-wide: they apply to every addon in the session. The whole table is validated before anything is applied, so a refused call changes nothing. It must be called on the facade.
+- `LifecycleKit:GetLimits()` returns a fresh table with both values (one allocation per call).
+- `LifecycleKit.UNBOUNDED` is one sentinel table, the same across embedded copies and upgrades; compare against it, never copy it.
+- Lowering `maxDependencies` forgets no dependency already declared; further `DependsOn` calls answer `nil, "full"` until the list is below it.
+- `defaultCombatQueueLimit` is the limit instances created from then on start with. Instances that already exist keep theirs; `instance:SetCombatQueueLimit(limit)` changes one addon's.
+- ModuleKit reads `maxDependencies` through `GetLimits` when it validates its own `maxRequiredAddons` in `ModuleKit:SetLimits`, and refuses a value above it. Lower `maxDependencies` after that and ModuleKit's limit is not revisited, so set LifecycleKit's limits first.
+
+State written by revisions before 12 has neither field; an upgrade seeds the defaults those revisions enforced as constants, so behaviour carries over unchanged until a consumer calls `SetLimits`.
 
 ## Dependencies
 
@@ -223,7 +254,7 @@ LifecycleKit API 1 requires:
 - SignalKit API 1
 - EventKit API 1
 
-It optionally uses HookKit API 1, CommandKit API 1 and CommKit API 1, each found through `Registry:Find` (Registry revision 7; an older Registry's `Get` is the equivalent fallback) when an addon shuts down. Without them nothing changes except that there are no hooks to undo, no commands to make inert and no addon-message scopes to close.
+It optionally uses TimerKit API 1, SchedulerKit API 1, HookKit API 1, CommandKit API 1 and CommKit API 1, each found through `Registry:Find` (Registry revision 7; an older Registry's `Get` is the equivalent fallback) when an addon shuts down. Without them nothing changes except that there are no timers to cancel, no jobs to cancel, no hooks to undo, no commands to make inert and no addon-message scopes to close. TimerKit and SchedulerKit do not depend on LifecycleKit: LifecycleKit calls into them, which is what lets each embed without it.
 
 LifecycleKit does not create WoW Frames directly. All frame/event registration remains inside EventKit.
 
@@ -233,6 +264,6 @@ Host API read directly: `C_AddOns.IsAddOnLoaded` (falling back to the legacy `Is
 
 Compatible embedded copies share one LifecycleKit facade and state through Registry. Pending phase subscriptions created by the previous compatible implementation revision remain valid across an in-place upgrade; the upgrade releases per-instance state that the newer revision no longer owns.
 
-Revisions 8 to 11 keep schema 3. Upgrading from revision 7, 8, 9 or 10 replaces its shared host watchers, which would otherwise keep calling the older revision's handlers: revision 7's logout handler closes no HookKit scope and no bus, revision 8's no CommandKit scope and revision 9's no CommKit scope.
+Revisions 8 to 12 keep schema 3. Upgrading from revision 7, 8, 9, 10 or 11 replaces its shared host watchers, which would otherwise keep calling the older revision's handlers: revision 7's logout handler closes no HookKit scope and no bus, revision 8's no CommandKit scope, revision 9's no CommKit scope, and no revision before 12 closes a TimerKit or SchedulerKit scope.
 
 Revision 7 changed the package state from schema 2 to schema 3. Upgrading from an older revision adds the shared combat flag (seeded from `InCombatLockdown()`), the instance list (inherited instances in name order) and every instance's combat queue, dependency list and halted flag, and replaces the older revision's shared host watchers with its own, because a watcher keeps calling the handler of the revision that installed it. Pending deferred calls and notice subscriptions are carried across a same-revision reload unchanged. Bootstrap is idempotent for the current implementation revision: if a prior live upgrade accepted the Registry revision but host event registration failed before shared watchers were fully established, a later compatible copy retries the missing watcher setup instead of silently returning an incomplete runtime state. If a one-shot global phase passed while that watcher was absent, bootstrap also reconciles existing instances from the observable host/package state.

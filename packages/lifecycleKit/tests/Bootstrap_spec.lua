@@ -91,13 +91,13 @@ describe("LifecycleKit package bootstrap", function()
         end)
     end)
 
-    it("registers LifecycleKit API 1 revision 11", function()
+    it("registers LifecycleKit API 1 revision 12", function()
         local LifecycleKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("lifecycleKit", 1)
         assert.are.equal(LifecycleKit, selected)
-        assert.are.equal(11, revision)
+        assert.are.equal(12, revision)
         assert.are.equal(1, LifecycleKit.API)
-        assert.are.equal(11, LifecycleKit.REVISION)
+        assert.are.equal(12, LifecycleKit.REVISION)
     end)
 
     it("reuses facade and addon instances across duplicate embedding", function()
@@ -129,20 +129,23 @@ describe("LifecycleKit package bootstrap", function()
         require("SignalKit")
         require("EventKit")
 
-        local future = Registry:Register("lifecycleKit", 1, 12)
+        local future = Registry:Register("lifecycleKit", 1, 13)
         future.API = 1
-        future.REVISION = 12
+        future.REVISION = 13
         future.Instance = newInstancePrototype()
         future.Subscription = { Disconnect = function() end, IsConnected = function() end }
         future.DeferredCall = { Cancel = function() end, IsPending = function() end }
         future.ForAddon = function() end
         future.IsInCombat = function() end
+        future.UNBOUNDED = {}
+        future.SetLimits = function() end
+        future.GetLimits = function() end
 
         local loaded = require("LifecycleKit")
         local selected, revision = Registry:Get("lifecycleKit", 1)
         assert.are.equal(future, loaded)
         assert.are.equal(future, selected)
-        assert.are.equal(12, revision)
+        assert.are.equal(13, revision)
     end)
 
     it("refuses a newer revision that lacks the combat gate surface", function()
@@ -152,12 +155,12 @@ describe("LifecycleKit package bootstrap", function()
         require("SignalKit")
         require("EventKit")
 
-        -- A revision 12 that publishes only the revision 6 surface is not a
+        -- A revision 13 that publishes only the revision 6 surface is not a
         -- compatible successor: consumers of revision 7 and later would call
         -- methods it does not have.
-        local future = Registry:Register("lifecycleKit", 1, 12)
+        local future = Registry:Register("lifecycleKit", 1, 13)
         future.API = 1
-        future.REVISION = 12
+        future.REVISION = 13
         future.Instance = newRevision6InstancePrototype()
         future.Subscription = { Disconnect = function() end, IsConnected = function() end }
         future.ForAddon = function() end
@@ -264,7 +267,7 @@ describe("LifecycleKit package bootstrap", function()
         local upgraded = require("LifecycleKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(11, upgraded.REVISION)
+        assert.are.equal(12, upgraded.REVISION)
         assert.are.equal(instance, upgraded:ForAddon("CarriedOver"))
         assert.is_nil(rawget(instance, "_phaseErrors"))
 
@@ -340,7 +343,7 @@ describe("LifecycleKit package bootstrap", function()
         local upgraded = require("LifecycleKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(11, upgraded.REVISION)
+        assert.are.equal(12, upgraded.REVISION)
         assert.are.equal(3, upgraded._state.schema)
         assert.are.same({ instance }, upgraded._state.instances)
         assert.is_true(upgraded:IsInCombat())

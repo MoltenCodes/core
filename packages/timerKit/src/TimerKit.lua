@@ -1,17 +1,24 @@
 -- MoltenCodes TimerKit
 --
 -- Cancelable, scope-aware World of Warcraft timers. TimerKit keeps the C_Timer
--- boundary narrow, adds deterministic logical state, guards stale native
--- callbacks across restart/cancel operations, and integrates addon-owned timer
--- scopes with LifecycleKit shutdown.
+-- boundary narrow, adds deterministic logical state and guards stale native
+-- callbacks across restart/cancel operations.
+--
+-- TimerKit requires Registry and nothing else. It keeps one canonical scope per
+-- addon (`ForAddon`) but does not observe addon shutdown itself: whoever does
+-- closes that scope through `CloseAddonScopes`. LifecycleKit makes that call at
+-- `PLAYER_LOGOUT` when it is loaded; an addon without LifecycleKit makes it
+-- from its own `PLAYER_LOGOUT` handler. This is the two-step EventKit, HookKit,
+-- CommandKit and CommKit already use (design constitution, principle 4b).
 --
 -- Contents
 -- --------
 --   Constants ............. package identity and option keys
 --   Public types .......... LuaCATS declarations for the published surface
---   Dependencies .......... Registry, LifecycleKit, C_Timer, the monotonic clock
+--   Dependencies .......... Registry, C_Timer, the monotonic clock
 --   Validation ............ public-surface and shared-state validation
 --   Bootstrap ............. Registry registration and inherited state
+--   In-place upgrade ...... revision-5 shutdown subscriptions released
 --   Generic helpers ....... error capture and argument validation
 --   Timer internals ....... start, cancel, fire, restart, deadlines
 --   Scope internals ....... active-set bookkeeping, bulk cancel, close
@@ -22,9 +29,8 @@
 
 local PACKAGE_NAME = "timerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
-local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
 
 -- The complete set of fields `New`-style option tables accept. Hoisting it to a
@@ -70,7 +76,8 @@ local TIMER_OPTION_KEYS = {
 ---@field GetRemaining fun(self: TimerKit.Timer): number?
 ---@field GetDeadline fun(self: TimerKit.Timer): number?
 
----An ownership scope for timers, closed manually or by addon shutdown.
+---An ownership scope for timers, closed by its owner or, for an addon scope,
+---through `TimerKit:CloseAddonScopes`.
 ---@class TimerKit.Scope
 ---@field New fun(self: TimerKit.Scope, options: TimerKit.TimerOptions): TimerKit.Timer
 ---@field After fun(self: TimerKit.Scope, delay: number, callback: TimerKit.Callback): TimerKit.Timer
@@ -92,6 +99,7 @@ local TIMER_OPTION_KEYS = {
 ---@field Every fun(self: TimerKit, interval: number, callback: TimerKit.Callback): TimerKit.Timer
 ---@field CreateScope fun(self: TimerKit): TimerKit.Scope
 ---@field ForAddon fun(self: TimerKit, addonName: string): TimerKit.Scope
+---@field CloseAddonScopes fun(self: TimerKit, addonName: string): boolean
 
 -- Dependencies --------------------------------------------------------------
 
@@ -112,28 +120,8 @@ if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API
 end
 
 local bootstrapPackage = rawget(Registry, "Bootstrap")
-local getPackage = rawget(Registry, "Get")
-if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
+if type(bootstrapPackage) ~= "function" then
     error("MoltenCodes TimerKit requires a valid Registry API 2 facade", 2)
-end
-
-local LifecycleKit, lifecycleRevision = getPackage(Registry, "lifecycleKit", REQUIRED_LIFECYCLE_API)
-local LifecycleInstance = type(LifecycleKit) == "table" and rawget(LifecycleKit, "Instance") or nil
-local LifecycleSubscription = type(LifecycleKit) == "table" and rawget(LifecycleKit, "Subscription")
-    or nil
-if
-    type(LifecycleKit) ~= "table"
-    or type(lifecycleRevision) ~= "number"
-    or rawget(LifecycleKit, "API") ~= REQUIRED_LIFECYCLE_API
-    or rawget(LifecycleKit, "REVISION") ~= lifecycleRevision
-    or type(rawget(LifecycleKit, "ForAddon")) ~= "function"
-    or type(LifecycleInstance) ~= "table"
-    or type(rawget(LifecycleInstance, "IsShutdown")) ~= "function"
-    or type(rawget(LifecycleInstance, "OnShutdown")) ~= "function"
-    or type(LifecycleSubscription) ~= "table"
-    or type(rawget(LifecycleSubscription, "Disconnect")) ~= "function"
-then
-    error("MoltenCodes TimerKit requires a valid LifecycleKit API 1 facade", 2)
 end
 
 -- C_Timer is a World of Warcraft client API reachable only through the global table.
@@ -182,6 +170,7 @@ local function validatePublicSurface(implementation)
         and type(rawget(implementation, "Every")) == "function"
         and type(rawget(implementation, "CreateScope")) == "function"
         and type(rawget(implementation, "ForAddon")) == "function"
+        and type(rawget(implementation, "CloseAddonScopes")) == "function"
         and type(rawget(Timer, "GetState")) == "function"
         and type(rawget(Timer, "GetDelay")) == "function"
         and type(rawget(Timer, "GetScope")) == "function"
@@ -278,6 +267,37 @@ local TIMER_METATABLE = rawget(state, "timerMetatable")
 local SCOPE_METATABLE = rawget(state, "scopeMetatable")
 rawset(TIMER_METATABLE, "__index", Timer)
 rawset(SCOPE_METATABLE, "__index", Scope)
+
+-- In-place upgrade ----------------------------------------------------------
+
+---Release the LifecycleKit shutdown subscriptions revision 5 and older held.
+---
+---Those revisions required LifecycleKit and subscribed every addon scope to
+---its addon's shutdown. This revision knows nothing of LifecycleKit: the
+---scope is closed by whoever observes the shutdown, through
+---`CloseAddonScopes` (LifecycleKit does so at logout). Keeping the inherited
+---subscription would close the scope twice from two places, so it is
+---disconnected here and the scope stays open until that call.
+---
+---The release is best-effort. A subscription whose `Disconnect` is missing or
+---raises is dropped all the same: its wrapper resolves `dispatch.closeScope`
+---at call time, and closing an already closed scope is a no-op, so the worst
+---it can do is close the scope once at shutdown, which is what it was for.
+local function releaseInheritedShutdownSubscriptions()
+    for _, scope in pairs(rawget(state, "addonScopes")) do
+        if type(scope) == "table" then
+            local subscription = rawget(scope, "_shutdownSubscription")
+            rawset(scope, "_shutdownSubscription", nil)
+            if type(subscription) == "table" and type(subscription.Disconnect) == "function" then
+                pcall(subscription.Disconnect, subscription)
+            end
+        end
+    end
+end
+
+if previousRevision ~= nil and previousRevision < IMPLEMENTATION_REVISION then
+    releaseInheritedShutdownSubscriptions()
+end
 
 -- Generic helpers -----------------------------------------------------------
 
@@ -698,7 +718,7 @@ local function snapshotActive(scope)
 end
 
 -- Internal bulk cancellation. The caller owns validation, so scope cleanup
--- driven by LifecycleKit shutdown does not have to fake a public call site.
+-- driven by `CloseAddonScopes` does not have to fake a public call site.
 ---@param scope TimerKit.Scope
 ---@return integer cancelled
 local function cancelAllInScope(scope)
@@ -724,23 +744,11 @@ local function cancelAllInScope(scope)
     return cancelled
 end
 
----Drop the LifecycleKit shutdown subscription an addon scope holds.
----@param scope TimerKit.Scope
-local function disconnectShutdownSubscription(scope)
-    local subscription = rawget(scope, "_shutdownSubscription")
-    rawset(scope, "_shutdownSubscription", nil)
-    if subscription == nil then
-        return
-    end
-
-    local disconnect = subscription.Disconnect
-    if type(disconnect) ~= "function" then
-        error("MoltenCodes TimerKit lifecycle subscription state is corrupted", 0)
-    end
-    disconnect(subscription)
-end
-
----Terminally close `scope` after best-effort cancellation and unsubscription.
+---Terminally close `scope` after best-effort cancellation.
+---
+---A timer callback may close its own scope, including through
+---`CloseAddonScopes`; the timer that is firing is cancelled like the rest,
+---which for a ticker means it does not tick again.
 ---@param scope TimerKit.Scope
 ---@return boolean closed `false` when the scope was already closed.
 local function closeScope(scope)
@@ -749,17 +757,11 @@ local function closeScope(scope)
     end
 
     -- Make the scope terminal before cleanup begins. Callback re-entry cannot
-    -- schedule replacement timers while shutdown/Close is in progress.
+    -- schedule replacement timers while the close is in progress.
     rawset(scope, "_closed", true)
 
-    local firstError
-    local okCancel, cancelError = pcall(cancelAllInScope, scope)
-    firstError = captureFirstError(firstError, okCancel, cancelError)
-
-    local okDisconnect, disconnectError = pcall(disconnectShutdownSubscription, scope)
-    firstError = captureFirstError(firstError, okDisconnect, disconnectError)
-
-    raiseCaptured(firstError)
+    local ok, cancelError = pcall(cancelAllInScope, scope)
+    raiseCaptured(captureFirstError(nil, ok, cancelError))
     return true
 end
 
@@ -772,50 +774,7 @@ local function newScope(addonName)
         _active = {},
         _activeCount = 0,
         _closed = false,
-        _shutdownSubscription = nil,
     }, SCOPE_METATABLE)
-end
-
----Build the addon-owned scope for `addonName` and bind it to addon shutdown.
----@param addonName string
----@return TimerKit.Scope
-local function createAddonScope(addonName)
-    local lifecycle = LifecycleKit:ForAddon(addonName)
-    if
-        type(lifecycle) ~= "table"
-        or type(lifecycle.IsShutdown) ~= "function"
-        or type(lifecycle.OnShutdown) ~= "function"
-    then
-        error("MoltenCodes TimerKit received an invalid LifecycleKit instance", 2)
-    end
-
-    local scope = newScope(addonName)
-    local addonScopes = rawget(state, "addonScopes")
-    rawset(addonScopes, addonName, scope)
-
-    if lifecycle:IsShutdown() then
-        rawset(scope, "_closed", true)
-        return scope
-    end
-
-    local ok, subscription = pcall(function()
-        return lifecycle:OnShutdown(function()
-            local dispatch = rawget(state, "dispatch")
-            local close = type(dispatch) == "table" and rawget(dispatch, "closeScope") or nil
-            if type(close) ~= "function" then
-                error("MoltenCodes TimerKit runtime dispatch is corrupted", 0)
-            end
-            return close(scope)
-        end)
-    end)
-
-    if not ok then
-        rawset(addonScopes, addonName, nil)
-        error(subscription, 0)
-    end
-
-    rawset(scope, "_shutdownSubscription", subscription)
-    return scope
 end
 
 -- Timer public methods ------------------------------------------------------
@@ -1066,19 +1025,55 @@ local function createScope()
     return newScope(nil)
 end
 
----Return the shared LifecycleKit-owned timer scope for an addon.
+---Return the canonical timer scope for an addon, creating it on demand.
+---
+---TimerKit does not observe addon shutdown itself. Whoever does closes this
+---scope through `TimerKit:CloseAddonScopes(addonName)`: LifecycleKit at logout
+---when it is loaded, or the addon's own `PLAYER_LOGOUT` handler without it.
 ---@param _ TimerKit
----@param addonName string addon folder name, as LifecycleKit matches it
+---@param addonName string addon folder name
 ---@return TimerKit.Scope scope
 local function forAddon(_, addonName)
     validateNonEmptyString(addonName, "TimerKit:ForAddon addonName", 3)
 
     local addonScopes = rawget(state, "addonScopes")
-    local existingScope = rawget(addonScopes, addonName)
-    if existingScope ~= nil then
-        return existingScope
+    local scope = rawget(addonScopes, addonName)
+    if scope == nil then
+        scope = newScope(addonName)
+        rawset(addonScopes, addonName, scope)
     end
-    return createAddonScope(addonName)
+    return scope
+end
+
+---Close the canonical scope of an addon, cancelling every timer it owns.
+---
+---Closing is terminal, exactly like addon shutdown: the closed scope stays the
+---canonical scope, so a later `ForAddon(addonName)` returns it and refuses new
+---timers. An addon that never asked for a scope has nothing to close: nothing
+---is recorded, so the addon-scope map grows only with `ForAddon` calls, as
+---EventKit, HookKit, CommandKit and CommKit do.
+---
+---A failing native cancellation does not stop the sweep; every timer is
+---cancelled logically and the first error is re-raised afterwards, as
+---`TimerKit.Scope:Close()` documents.
+---@param self TimerKit
+---@param addonName string addon folder name
+---@return boolean closed `false` when the addon has no scope or it was already closed.
+local function closeAddonScopes(self, addonName)
+    if self ~= TimerKit then
+        error(
+            "TimerKit:CloseAddonScopes must be called on the TimerKit facade; "
+                .. "use TimerKit:CloseAddonScopes(addonName)",
+            2
+        )
+    end
+    validateNonEmptyString(addonName, "TimerKit:CloseAddonScopes addonName", 3)
+
+    local scope = rawget(rawget(state, "addonScopes"), addonName)
+    if scope == nil then
+        return false
+    end
+    return closeScope(scope)
 end
 
 -- Commit -------------------------------------------------------------------
@@ -1113,6 +1108,7 @@ rawset(TimerKit, "After", packageAfter)
 rawset(TimerKit, "Every", packageEvery)
 rawset(TimerKit, "CreateScope", createScope)
 rawset(TimerKit, "ForAddon", forAddon)
+rawset(TimerKit, "CloseAddonScopes", closeAddonScopes)
 
 local defaultScope = rawget(state, "defaultScope")
 if defaultScope == false then
@@ -1123,6 +1119,9 @@ end
 
 local dispatch = rawget(state, "dispatch")
 rawset(dispatch, "fire", fireTimer)
+-- No revision from 6 on calls `closeScope` through dispatch. It stays published
+-- for the shutdown wrappers of revision 5 and older, in case one could not be
+-- disconnected during the upgrade; see `releaseInheritedShutdownSubscriptions`.
 rawset(dispatch, "closeScope", closeScope)
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 

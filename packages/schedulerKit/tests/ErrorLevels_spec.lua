@@ -83,4 +83,33 @@ describe("SchedulerKit error levels", function()
             value
         )
     end)
+
+    it("points CloseAddonScopes argument and receiver errors at the caller", function()
+        local SchedulerKit = TestEnv.NewPackage()
+
+        local line
+        local ok, value = pcall(function()
+            line = currentLine() + 1
+            SchedulerKit:CloseAddonScopes(42)
+        end)
+        assert.is_false(ok)
+        assertReportedAt(
+            line,
+            "SchedulerKit:CloseAddonScopes addonName must be a non-empty string",
+            value
+        )
+
+        local facadeLine
+        local facadeOk, facadeValue = pcall(function()
+            facadeLine = currentLine() + 1
+            SchedulerKit.CloseAddonScopes({}, "Example")
+        end)
+        assert.is_false(facadeOk)
+        assertReportedAt(
+            facadeLine,
+            "SchedulerKit:CloseAddonScopes must be called on the SchedulerKit facade; "
+                .. "use SchedulerKit:CloseAddonScopes(addonName)",
+            facadeValue
+        )
+    end)
 end)

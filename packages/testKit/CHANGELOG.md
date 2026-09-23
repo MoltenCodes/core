@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — 2026-09-23
+
+- Documentation only: no runtime change, implementation revision 1 is unchanged. The README states the seven-file minimum footprint. TimerKit 0.5.0 and SchedulerKit 0.6.0 no longer require LifecycleKit, so TestKit's required closure is the same seven packages reached by a shorter path (LifecycleKit brings SignalKit and EventKit; SchedulerKit brings TimerKit).
+
 ## 0.1.0 — 2026-09-23
 
 - Added TestKit API generation 1, implementation revision 1: in-client test suites for development addons. TestKit is development-only: the manifest declares `"distribution": "development"`, so the bundle builder skips it, and `.pkgmeta` ignores `packages/testKit`.

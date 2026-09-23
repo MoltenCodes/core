@@ -6,13 +6,15 @@
 --- only its specs describe: driving poll timers, a host without EventKit, a
 --- host without the clock, allocation measurement and an in-place upgrade.
 ---
---- TimerKit depends on LifecycleKit, which depends on EventKit and SignalKit,
---- so every module below is already in the manifest dependency closure the
---- test runner puts on `LUA_PATH`; no path entry has to be added here.
+--- ReadinessKit requires Registry and TimerKit. EventKit is an optional
+--- dependency (`ReprobeOn`), so the test runner puts it and its own required
+--- closure (SignalKit) on `LUA_PATH`; no path entry has to be added here. The
+--- module chain loads EventKit as an addon that embeds it would, and
+--- `NewPackageWithoutEventKit` loads the three-file minimum footprint instead.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local ReadinessKitTestEnv = FrameworkTestEnv.New({
-    modules = { "Registry", "SignalKit", "EventKit", "LifecycleKit", "TimerKit", "ReadinessKit" },
+    modules = { "Registry", "SignalKit", "EventKit", "TimerKit", "ReadinessKit" },
 })
 
 ---Return how many native timers are still armed (neither cancelled nor spent).
@@ -47,24 +49,16 @@ function ReadinessKitTestEnv.Poll(milliseconds)
     return fired
 end
 
----Load the module chain, then make `Registry:Find` report EventKit as absent.
----
----EventKit cannot really be missing: TimerKit's own dependency chain loads it.
----What ReadinessKit has to survive is `Registry:Find` refusing it (absent, a
----generation mismatch, a retired copy), so the helper replaces `Find` on the
----Registry facade with one that refuses EventKit and answers everything else.
+---Load the minimum footprint, Registry, TimerKit and ReadinessKit, without
+---EventKit, as an addon that embeds only those three files does.
 ---@return table ReadinessKit
 ---@return table Registry
 function ReadinessKitTestEnv.NewPackageWithoutEventKit()
-    local ReadinessKit, Registry = ReadinessKitTestEnv.NewPackage()
-    local find = rawget(Registry, "Find")
-    rawset(Registry, "Find", function(self, packageName, api)
-        if packageName == "eventKit" then
-            return nil, "absent"
-        end
-        return find(self, packageName, api)
-    end)
-    return ReadinessKit, Registry
+    ReadinessKitTestEnv.Reset()
+    ReadinessKitTestEnv.InstallWowApi()
+    local Registry = require("Registry")
+    require("TimerKit")
+    return require("ReadinessKit"), Registry
 end
 
 ---Load the module chain on a host that has no `GetTimePreciseSec`.
@@ -78,7 +72,6 @@ function ReadinessKitTestEnv.NewPackageWithoutClock()
     require("Registry")
     require("SignalKit")
     require("EventKit")
-    require("LifecycleKit")
     require("TimerKit")
     return require("ReadinessKit")
 end

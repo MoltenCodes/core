@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 — 2026-09-23
+
+- SchedulerKit no longer requires LifecycleKit (design constitution, principle 4b). The manifest lists Registry API 2 and TimerKit API 1 only, the load-time LifecycleKit facade check is gone, and SchedulerKit embeds as three files: Registry, TimerKit and SchedulerKit. It never used SignalKit or EventKit, so neither is in its closure any more.
+- `SchedulerKit:ForAddon(addonName)` still returns one canonical scope per addon, but no longer subscribes to the addon's shutdown. Added `SchedulerKit:CloseAddonScopes(addonName)`, the second half of the two-step EventKit and TimerKit use: it closes the addon's scope exactly as `Scope:Close()` does, returns `false` when the addon never had a scope (recording nothing) or it was already closed, and must be called on the facade. LifecycleKit 0.5.0 makes the call at shutdown; without LifecycleKit an addon calls it on `PLAYER_LOGOUT`.
+- Behaviour change for an addon that asks for its scope after its lifecycle already shut down: revision 9 handed back a closed scope, this revision hands back an open one until `CloseAddonScopes` is called.
+- Implementation revision 10. An in-place upgrade from revision 9 or older disconnects the LifecycleKit shutdown subscription each carried addon scope held (best-effort) and keeps the scopes and their work running. `CloseAddonScopes` joins the public-surface check.
+- Specs: the module chain is Registry, TimerKit and SchedulerKit. `Scope_spec.lua` covers the two-step by hand, terminal closure, unknown addons, a job closing its own addon scope, isolation and the facade receiver; the logout integration moved to LifecycleKit's suite. A new bootstrap spec covers the revision-9 upgrade, and `ErrorLevels_spec.lua` the new method's argument and receiver errors.
+- `SchedulerKit` API generation 1 is unchanged; the addition is compatible.
+
 ## 0.5.3 — 2026-09-23
 
 - The driver pass no longer declares the elapsed-seconds parameter the OnUpdate

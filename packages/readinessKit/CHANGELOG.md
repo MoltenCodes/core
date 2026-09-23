@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 — 2026-09-23
+
+- Documentation and tests only: no runtime change, implementation revision 1 is unchanged. TimerKit 0.5.0 no longer requires LifecycleKit, so ReadinessKit's required closure shrinks to Registry and TimerKit. The README and `docs/API.md` state the three-file minimum footprint (Registry, TimerKit, ReadinessKit) and that `ReprobeOn` needs SignalKit and EventKit embedded as well.
+- The test module chain drops LifecycleKit. `NewPackageWithoutEventKit` now loads the minimum footprint instead of refusing EventKit through a replaced `Registry:Find`, and a bootstrap spec proves a gate polls to ready with those three files.
+
 ## 0.1.0 — 2026-09-23
 
 - Added ReadinessKit API generation 1, implementation revision 1.

@@ -5,10 +5,7 @@
   "workspace": {
     "library": [
       "../../../meta",
-      "../../registry/src",
-      "../../signalKit/src",
-      "../../eventKit/src",
-      "../../lifecycleKit/src"
+      "../../registry/src"
     ],
     "checkThirdParty": false
   },

@@ -18,7 +18,8 @@ The package intentionally separates **when work becomes eligible** from **how mu
 | `After(delay, callback[, options])` | Make a one-shot job eligible after a TimerKit delay. |
 | `Every(interval, callback[, options])` | Run a fixed-delay repeating job. |
 | `CreateScope()` | Create a manually owned scheduling scope. |
-| `ForAddon(addonName)` | Return the canonical LifecycleKit-owned scope for an addon. |
+| `ForAddon(addonName)` | Return the canonical scope for an addon, creating it on demand. |
+| `CloseAddonScopes(addonName)` | Close that addon's scope; returns `false` when it has none or it was already closed. |
 | `SetFrameBudget(milliseconds)` | Set the scheduler's per-frame cooperative time budget. |
 | `GetFrameBudget()` | Return the current frame budget in milliseconds. |
 | `SetRunawayThreshold(milliseconds)` | Set the slice duration above which a job is demoted. |
@@ -393,11 +394,28 @@ Scopes use intrusive active-job links rather than retaining an ever-growing hist
 local work = SchedulerKit:ForAddon("MyAddon")
 ```
 
-`ForAddon` is idempotent for one addon name and binds the scope to `LifecycleKit:ForAddon(addonName)`.
+`ForAddon` is idempotent for one addon name: every call with the same name returns the same scope.
 
-At shutdown, SchedulerKit closes the scope, cancels queued/running/delayed jobs (lane submissions included), closes its `Debounce` and `Coalesce` handles, cancels its watches, and closes its internal TimerKit delay scope.
+### Addon scopes and shutdown: the two-step
 
-If the lifecycle is already terminal when `ForAddon` is first called, SchedulerKit returns the canonical scope already closed.
+SchedulerKit requires Registry and TimerKit and nothing else, so it does not observe addon shutdown. Closing an addon scope is a separate, public step taken by whoever does:
+
+1. work is scheduled through `SchedulerKit:ForAddon("MyAddon")`;
+2. when the addon shuts down, its observer calls `SchedulerKit:CloseAddonScopes("MyAddon")`.
+
+**LifecycleKit calls `CloseAddonScopes` at shutdown; without LifecycleKit, call it yourself on `PLAYER_LOGOUT`.** LifecycleKit makes the call after the addon's shutdown callbacks have run, right after closing the addon's TimerKit scope and before its EventKit, HookKit, CommandKit and CommKit scopes and its SignalKit bus, so no job runs into a listener that is being torn down.
+
+`CloseAddonScopes(addonName)`:
+
+- must be called on the facade (`SchedulerKit:CloseAddonScopes(...)`); any other receiver raises;
+- validates `addonName` as a non-empty string;
+- returns `false` when the addon never asked for a scope, and records nothing, so the addon-scope map grows only with `ForAddon` calls;
+- returns `false` when the scope is already closed;
+- otherwise closes the scope exactly as `Scope:Close()` does and returns `true`: queued, running and delayed jobs are cancelled (lane submissions included), its `Debounce` and `Coalesce` handles are closed, its watches cancelled and its internal TimerKit delay scope closed. Every step runs, and the first failure is re-raised afterwards.
+
+Closing is terminal: the closed scope stays the canonical addon scope, so a later `ForAddon(addonName)` returns it and refuses new work. A job may close its own addon scope while it runs; it is cancelled with the rest and never resumed again. Manual scopes and the package-level convenience scope are never closed by `CloseAddonScopes`.
+
+Revision 9 and older required LifecycleKit and subscribed each addon scope to its addon's shutdown themselves. An embedded copy of this revision that upgrades one of them in place disconnects those subscriptions; the carried scopes stay open and canonical, and their work keeps running, until `CloseAddonScopes` is called. A pairing of this revision with a LifecycleKit older than 0.5.0 closes no scheduler scope at logout, since that LifecycleKit does not know the call.
 
 ## Package-level convenience scope
 
@@ -412,7 +430,7 @@ SchedulerKit:Every(5, callback)
 `Debounce`, `Coalesce` and `Watch` called on the package, and `Lane:Submit`
 without `options.scope`, use the same scope.
 
-The package cannot infer addon ownership from an arbitrary caller. Addon code that needs deterministic shutdown cleanup should prefer `ForAddon(addonName)`.
+The package cannot infer addon ownership from an arbitrary caller. Addon code that needs deterministic shutdown cleanup should prefer `ForAddon(addonName)`, closed through `CloseAddonScopes`.
 
 No SchedulerKit convenience scope is allocated merely by loading the package. The SchedulerKit scope is created on the first package-level scheduling operation, while its internal TimerKit delay scope remains unallocated until something first arms a timer in it: `NextFrame()`, `After()`, `Every()`, the window of a package-level `Debounce` or `Coalesce` handle, or the retry backoff of a lane submission it owns. Immediate-only `Schedule()` use therefore does not allocate TimerKit ownership state. If the SchedulerKit scope is closed indirectly through `job:GetScope():Close()`, every job and handle it owns is released as for any scope close, and a later package-level operation creates a fresh scope.
 

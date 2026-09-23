@@ -5,10 +5,11 @@
 --- What stays here is this package's own module load order, and the combat
 --- lockdown host surface only the combat gate reads.
 ---
---- HookKit, CommandKit and CommKit are optional dependencies: shutdown closes
---- the addon's scope in each when it is loaded, found through `Registry:Find`.
---- The manifest declares all three under `optionalDependencies`, so the test
---- runner puts them and their required closures on `LUA_PATH`. The module
+--- TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are optional
+--- dependencies: shutdown closes the addon's scope in each when it is loaded,
+--- found through `Registry:Find`. The manifest declares all five under
+--- `optionalDependencies`, so the test runner puts them and their required
+--- closures on `LUA_PATH`. The module
 --- chain loads HookKit and CommandKit (and SchemaKit, which CommandKit
 --- requires) before LifecycleKit, as an addon that embeds them would;
 --- `NewPackageWithoutHookKit` loads the chain without either. CommKit requires
@@ -112,10 +113,10 @@ LifecycleKitTestEnv.RunSlash = runSlash
 --
 -- CommKit is an optional dependency, and it requires LifecycleKit, TimerKit,
 -- SchedulerKit and PoolKit. It cannot sit in the module chain above: it must
--- load after LifecycleKit, and TimerKit and SchedulerKit in the chain would
--- replace the stand-ins other specs register. `LoadCommKit` loads the four on
--- top of a chain `NewPackage` already loaded; the runner puts them on
--- `LUA_PATH` as CommKit's required closure, and `Reset` clears them.
+-- load after LifecycleKit. `LoadCommKit` loads the four on top of a chain
+-- `NewPackage` already loaded, which is also how the shutdown specs reach
+-- TimerKit and SchedulerKit; the runner puts them on `LUA_PATH` as optional
+-- dependencies and as CommKit's required closure, and `Reset` clears them.
 
 --- The modules `LoadCommKit` adds, in load order.
 local COMM_KIT_MODULES = { "TimerKit", "SchedulerKit", "PoolKit", "CommKit" }

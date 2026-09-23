@@ -8,7 +8,7 @@ The TimerKit suite covers:
 - restart/cancel re-entrancy and stale native callback suppression;
 - manual and addon-owned scope lifecycle;
 - best-effort scope cleanup after native cancellation failures;
-- LifecycleKit shutdown integration and addon-scope isolation;
+- addon scopes closed through `CloseAddonScopes` (the two-step), and addon-scope isolation; the logout integration with LifecycleKit lives in LifecycleKit's suite;
 - native creation rollback and strict public input validation;
 - `error` levels: every argument failure reports the caller's own line;
 - opaque per-timer user data attached through the public handle;
@@ -26,11 +26,11 @@ Spec files:
 | `Repeating_spec.lua` | repeating timers, self-cancel and self-restart, errors in a repeating callback |
 | `Reentrancy_spec.lua` | completion before user code, restart from a callback, stale native callbacks |
 | `Scope_spec.lua` | active tracking, bulk cancel, terminal close, package-level convenience recovery |
-| `Lifecycle_spec.lua` | per-addon scopes closed at `PLAYER_LOGOUT`, manual scopes, closed-lifecycle scopes |
+| `AddonScopes_spec.lua` | canonical per-addon scopes, `CloseAddonScopes`, terminal closure, unknown addons, facade receiver, manual scopes |
 | `Errors_spec.lua` | definition validation, non-finite delays, native creation and cancellation failures |
 | `ErrorLevels_spec.lua` | every argument failure at the caller's line |
 | `UserData_spec.lua` | opaque per-timer user data |
 | `Remaining_spec.lua` | `GetRemaining`/`GetDeadline` in every state, restarts, late hosts, rolled-back starts |
 | `Property_spec.lua` | deterministic mixed operations keep the scope active count consistent |
-| `Bootstrap_spec.lua` | duplicate loading, Registry publication, the revision-1 upgrade, older revisions' deadlines, no `GetTimePreciseSec` |
+| `Bootstrap_spec.lua` | duplicate loading, Registry publication, loading with Registry alone, the revision-1 and revision-5 upgrades, older revisions' deadlines, no `GetTimePreciseSec` |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |

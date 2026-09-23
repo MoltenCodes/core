@@ -440,7 +440,7 @@ describe("LifecycleKit combat and halt argument error positions", function()
 
     it("reports SetCombatQueueLimit argument errors at the caller", function()
         local source = debug.getinfo(1, "S").short_src
-        for _, invalid in ipairs({ 0, -1, 1.5, "8", math.huge, 0 / 0 }) do
+        for _, invalid in ipairs({ 0, -1, 1.5, "8", math.huge, 0 / 0, {} }) do
             local callLine
             local ok, message = pcall(function()
                 callLine = debug.getinfo(1, "l").currentline + 1
@@ -451,7 +451,8 @@ describe("LifecycleKit combat and halt argument error positions", function()
                 source
                     .. ":"
                     .. callLine
-                    .. ": LifecycleKit.Instance:SetCombatQueueLimit limit must be a positive integer",
+                    .. ": LifecycleKit.Instance:SetCombatQueueLimit limit must be a positive integer"
+                    .. " or LifecycleKit.UNBOUNDED",
                 message
             )
         end

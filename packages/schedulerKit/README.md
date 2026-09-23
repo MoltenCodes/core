@@ -16,7 +16,7 @@ SchedulerKit is **not** a preemptive thread scheduler. A Lua callback must eithe
 - explicit cancellation handles;
 - delayed and fixed-delay repeating jobs through TimerKit;
 - manual and addon-owned cancellation scopes;
-- automatic LifecycleKit shutdown cleanup;
+- addon scopes closed through `SchedulerKit:CloseAddonScopes(addonName)`, which LifecycleKit calls at shutdown when it is loaded (without LifecycleKit, call it yourself on `PLAYER_LOGOUT`);
 - callback-error isolation, captured tracebacks, and per-job diagnostics;
 - the coalescing family: `Debounce` (quiet-period calls with `leading` and `maxWaitSeconds`), `Coalesce` (keys collected once per interval), `Watch` (shared-ticker polling), and named **lanes** that ration a scarce resource with an in-flight cap, a minimum interval, retry with backoff and a bounded queue;
 - stale delayed-callback protection;
@@ -63,13 +63,14 @@ troubleshooting. This package's load order inside a consuming addon is:
 
 ```toc
 Libs\MoltenCodes\registry\Registry.lua
-Libs\MoltenCodes\signalKit\SignalKit.lua
-Libs\MoltenCodes\eventKit\EventKit.lua
-Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
 Libs\MoltenCodes\timerKit\TimerKit.lua
 Libs\MoltenCodes\schedulerKit\SchedulerKit.lua
 ```
 
-Direct runtime dependencies: LifecycleKit API 1, Registry API 2, TimerKit API 1.
+Minimum footprint: Embed 3 files: Registry, TimerKit, SchedulerKit.
+
+Direct runtime dependencies: Registry API 2, TimerKit API 1.
 Every file above is required; omitting one makes this package raise at
-load.
+load. LifecycleKit is not a dependency: when an addon also embeds it,
+LifecycleKit closes the addon's scheduler scope at logout through
+`SchedulerKit:CloseAddonScopes`.

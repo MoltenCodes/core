@@ -81,6 +81,23 @@ describe("ReadinessKit bootstrap", function()
         assert.is_true(tostring(value):find("Registry API 2", 1, true) ~= nil)
     end)
 
+    it("loads with its three-file minimum footprint", function()
+        local ReadinessKit, Registry = TestEnv.NewPackageWithoutEventKit()
+
+        assert.is_nil(Registry:Find("lifecycleKit", 1))
+        assert.is_nil(Registry:Find("eventKit", 1))
+        local ready = false
+        local gate = ReadinessKit:Gate("footprint", function()
+            return ready
+        end)
+        assert.is_false(gate:IsReady())
+
+        -- The poll runs on TimerKit, which is part of the footprint.
+        ready = true
+        TestEnv.Poll(1000)
+        assert.is_true(gate:IsReady())
+    end)
+
     it("requires TimerKit", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
@@ -94,9 +111,6 @@ describe("ReadinessKit bootstrap", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         local Registry = require("Registry")
-        require("SignalKit")
-        require("EventKit")
-        require("LifecycleKit")
         require("TimerKit")
         Registry:Register("readinessKit", 1, 1)
 

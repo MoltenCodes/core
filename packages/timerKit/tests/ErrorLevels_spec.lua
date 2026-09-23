@@ -191,5 +191,30 @@ describe("TimerKit error levels", function()
             TimerKit:ForAddon("")
         end)
         assertReportedAt(line, "TimerKit:ForAddon addonName must be a non-empty string", ok, value)
+
+        local closeLine
+        local closeOk, closeValue = pcall(function()
+            closeLine = currentLine() + 1
+            TimerKit:CloseAddonScopes(42)
+        end)
+        assertReportedAt(
+            closeLine,
+            "TimerKit:CloseAddonScopes addonName must be a non-empty string",
+            closeOk,
+            closeValue
+        )
+
+        local facadeLine
+        local facadeOk, facadeValue = pcall(function()
+            facadeLine = currentLine() + 1
+            TimerKit.CloseAddonScopes({}, "Example")
+        end)
+        assertReportedAt(
+            facadeLine,
+            "TimerKit:CloseAddonScopes must be called on the TimerKit facade; "
+                .. "use TimerKit:CloseAddonScopes(addonName)",
+            facadeOk,
+            facadeValue
+        )
     end)
 end)

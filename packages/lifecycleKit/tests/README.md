@@ -15,11 +15,12 @@ WoW APIs are simulated by the shared fixture and `support/LifecycleKitTestEnv.lu
 | `CombatGate_spec.lua` | `IsInCombat`, `WhenOutOfCombat`, `OnCombatStart` / `OnCombatEnd` |
 | `Halt_spec.lua` | `Halt`, `OnHalted`, `DependsOn`, `OnDependencyHalted` |
 | `EventScopes_spec.lua` | closing the addon's EventKit scope at shutdown |
-| `OwnedScopes_spec.lua` | closing the HookKit, CommandKit and CommKit scopes and the SignalKit bus at shutdown, their order, and the upgrades from revisions 7 to 10 |
+| `OwnedScopes_spec.lua` | closing the TimerKit, SchedulerKit, HookKit, CommandKit and CommKit scopes and the SignalKit bus at shutdown, their order and first-error precedence, older TimerKit and SchedulerKit revisions without `CloseAddonScopes`, and the upgrades from revisions 7 to 11 |
+| `Limits_spec.lua` | `SetLimits` / `GetLimits`, `UNBOUNDED` for `maxDependencies` and the combat queue, atomic validation at the caller's line, seeding on upgrade |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
 
 Additional regression coverage includes multiple callback failures within one phase, arbitrary Lua error objects, same-revision watcher recovery, and missed-login catch-up after interrupted bootstrap.
 
 Argument-error positions are pinned: each spec asserts the exact `file:line` the error reports, so a stray tail call or a wrong `error` level fails the suite instead of passing unnoticed.
 
-The shared fixture does not model `InCombatLockdown`, so `support/LifecycleKitTestEnv.lua` installs it on top of the fixture and removes it again on `Reset`; `EnterCombat` and `LeaveCombat` send the two `PLAYER_REGEN_*` events in the order the client does. The same file models the slash-command globals CommandKit writes (`RunSlash`) and loads CommKit after the chain (`LoadCommKit`), because CommKit requires LifecycleKit.
+The shared fixture does not model `InCombatLockdown`, so `support/LifecycleKitTestEnv.lua` installs it on top of the fixture and removes it again on `Reset`; `EnterCombat` and `LeaveCombat` send the two `PLAYER_REGEN_*` events in the order the client does. The same file models the slash-command globals CommandKit writes (`RunSlash`) and loads CommKit after the chain (`LoadCommKit`), because CommKit requires LifecycleKit; TimerKit and SchedulerKit, optional dependencies of LifecycleKit, load with it.

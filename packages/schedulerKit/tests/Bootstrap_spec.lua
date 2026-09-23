@@ -59,9 +59,6 @@ describe("SchedulerKit bootstrap", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         require("Registry")
-        require("SignalKit")
-        require("EventKit")
-        require("LifecycleKit")
         local TimerKit = require("TimerKit")
 
         local originalCreateScope = TimerKit.CreateScope
@@ -74,7 +71,7 @@ describe("SchedulerKit bootstrap", function()
             return require("SchedulerKit")
         end)
         assert.is_true(ok)
-        assert.are.equal(9, SchedulerKit.REVISION)
+        assert.are.equal(10, SchedulerKit.REVISION)
 
         local scope = SchedulerKit:CreateScope()
         assert.is_false(scope:IsClosed())
@@ -93,9 +90,6 @@ describe("SchedulerKit bootstrap", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         local Registry = require("Registry")
-        require("SignalKit")
-        require("EventKit")
-        require("LifecycleKit")
         require("TimerKit")
 
         local old = Registry:Register("schedulerKit", 1, 3)
@@ -178,7 +172,7 @@ describe("SchedulerKit bootstrap", function()
 
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(9, upgraded.REVISION)
+        assert.are.equal(10, upgraded.REVISION)
 
         -- Revision 4's lane bookkeeping is derived from the inherited queues
         -- rather than assumed empty, so work an older copy had already queued
@@ -197,9 +191,6 @@ describe("SchedulerKit bootstrap", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         local Registry = require("Registry")
-        require("SignalKit")
-        require("EventKit")
-        require("LifecycleKit")
         require("TimerKit")
 
         -- Revision 6 state: every field up to the monotonic frame reading, and
@@ -254,7 +245,7 @@ describe("SchedulerKit bootstrap", function()
 
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(9, upgraded.REVISION)
+        assert.are.equal(10, upgraded.REVISION)
         local state = rawget(upgraded, "_state")
         assert.are.same({}, rawget(state, "lanes"))
         assert.are.equal(0, rawget(state, "laneCount"))
@@ -280,9 +271,6 @@ describe("SchedulerKit bootstrap", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         require("Registry")
-        require("SignalKit")
-        require("EventKit")
-        require("LifecycleKit")
         require("TimerKit")
 
         local old = loadSchedulerKitAsRevision(7)
@@ -294,7 +282,7 @@ describe("SchedulerKit bootstrap", function()
         package.loaded["SchedulerKit"] = nil
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(9, upgraded.REVISION)
+        assert.are.equal(10, upgraded.REVISION)
         assert.are.equal(lane, upgraded:Lane("upgraded"))
 
         local job = lane:Submit(function()
@@ -304,6 +292,60 @@ describe("SchedulerKit bootstrap", function()
         assert.are.equal("delayed", job:GetState())
         lane:Close()
         assert.are.equal("cancelled", job:GetState())
+    end)
+
+    it("upgrades a revision-9 copy and releases its shutdown subscriptions", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("TimerKit")
+
+        -- Revision 9 required LifecycleKit and subscribed each addon scope to
+        -- its addon's shutdown. The copy below stands in for it: its addon
+        -- scopes are given the subscription revision 9 would have stored, and
+        -- the second one fails to disconnect, which must not stop the upgrade.
+        local old = loadSchedulerKitAsRevision(9)
+        local disconnects = 0
+        local carried = old:ForAddon("Carried")
+        local failing = old:ForAddon("Failing")
+        rawset(carried, "_shutdownSubscription", {
+            Disconnect = function()
+                disconnects = disconnects + 1
+                return true
+            end,
+        })
+        rawset(failing, "_shutdownSubscription", {
+            Disconnect = function()
+                error("lifecycle gone", 0)
+            end,
+        })
+        local ran = 0
+        local job = carried:Schedule(function()
+            ran = ran + 1
+        end)
+
+        package.loaded["SchedulerKit"] = nil
+        local upgraded = require("SchedulerKit")
+
+        assert.are.equal(old, upgraded)
+        assert.are.equal(10, upgraded.REVISION)
+        assert.are.equal(1, disconnects)
+        assert.is_nil(rawget(carried, "_shutdownSubscription"))
+        assert.is_nil(rawget(failing, "_shutdownSubscription"))
+
+        -- The carried scope stays canonical and open, and its work still runs.
+        assert.are.equal(carried, upgraded:ForAddon("Carried"))
+        assert.is_false(carried:IsClosed())
+        TestEnv.Tick()
+        assert.are.equal(1, ran)
+        assert.are.equal("completed", job:GetState())
+
+        -- The two-step replaces the subscription.
+        local pending = carried:Schedule(function() end)
+        assert.is_true(upgraded:CloseAddonScopes("Carried"))
+        assert.is_true(carried:IsClosed())
+        assert.are.equal("cancelled", pending:GetState())
+        assert.is_true(upgraded:CloseAddonScopes("Failing"))
     end)
 
     it("keeps live family handles working across a compatible reload", function()

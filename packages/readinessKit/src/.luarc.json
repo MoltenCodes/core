@@ -6,9 +6,6 @@
     "library": [
       "../../../meta",
       "../../registry/src",
-      "../../signalKit/src",
-      "../../eventKit/src",
-      "../../lifecycleKit/src",
       "../../timerKit/src"
     ],
     "checkThirdParty": false
