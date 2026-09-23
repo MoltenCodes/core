@@ -748,8 +748,8 @@ and W9) and the WeakAuras media pack (LibSharedMedia).
    when LibStub is not loaded, refused when the major is already held by a
    table that is not ours; `InteropKit:AdoptFromLibStub(major)` → the
    library table and its minor, or `nil, reason`, and records it in the
-   Registry as a foreign entry readable through `Registry:Find("libstub:" ..
-   major, 1)` (documented naming) that `Registry:Packages()` lists with
+   Registry as a foreign entry readable through `InteropKit:Find(major)` (and, if the registry
+   budget allows, listed by `Registry:Packages()`) that `Registry:Packages()` lists with
    status `foreign`; `InteropKit:IsLibStubPresent()`;
    `InteropKit:ExposeAll(options)` exposing every loaded Kit for an addon
    that wants to publish the framework to LibStub consumers.
