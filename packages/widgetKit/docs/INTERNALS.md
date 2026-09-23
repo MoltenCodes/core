@@ -11,14 +11,18 @@ an upgrade hangs off it, under `_state`, and is never replaced:
 
 | Field | Holds |
 |---|---|
-| `types` | type name → type record `{ name, version, constructor, pool }` |
+| `schema`, `runtimeRevision` | the state layout version (`1`) and the revision that last committed its functions |
+| `types` | type name → type record `{ name, version, constructor, pool, borrowed }`; `borrowed` counts the widgets of each version currently acquired |
 | `layouts` | layout name → layout function |
 | `records` | widget → widget record, weak-keyed |
-| `dispatch` | `build` and `retire`, the pool callbacks, rewritten by every copy |
+| `dispatch` | `build` and `retire`, the pool callbacks, and `closeOpenDropdown`, the catcher's script; rewritten by every copy |
 | `widgetMetatable`, `containerMetatable` | `{ __index = Widget }`, `{ __index = Container }` |
 | `bindingMetatable`, `renderingMetatable` | the metatables of bindings and renderings |
 | `scratch` | the PoolKit table pool layouts borrow from |
-| `focus`, `holder`, `layoutDepth` | the focused widget (`false` for none), the hidden holder frame, the current layout nesting |
+| `focus`, `holder`, `layoutDepth` | the focused widget (`false` for none), the hidden holder frame (`false` until first used), the current layout nesting |
+| `serial` | the last acquire serial handed out; absent before the first `Create` |
+| `buildProblem` | a constructor contract failure `build` leaves for `Create` to raise; cleared at once |
+| `dropdownCatcher`, `openDropdown` | the session's click catcher (absent until the first list opens) and the dropdown whose list is open (`false` or absent for none) |
 
 `Container` is a table whose metatable falls back to `Widget`, so a container
 finds container methods first, then widget methods. A widget type's own methods
@@ -41,6 +45,9 @@ callbackCount
 userData       key -> value, created on the first SetUserData
 fullWidth, fullHeight, relativeWidth
 layoutName, layoutFunction, layoutPaused, layingOut
+version        the type version whose constructor built it
+serial         raised on every acquire
+renderings     the renderings drawn into the container, or nil
 ```
 
 `callbacks`, `userData` and `children` are emptied in place on release rather
@@ -82,9 +89,11 @@ PoolKit:New({
   message and raises it at its own caller. A constructor's own error has no
   message there and is re-raised unchanged.
 
-`Create` marks the record active, resets its layout state, runs `OnAcquire` and
-shows the frame. `Release` performs the steps listed in the release contract,
-then `pool:Release(widget)`. PoolKit's own `AttachChild` is not used for
+`Create` marks the record active, stamps it with a new serial, counts it as
+borrowed for its version, runs `OnAcquire` and shows the frame. Every other
+field is already at its default: `build` sets them and `Release` resets them.
+`Release` performs the steps listed in the release contract, then
+`pool:Release(widget)`. PoolKit's own `AttachChild` is not used for
 children: children come from other pools, their order is WidgetKit's, and a
 child must also leave its container's array, which only WidgetKit knows.
 
@@ -97,9 +106,11 @@ child must also leave its container's array, which only WidgetKit knows.
    (`"recursion"`), when it or an ancestor is being released, or at nesting
    depth 32 (`"depth"`);
 2. resolve the layout: the stored function, or the named layout looked up now;
-3. call the type's `OnLayoutStart` hook;
-4. set `layingOut`, borrow a scratch table, call the layout under `pcall`,
-   return the scratch table, clear `layingOut`; re-raise a layout error;
+3. set `layingOut` and raise the nesting depth, so the next step cannot
+   recurse;
+4. call the type's `OnLayoutStart` hook, borrow a scratch table, call the
+   layout under `pcall`, return the scratch table, clear `layingOut`;
+   re-raise a layout error;
 5. call `LayoutFinished(width, height)`.
 
 `LayoutFinished` remembers the container's height, runs `OnLayoutFinished`, and
@@ -111,7 +122,7 @@ nested tree is laid out top-down in one pass with no second pass upwards.
 ### List
 
 ```text
-width = content width; offset = 0
+width = max(content width, 0); offset = 0
 for each shown child:
     anchor TOPLEFT at (0, -offset)
     full width:     also anchor TOPRIGHT at (0, -offset)
@@ -125,26 +136,28 @@ return width, offset
 
 The first shown child gets `TOPLEFT` and `BOTTOMRIGHT` anchors on the content,
 is told its size, and is laid out when it is a container. The layout reports the
-content's size.
+content's size, each dimension at least zero.
 
 ### Flow
 
 ```text
-x = 0; rowTop = 0; rowHeight = 0
+width = max(content width, 0); x = 0; rowTop = 0; rowHeight = 0
 for each shown child:
-    childWidth = content width (full) | width * fraction (relative) | own width
-    if x > 0 and (full width or x + childWidth > content width):
+    childWidth = width (full) | width * fraction (relative) | own width
+    if x > 0 and (full width or x + childWidth > width + 0.001):
         rowTop = rowTop + rowHeight; x = 0; rowHeight = 0      -- wrap
     anchor TOPLEFT at (x, -rowTop); full width adds TOPRIGHT
-    full height: height = content height - rowTop
+    full height: height = max(content height - rowTop, 0)
     container: lay it out now
     rowHeight = max(rowHeight, child height); x = x + childWidth
     full width: close the row
-return content width, rowTop + rowHeight
+return width, rowTop + rowHeight
 ```
 
 A child wider than the content on an empty row stays on that row; the layout
-never loops over a child that cannot fit.
+never loops over a child that cannot fit. The 0.001-pixel tolerance keeps
+children whose relative widths sum to exactly one on one row: ten tenths of a
+107-pixel row add up to a hair more than 107 in floating point.
 
 ## The renderer
 
@@ -161,8 +174,10 @@ A rendering is a table with the tree, the container, and:
 **Build.** The container's layout is paused; `Describe` is walked depth-first;
 each visible node gets a widget from its kind (`group` and `multiselect`
 become `Group`s whose children are rendered into them, with their own layout
-paused), is added to its parent, configured from the node's hints, and given the
-node's value and disabled state. The container's pause state is restored and
+paused), is added to its parent, configured from the node's hints, and shown
+the option's value and disabled state read with `Get` and `IsDisabled` (not the
+description's copy of the value, which would no longer answer
+`issecretvalue`). The container's pause state is restored and
 one `PerformLayout` lays out the whole tree top-down. When a widget type is
 exhausted, the build stops, everything built is released, and `RenderOptions`
 raises.
@@ -225,6 +240,8 @@ copy created. The widget's own frame closes its list from `OnHide`.
 
 Every base widget builds its frames in its constructor with `CreateFrame`,
 parented to `UIParent` (or the holder), and sets its scripts there, once. The
+one exception is a `Dropdown`'s sixteen list rows, built on its first `Open`
+and kept for the widget's life. The
 templates used are `UIPanelButtonTemplate`, `UIPanelCloseButton`,
 `UICheckButtonTemplate` and `InputBoxTemplate`, present on every supported
 client; everything else is drawn with `SetColorTexture`. No widget sets a script

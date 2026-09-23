@@ -121,7 +121,7 @@ A suite whose `addonName` never loads waits for ever, and so does the run; `Rese
 2. the test body;
 3. every After hook, in registration order.
 
-Each step runs in its own coroutine and receives the same `ctx`. A failing Before hook skips the remaining Before hooks and the body; a failing body skips nothing but itself. After hooks always run, each one even when an earlier one failed. The **first** failure decides the result: a failing After hook does not hide why the body failed, and fails a test that had passed.
+Each step runs in its own coroutine and receives the same `ctx`. A failing Before hook skips the remaining Before hooks and the body; a failing body skips nothing but itself. After hooks always run, each one even when an earlier one failed, as long as their time window lasts (see below). The **first** failure decides the result: a failing After hook does not hide why the body failed, and fails a test that had passed.
 
 ### Outcomes
 
@@ -132,7 +132,7 @@ Each step runs in its own coroutine and receives the same `ctx`. A failing Befor
 | `"timeout"` | The Before hooks and body did not finish within `timeoutSeconds`. |
 | `"skipped"` | Registered with `Skip`, or its suite's phase can no longer be reached. |
 
-A test that outlives its limit is abandoned: its coroutine is dropped where it is suspended, and its After hooks run next with a fresh window of `timeoutSeconds`. After hooks that outlive theirs are abandoned too and fail the test (`an After hook did not finish within N seconds`). Only a suspended test can time out: Lua cannot interrupt a step that never yields.
+A test that outlives its limit is abandoned: its coroutine is dropped where it is suspended, and its After hooks run next with a fresh window of `timeoutSeconds`. After hooks share that second window: the hook that outlives it is abandoned and fails the test (`an After hook did not finish within N seconds`), and the After hooks registered after it are not started. Only a suspended test can time out: Lua cannot interrupt a step that never yields.
 
 ## The test context
 
@@ -268,7 +268,7 @@ Every suite with at least one result appears, in registration order; tests appea
 
 ## Error behaviour
 
-Argument failures report the line that called the public method, never a line inside TestKit; inside a test that line is the test's own, and the error fails the test. Messages name the method (`TestKit:Suite`, `TestKit.Suite:Test`, `TestKit.Context:WaitFor`, `TestKit.Matcher:ToBe`). A method called on the wrong receiver raises `TestKit.Suite:Test must be called on a TestKit suite`.
+Argument failures report the line that called the public method, never a line inside TestKit; inside a test that line is the test's own, and the error fails the test. Messages name the method (`TestKit:Suite`, `TestKit.Suite:Test`, `TestKit.Context:WaitFor`, `TestKit.Matcher:ToBe`). A method called on the wrong receiver raises `TestKit.Suite:Test must be called on a TestKit suite`; a facade method called with a dot, such as `TestKit.Run("MyAddon")`, raises `TestKit:Run must be called on the TestKit facade` instead of shifting its arguments.
 
 ## Performance
 

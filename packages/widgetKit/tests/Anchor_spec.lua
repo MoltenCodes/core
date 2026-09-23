@@ -177,4 +177,17 @@ describe("WidgetKit anchors", function()
             end
         )
     end)
+
+    it("leaves a frame the current code may not touch alone", function()
+        local frame = TestEnv.GetGlobal("CreateFrame")("Frame", nil, TestEnv.GetGlobal("UIParent"))
+        frame:SetPoint("CENTER")
+        function frame.CanBeAccessedInContext()
+            return false
+        end
+        local applied, reason = Anchor.Apply(frame, { point = "TOP", scale = 2 })
+        assert.is_false(applied)
+        assert.are.equal("forbidden", reason)
+        assert.are.equal("CENTER", (frame:GetPoint(1)))
+        assert.are.equal(1, frame:GetScale())
+    end)
 end)

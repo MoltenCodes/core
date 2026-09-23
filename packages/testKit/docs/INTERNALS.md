@@ -93,7 +93,7 @@ The **runner** is one SchedulerKit job at a time. Its body loops:
 - a step that raised records a failure; a failed step before `afterStart` jumps to `afterStart`, one after it moves to the next After hook;
 - a step that returned moves to the next step;
 - a step that yielded a token becomes an outcome (`yield`, `wait`, `nextFrame`); any other yielded value fails the test;
-- when `timedOut` is set, the suspended step is dropped (`abandonStep`) and the next resume moves on.
+- when `timedOut` is set, the suspended step is dropped (`abandonStep`) and the next resume moves on. Before `afterStart` that jump lands on the first After hook and re-arms the deadline; past it `timedOut` stays set, so every remaining After hook is abandoned in turn without being started (the first failure is the one recorded).
 
 `finishStep` re-arms the deadline when the step index crosses `afterStart`, which is what gives After hooks their own window. `recordFailure` keeps the first failure only.
 

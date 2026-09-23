@@ -574,6 +574,18 @@ end
 -- TestKit. `level` is always the value `error` needs *inside the function that
 -- receives it*, so every further hop towards `error` adds exactly one.
 
+---Refuse a facade method called with anything but the facade, as a dot call
+---such as `TestKit.Run("MyAddon")` does: it would shift every argument by one
+---and, for `Run`, run every suite instead of the one named.
+---@param value any
+---@param methodName string
+---@param level integer
+local function validateFacade(value, methodName, level)
+    if value ~= TestKit then
+        error(methodName .. " must be called on the TestKit facade", level)
+    end
+end
+
 ---@param value any
 ---@param methodName string
 ---@param level integer
@@ -1029,14 +1041,12 @@ local function matcherToBeSecure(self, target, key)
 
     local subject = (target == nil and "global " or "field ") .. quoteString(key)
     local probe = readHostFunction("issecurevariable")
+    local secure, taintedBy = false, nil
     if probe == nil then
         refuse(subject, "issecurevariable is not available on this host", 3)
-    end
-
-    local secure, taintedBy = false, nil
-    if probe ~= nil and target == nil then
+    elseif target == nil then
         secure, taintedBy = probe(key)
-    elseif probe ~= nil then
+    else
         secure, taintedBy = probe(target, key)
     end
     local detail = nil
@@ -1582,7 +1592,9 @@ local function stepTest(record)
     local routine = record.coroutine
     if routine == false then
         if record.timedOut then
-            -- The After hooks' own window ran out between two hooks.
+            -- An After hook was abandoned because the After hooks' shared
+            -- window ran out; the hooks after it get no time and are not
+            -- started.
             abandonStep(record)
             return OUTCOME_CONTINUE
         end
@@ -2009,7 +2021,8 @@ end
 ---@param options TestKit.SuiteOptions?
 ---@return TestKit.Suite?
 ---@return string?
-local function packageSuite(_, name, options)
+local function packageSuite(self, name, options)
+    validateFacade(self, "TestKit:Suite", 3)
     validateName(name, "TestKit:Suite name", 3)
     if string.find(name, FILTER_SEPARATOR, 1, true) ~= nil then
         error('TestKit:Suite name must not contain "/"', 2)
@@ -2049,7 +2062,8 @@ end
 ---@param filter string?
 ---@return integer? queued
 ---@return string? reason
-local function packageRun(_, filter)
+local function packageRun(self, filter)
+    validateFacade(self, "TestKit:Run", 3)
     local suiteName, testName = readFilter(filter, 3)
     getTimerScope("TestKit:Run", 3)
 
@@ -2084,7 +2098,8 @@ end
 ---Return the structured results of every test that has run since the last
 ---`Reset`. Allocates a fresh report on every call.
 ---@return TestKit.Report
-local function packageReport(_)
+local function packageReport(self)
+    validateFacade(self, "TestKit:Report", 3)
     return buildReport()
 end
 
@@ -2093,7 +2108,8 @@ end
 ---@param callback TestKit.FinishedCallback
 ---@return true?
 ---@return string?
-local function packageOnFinished(_, callback)
+local function packageOnFinished(self, callback)
+    validateFacade(self, "TestKit:OnFinished", 3)
     validateFunction(callback, "TestKit:OnFinished callback", 3)
     if #finishedCallbacks >= MAX_FINISHED_CALLBACKS then
         return nil, REASON_FULL
@@ -2106,7 +2122,8 @@ end
 ---replacements are restored and no `OnFinished` callback is called. Suites
 ---and `OnFinished` callbacks stay registered.
 ---@return true
-local function packageReset(_)
+local function packageReset(self)
+    validateFacade(self, "TestKit:Reset", 3)
     if rawget(state, "executing") then
         error("TestKit:Reset cannot be called from inside a running test", 2)
     end

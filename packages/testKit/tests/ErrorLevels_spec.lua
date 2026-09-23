@@ -104,6 +104,41 @@ describe("TestKit error levels", function()
                     TestKit:OnFinished(nil)
                 end,
             },
+            {
+                "TestKit:Run must be called on the TestKit facade",
+                function(mark)
+                    mark()
+                    TestKit.Run("MyAddon")
+                end,
+            },
+            {
+                "TestKit:Suite must be called on the TestKit facade",
+                function(mark)
+                    mark()
+                    TestKit.Suite("MyAddon")
+                end,
+            },
+            {
+                "TestKit:Report must be called on the TestKit facade",
+                function(mark)
+                    mark()
+                    TestKit.Report()
+                end,
+            },
+            {
+                "TestKit:OnFinished must be called on the TestKit facade",
+                function(mark)
+                    mark()
+                    TestKit.OnFinished(noop)
+                end,
+            },
+            {
+                "TestKit:Reset must be called on the TestKit facade",
+                function(mark)
+                    mark()
+                    TestKit.Reset()
+                end,
+            },
         }
         for index = 1, #cases do
             assertReportedAtCaller(cases[index][1], cases[index][2])

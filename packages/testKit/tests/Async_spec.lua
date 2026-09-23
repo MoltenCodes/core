@@ -64,6 +64,44 @@ describe("TestKit asynchronous tests", function()
         assert.are.same({ false, "timeout" }, received)
     end)
 
+    it("settles WaitFor by whichever of the timeout and the event came first", function()
+        -- Both arrive before the runner resumes the waiting test, in either
+        -- order; the first one decides and the second is ignored.
+        local results = {}
+        local suite = TestKit:Suite("MyAddon")
+        suite:Test("timeout first", function(ctx)
+            results[#results + 1] = { ctx:WaitFor("UNIT_AURA", 0.5) }
+        end)
+        suite:Test("event first", function(ctx)
+            results[#results + 1] = { ctx:WaitFor("UNIT_AURA", 0.5) }
+        end)
+
+        ---Fire the native timer that carries this test's 0.5-second wait.
+        local function fireWaitTimer()
+            local timers = TestEnv.NativeTimers()
+            for index = #timers, 1, -1 do
+                if timers[index].seconds == 0.5 then
+                    assert.is_true(TestEnv.FireNative(index))
+                    return
+                end
+            end
+            error("no 0.5-second native timer")
+        end
+
+        TestKit:Run()
+        TestEnv.Frame()
+        fireWaitTimer()
+        TestEnv.Emit("UNIT_AURA", "player")
+        TestEnv.Frame()
+        assert.are.same({ { false, "timeout" } }, results)
+
+        TestEnv.Frame()
+        TestEnv.Emit("UNIT_AURA", "target")
+        fireWaitTimer()
+        TestEnv.Frame()
+        assert.are.same({ { false, "timeout" }, { true, "target" } }, results)
+    end)
+
     it("polls WaitUntil once per frame until the predicate holds", function()
         local polls = 0
         local ready = false

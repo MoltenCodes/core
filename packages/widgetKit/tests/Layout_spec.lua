@@ -286,4 +286,54 @@ describe("WidgetKit layouts", function()
             group:SetLayout("Nope")
         end)
     end)
+
+    it("Flow keeps children that exactly fill a row on that row", function()
+        -- Ten tenths of a 107-wide content sum to a hair above 107 in floating
+        -- point; the row must not wrap for it.
+        local group = groupAt(WidgetKit, 123, "Flow")
+        local content = group:GetContent()
+        local children = {}
+        for index = 1, 10 do
+            children[index] = box(WidgetKit, 5, 10)
+            children[index]:SetRelativeWidth(0.1)
+        end
+        group:AddChildren(unpack(children))
+        local point, relativeTo, relativePoint, _, y = children[10].frame:GetPoint(1)
+        assert.are.same(
+            { "TOPLEFT", content, "TOPLEFT", 0 },
+            { point, relativeTo, relativePoint, y }
+        )
+        assert.are.equal(10 + 16, group:GetHeight())
+    end)
+
+    it("never sizes a child below zero when insets leave the content no width", function()
+        -- A Group 10 wide has a content 6 pixels narrower than nothing.
+        for _, layout in ipairs({ "List", "Flow" }) do
+            local group = groupAt(WidgetKit, 10, layout)
+            assert.is_true(group:GetContent():GetWidth() < 0)
+            local child = box(WidgetKit, 5, 5)
+            child:SetRelativeWidth(0.5)
+            group:AddChild(child)
+            assert.are.equal(0, child:GetWidth())
+            WidgetKit:Release(group)
+        end
+    end)
+
+    it("refuses a layout its own OnLayoutStart hook asks for", function()
+        local results = {}
+        WidgetKit:RegisterType("SpecHookedContainer", function()
+            local createFrame = TestEnv.GetGlobal("CreateFrame")
+            local frame = createFrame("Frame")
+            return {
+                frame = frame,
+                content = createFrame("Frame", frame),
+                OnLayoutStart = function(self)
+                    results[#results + 1] = { self:PerformLayout() }
+                end,
+            }
+        end, 1)
+        local container = WidgetKit:Create("SpecHookedContainer")
+        assert.is_true(container:PerformLayout())
+        assert.are.same({ { false, "recursion" } }, results)
+    end)
 end)

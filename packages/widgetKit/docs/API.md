@@ -48,10 +48,10 @@ Package facade:
 | `RegisterType(name, constructor, version, options?)` | Register a widget type, or replace an older version. `true`, or `false, "older"` / `false, "current"`. |
 | `GetTypeVersion(name)` | The registered version, or `nil`. |
 | `Create(name)` | Acquire a widget, or `nil, "unknownType"` / `nil, "exhausted"`. |
-| `Release(widget)` | Release a widget and everything below it. |
+| `Release(widget)` | Release a widget and everything below it; `true`. Refusals are listed in [The release contract](#the-release-contract). |
 | `IsWidget(value)` | Whether `value` is an active widget. |
-| `RegisterLayout(name, layout)` / `GetLayout(name)` | Layout registry. `RegisterLayout` returns `false, "taken"` for a name in use. |
-| `SetFocus(widget)` / `ClearFocus()` / `GetFocus()` | One focused widget per session. |
+| `RegisterLayout(name, layout)` / `GetLayout(name)` | Layout registry. `RegisterLayout` returns `true`, or `false, "taken"` for a name in use; `GetLayout` the function or `nil`. |
+| `SetFocus(widget)` / `ClearFocus()` / `GetFocus()` | One focused widget per session. `SetFocus` returns `true` and calls the previous widget's `OnFocusLost` hook; `ClearFocus` returns `false` when nothing was focused; `GetFocus` returns the widget or `nil`. |
 | `GetStatistics()` | Counters per type and in total (allocates). |
 | `BindPosition(frame, storageTable, options?)` | Bind a frame's position to a storage table; returns a binding. |
 | `RenderOptions(tree, container, options?)` | Render an OptionsKit tree; returns a rendering. |
@@ -65,14 +65,14 @@ Widget base (`WidgetKit.Widget`), on every widget:
 
 | Method | Purpose |
 |---|---|
-| `SetCallback(name, callback)` | Set or (with `nil`) remove the callback for `name`. At most 16 names per widget. |
+| `SetCallback(name, callback)` | Set or (with `nil`) remove the callback for `name`. A 17th name raises `... holds at most 16 callbacks per widget`. |
 | `Fire(name, ...)` | Call `callback(widget, name, ...)`; `true` when it ran without raising. Errors are reported through the host error handler, never raised. |
-| `SetUserData(key, value)` / `GetUserData(key)` | Consumer state, cleared on release. |
+| `SetUserData(key, value)` / `GetUserData(key)` | Consumer state, cleared on release. A `nil` key raises in `SetUserData` and reads `nil` in `GetUserData`; a secret key is refused. |
 | `SetWidth`, `SetHeight`, `GetWidth`, `GetHeight` | Size methods forwarded to the frame; the setters call the type's `OnWidthSet` / `OnHeightSet` hooks. |
-| `SetFullWidth(bool)`, `IsFullWidth()`, `SetFullHeight(bool)`, `IsFullHeight()`, `SetRelativeWidth(fraction?)`, `GetRelativeWidth()` | Size requests layouts read. `SetFullWidth(true)` clears a relative width and the other way round. |
+| `SetFullWidth(bool)`, `IsFullWidth()`, `SetFullHeight(bool)`, `IsFullHeight()`, `SetRelativeWidth(fraction?)`, `GetRelativeWidth()` | Size requests layouts read. `SetFullWidth(true)` clears a relative width and the other way round. A fraction must be above 0 and at most 1; `nil` clears it. |
 | `SetPoint(...)`, `ClearAllPoints()`, `GetPoint(index?)`, `GetNumPoints()` | Anchor methods forwarded to the frame. |
-| `SetParent(frameOrWidget)` | Re-parent a widget that is not inside a container. |
-| `SetDisabled(disabled?)` | Every base widget greys out and ignores input; the base method only checks its argument, for types that cannot be disabled. |
+| `SetParent(frameOrWidget)` | Re-parent a widget that is not inside a container, to a frame, to a widget (its content frame when it is a container) or to `nil`. Raises for a widget inside a container. |
+| `SetDisabled(disabled?)` | Checks that `disabled` is a boolean or `nil`, and does nothing else. A type that can be disabled defines its own; see [Base widgets](#base-widgets). |
 | `Show()`, `Hide()`, `IsShown()`, `IsVisible()` | Visibility methods forwarded to the frame; `Hide` clears the focus when this widget holds it. |
 | `IsReleasing()` | Whether this widget or any container above it is being released. |
 | `GetType()`, `GetFrame()`, `GetParentContainer()` | Introspection. |
@@ -82,11 +82,11 @@ Container base (`WidgetKit.Container`), on every widget whose constructor set `c
 
 | Method | Purpose |
 |---|---|
-| `AddChild(child, beforeWidget?)` | Add, or move, a child; lays out unless paused. `true`, or `nil, "full"`. |
-| `AddChildren(...)` | Add several and lay out once. Returns how many were added, and `"full"` when it stopped early. |
+| `AddChild(child, beforeWidget?)` | Add, or move, a child; lays out unless paused. `true`, or `nil, "full"`. Raises when the container is being released, when `child` is not an active widget, is being released or is this container or one above it, and when `beforeWidget` is not a child of this container or is `child`. |
+| `AddChildren(...)` | Checks every argument as `AddChild` does before adding any, adds them in order and lays out once. Returns how many were added, and `"full"` when it stopped early. |
 | `ReleaseChildren()` | Release every child, last first. Lays nothing out. Returns the count. |
 | `GetChildren()`, `GetNumChildren()`, `GetContent()` | The children array (read it, never change it), its length, the content frame. |
-| `SetLayout(nameOrFunction)`, `GetLayoutName()` | The container's layout; default `"List"`. |
+| `SetLayout(nameOrFunction)`, `GetLayoutName()` | The container's layout; default `"List"`. A name that is not registered raises. `GetLayoutName` answers `nil` for a layout set as a function. |
 | `PauseLayout()`, `ResumeLayout()`, `IsLayoutPaused()` | Neither pausing nor resuming lays anything out. |
 | `PerformLayout()` | Lay out now. `true`, or `false` and `"paused"`, `"recursion"`, `"releasing"` or `"depth"`. |
 | `LayoutFinished(width, height)` | The upward size report; see [The layout contract](#the-layout-contract). |
@@ -134,7 +134,7 @@ local width, height = layout(content, children, container, scratch)
 
 `LayoutFinished` calls the container type's `OnLayoutFinished(width, height)` hook — a `Group` sets its height to the content's plus its insets, a `ScrollFrame` sizes its scroll child — and, when the hook changed the container's height, lays out the container holding it, unless that one is paused, is being released or is itself inside its pass. That is the whole upward report: nothing reacts to `OnSizeChanged`, so layout never re-enters itself through the client.
 
-`PerformLayout` on a container that is inside its own pass returns `false, "recursion"`; nested passes deeper than 32 return `false, "depth"`. A layout error is re-raised unchanged after the container's layout state is restored.
+`PerformLayout` on a container that is inside its own pass — from its layout, or from its `OnLayoutStart` hook, which runs inside the pass — returns `false, "recursion"`; nested passes deeper than 32 return `false, "depth"`. A layout error is re-raised unchanged after the container's layout state is restored.
 
 Built-in layouts:
 
@@ -144,7 +144,7 @@ Built-in layouts:
 | `Fill` | The first shown child fills the content. Other children are left alone. |
 | `Flow` | Children left to right, wrapping to a new row when the next would pass the right edge. A full-width child takes a row of its own; a full-height child takes the height left below its row's top. |
 
-All three skip hidden children and put no spacing between children; widgets carry their own margins.
+All three skip hidden children and put no spacing between children; widgets carry their own margins. A content frame with a negative size (insets wider than the container) counts as zero wide or high, so no child is sized below zero. `Flow` lets a row overflow by up to 0.001 pixels, so children whose relative widths add up to the whole row share it despite floating-point rounding.
 
 ## The versioning rule
 
@@ -178,7 +178,7 @@ An anchor is a plain table:
 |---|---|
 | `Anchor.FromRect(rect, parentRect, into?)` | Pure: for rectangles `{ left, bottom, width, height }`, elect the nearest point and return the anchor (without `relativeTo` and `scale`) that keeps the rect where it is. With `into`, fills that table and allocates nothing. |
 | `Anchor.Normalize(frame, point, ...)` | Turn any `SetPoint` argument form into an anchor. `nil` as the relative frame is resolved to the parent. |
-| `Anchor.Apply(frame, anchor)` | `ClearAllPoints`, `SetScale` when the anchor has a scale, `SetPoint`. `true`, or `false, "unknownRelative"` when `relativeTo` names no frame (the frame is left alone). |
+| `Anchor.Apply(frame, anchor)` | `ClearAllPoints`, `SetScale` when the anchor has a scale, `SetPoint`. `true`; or, leaving the frame alone, `false, "forbidden"` for a frame `IsForbidden` or `CanBeAccessedInContext` refuses and `false, "unknownRelative"` when `relativeTo` names no frame. An anchor it cannot read raises at the caller. |
 | `Anchor.Read(frame)` | The frame's first anchor, normalised, or `nil`. |
 | `Anchor.POINTS` | The nine points in election order. |
 
@@ -201,9 +201,10 @@ binding:OnMoved(function(binding, anchor) end)
 |---|---|
 | `Capture()` | Read the frame's rect in screen coordinates, elect the nearest point of its parent, re-anchor the frame there, save (debounced), fire `OnMoved`. Returns the anchor, or `nil` and `"notPositioned"`, `"released"` or `"forbidden"` (a frame `IsForbidden` or `CanBeAccessedInContext` refuses, which `Restore` leaves alone too). |
 | `Restore()` | Apply the saved anchor; `false` when none is saved. An anchor it cannot read is reported and the frame keeps its place. |
-| `Flush()` | Save a debounced anchor now. |
-| `OnMoved(callback)` | Connect `callback(binding, anchor)`; returns a SignalKit connection. |
-| `Release()` | Flush, stop the debounce, disconnect every listener. |
+| `Flush()` | Save a debounced anchor now; `false` when nothing was pending, without SchedulerKit, or once released. |
+| `OnMoved(callback)` | Connect `callback(binding, anchor)`; returns a SignalKit connection. Raises on a released binding. |
+| `Release()` | Flush, stop the debounce, disconnect every listener. `true`, or `false` when it was already released. |
+| `IsReleased()` | Whether `Release` ran. |
 
 A save writes a fresh plain table, so a SettingsKit scope view validates and stores it like any record; declare the fields `point`, `relativeTo`, `relativePoint` (strings), `x`, `y` and `scale` (numbers), all optional. An unnamed relative frame is saved as `nil`, meaning the parent. A binding never sets a script on the frame: call `Capture()` from your own drag handler, as the `Frame` widget does from its title bar.
 
@@ -239,9 +240,10 @@ Every widget is full width and the container uses its own layout. Nodes are rend
 
 | Rendering method | Purpose |
 |---|---|
-| `Refresh()` | Re-read every value and state; rebuild when an option was shown or hidden. |
-| `Rebuild()` | Release every rendered widget and build again from a fresh `Describe`. |
-| `Release()` | Release every rendered widget together, disconnect from the tree and lay the container out. The container itself stays yours. |
+| `Refresh()` | Re-read every value and state; rebuild when an option was shown or hidden. `false` once released or when that rebuild failed. |
+| `Rebuild()` | Release every rendered widget and build again from a fresh `Describe`. `false` once released, or when building failed (reported through the host error handler; the rendering is then empty). |
+| `Release()` | Release every rendered widget together, disconnect from the tree and lay the container out. The container itself stays yours. `true`, or `false` when it was already released. |
+| `IsReleased()` | Whether the rendering was released, by `Release` or with its container. |
 | `GetWidget(path)` | The widget drawing an option (a `Group` for `multiselect`), or `nil`. |
 | `GetMessage(path)` | The inline refusal shown below an option, or `nil`. |
 
@@ -253,24 +255,60 @@ Every widget is full width and the container uses its own layout. Nodes are rend
 
 ## Base widgets
 
-Every base widget has `SetDisabled(disabled)`. Text setters take `(text, options?)`, where `options.allowSecret` lets a secret through; `nil` clears the text.
+Text setters take `(text, options?)`: a string or a number is shown, `nil` clears the text, anything else raises, and a secret is refused unless `options.allowSecret` is `true`. Text getters return what the widget shows (`""` once cleared). Every argument error is raised at the caller's line and names the method, as in `WidgetKit Slider:SetSliderValues minimum must not be greater than maximum`.
 
-| Type | Methods | Callbacks |
+`SetDisabled(disabled?)` greys a widget out and, where it takes input, ignores it. `Group`, `Label` and `Heading` grey their text; `Button`, `CheckBox`, `Slider`, `EditBox`, `Dropdown` and `ColorPicker` also stop taking input (a disabled `Button` leaves key capture, a disabled `Dropdown` closes its list, a disabled `EditBox` loses the keyboard). `Frame`, `ScrollFrame` and `Spacer` use the base method, which only checks its argument.
+
+| Type | Method | Returns, and what it refuses |
 |---|---|---|
-| `Frame` | `SetTitle`, `GetTitle`, `SetResizable`, `SetMovable`, `BindPosition(storage, options?)`, `GetBinding` | `OnClose`, `OnMoved`, `OnResize(width, height)` |
-| `Group` | `SetTitle`, `GetTitle` | — |
-| `ScrollFrame` | `GetContentHeight`, `GetScrollRange`, `GetScroll`, `SetScroll(offset)` | — |
-| `Label` | `SetText`, `GetText`, `SetFontObject`, `SetColor`, `SetJustifyH` | — |
-| `Button` | `SetText`, `GetText`, `SetKeyCapture(enabled)`, `IsCapturing` | `OnClick(mouseButton)`, `OnKeyCaptured(key)`, `OnKeyCaptureCancelled` |
-| `CheckBox` | `SetValue`, `GetValue`, `SetTriState`, `SetLabel`, `GetLabel` | `OnValueChanged(value)` |
-| `Slider` | `SetSliderValues(min, max, step?)`, `SetValue`, `GetValue`, `SetIsPercent`, `SetLabel`, `GetLabel` | `OnValueChanged(value)` |
-| `EditBox` | `SetText`, `GetText`, `SetMultiLine(multiLine, lines?)`, `IsMultiLine`, `SetMaxLetters`, `SetFocus`, `SetLabel`, `GetLabel` | `OnEnterPressed(text)`, `OnTextChanged(text)`, `OnEscapePressed` |
-| `Dropdown` | `SetList(values, order?)`, `SetValue`, `GetValue`, `GetNumEntries`, `Open`, `Close`, `IsOpen`, `PickIndex(index)`, `SetLabel`, `GetLabel` | `OnValueChanged(key)` |
-| `ColorPicker` | `SetColor(r, g, b, a?)`, `GetColor`, `SetHasAlpha`, `OpenPicker`, `SetLabel`, `GetLabel` | `OnValueChanged(r, g, b, a)` |
-| `Heading` | `SetText`, `GetText` | — |
-| `Spacer` | — | — |
+| `Frame` | `SetTitle(text, options?)`, `GetTitle()` | The title bar's text. |
+| | `SetResizable(resizable)`, `SetMovable(movable)` | Booleans only. A new window is both. |
+| | `BindPosition(storageTable, options?)` | A binding, as `WidgetKit:BindPosition` makes for the window's frame; a binding the window already had is released first. Released with the window. |
+| | `GetBinding()` | The binding, or `nil`. |
+| `Group` | `SetTitle(text, options?)`, `GetTitle()` | The content moves below a title and back up without one. |
+| `ScrollFrame` | `GetContentHeight()`, `GetScrollRange()`, `GetScroll()` | Numbers: the height the last layout used, how far it can scroll, the current offset. |
+| | `SetScroll(offset)` | A number, clamped to `0 .. GetScrollRange()`. |
+| `Label` | `SetText(text, options?)`, `GetText()` | The label's height follows its text; a secret text is one line high. |
+| | `SetFontObject(fontObject)` | A font object or its global name. |
+| | `SetColor(red, green, blue, alpha?)` | Numbers; `alpha` defaults to `1`. Kept while disabled and shown again when enabled. |
+| | `SetJustifyH(justify)` | `"LEFT"`, `"CENTER"` or `"RIGHT"`. |
+| `Button` | `SetText(text, options?)`, `GetText()` | The button's text. |
+| | `SetKeyCapture(enabled)` | A boolean. With it on, a left click listens for one key; turning it off stops listening without a callback. |
+| | `IsCapturing()` | Whether it is listening for a key now. |
+| `CheckBox` | `SetValue(value)`, `GetValue()` | `true`, `false` or `nil` (the third state; `false` without `SetTriState(true)`). |
+| | `SetTriState(enabled)` | A boolean. Turning it off turns a third-state value into `false`. |
+| | `SetLabel(text, options?)`, `GetLabel()` | The text beside the box. |
+| `Slider` | `SetSliderValues(minimum, maximum, step?)` | Numbers, `minimum` at most `maximum`, `step` not negative (`0` or `nil` for no snapping). The value is snapped and clamped again. |
+| | `SetValue(value)`, `GetValue()` | A number, snapped to the step from `minimum` and clamped to the range. |
+| | `SetIsPercent(isPercent)` | A boolean: the value box shows `value × 100` with `%` and reads typed values back as percentages. |
+| | `SetLabel(text, options?)`, `GetLabel()` | The text above the slider. |
+| `EditBox` | `SetText(text, options?)`, `GetText()` | The text of the box in use. |
+| | `SetMultiLine(multiLine, lines?)`, `IsMultiLine()` | A boolean and a positive integer of visible lines (default 4). The text moves to the box in use; a multi-line box shows an accept button. |
+| | `SetMaxLetters(letters)` | `0` for no limit, or a positive integer. |
+| | `SetFocus()` | Gives the box the keyboard and makes the widget WidgetKit's focused widget. |
+| | `SetLabel(text, options?)`, `GetLabel()` | The text above the box. |
+| `Dropdown` | `SetList(values, order?)` | `values` maps keys (strings or numbers) to string labels, at most 1024 entries. `order` lists keys in display order, skipping keys without a label; without it entries are sorted by label, then by key (numbers first). Every entry is checked before anything changes. |
+| | `SetValue(key)`, `GetValue()` | A string, a number or `nil`; a key not in the list shows no label. |
+| | `GetNumEntries()` | The number of entries. |
+| | `Open()`, `Close()`, `IsOpen()` | `Open` returns `false` when disabled or empty, `true` otherwise. |
+| | `PickIndex(index)` | Chooses the entry at a positive integer `index` in display order as a click on its row does, firing `OnValueChanged`; `false` past the last entry or when disabled. |
+| | `SetLabel(text, options?)`, `GetLabel()` | The text above the button. |
+| `ColorPicker` | `SetColor(red, green, blue, alpha?)`, `GetColor()` | Numbers; `alpha` defaults to `1`. `GetColor` returns all four. |
+| | `SetHasAlpha(hasAlpha)` | A boolean: whether the client picker offers opacity. |
+| | `OpenPicker()` | `true` when the client picker opened. `false` when disabled, and `false` after firing `OnValueChanged` with the current colour on a client without a usable picker. |
+| | `SetLabel(text, options?)`, `GetLabel()` | The text beside the swatch. |
+| `Heading` | `SetText(text, options?)`, `GetText()` | A centred title between two lines; full width from `Create` on. |
+| `Spacer` | — | Empty space, 10 × 8 until resized. |
 
-Every widget also fires `OnRelease` when it is released. Programmatic setters (`SetValue`, `SetText`, `SetColor`) never fire callbacks; only user input does.
+| Type | Callbacks, fired by user input |
+|---|---|
+| `Frame` | `OnClose` (the close button, after the frame hid), `OnMoved` (a drag ended, after a bound position was captured), `OnResize(width, height)` (a resize ended, after the window was laid out) |
+| `Button` | `OnClick(mouseButton)`; with key capture `OnKeyCaptured(key)` (`"ALT-CTRL-SHIFT-"` prefixes as held; `""` from a right click, to unbind) and `OnKeyCaptureCancelled` (`ESCAPE`) |
+| `CheckBox`, `Slider`, `Dropdown` | `OnValueChanged(value)` |
+| `EditBox` | `OnEnterPressed(text)`, `OnTextChanged(text)`, `OnEscapePressed` |
+| `ColorPicker` | `OnValueChanged(red, green, blue, alpha)` |
+
+Every widget also fires `OnRelease` when it is released. Programmatic setters (`SetValue`, `SetText`, `SetColor` and the others above) never fire callbacks. Two methods stand in for user input and do: `Dropdown:PickIndex`, and `ColorPicker:OpenPicker` on a client without a usable picker.
 
 **Dropdown lists** are parented to `UIParent` (the widget's frame without one) at the `FULLSCREEN_DIALOG` strata, so a `ScrollFrame` or any clipping parent cannot cut them off. While a list is open, one invisible full-screen frame owned by WidgetKit — one for the session, at the `FULLSCREEN` strata just below the list — closes it on a click anywhere else. Opening a list closes any other open list; hiding or releasing the dropdown closes its list. `SetList` checks every entry before it changes anything, so a refused list leaves the dropdown as it was.
 
@@ -284,7 +322,7 @@ local slider = WidgetKit:Create("Slider") --[[@as WidgetKit.Slider]]
 
 ## Secret values
 
-A font string can display a secret value, but whether one should appear is the caller's decision (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every text setter refuses a secret at your line — `WidgetKit Label:SetText text must not be a secret value unless options.allowSecret is true` — unless you pass `{ allowSecret = true }`. A secret text is never measured (a `Label` showing one is one line high). Values a widget would compare (`CheckBox:SetValue`, `Dropdown:SetValue`, `Dropdown:SetList`, numbers, names, user-data keys) are refused when secret. Released widgets clear their texts. The renderer never inspects a secret value: an `input` shows it only with `allowSecret`, every other kind is disabled.
+A font string can display a secret value, but whether one should appear is the caller's decision (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every text setter refuses a secret at your line — `WidgetKit Label:SetText text must not be a secret value unless options.allowSecret is true` — unless you pass `{ allowSecret = true }`. A secret text is never measured (a `Label` showing one is one line high). Values a widget would compare (`CheckBox:SetValue`, `Dropdown:SetValue`, `Dropdown:SetList`, numbers, counts and indices such as `SetMaxLetters` and `PickIndex`, names, user-data keys) are refused when secret. Released widgets clear their texts. The renderer never inspects a secret value: an `input` shows it only with `allowSecret`, every other kind is disabled.
 
 ## Error behaviour
 
@@ -395,5 +433,5 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`Frame:BindPosition(storage, options?)`** binds the window to a storage table and releases the binding with the window; the plan named only `WidgetKit:BindPosition`.
 - **A SettingsKit scope view is passed directly as the storage table**; WidgetKit never looks SettingsKit up, which is why it appears among the optional dependencies only as a documented storage shape.
 - **The `execute` confirmation text is a render option (`confirmText`),** not an option field: OptionsKit refuses fields its kinds do not declare. A `confirm` string on the option is still asked as it is.
-- **Additions:** `IsWidget`, `GetFocus`, `GetParentContainer`, `GetChildren`, `GetNumChildren`, `GetContent`, `GetLayoutName`, `IsLayoutPaused`, `Anchor.POINTS`, an `into` table for `FromRect`, `binding:Capture`, `Restore`, `Flush`, `IsReleased`, `rendering:Rebuild`, `GetWidget`, `GetMessage`, `CreateMediaPicker`, and `options.allowSecret` / `options.media` for the renderer.
+- **Additions:** `IsWidget`, `GetFocus`, `GetParentContainer`, `GetChildren`, `GetNumChildren`, `GetContent`, `GetLayoutName`, `IsLayoutPaused`, `Anchor.POINTS`, an `into` table for `FromRect`, `binding:Capture`, `Restore`, `Flush`, `IsReleased`, `rendering:Rebuild`, `IsReleased`, `GetWidget`, `GetMessage`, `CreateMediaPicker`, and `options.allowSecret` / `options.media` for the renderer.
 - **Not rendered in generation 1:** an option's `desc` (there is no tooltip widget), `softMin` / `softMax`, `bigStep`, and `usage`. Groups are always nested `Group`s; tabs and trees of pages wait for a widget set that provides them.

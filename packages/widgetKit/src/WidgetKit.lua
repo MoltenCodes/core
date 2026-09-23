@@ -83,12 +83,6 @@ local MAX_CALLBACKS = 16
 -- cycle, so this only bounds a pathological custom layout.
 local MAX_LAYOUT_DEPTH = 32
 
--- The most entries a dropdown list holds, matching OptionsKit's `values` bound.
-local MAX_DROPDOWN_ENTRIES = 1024
-
--- Rows a dropdown list shows at once; the rest is reached with the wheel.
-local DROPDOWN_VISIBLE_ROWS = 16
-
 -- Retained scratch tables for layouts. Layouts nest at most
 -- `MAX_LAYOUT_DEPTH` deep, so one table per level is retained.
 local SCRATCH_RETAINED = MAX_LAYOUT_DEPTH
@@ -158,30 +152,6 @@ local BASE_TYPE_VERSIONS = {
 local LAYOUT_LIST = "List"
 local LAYOUT_FILL = "Fill"
 local LAYOUT_FLOW = "Flow"
-
--- What a widget shows instead of a secret value it was not allowed to show.
-local SECRET_PLACEHOLDER = "<secret value>"
-
--- Keys the client reports while a modifier alone is held; a key capture waits
--- for the key that comes with them.
-local MODIFIER_KEYS = {
-    LSHIFT = true,
-    RSHIFT = true,
-    LCTRL = true,
-    RCTRL = true,
-    LALT = true,
-    RALT = true,
-    LMETA = true,
-    RMETA = true,
-    UNKNOWN = true,
-}
-
--- Font objects for `description` options by `fontSize`.
-local DESCRIPTION_FONTS = {
-    small = "GameFontHighlightSmall",
-    medium = "GameFontHighlight",
-    large = "GameFontHighlightLarge",
-}
 
 -- Accepted option fields, as sets, so option validation allocates nothing.
 local TYPE_OPTION_KEYS = { maxCreated = true }
@@ -467,7 +437,7 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field POINTS string[] The nine points, in election order.
 ---@field FromRect fun(rect: WidgetKit.Rect, parentRect: WidgetKit.Rect, into: table?): WidgetKit.Anchor
 ---@field Normalize fun(frame: WidgetKit.Frame, point: string, ...: any): WidgetKit.Anchor
----@field Apply fun(frame: WidgetKit.Frame, anchor: WidgetKit.Anchor): true|false, "unknownRelative"?
+---@field Apply fun(frame: WidgetKit.Frame, anchor: WidgetKit.Anchor): true|false, "forbidden"|"unknownRelative"|nil
 ---@field Read fun(frame: WidgetKit.Frame): WidgetKit.Anchor?
 
 ---Options for `WidgetKit:BindPosition`.
@@ -924,6 +894,10 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validatePositiveInteger(value, label, level)
+    -- The comparisons below would raise inside WidgetKit on a secret number.
+    if isSecret(value) then
+        error(label .. " must not be a secret value", level)
+    end
     if
         type(value) ~= "number"
         or value ~= value
@@ -989,6 +963,9 @@ end
 --   layoutFunction    a layout function passed directly, or `nil`
 --   layoutPaused, layingOut
 --                     the container's layout state
+--   version           the type version whose constructor built the widget
+--   serial            raised on every acquire, so a holder tells uses apart
+--   renderings        the renderings drawn into the container, or `nil`
 
 ---The record of an active widget, or an error at the caller.
 ---@param widget any
@@ -1355,7 +1332,8 @@ function WidgetBase:GetFrame()
 end
 
 ---The base `SetDisabled` only checks its argument: a widget type that can be
----disabled defines its own, which is found first. Every base widget does.
+---disabled defines its own, which is found first. `Frame`, `ScrollFrame` and
+---`Spacer` have nothing to grey out and use this one.
 ---@param disabled boolean?
 function WidgetBase:SetDisabled(disabled)
     readDisabledBase(self, disabled)
@@ -1625,10 +1603,12 @@ function performLayout(container, record)
         layout = layouts[record.layoutName] or layouts[LAYOUT_LIST]
     end
 
-    callHook(container, "OnLayoutStart")
-
+    -- The pass is marked before `OnLayoutStart` runs, so a hook that asks for
+    -- a layout of its own container is refused with `"recursion"` instead of
+    -- recursing without bound.
     record.layingOut = true
     rawset(state, "layoutDepth", depth + 1)
+    callHook(container, "OnLayoutStart")
     local scratch = scratchPool:Acquire()
     local ok, width, height =
         pcall(layout, rawget(container, "content"), record.children, container, scratch)
@@ -1683,7 +1663,9 @@ end
 ---Full-width children span the content; relative widths are a fraction of it.
 ---@type WidgetKit.Layout
 local function listLayout(content, children)
-    local width = content:GetWidth()
+    -- Insets larger than the container leave the content a negative width;
+    -- no child is ever sized below zero.
+    local width = math.max(content:GetWidth(), 0)
     local offset = 0
     for index = 1, #children do
         local child = children[index]
@@ -1710,8 +1692,8 @@ end
 ---`Fill`: the first shown child fills the content; the others are left alone.
 ---@type WidgetKit.Layout
 local function fillLayout(content, children)
-    local width = content:GetWidth()
-    local height = content:GetHeight()
+    local width = math.max(content:GetWidth(), 0)
+    local height = math.max(content:GetHeight(), 0)
     for index = 1, #children do
         local child = children[index]
         local childRecord = records[child]
@@ -1733,7 +1715,11 @@ end
 ---own; a full-height child takes the height left below its row's top.
 ---@type WidgetKit.Layout
 local function flowLayout(content, children)
-    local width = content:GetWidth()
+    -- Relative widths are fractions of the content, so children that exactly
+    -- fill a row may sum to a hair above its width in floating point. A row
+    -- overflows only past this many pixels, far below anything visible.
+    local fitTolerance = 0.001
+    local width = math.max(content:GetWidth(), 0)
     local contentHeight = content:GetHeight()
     local x = 0
     local rowTop = 0
@@ -1754,7 +1740,7 @@ local function flowLayout(content, children)
 
             -- Wrap before a child that does not fit, or before a full-width
             -- child, unless the row is still empty.
-            if x > 0 and (childRecord.fullWidth or x + childWidth > width) then
+            if x > 0 and (childRecord.fullWidth or x + childWidth > width + fitTolerance) then
                 rowTop = rowTop + rowHeight
                 x = 0
                 rowHeight = 0
@@ -1954,9 +1940,7 @@ local function releaseWidget(widget, record)
     record.active = false
     local typeRecord = record.typeRecord
     local borrowed = typeRecord.borrowed
-    if borrowed ~= nil then
-        borrowed[record.version] = (borrowed[record.version] or 1) - 1
-    end
+    borrowed[record.version] = borrowed[record.version] - 1
     typeRecord.pool:Release(widget)
 end
 
@@ -2014,12 +1998,7 @@ local function registerType(self, name, constructor, version, options)
         local previousVersion = typeRecord.version
         typeRecord.constructor = constructor
         typeRecord.version = version
-        local borrowed = typeRecord.borrowed
-        if borrowed == nil then
-            borrowed = {}
-            typeRecord.borrowed = borrowed
-        end
-        local stale = borrowed[previousVersion] or 0
+        local stale = typeRecord.borrowed[previousVersion] or 0
         local pool = typeRecord.pool ---@type table
         local retired = pool:SetGeneration(version)
         local cap = pool:GetMaxCreated()
@@ -2094,22 +2073,15 @@ local function create(self, name)
         return nil, reason
     end
 
+    -- `buildWidget` and `releaseWidget` leave every other field of the record
+    -- at its default, so acquiring only marks it active and counts it.
     local record = records[widget]
     record.active = true
-    record.releasing = false
     local serial = (rawget(state, "serial") or 0) + 1
     rawset(state, "serial", serial)
     record.serial = serial
     local borrowed = typeRecord.borrowed
-    if borrowed == nil then
-        borrowed = {}
-        typeRecord.borrowed = borrowed
-    end
     borrowed[record.version] = (borrowed[record.version] or 0) + 1
-    record.parent = nil
-    record.layoutName = LAYOUT_LIST
-    record.layoutFunction = nil
-    record.layoutPaused = false
 
     local onAcquire = rawget(widget, "OnAcquire")
     if onAcquire ~= nil then
@@ -2482,14 +2454,18 @@ local function readAnchor(anchor, label, level)
 end
 
 ---Anchor `frame` at `anchor`, replacing its anchors and applying its scale.
+---A frame `IsForbidden` or `CanBeAccessedInContext` refuses is left alone.
 ---@param frame WidgetKit.Frame
 ---@param anchor WidgetKit.Anchor
 ---@return boolean applied
----@return string? reason `"unknownRelative"` when `relativeTo` names no frame
+---@return string? reason `"forbidden"`, or `"unknownRelative"` when `relativeTo` names no frame
 local function anchorApply(frame, anchor)
     validateAnchorFrame(frame, "WidgetKit.Anchor.Apply frame", 3)
     local point, relativeTo, relativePoint, x, y, scale =
         readAnchor(anchor, "WidgetKit.Anchor.Apply anchor", 3)
+    if not canTouchFrame(frame) then
+        return false, "forbidden"
+    end
     if type(relativeTo) == "string" then
         local resolved = readGlobal(relativeTo)
         if type(resolved) ~= "table" then
@@ -2796,9 +2772,6 @@ local LABEL_RED, LABEL_GREEN, LABEL_BLUE = 1, 0.82, 0
 local TEXT_RED, TEXT_GREEN, TEXT_BLUE = 1, 1, 1
 local DISABLED_RED, DISABLED_GREEN, DISABLED_BLUE = 0.5, 0.5, 0.5
 
--- One line of the default fonts, used where a text height cannot be measured.
-local LINE_HEIGHT = 12
-
 ---Check the text a widget is asked to display.
 ---
 ---`nil` clears; a string or number is shown; a secret value is refused unless
@@ -2974,13 +2947,11 @@ do
         return self._binding
     end
 
-    ---@param disabled boolean? `true` greys the widget out and ignores input
-    local function windowSetDisabled(self, disabled)
-        readDisabled(self, disabled, "WidgetKit Frame:SetDisabled", 3)
-    end
-
     local function windowOnAcquire(self)
         local frame = self.frame
+        -- A restored anchor applies its saved scale to the frame; the next
+        -- use of the window starts at the default one.
+        frame:SetScale(1)
         frame:SetSize(WINDOW_WIDTH, WINDOW_HEIGHT)
         frame:ClearAllPoints()
         frame:SetPoint("CENTER")
@@ -3060,7 +3031,6 @@ do
             SetMovable = windowSetMovable,
             BindPosition = windowBindPosition,
             GetBinding = windowGetBinding,
-            SetDisabled = windowSetDisabled,
         }
 
         titleBar:SetScript("OnDragStart", function()
@@ -3137,7 +3107,7 @@ do
         return self.titleText:GetText()
     end
 
-    ---@param disabled boolean? `true` greys the widget out and ignores input
+    ---@param disabled boolean? `true` greys the text out; the widget takes no input
     local function groupSetDisabled(self, disabled)
         colourLabel(self.titleText, readDisabled(self, disabled, "WidgetKit Group:SetDisabled", 3))
     end
@@ -3231,11 +3201,6 @@ do
         self.scrollbar:SetValue(offset)
     end
 
-    ---@param disabled boolean? `true` greys the widget out and ignores input
-    local function scrollSetDisabled(self, disabled)
-        readDisabled(self, disabled, "WidgetKit ScrollFrame:SetDisabled", 3)
-    end
-
     ---The scroll child has no anchors, so its width is set before each pass.
     local function scrollOnLayoutStart(self)
         self.content:SetWidth(self.scroll:GetWidth())
@@ -3268,12 +3233,6 @@ do
         self.scrollbar:SetMinMaxValues(0, 0)
         self.scrollbar:SetValue(0)
         self.scrollbar:Hide()
-    end
-
-    local function scrollOnRelease(self)
-        self.scroll:SetVerticalScroll(0)
-        self._contentHeight = 0
-        self._range = 0
     end
 
     ---@return table widget
@@ -3310,14 +3269,12 @@ do
             _contentHeight = 0,
             _range = 0,
             OnAcquire = scrollOnAcquire,
-            OnRelease = scrollOnRelease,
             OnLayoutStart = scrollOnLayoutStart,
             OnLayoutFinished = scrollOnLayoutFinished,
             GetContentHeight = scrollGetContentHeight,
             GetScrollRange = scrollGetScrollRange,
             GetScroll = scrollGetScroll,
             SetScroll = scrollSetScroll,
-            SetDisabled = scrollSetDisabled,
         }
 
         scrollbar:SetScript("OnValueChanged", function(_, value)
@@ -3335,6 +3292,9 @@ end
 -- Widget: Label --------------------------------------------------------------
 
 do
+    -- One line of the default fonts, used where a text height cannot be measured.
+    local LINE_HEIGHT = 12
+
     ---Size the label to its text. A secret text is not measured: the measurement
     ---of a secret string may itself be secret.
     ---@param widget table
@@ -3401,7 +3361,7 @@ do
         self.text:SetJustifyH(justify)
     end
 
-    ---@param disabled boolean? `true` greys the widget out and ignores input
+    ---@param disabled boolean? `true` greys the text out; the widget takes no input
     local function labelSetDisabled(self, disabled)
         disabled = readDisabled(self, disabled, "WidgetKit Label:SetDisabled", 3)
         self._disabled = disabled
@@ -3467,6 +3427,20 @@ end
 -- Widget: Button -------------------------------------------------------------
 
 do
+    -- Keys the client reports while a modifier alone is held; a key capture waits
+    -- for the key that comes with them.
+    local MODIFIER_KEYS = {
+        LSHIFT = true,
+        RSHIFT = true,
+        LCTRL = true,
+        RCTRL = true,
+        LALT = true,
+        RALT = true,
+        LMETA = true,
+        RMETA = true,
+        UNKNOWN = true,
+    }
+
     ---@param text any
     ---@param options WidgetKit.TextOptions?
     local function buttonSetText(self, text, options)
@@ -4042,6 +4016,7 @@ do
     ---@param letters integer `0` for no limit
     local function editBoxSetMaxLetters(self, letters)
         activeRecord(self, "WidgetKit EditBox:SetMaxLetters", 3)
+        refuseSecret(letters, "WidgetKit EditBox:SetMaxLetters letters", 3)
         if letters ~= 0 then
             validatePositiveInteger(letters, "WidgetKit EditBox:SetMaxLetters letters", 3)
         end
@@ -4281,6 +4256,12 @@ do --
     -- rows show.
 
     local DROPDOWN_ROW_HEIGHT = 18
+
+    -- The most entries a dropdown list holds, matching OptionsKit's `values` bound.
+    local MAX_DROPDOWN_ENTRIES = 1024
+
+    -- Rows a dropdown list shows at once; the rest is reached with the wheel.
+    local DROPDOWN_VISIBLE_ROWS = 16
 
     ---The label shown for the selected key, or an empty string.
     ---@param widget table
@@ -4903,7 +4884,7 @@ do
         return self.text:GetText()
     end
 
-    ---@param disabled boolean? `true` greys the widget out and ignores input
+    ---@param disabled boolean? `true` greys the text out; the widget takes no input
     local function headingSetDisabled(self, disabled)
         colourLabel(self.text, readDisabled(self, disabled, "WidgetKit Heading:SetDisabled", 3))
     end
@@ -4948,11 +4929,6 @@ end
 -- Widget: Spacer -------------------------------------------------------------
 
 do
-    ---@param disabled boolean? `true` greys the widget out and ignores input
-    local function spacerSetDisabled(self, disabled)
-        readDisabled(self, disabled, "WidgetKit Spacer:SetDisabled", 3)
-    end
-
     local function spacerOnAcquire(self)
         self.frame:SetSize(10, 8)
     end
@@ -4962,7 +4938,6 @@ do
         return {
             frame = createFrame("Frame", releaseParent()),
             OnAcquire = spacerOnAcquire,
-            SetDisabled = spacerSetDisabled,
         }
     end
 end
@@ -5048,6 +5023,16 @@ do --
         input = true,
         color = true,
         keybinding = true,
+    }
+
+    -- What a widget shows instead of a secret value it was not allowed to show.
+    local SECRET_PLACEHOLDER = "<secret value>"
+
+    -- Font objects for `description` options by `fontSize`.
+    local DESCRIPTION_FONTS = {
+        small = "GameFontHighlightSmall",
+        medium = "GameFontHighlight",
+        large = "GameFontHighlightLarge",
     }
 
     -- The text options of an edit box that may show a secret.
@@ -5201,14 +5186,12 @@ do --
             return
         end
         label = WidgetKit:Create("Label")
-        if label ~= nil then
-            stamp(rendering, label)
-        end
         if label == nil then
             -- Nowhere to show it: the user still learns through the error frame.
             reportError(message)
             return
         end
+        stamp(rendering, label)
         label:SetFullWidth(true)
         label:SetColor(MESSAGE_RED, MESSAGE_GREEN, MESSAGE_BLUE)
         label:SetText(text)
@@ -5689,7 +5672,10 @@ do --
         if not configureNode(rendering, record, node) then
             return false
         end
-        applyState(rendering, record, node.value, node.disabled == true)
+        -- The value is read with `Get`, not taken from the description:
+        -- `Describe` hands out a copy of a table value, and a copy no longer
+        -- answers `issecretvalue` as the original did.
+        refreshRecord(rendering, record)
         return true
     end
 
