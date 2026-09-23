@@ -816,7 +816,7 @@ LibEditModeOverride: item W14).
    `SetFocus(widget)` / `ClearFocus()`, `GetStatistics()`; widget base:
    `OnAcquire` / `OnRelease` hooks, `SetCallback(name, callback)` /
    `Fire(name, ...)`, `SetUserData` / `GetUserData`, size, anchor and
-   visibility passthroughs, `IsReleasing()`; container base: `AddChild`,
+   visibility pass-through methods, `IsReleasing()`; container base: `AddChild`,
    `AddChildren`, `ReleaseChildren`, `SetLayout`, `PauseLayout`,
    `ResumeLayout`, `PerformLayout`, the upward `LayoutFinished` size report;
    layouts in generation 1: `List`, `Fill`, `Flow`; base widgets in
@@ -833,7 +833,7 @@ LibEditModeOverride: item W14).
 5. Ownership: one bounded pool per widget type; a widget built by an older
    registered version is discarded rather than reused; `Release` fires
    `OnRelease`, releases children first, clears user data, callbacks and
-   anchors, hides and reparents, then returns to the pool; the number of
+   anchors, hides and re-parents, then returns to the pool; the number of
    frames ever created per type is capped with a named refusal;
    `IsReleasing` is ancestor-aware.
 6. Performance: bounded pools with `Trim` reachable through PoolKit; LIFO
