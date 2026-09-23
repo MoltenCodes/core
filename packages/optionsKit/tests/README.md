@@ -1,0 +1,19 @@
+# OptionsKit Tests
+
+The OptionsKit suite covers:
+
+- `Define`: every option kind accepted; the bounds published; one tree per addon name, `Undefine` and a new tree after it; every method refused on an undefined tree; the tree copied (later edits to values, names and args have no effect); a root that is not a group, malformed options, unknown fields named, value options without accessors or with both kinds, malformed kind fields (range bounds, values, sorting, pattern, colour, execute, description, group), `MAX_DEPTH` (also a cyclic tree) and `MAX_OPTIONS`, malformed `Define` options and a database without SettingsKit, malformed addon names;
+- every value kind validated through `Set` and `Validate`: toggle and tristate toggle, range, select over a table and over a function (re-evaluated at every check), multiselect over a table and over a function, input with and without a pattern, colour with and without alpha, keybinding; `Set`, `Get` and `Reset` refused on options without a value;
+- `Get`, `Set`, `Validate` and `Execute` with getters: the `info` table (key path, `path`, `kind`, `tree`) and its reuse, the order schema → `validate` → setter → `OnChange`, a schema refusal stopping before `validate`, a `validate` refusal returning its message (or a default one) and writing nothing, `Validate` writing and firing nothing, hidden and disabled options still written, unknown and malformed paths, getter results not checked;
+- binding to a SettingsKit-shaped database: default reads, validated writes into the scope table, nested paths, a profile switch seen at once, `Reset` to the default with `OnChange`, a broken bind path, `Reset` refused without a bind, bound and unbound options in one tree, malformed bind paths and a missing scope, an `options.db` that is not a database;
+- `disabled` and `hidden`: predicates evaluated on every call with the option's `info`, a group's flag applying below it, a flag on the root;
+- `Walk` order (order, then name, then key; groups before their children), an empty tree, visitor errors and a visitor that is not a function;
+- the `Describe` shape: the root, a value option, values and sorting copies, a values function, options without values, fresh tables per call, the bind path, and a values function returning no table;
+- `OnChange`: arguments, connection disconnect, reading back inside a listener, listener errors after the write, `Undefine` disconnecting;
+- secret values: refused by `Set` at the caller without a write, reported by `Validate`, refused as a path and an addon name, passed through untouched from a getter;
+- allocation guards (`collectgarbage("count")` with the collector stopped) on `Get` and `Set` through getters and binds, on `Walk`, `Validate`, `IsDisabled` and `IsHidden`;
+- duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, SchemaKit and SignalKit, an incomplete facade, and an in-place upgrade to revision 2 that keeps trees and listeners;
+- `error` levels: every argument failure, definition refusal (several groups deep), path error, value refusal and bind-path failure reports the caller's own line;
+- manifest/runtime API and revision consistency.
+
+`support/OptionsKitTestEnv.lua` loads Registry, SignalKit, SchemaKit and OptionsKit. SettingsKit is declared under `optionalDependencies`; until its package lands, `InstallSettingsKitStub` registers a stand-in under `settingsKit` API 1 so `Registry:Find` finds it, and `NewDatabase` builds a database with the documented shape — six scope tables whose reads fall back to defaults through a metatable, nested defaults as nested live tables, and an `OnChange` method. `SettingsKitIntegration_spec.lua` binds to a real SettingsKit database when `SettingsKit.lua` is on `LUA_PATH` and is pending otherwise.
