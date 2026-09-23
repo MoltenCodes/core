@@ -58,7 +58,12 @@ addon's load.
 
 This also means the framework creates exactly one global, `MoltenCodes`, plus
 one private bootstrap key that is implementation detail and must never be read
-or written by an addon. Nothing else in the framework writes a global.
+or written by an addon. Two Kits write further globals on request and only
+when asked: `SettingsKit` writes the saved-variables global your `.toc` names,
+and `CommandKit` writes the `SLASH_<key>1` and `SlashCmdList[<key>]` entries
+for the commands you register, plus `ChatEdit_CustomTabPressed` when you turn
+completion on (see the taint rules below). Nothing else in the framework
+writes a global.
 
 The portable access path is:
 
@@ -673,6 +678,13 @@ a defect:
    `SecureHookScript` are reversible post-hooks, and a non-secure hook of a
    secure target is refused without `options.forceSecure`; see
    [`hookKit/docs/API.md`](../packages/hookKit/docs/API.md).
+   One recorded exception: tab completion in `CommandKit` replaces
+   `ChatEdit_CustomTabPressed`, because the client consumes the tab only when
+   that function returns `true`, which a post-hook cannot deliver. It is off
+   until `scope:EnableCompletion()`, it forwards to the previous function, and
+   disabling it writes the previous function back, which leaves the global
+   tainted for the session (rule 3); see
+   [`commandKit/docs/API.md`](../packages/commandKit/docs/API.md).
 2. **Never attach your own tables or fields to a frame Blizzard code indexes.**
    Keep your per-frame state in a table of your own, keyed by the frame.
 3. **Delete, do not overwrite, a key you tainted by mistake.** Another value
