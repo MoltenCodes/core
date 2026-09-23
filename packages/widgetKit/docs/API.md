@@ -58,14 +58,16 @@ Package facade:
 | `CreateMediaPicker(mediaType)` | A `Dropdown` over MediaKit's names. |
 | `Anchor` | `FromRect`, `Normalize`, `Apply`, `Read`, `POINTS`. |
 | `Widget`, `Container`, `Binding`, `Rendering` | The shared prototypes, for introspection. |
-| `MAX_CREATED`, `MAX_CHILDREN`, `MAX_CALLBACKS` | `256`, `256`, `16`. |
+| `MAX_CREATED`, `MAX_CHILDREN`, `MAX_CALLBACKS` | `256`, `256`, `16`: the defaults. See [Limits](#limits). |
+| `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limit `maxCreatedCeiling`; `GetLimits` returns a fresh table. |
+| `UNBOUNDED` | Sentinel `maxCallbacks` and `SetMaxChildren` accept to lift a bound. |
 | `API`, `REVISION` | `1`, `1`. |
 
 Widget base (`WidgetKit.Widget`), on every widget:
 
 | Method | Purpose |
 |---|---|
-| `SetCallback(name, callback)` | Set or (with `nil`) remove the callback for `name`. A 17th name raises `... holds at most 16 callbacks per widget`. |
+| `SetCallback(name, callback)` | Set or (with `nil`) remove the callback for `name`. A name past the type's `maxCallbacks` (16 by default) raises `... holds at most 16 callbacks per widget`. |
 | `Fire(name, ...)` | Call `callback(widget, name, ...)`; `true` when it ran without raising. Errors are reported through the host error handler, never raised. |
 | `SetUserData(key, value)` / `GetUserData(key)` | Consumer state, cleared on release. A `nil` key raises in `SetUserData` and reads `nil` in `GetUserData`; a secret key is refused. |
 | `SetWidth`, `SetHeight`, `GetWidth`, `GetHeight` | Size methods forwarded to the frame; the setters call the type's `OnWidthSet` / `OnHeightSet` hooks. |
@@ -90,6 +92,7 @@ Container base (`WidgetKit.Container`), on every widget whose constructor set `c
 | `PauseLayout()`, `ResumeLayout()`, `IsLayoutPaused()` | Neither pausing nor resuming lays anything out. |
 | `PerformLayout()` | Lay out now. `true`, or `false` and `"paused"`, `"recursion"`, `"releasing"` or `"depth"`. |
 | `LayoutFinished(width, height)` | The upward size report; see [The layout contract](#the-layout-contract). |
+| `SetMaxChildren(limit)`, `GetMaxChildren()` | The most children this container holds: a positive integer or `WidgetKit.UNBOUNDED`; 256 until changed, and again after a release. Lowering it below the current count keeps every child and answers the next addition with `"full"`. |
 
 ## The widget author contract
 
@@ -158,11 +161,38 @@ A widget's methods and scripts are closures of the constructor that built it, so
 
 ## The frame cap
 
-The client can create frames but never destroy them, so every type is capped: at most `options.maxCreated` frames over the session (default `MAX_CREATED`, 256; at most 4096). The pool retains every released widget, so none is discarded for lack of room. At the cap, `Create` returns `nil, "exhausted"`.
+The client can create frames but never destroy them, so every type is capped: at most `options.maxCreated` frames over the session (default `MAX_CREATED`, 256; at most the `maxCreatedCeiling` limit, 4096 unless raised). The pool retains every released widget, so none is discarded for lack of room. At the cap, `Create` returns `nil, "exhausted"`.
 
-Retired widgets still count against the cap, so a version upgrade raises it by what that upgrade uses up: the pooled widgets it retires and the borrowed widgets of the version it replaces (borrowed widgets of earlier versions were counted by the upgrade that replaced them), or to the new registration's `maxCreated` when that is larger. The cap after `n` upgrades is therefore at most `(n + 1) × cap`, and never more than 4096; once it reaches 4096, retired frames are not replaced and the type may answer `"exhausted"` sooner.
+Retired widgets still count against the cap, so a version upgrade raises it by what that upgrade uses up: the pooled widgets it retires and the borrowed widgets of the version it replaces (borrowed widgets of earlier versions were counted by the upgrade that replaced them), or to the new registration's `maxCreated` when that is larger. The cap after `n` upgrades is therefore at most `(n + 1) × cap`, and never more than the `maxCreatedCeiling` in force when the upgrade is registered; once it reaches the ceiling, retired frames are not replaced and the type may answer `"exhausted"` sooner.
 
 A constructor that raises, or breaks the author contract, after it called `CreateFrame` leaves that frame behind outside the cap: PoolKit counts only successful builds. Such a constructor is a bug to fix, not a path to rely on.
+
+## Limits
+
+Every retained collection WidgetKit keeps is bounded by default. A bound on something you create is an option on it; the one package-wide bound is set with `SetLimits`.
+
+| Limit | Default | How to open | `UNBOUNDED` allowed? | Ceiling and reason |
+|---|---|---|---|---|
+| `maxCreated`, frames one type builds per session | `256` | `RegisterType(name, constructor, version, { maxCreated = n })` | no | `maxCreatedCeiling`; the client never frees a frame |
+| `maxCreatedCeiling`, the largest `maxCreated` and the most an upgrade grows a cap to | `4096` | `WidgetKit:SetLimits({ maxCreatedCeiling = n })` | no | an integer from 256 to 16384: frames are never freed, and past 16384 one type could pin client memory no consumer can give back |
+| `maxCallbacks`, named callbacks per widget | `16` | `RegisterType(..., { maxCallbacks = n })` | yes | none: the callbacks are your own functions |
+| `maxChildren`, children per container | `256` | `container:SetMaxChildren(n)` | yes | none: the children are widgets you created |
+| layout nesting depth | `32` | not configurable | no | a hard ceiling: each level is a nested Lua call chain through a layout and its hooks, and one scratch table per level is retained; past it `PerformLayout` returns `false, "depth"` |
+| entries in one `Dropdown` list | `1024` | not configurable | no | a hard ceiling matching OptionsKit's default `values` bound; `SetList` raises past it |
+
+```lua
+WidgetKit:SetLimits({ maxCreatedCeiling = 8192 })
+WidgetKit:RegisterType("MyAddonRow", constructRow, 1, { maxCreated = 6000, maxCallbacks = 32 })
+
+local list = WidgetKit:Create("ScrollFrame")
+list:SetMaxChildren(WidgetKit.UNBOUNDED)
+```
+
+`SetLimits` accepts any subset and raises at the caller on an unknown name, on `WidgetKit.UNBOUNDED`, and on a value outside its range, before changing anything. **The limit is shared by every consumer in the session**: every embedded copy and every addon uses one value, so a library should rely on the default. Lowering it never shrinks a cap a type already has; it applies to later registrations and upgrades. `GetLimits` returns a fresh table.
+
+`maxCallbacks` belongs to a type and applies to every widget of it; a newer version's registration sets it again. Base types keep 16; register your own type to ask for more. `SetMaxChildren` belongs to one container and is reset to 256 when the container is released, because pooled containers are reused by other code.
+
+`WidgetKit.UNBOUNDED` and the limits live in the package state, so every embedded copy publishes the same sentinel and an in-place upgrade keeps the limit a consumer set, every type's `maxCallbacks` and every container's `maxChildren`.
 
 ## The anchor model
 
@@ -249,7 +279,7 @@ Every widget is full width and the container uses its own layout. Nodes are rend
 
 **Ownership.** A rendering never outlives its container: releasing the container (directly or through an ancestor) releases the rendering first, and `rendering:Release()` afterwards returns `false`. The rendering also remembers the acquire serial of every widget it took; a widget that went back to its pool — released by the container or by anyone else — and was acquired again is never refreshed, written or released by the rendering, and `GetWidget` answers `nil` for it. A rendering whose container is no longer the one it was given releases itself at its next `Refresh`, write or click.
 
-**Refusals and failures.** A `Validate` or `Set` that raises is shown inline like a refusal and reported through the host error handler; the rendering is never left mid-write. When a container is full (256 children), building stops with `could not add a widget to its container: full`.
+**Refusals and failures.** A `Validate` or `Set` that raises is shown inline like a refusal and reported through the host error handler; the rendering is never left mid-write. When a container is full (its `maxChildren`, 256 by default), building stops with `could not add a widget to its container: full`.
 
 `RenderOptions` raises at the caller when OptionsKit is not registered, when `tree` is not a tree, when `container` is not an active container, when a widget type runs out of frames or the container is full, and when building raises (`WidgetKit:RenderOptions <error>`) — after releasing what it had built and restoring the container's layout pause state.
 
@@ -429,9 +459,9 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`RegisterType` reports an equal version** with `false, "current"`, beside the planned `false, "older"` for a lower one.
 - **`Trim` is not exposed.** The pool retains every released widget; trimming would free widget tables while their frames, which the client never frees, stay counted against the cap.
 - **`RegisterLayout` never replaces a layout** (`false, "taken"`): layouts are shared by every addon in the session.
-- **`RegisterType` takes a fourth `options` argument** (`maxCreated`), so a type can ask for a cap other than 256.
+- **`RegisterType` takes a fourth `options` argument** (`maxCreated`, `maxCallbacks`), so a type can ask for a cap other than 256 and a callback bound other than 16.
 - **`Frame:BindPosition(storage, options?)`** binds the window to a storage table and releases the binding with the window; the plan named only `WidgetKit:BindPosition`.
 - **A SettingsKit scope view is passed directly as the storage table**; WidgetKit never looks SettingsKit up, which is why it appears among the optional dependencies only as a documented storage shape.
 - **The `execute` confirmation text is a render option (`confirmText`),** not an option field: OptionsKit refuses fields its kinds do not declare. A `confirm` string on the option is still asked as it is.
-- **Additions:** `IsWidget`, `GetFocus`, `GetParentContainer`, `GetChildren`, `GetNumChildren`, `GetContent`, `GetLayoutName`, `IsLayoutPaused`, `Anchor.POINTS`, an `into` table for `FromRect`, `binding:Capture`, `Restore`, `Flush`, `IsReleased`, `rendering:Rebuild`, `IsReleased`, `GetWidget`, `GetMessage`, `CreateMediaPicker`, and `options.allowSecret` / `options.media` for the renderer.
+- **Additions:** `IsWidget`, `GetFocus`, `GetParentContainer`, `GetChildren`, `GetNumChildren`, `GetContent`, `GetLayoutName`, `IsLayoutPaused`, `Anchor.POINTS`, `SetLimits`, `GetLimits`, `UNBOUNDED`, `SetMaxChildren`, `GetMaxChildren`, an `into` table for `FromRect`, `binding:Capture`, `Restore`, `Flush`, `IsReleased`, `rendering:Rebuild`, `IsReleased`, `GetWidget`, `GetMessage`, `CreateMediaPicker`, and `options.allowSecret` / `options.media` for the renderer.
 - **Not rendered in generation 1:** an option's `desc` (there is no tooltip widget), `softMin` / `softMax`, `bigStep`, and `usage`. Groups are always nested `Group`s; tabs and trees of pages wait for a widget set that provides them.

@@ -43,6 +43,8 @@ What each piece promises:
 - **Idle means idle.** The send driver is a SchedulerKit job that exists only while something is queued.
 - **Delta sync.** `scope:SyncSet(prefix, { fields, schema })` exchanges named fields versioned by a 32-bit FNV-1a hash; a request carries the hashes the requester holds and the answer only the fields that differ.
 
+Every bound is documented under *Limits* in the API: a scope's `maxRegistrations` and a SyncSet's `maxListeners` accept `CommKit.UNBOUNDED`, and the session-shared limits are raised through `SetLimits`.
+
 Received data is untrusted: decode it with CodecKit and validate it with SchemaKit before use. See [`docs/API.md`](docs/API.md) for the full contract and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the implementation.
 
 ## Embedding

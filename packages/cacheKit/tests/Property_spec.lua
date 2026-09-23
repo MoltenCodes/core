@@ -95,8 +95,8 @@ describe("CacheKit LRU property", function()
                 cache:GetStats().evictions,
                 "evictions at step " .. step
             )
-            -- The invariant that lets `recycle` push without a bound check:
-            -- live plus free entries never exceed the bound.
+            -- The invariant that keeps a bounded cache's free list within its
+            -- bound: live plus free entries never exceed `maxEntries`.
             assert.is_true(
                 cache:GetCount() + cache._freeCount <= maxEntries,
                 "free list within the bound at step " .. step

@@ -12,6 +12,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | `runtimeRevision` | The revision that last committed its functions. |
 | `treeMetatable` | The metatable every tree shares; its `__index` is `OptionsKit.Tree`. |
 | `trees` | Addon name to that addon's tree. At most one per addon name. |
+| `unbounded` | The `OptionsKit.UNBOUNDED` sentinel, created once so every revision publishes the same table. |
 
 The tree prototype is published as `OptionsKit.Tree`. OptionsKit hands out no closures that outlive a call except the dynamic key checks inside schemas (below), so it needs no dispatch table: an upgrade replaces the prototype's methods and every existing tree sees them at once.
 
@@ -29,6 +30,7 @@ A tree is one table created by `define`:
 | `_records` | The path index: dotted path to record, for every option below the root. |
 | `_walk` | Every record below the root, in walk order. |
 | `_changed` | The SignalKit signal behind `OnChange`. |
+| `_maxOptions`, `_maxDepth`, `_maxDynamicEntries` | The limits the tree was defined under, `math.huge` for `UNBOUNDED`. Only `Define` enforces them; the multiselect schemas built from `_maxDynamicEntries` keep it in force afterwards. |
 
 A tree is registered in `state.trees` only after the whole tree was built, so a `Define` that raises leaves nothing behind.
 
@@ -87,7 +89,7 @@ A `select` or `multiselect` whose values are a function gets a `SchemaKit.custom
 
 ## Describe
 
-`describeRecord` builds a fresh node per record. A value option's current value goes through `snapshotValue`, which first passes a secret through untouched (at every level, before `type`, `getmetatable` or `pairs` sees it: a copy would touch the secret and hide it from a consumer's own secret check), then copies a table, replacing a table deeper than `MAX_DEPTH` with `"<depth exceeded>"` and a table already being copied above it with `"<cycle>"`, so no original table reaches the description, and, for a bound option whose value is a SettingsKit view (`getmetatable` answers `"SettingsKit.View"`), iterates it with `db:Pairs` so the copy holds the view's defaults as well as its saved keys. A view is an empty proxy to `pairs` and writes through to the saved variable, so handing one out would break both "plain" and "safe to edit".
+`describeRecord` builds a fresh node per record. A value option's current value goes through `snapshotValue`, which first passes a secret through untouched (at every level, before `type`, `getmetatable` or `pairs` sees it: a copy would touch the secret and hide it from a consumer's own secret check), then copies a table, replacing a table deeper than `MAX_DEPTH` (always 8, whatever the tree's `maxDepth`) with `"<depth exceeded>"` and a table already being copied above it with `"<cycle>"`, so no original table reaches the description, and, for a bound option whose value is a SettingsKit view (`getmetatable` answers `"SettingsKit.View"`), iterates it with `db:Pairs` so the copy holds the view's defaults as well as its saved keys. A view is an empty proxy to `pairs` and writes through to the saved variable, so handing one out would break both "plain" and "safe to edit".
 
 ## Upgrades
 

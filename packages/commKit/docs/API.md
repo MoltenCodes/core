@@ -60,8 +60,8 @@ Events, through a Kit-owned EventKit scope: `CHAT_MSG_ADDON` and `CHAT_MSG_ADDON
 
 | Member | Returns | Purpose |
 |---|---|---|
-| `CreateScope()` | scope | A manually owned scope. |
-| `ForAddon(addonName)` | scope | The addon's canonical scope, closed when its LifecycleKit instance shuts down. |
+| `CreateScope([options])` | scope | A manually owned scope; `options.maxRegistrations` (see [Limits](#limits)). |
+| `ForAddon(addonName[, options])` | scope | The addon's canonical scope, closed when its LifecycleKit instance shuts down; `options` apply when this call creates it. |
 | `CloseAddonScopes(addonName)` | boolean | Close that scope as shutdown does; `false` when there is none or it is closed. |
 | `GetQueueDepth([priority])` | messages, bytes | Queued messages and text bytes in one priority, or in all. |
 | `GetBudget()` | available, bytesPerSecond, capacity, mode | The shared bucket now. |
@@ -70,7 +70,8 @@ Events, through a Kit-owned EventKit scope: `CHAT_MSG_ADDON` and `CHAT_MSG_ADDON
 | `GetStatistics()` | a fresh table | The [counters](#statistics). |
 | `Priority` | table | `ALERT`, `NORMAL`, `BULK`. |
 | `MAX_MESSAGE_BYTES` | `255` | The client's limit on one addon message. |
-| `MAX_REGISTRATIONS` | `32` | Registrations one scope holds at once. |
+| `MAX_REGISTRATIONS` | `32` | The default `maxRegistrations` of a scope. |
+| `UNBOUNDED` | table | Sentinel `maxRegistrations` and `maxListeners` accept to lift the bound (see [Limits](#limits)). |
 | `API`, `REVISION` | integers | API generation and implementation revision. |
 | `Scope`, `Connection`, `SendHandle`, `SyncSet` | tables | The shared prototypes. |
 
@@ -88,6 +89,7 @@ Events, through a Kit-owned EventKit scope: `CHAT_MSG_ADDON` and `CHAT_MSG_ADDON
 | `GetAddonName()` | string or `nil` | The owning addon, `nil` for a manual scope. |
 | `GetRegistrationCount()` | integer | Live registrations, SyncSet ones included. |
 | `GetPendingCount()` | integer | Sends not yet terminal. |
+| `GetMaxRegistrations()` | integer or `CommKit.UNBOUNDED` | The scope's `maxRegistrations`. |
 
 A closed scope refuses `Register`, `Send` and `SyncSet` with `nil, "closed"`.
 
@@ -117,7 +119,7 @@ end)
 ```
 
 - `prefix` is 1 to 16 bytes. The first registration of a prefix in the session asks the client to register it; `DuplicatePrefix` counts as registered, and a prefix the client already reports as registered is not registered again.
-- A refused registration returns `nil` and the client's reason: the key of `Enum.RegisterAddonMessagePrefixResult` with its first letter lowered (`"invalidPrefix"`, `"maxPrefixes"`), `"refused"` for a legacy `false`, `"unknownResult"` for a value the enum does not name. `nil, "full"` means the scope holds 32 registrations; `nil, "closed"` that it is closed.
+- A refused registration returns `nil` and the client's reason: the key of `Enum.RegisterAddonMessagePrefixResult` with its first letter lowered (`"invalidPrefix"`, `"maxPrefixes"`), `"refused"` for a legacy `false`, `"unknownResult"` for a value the enum does not name. `nil, "full"` means the scope holds its `maxRegistrations` (32 by default); `nil, "closed"` that it is closed.
 - The callback receives `prefix, text, distribution, sender`, where `distribution` is the channel the client reported (`"PARTY"`, `"RAID"`, `"GUILD"`, `"WHISPER"`, ...). Messages on the logged channel arrive through `CHAT_MSG_ADDON_LOGGED` and are delivered the same way.
 - Every registration of a prefix receives every message on it, in registration order. A callback runs through `securecallfunction` where the client has it, otherwise under `pcall`; an error is reported through the host error handler and the next callback still runs.
 - The client echoes a group message to its sender, so a message this client sent to `PARTY` arrives here too, with `sender` set to the player. Filter on `sender` if that matters.
@@ -285,7 +287,7 @@ A first chunk that would pass any of the first three is refused before anything 
 CommKit dropped 99 incomplete messages from Friend-Realm: 1 expired, 98 restarted
 ```
 
-At most 64 senders are tracked at once; past that, drops are reported under `(other senders)`. Aborted and discarded streams are never reported, and neither are chunks refused before any stream exists (an unknown stream, a malformed header), so a stranger can cause at most one report per minute.
+At most `maxDropReportSenders` senders (64 by default) are tracked at once; past that, drops are reported under `(other senders)`. Aborted and discarded streams are never reported, and neither are chunks refused before any stream exists (an unknown stream, a malformed header), so a stranger can cause at most one report per minute.
 
 **Expiry** runs on one TimerKit timer, armed for the earliest deadline and re-armed after each sweep; nothing polls while no stream is open. The drop reports use one more TimerKit timer, armed only while a sender's minute is running.
 
@@ -348,13 +350,14 @@ local level = sync:GetRemote("Friend-Realm", "level")
 - `fields` names 1 to 32 distinct fields of 1 to 64 bytes. `Set`, `Get`, `GetHash` and `GetRemote` raise for an undeclared field.
 - `schema`, optional, maps declared fields to sealed SchemaKit schemas. A received value that fails its schema is dropped and counted in `syncRejected`; a local `Set` that fails returns `nil, "schema"`.
 - `Set(field, value)` returns `true, changed`, or `nil` and CodecKit's reason (`"cycle"`, `"unsupportedType"`, a limit), `"tableKey"`, `"schema"` or `"closed"`. `nil` clears the field. The value is kept by reference: after changing a table, call `Set` again. A secret value, or a table holding one, raises at the caller.
-- `Request(target)` whispers the request and returns its send handle, or `nil` and `"closed"`, `"unavailable"` (CodecKit is gone or refused the frame) or a `Send` refusal; the SyncSet registers its prefix like `Register` does and counts toward the scope's 32 registrations. Replies are whispers too, at NORMAL priority, through the same queue and budget.
+- `Request(target)` whispers the request and returns its send handle, or `nil` and `"closed"`, `"unavailable"` (CodecKit is gone or refused the frame) or a `Send` refusal; the SyncSet registers its prefix like `Register` does and counts toward the scope's `maxRegistrations`. Replies are whispers too, at NORMAL priority, through the same queue and budget.
 - A SyncSet answers a request only when it arrived as a whisper; a request on any other distribution is refused and counted in `syncRejected`.
 - It answers one peer at most once a second; requests in between are dropped and counted in `syncRejected`.
-- At most one reply per peer is in the queue, and at most 8 KB of replies across every SyncSet; a reply past either is dropped and counted in `syncReplyDropped`, so requests can never fill the queue other sends share.
-- The peer cache holds 64 peers; the least recently seen peer not answered in the last second is evicted, so eviction never lifts a reply interval. When every cached peer was answered in the last second, a new peer's request or delivery is dropped.
+- At most one reply per peer is in the queue, and at most `maxSyncReplyBytes` (8 KB by default) of replies across every SyncSet; a reply past either is dropped and counted in `syncReplyDropped`, so requests can never fill the queue other sends share.
+- The peer cache holds `maxSyncPeers` peers (64 by default); the least recently seen peer not answered in the last second is evicted, so eviction never lifts a reply interval. When every cached peer was answered in the last second, a new peer's request or delivery is dropped. After `SetLimits` lowers the bound, the next new peer evicts down to it.
 - A field named in both `values` and `removed` of one delivery is removed, and `OnChanged` fires once.
-- `OnChanged` accepts 16 listeners (`nil, "full"` past that, `nil, "closed"` on a closed SyncSet); they run isolated, like receive callbacks.
+- `maxListeners`, optional, bounds the `OnChanged` listeners: a positive integer or `CommKit.UNBOUNDED`, 16 by default.
+- `OnChanged` accepts `maxListeners` listeners (`nil, "full"` past that, `nil, "closed"` on a closed SyncSet); they run isolated, like receive callbacks.
 
 ### Frames
 
@@ -387,24 +390,45 @@ A 32-bit hash can collide; a collision makes a changed field look unchanged unti
 
 ## Limits
 
-| Limit | Default | Accepted |
+Every queue, cache and registry CommKit keeps is bounded by default. A bound on an object you create is an option on its constructor; a bound on what the session shares is a `SetLimits` entry. `CommKit.UNBOUNDED` lifts a bound only where the memory is your own: every package-wide limit is grown by other addons or other players, or is a rate, so `SetLimits` refuses it.
+
+| Limit | Default | How to open | `UNBOUNDED` allowed? | Ceiling and reason |
+|---|---|---|---|---|
+| `maxRegistrations` | 32 | `CreateScope({ maxRegistrations = n })`, `ForAddon(name, { maxRegistrations = n })` | yes | none: the registrations are the scope owner's own |
+| `maxListeners` | 16 | `scope:SyncSet(prefix, { fields, maxListeners = n })` | yes | none: the listeners are the SyncSet owner's own |
+| `maxQueuedBytes` | 65536 | `SetLimits` | no: every addon shares the queue | 1048576: keeps a message within the chunks the logged channel's header can number (5624) |
+| `maxQueuedMessages` | 256 | `SetLimits` | no: every addon shares the queue | 4096 |
+| `maxReassemblyStreams` | 64 | `SetLimits` | no: other players grow it | 1024 |
+| `maxReassemblyBytesPerSender` | 16384 | `SetLimits` | no: other players grow it | 1048576, as `maxQueuedBytes` |
+| `maxInFlightPerSender` | 4 | `SetLimits` | no: other players grow it | 64: stream ids in flight must stay below both radixes |
+| `reassemblyTimeout` | 30 s | `SetLimits` | no: other players grow it | 600 s |
+| `maxDropReportSenders` | 64 | `SetLimits` | no: other players grow it | 1024 |
+| `maxSyncPeers` | 64 | `SetLimits` | no: other players grow it | 1024 |
+| `maxSyncReplyBytes` | 8192 | `SetLimits` | no: other players' requests grow it | 1048576, as `maxQueuedBytes` |
+| `maxCps` | 800 | `SetLimits` | no: a rate, not a retention bound | 100000 |
+| `burst` | 4000 | `SetLimits` | no: a rate, not a retention bound | 1000000 (at least 255) |
+| `messageOverhead` | 40 | `SetLimits` | no: part of the rate, not a retention bound | 255 (at least 0) |
+
+These stay fixed, because the client or the wire format sets them:
+
+| Constant | Value | Reason |
 |---|---|---|
-| `maxQueuedBytes` | 65536 | integer 1 – 1048576 |
-| `maxQueuedMessages` | 256 | integer 1 – 4096 |
-| `maxReassemblyStreams` | 64 | integer 1 – 1024 |
-| `maxReassemblyBytesPerSender` | 16384 | integer 1 – 1048576 |
-| `maxInFlightPerSender` | 4 | integer 1 – 64 |
-| `reassemblyTimeout` | 30 | seconds, 1 – 600 |
-| `maxCps` | 800 | integer 1 – 100000 |
-| `burst` | 4000 | integer 255 – 1000000 |
-| `messageOverhead` | 40 | integer 0 – 255 |
+| addon message | 255 bytes (`MAX_MESSAGE_BYTES`) | the client's limit |
+| prefix | 16 bytes | the client's limit |
+| chunk header | 4 bytes, 251 payload bytes | the wire format of API generation 1 |
+| chunks per message | 16383, 5624 on the logged channel | two header digits of radix 128 or 75 |
+| SyncSet `fields` | 1 to 32 names of 1 to 64 bytes | a static declaration every peer shares; a request carries one hash per field |
+| chunks per driver run | 32 | a per-frame work cap, not retention |
 
 ```lua
+local comm = CommKit:ForAddon("MyAddon", { maxRegistrations = CommKit.UNBOUNDED })
 CommKit:SetLimits({ maxQueuedMessages = 128 })
 local limits = CommKit:GetLimits() -- a fresh table
 ```
 
-`SetLimits` raises at the caller on an unknown name, a secret value or a value outside its range, before changing anything. Lowering a queue bound drops nothing already queued. Lowering `maxReassemblyBytesPerSender` fails every queued message that has not started and now declares more (`"failed"`, reason `"tooLarge"`), because it could never start. **The limits are shared by every consumer in the session.**
+`maxRegistrations` and `maxListeners` must be positive integers or `CommKit.UNBOUNDED`; anything else raises at the caller. `ForAddon` applies `options` when it creates the scope; a later call that passes a different `maxRegistrations` raises, so two callers cannot disagree silently about one scope. `scope:GetMaxRegistrations()` reports the bound.
+
+`SetLimits` raises at the caller on an unknown name, `CommKit.UNBOUNDED` (naming the reason), a secret value or a value outside its range, before changing anything. Lowering a queue bound drops nothing already queued. Lowering `maxReassemblyBytesPerSender` fails every queued message that has not started and now declares more (`"failed"`, reason `"tooLarge"`), because it could never start. **The limits are shared by every consumer in the session**, and are kept across an in-place upgrade. `CommKit.UNBOUNDED` is one table kept in the package state, so every embedded copy and every revision publishes the same sentinel.
 
 ## Statistics
 
@@ -436,7 +460,7 @@ Retail clients hand addon code **secret values** in restricted contexts; see [`E
 
 ## Security: received data is untrusted
 
-A received message is whatever the sender chose to send, and a sender may be hostile. CommKit bounds what a sender can make it hold and refuses malformed chunks, but it does not authenticate senders or check what a message says. **Decode received text with CodecKit, validate the result with SchemaKit, and treat a failure like any other malformed message**; see [`codecKit/docs/API.md`](../../codecKit/docs/API.md#security-decoded-data-is-untrusted). A SyncSet checks the shape of every frame and each field against its schema when one is given; give one. A SyncSet also caches deliveries nobody requested: any sender can whisper a delivery and have its values stored under its own name, up to 64 peers, so treat `GetRemote` and `OnChanged` values as claims of that sender, never as facts. Never run received text as code or a macro, and never use it as a frame name, a global name or a format string. The `sender` string is filled in by the server, but the addon behind it can send anything.
+A received message is whatever the sender chose to send, and a sender may be hostile. CommKit bounds what a sender can make it hold and refuses malformed chunks, but it does not authenticate senders or check what a message says. **Decode received text with CodecKit, validate the result with SchemaKit, and treat a failure like any other malformed message**; see [`codecKit/docs/API.md`](../../codecKit/docs/API.md#security-decoded-data-is-untrusted). A SyncSet checks the shape of every frame and each field against its schema when one is given; give one. A SyncSet also caches deliveries nobody requested: any sender can whisper a delivery and have its values stored under its own name, up to `maxSyncPeers` peers, so treat `GetRemote` and `OnChanged` values as claims of that sender, never as facts. Never run received text as code or a macro, and never use it as a frame name, a global name or a format string. The `sender` string is filled in by the server, but the addon behind it can send anything.
 
 ## Cost
 
@@ -451,7 +475,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 - **`battleNet` is accepted and never selects Battle.net.** The plan lets the payload permit Battle.net transport; revision 1 has no Battle.net pipe (it needs a game-account target and a separate receive event), and a permission that is never used is still honoured. A later revision can add the transport without changing the contract.
 - **Refusal reasons beyond the plan's three**: `"forbiddenByte"`, `"badDistribution"` and `"unavailable"` for `Send`; `"full"` and the client's reasons for `Register`. Each names a condition the caller can act on.
-- **The scope bound counts registrations**, 32 per scope with SyncSet registrations included, rather than distinct prefixes; bounding registrations bounds prefixes too.
+- **The scope bound counts registrations**, 32 per scope by default with SyncSet registrations included, rather than distinct prefixes; bounding registrations bounds prefixes too.
 - **Priorities are weighted 4 : 2 : 1 per chunk**, where ChatThrottleLib split bandwidth equally between priorities with traffic; equal shares make ALERT no faster than BULK under load.
 - **The reassembly timeout counts from a stream's last chunk**, not its first, so a long message on a degraded budget does not expire while it is still arriving.
 - **Per-sender bytes are counted from the size a first chunk declares**, so a stream is refused before it holds anything.

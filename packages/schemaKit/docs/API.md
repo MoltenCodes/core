@@ -47,8 +47,11 @@ Package facade:
 | `any()` | Any value except `nil`. |
 | `custom(check, description)` | A value your function accepts. |
 | `Seal(node, options?)` | Seal a node (or re-seal a schema) into a schema. |
-| `MAX_DEPTH` | `16`: the most nested tables a checked value may have. |
-| `DEFAULT_ARRAY_MAX` | `1024`: the element bound of an array without `max`. |
+| `SetLimits(limits)` | Change any subset of the shared limits (see [Limits](#limits)). |
+| `GetLimits()` | Return the four limits in a fresh table. |
+| `MAX_DEPTH` | `16`: the default of the `maxDepth` limit. |
+| `DEFAULT_ARRAY_MAX` | `1024`: the default of the `defaultArrayMax` limit. |
+| `UNBOUNDED` | Sentinel `SetLimits{ defaultArrayMax }` accepts to lift the default array bound. |
 | `Schema` | The shared prototype of sealed schemas. |
 
 Builders are plain functions and are called with a dot: `SchemaKit.string{ max = 32 }`. Calling one with a colon raises `SchemaKit.string is called with a dot, not a colon`. `Seal` is a method and is called with a colon; calling it with a dot raises `SchemaKit:Seal is called with a colon, not a dot`. Code that uses many builders usually aliases the facade: `local S = SchemaKit`.
@@ -125,7 +128,7 @@ Accepts `true` and `false`. Takes no arguments.
 
 ### `SchemaKit.array{ of, min, max }`
 
-Keys must be exactly `1..n` (rule `sequence` otherwise), every element must match `of`, and `min <= n <= max` (rules `min` and `max`). `min` defaults to `0`, `max` to **1024**. The default exists so that an array schema is bounded even when its author forgot to bound it; raise it explicitly when you need more.
+Keys must be exactly `1..n` (rule `sequence` otherwise), every element must match `of`, and `min <= n <= max` (rules `min` and `max`). `min` defaults to `0`, `max` to the `defaultArrayMax` limit, **1024** unless `SetLimits` changed it. The default exists so that an array schema is bounded even when its author forgot to bound it; raise it explicitly when you need more. The default is read when the node is built.
 
 ### `SchemaKit.map{ keys, values, max }`
 
@@ -133,7 +136,7 @@ Every key must match `keys` and every value `values`; at most `max` entries (rul
 
 ### `SchemaKit.optional(schema, default?)`
 
-Accepts `nil`, and otherwise checks `schema`. `Check` never fills anything in; `Apply` fills in a fresh deep copy of `default` where the value is `nil`, and then fills the defaults declared inside it. The default is checked against `schema` when the node is built (`SchemaKit.optional default.size: expected number, found string`), must nest at most 16 tables, and is copied, so later edits to your table have no effect. `optional(optional(x))` is refused.
+Accepts `nil`, and otherwise checks `schema`. `Check` never fills anything in; `Apply` fills in a fresh deep copy of `default` where the value is `nil`, and then fills the defaults declared inside it. The default is checked against `schema` when the node is built (`SchemaKit.optional default.size: expected number, found string`), must nest at most `maxDepth` tables (16 by default), and is copied, so later edits to your table have no effect. `optional(optional(x))` is refused.
 
 ### `SchemaKit.oneOf(alternatives)`
 
@@ -153,7 +156,7 @@ Returns `true`, or `false` and a failure:
 
 | Field | Meaning |
 |---|---|
-| `path` | Where the failure is: `frames[3].point`, `byName["two words"]`, or `""` for the value itself. Names that are identifiers are joined with dots; numbers, booleans and other strings are bracketed; table keys appear as `[table]`. Quoted keys are escaped for display: `|` is doubled (so no World of Warcraft `|T`, `|H` or `|c` escape sequence survives), `\` and `"` are backslash-escaped, and every other control byte appears as `\ddd`. Keys longer than 32 bytes are cut, never inside a UTF-8 sequence, and marked with `...`. |
+| `path` | Where the failure is: `frames[3].point`, `byName["two words"]`, or `""` for the value itself. Names that are identifiers are joined with dots; numbers, booleans and other strings are bracketed; table keys appear as `[table]`. Quoted keys are escaped for display: `|` is doubled (so no World of Warcraft `|T`, `|H` or `|c` escape sequence survives), `\` and `"` are backslash-escaped, and every other control byte appears as `\ddd`. Keys longer than the `pathKeyLimit` limit (32 bytes by default) are cut, never inside a UTF-8 sequence, and marked with `...`. |
 | `rule` | The rule that failed (below). |
 | `expected` | What the schema accepts there, from the schema's own constants. |
 | `found` | A type name or a fixed description such as `larger number`, `string of length 40` or `secret value`. **Never the value.** |
@@ -171,7 +174,7 @@ Rules:
 | `enum` | A value not in an `enum` or a string `oneOf` list. |
 | `unknown` | An undeclared field of a closed table; the path names the field. |
 | `sequence` | An array with holes or keys other than `1..n`. |
-| `depth` | A table nested deeper than 16. |
+| `depth` | A table nested deeper than the `maxDepth` limit (16 by default). |
 | `oneOf` | No alternative accepted the value. |
 | `custom` | A custom check refused the value. |
 
@@ -212,7 +215,7 @@ Returns a fresh plain table on every call; edit it freely.
 | `min`, `max`, `integer` | `number`. |
 | `values` | `enum`: the values in declaration order. |
 | `fields`, `fieldNames`, `open` | `table`: descriptions by name, and the names sorted. |
-| `of`, `min`, `max` | `array` (`max` is always present, `1024` by default). |
+| `of`, `min`, `max` | `array` (`max` is present unless the array was built without one while `defaultArrayMax` was `SchemaKit.UNBOUNDED`). |
 | `keys`, `values`, `max` | `map`. |
 | `alternatives` | `oneOf`. |
 | `description` | `custom`. |
@@ -221,12 +224,35 @@ Returns a fresh plain table on every call; edit it freely.
 
 | Bound | Value | Rule |
 |---|---|---|
-| Nested tables in a checked value, counting the outermost | 16 (`SchemaKit.MAX_DEPTH`) | `depth` |
-| Array elements | `max`, default 1024 (`SchemaKit.DEFAULT_ARRAY_MAX`) | `max` |
+| Nested tables in a checked value, counting the outermost | `maxDepth`, 16 by default (`SchemaKit.MAX_DEPTH`) | `depth` |
+| Array elements | `max`, default `defaultArrayMax`, 1024 by default (`SchemaKit.DEFAULT_ARRAY_MAX`) | `max` |
 | Map entries | `max`, required | `max` |
 | Undeclared keys of a closed table | stops at the first | `unknown` |
 
-An array or map is counted with `next` and refused one step past its bound, before any element is checked, so an oversized table costs `max + 1` steps however large it is. A closed table's keys are walked only until the first undeclared one. The depth bound holds however the schema is nested: a schema may describe deeper tables, but a value is never followed past 16.
+An array or map is counted with `next` and refused one step past its bound, before any element is checked, so an oversized table costs `max + 1` steps however large it is. A closed table's keys are walked only until the first undeclared one. The depth bound holds however the schema is nested: a schema may describe deeper tables, but a value is never followed past `maxDepth`.
+
+## Limits
+
+Four limits are package-wide and set through `SetLimits`; the bounds a schema author writes (`max` on strings, numbers, arrays and maps) are options on the node and need nothing here.
+
+| Limit | Default | How to open | `UNBOUNDED` allowed? | Ceiling and reason |
+|---|---|---|---|---|
+| `maxDepth` | `16` | `SchemaKit:SetLimits{ maxDepth = n }` | no | `64`: checking, `Apply` and default validation recurse once per nesting level of a value its sender shapes. |
+| `maxPatternCaptures` | `32` | `SchemaKit:SetLimits{ maxPatternCaptures = n }` (lower only) | no | `32`: Lua 5.1 raises `too many captures` on a pattern with more (the matcher's fixed capture limit), so a larger value would let `Check` raise. |
+| `pathKeyLimit` | `32` | `SchemaKit:SetLimits{ pathKeyLimit = n }` | no | `1024`: failure paths print keys a received message chooses. |
+| `defaultArrayMax` | `1024` | `SchemaKit:SetLimits{ defaultArrayMax = n }` | yes | none: the elements are already in memory and SchemaKit retains none of them. |
+| `map` `max` | none | required on every map | no | a map is what a hostile message inflates, so its bound is always the author's. |
+
+```lua
+SchemaKit:SetLimits({ maxDepth = 24, defaultArrayMax = SchemaKit.UNBOUNDED })
+local limits = SchemaKit:GetLimits() -- a fresh table
+```
+
+`SetLimits` accepts any subset and checks every entry before it changes anything, so a refused call changes no limit. It raises at the caller's line on a non-table, an unknown name (`SchemaKit:SetLimits limits.maxWidth is not a recognised limit`), a value that is not an integer from 1 to the ceiling (`... must be an integer from 1 to 64: <reason>`), `SchemaKit.UNBOUNDED` where the table says no (`SchemaKit:SetLimits limits.maxDepth cannot be SchemaKit.UNBOUNDED: <reason>`), and a dot call. `GetLimits` returns a new table on every call; `defaultArrayMax` reads back as `SchemaKit.UNBOUNDED` when it was set to it.
+
+**The limits are shared by every consumer in the session**: every embedded copy and every addon uses one set. A library should rely on the defaults; an addon that changes a limit changes it for everybody. `maxDepth` and `pathKeyLimit` apply from the next check, to every schema. `maxPatternCaptures` and `defaultArrayMax` apply to nodes built after the change; a node keeps what it was built with. A pattern refused by a lowered `maxPatternCaptures` raises `SchemaKit.string pattern is not a valid Lua pattern`.
+
+An array built without `max` while `defaultArrayMax` is `SchemaKit.UNBOUNDED` accepts any number of elements, and checking it walks every one: give arrays that hold received data an explicit `max`. `SchemaKit.UNBOUNDED` is one table kept in the package state, so every copy and revision publishes the same sentinel.
 
 ## Secret values
 
@@ -352,10 +378,10 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **Nodes are immutable from birth** rather than frozen by `Seal`; see [Nodes and sealing](#nodes-and-sealing).
 - **`Apply` returns `true, copy` or `false, failure`** rather than the copy alone. An `optional` root without a default legitimately applies to `nil`, so a bare return value could not tell a valid `nil` from a failure; the pair has the same shape as `Check`.
 - **The depth bound is enforced on values, not on schemas.** `Seal` does not refuse a schema that describes more than 16 nested tables; a value is simply never followed past 16, and the deeper levels of such a schema can never accept anything.
-- **Additions:** `SchemaKit.MAX_DEPTH` and `SchemaKit.DEFAULT_ARRAY_MAX` publish the two bounds, and `Assert` returns the value it checked so it can be used inline.
+- **Additions:** `SchemaKit.MAX_DEPTH` and `SchemaKit.DEFAULT_ARRAY_MAX` publish the two defaults, `SetLimits`, `GetLimits` and `UNBOUNDED` open the limits (principle 4a), and `Assert` returns the value it checked so it can be used inline.
 
 ## Embedded copies and upgrades
 
-Several addons may embed SchemaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: nodes and schemas built by an older copy keep their compiled form and failure tables, compose with nodes built by the newer copy, and run the newer checker.
+Several addons may embed SchemaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: nodes and schemas built by an older copy keep their compiled form and failure tables, compose with nodes built by the newer copy, and run the newer checker. The shared limits and the `UNBOUNDED` sentinel live in the package state, so a newer revision inherits the limits a consumer set.
 
 Nothing survives `/reload`: schemas are rebuilt when the addon loads.

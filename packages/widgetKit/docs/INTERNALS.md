@@ -40,8 +40,9 @@ releasing      inside Release
 isContainer    built with a content frame
 parent         the container holding it
 children       the container's children (containers only)
+maxChildren    the child bound; math.huge for UNBOUNDED, 256 again on release
 callbacks      name -> function, created on the first SetCallback
-callbackCount
+callbackCount  checked against typeRecord.maxCallbacks (math.huge for UNBOUNDED)
 userData       key -> value, created on the first SetUserData
 fullWidth, fullHeight, relativeWidth
 layoutName, layoutFunction, layoutPaused, layingOut
@@ -82,7 +83,7 @@ PoolKit:New({
   borrowed widgets per version. An upgrade adds to the cap the pooled widgets
   `SetGeneration` retires and the borrowed widgets of the version it replaces;
   older versions were counted by earlier upgrades. The result is clamped to
-  4096.
+  `state.limits.maxCreatedCeiling` (4096 unless `SetLimits` raised it).
 - **Validation outside the pool.** `build` checks the constructor's result.
   When it breaks the author contract, `build` leaves a message in
   `state.buildProblem` and raises; `Create` catches the pool's error, finds the

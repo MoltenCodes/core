@@ -113,29 +113,44 @@ local SECRET_FOUND = {}
 
 -- Limits every consumer in the session shares. Each is bounded by default and
 -- has a ceiling `SetLimits` refuses to pass, so no setting makes a hostile
--- input unbounded. `maxDepth` is also bounded by the Lua call stack the
--- recursive reader and writer use.
-local LIMIT_NAMES = { "maxDepth", "maxValues", "maxStringLength", "maxOutputBytes" }
+-- input unbounded.
+local LIMIT_NAMES =
+    { "maxDepth", "maxValues", "maxStringLength", "maxOutputBytes", "maxListValues" }
 local DEFAULT_LIMITS = {
     maxDepth = 16,
     maxValues = 65536,
     maxStringLength = 65536,
     maxOutputBytes = 1048576,
+    -- The most entries an argument list may hold on either side.
+    maxListValues = 4096,
 }
 local LIMIT_CEILINGS = {
+    -- The reader and writer recurse twice per nesting level. A bare Lua 5.1.5
+    -- interpreter overflows its call stack near 9995 levels; 128 leaves the
+    -- rest to the consumer's own call depth.
     maxDepth = 128,
     maxValues = 16777216,
     maxStringLength = 1073741824,
     -- 64 MiB. Inflating keeps one array slot (16 bytes) per output byte, so a
     -- higher ceiling would let one frame demand more than a gigabyte.
     maxOutputBytes = 67108864,
+    -- `DecodeMany` returns the entries with `unpack`, which Lua 5.1 refuses
+    -- past 7997 results (the 8000-slot C stack limit less its three arguments,
+    -- measured); 7900 keeps a margin for hosts built with a smaller stack.
+    -- `EncodeMany` refuses the same count, so everything it writes reads back.
+    maxListValues = 7900,
 }
 
--- The most entries an argument list may hold on either side. `DecodeMany`
--- returns the entries with `unpack`, which Lua 5.1 refuses beyond about 8000
--- results, so a longer list would make the decoder raise; `EncodeMany` refuses
--- the same count so that everything it writes can be read back.
-local MAX_LIST_VALUES = 4096
+-- The limits `CodecKit.UNBOUNDED` may lift, because each is already bounded
+-- by `maxOutputBytes`: every value takes at least one byte and every string
+-- is part of the bytes, and every decoding stage refuses input larger than
+-- `maxOutputBytes`. The others must stay numbers, and this is why.
+local UNBOUNDED_ALLOWED = { maxValues = true, maxStringLength = true }
+local BOUNDED_REASONS = {
+    maxDepth = "the reader and writer recurse on the Lua call stack",
+    maxOutputBytes = "it bounds the memory every stage and a DEFLATE bomb may claim",
+    maxListValues = "DecodeMany returns the entries through unpack, which Lua 5.1 bounds",
+}
 
 -- The largest magnitude every integer up to which is exactly representable in
 -- a double. Integral numbers within it are written as varints; everything else
@@ -207,12 +222,14 @@ local FACADE_METHODS = {
 ---@class CodecKit.CompressOptions
 ---@field level integer? DEFLATE level from 1 to 9; default 6.
 
----The shared limits. `SetLimits` accepts any subset.
+---The shared limits. `SetLimits` accepts any subset; `GetLimits` returns all
+---five in a fresh table, `CodecKit.UNBOUNDED` where a limit was lifted.
 ---@class CodecKit.Limits
 ---@field maxDepth integer Deepest table nesting; default 16, at most 128.
----@field maxValues integer Most values (keys included) in one payload; default 65536.
----@field maxStringLength integer Longest single string; default 65536.
----@field maxOutputBytes integer Largest output of any stage; default 1048576.
+---@field maxValues integer|table Most values (keys included) in one payload; default 65536, at most 16777216, or `CodecKit.UNBOUNDED`.
+---@field maxStringLength integer|table Longest single string; default 65536, at most 2^30, or `CodecKit.UNBOUNDED`.
+---@field maxOutputBytes integer Largest output of any stage; default 1048576, at most 2^26.
+---@field maxListValues integer Most entries in an `EncodeMany`/`DecodeMany` argument list; default 4096, at most 7900.
 
 ---The CodecKit package facade published through Registry.
 ---@class CodecKit
@@ -220,6 +237,7 @@ local FACADE_METHODS = {
 ---@field REVISION integer Compatible implementation revision.
 ---@field FORMAT_VERSION integer The frame version this copy writes and reads.
 ---@field PRINT_ALPHABET string The 85 characters of the print channel, digit 0 first.
+---@field UNBOUNDED table Sentinel `SetLimits` accepts for `maxValues` and `maxStringLength`; one table shared by every revision.
 ---@field Encode fun(self: CodecKit, value: any, options: CodecKit.EncodeOptions?): boolean, string
 ---@field Decode fun(self: CodecKit, text: string, options: CodecKit.DecodeOptions?): boolean, any
 ---@field EncodeMany fun(self: CodecKit, options: CodecKit.EncodeOptions?, ...: any): boolean, string
@@ -234,7 +252,7 @@ local FACADE_METHODS = {
 ---@field DecodeForPrint fun(self: CodecKit, text: string): boolean, string
 ---@field EncodeAsync fun(self: CodecKit, value: any, options: CodecKit.EncodeOptions?, scope: table, callback: fun(ok: boolean, result: string)): table
 ---@field DecodeAsync fun(self: CodecKit, text: string, options: CodecKit.DecodeOptions?, scope: table, callback: fun(ok: boolean, result: any)): table
----@field SetLimits fun(self: CodecKit, limits: table)
+---@field SetLimits fun(self: CodecKit, limits: CodecKit.Limits)
 ---@field GetLimits fun(self: CodecKit): CodecKit.Limits
 
 -- Dependencies ---------------------------------------------------------------
@@ -308,6 +326,7 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "REVISION")) ~= "number"
         or rawget(implementation, "FORMAT_VERSION") ~= FORMAT_VERSION
         or type(rawget(implementation, "PRINT_ALPHABET")) ~= "string"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
     then
         return false
     end
@@ -319,16 +338,20 @@ local function validatePublicSurface(implementation)
     return true
 end
 
----Whether `limits` holds every limit as a positive integer.
+---Whether `limits` holds every limit as a positive integer, or as the
+---`unbounded` sentinel where that limit may be lifted.
 ---@param limits any
+---@param unbounded any the sentinel the package state keeps
 ---@return boolean
-local function validateLimits(limits)
+local function validateLimits(limits, unbounded)
     if type(limits) ~= "table" then
         return false
     end
     for index = 1, #LIMIT_NAMES do
-        local value = rawget(limits, LIMIT_NAMES[index])
-        if type(value) ~= "number" or value < 1 or value % 1 ~= 0 then
+        local name = LIMIT_NAMES[index]
+        local value = rawget(limits, name)
+        local lifted = UNBOUNDED_ALLOWED[name] == true and value == unbounded
+        if not lifted and (type(value) ~= "number" or value < 1 or value % 1 ~= 0) then
             return false
         end
     end
@@ -342,15 +365,19 @@ local function validateStateBase(currentState)
     return type(currentState) == "table"
         and rawget(currentState, "schema") == STATE_SCHEMA
         and type(rawget(currentState, "runtimeRevision")) == "number"
-        and validateLimits(rawget(currentState, "limits"))
+        and type(rawget(currentState, "unbounded")) == "table"
+        and validateLimits(rawget(currentState, "limits"), rawget(currentState, "unbounded"))
         and type(rawget(currentState, "pool")) == "table"
 end
 
----Whether `implementation` carries package state of this revision's schema.
+---Whether `implementation` carries package state of this revision's schema,
+---and publishes the sentinel that state keeps.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+    local currentState = rawget(implementation, "_state")
+    return validateStateBase(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -389,7 +416,12 @@ if previousRevision == nil then
             maxValues = DEFAULT_LIMITS.maxValues,
             maxStringLength = DEFAULT_LIMITS.maxStringLength,
             maxOutputBytes = DEFAULT_LIMITS.maxOutputBytes,
+            maxListValues = DEFAULT_LIMITS.maxListValues,
         },
+        -- `CodecKit.UNBOUNDED` lives here so every revision publishes the same
+        -- table and a limit lifted through one copy stays lifted after an
+        -- upgrade.
+        unbounded = {},
         -- One table pool for every embedded copy. It keeps the tables a call
         -- leases; the pool's shallow reset clears them on release.
         pool = PoolKit:NewTablePool({ maxRetained = POOL_MAX_RETAINED }),
@@ -401,6 +433,7 @@ end
 
 local sharedLimits = rawget(state, "limits")
 local tablePool = rawget(state, "pool")
+local UNBOUNDED = rawget(state, "unbounded")
 
 -- Work and buffers -----------------------------------------------------------
 --
@@ -430,6 +463,18 @@ local function returnTable(pooled, borrowed)
     end
 end
 
+---Read one shared limit as the number the stages compare against:
+---`math.huge` for `CodecKit.UNBOUNDED`, so no stage tests for the sentinel.
+---@param name string
+---@return number
+local function readLimit(name)
+    local value = rawget(sharedLimits, name)
+    if value == UNBOUNDED then
+        return math.huge
+    end
+    return value
+end
+
 ---Open the work record of one call, copying the shared limits so a
 ---`SetLimits` during an asynchronous job does not change it mid-way.
 ---@param pooled boolean
@@ -439,10 +484,11 @@ local function openWork(pooled)
     work.pooled = pooled
     work.context = false
     work.isSecret = readSecretProbe() or false
-    work.maxDepth = rawget(sharedLimits, "maxDepth")
-    work.maxValues = rawget(sharedLimits, "maxValues")
-    work.maxStringLength = rawget(sharedLimits, "maxStringLength")
-    work.maxOutputBytes = rawget(sharedLimits, "maxOutputBytes")
+    work.maxDepth = readLimit("maxDepth")
+    work.maxValues = readLimit("maxValues")
+    work.maxStringLength = readLimit("maxStringLength")
+    work.maxOutputBytes = readLimit("maxOutputBytes")
+    work.maxListValues = readLimit("maxListValues")
     work.valueCount = 0
     work.visited = false
     work.textLength = 0
@@ -836,7 +882,7 @@ local function serializeBody(work, value, count)
     local ok, reason
     if count == nil then
         ok, reason = writeValue(work, sink, value, 0)
-    elseif count > work.maxValues or count > MAX_LIST_VALUES then
+    elseif count > work.maxValues or count > work.maxListValues then
         ok, reason = false, REASON.maxValues
     else
         ok = true
@@ -1086,7 +1132,7 @@ local function deserializeBody(work, text, allowList)
             return false, count
         end
         position = afterCount
-        if count > work.maxValues or count > MAX_LIST_VALUES then
+        if count > work.maxValues or count > work.maxListValues then
             return false, REASON.maxValues
         end
         if count > textLength - position + 1 then
@@ -2888,7 +2934,11 @@ end
 ---scheduled, so the refusal is raised at the caller. The walk visits values
 ---in the encoder's order and counts them the way `writeValue` does, and stops
 ---where the encoder would refuse with `"maxValues"` or `"maxDepth"`, so every
----value the job could reach has been asked about.
+---value the job could reach has been asked about. With `maxValues` lifted it
+---stops where `"maxOutputBytes"` must have refused: every value started wrote
+---at least one byte, and at most `maxDepth + 1` values are started but not yet
+---finished (and so not yet measured) at any time, so the encoder can reach no
+---more than `maxOutputBytes + maxDepth + 2` values.
 ---@param work table
 ---@param value any
 ---@param depth integer nesting of the table holding this value, 0 at the top
@@ -2898,7 +2948,7 @@ local function containsSecret(work, value, depth)
         return true
     end
     local count = work.valueCount + 1
-    if count > work.maxValues then
+    if count > work.maxValues or count > work.maxOutputBytes + work.maxDepth + 2 then
         return false
     end
     work.valueCount = count
@@ -3114,11 +3164,24 @@ local function validateLimitUpdate(limits, level)
         end
         local value = rawget(limits, key)
         local ceiling = LIMIT_CEILINGS[key]
-        if type(value) ~= "number" or value % 1 ~= 0 or value < 1 or value > ceiling then
-            error(
-                "CodecKit:SetLimits limits." .. key .. " must be an integer from 1 to " .. ceiling,
-                level
-            )
+        if value == UNBOUNDED then
+            if UNBOUNDED_ALLOWED[key] ~= true then
+                error(
+                    "CodecKit:SetLimits limits."
+                        .. key
+                        .. " cannot be CodecKit.UNBOUNDED because "
+                        .. BOUNDED_REASONS[key]
+                        .. "; use an integer from 1 to "
+                        .. ceiling,
+                    level
+                )
+            end
+        elseif type(value) ~= "number" or value % 1 ~= 0 or value < 1 or value > ceiling then
+            local accepted = "an integer from 1 to " .. ceiling
+            if UNBOUNDED_ALLOWED[key] == true then
+                accepted = accepted .. " or CodecKit.UNBOUNDED"
+            end
+            error("CodecKit:SetLimits limits." .. key .. " must be " .. accepted, level)
         end
         key = next(limits, key)
     end
@@ -3331,9 +3394,10 @@ local function decodeAsync(self, text, options, scope, callback)
     end, DECODE_ASYNC_OPTIONS)
 end
 
----Change any subset of the shared limits. Affects every consumer.
+---Change any subset of the shared limits. Affects every consumer. Validates
+---every field before changing any, so a refused call changes nothing.
 ---@param self CodecKit
----@param limits table
+---@param limits CodecKit.Limits
 local function setLimits(self, limits)
     validateFacade(self, "CodecKit:SetLimits", 3)
     validateLimitUpdate(limits, 3)
@@ -3356,6 +3420,7 @@ local function getLimits(self)
         maxValues = rawget(sharedLimits, "maxValues"),
         maxStringLength = rawget(sharedLimits, "maxStringLength"),
         maxOutputBytes = rawget(sharedLimits, "maxOutputBytes"),
+        maxListValues = rawget(sharedLimits, "maxListValues"),
     }
 end
 
@@ -3365,6 +3430,7 @@ rawset(CodecKit, "API", API_GENERATION)
 rawset(CodecKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(CodecKit, "FORMAT_VERSION", FORMAT_VERSION)
 rawset(CodecKit, "PRINT_ALPHABET", PRINT_ALPHABET)
+rawset(CodecKit, "UNBOUNDED", UNBOUNDED)
 rawset(CodecKit, "Encode", encode)
 rawset(CodecKit, "Decode", decode)
 rawset(CodecKit, "EncodeMany", encodeMany)

@@ -17,6 +17,7 @@ The WidgetKit suite covers:
 - duplicate embedded loading, Registry publication, each missing required dependency, an incomplete facade, yielding to a newer revision, an in-place upgrade to revision 2 keeping live widgets, and a newer copy raising a base widget's version;
 - `error` levels: facade, widget, container, widget-type, anchor, binding and rendering errors report the caller's own line;
 - the client's frame scripts, run by the fixture rather than by hand: a dropdown list closed from `OnHide` once per real hide, WidgetKit's focus following the edit focus between two edit boxes and no focus-lost script for a box without the focus, every base widget laid out in every layout inside nested containers without an anchor to itself or a cycle, and the client's anchor refusals passed on (`FrameScripts_spec.lua`);
+- limits: the default `maxCreatedCeiling`, a raised ceiling honoured by registrations and upgrades, a lowered ceiling keeping caps already given, `UNBOUNDED` refused for frames at the caller's line, invalid and unknown limits refused without changing anything, `maxCallbacks` including `UNBOUNDED`, `SetMaxChildren` including `UNBOUNDED` and its reset on release, and the sentinel, the limits and opened bounds kept across an in-place upgrade;
 - manifest/runtime API and revision consistency, and the position of `optionalDependencies`.
 
 | Spec | Covers |
@@ -35,10 +36,11 @@ The WidgetKit suite covers:
 | `ConfirmHost_spec.lua` | confirmation disarmed after five seconds with SchedulerKit |
 | `Media_spec.lua` | media pickers with and without MediaKit |
 | `Allocation_spec.lua` | allocation guards |
+| `Limits_spec.lua` | `SetLimits` / `GetLimits`, `maxCallbacks`, `SetMaxChildren`, `UNBOUNDED`, limits across upgrades |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, dependencies, duplicate loads, upgrades |
 | `Manifest_spec.lua` | manifest and runtime consistency |
 
-`support/WidgetKitTestEnv.lua` loads Registry, SignalKit, PoolKit, SchemaKit, OptionsKit and WidgetKit on the shared fixture and creates `UIParent` (1920 x 1080 at the origin); it adds `InstallSecretProbe` / `NewSecret`, `AllocatedKilobytes`, `LoadRevision`, and loaders without OptionsKit and without `UIParent`. `support/WidgetKitHostTestEnv.lua` also loads EventKit, LifecycleKit, TimerKit, SchedulerKit, SettingsKit and MediaKit, removes the saved variables a spec opens, and fires the latest native timer for debounced saves. OptionsKit, SettingsKit, SchedulerKit and MediaKit are declared under `optionalDependencies`, so the runner puts them and their closures on `LUA_PATH`.
+`support/WidgetKitTestEnv.lua` loads Registry, SignalKit, PoolKit, SchemaKit, OptionsKit and WidgetKit on the shared fixture and creates `UIParent` (1920 x 1080 at the origin); it adds `InstallSecretProbe` / `NewSecret`, `AllocatedKilobytes`, `LoadRevision`, and loaders without OptionsKit and without `UIParent`. `support/WidgetKitHostTestEnv.lua` also loads TimerKit, SchedulerKit, SettingsKit and MediaKit, removes the saved variables a spec opens, and fires the latest native timer for debounced saves. OptionsKit, SettingsKit, SchedulerKit and MediaKit are declared under `optionalDependencies`, so the runner puts them and their closures on `LUA_PATH`.
 
 The fixture's `FrameStub` resolves a frame's rect from its anchors, so `GetWidth`, `GetHeight` and `GetRect` answer as the client would for one anchor (the frame's own size) and for two anchors on opposite edges (the size they span). It fires `OnShow` / `OnHide` when a frame's own shown flag changes, moves the edit focus between edit boxes with their `OnEditFocusLost` / `OnEditFocusGained` scripts, and refuses an anchor to the region itself or one that closes an anchor cycle, as the client does. It does not model text wrapping (a string is 6 pixels per byte and 12 per line), scale in geometry, strata ordering (a frame only records its strata), or visibility scripts on children of a frame that changed.

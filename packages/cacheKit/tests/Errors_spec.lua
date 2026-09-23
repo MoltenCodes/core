@@ -13,7 +13,7 @@ describe("CacheKit argument validation", function()
         end)
         for _, invalid in ipairs({ 0, -1, 1.5, 0 / 0, math.huge, "8" }) do
             TestEnv.expectErrorContaining(
-                "CacheKit:NewLru maxEntries must be a positive integer",
+                "CacheKit:NewLru maxEntries must be a positive integer or CacheKit.UNBOUNDED",
                 function()
                     CacheKit:NewLru({ maxEntries = invalid })
                 end

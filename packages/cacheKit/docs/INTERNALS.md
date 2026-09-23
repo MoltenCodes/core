@@ -10,9 +10,9 @@ A cache is one table with a fixed set of private fields, all created by `newCach
 |---|---|
 | `_entries` | Hash from key to entry. `false` once closed. |
 | `_newest`, `_oldest` | Ends of the recency list, or `false` when empty. |
-| `_count`, `_maxEntries` | Stored entries and the bound. |
+| `_count`, `_maxEntries` | Stored entries and the bound; `math.huge` for a cache opened with `CacheKit.UNBOUNDED`, so the hot path compares two numbers. |
 | `_ttlSeconds` | Age limit in seconds, or `false` for an LRU cache. |
-| `_free`, `_freeCount` | The free list: an array of blank entry tables. |
+| `_free`, `_freeCount`, `_freeLimit` | The free list: an array of blank entry tables, and the most it keeps (`maxEntries`, or 1024 when unbounded). |
 | `_hits`, `_misses`, `_evictions` | Counters. |
 | `_statsView` | The table `GetStats` returns, `false` until the first call. |
 | `_eventScope`, `_clearOnEvents`, `_clearCallback` | Clear-on-event state, `false` until the first `ClearOn`. |
@@ -41,7 +41,7 @@ The list is intrusive: the links live on the entries the hash already points at,
 
 `recycle` blanks an entry's `key`, `value` and `expiresAt` (so the cache no longer holds what they referenced) and pushes it onto `_free`. `takeEntry` pops from `_free` before allocating.
 
-The invariant is that live entries plus free entries never exceed `maxEntries`: an entry reaches the free list only when the live count drops by one, and a new key takes from the free list before it allocates. That is what bounds the free list, so `recycle` has no bound check of its own; `Property_spec.lua` checks the invariant after every step. It also follows that a full cache has an empty free list, which is why eviction reuses the evicted entry directly instead of passing it through the list.
+The invariant is that live entries plus free entries never exceed `maxEntries`: an entry reaches the free list only when the live count drops by one, and a new key takes from the free list before it allocates. That is what bounds a bounded cache's free list, so its `_freeLimit` check never fires; an unbounded cache has no such invariant and `recycle` drops blank entries past 1024 instead; `Property_spec.lua` checks the invariant after every step. It also follows that a full cache has an empty free list, which is why eviction reuses the evicted entry directly instead of passing it through the list.
 
 `Close` drops `_entries` and `_free` together, so a closed cache retains no entry, key or value.
 

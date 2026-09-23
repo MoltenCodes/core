@@ -10,7 +10,8 @@ This document describes implementation invariants for maintainers. It is not an 
 |---|---|
 | `schema` | The state layout version, `1`. |
 | `runtimeRevision` | The revision that last committed its functions. |
-| `limits` | The four shared limits. `SetLimits` writes here; every call copies them into its work record. |
+| `limits` | The five shared limits, each an integer or, for `maxValues` and `maxStringLength`, the `unbounded` sentinel. `SetLimits` writes here; every call copies them into its work record as numbers, `math.huge` for a lifted limit, so no stage tests for the sentinel. |
+| `unbounded` | The table published as `CodecKit.UNBOUNDED`, shared by every revision. |
 | `pool` | The PoolKit table pool (`maxRetained` 16) every synchronous call leases from. |
 
 Nothing else is package state: CodecKit keeps no registrations and no per-consumer objects.
@@ -34,13 +35,13 @@ An asynchronous call sets `pooled = false` and uses plain tables throughout: Sch
 
 ## Serialiser
 
-`writeValue` and `readValue` recurse once per table level, so the Lua stack depth is bounded by `maxDepth` (ceiling 128). The writer asks the secret probe before `type` dispatch, counts every value against `maxValues`, and checks the sink size after every value. A table is entered in the cycle set on the way down and removed on the way up, so a table reached twice through different paths is written twice (and bounded by `maxValues`), while a table reached from itself is a cycle.
+`writeValue` and `readValue` recurse once per table level (two Lua frames per level with `writeTable` and `readTable`), so the Lua stack depth is bounded by `maxDepth` (ceiling 128; a bare Lua 5.1.5 interpreter overflows near 9995 levels). The writer asks the secret probe before `type` dispatch, counts every value against `maxValues`, and checks the sink size after every value. A table is entered in the cycle set on the way down and removed on the way up, so a table reached twice through different paths is written twice (and bounded by `maxValues`), while a table reached from itself is a cycle.
 
 The array part is found by `arrayPartLength`, which walks `rawget(t, i)` from 1 while below `#t` and so ends it at the first hole whatever border `#` picked; it tests elements with `type`, never `~= nil`, so a secret element is first touched by the secret probe. One `next` pass counts the map part, a second writes it, so no key list is allocated.
 
-An argument list holds at most 4096 entries (`MAX_LIST_VALUES`) on both sides, because `DecodeMany` returns them with `unpack`, which Lua 5.1 refuses beyond about 8000 results.
+An argument list holds at most `maxListValues` entries on both sides (4096 by default, ceiling 7900), because `DecodeMany` returns them with `unpack`, which Lua 5.1.5 refuses past 7997 results (measured: the 8000-slot C stack limit less the three arguments of `unpack`).
 
-`EncodeAsync` asks about secrets before it schedules the job. `containsSecret` visits values in the writer's order (array part, then map keys and values), counts them as `writeValue` does and stops where the writer would refuse with `maxValues` or `maxDepth`, so any secret the job could reach is found at the call.
+`EncodeAsync` asks about secrets before it schedules the job. `containsSecret` visits values in the writer's order (array part, then map keys and values), counts them as `writeValue` does and stops where the writer would refuse with `maxValues` or `maxDepth`, so any secret the job could reach is found at the call. It also stops after `maxOutputBytes + maxDepth + 2` values: every value started has written at least one byte, and at most `maxDepth + 1` are started but not yet measured, so the writer must have refused with `maxOutputBytes` by then. Only a lifted `maxValues` makes that bound the one that applies.
 
 The reader bounds-checks every byte it reads with `string.byte`, which returns `nil` past the end, and refuses an array or map count larger than the bytes left before looping over it. Refusals return up the recursion as `nil, reason`; there is no `pcall`, which is what lets the asynchronous form yield from inside the recursion.
 
@@ -92,4 +93,4 @@ A group of four bytes is at most 2^32 − 1 and five base-85 digits at most 85^5
 
 ## Upgrades
 
-A newer revision keeps `_state` (limits and pool) and rewrites the facade's functions and constants. Work records and sinks exist only during a call, so no object outlives the revision that built it; nothing needs migrating in revision 1.
+A newer revision keeps `_state` (limits, the `UNBOUNDED` sentinel and pool) and rewrites the facade's functions and constants. Work records and sinks exist only during a call, so no object outlives the revision that built it; nothing needs migrating in revision 1.

@@ -40,6 +40,7 @@ Package facade:
 | `NewTtl(options)` | Create a least-recently-used cache whose entries also expire by age. |
 | `Memoize(fn, options?)` | Wrap a one-key function; returns the memoised function and its cache. |
 | `NewSnapshot(read, options?)` | Create a snapshot that diffs what `read` reports. |
+| `UNBOUNDED` | Sentinel a `maxEntries` option accepts to lift the bound (see [Limits](#limits)). |
 
 Cache handles (both constructors return the same kind of handle):
 
@@ -69,17 +70,26 @@ Snapshot handles:
 
 `CacheKit.Cache` and `CacheKit.Snapshot` are the shared method prototypes.
 
-## Bounds
+## Limits
 
-Every cache is bounded, and there is no unbounded mode:
+Every cache and snapshot is bounded by default, and the bound is an option on the object you create. CacheKit has no package-wide limit, so it has no `SetLimits`.
 
-| Constructor | `maxEntries` |
-|---|---|
-| `NewLru`, `NewTtl` | Required. |
-| `Memoize` | Optional, default `128`. |
-| `NewSnapshot` | Optional, default `1024`; the most keys one refresh may report. |
+| Limit | Default | How to open | `UNBOUNDED` allowed? | Ceiling and reason |
+|---|---|---|---|---|
+| `NewLru`, `NewTtl` `maxEntries` | none: required | `{ maxEntries = n }` | yes | none: the entries are your own data |
+| `Memoize` `maxEntries` | `128` | `{ maxEntries = n }` | yes | none: the results are your own data |
+| `NewSnapshot` `maxEntries` | `1024` | `{ maxEntries = n }` | yes | none: the keys are your own data |
+| free list of an unbounded cache | `1024` blank entries | not configurable | no | keeps an unbounded cache from retaining its peak size after a `Clear` |
 
-`maxEntries` must be an integer of at least `1`. Option tables refuse unknown fields.
+`maxEntries` must be an integer of at least `1` or `CacheKit.UNBOUNDED`; anything else is refused at the caller's line with `maxEntries must be a positive integer or CacheKit.UNBOUNDED`. Option tables refuse unknown fields.
+
+```lua
+local byGuid = CacheKit:NewLru({ maxEntries = CacheKit.UNBOUNDED })
+```
+
+An unbounded cache never evicts, so it grows with every distinct key you store and only `Delete`, `Clear`, expiry and `Close` shrink it: use it only when the key set is one you bound yourself. Its free list keeps at most 1024 blank entry tables; a bounded cache needs no separate bound, because its live plus free entries never exceed `maxEntries`. An unbounded snapshot accepts any number of keys per refresh.
+
+`CacheKit.UNBOUNDED` is one table kept in the package state, so every embedded copy and every revision publishes the same sentinel, and caches opened with it stay unbounded across an in-place upgrade.
 
 ## `CacheKit:NewLru({ maxEntries })`
 
@@ -256,7 +266,7 @@ Argument failures report the line that called the public method, never a line in
 | `Get`, `Peek`, `Delete` | O(1), no allocation. |
 | `Set`, existing key | O(1), no allocation. |
 | `Set`, new key | O(1); reuses an evicted or freed entry table, allocates one only when neither exists. |
-| `Clear` | O(entries); entry tables are kept for reuse, up to `maxEntries`. |
+| `Clear` | O(entries); entry tables are kept for reuse, up to `maxEntries` (1024 for an unbounded cache). |
 | Memoised hit | O(1), no allocation. |
 | `Refresh` | O(keys reported + keys stored); no allocation for unchanged keys. |
 

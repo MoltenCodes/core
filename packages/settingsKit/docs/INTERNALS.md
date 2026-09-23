@@ -47,6 +47,8 @@ Inside a scope, values are stored by field name exactly as the schema declares t
 | `views` | Weak-keyed map from view proxy to its node. |
 | `viewMetatable` | The one metatable of every view: `__index`, `__newindex`, `__metatable = "SettingsKit.View"`. |
 | `databaseMetatable` | The one metatable of every database: `__index` (methods, and the unavailable-scope error), `__newindex` (refuse). |
+| `unbounded` | The `SettingsKit.UNBOUNDED` sentinel, created once so every revision publishes the same table. |
+| `limits` | The shared limits `SetLimits` writes: `maxProfileNameLength` and `pathKeyLimit`. |
 
 ## Databases
 
@@ -142,7 +144,7 @@ Both kinds ask `issecretvalue` about the key before comparing it or using it to 
 `viewNewIndex` → `writeView`:
 
 1. Refuse on a detached root.
-2. Refuse a secret key, then a secret value, then a table value that contains a secret, is or contains a view (`state.views` lookup), or is or contains a table with a metatable (`scanValue`, bounded by depth 16 and 65536 entries). The scan runs on every client: a view stored in a saved table would be a non-empty proxy, so later writes to its keys would skip `__newindex` and validation, and it would alias the other view's data on disk.
+2. Refuse a secret key, then a secret value, then a table value that contains a secret, is or contains a view (`state.views` lookup), or is or contains a table with a metatable (`scanValue`, bounded by depth 16 and the database's `_maxScannedEntries`, 65536 by default and `math.huge` when opened with `SettingsKit.UNBOUNDED`). The scan runs on every client: a view stored in a saved table would be a non-empty proxy, so later writes to its keys would skip `__newindex` and validation, and it would alias the other view's data on disk.
 3. **Probe check.** Each view from the written one up to the root sets its key in its parent's probe to its own probe, the written view sets `key = value` in its probe, and the scope's sealed schema checks the root probe. The probe holds exactly the path to the written value, and every other field of every record on the path is optional (`compilePlan` guarantees it), so the check passes exactly when the value is valid where it is written. The probes are cleared again before any error is raised. A valid check allocates nothing; the reported path is SchemaKit's own, relative to the scope, and the message is built only on failure.
 4. Refuse a write that would add an entry to a keyed section already holding `max` entries (the probe holds one entry, so the bound is counted against the saved table, stopping at `max`).
 5. Store with `rawset` into the resolved (or created) table.

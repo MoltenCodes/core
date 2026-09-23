@@ -45,8 +45,11 @@ Package facade:
 | Field | Purpose |
 |---|---|
 | `Open(savedVariable, schema?, options?)` | Open (or return the open) database over a saved variable. |
+| `SetLimits(limits)` | Change any subset of the shared limits (see [Limits](#limits)). |
+| `GetLimits()` | A fresh table of the shared limits. |
+| `UNBOUNDED` | Sentinel `maxScannedEntries` accepts to lift the scan bound. |
 | `DEFAULT_PROFILE` | `"Default"`, the shared profile's name. |
-| `MAX_PROFILE_NAME_LENGTH` | `64`: the longest profile name, in bytes. |
+| `MAX_PROFILE_NAME_LENGTH` | `64`: the default longest profile name, in bytes; `GetLimits().maxProfileNameLength` is the current one. |
 | `Database` | The shared prototype of databases, for introspection. |
 
 Databases:
@@ -183,6 +186,7 @@ profile.anchor = "LEFT"          -- raises at this line:
 | `defaultProfile` | `"Default"` | The profile a character without a recorded choice starts on. `"char"` gives each character its own profile named `"<name> - <realm>"`. Any other name is used as it is. |
 | `version` | none | The version of the saved table this addon writes, a positive integer. |
 | `migrations` | none | `{ [n] = function(raw) }`, each key from 1 to `version`. Requires `version`. |
+| `maxScannedEntries` | `65536` | The most entries the scan of one written table visits (see [Limits](#limits)): a positive integer or `SettingsKit.UNBOUNDED`. |
 
 Unknown fields are refused.
 
@@ -234,7 +238,7 @@ Reading a default never writes, with the one exception in the table: an array (o
 
 `view[key] = value` runs, in order:
 
-1. **Value refusal.** A secret key, a secret value, or a table containing a secret anywhere raises `SettingsKit (MyAddonDB) profile.name refused a secret value: saved variables never hold secret values`. Every table value is scanned (to 16 levels and at most 65536 entries; a larger table is refused too), on every client, and is also refused when it or any table inside it is a **view** (`db.profile.b = db.profile.a` would alias `a` and let writes through `b` bypass validation) or carries a **metatable** (the client saves neither). Nothing is stored.
+1. **Value refusal.** A secret key, a secret value, or a table containing a secret anywhere raises `SettingsKit (MyAddonDB) profile.name refused a secret value: saved variables never hold secret values`. Every table value is scanned (to 16 levels and at most `maxScannedEntries` entries, 65536 by default; a larger table is refused too), on every client, and is also refused when it or any table inside it is a **view** (`db.profile.b = db.profile.a` would alias `a` and let writes through `b` bypass validation) or carries a **metatable** (the client saves neither). Nothing is stored.
 2. **Schema check.** The value is checked where it is written, against the scope's schema, and a failure raises with SchemaKit's text: `SettingsKit (MyAddonDB) profile.frame.x: expected number, found string`. An undeclared field of a closed record is refused the same way.
 3. **Bounds.** A write that adds an entry to a keyed section already holding `max` entries raises `SettingsKit (MyAddonDB) profile.auras: expected at most 256 entries`.
 4. **Store.** Missing tables on the way are created. Writing `nil` removes the saved value, so the field reads its default again.
@@ -256,7 +260,7 @@ The current profile is chosen per character and recorded in the saved table (`pr
 
 Switches to profile `name`, creating an empty one when it does not exist, records it for this character (when the character key is available), points `db.profile` at a view of it and fires `OnProfileChanged(db, name, previous)`. Returns `true`, or `false` without a signal when `name` is already current. `db.profile` is a different table after a switch; a view kept from before keeps reading and writing the profile it was made for.
 
-Profile names are non-empty strings of at most 64 bytes with a character other than whitespace, never secret.
+Profile names are non-empty strings of at most `maxProfileNameLength` bytes (64 by default) with a character other than whitespace, never secret. A stored choice longer than the current limit is ignored at `Open`.
 
 ### `db:GetProfiles()`
 
@@ -284,7 +288,7 @@ Empties the saved variable in place, keeps its `version`, recreates the layout, 
 
 `scope` names a declared, available scope. After every validated write through that scope's views, `callback(db, scope, key, value, path)` is called with the key and value written (`nil` when a field was reset) and `path`, the path of the table holding the key relative to the scope: `""` for `db.profile.scale`, `"frame"` for `db.profile.frame.x`, `"auras[118]"` for `db.profile.auras[118].shown`.
 
-Keys in `path`, and in every SettingsKit message, are rendered the way SchemaKit renders the keys of its failure paths: an identifier of at most 32 bytes is joined with a dot, numbers and booleans are bracketed, and any other string is quoted in brackets with `|` doubled (so no World of Warcraft `|T`, `|H` or `|c` escape sequence survives), `\` and `"` backslash-escaped and every other control byte shown as `\ddd`. A longer key is cut at 32 bytes, never inside a UTF-8 sequence, and marked with `...`, so `path` is for display and logging; use `key` and the view itself to find the value. A key that is a table, a function or userdata appears as its type (`[table]`).
+Keys in `path`, and in every SettingsKit message, are rendered the way SchemaKit renders the keys of its failure paths: an identifier of at most `pathKeyLimit` bytes (32 by default) is joined with a dot, numbers and booleans are bracketed, and any other string is quoted in brackets with `|` doubled (so no World of Warcraft `|T`, `|H` or `|c` escape sequence survives), `\` and `"` backslash-escaped and every other control byte shown as `\ddd`. A longer key is cut at `pathKeyLimit` bytes, never inside a UTF-8 sequence, and marked with `...`, so `path` is for display and logging; use `key` and the view itself to find the value. A key that is a table, a function or userdata appears as its type (`[table]`).
 
 The signal fires after the value is stored. SignalKit's dispatch rules apply: listeners run in connection order, and a listener that raises stops the dispatch and propagates to the writing line.
 
@@ -327,6 +331,28 @@ Walks every declared scope — every stored character, realm, class and faction 
 
 Returns how many values and tables it removed. With EventKit registered, every database compacts itself on `PLAYER_LOGOUT`; a compaction that raises there is reported through `geterrorhandler()` rather than raised into EventKit's dispatch. Values written after that compaction are saved as they are.
 
+## Limits
+
+Every bound SettingsKit keeps holds unless you open it. A bound on something you create is an option; a bound on text every addon's databases render is a shared limit.
+
+| Limit | Default | How to open | `UNBOUNDED` allowed? | Ceiling and reason |
+|---|---|---|---|---|
+| `maxScannedEntries` | `65536` | `Open(name, schema, { maxScannedEntries = n })` | yes | none: the scanned table is your own data |
+| `maxProfileNameLength` | `64` | `SettingsKit:SetLimits({ maxProfileNameLength = n })` | no | `64` to `1024`: profile names are typed by players and shown in option screens and dropdowns; below 64 a `"<name> - <realm>"` character profile may not fit |
+| `pathKeyLimit` | `32` | `SettingsKit:SetLimits({ pathKeyLimit = n })` | no | `1` to `1024`: paths show keys other players can send, and every message must stay short and printable |
+| table depth of a scanned or copied value | `SchemaKit.MAX_DEPTH` (16) | not configurable here | no | follows SchemaKit's depth, which bounds recursion on the Lua C stack |
+
+`maxScannedEntries` bounds the scan every table value goes through before it is stored: secret values, views and metatables anywhere inside it. The scan is what keeps a hostile or cyclic table from stalling the writer, so a database opened with `SettingsKit.UNBOUNDED` scans a table of any size to its end; it still stops at the depth bound. It is kept per database, and like every other option it is read by the first `Open` of a name only.
+
+```lua
+SettingsKit:SetLimits({ maxProfileNameLength = 128 })
+local limits = SettingsKit:GetLimits() -- a fresh table: { maxProfileNameLength = 128, pathKeyLimit = 32 }
+```
+
+`SetLimits` accepts any subset and raises at the caller, before changing anything, on an unknown name, on `SettingsKit.UNBOUNDED` (naming the reason) or on a value outside the range: `SettingsKit:SetLimits limits.pathKeyLimit must be an integer from 1 to 1024`. **The limits are shared by every consumer in the session**: every embedded copy and every addon's databases use one set. A library should rely on the defaults; an addon that raises a limit raises it for everybody. A changed `pathKeyLimit` applies to paths rendered afterwards; the paths of views built earlier keep their rendering.
+
+`SettingsKit.UNBOUNDED` and the shared limits live in the package state, so every embedded copy publishes the same sentinel and an in-place upgrade keeps the limits a consumer set.
+
 ## Error behaviour
 
 Argument failures report the line that called SettingsKit, never a line inside it, and name the parameter without formatting the value: `SettingsKit:Open options.version must be a positive integer`, `SettingsKit.Database:DeleteProfile cannot delete the current profile`. Calling a method on something that is not a database raises `SettingsKit.Database:SetProfile must be called on a SettingsKit database`. View refusals report the writing (or reading) line and are prefixed with the saved-variable name, `SettingsKit (MyAddonDB) ...`. Writing a field of the database object itself raises `SettingsKit databases are read-only; write through db.<scope> instead`.
@@ -354,10 +380,10 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **A read resolves the saved table through each nesting level** instead of holding it. That keeps every view valid across `ResetProfile`, `CopyProfile` and `ResetDatabase`, which replace or empty saved tables, at the cost of one lookup per level.
 - **The profile choice is recorded by `SetProfile`**, not at `Open`, so a character that never switches writes nothing.
 - **Views are refused as values**, together with any table carrying a metatable. A stored view would alias another view's data and be written through without validation, because Lua 5.1 calls `__newindex` only for absent keys.
-- **Additions:** `db:Validate(scope, path, value)`, for an options layer that checks a value before it writes it (optionsKit binds options to database paths); `db:Pairs(view)`, because Lua 5.1 cannot iterate a proxy with `pairs`; `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` methods; a fifth `path` argument to `OnChange` listeners; `db:GetSavedVariable()`; `Compact` returns a count; `SettingsKit.DEFAULT_PROFILE` and `SettingsKit.MAX_PROFILE_NAME_LENGTH`.
+- **Additions:** `db:Validate(scope, path, value)`, for an options layer that checks a value before it writes it (optionsKit binds options to database paths); `db:Pairs(view)`, because Lua 5.1 cannot iterate a proxy with `pairs`; `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` methods; a fifth `path` argument to `OnChange` listeners; `db:GetSavedVariable()`; `Compact` returns a count; `SettingsKit.DEFAULT_PROFILE` and `SettingsKit.MAX_PROFILE_NAME_LENGTH`; `SetLimits`, `GetLimits`, `UNBOUNDED` and the `maxScannedEntries` option (principle 4a, *Bounded by default, opened on purpose*).
 
 ## Embedded copies and upgrades
 
-Several addons may embed SettingsKit; Registry selects the newest compatible revision and every copy shares one facade. Package state holds one database per saved-variable name, and an upgrade keeps it: databases, views, their listeners and the logout connection keep working and run the newer implementation, because the database and view metatables and the logout listener's dispatch table are rewritten in place.
+Several addons may embed SettingsKit; Registry selects the newest compatible revision and every copy shares one facade. Package state holds one database per saved-variable name, the shared limits and the `UNBOUNDED` sentinel, and an upgrade keeps them: databases, views, their listeners and the logout connection keep working and run the newer implementation, because the database and view metatables and the logout listener's dispatch table are rewritten in place.
 
 Nothing survives `/reload` except the saved variable itself: open the database again in the loaded phase.

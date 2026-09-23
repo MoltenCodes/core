@@ -25,9 +25,9 @@ What each piece promises:
 
 - **Exact values.** Integers up to 2^53 are written as varint integers; every other number — fractions, larger integers, both infinities, NaN, −0, subnormal numbers — is its IEEE-754 bit pattern, so nothing is lost to `tostring`. Strings carry every byte. Tables keep array, map and mixed parts; cycles are refused with `"cycle"`, functions and userdata with `"unsupportedType"`.
 - **Never raises on input.** `Decode`, `Deserialize`, `Decompress` and the channel decoders return `false, reason` for any string, from a fixed vocabulary, and stay within the limits whatever the string holds.
-- **Bounded by default.** `maxDepth` 16, `maxValues` 65536, `maxStringLength` 65536 and `maxOutputBytes` 1 MiB, shared by every consumer, changed with `SetLimits`. The output limit also caps what inflating a hostile stream can produce.
+- **Bounded by default.** `maxDepth` 16, `maxValues` 65536, `maxStringLength` 65536, `maxOutputBytes` 1 MiB and `maxListValues` 4096, shared by every consumer, changed with `SetLimits`; `CodecKit.UNBOUNDED` lifts `maxValues` and `maxStringLength`, which `maxOutputBytes` still bounds. The output limit also caps what inflating a hostile stream can produce.
 - **Standard compression.** `Compress` writes raw DEFLATE that any inflater reads, and `Decompress` reads any raw DEFLATE stream; levels 1 to 9.
-- **Every stage on its own.** `Serialize`/`Deserialize`, `Compress`/`Decompress`, `EncodeForAddon`/`DecodeForAddon`, `EncodeForPrint`/`DecodeForPrint`; `EncodeMany`/`DecodeMany` for argument lists of up to 4096 values, `nil`s included.
+- **Every stage on its own.** `Serialize`/`Deserialize`, `Compress`/`Decompress`, `EncodeForAddon`/`DecodeForAddon`, `EncodeForPrint`/`DecodeForPrint`; `EncodeMany`/`DecodeMany` for argument lists of up to `maxListValues` values (4096 by default), `nil`s included.
 - **Never freezes a frame.** `EncodeAsync` and `DecodeAsync` run on a SchedulerKit scope and yield when the frame budget is spent.
 - **Re-entrant and cheap.** Buffers are leased from a PoolKit table pool and returned on every path; encoding a small value again allocates nothing.
 - **Secrets refused.** A secret value anywhere in the value raises at your line.

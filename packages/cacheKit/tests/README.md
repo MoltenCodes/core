@@ -11,6 +11,7 @@ The CacheKit suite covers:
 - duplicate embedded loading, Registry publication, yielding to a newer revision, and an in-place upgrade that keeps every cache, entry, memoised function, subscription and snapshot;
 - `error` levels: every argument failure reports the caller's own line;
 - a 5,000-step deterministic property test against a naive LRU model, checking after every step that live plus free entries stay within `maxEntries`;
+- limits: the default `Memoize` and snapshot bounds, `UNBOUNDED` on every constructor, the 1024-entry free list of an unbounded cache, another table refused at the caller's line, and the sentinel identity and unbounded caches kept across an in-place upgrade;
 - manifest/runtime API and revision consistency.
 
 EventKit is an optional dependency, declared under `optionalDependencies` in the manifest, so the test runner puts EventKit and SignalKit on `LUA_PATH` for this suite and the clear-on-event specs exercise the real EventKit rather than a stub. The release load order ignores optional dependencies; `cache:ClearOn` finds EventKit through `Registry:Find` at call time.
@@ -25,6 +26,7 @@ EventKit is an optional dependency, declared under `optionalDependencies` in the
 | `ClearOn_spec.lua` | clear-on-event through EventKit |
 | `Allocation_spec.lua` | allocation guards |
 | `Property_spec.lua` | the model-based LRU property test |
+| `Limits_spec.lua` | `maxEntries` defaults, `UNBOUNDED`, the sentinel across upgrades |
 | `Errors_spec.lua` | argument and state errors |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |

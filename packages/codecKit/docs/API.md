@@ -37,7 +37,7 @@ SchedulerKit is found with `Registry:Find("schedulerKit", 1)` when an asynchrono
 |---|---|---|
 | `Encode(value[, options])` | `true, text` or `false, reason` | Serialise one value, then compress and channel-encode as `options` says. |
 | `Decode(text[, options])` | `true, value` or `false, reason` | Reverse whatever stages the header names. Never raises on malformed text. |
-| `EncodeMany(options, ...)` | `true, text` or `false, reason` | Encode an argument list of at most 4096 values; `nil`s, trailing ones included, survive. `options` is always the first argument and may be `nil`. |
+| `EncodeMany(options, ...)` | `true, text` or `false, reason` | Encode an argument list of at most `maxListValues` values (4096 by default); `nil`s, trailing ones included, survive. `options` is always the first argument and may be `nil`. |
 | `DecodeMany(text[, options])` | `true, ...` or `false, reason` | Decode a list into as many values as were encoded; a single-value frame gives one value. Never raises on malformed text. |
 | `Serialize(value)` | `true, bytes` or `false, reason` | Stage 1 alone, without a header. |
 | `Deserialize(bytes)` | `true, value` or `false, reason` | Its inverse. |
@@ -48,7 +48,8 @@ SchedulerKit is found with `Registry:Find("schedulerKit", 1)` when an asynchrono
 | `EncodeAsync(value, options, scope, callback)` | the SchedulerKit job | `Encode` in slices on a SchedulerKit scope; `callback(ok, textOrReason)`. |
 | `DecodeAsync(text, options, scope, callback)` | the SchedulerKit job | `Decode` in slices; `callback(ok, valueOrReason)`. |
 | `SetLimits(limits)` | nothing | Change any subset of the shared limits. |
-| `GetLimits()` | a fresh table | The four limits. |
+| `GetLimits()` | a fresh table | The five limits; `UNBOUNDED` where one was lifted. |
+| `UNBOUNDED` | a table | The sentinel `SetLimits` accepts for `maxValues` and `maxStringLength` (see [Limits](#limits)). |
 | `FORMAT_VERSION` | `1` | The frame version this copy writes and reads. |
 | `PRINT_ALPHABET` | a string | The 85 print characters, digit 0 first. |
 | `API`, `REVISION` | integers | API generation and implementation revision. |
@@ -77,7 +78,7 @@ The reasons form a fixed vocabulary:
 | `"cycle"` | encode | A table contains itself, directly or through any chain of tables (keys included). |
 | `"unsupportedType"` | encode | A function, userdata or thread, as a value or a key. |
 | `"maxDepth"` | both | Tables nest deeper than `maxDepth`. |
-| `"maxValues"` | both | More than `maxValues` values, keys and list entries included, or an argument list of more than 4096 entries. |
+| `"maxValues"` | both | More than `maxValues` values, keys and list entries included, or an argument list of more than `maxListValues` entries. |
 | `"maxStringLength"` | both | One string, value or key, is longer than `maxStringLength`. |
 | `"maxOutputBytes"` | both | A stage's output (or a decoding stage's input) is larger than `maxOutputBytes`. |
 | `"truncated"` | decode | The input ends inside a header, a value or a DEFLATE stream. |
@@ -153,7 +154,7 @@ Every value is one type byte followed by its payload:
 | `0x08` | a table with only an array part | varint `n`, then `n` values |
 | `0x09` | a table with only a map part | varint `m`, then `m` key, value pairs |
 | `0x0A` | a table with both | varint `n`, `n` values, varint `m`, `m` key, value pairs |
-| `0x0B` | an argument list (top level only) | varint `n` (at most 4096), then `n` values, which may be `nil` |
+| `0x0B` | an argument list (top level only) | varint `n` (at most `maxListValues`), then `n` values, which may be `nil` |
 
 **Varint.** Seven bits per byte, least significant group first; the high bit is set on every byte but the last. At most eight bytes, at most 2^53, and never overlong (a last byte of zero after the first byte is refused). `300` is `AC 02`.
 
@@ -170,7 +171,7 @@ A reader accepts a frame when it is **well-formed**:
 - the header is `0x01` and a valid flags byte, and the body decodes through every stage the flags name;
 - every stage's input and output stays within the limits;
 - every type byte is assigned (`0x0B` only at the top), every varint is at most eight bytes, at most 2^53 and not overlong, and a negative integer's magnitude is not 0;
-- every count fits in the bytes that remain, an argument list holds at most 4096 entries, and nothing follows the top-level value;
+- every count fits in the bytes that remain, an argument list holds at most `maxListValues` entries, and nothing follows the top-level value;
 - an array element or map value is never `nil`; a key is never `nil` or NaN and never repeats within one table.
 
 Nothing else is checked. In particular the reader accepts, and decodes to the value it describes, input the writer never produces: an integral number written as a `0x06` double, a NaN with any payload, a map part holding the keys `1..n`, a mixed layout with an empty array or map part, and DEFLATE streams made by any encoder with any block choice. Re-encoding such a value gives the canonical bytes, which may differ from the input.
@@ -234,19 +235,25 @@ The decoder ignores whitespace anywhere (space, tab, line feed, vertical tab, fo
 
 ## Limits
 
-| Limit | Default | Ceiling | Bounds |
-|---|---|---|---|
-| `maxDepth` | 16 | 128 | Table nesting; a top-level table is depth 1. |
-| `maxValues` | 65536 | 16777216 | Values in one payload: keys, values and list entries. |
-| `maxStringLength` | 65536 | 2^30 | One string, value or key. |
-| `maxOutputBytes` | 1048576 | 2^26 (64 MiB) | The output of every stage: the serialised bytes, the compressed bytes, the escaped or printed text, and the final frame. Decoding refuses an input stage larger than it and stops inflating when the output would pass it, so a DEFLATE bomb costs at most this much. |
+Every limit is package-wide: it is set with `CodecKit:SetLimits{ ... }` and read with `CodecKit:GetLimits()`.
+
+| Limit | Default | Bounds | How to open | `UNBOUNDED` allowed? | Ceiling and reason |
+|---|---|---|---|---|---|
+| `maxDepth` | 16 | Table nesting; a top-level table is depth 1. | `SetLimits{ maxDepth = n }` | no | 128: the reader and writer recurse twice per level on the Lua call stack. A bare Lua 5.1.5 interpreter overflows near 9995 levels; 128 leaves the rest to the consumer's own call depth. |
+| `maxValues` | 65536 | Values in one payload: keys, values and list entries. | `SetLimits{ maxValues = n }` | yes | 16777216 as an integer; lifted, `maxOutputBytes` still bounds it. |
+| `maxStringLength` | 65536 | One string, value or key. | `SetLimits{ maxStringLength = n }` | yes | 2^30 as an integer; lifted, `maxOutputBytes` still bounds it. |
+| `maxOutputBytes` | 1048576 | The output of every stage: the serialised bytes, the compressed bytes, the escaped or printed text, and the final frame. Decoding refuses an input stage larger than it and stops inflating when the output would pass it, so a DEFLATE bomb costs at most this much. | `SetLimits{ maxOutputBytes = n }` | no | 2^26 (64 MiB): inflating keeps one array slot per output byte, so this is the memory one hostile frame may claim. |
+| `maxListValues` | 4096 | Entries in an `EncodeMany`/`DecodeMany` argument list, on both sides. Past it the reason is `"maxValues"`. | `SetLimits{ maxListValues = n }` | no | 7900: `DecodeMany` returns the entries through `unpack`, which Lua 5.1.5 refuses past 7997 results (the 8000-slot C stack limit less its three arguments, measured); the margin covers hosts built with a smaller stack. `EncodeMany` refuses the same count so everything it writes reads back. |
 
 ```lua
 CodecKit:SetLimits({ maxDepth = 8, maxOutputBytes = 65536 })
-local limits = CodecKit:GetLimits() -- a fresh table
+CodecKit:SetLimits({ maxValues = CodecKit.UNBOUNDED })
+local limits = CodecKit:GetLimits() -- a fresh table; limits.maxValues == CodecKit.UNBOUNDED
 ```
 
-`SetLimits` accepts any subset and raises at the caller on an unknown name or a value that is not an integer from 1 to the ceiling, before changing anything. **The limits are shared by every consumer in the session**, like SchedulerKit's frame budget: every embedded copy and every addon uses one set. A library should rely on the defaults; an addon that raises a limit raises it for everybody. Each call copies the limits when it starts, so a change during an asynchronous job does not affect that job.
+**Why lifting `maxValues` and `maxStringLength` is safe.** Every value takes at least one byte and every string is part of the bytes, and every decoding stage refuses input larger than `maxOutputBytes` (print text before its whitespace is stripped) and stops inflating at it. A lifted count or length is therefore still bounded by `maxOutputBytes` on both sides, which is why that limit, and the stack-bound `maxDepth` and `maxListValues`, cannot be lifted. With `maxValues` lifted, the secret scan `EncodeAsync` runs at the call stops after `maxOutputBytes + maxDepth + 2` values, the most the encoder can reach before `"maxOutputBytes"` refuses, so a value that references one table many times cannot make the scan run for long.
+
+`SetLimits` accepts any subset and raises at the caller on an unknown name, on a value that is not an integer from 1 to the ceiling (or `CodecKit.UNBOUNDED` where the table allows it), and on `CodecKit.UNBOUNDED` where it does not, naming the reason (`CodecKit:SetLimits limits.maxDepth cannot be CodecKit.UNBOUNDED because the reader and writer recurse on the Lua call stack; use an integer from 1 to 128`). It validates every field before changing any. `CodecKit.UNBOUNDED` is one table kept in the package state, so every embedded copy and every revision publishes the same sentinel. **The limits are shared by every consumer in the session**, like SchedulerKit's frame budget: every embedded copy and every addon uses one set. A library should rely on the defaults; an addon that raises a limit raises it for everybody. Each call copies the limits when it starts, so a change during an asynchronous job does not affect that job.
 
 ## Asynchronous variants
 
@@ -331,8 +338,8 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`Compress` and every decoding stage refuse input larger than `maxOutputBytes`** (print text is measured before whitespace is stripped), so the limit bounds each stage's input as well as its output.
 - **Levels 8 and 9 cap their hash chains at 192 and 256 candidates** instead of zlib's 1024 and 4096, which keeps level 9 within about three times level 6 in pure Lua (2.7 times measured on the worst case above, down from 27 times).
 - **Inputs under 64 bytes skip matching** and are written as one fixed-Huffman literal block or one stored block.
-- **Additions:** `EncodeMany` and `DecodeMany` for argument lists (at most 4096 entries, because `DecodeMany` returns them through `unpack`, which Lua 5.1 bounds), `PRINT_ALPHABET`, and the `"channelMismatch"` assertion.
+- **Additions:** `EncodeMany` and `DecodeMany` for argument lists (at most `maxListValues` entries, 4096 by default and at most 7900, because `DecodeMany` returns them through `unpack`, which Lua 5.1 bounds), `CodecKit.UNBOUNDED` for `maxValues` and `maxStringLength`, `PRINT_ALPHABET`, and the `"channelMismatch"` assertion.
 
 ## Upgrades
 
-The package state (`_state`) holds the shared limits and the table pool, and both are kept across an in-place upgrade: a newer compatible revision replaces the facade's functions, inherits the limits a consumer set, and keeps leasing from the same pool. The wire format belongs to the format version, not to the revision, so frames written by any revision of API generation 1 decode in every other.
+The package state (`_state`) holds the shared limits, the `UNBOUNDED` sentinel and the table pool, and all three are kept across an in-place upgrade: a newer compatible revision replaces the facade's functions, inherits the limits a consumer set, and keeps leasing from the same pool. The wire format belongs to the format version, not to the revision, so frames written by any revision of API generation 1 decode in every other.

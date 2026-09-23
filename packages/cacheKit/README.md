@@ -1,6 +1,6 @@
 # CacheKit
 
-CacheKit provides bounded caches for World of Warcraft addons, so "bounded by default" is a structure you reach for instead of a rule you remember. Every cache has a required `maxEntries`; there is no unbounded mode.
+CacheKit provides bounded caches for World of Warcraft addons, so "bounded by default" is a structure you reach for instead of a rule you remember. Every cache has a `maxEntries` bound; `CacheKit.UNBOUNDED` lifts it on purpose when the data is yours to bound (see *Limits* in the API).
 
 ```lua
 local CacheKit = MoltenCodes.Registries[2]:Get("cacheKit", 1)

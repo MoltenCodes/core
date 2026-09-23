@@ -158,6 +158,10 @@ Bootstrap failures raise at the line that loaded the file:
 | `MoltenCodes InteropKit requires a valid Registry API 2 facade` | The published Registry lacks `Bootstrap`, `Find` or `Packages`. |
 | `MoltenCodes InteropKit package state is corrupted or incomplete` | The shared package state was modified from outside. |
 
+## Limits
+
+InteropKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`. The one table it retains is the adoption record, one entry per LibStub major passed to `AdoptFromLibStub`, and a major is recorded only when LibStub already holds that library; adopting it again overwrites the same entry. The record therefore never outgrows the libraries loaded into the client. `ExposeToLibStub` and `ExposeAll` write into LibStub's own tables, bounded by the Kits Registry holds.
+
 ## Embedded identity and upgrades
 
 InteropKit bootstraps through `Registry:Bootstrap` like every Kit (see

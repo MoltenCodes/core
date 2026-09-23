@@ -130,6 +130,9 @@ describe("CommKit budget", function()
             maxCps = 800,
             burst = 4000,
             messageOverhead = 40,
+            maxDropReportSenders = 64,
+            maxSyncPeers = 64,
+            maxSyncReplyBytes = 8192,
         }, CommKit:GetLimits())
         local copy = CommKit:GetLimits()
         copy.maxCps = 1

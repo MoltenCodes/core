@@ -42,6 +42,7 @@ What each piece promises:
 - **Change notifications.** `db:OnChange(scope, callback)` returns a SignalKit connection called after every validated write.
 - **Versioned migrations.** `options.migrations[n]` runs once, in ascending order, from the stored version to `options.version`.
 - **Compaction at logout.** When EventKit is embedded, every database compacts itself on `PLAYER_LOGOUT`.
+- **Bounded by default, opened on purpose.** The secret-value scan of a written table (`maxScannedEntries`, an `Open` option that accepts `SettingsKit.UNBOUNDED`), profile-name length and path-key length (`SettingsKit:SetLimits`) each have a documented default; see *Limits* in the API.
 
 See [`docs/API.md`](docs/API.md) for the complete contract with a full addon example, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the layout of the saved table and the view design.
 

@@ -38,7 +38,12 @@ describe("CodecKit bootstrap", function()
 
     it("upgrades in place and keeps the limits, the pool and the wire format", function()
         local CodecKit = TestEnv.NewPackage()
-        CodecKit:SetLimits({ maxValues = 1000 })
+        local sentinel = CodecKit.UNBOUNDED
+        CodecKit:SetLimits({
+            maxValues = 1000,
+            maxStringLength = sentinel,
+            maxListValues = 6000,
+        })
         local pool = CodecKit._state.pool
         local value = { "upgrade", 2 ^ 60, { nested = true } }
         local _, before = CodecKit:Encode(value, { compress = "deflate", channel = "print" })
@@ -48,7 +53,13 @@ describe("CodecKit bootstrap", function()
         assert.are.equal(2, upgraded.REVISION)
         assert.are.equal(2, upgraded._state.runtimeRevision)
         assert.are.equal(pool, upgraded._state.pool)
-        assert.are.equal(1000, upgraded:GetLimits().maxValues)
+        assert.are.equal(sentinel, upgraded.UNBOUNDED)
+        assert.are.equal(sentinel, upgraded._state.unbounded)
+        local limits = upgraded:GetLimits()
+        assert.are.equal(1000, limits.maxValues)
+        assert.are.equal(sentinel, limits.maxStringLength)
+        assert.are.equal(6000, limits.maxListValues)
+        assert.is_true((upgraded:Serialize(string.rep("x", 70000))))
 
         local ok, decoded = upgraded:Decode(before)
         assert.is_true(ok)

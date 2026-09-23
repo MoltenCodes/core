@@ -41,8 +41,9 @@ Package facade:
 | `Define(addonName, tree, options?)` | Check and copy an options tree; return its handle. |
 | `Get(addonName)` | The tree defined for `addonName`, or `nil`. |
 | `Undefine(addonName)` | Forget the tree and disconnect its listeners. `true` when there was one. |
-| `MAX_OPTIONS` | `1024`: the most options one tree holds. |
-| `MAX_DEPTH` | `8`: the most keys one option path has. |
+| `MAX_OPTIONS` | `1024`: the default `maxOptions`, the most options one tree holds. |
+| `MAX_DEPTH` | `8`: the default `maxDepth`, the most keys one option path has. |
+| `UNBOUNDED` | Sentinel `maxOptions` and `maxDynamicEntries` accept to lift the bound (see [Limits](#limits)). |
 | `Tree` | The shared prototype of tree handles. |
 
 Tree handle:
@@ -61,11 +62,16 @@ Tree handle:
 
 ## `OptionsKit:Define(addonName, tree, options?)`
 
-`addonName` is a non-empty string; one tree per addon name (a second `Define` raises until `Undefine`). `tree` is the root: a `group` whose `name` is optional and defaults to `addonName`. `options` accepts one field:
+`addonName` is a non-empty string; one tree per addon name (a second `Define` raises until `Undefine`). `tree` is the root: a `group` whose `name` is optional and defaults to `addonName`. `options` accepts these fields:
 
 | Option | Meaning |
 |---|---|
 | `db` | A SettingsKit API 1 database (the `db` `SettingsKit:Open` returns). Required when any option uses `bind`. |
+| `maxOptions` | The most options below the root; default `1024`. A positive integer or `OptionsKit.UNBOUNDED`. |
+| `maxDepth` | The most keys an option path has; default `8`. An integer from `1` to `32`. |
+| `maxDynamicEntries` | The most entries of a `values` table, and the map bound of a `multiselect` over a values function; default `1024`. A positive integer or `OptionsKit.UNBOUNDED`. |
+
+[Limits](#limits) says why `maxDepth` has a ceiling and the other two do not.
 
 `Define` checks the whole tree before it registers anything and raises at the line that called it, naming the field by its path from the root:
 
@@ -79,7 +85,8 @@ What it refuses:
 - a root that is not a `group`; an option that is not a table or has no known `type`;
 - any field its kind does not accept (a misspelling fails at once instead of being ignored);
 - a key in `args` that is not an identifier (`[%a_][%w_]*`), so a dotted path is never ambiguous;
-- more than `MAX_OPTIONS` options below the root (groups count), and an option path longer than `MAX_DEPTH` keys — which also turns a cyclic tree into an error;
+- more than `maxOptions` options below the root (groups count), and an option path longer than `maxDepth` keys — which also turns a cyclic tree into an error, whatever the limits;
+- a limit option out of range: `OptionsKit:Define options.maxDepth must be an integer from 1 to 32`, `OptionsKit:Define options.maxOptions must be a positive integer or OptionsKit.UNBOUNDED`;
 - a value option with neither `get` and `set` nor `bind`, or with both; a `bind` without `options.db`;
 - `options.db` when `Registry:Find("settingsKit", 1)` finds nothing, or when it is not a table with `OnChange` and `Validate` methods; a `bind` whose scope the database did not declare or cannot provide on this client (`OptionsKit:Define tree.args.x.bind scope "realm" is not an available scope of options.db`). The scope is read with `rawget`, so SettingsKit's own error for an undeclared scope never escapes from inside OptionsKit.
 
@@ -268,7 +275,7 @@ Value options are `toggle`, `range`, `select`, `multiselect`, `input`, `color` a
 | `toggle` | `tristate` (boolean: `nil` is a third state) | `SchemaKit.boolean()`, wrapped in `optional` when `tristate` |
 | `range` | `min`, `max` (required numbers, `min <= max`), `step`, `bigStep` (numbers `> 0`), `softMin`, `softMax` (between `min` and `max`, `softMin <= softMax`), `isPercent` (boolean) | `SchemaKit.number{ min = min, max = max }` |
 | `select` | `values` (table of key → label, or `fun(info): table`), `sorting` (array of keys: display order) | table: `SchemaKit.enum` of its keys; function: `SchemaKit.custom` accepting a string or number key of the table the function returns at check time |
-| `multiselect` | `values`, `sorting`, as `select` | `SchemaKit.map{ keys = <the select key schema>, values = SchemaKit.boolean(), max = <number of keys> }`; with a values function `max` is 1024 |
+| `multiselect` | `values`, `sorting`, as `select` | `SchemaKit.map{ keys = <the select key schema>, values = SchemaKit.boolean(), max = <number of keys> }`; with a values function `max` is the tree's `maxDynamicEntries` (1024 by default; 2147483647 when unbounded, since the map needs an integer and the function's own table is then the bound) |
 | `input` | `pattern` (Lua pattern the text must contain; anchor it with `^`/`$`), `multiline` (boolean), `usage` (string: what to type, for a command line) | `SchemaKit.string{ pattern = pattern }`, or `SchemaKit.string()` |
 | `color` | `hasAlpha` (boolean) | `SchemaKit.table{ fields = { r, g, b = number 0..1 } }`, plus a required `a` when `hasAlpha`; a closed table, so `a` is refused without `hasAlpha` |
 | `keybinding` | none | `SchemaKit.string()`; `""` is "unbound" |
@@ -276,7 +283,7 @@ Value options are `toggle`, `range`, `select`, `multiselect`, `input`, `color` a
 | `header` | none | none |
 | `description` | `fontSize` (`"small"`, `"medium"` or `"large"`); the text is `name` | none |
 
-`values` tables have string or number keys and string labels, at least one entry and at most 1024. `sorting` entries must be keys of a `values` table.
+`values` tables have string or number keys and string labels, at least one entry and at most `maxDynamicEntries` (1024 by default). `sorting` entries must be keys of a `values` table.
 
 `step`, `bigStep`, `softMin`, `softMax`, `isPercent`, `multiline`, `usage`, `inline`, `confirm` and `fontSize` are hints for renderers: nothing in OptionsKit enforces them. In particular `step` is not part of the schema: a slider snaps to it, and a value typed on a command line only has to lie between `min` and `max`.
 
@@ -400,14 +407,28 @@ This is the contract WidgetKit (package E) and CommandKit build on.
 
 A command line needs no widgets: `Walk` lists the paths, `Describe` gives each one's help (`name`, `desc`, `usage`, `values`), `Validate` answers a typed value and `Set` stores it.
 
-## Bounds
+## Limits
 
-| Bound | Value | Refusal |
-|---|---|---|
-| Options per tree, groups included, root excluded | 1024 (`OptionsKit.MAX_OPTIONS`) | `Define` raises |
-| Keys per option path | 8 (`OptionsKit.MAX_DEPTH`) | `Define` raises |
-| Entries of a `values` table | 1024 | `Define` raises |
-| Keys of a `multiselect` with a values function | 1024 | the schema refuses a larger map |
+Every tree is bounded by default, and each bound is an option of the `Define` call that creates the tree. OptionsKit has no package-wide limit, so it has no `SetLimits`. A limit reached makes `Define` raise at the caller's line; a multiselect over a values function refuses a larger map through its schema.
+
+| Limit | Default | How to open | `UNBOUNDED` allowed? | Ceiling and reason |
+|---|---|---|---|---|
+| Options per tree, groups included, root excluded | `1024` (`OptionsKit.MAX_OPTIONS`) | `Define(name, tree, { maxOptions = n })` | yes | none: the tree is your own data, though every renderer walks and describes it in full |
+| Keys per option path | `8` (`OptionsKit.MAX_DEPTH`) | `Define(name, tree, { maxDepth = n })` | no | `32`: `Define` builds and `Describe` describes the tree by recursion on the Lua stack; the bound also turns a cyclic tree into an error |
+| Entries of a `values` table; keys of a `multiselect` over a values function | `1024` | `Define(name, tree, { maxDynamicEntries = n })` | yes | none: the values are your own data |
+| Nesting `Describe` copies of a table value | `8` | not configurable | no | the copy recurses on the Lua stack; a deeper table is shown as `"<depth exceeded>"` |
+
+```lua
+OptionsKit:Define("MyAddon", tree, {
+    db = db,
+    maxOptions = OptionsKit.UNBOUNDED,
+    maxDepth = 12,
+})
+```
+
+`OptionsKit.UNBOUNDED` is one table kept in the package state, so every embedded copy and every revision publishes the same sentinel; asking for it as `maxDepth` raises `OptionsKit:Define options.maxDepth cannot be OptionsKit.UNBOUNDED: the tree is built on the Lua stack, so the ceiling is 32`. A tree keeps the limits it was defined under across an in-place upgrade.
+
+Opening `maxDynamicEntries` past `1024` is honoured by OptionsKit, but a renderer may still bound what it can show: WidgetKit's dropdown holds at most 1024 entries (a fixed ceiling in WidgetKit), so a `select` with more values cannot be drawn by WidgetKit's options renderer.
 
 ## Secret values
 
@@ -435,7 +456,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`Set` returns `false, message` when `validate` refuses** instead of raising. A schema refusal is a caller's mistake and raises at the caller's line as planned; a `validate` refusal is a message for the user, and a renderer should not need `pcall` to show it.
 - **`Reset` clears the stored value** instead of writing a default read from the SettingsKit schema. The SettingsKit database surface does not expose its schema, and a cleared value is exactly what SettingsKit's default fallback answers for — without ever writing the default into the saved variables. `Reset` on an option with `get`/`set` raises, since no default exists for OptionsKit to restore.
 - **`options.db` is checked structurally**: `Registry:Find("settingsKit", 1)` must find SettingsKit, and the database must be a table with `OnChange` and `Validate` methods whose bound scopes are tables. SettingsKit API 1 publishes no predicate that recognises its databases.
-- **Additions:** `tree:Validate`, `tree:Execute`, `tree:IsDisabled` and `tree:IsHidden` — a renderer and a command line need to check typed input, run a button and re-evaluate predicates without rebuilding the whole description — and `OptionsKit:Undefine`, `OptionsKit.MAX_OPTIONS` and `OptionsKit.MAX_DEPTH`.
+- **Additions:** `tree:Validate`, `tree:Execute`, `tree:IsDisabled` and `tree:IsHidden` — a renderer and a command line need to check typed input, run a button and re-evaluate predicates without rebuilding the whole description — and `OptionsKit:Undefine`, `OptionsKit.MAX_OPTIONS`, `OptionsKit.MAX_DEPTH`, `OptionsKit.UNBOUNDED` and the `maxOptions`, `maxDepth` and `maxDynamicEntries` options of `Define`.
 - **Not carried over from AceConfig:** `order` and `name` as functions (no user code inside a sort), inherited `get`/`set`/`handler` (each value option names its own reader and writer or `bind`), `width`, `arg`, and validation at render time (everything is checked once at `Define`).
 
 ## Embedded copies and upgrades

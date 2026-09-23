@@ -81,7 +81,7 @@ What each piece promises:
 - **Typed values.** Every value option gets a SchemaKit schema at `Define`: `toggle` a boolean, `range` a bounded number, `select` one of its keys, `multiselect` a map of keys to booleans, `input` a string matching its pattern, `color` `{ r, g, b[, a] }` in `0..1`, `keybinding` a string. `Set` asserts it at your line, then runs your `validate`, then writes, then fires `OnChange`.
 - **Two ways to store a value.** Your own `get(info)` / `set(info, value)`, or `bind = "profile.path"` into a SettingsKit database; `Reset` restores a bound option's default.
 - **Cheap where it is called often.** `Get`, `Set`, `Walk`, `IsDisabled` and `IsHidden` look paths up in a map built at `Define` and allocate nothing; `Describe` allocates by design.
-- **Bounded.** At most 1024 options per tree and 8 keys per path, refused at `Define`.
+- **Bounded.** At most 1024 options per tree and 8 keys per path by default, refused at `Define`; `maxOptions`, `maxDepth` (up to 32) and `maxDynamicEntries` open them per tree, and `OptionsKit.UNBOUNDED` lifts the first and last (see *Limits* in the API).
 - **Secrets refused.** `Set` refuses a secret value at your line.
 
 See [`docs/API.md`](docs/API.md) for every kind's fields and schema, the `Describe` shape and how a renderer consumes it, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the index, the sorted arrays and the reused `info` tables.

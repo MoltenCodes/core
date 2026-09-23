@@ -70,17 +70,35 @@ local STATE_SCHEMA = 1
 -- is the bound on what a type can ever cost.
 local DEFAULT_MAX_CREATED = 256
 
--- The largest cap a registration may ask for.
-local MAX_CREATED_LIMIT = 4096
+-- `maxCreatedCeiling`: the largest cap a registration may ask for, and the
+-- most a version upgrade grows a type's cap to. `default` holds until a
+-- consumer calls `SetLimits{ maxCreatedCeiling }`, which accepts an integer
+-- from `minimum` to `maximum`. The client never frees a frame, so the ceiling
+-- cannot be `UNBOUNDED`: every frame a type ever builds is kept for the whole
+-- session. 16384 frames is four times the default and already more than a
+-- whole interface of addons usually shows; past it one widget type could pin
+-- client memory no consumer can give back. The minimum is
+-- `DEFAULT_MAX_CREATED`, so a registration without options always fits.
+-- One table rather than three locals: the main chunk is close to Lua 5.1's
+-- limit of 200 local variables.
+local MAX_CREATED_CEILING = {
+    default = 4096,
+    minimum = DEFAULT_MAX_CREATED,
+    maximum = 16384,
+}
 
--- The most children one container holds.
+-- The most children one container holds unless `container:SetMaxChildren`
+-- says otherwise.
 local MAX_CHILDREN = 256
 
--- The most named callbacks one widget holds.
+-- The most named callbacks one widget holds unless its type's registration
+-- asks for `maxCallbacks`.
 local MAX_CALLBACKS = 16
 
 -- How deep nested `PerformLayout` calls may go. Containers cannot form a
--- cycle, so this only bounds a pathological custom layout.
+-- cycle, so this only bounds a pathological custom layout. It stays a hard
+-- ceiling: each level is a Lua call chain through a layout and its hooks, and
+-- one scratch table per level is retained.
 local MAX_LAYOUT_DEPTH = 32
 
 -- Retained scratch tables for layouts. Layouts nest at most
@@ -154,7 +172,7 @@ local LAYOUT_FILL = "Fill"
 local LAYOUT_FLOW = "Flow"
 
 -- Accepted option fields, as sets, so option validation allocates nothing.
-local TYPE_OPTION_KEYS = { maxCreated = true }
+local TYPE_OPTION_KEYS = { maxCreated = true, maxCallbacks = true }
 local TEXT_OPTION_KEYS = { allowSecret = true }
 local BINDING_OPTION_KEYS = { key = true, delay = true, restore = true }
 local RENDER_OPTION_KEYS = { allowSecret = true, media = true, confirmText = true }
@@ -176,6 +194,8 @@ local FACADE_METHODS = {
     "BindPosition",
     "RenderOptions",
     "CreateMediaPicker",
+    "SetLimits",
+    "GetLimits",
 }
 local WIDGET_METHODS = {
     "SetCallback",
@@ -222,6 +242,8 @@ local CONTAINER_METHODS = {
     "IsLayoutPaused",
     "PerformLayout",
     "LayoutFinished",
+    "SetMaxChildren",
+    "GetMaxChildren",
 }
 local ANCHOR_FUNCTIONS = { "FromRect", "Normalize", "Apply", "Read" }
 local BINDING_METHODS = { "Capture", "Restore", "Flush", "OnMoved", "Release", "IsReleased" }
@@ -260,7 +282,12 @@ local WEAK_KEYS = { __mode = "k" }
 
 ---Options for `WidgetKit:RegisterType`.
 ---@class WidgetKit.TypeOptions
----@field maxCreated integer? The most frames this type builds over the session; default 256, at most 4096.
+---@field maxCreated integer? The most frames this type builds over the session; default 256, at most `GetLimits().maxCreatedCeiling` (4096 unless raised). Never `UNBOUNDED`: frames are never freed.
+---@field maxCallbacks (integer|table)? The most named callbacks one widget of this type holds: a positive integer or `WidgetKit.UNBOUNDED`; default 16.
+
+---The package-wide limits. `SetLimits` accepts any subset; `GetLimits` returns a fresh copy.
+---@class WidgetKit.Limits
+---@field maxCreatedCeiling integer The largest `maxCreated` a registration may ask for, and the most an upgrade grows a cap to; default 4096, from 256 to 16384.
 
 ---Options for the text setters of every widget.
 ---@class WidgetKit.TextOptions
@@ -315,6 +342,8 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field IsLayoutPaused fun(self: WidgetKit.Container): boolean
 ---@field PerformLayout fun(self: WidgetKit.Container): boolean done, string? reason
 ---@field LayoutFinished fun(self: WidgetKit.Container, width: number?, height: number?)
+---@field SetMaxChildren fun(self: WidgetKit.Container, limit: integer|table)
+---@field GetMaxChildren fun(self: WidgetKit.Container): integer|table
 
 ---The name of a base widget type. `Create` returns `WidgetKit.Widget`; cast
 ---the result to the type's class to reach its own methods:
@@ -495,6 +524,9 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field MAX_CREATED integer Default frame cap per widget type (256).
 ---@field MAX_CHILDREN integer Children per container (256).
 ---@field MAX_CALLBACKS integer Named callbacks per widget (16).
+---@field UNBOUNDED table Sentinel `maxCallbacks` and `SetMaxChildren` accept to lift the bound; one table shared by every revision.
+---@field SetLimits fun(self: WidgetKit, limits: WidgetKit.Limits)
+---@field GetLimits fun(self: WidgetKit): WidgetKit.Limits
 ---@field Widget table Shared widget base prototype.
 ---@field Container table Shared container base prototype.
 ---@field Binding table Shared binding prototype.
@@ -608,6 +640,7 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "MAX_CREATED")) ~= "number"
         or type(rawget(implementation, "MAX_CHILDREN")) ~= "number"
         or type(rawget(implementation, "MAX_CALLBACKS")) ~= "number"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
     then
         return false
     end
@@ -636,13 +669,19 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "bindingMetatable")) == "table"
         and type(rawget(currentState, "renderingMetatable")) == "table"
         and type(rawget(currentState, "scratch")) == "table"
+        and type(rawget(currentState, "unbounded")) == "table"
+        and type(rawget(currentState, "limits")) == "table"
+        and type(rawget(rawget(currentState, "limits"), "maxCreatedCeiling")) == "number"
 end
 
----Whether `implementation` carries package state of this revision's schema.
+---Whether `implementation` carries package state of this revision's schema,
+---and publishes the sentinel that state keeps.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+    local currentState = rawget(implementation, "_state")
+    return validateStateBase(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -710,6 +749,15 @@ if previousRevision == nil then
         layoutDepth = 0,
         focus = false,
         holder = false,
+        -- `WidgetKit.UNBOUNDED` lives here so every revision publishes the
+        -- same table and an option written against one copy keeps its
+        -- meaning after an upgrade.
+        unbounded = {},
+        -- The package-wide limits, shared by every consumer in the session;
+        -- `SetLimits` writes here and an upgrade inherits what was set.
+        limits = {
+            maxCreatedCeiling = MAX_CREATED_CEILING.default,
+        },
     }
     rawset(WidgetKit, "Widget", WidgetBase)
     rawset(WidgetKit, "Container", ContainerBase)
@@ -740,6 +788,7 @@ local WIDGET_METATABLE = rawget(state, "widgetMetatable")
 local CONTAINER_METATABLE = rawget(state, "containerMetatable")
 local BINDING_METATABLE = rawget(state, "bindingMetatable")
 local RENDERING_METATABLE = rawget(state, "renderingMetatable")
+local UNBOUNDED = rawget(state, "unbounded")
 
 -- Host helpers ---------------------------------------------------------------
 
@@ -907,6 +956,40 @@ local function validatePositiveInteger(value, label, level)
     then
         error(label .. " must be a positive integer", level)
     end
+end
+
+---Refuse anything but a positive integer or `WidgetKit.UNBOUNDED`.
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateLimitOrUnbounded(value, label, level)
+    if value == UNBOUNDED then
+        return
+    end
+    if isSecret(value) then
+        error(label .. " must not be a secret value", level)
+    end
+    if
+        type(value) ~= "number"
+        or value ~= value
+        or value < 1
+        or value ~= math.floor(value)
+        or value == math.huge
+    then
+        error(label .. " must be a positive integer or WidgetKit.UNBOUNDED", level)
+    end
+end
+
+---The bound a hot path compares against: the integer itself, or `math.huge`
+---for `WidgetKit.UNBOUNDED`, so the comparison never tests for the sentinel.
+---@param limit integer|table a validated limit
+---@return number
+local function capacityOf(limit)
+    -- Validation lets exactly one table through: `WidgetKit.UNBOUNDED`.
+    if type(limit) == "number" then
+        return limit
+    end
+    return math.huge
 end
 
 ---Refuse an option table with a field outside `allowed`, naming the
@@ -1099,10 +1182,13 @@ function WidgetBase:SetCallback(name, callback)
         return
     end
     if existing == nil then
-        if record.callbackCount >= MAX_CALLBACKS then
+        -- A type registered by an older copy of this file has no
+        -- `maxCallbacks`; it keeps the default.
+        local maxCallbacks = record.typeRecord.maxCallbacks or MAX_CALLBACKS
+        if record.callbackCount >= maxCallbacks then
             error(
                 "WidgetKit.Widget:SetCallback holds at most "
-                    .. MAX_CALLBACKS
+                    .. maxCallbacks
                     .. " callbacks per widget",
                 2
             )
@@ -1437,7 +1523,7 @@ function ContainerBase:AddChild(child, beforeWidget)
             error("WidgetKit.Container:AddChild beforeWidget must not be the child itself", 2)
         end
     end
-    if childRecord.parent ~= self and #record.children >= MAX_CHILDREN then
+    if childRecord.parent ~= self and #record.children >= record.maxChildren then
         return nil, "full"
     end
 
@@ -1465,7 +1551,7 @@ function ContainerBase:AddChildren(...)
     for index = 1, count do
         local child = select(index, ...)
         local childRecord = records[child]
-        if childRecord.parent ~= self and #record.children >= MAX_CHILDREN then
+        if childRecord.parent ~= self and #record.children >= record.maxChildren then
             reason = "full"
             break
         end
@@ -1487,6 +1573,25 @@ end
 ---@return integer
 function ContainerBase:GetNumChildren()
     return #activeContainerRecord(self, "WidgetKit.Container:GetNumChildren", 3).children
+end
+
+---Change how many children this container holds: a positive integer or
+---`WidgetKit.UNBOUNDED`. Lowering it below the current count keeps every
+---child and refuses the next addition. Release restores the default.
+---@param limit integer|table
+function ContainerBase:SetMaxChildren(limit)
+    local record = activeContainerRecord(self, "WidgetKit.Container:SetMaxChildren", 3)
+    validateLimitOrUnbounded(limit, "WidgetKit.Container:SetMaxChildren limit", 3)
+    record.maxChildren = capacityOf(limit)
+end
+
+---@return integer|table limit the child bound, or `WidgetKit.UNBOUNDED`
+function ContainerBase:GetMaxChildren()
+    local record = activeContainerRecord(self, "WidgetKit.Container:GetMaxChildren", 3)
+    if record.maxChildren == math.huge then
+        return UNBOUNDED
+    end
+    return record.maxChildren
 end
 
 ---@return WidgetKit.Frame
@@ -1831,6 +1936,8 @@ local function buildWidget(typeRecord)
         isContainer = isContainer,
         parent = nil,
         children = isContainer and {} or nil,
+        -- `math.huge` after `SetMaxChildren(WidgetKit.UNBOUNDED)`.
+        maxChildren = MAX_CHILDREN,
         callbacks = nil,
         callbackCount = 0,
         userData = nil,
@@ -1919,6 +2026,7 @@ local function releaseWidget(widget, record)
         wipe(callbacks)
     end
     record.callbackCount = 0
+    record.maxChildren = MAX_CHILDREN
     local userData = record.userData
     if userData ~= nil then
         wipe(userData)
@@ -1959,23 +2067,41 @@ local function registerType(self, name, constructor, version, options)
     end
     validatePositiveInteger(version, "WidgetKit:RegisterType version", 3)
 
+    local ceiling = rawget(rawget(state, "limits"), "maxCreatedCeiling")
     local maxCreated = DEFAULT_MAX_CREATED
+    local maxCallbacks = MAX_CALLBACKS
     if options ~= nil then
         validateOptionKeys(options, TYPE_OPTION_KEYS, "WidgetKit:RegisterType options", 3)
         if options.maxCreated ~= nil then
+            if options.maxCreated == UNBOUNDED then
+                error(
+                    "WidgetKit:RegisterType options.maxCreated cannot be WidgetKit.UNBOUNDED:"
+                        .. " the client never frees a frame",
+                    2
+                )
+            end
             validatePositiveInteger(
                 options.maxCreated,
                 "WidgetKit:RegisterType options.maxCreated",
                 3
             )
-            if options.maxCreated > MAX_CREATED_LIMIT then
+            if options.maxCreated > ceiling then
                 error(
                     "WidgetKit:RegisterType options.maxCreated must be at most "
-                        .. MAX_CREATED_LIMIT,
+                        .. ceiling
+                        .. " (WidgetKit:SetLimits maxCreatedCeiling)",
                     2
                 )
             end
             maxCreated = options.maxCreated
+        end
+        if options.maxCallbacks ~= nil then
+            validateLimitOrUnbounded(
+                options.maxCallbacks,
+                "WidgetKit:RegisterType options.maxCallbacks",
+                3
+            )
+            maxCallbacks = capacityOf(options.maxCallbacks)
         end
     end
 
@@ -1994,10 +2120,11 @@ local function registerType(self, name, constructor, version, options)
         -- up: the pooled widgets it retires and the borrowed widgets of the
         -- generation it replaces. Borrowed widgets of generations before that
         -- one were counted by the upgrade that replaced them. The cap never
-        -- passes MAX_CREATED_LIMIT.
+        -- passes the `maxCreatedCeiling` limit in force.
         local previousVersion = typeRecord.version
         typeRecord.constructor = constructor
         typeRecord.version = version
+        typeRecord.maxCallbacks = maxCallbacks
         local stale = typeRecord.borrowed[previousVersion] or 0
         local pool = typeRecord.pool ---@type table
         local retired = pool:SetGeneration(version)
@@ -2006,8 +2133,8 @@ local function registerType(self, name, constructor, version, options)
         if maxCreated > wanted then
             wanted = maxCreated
         end
-        if wanted > MAX_CREATED_LIMIT then
-            wanted = MAX_CREATED_LIMIT
+        if wanted > ceiling then
+            wanted = ceiling
         end
         if wanted > cap then
             pool:SetMaxCreated(wanted)
@@ -2019,6 +2146,8 @@ local function registerType(self, name, constructor, version, options)
         name = name,
         version = version,
         constructor = constructor,
+        -- `math.huge` when registered with `maxCallbacks = WidgetKit.UNBOUNDED`.
+        maxCallbacks = maxCallbacks,
         pool = nil,
         -- Type version -> widgets of that version currently borrowed.
         borrowed = {},
@@ -2256,6 +2385,61 @@ local function getStatistics(self)
         statistics.discarded = statistics.discarded + row.discarded
     end
     return statistics
+end
+
+---Change `maxCreatedCeiling`, the one package-wide limit. Validated before
+---anything changes; affects every consumer in the session. Caps already given
+---to registered types are kept.
+---@param limits WidgetKit.Limits
+local function setLimits(self, limits)
+    validateFacade(self, "WidgetKit:SetLimits", 3)
+    if type(limits) ~= "table" then
+        error("WidgetKit:SetLimits limits must be a table", 2)
+    end
+    local key = next(limits)
+    while key ~= nil do
+        if key ~= "maxCreatedCeiling" then
+            error("WidgetKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", 2)
+        end
+        key = next(limits, key)
+    end
+
+    local ceiling = rawget(limits, "maxCreatedCeiling")
+    if ceiling == nil then
+        return
+    end
+    if ceiling == UNBOUNDED then
+        error(
+            "WidgetKit:SetLimits limits.maxCreatedCeiling cannot be WidgetKit.UNBOUNDED:"
+                .. " the client never frees a frame",
+            2
+        )
+    end
+    if
+        isSecret(ceiling)
+        or type(ceiling) ~= "number"
+        or ceiling ~= math.floor(ceiling)
+        or ceiling < MAX_CREATED_CEILING.minimum
+        or ceiling > MAX_CREATED_CEILING.maximum
+    then
+        error(
+            "WidgetKit:SetLimits limits.maxCreatedCeiling must be an integer from "
+                .. MAX_CREATED_CEILING.minimum
+                .. " to "
+                .. MAX_CREATED_CEILING.maximum,
+            2
+        )
+    end
+    rawset(rawget(state, "limits"), "maxCreatedCeiling", ceiling)
+end
+
+---Return a fresh copy of the package-wide limits.
+---@return WidgetKit.Limits
+local function getLimits(self)
+    validateFacade(self, "WidgetKit:GetLimits", 3)
+    return {
+        maxCreatedCeiling = rawget(rawget(state, "limits"), "maxCreatedCeiling"),
+    }
 end
 
 -- Anchors --------------------------------------------------------------------
@@ -6025,6 +6209,9 @@ rawset(WidgetKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(WidgetKit, "MAX_CREATED", DEFAULT_MAX_CREATED)
 rawset(WidgetKit, "MAX_CHILDREN", MAX_CHILDREN)
 rawset(WidgetKit, "MAX_CALLBACKS", MAX_CALLBACKS)
+rawset(WidgetKit, "UNBOUNDED", UNBOUNDED)
+rawset(WidgetKit, "SetLimits", setLimits)
+rawset(WidgetKit, "GetLimits", getLimits)
 rawset(WidgetKit, "RegisterType", registerType)
 rawset(WidgetKit, "GetTypeVersion", getTypeVersion)
 rawset(WidgetKit, "Create", create)

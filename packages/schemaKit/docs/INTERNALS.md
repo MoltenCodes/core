@@ -13,6 +13,8 @@ This document describes the private layout behind SchemaKit API generation 1. No
 | `nodes` | Weak-keyed map from node proxy to compiled node. |
 | `records` | Weak-keyed map from sealed schema proxy to its record. |
 | `nodeMetatable`, `schemaMetatable` | The two proxy metatables, kept across upgrades. |
+| `unbounded` | The `SchemaKit.UNBOUNDED` sentinel, so every revision publishes the same table. |
+| `limits` | The shared limits `SetLimits` writes. Each revision copies them into file-local upvalues at load and after every `SetLimits`, so the checker reads an upvalue; `defaultArrayMax = UNBOUNDED` is held as `math.huge`, which the count check never passes. |
 
 Both maps have weak keys: a proxy nobody holds can be collected, while the compiled node behind it stays alive as long as a parent's compiled node refers to it. Receivers and children are recognised by a lookup in these maps, never by `getmetatable`, so a forged table is refused and the lookup cannot be fooled.
 
@@ -78,7 +80,7 @@ A failing map key rewrites `expected` to `key <expected>`: the one string built 
 
 ### Bounds
 
-- **Depth.** `table`, `array` and `map` refuse a table value when `depth > 16`. The root value has depth 1.
+- **Depth.** `table`, `array` and `map` refuse a table value when `depth > maxDepth` (16 by default). The root value has depth 1.
 - **Size.** `array` and `map` count entries with `next` and fail on entry `max + 1`, before any element is checked. `array` then requires `rawget(value, index)` for every `index` in `1..count`; `count` entries all present at `1..count` means the keys are exactly `1..count`.
 - **Closed tables.** The undeclared-key walk returns at the first key missing from `fieldSet`, so it runs at most `#fields + 1` steps.
 
@@ -86,7 +88,7 @@ A failing map key rewrites `expected` to `key <expected>`: the one string built 
 
 `Apply` runs `copyNode` and then an ordinary check of the result. `copyNode` mirrors `checkNode` but is tolerant: whenever it meets something it cannot copy (a secret, a wrong type, a table too deep, too large or with holes, an undeclared key of a closed table) it keeps the original value and moves on, and the check that follows reports it with the same rule and path `Check` would. A `nil` under an `optional` with a default becomes `copyPlain(default)`, which then goes through the inner schema so its own defaults are filled. For `oneOf`, each alternative's copy is checked in turn and the first that passes is kept; the trial checks restore the path stack.
 
-`copyPlain` deep-copies tables only. It needs no bound at `Apply` time because the `optional` builder refuses a default nesting more than 16 tables (which also refuses a cyclic one).
+`copyPlain` deep-copies tables only. It needs no bound at `Apply` time because the `optional` builder refuses a default nesting more than `maxDepth` tables (which also refuses a cyclic one).
 
 ## Describe
 

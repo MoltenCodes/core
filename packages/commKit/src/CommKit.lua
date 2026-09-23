@@ -153,7 +153,9 @@ local PRIORITY_ROTATION = {
     PRIORITY.BULK,
 }
 
--- The most registrations one scope holds at once.
+-- The most registrations one scope holds at once unless its creator passes
+-- `maxRegistrations`. Registrations are the scope owner's own, so the option
+-- also accepts `CommKit.UNBOUNDED`.
 local MAX_REGISTRATIONS = 32
 
 -- Send handle states.
@@ -230,9 +232,9 @@ local POLICY = {
     maxChunksPerRun = 32,
     dueToleranceSeconds = 0.001,
     -- Dropped streams are reported at most once per sender per minute, and
-    -- at most this many senders are tracked; the rest share one entry.
+    -- at most `maxDropReportSenders` (a limit) senders are tracked; the rest
+    -- share one entry.
     dropReportSeconds = 60,
-    maxDropReportSenders = 64,
     otherSenders = "(other senders)",
     dropReportOrder = { "expired", "departed", "malformed", "restarted", "quota" },
 }
@@ -242,13 +244,15 @@ local SYNC = {
     request = 1,
     ack = 2,
     deliver = 3,
+    -- Hard ceilings: a SyncSet's field list is a static declaration every
+    -- peer running the addon shares, and a request carries one hash per
+    -- field, so the list stays short enough for a request and a full delivery
+    -- to fit the shared reply allowance.
     maxFields = 32,
     maxFieldNameBytes = 64,
-    maxPeers = 64,
-    maxListeners = 16,
+    -- `OnChanged` listeners per SyncSet unless `maxListeners` says otherwise.
+    defaultMaxListeners = 16,
     replyIntervalSeconds = 1,
-    -- Text bytes of SyncSet replies queued at once, across every SyncSet.
-    maxReplyBytes = 8192,
     -- CodecKit options for SyncSet frames.
     codecOptions = { channel = "addon" },
 }
@@ -270,6 +274,15 @@ local FNV = {
 -- byte bounds, 1048576, cap a message at 4178 chunks, below the 5624 the
 -- logged channel's header can number, so `Send` never needs to count chunks
 -- against the header.
+--
+-- Every package-wide limit bounds memory another addon or another player can
+-- grow (the queue is shared by every addon in the session; reassembly, drop
+-- reports, peers and replies are grown by what other players send), or is a
+-- rate rather than a retention bound. So `SetLimits` refuses
+-- `CommKit.UNBOUNDED` for every one of them, naming `unboundedRefusal`.
+-- `CommKit.UNBOUNDED` is accepted only by the per-object options whose memory
+-- is the caller's own: a scope's `maxRegistrations` and a SyncSet's
+-- `maxListeners`.
 local DEFAULT_LIMITS = {
     maxQueuedBytes = 65536,
     maxQueuedMessages = 256,
@@ -280,6 +293,9 @@ local DEFAULT_LIMITS = {
     maxCps = 800,
     burst = 4000,
     messageOverhead = 40,
+    maxDropReportSenders = 64,
+    maxSyncPeers = 64,
+    maxSyncReplyBytes = 8192,
 }
 local LIMIT_NAMES = {
     "maxQueuedBytes",
@@ -291,17 +307,81 @@ local LIMIT_NAMES = {
     "maxCps",
     "burst",
     "messageOverhead",
+    "maxDropReportSenders",
+    "maxSyncPeers",
+    "maxSyncReplyBytes",
 }
+local SHARED_QUEUE = "every addon in the session shares the queue"
+local GROWN_BY_PEERS = "other players' messages grow it"
+local NOT_RETENTION = "it is a rate, not a retention bound"
 local LIMIT_RANGES = {
-    maxQueuedBytes = { minimum = 1, maximum = 1048576, integer = true },
-    maxQueuedMessages = { minimum = 1, maximum = 4096, integer = true },
-    maxReassemblyStreams = { minimum = 1, maximum = 1024, integer = true },
-    maxReassemblyBytesPerSender = { minimum = 1, maximum = 1048576, integer = true },
-    maxInFlightPerSender = { minimum = 1, maximum = 64, integer = true },
-    reassemblyTimeout = { minimum = 1, maximum = 600, integer = false },
-    maxCps = { minimum = 1, maximum = 100000, integer = true },
-    burst = { minimum = WIRE.maxMessageBytes, maximum = 1000000, integer = true },
-    messageOverhead = { minimum = 0, maximum = 255, integer = true },
+    maxQueuedBytes = {
+        minimum = 1,
+        maximum = 1048576,
+        integer = true,
+        unboundedRefusal = SHARED_QUEUE .. " and the chunk header numbers at most 5624 chunks",
+    },
+    maxQueuedMessages = {
+        minimum = 1,
+        maximum = 4096,
+        integer = true,
+        unboundedRefusal = SHARED_QUEUE,
+    },
+    maxReassemblyStreams = {
+        minimum = 1,
+        maximum = 1024,
+        integer = true,
+        unboundedRefusal = GROWN_BY_PEERS,
+    },
+    maxReassemblyBytesPerSender = {
+        minimum = 1,
+        maximum = 1048576,
+        integer = true,
+        unboundedRefusal = GROWN_BY_PEERS,
+    },
+    maxInFlightPerSender = {
+        minimum = 1,
+        maximum = 64,
+        integer = true,
+        unboundedRefusal = GROWN_BY_PEERS .. " and stream ids must stay below the radix",
+    },
+    reassemblyTimeout = {
+        minimum = 1,
+        maximum = 600,
+        integer = false,
+        unboundedRefusal = GROWN_BY_PEERS,
+    },
+    maxCps = { minimum = 1, maximum = 100000, integer = true, unboundedRefusal = NOT_RETENTION },
+    burst = {
+        minimum = WIRE.maxMessageBytes,
+        maximum = 1000000,
+        integer = true,
+        unboundedRefusal = NOT_RETENTION,
+    },
+    messageOverhead = {
+        minimum = 0,
+        maximum = 255,
+        integer = true,
+        unboundedRefusal = NOT_RETENTION,
+    },
+    maxDropReportSenders = {
+        minimum = 1,
+        maximum = 1024,
+        integer = true,
+        unboundedRefusal = GROWN_BY_PEERS,
+    },
+    maxSyncPeers = {
+        minimum = 1,
+        maximum = 1024,
+        integer = true,
+        unboundedRefusal = GROWN_BY_PEERS,
+    },
+    maxSyncReplyBytes = {
+        minimum = 1,
+        maximum = 1048576,
+        integer = true,
+        unboundedRefusal = GROWN_BY_PEERS,
+    },
 }
 
 -- Statistics counters, in the order GetStatistics copies them.
@@ -383,7 +463,8 @@ local OPTION_KEYS = {
         onComplete = true,
     },
     constraints = { logged = true, battleNet = true },
-    syncSet = { fields = true, schema = true },
+    syncSet = { fields = true, schema = true, maxListeners = true },
+    scope = { maxRegistrations = true },
 }
 
 -- Table pool retention. Pools hold records between uses, never more.
@@ -416,6 +497,7 @@ local SURFACE = {
         "GetAddonName",
         "GetRegistrationCount",
         "GetPendingCount",
+        "GetMaxRegistrations",
     },
     connection = { "Disconnect", "IsConnected", "GetPrefix" },
     handle = { "Cancel", "GetState", "GetBytesSent", "GetBytesTotal" },
@@ -469,6 +551,11 @@ local SURFACE = {
 ---@class CommKit.SyncSetOptions
 ---@field fields string[] The field names, 1 to 32 of them, each 1 to 64 bytes.
 ---@field schema table<string, table>? A sealed SchemaKit schema per field that received and local values must pass.
+---@field maxListeners (integer|table)? `OnChanged` listeners held at once: a positive integer or `CommKit.UNBOUNDED`; defaults to `16`.
+
+---The table `CommKit:CreateScope` and `CommKit:ForAddon` accept.
+---@class CommKit.ScopeOptions
+---@field maxRegistrations (integer|table)? Registrations held at once: a positive integer or `CommKit.UNBOUNDED`; defaults to `32`.
 
 ---The limits `SetLimits` accepts and `GetLimits` returns.
 ---@class CommKit.Limits
@@ -481,6 +568,9 @@ local SURFACE = {
 ---@field maxCps integer? Bytes per second the bucket refills with.
 ---@field burst integer? The most bytes the bucket holds.
 ---@field messageOverhead integer? Bytes charged per message on top of prefix and text.
+---@field maxDropReportSenders integer? Senders the aggregated drop reports track before the rest share one entry.
+---@field maxSyncPeers integer? Peers one SyncSet caches.
+---@field maxSyncReplyBytes integer? Text bytes of SyncSet replies queued at once, across every SyncSet.
 
 ---A registration, or an `OnChanged` listener.
 ---@class CommKit.Connection
@@ -518,6 +608,7 @@ local SURFACE = {
 ---@field GetAddonName fun(self: CommKit.Scope): string?
 ---@field GetRegistrationCount fun(self: CommKit.Scope): integer
 ---@field GetPendingCount fun(self: CommKit.Scope): integer
+---@field GetMaxRegistrations fun(self: CommKit.Scope): integer|table
 
 ---The priority constants.
 ---@class CommKit.Priorities
@@ -530,14 +621,15 @@ local SURFACE = {
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
 ---@field MAX_MESSAGE_BYTES integer The client's addon message limit, 255.
----@field MAX_REGISTRATIONS integer The most registrations one scope holds.
+---@field MAX_REGISTRATIONS integer The default `maxRegistrations` of a scope, 32.
+---@field UNBOUNDED table Sentinel the per-object options accept to lift a bound on the caller's own memory; one table shared by every revision.
 ---@field Priority CommKit.Priorities
 ---@field Scope CommKit.Scope Shared scope prototype.
 ---@field Connection CommKit.Connection Shared connection prototype.
 ---@field SendHandle CommKit.SendHandle Shared send handle prototype.
 ---@field SyncSet CommKit.SyncSet Shared SyncSet prototype.
----@field CreateScope fun(self: CommKit): CommKit.Scope
----@field ForAddon fun(self: CommKit, addonName: string): CommKit.Scope
+---@field CreateScope fun(self: CommKit, options: CommKit.ScopeOptions?): CommKit.Scope
+---@field ForAddon fun(self: CommKit, addonName: string, options: CommKit.ScopeOptions?): CommKit.Scope
 ---@field CloseAddonScopes fun(self: CommKit, addonName: string): boolean
 ---@field GetQueueDepth fun(self: CommKit, priority: CommKit.PriorityName?): integer, integer
 ---@field GetBudget fun(self: CommKit): number, number, number, string
@@ -699,6 +791,7 @@ local function validatePublicSurface(implementation)
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
         or type(rawget(implementation, "Priority")) ~= "table"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
     then
         return false
     end
@@ -732,6 +825,7 @@ local STATE_TABLE_FIELDS = {
     "kitScopes",
     "pools",
     "trampolines",
+    "unbounded",
 }
 
 ---Whether `currentState` has the fields every API 1 revision shares.
@@ -757,7 +851,9 @@ end
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+    local currentState = rawget(implementation, "_state")
+    return validateStateBase(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -873,6 +969,10 @@ local function newState()
             parts = PoolKit:NewTablePool({ maxRetained = POOL_RETAINED.streams }),
         },
         trampolines = {},
+        -- `CommKit.UNBOUNDED` lives here so every revision publishes the same
+        -- table and an option written against one copy keeps its meaning
+        -- after an upgrade.
+        unbounded = {},
     }
 end
 
@@ -918,6 +1018,16 @@ rawset(SYNC_SET_METATABLE, "__index", SyncSetPrototype)
 
 local dispatch = rawget(state, "dispatch")
 local limits = rawget(state, "limits")
+local UNBOUNDED = rawget(state, "unbounded")
+
+-- A limit a later revision adds starts at its default in the state an older
+-- revision built; limits a consumer set are kept.
+for index = 1, #LIMIT_NAMES do
+    local name = LIMIT_NAMES[index]
+    if rawget(limits, name) == nil then
+        rawset(limits, name, DEFAULT_LIMITS[name])
+    end
+end
 local statistics = rawget(state, "statistics")
 local queues = rawget(state, "queues")
 local blockedPipes = rawget(state, "blockedPipes")
@@ -1069,6 +1179,38 @@ local function validateReceiver(receiver, metatable, label, kind, level)
     if type(receiver) ~= "table" or getmetatable(receiver) ~= metatable then
         error(label .. " must be called on a " .. kind, level)
     end
+end
+
+---Refuse a per-object limit that is neither a positive integer nor
+---`CommKit.UNBOUNDED`. Only options whose memory is the caller's own call this.
+---@param value any
+---@param label string the option, qualified by its method
+---@param level integer
+local function validateObjectLimit(value, label, level)
+    if value == UNBOUNDED then
+        return
+    end
+    if type(value) == "number" and isSecret(value) then
+        error(label .. " must not be a secret value", level)
+    end
+    if
+        type(value) ~= "number"
+        or value ~= value
+        or value < 1
+        or value == math.huge
+        or value ~= math.floor(value)
+    then
+        error(label .. " must be a positive integer or CommKit.UNBOUNDED", level)
+    end
+end
+
+---Whether `count` has reached `limit`, a positive integer or
+---`CommKit.UNBOUNDED`.
+---@param count integer
+---@param limit integer|table
+---@return boolean
+local function reachedLimit(count, limit)
+    return limit ~= UNBOUNDED and count >= limit
 end
 
 ---@param receiver any
@@ -2283,13 +2425,17 @@ do
     ---Note a dropped stream or a refused first chunk of `sender`. The first drop
     ---of a sender is reported at once; later ones within the minute are counted
     ---and reported together when it ends, so a stranger can cause at most one
-    ---report per minute. Past 64 senders the rest share one entry.
+    ---report per minute. Past `maxDropReportSenders` senders the rest share one
+    ---entry.
     ---@param sender string
     ---@param why string
     function noteDrop(sender, why)
         local bySender = rawget(dropReports, "bySender")
         local entry = rawget(bySender, sender)
-        if entry == nil and rawget(dropReports, "count") >= POLICY.maxDropReportSenders then
+        if
+            entry == nil
+            and rawget(dropReports, "count") >= rawget(limits, "maxDropReportSenders")
+        then
             sender = POLICY.otherSenders
             entry = rawget(bySender, sender)
         end
@@ -2752,7 +2898,7 @@ local function registerInScope(scope, prefix, callback)
         return nil, REASON.closed
     end
     local registrations = rawget(scope, "_registrations")
-    if #registrations >= MAX_REGISTRATIONS then
+    if reachedLimit(#registrations, rawget(scope, "_maxRegistrations")) then
         return nil, REASON.full
     end
     local registered, reason = registerClientPrefix(prefix)
@@ -2995,7 +3141,9 @@ do
             return nil
         end
 
-        if rawget(syncSet, "_peerCount") >= SYNC.maxPeers then
+        -- A loop rather than one eviction, so a cache above a bound `SetLimits`
+        -- lowered shrinks back to it.
+        while rawget(syncSet, "_peerCount") >= rawget(limits, "maxSyncPeers") do
             local currentTime = now()
             local oldestName, oldestTouch = nil, nil
             for name, candidate in pairs(peers) do
@@ -3054,7 +3202,7 @@ do
     ---@param text string
     local function queueReply(syncSet, peer, sender, text)
         local length = #text
-        if rawget(state, "syncReplyBytes") + length > SYNC.maxReplyBytes then
+        if rawget(state, "syncReplyBytes") + length > rawget(limits, "maxSyncReplyBytes") then
             count("syncReplyDropped")
             return
         end
@@ -3777,7 +3925,7 @@ function SyncSetMethods.OnChanged(self, callback)
         return nil, REASON.closed
     end
     local listeners = rawget(self, "_listeners")
-    if #listeners >= SYNC.maxListeners then
+    if reachedLimit(#listeners, rawget(self, "_maxListeners")) then
         return nil, REASON.full
     end
     local signalConnection = rawget(self, "_signal"):Connect(function(...)
@@ -3928,6 +4076,12 @@ function ScopeMethods.SyncSet(self, prefix, options)
     validateKeys(options, OPTION_KEYS.syncSet, "CommKit.Scope:SyncSet options", 3)
     local fieldSet, fieldList = readSyncFields(rawget(options, "fields"), 3)
     local schemas = readSyncSchemas(rawget(options, "schema"), fieldSet, 3)
+    local maxListeners = rawget(options, "maxListeners")
+    if maxListeners == nil then
+        maxListeners = SYNC.defaultMaxListeners
+    else
+        validateObjectLimit(maxListeners, "CommKit.Scope:SyncSet options.maxListeners", 3)
+    end
     requireFound("codecKit", "CodecKit", DEPENDENCY_API.codecKit, "CommKit.Scope:SyncSet", 3)
 
     local syncSet = setmetatable({
@@ -3944,6 +4098,7 @@ function ScopeMethods.SyncSet(self, prefix, options)
         _touch = 0,
         _signal = SignalKit:New(),
         _listeners = {},
+        _maxListeners = maxListeners,
         _registration = false,
         _closed = false,
     }, SYNC_SET_METATABLE)
@@ -4022,15 +4177,48 @@ function ScopeMethods.GetPendingCount(self)
     return #rawget(self, "_pending")
 end
 
+---The most registrations the scope holds at once: an integer, or
+---`CommKit.UNBOUNDED`.
+---@param self CommKit.Scope
+---@return integer|table
+function ScopeMethods.GetMaxRegistrations(self)
+    validateScope(self, "CommKit.Scope:GetMaxRegistrations", 3)
+    return rawget(self, "_maxRegistrations")
+end
+
 -- Package public API ---------------------------------------------------------
 
+---Read the option table of `CreateScope` or `ForAddon`, returning the scope's
+---`maxRegistrations`.
+---@param options any
+---@param label string the method, qualified
+---@param level integer
+---@return integer|table maxRegistrations
+local function readScopeOptions(options, label, level)
+    if options == nil then
+        return MAX_REGISTRATIONS
+    end
+    if type(options) ~= "table" then
+        error(label .. " options must be a table or nil", level)
+    end
+    validateKeys(options, OPTION_KEYS.scope, label .. " options", level + 1)
+    local maxRegistrations = rawget(options, "maxRegistrations")
+    if maxRegistrations == nil then
+        return MAX_REGISTRATIONS
+    end
+    validateObjectLimit(maxRegistrations, label .. " options.maxRegistrations", level + 1)
+    return maxRegistrations
+end
+
 ---@param addonName string|false
+---@param maxRegistrations integer|table a positive integer or `CommKit.UNBOUNDED`
 ---@return CommKit.Scope
-local function newScope(addonName)
+local function newScope(addonName, maxRegistrations)
     ensureWorldWatcher()
     return setmetatable({
         _schema = LAYOUT.scope,
         _addonName = addonName,
+        _maxRegistrations = maxRegistrations,
         _closed = false,
         _registrations = {},
         _pending = {},
@@ -4041,29 +4229,49 @@ end
 
 ---Create a manually owned scope, closed only by its owner.
 ---@param self CommKit
+---@param options CommKit.ScopeOptions?
 ---@return CommKit.Scope scope
-function FacadeMethods.CreateScope(self)
+function FacadeMethods.CreateScope(self, options)
     validateFacade(self, "CommKit:CreateScope", 3)
-    return newScope(false)
+    return newScope(false, readScopeOptions(options, "CommKit:CreateScope", 3))
 end
 
 ---Return the canonical scope of an addon, creating it on demand. It is closed
 ---when the addon's LifecycleKit instance shuts down; sends still queued are
 ---cancelled with the reason `"shutdown"`.
+---
+---`options` apply when this call creates the scope. A later call may repeat
+---them or omit them; passing a different `maxRegistrations` raises, so two
+---callers cannot disagree silently about one scope.
 ---@param self CommKit
 ---@param addonName string addon folder name
+---@param options CommKit.ScopeOptions?
 ---@return CommKit.Scope scope
-function FacadeMethods.ForAddon(self, addonName)
+function FacadeMethods.ForAddon(self, addonName, options)
     validateFacade(self, "CommKit:ForAddon", 3)
     if type(addonName) ~= "string" or isSecret(addonName) or addonName == "" then
         error("CommKit:ForAddon addonName must be a non-empty string", 2)
     end
+    local maxRegistrations = readScopeOptions(options, "CommKit:ForAddon", 3)
     local scope = rawget(addonScopes, addonName)
     if scope ~= nil then
+        local current = rawget(scope, "_maxRegistrations")
+        if
+            options ~= nil
+            and rawget(options, "maxRegistrations") ~= nil
+            and maxRegistrations ~= current
+        then
+            error(
+                "CommKit:ForAddon options.maxRegistrations differs from the existing scope's ("
+                    .. (current == UNBOUNDED and "CommKit.UNBOUNDED" or tostring(current))
+                    .. ")",
+                2
+            )
+        end
         return scope
     end
 
-    scope = newScope(addonName)
+    scope = newScope(addonName, maxRegistrations)
     rawset(addonScopes, addonName, scope)
     local lifecycle = LifecycleKit:ForAddon(addonName)
     if lifecycle:IsShutdown() then
@@ -4143,6 +4351,15 @@ function FacadeMethods.SetLimits(self, newLimits)
     validateKeys(newLimits, LIMIT_RANGES, "CommKit:SetLimits limits", 3)
     for name, value in pairs(newLimits) do
         local range = LIMIT_RANGES[name]
+        if value == UNBOUNDED then
+            error(
+                "CommKit:SetLimits limits."
+                    .. name
+                    .. " does not accept CommKit.UNBOUNDED: "
+                    .. range.unboundedRefusal,
+                2
+            )
+        end
         if type(value) == "number" and isSecret(value) then
             error("CommKit:SetLimits limits." .. name .. " must not be a secret value", 2)
         end
@@ -4258,6 +4475,7 @@ rawset(CommKit, "API", API_GENERATION)
 rawset(CommKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(CommKit, "MAX_MESSAGE_BYTES", WIRE.maxMessageBytes)
 rawset(CommKit, "MAX_REGISTRATIONS", MAX_REGISTRATIONS)
+rawset(CommKit, "UNBOUNDED", UNBOUNDED)
 rawset(CommKit, "Priority", {
     ALERT = PRIORITY.ALERT,
     NORMAL = PRIORITY.NORMAL,

@@ -1,12 +1,15 @@
 --- A second WidgetKit environment with every optional dependency loaded.
 ---
 --- Position bindings debounce their saves through SchedulerKit (which needs
---- EventKit, LifecycleKit and TimerKit), store into SettingsKit scope views,
---- and media pickers list MediaKit's names. This environment loads all of
---- them, in dependency order, before WidgetKit:
+--- TimerKit), store into SettingsKit scope views, and media pickers list
+--- MediaKit's names. This environment loads all of them, in dependency order,
+--- before WidgetKit:
 ---
----   Registry, SignalKit, EventKit, LifecycleKit, TimerKit, SchedulerKit,
----   PoolKit, SchemaKit, SettingsKit, OptionsKit, MediaKit, WidgetKit
+---   Registry, SignalKit, TimerKit, SchedulerKit, PoolKit, SchemaKit,
+---   SettingsKit, OptionsKit, MediaKit, WidgetKit
+---
+--- EventKit and LifecycleKit are optional for every Kit here since package F,
+--- so the runner no longer puts them on `LUA_PATH` for this suite.
 ---
 --- Saved variables a spec opens with `SettingsKit:Open` are globals the shared
 --- fixture does not own, so `SavedVariable` records them and `Reset` removes
@@ -17,8 +20,6 @@ local WidgetKitHostTestEnv = FrameworkTestEnv.New({
     modules = {
         "Registry",
         "SignalKit",
-        "EventKit",
-        "LifecycleKit",
         "TimerKit",
         "SchedulerKit",
         "PoolKit",
@@ -70,8 +71,6 @@ function WidgetKitHostTestEnv.NewPackage()
     for _, name in ipairs({
         "Registry",
         "SignalKit",
-        "EventKit",
-        "LifecycleKit",
         "TimerKit",
         "SchedulerKit",
         "PoolKit",

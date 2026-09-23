@@ -19,6 +19,7 @@ The SettingsKit suite covers:
 - allocation guards (`collectgarbage("count")` with the collector stopped) on a default read, top-level, nested and through a wildcard entry, and on a validated write of an existing key with a listener connected;
 - duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, SchemaKit or SignalKit, an incomplete facade, loading without EventKit, and an in-place upgrade to revision 2 that keeps the database, its views, its listeners and its logout compaction;
 - `error` levels: every `Open` and database-method argument failure, every receiver failure and the view refusals report the caller's own line;
+- limits: the default scan bound of 65536 entries, `maxScannedEntries` honoured by writes and `Validate`, `UNBOUNDED` scanning a 70000-entry table, invalid values refused at the caller's line; `maxProfileNameLength` and `pathKeyLimit` enforced by default and raised through `SetLimits`, a raised name limit honoured for a stored choice, `UNBOUNDED` refused with its reason, invalid and unknown limits refused atomically at the caller's line, a fresh `GetLimits` table; and the sentinel, the set limits and a database's scan bound kept across an in-place upgrade;
 - manifest/runtime API and revision consistency.
 
 `support/SettingsKitTestEnv.lua` loads Registry, SignalKit, EventKit, SchemaKit and SettingsKit in that order. It stubs the player identity (`UnitName`, `GetRealmName`, `UnitClass`, `UnitFactionGroup`) through `SetPlayer`, where a field set to `false` leaves that function out, and removes it again in `Reset`, together with every saved variable a spec named or SettingsKit created; the shared fixture does not model these globals. `InstallSecretProbe` and `NewSecret` provide an `issecretvalue` that reports the spec's own secret tables. EventKit is an optional dependency, so the runner puts it on `LUA_PATH`; `NewPackageWithoutEventKit` simply leaves it out of the module chain.
@@ -36,5 +37,6 @@ The SettingsKit suite covers:
 | `Validate_spec.lua` | `db:Validate` |
 | `Allocation_spec.lua` | allocation guards |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |
+| `Limits_spec.lua` | `maxScannedEntries`, `SetLimits`/`GetLimits`, `UNBOUNDED`, limits across an upgrade |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |
 | `Manifest_spec.lua` | manifest and runtime metadata |

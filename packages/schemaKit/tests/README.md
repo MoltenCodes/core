@@ -12,6 +12,7 @@ The SchemaKit suite covers:
 - `Describe` output for every kind, freshness, and an optional root;
 - duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, an incomplete facade, and an in-place upgrade (the source patched to revision 2) that keeps nodes, schemas and failure tables;
 - `error` levels: builder, `Seal`, receiver, `Assert` (default level and level 2) and sealed-write errors report the caller's own line;
+- limits: the defaults in a fresh table, partial updates, `maxDepth` up to its ceiling of 64, a lowered `maxPatternCaptures`, `pathKeyLimit` in failure paths, `defaultArrayMax` read when a node is built, `UNBOUNDED` lifting the default array bound and refused (with its reason, at the caller's line) by the other three, values past a ceiling and invalid values refused without changing anything, dot calls, and the limits and the sentinel kept across an in-place upgrade;
 - the three cookbook schemas from `docs/API.md`, run as written;
 - manifest/runtime API and revision consistency, and the dependency list.
 
@@ -24,6 +25,7 @@ SchemaKit is pure Lua, so `support/SchemaKitTestEnv.lua` builds its environment 
 | `Apply_spec.lua` | defaults filled into a copy |
 | `Sealed_spec.lua` | immutability, forged receivers, re-sealing, `Seal` options |
 | `Bounds_spec.lua` | depth, array, map and closed-table bounds |
+| `Limits_spec.lua` | `SetLimits`, `GetLimits`, `UNBOUNDED`, ceilings, limits across upgrades |
 | `SecretValues_spec.lua` | secret values refused before any use |
 | `Allocation_spec.lua` | allocation guards |
 | `Describe_spec.lua` | `Describe` output |

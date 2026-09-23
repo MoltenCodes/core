@@ -169,4 +169,29 @@ describe("CodecKit asynchronous variants", function()
         )
         assert.are.equal(0, scope:GetActiveCount())
     end)
+
+    it("bounds the call-time secret scan by maxOutputBytes when maxValues is lifted", function()
+        local CodecKit, SchedulerKit = Async.NewPackageWithTickingClock(0.5)
+        local scope = SchedulerKit:CreateScope()
+        TestEnv.InstallSecretProbe({})
+        CodecKit:SetLimits({
+            maxValues = CodecKit.UNBOUNDED,
+            maxOutputBytes = 1000,
+            maxDepth = 64,
+        })
+        -- Two references to itself: a walk bounded only by depth would visit
+        -- 2^64 tables. The encoder refuses it with "cycle"; the scan stops
+        -- after at most maxOutputBytes + maxDepth + 2 values.
+        local cyclic = {}
+        cyclic[1] = cyclic
+        cyclic[2] = cyclic
+        local result
+        CodecKit:EncodeAsync(cyclic, nil, scope, function(ok, reason)
+            result = { ok, reason }
+        end)
+        Async.TickUntil(function()
+            return result ~= nil
+        end, 50)
+        assert.are.same({ false, "cycle" }, result)
+    end)
 end)

@@ -14,6 +14,7 @@ The OptionsKit suite covers:
 - allocation guards (`collectgarbage("count")` with the collector stopped) on `Get` and `Set` through getters and binds, on `Walk`, `Validate`, `IsDisabled` and `IsHidden`;
 - duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, SchemaKit and SignalKit, an incomplete facade, and an in-place upgrade to revision 2 that keeps trees and listeners;
 - `error` levels: every argument failure, definition refusal (several groups deep), path error, value refusal and bind-path failure reports the caller's own line;
+- limits: `maxOptions`, `maxDepth` (up to the ceiling of 32, `Describe` included) and `maxDynamicEntries` (a `values` table and a multiselect over a values function) at their defaults, raised, lowered and, where allowed, `UNBOUNDED`; `UNBOUNDED` and out-of-range values refused at the caller's line; the sentinel identity and a tree's limits kept across an in-place upgrade;
 - manifest/runtime API and revision consistency.
 
 `support/OptionsKitTestEnv.lua` loads Registry, SignalKit, SchemaKit and OptionsKit. SettingsKit is declared under `optionalDependencies`. The stub-based specs do not depend on its package: `InstallSettingsKitStub` registers a stand-in under `settingsKit` API 1 so `Registry:Find` finds it, and `NewDatabase` builds a database with the documented shape — six scope tables whose reads fall back to defaults through a metatable, nested defaults as nested live tables, and `OnChange` and `Validate` methods. `SettingsKitIntegration_spec.lua` binds to a real SettingsKit database — a set and reset, a value the database refuses (`Validate` returning SettingsKit's message, `Set` raising the same text at the caller), a nested bind through a record without a default across a profile switch, a SettingsKit listener's error re-raised as it is rather than as a refusal, bound table values in `Describe`, no allocation on `Validate` of a bound option, and a bind to an undeclared scope refused at the caller — whenever `SettingsKit.lua` is on `LUA_PATH`, which the runner arranges; it is pending otherwise.
@@ -32,5 +33,6 @@ The OptionsKit suite covers:
 | `SecretValues_spec.lua` | secret values and names |
 | `Allocation_spec.lua` | allocation guards |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |
+| `Limits_spec.lua` | `Define` limits, `UNBOUNDED`, the sentinel across upgrades |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |
 | `Manifest_spec.lua` | manifest and runtime metadata |

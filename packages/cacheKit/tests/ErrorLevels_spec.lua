@@ -66,7 +66,7 @@ describe("CacheKit error levels", function()
         end)
         assertReportedAt(
             memoLine,
-            "CacheKit:Memoize maxEntries must be a positive integer",
+            "CacheKit:Memoize maxEntries must be a positive integer or CacheKit.UNBOUNDED",
             memoOk,
             memoValue
         )
@@ -85,7 +85,7 @@ describe("CacheKit error levels", function()
         end)
         assertReportedAt(
             snapshotLine,
-            "CacheKit:NewSnapshot maxEntries must be a positive integer",
+            "CacheKit:NewSnapshot maxEntries must be a positive integer or CacheKit.UNBOUNDED",
             snapshotOk,
             snapshotValue
         )

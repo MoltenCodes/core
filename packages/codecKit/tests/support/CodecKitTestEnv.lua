@@ -10,8 +10,8 @@
 ---
 --- The default environment loads Registry, PoolKit and CodecKit without the
 --- WoW stubs: CodecKit is pure Lua. `CodecKitTestEnv.Async` is a second
---- environment that also loads SignalKit, EventKit, LifecycleKit, TimerKit and
---- SchedulerKit, for the asynchronous variants. SchedulerKit is declared under
+--- environment that also loads TimerKit and SchedulerKit, SchedulerKit's
+--- required closure, for the asynchronous variants. SchedulerKit is declared under
 --- `optionalDependencies`, so the test runner puts it and its closure on
 --- `LUA_PATH`.
 local FrameworkTestEnv = require("FrameworkTestEnv")
@@ -25,9 +25,6 @@ local CodecKitTestEnv = FrameworkTestEnv.New({
 local ASYNC_MODULES = {
     "Registry",
     "PoolKit",
-    "SignalKit",
-    "EventKit",
-    "LifecycleKit",
     "TimerKit",
     "SchedulerKit",
     "CodecKit",

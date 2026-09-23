@@ -12,11 +12,12 @@
 --
 -- Contents
 -- --------
---   Constants ............. identity, bounds, kinds, rules, fixed phrases
+--   Constants ............. identity, limits, kinds, rules, fixed phrases
 --   Public types .......... LuaCATS declarations for the published surface
 --   Dependencies .......... Registry
 --   Validation ............ public-surface and shared-state predicates
 --   Bootstrap ............. Registry registration and inherited state
+--   Limits ................ the shared limits and their file-local copies
 --   Formatting ............ numbers, literals and path segments for messages
 --   Failure recording ..... the per-schema record, rules, the path stack
 --   Checking .............. the compiled checker, one function per kind
@@ -25,7 +26,7 @@
 --   Argument checks ....... specs, children, bounds and receivers
 --   Builders .............. the functions that create schema nodes
 --   Schema methods ........ Check, Assert, Apply, Describe
---   Package public API .... Seal
+--   Package public API .... Seal, SetLimits, GetLimits
 --   Commit ................ prototype/facade assignment and self-check
 --
 -- The compiled form is described in `docs/INTERNALS.md`.
@@ -44,19 +45,43 @@ local STATE_SCHEMA = 1
 local NODE_LAYOUT = 1
 local RECORD_LAYOUT = 1
 
--- How many nested tables a checked value may have, counting the outermost.
--- A value nested deeper fails with rule "depth" however the schema is built,
--- so the work a hostile value can cause is bounded by the schema's own shape.
+-- The defaults of the four shared limits (see `SetLimits` and docs/API.md
+-- "Limits"). Each is read through a file-local copy the Limits section keeps
+-- in step with `state.limits`, so a hot path reads an upvalue, never a table.
+--
+-- `maxDepth`: how many nested tables a checked value may have, counting the
+-- outermost. A value nested deeper fails with rule "depth" however the schema
+-- is built, so the work a hostile value can cause is bounded by the schema's
+-- own shape.
 local MAX_DEPTH = 16
 
--- An array schema without `max` accepts at most this many elements. A map has
--- no default: its `max` is required, because a map is what a hostile message
--- would inflate.
+-- `defaultArrayMax`: an array schema without `max` accepts at most this many
+-- elements. A map has no default: its `max` is required, because a map is
+-- what a hostile message would inflate.
 local DEFAULT_ARRAY_MAX = 1024
 
--- A key shown in a failure path is cut to this many characters. Map keys can
--- come from a received message, and a path must stay short and printable.
+-- `pathKeyLimit`: a key shown in a failure path is cut to this many
+-- characters. Map keys can come from a received message, and a path must stay
+-- short and printable.
 local PATH_KEY_LIMIT = 32
+
+-- `maxPatternCaptures`: the most captures a `string` pattern may open.
+-- `LUA_MAXCAPTURES` in Lua 5.1: a pattern opening more captures raises.
+local MAX_PATTERN_CAPTURES = 32
+
+-- Hard ceilings `SetLimits` refuses to pass, each with the reason a larger
+-- value is unsafe. `defaultArrayMax` has none: an array's elements are the
+-- consumer's own data, already in memory, and SchemaKit retains none of them.
+local LIMIT_CEILINGS = {
+    maxDepth = 64,
+    maxPatternCaptures = 32,
+    pathKeyLimit = 1024,
+}
+local LIMIT_CEILING_REASONS = {
+    maxDepth = "checking, applying and default validation recurse once per nesting level of a value its sender shapes",
+    maxPatternCaptures = "Lua 5.1 raises on a pattern with more than 32 captures (LUA_MAXCAPTURES)",
+    pathKeyLimit = "failure paths print keys a received message chooses",
+}
 
 local KIND_STRING = "string"
 local KIND_NUMBER = "number"
@@ -103,7 +128,6 @@ local FOUND_UNLISTED = {
     boolean = "unlisted boolean",
 }
 
-local EXPECTED_DEPTH = "at most " .. MAX_DEPTH .. " nested tables"
 local EXPECTED_DECLARED = "only declared fields"
 local EXPECTED_SEQUENCE = "array with keys 1 to n"
 local EXPECTED_ANY = "any value"
@@ -121,9 +145,6 @@ local SEAL_OPTION_KEYS = { freshFailures = true }
 -- `lstrlib.c` written as a Lua pattern.
 local PATTERN_SPECIALS = "[%^%$%*%+%?%.%(%[%%%-]"
 
--- `LUA_MAXCAPTURES` in Lua 5.1: a pattern opening more captures raises.
-local MAX_PATTERN_CAPTURES = 32
-
 -- The published surface, listed once so the public-surface predicate reads as
 -- a checklist instead of a long boolean expression.
 local FACADE_FUNCTIONS = {
@@ -139,6 +160,8 @@ local FACADE_FUNCTIONS = {
     "any",
     "custom",
     "Seal",
+    "SetLimits",
+    "GetLimits",
 }
 local SCHEMA_METHODS = { "Check", "Assert", "Apply", "Describe" }
 
@@ -174,7 +197,7 @@ local HUGE = math.huge
 ---@class SchemaKit.ArraySpec
 ---@field of SchemaKit.Node|SchemaKit.Schema Required. The schema of every element.
 ---@field min integer? Fewest elements. Defaults to `0`.
----@field max integer? Most elements. Defaults to `1024`.
+---@field max integer? Most elements. Defaults to the `defaultArrayMax` limit (`1024`).
 
 ---Spec accepted by `SchemaKit.map`.
 ---@class SchemaKit.MapSpec
@@ -244,8 +267,9 @@ local HUGE = math.huge
 ---@class SchemaKit
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
----@field MAX_DEPTH integer Most nested tables a checked value may have (`16`).
----@field DEFAULT_ARRAY_MAX integer Element bound of an array without `max` (`1024`).
+---@field MAX_DEPTH integer Default of the `maxDepth` limit (`16`).
+---@field DEFAULT_ARRAY_MAX integer Default of the `defaultArrayMax` limit (`1024`).
+---@field UNBOUNDED table Sentinel `SetLimits{ defaultArrayMax }` accepts to lift the default array bound; one table shared by every revision.
 ---@field Schema SchemaKit.Schema Shared sealed-schema prototype.
 ---@field string fun(spec: SchemaKit.StringSpec?): SchemaKit.Node
 ---@field number fun(spec: SchemaKit.NumberSpec?): SchemaKit.Node
@@ -259,6 +283,16 @@ local HUGE = math.huge
 ---@field any fun(): SchemaKit.Node
 ---@field custom fun(check: fun(value: any): boolean, description: string): SchemaKit.Node
 ---@field Seal fun(self: SchemaKit, node: SchemaKit.Node|SchemaKit.Schema, options: SchemaKit.SealOptions?): SchemaKit.Schema
+---@field SetLimits fun(self: SchemaKit, limits: SchemaKit.Limits)
+---@field GetLimits fun(self: SchemaKit): SchemaKit.Limits
+
+---The limits every consumer in the session shares. `SetLimits` accepts any
+---subset; `GetLimits` returns all four in a fresh table.
+---@class SchemaKit.Limits
+---@field maxDepth integer? Most nested tables a checked value may have: `1` to `64`, default `16`.
+---@field maxPatternCaptures integer? Most captures a `string` pattern may open: `1` to `32`, default `32`.
+---@field pathKeyLimit integer? Characters of a key shown in a failure path: `1` to `1024`, default `32`.
+---@field defaultArrayMax (integer|table)? Element bound of an array built without `max`: a positive integer or `SchemaKit.UNBOUNDED`, default `1024`.
 
 ---The private compiled form of one node. Fields a kind does not use are
 ---`false`. See `docs/INTERNALS.md`.
@@ -361,6 +395,7 @@ local function validatePublicSurface(implementation)
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
         or type(rawget(implementation, "Schema")) ~= "table"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
     then
         return false
     end
@@ -380,13 +415,18 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "records")) == "table"
         and type(rawget(currentState, "nodeMetatable")) == "table"
         and type(rawget(currentState, "schemaMetatable")) == "table"
+        and type(rawget(currentState, "unbounded")) == "table"
+        and type(rawget(currentState, "limits")) == "table"
 end
 
----Whether `implementation` carries package state of this revision's schema.
+---Whether `implementation` carries package state of this revision's schema,
+---and publishes the sentinel that state keeps.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+    local currentState = rawget(implementation, "_state")
+    return validateStateBase(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -427,6 +467,17 @@ if previousRevision == nil then
         records = setmetatable({}, { __mode = "k" }),
         nodeMetatable = {},
         schemaMetatable = {},
+        -- `SchemaKit.UNBOUNDED` lives here so every revision publishes the
+        -- same table.
+        unbounded = {},
+        -- The shared limits; `SetLimits` writes here, so a limit a consumer
+        -- set survives an in-place upgrade.
+        limits = {
+            maxDepth = MAX_DEPTH,
+            maxPatternCaptures = MAX_PATTERN_CAPTURES,
+            pathKeyLimit = PATH_KEY_LIMIT,
+            defaultArrayMax = DEFAULT_ARRAY_MAX,
+        },
     }
     rawset(SchemaKit, "Schema", Schema)
     rawset(SchemaKit, "_state", state)
@@ -441,6 +492,38 @@ local NODE_METATABLE = rawget(state, "nodeMetatable")
 local SCHEMA_METATABLE = rawget(state, "schemaMetatable")
 local compiledNodes = rawget(state, "nodes")
 local schemaRecords = rawget(state, "records")
+local UNBOUNDED = rawget(state, "unbounded")
+local sharedLimits = rawget(state, "limits")
+
+-- Limits ---------------------------------------------------------------------
+--
+-- `state.limits` is the one copy every revision reads. The checker, the
+-- formatter and the builders read these file-local copies instead, refreshed
+-- here at load (so an upgrade inherits what a consumer set) and by
+-- `SetLimits`.
+
+local maxDepth = MAX_DEPTH
+local expectedDepth = ""
+local pathKeyLimit = PATH_KEY_LIMIT
+local maxPatternCaptures = MAX_PATTERN_CAPTURES
+-- `math.huge` while `defaultArrayMax` is `SchemaKit.UNBOUNDED`.
+local defaultArrayMax = DEFAULT_ARRAY_MAX
+
+---Copy the shared limits into the file-local copies the hot paths read.
+local function loadLimits()
+    maxDepth = rawget(sharedLimits, "maxDepth")
+    expectedDepth = "at most " .. maxDepth .. " nested tables"
+    pathKeyLimit = rawget(sharedLimits, "pathKeyLimit")
+    maxPatternCaptures = rawget(sharedLimits, "maxPatternCaptures")
+    local arrayMax = rawget(sharedLimits, "defaultArrayMax")
+    if type(arrayMax) == "number" then
+        defaultArrayMax = arrayMax
+    else
+        defaultArrayMax = HUGE
+    end
+end
+
+loadLimits()
 
 -- Formatting -----------------------------------------------------------------
 --
@@ -506,18 +589,18 @@ end
 local function formatSegment(key, isFirst)
     local keyType = type(key)
     if keyType == "string" then
-        if #key <= PATH_KEY_LIMIT and find(key, "^[%a_][%w_]*$") ~= nil then
+        if #key <= pathKeyLimit and find(key, "^[%a_][%w_]*$") ~= nil then
             if isFirst then
                 return key
             end
             return "." .. key
         end
         local shown = key
-        if #shown > PATH_KEY_LIMIT then
+        if #shown > pathKeyLimit then
             -- Never cut inside a UTF-8 sequence: while the first byte left
             -- out is a continuation byte (0x80 to 0xBF), leave out one more,
             -- so the cut falls before the sequence's lead byte.
-            local cut = PATH_KEY_LIMIT
+            local cut = pathKeyLimit
             local nextByte = byte(key, cut + 1)
             while cut > 0 and nextByte >= 0x80 and nextByte <= 0xBF do
                 cut = cut - 1
@@ -745,8 +828,8 @@ local function checkTable(record, node, value, depth, isSecret)
     if type(value) ~= "table" then
         return fail(record, RULE_TYPE, node.expected, type(value))
     end
-    if depth > MAX_DEPTH then
-        return fail(record, RULE_DEPTH, EXPECTED_DEPTH, FOUND_DEPTH)
+    if depth > maxDepth then
+        return fail(record, RULE_DEPTH, expectedDepth, FOUND_DEPTH)
     end
 
     -- Declared fields in sorted order, so which of several failing fields is
@@ -784,8 +867,8 @@ local function checkArray(record, node, value, depth, isSecret)
     if type(value) ~= "table" then
         return fail(record, RULE_TYPE, node.expected, type(value))
     end
-    if depth > MAX_DEPTH then
-        return fail(record, RULE_DEPTH, EXPECTED_DEPTH, FOUND_DEPTH)
+    if depth > maxDepth then
+        return fail(record, RULE_DEPTH, expectedDepth, FOUND_DEPTH)
     end
 
     -- Count the entries first, stopping one past the bound: an oversized
@@ -837,8 +920,8 @@ local function checkMap(record, node, value, depth, isSecret)
     if type(value) ~= "table" then
         return fail(record, RULE_TYPE, node.expected, type(value))
     end
-    if depth > MAX_DEPTH then
-        return fail(record, RULE_DEPTH, EXPECTED_DEPTH, FOUND_DEPTH)
+    if depth > maxDepth then
+        return fail(record, RULE_DEPTH, expectedDepth, FOUND_DEPTH)
     end
 
     local max = node.max --[[@as integer]]
@@ -982,7 +1065,7 @@ local function copyPlain(value)
     return result
 end
 
----Whether `value` nests at most `MAX_DEPTH - depth + 1` further tables; a
+---Whether `value` nests at most `maxDepth - depth + 1` further tables; a
 ---cyclic table never does.
 ---@param value any
 ---@param depth integer
@@ -991,7 +1074,7 @@ local function plainDepthWithin(value, depth)
     if type(value) ~= "table" then
         return true
     end
-    if depth > MAX_DEPTH then
+    if depth > maxDepth then
         return false
     end
     for _, entry in next, value do
@@ -1024,7 +1107,7 @@ end
 ---@param isSecret (fun(value: any): boolean)?
 ---@return any
 local function copyTable(record, node, value, depth, isSecret)
-    if type(value) ~= "table" or depth > MAX_DEPTH then
+    if type(value) ~= "table" or depth > maxDepth then
         return value
     end
 
@@ -1057,7 +1140,7 @@ end
 ---@param isSecret (fun(value: any): boolean)?
 ---@return any
 local function copyArray(record, node, value, depth, isSecret)
-    if type(value) ~= "table" or depth > MAX_DEPTH then
+    if type(value) ~= "table" or depth > maxDepth then
         return value
     end
     local count = countEntries(value, node.max --[[@as integer]])
@@ -1084,7 +1167,7 @@ end
 ---@param isSecret (fun(value: any): boolean)?
 ---@return any
 local function copyMap(record, node, value, depth, isSecret)
-    if type(value) ~= "table" or depth > MAX_DEPTH then
+    if type(value) ~= "table" or depth > maxDepth then
         return value
     end
     if
@@ -1217,7 +1300,10 @@ describeNode = function(node)
     elseif kind == KIND_ARRAY then
         description.of = describeNode(node.of --[[@as SchemaKit.CompiledNode]])
         description.min = node.min or nil
-        description.max = node.max or nil
+        -- An array built under an unbounded default has no `max` to describe.
+        if node.max ~= HUGE then
+            description.max = node.max or nil
+        end
     elseif kind == KIND_MAP then
         description.keys = describeNode(node.keys --[[@as SchemaKit.CompiledNode]])
         description.values = describeNode(node.values --[[@as SchemaKit.CompiledNode]])
@@ -1486,7 +1572,8 @@ end
 ---matcher would and refuses every construct the matcher raises on: a trailing
 ---`%`, an unclosed `[`, `%b` without two characters, `%f` without a set, a
 ---back-reference to a capture that is not closed, an unbalanced `(` or `)`,
----and more than 32 captures.
+---and more captures than the `maxPatternCaptures` limit (at most 32, the
+---matcher's own ceiling).
 ---@param pattern string
 ---@return boolean
 local function isValidPattern(pattern)
@@ -1513,7 +1600,7 @@ local function isValidPattern(pattern)
         local following = sub(pattern, index + 1, index + 1)
         if character == "(" then
             captureCount = captureCount + 1
-            if captureCount > MAX_PATTERN_CAPTURES then
+            if captureCount > maxPatternCaptures then
                 return false
             end
             if following == ")" then
@@ -1748,7 +1835,11 @@ local function buildArray(spec)
     validateCount(min, "SchemaKit.array min", 3)
     validateCount(max, "SchemaKit.array max", 3)
     min = min or 0
-    max = max or DEFAULT_ARRAY_MAX
+    -- The default is read when the node is built, so a node keeps the bound it
+    -- was built with whatever `SetLimits` does later. `math.huge` stands for
+    -- `SchemaKit.UNBOUNDED`: the count check never fires, and no message
+    -- ever names that bound.
+    max = max or defaultArrayMax
     if min > max then
         error("SchemaKit.array min must not be greater than max", 2)
     end
@@ -1758,8 +1849,10 @@ local function buildArray(spec)
     node.min = min
     node.max = max
     node.expectedMin = "array of at least " .. min .. " elements"
-    node.expectedMax = "array of at most " .. max .. " elements"
-    node.foundMax = "table with more than " .. max .. " entries"
+    if max ~= HUGE then
+        node.expectedMax = "array of at most " .. max .. " elements"
+        node.foundMax = "table with more than " .. max .. " entries"
+    end
     return publishNode(node)
 end
 
@@ -1808,7 +1901,7 @@ local function buildOptional(schema, default)
     node.inner = inner
     if default ~= nil then
         if not plainDepthWithin(default, 1) then
-            error("SchemaKit.optional default nests deeper than " .. MAX_DEPTH .. " tables", 2)
+            error("SchemaKit.optional default nests deeper than " .. maxDepth .. " tables", 2)
         end
         -- The default is checked like any value, so a schema can never fill
         -- in something it would itself refuse.
@@ -2009,6 +2102,94 @@ local function packageSeal(facade, node, options)
     return schema
 end
 
+---Refuse a `SetLimits` argument before anything is written, so a refused
+---call changes no limit.
+---@param limits any
+---@param level integer stack level the failure is reported at
+local function validateLimitUpdate(limits, level)
+    if type(limits) ~= "table" then
+        error("SchemaKit:SetLimits limits must be a table", level)
+    end
+    for key, value in next, limits do
+        if type(key) ~= "string" or rawget(sharedLimits, key) == nil then
+            error(
+                "SchemaKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
+                level
+            )
+        end
+        local ceiling = LIMIT_CEILINGS[key]
+        if value == UNBOUNDED then
+            if ceiling ~= nil then
+                error(
+                    "SchemaKit:SetLimits limits."
+                        .. key
+                        .. " cannot be SchemaKit.UNBOUNDED: "
+                        .. LIMIT_CEILING_REASONS[key],
+                    level
+                )
+            end
+        elseif not isNonNegativeInteger(value) or value < 1 then
+            if ceiling ~= nil then
+                error(
+                    "SchemaKit:SetLimits limits."
+                        .. key
+                        .. " must be an integer from 1 to "
+                        .. ceiling,
+                    level
+                )
+            end
+            error(
+                "SchemaKit:SetLimits limits."
+                    .. key
+                    .. " must be a positive integer or SchemaKit.UNBOUNDED",
+                level
+            )
+        elseif ceiling ~= nil and value > ceiling then
+            error(
+                "SchemaKit:SetLimits limits."
+                    .. key
+                    .. " must be an integer from 1 to "
+                    .. ceiling
+                    .. ": "
+                    .. LIMIT_CEILING_REASONS[key],
+                level
+            )
+        end
+    end
+end
+
+---Change any subset of the shared limits. Affects every consumer in the
+---session. `maxDepth` and `pathKeyLimit` apply to the next check;
+---`maxPatternCaptures` and `defaultArrayMax` to the next node built.
+---@param facade SchemaKit
+---@param limits SchemaKit.Limits
+local function packageSetLimits(facade, limits)
+    if not rawequal(facade, SchemaKit) then
+        error("SchemaKit:SetLimits is called with a colon, not a dot", 2)
+    end
+    validateLimitUpdate(limits, 3)
+    for key, value in next, limits do
+        rawset(sharedLimits, key, value)
+    end
+    loadLimits()
+end
+
+---Return a fresh copy of the shared limits; `defaultArrayMax` may be
+---`SchemaKit.UNBOUNDED`.
+---@param facade SchemaKit
+---@return SchemaKit.Limits
+local function packageGetLimits(facade)
+    if not rawequal(facade, SchemaKit) then
+        error("SchemaKit:GetLimits is called with a colon, not a dot", 2)
+    end
+    return {
+        maxDepth = rawget(sharedLimits, "maxDepth"),
+        maxPatternCaptures = rawget(sharedLimits, "maxPatternCaptures"),
+        pathKeyLimit = rawget(sharedLimits, "pathKeyLimit"),
+        defaultArrayMax = rawget(sharedLimits, "defaultArrayMax"),
+    }
+end
+
 -- Commit ---------------------------------------------------------------------
 
 -- `__metatable` makes `setmetatable` refuse to replace either metatable and
@@ -2029,6 +2210,7 @@ rawset(SchemaKit, "API", API_GENERATION)
 rawset(SchemaKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(SchemaKit, "MAX_DEPTH", MAX_DEPTH)
 rawset(SchemaKit, "DEFAULT_ARRAY_MAX", DEFAULT_ARRAY_MAX)
+rawset(SchemaKit, "UNBOUNDED", UNBOUNDED)
 rawset(SchemaKit, "string", buildString)
 rawset(SchemaKit, "number", buildNumber)
 rawset(SchemaKit, "boolean", buildBoolean)
@@ -2041,6 +2223,8 @@ rawset(SchemaKit, "oneOf", buildOneOf)
 rawset(SchemaKit, "any", buildAny)
 rawset(SchemaKit, "custom", buildCustom)
 rawset(SchemaKit, "Seal", packageSeal)
+rawset(SchemaKit, "SetLimits", packageSetLimits)
+rawset(SchemaKit, "GetLimits", packageGetLimits)
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(SchemaKit) or not validateCurrentState(SchemaKit) then

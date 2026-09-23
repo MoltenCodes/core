@@ -53,22 +53,37 @@ local STATE_SCHEMA = 1
 -- fields exist.
 local TREE_SCHEMA = 1
 
--- The most options one tree holds, counting groups and everything below the
--- root. A tree is walked and described in full by every renderer, so an
--- unbounded one is a visible hitch on the first options screen.
+-- The default of `Define`'s `maxOptions`: the most options one tree holds,
+-- counting groups and everything below the root. A tree is walked and described
+-- in full by every renderer, so a huge one is a visible hitch on the first
+-- options screen; the tree is the consumer's own data, so the consumer may
+-- raise the bound or lift it with `OptionsKit.UNBOUNDED`.
 local MAX_OPTIONS = 1024
 
--- The most keys an option's path may have. Real trees are three or four levels
--- deep; the bound also turns a cyclic tree into an error instead of a stack
--- overflow.
+-- The default of `Define`'s `maxDepth`: the most keys an option's path may
+-- have. Real trees are three or four levels deep; the bound also turns a
+-- cyclic tree into an error instead of a stack overflow.
 local MAX_DEPTH = 8
+
+-- The highest `maxDepth` a tree may ask for. `Define` builds and `Describe`
+-- describes a tree by recursion, several Lua and C frames per level, so the
+-- depth is paid on the Lua stack and is never unbounded.
+local MAX_DEPTH_CEILING = 32
 
 -- The order an option without `order` sorts at, as in AceConfig.
 local DEFAULT_ORDER = 100
 
--- A multiselect whose values come from a function cannot be counted at Define,
--- yet `SchemaKit.map` needs a bound; this is the bound it gets.
+-- The default of `Define`'s `maxDynamicEntries`: the most entries a static
+-- `values` table may have, and the bound the `SchemaKit.map` of a multiselect
+-- whose values come from a function gets, because such values cannot be
+-- counted at Define.
 local MAX_DYNAMIC_ENTRIES = 1024
+
+-- `SchemaKit.map` requires an integer bound, so a tree opened with
+-- `maxDynamicEntries = OptionsKit.UNBOUNDED` gives a multiselect over a values
+-- function this one. Every key must still be a key of the function's current
+-- table, so the function's own table is the real bound.
+local UNBOUNDED_MAP_MAX = 2147483647
 
 -- Option kinds.
 local KIND_GROUP = "group"
@@ -134,7 +149,8 @@ local BIND_SCOPES =
 local FONT_SIZES = { small = true, medium = true, large = true }
 
 -- The complete set of fields `Define` options accept.
-local DEFINE_OPTION_KEYS = { db = true }
+local DEFINE_OPTION_KEYS =
+    { db = true, maxOptions = true, maxDepth = true, maxDynamicEntries = true }
 
 -- An option key or a bind path segment: an identifier, so a dotted path can
 -- never be ambiguous.
@@ -214,6 +230,9 @@ local TREE_METHODS = {
 ---Option table accepted by `OptionsKit:Define`.
 ---@class OptionsKit.DefineOptions
 ---@field db table? A SettingsKit API 1 database; required when any option uses `bind`.
+---@field maxOptions (integer|table)? The most options the tree holds below the root: a positive integer or `OptionsKit.UNBOUNDED`; default `1024`.
+---@field maxDepth integer? The most keys an option path has: an integer from `1` to `32`; default `8`. `UNBOUNDED` is refused: the tree is built recursively on the Lua stack.
+---@field maxDynamicEntries (integer|table)? The most entries of a `values` table, and the map bound of a multiselect over a values function: a positive integer or `OptionsKit.UNBOUNDED`; default `1024`.
 
 ---One node of `tree:Describe()`. Every table in it is fresh.
 ---@class OptionsKit.Description
@@ -254,8 +273,9 @@ local TREE_METHODS = {
 ---@class OptionsKit
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
----@field MAX_OPTIONS integer The most options one tree holds.
----@field MAX_DEPTH integer The most keys an option path has.
+---@field MAX_OPTIONS integer Default of `maxOptions`: the most options one tree holds.
+---@field MAX_DEPTH integer Default of `maxDepth`: the most keys an option path has.
+---@field UNBOUNDED table Sentinel `maxOptions` and `maxDynamicEntries` accept to lift the bound; one table shared by every revision.
 ---@field Tree OptionsKit.Tree Shared tree prototype.
 ---@field Define fun(self: OptionsKit, addonName: string, tree: OptionsKit.Option, options: OptionsKit.DefineOptions?): OptionsKit.Tree
 ---@field Get fun(self: OptionsKit, addonName: string): OptionsKit.Tree?
@@ -357,6 +377,7 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "MAX_OPTIONS")) ~= "number"
         or type(rawget(implementation, "MAX_DEPTH")) ~= "number"
         or type(rawget(implementation, "Tree")) ~= "table"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
     then
         return false
     end
@@ -374,13 +395,17 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "runtimeRevision")) == "number"
         and type(rawget(currentState, "treeMetatable")) == "table"
         and type(rawget(currentState, "trees")) == "table"
+        and type(rawget(currentState, "unbounded")) == "table"
 end
 
----Whether `implementation` carries package state of this revision's schema.
+---Whether `implementation` carries package state of this revision's schema,
+---and publishes the sentinel that state keeps.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+    local currentState = rawget(implementation, "_state")
+    return validateStateBase(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -417,6 +442,10 @@ if previousRevision == nil then
         treeMetatable = {},
         -- Addon name to that addon's tree. At most one per addon name.
         trees = {},
+        -- `OptionsKit.UNBOUNDED` lives here so every revision publishes the
+        -- same table and a `Define` option written against one copy keeps its
+        -- meaning after an upgrade.
+        unbounded = {},
     }
     rawset(OptionsKit, "Tree", Tree)
     rawset(OptionsKit, "_state", state)
@@ -429,6 +458,7 @@ end
 -- replaced.
 local TREE_METATABLE = rawget(state, "treeMetatable")
 local trees = rawget(state, "trees")
+local UNBOUNDED = rawget(state, "unbounded")
 rawset(TREE_METATABLE, "__index", Tree)
 
 -- Argument checks ------------------------------------------------------------
@@ -640,11 +670,12 @@ end
 ---Check and copy a `values` table: keys are strings or numbers, labels
 ---strings. Returns the copy and its keys, sorted for a deterministic schema.
 ---@param values table
+---@param maxEntries number the tree's `maxDynamicEntries`, `math.huge` when unbounded
 ---@param label string
 ---@param level integer
 ---@return table copy
 ---@return (string|number)[] keys
-local function copyValues(values, label, level)
+local function copyValues(values, maxEntries, label, level)
     local copy = {}
     local keys = {}
     for key, text in pairs(values) do
@@ -661,8 +692,8 @@ local function copyValues(values, label, level)
     if #keys == 0 then
         error(label .. " must not be empty", level)
     end
-    if #keys > MAX_DYNAMIC_ENTRIES then
-        error(label .. " must have at most " .. MAX_DYNAMIC_ENTRIES .. " entries", level)
+    if #keys > maxEntries then
+        error(label .. " must have at most " .. maxEntries .. " entries", level)
     end
     return copy, keys
 end
@@ -782,10 +813,11 @@ end
 ---@param keys (string|number)[]|false keys of a `select`/`multiselect` values table
 ---@param valuesFunction function|false a `select`/`multiselect` values function
 ---@param info OptionsKit.Info
+---@param dynamicMax integer the map bound of a multiselect over a values function
 ---@param label string
 ---@param level integer
 ---@return table schema
-local function buildSchema(kind, spec, keys, valuesFunction, info, label, level)
+local function buildSchema(kind, spec, keys, valuesFunction, info, dynamicMax, label, level)
     local node
     if kind == KIND_TOGGLE then
         node = SchemaKit.boolean()
@@ -800,7 +832,7 @@ local function buildSchema(kind, spec, keys, valuesFunction, info, label, level)
         node = SchemaKit.map({
             keys = buildKeyNode(keys, valuesFunction, info),
             values = SchemaKit.boolean(),
-            max = keys and #keys or MAX_DYNAMIC_ENTRIES,
+            max = keys and #keys or dynamicMax,
         })
     elseif kind == KIND_INPUT then
         if spec.pattern == nil then
@@ -920,7 +952,8 @@ local function buildValueFields(context, record, spec, label, level)
         if type(values) == "function" then
             valuesFunction = values
         elseif type(values) == "table" then
-            copied, keys = copyValues(values, label .. ".values", level + 1)
+            copied, keys =
+                copyValues(values, context.maxDynamicEntries, label .. ".values", level + 1)
             table.sort(keys, function(left, right)
                 if type(left) == type(right) then
                     return left < right
@@ -944,7 +977,15 @@ local function buildValueFields(context, record, spec, label, level)
         checkOptionalBoolean(spec.hasAlpha, label .. ".hasAlpha", level + 1)
     end
 
-    rawset(record, "_schema", buildSchema(kind, spec, keys, valuesFunction, info, label, level + 1))
+    local dynamicMax = context.maxDynamicEntries
+    if dynamicMax == math.huge then
+        dynamicMax = UNBOUNDED_MAP_MAX
+    end
+    rawset(
+        record,
+        "_schema",
+        buildSchema(kind, spec, keys, valuesFunction, info, dynamicMax, label, level + 1)
+    )
     -- Prebuilt so a failing `Set` names the option without building a string
     -- on the valid path.
     rawset(record, "_setArgument", "OptionsKit.Tree:Set " .. rawget(record, "_path"))
@@ -1019,12 +1060,12 @@ buildOption = function(context, spec, parent, key, label, level)
     local path = ""
     if parent then
         depth = rawget(parent, "_depth") + 1
-        if depth > MAX_DEPTH then
-            error(label .. " is deeper than " .. MAX_DEPTH .. " levels", level)
+        if depth > context.maxDepth then
+            error(label .. " is deeper than " .. context.maxDepth .. " levels", level)
         end
         context.count = context.count + 1
-        if context.count > MAX_OPTIONS then
-            error(context.label .. " has more than " .. MAX_OPTIONS .. " options", level)
+        if context.count > context.maxOptions then
+            error(context.label .. " has more than " .. context.maxOptions .. " options", level)
         end
         local parentPath = rawget(parent, "_path")
         path = parentPath == "" and key or parentPath .. "." .. key
@@ -1591,11 +1632,79 @@ end
 
 -- Package public API ---------------------------------------------------------
 
----Read `options.db` and check it has the SettingsKit database surface.
+---Read a `maxOptions` or `maxDynamicEntries` option: absent means `default`,
+---`OptionsKit.UNBOUNDED` means `math.huge`, anything else must be a positive
+---integer. The tree is the consumer's own data, so the consumer may lift both.
+---@param value any
+---@param default integer
+---@param name string the option's field name, used in the argument error
+---@param level integer stack level the failure is reported at
+---@return number capacity
+local function readCapacityOption(value, default, name, level)
+    if value == nil then
+        return default
+    end
+    if value == UNBOUNDED then
+        return math.huge
+    end
+    if
+        type(value) ~= "number"
+        or value ~= value
+        or value < 1
+        or value == math.huge
+        or math.floor(value) ~= value
+    then
+        error(
+            "OptionsKit:Define options."
+                .. name
+                .. " must be a positive integer or OptionsKit.UNBOUNDED",
+            level
+        )
+    end
+    return value
+end
+
+---Read the `maxDepth` option: absent means `MAX_DEPTH`; otherwise an integer
+---from 1 to `MAX_DEPTH_CEILING`. `UNBOUNDED` is refused with its reason.
+---@param value any
+---@param level integer stack level the failure is reported at
+---@return integer maxDepth
+local function readMaxDepthOption(value, level)
+    if value == nil then
+        return MAX_DEPTH
+    end
+    if value == UNBOUNDED then
+        error(
+            "OptionsKit:Define options.maxDepth cannot be OptionsKit.UNBOUNDED: the tree is built on the Lua stack, so the ceiling is "
+                .. MAX_DEPTH_CEILING,
+            level
+        )
+    end
+    if
+        type(value) ~= "number"
+        or value ~= value
+        or value < 1
+        or value > MAX_DEPTH_CEILING
+        or math.floor(value) ~= value
+    then
+        error(
+            "OptionsKit:Define options.maxDepth must be an integer from 1 to " .. MAX_DEPTH_CEILING,
+            level
+        )
+    end
+    return value
+end
+
+---Read the `Define` options: `options.db`, checked for the SettingsKit
+---database surface, and the three limits into `context`.
 ---@param options any
+---@param context table the build context, whose limits this fills in
 ---@param level integer
 ---@return table|false db
-local function readDefineOptions(options, level)
+local function readDefineOptions(options, context, level)
+    context.maxOptions = MAX_OPTIONS
+    context.maxDepth = MAX_DEPTH
+    context.maxDynamicEntries = MAX_DYNAMIC_ENTRIES
     if options == nil then
         return false
     end
@@ -1617,6 +1726,15 @@ local function readDefineOptions(options, level)
     if firstUnknown ~= nil then
         error('OptionsKit:Define options contains unknown field "' .. firstUnknown .. '"', level)
     end
+    context.maxOptions =
+        readCapacityOption(rawget(options, "maxOptions"), MAX_OPTIONS, "maxOptions", level + 1)
+    context.maxDepth = readMaxDepthOption(rawget(options, "maxDepth"), level + 1)
+    context.maxDynamicEntries = readCapacityOption(
+        rawget(options, "maxDynamicEntries"),
+        MAX_DYNAMIC_ENTRIES,
+        "maxDynamicEntries",
+        level + 1
+    )
     local db = options.db
     if db == nil then
         return false
@@ -1650,22 +1768,34 @@ local function define(_, addonName, spec, options)
     if rawget(trees, addonName) ~= nil then
         error('OptionsKit:Define "' .. addonName .. '" already has a tree; Undefine it first', 2)
     end
-    local db = readDefineOptions(options, 3)
+    local context = {
+        db = false,
+        tree = false,
+        addonName = addonName,
+        label = "OptionsKit:Define tree",
+        count = 0,
+        records = {},
+        -- Filled in by `readDefineOptions`: numbers, `math.huge` for
+        -- `OptionsKit.UNBOUNDED`.
+        maxOptions = MAX_OPTIONS,
+        maxDepth = MAX_DEPTH,
+        maxDynamicEntries = MAX_DYNAMIC_ENTRIES,
+    }
+    local db = readDefineOptions(options, context, 3)
 
     local tree = setmetatable({
         _schema = TREE_SCHEMA,
         _addonName = addonName,
         _defined = false,
         _db = db,
+        -- The limits the tree was defined under, `math.huge` for unbounded.
+        -- Only `Define` enforces them; they are kept for inspection.
+        _maxOptions = context.maxOptions,
+        _maxDepth = context.maxDepth,
+        _maxDynamicEntries = context.maxDynamicEntries,
     }, TREE_METATABLE)
-    local context = {
-        db = db,
-        tree = tree,
-        addonName = addonName,
-        label = "OptionsKit:Define tree",
-        count = 0,
-        records = {},
-    }
+    context.db = db
+    context.tree = tree
     local root = buildOption(context, spec, false, false, context.label, 3)
     local walk = {}
     flatten(root, walk)
@@ -1723,6 +1853,7 @@ rawset(OptionsKit, "API", API_GENERATION)
 rawset(OptionsKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(OptionsKit, "MAX_OPTIONS", MAX_OPTIONS)
 rawset(OptionsKit, "MAX_DEPTH", MAX_DEPTH)
+rawset(OptionsKit, "UNBOUNDED", UNBOUNDED)
 rawset(OptionsKit, "Define", define)
 rawset(OptionsKit, "Get", getTree)
 rawset(OptionsKit, "Undefine", undefine)

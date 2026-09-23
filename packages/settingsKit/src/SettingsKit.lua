@@ -65,13 +65,40 @@ local DEFAULT_PROFILE_NAME = "Default"
 local CHARACTER_PROFILE = "char"
 
 -- Profile names are shown in option screens and typed by players; 64 bytes is
--- generous for a name and small enough for a dropdown.
+-- generous for a name and small enough for a dropdown. It is the default of
+-- the shared `maxProfileNameLength` limit.
 local MAX_PROFILE_NAME_LENGTH = 64
+
+-- A string key shown in a path is cut to this many bytes by default, as
+-- SchemaKit cuts the keys in its failure paths. Keyed-section keys can come
+-- from other players, and a path must stay short and printable. It is the
+-- default of the shared `pathKeyLimit` limit.
+local DEFAULT_PATH_KEY_LIMIT = 32
 
 -- A table written into a scope is scanned for secret values before it is
 -- stored. The scan is bounded so a hostile or cyclic table cannot stall the
--- writer: more entries than this and the write is refused.
-local MAX_SCANNED_ENTRIES = 65536
+-- writer: more entries than this and the write is refused. It is the default
+-- of the per-database `maxScannedEntries` option.
+local DEFAULT_MAX_SCANNED_ENTRIES = 65536
+
+-- The shared limits `SetLimits` changes, in the order they are documented,
+-- with the range each accepts. Neither accepts `SettingsKit.UNBOUNDED`: both
+-- bound text the client renders, not the consumer's own data.
+local LIMIT_NAMES = { "maxProfileNameLength", "pathKeyLimit" }
+local LIMIT_MINIMUMS = {
+    -- A character profile is named "Name - Realm"; a smaller bound could
+    -- refuse the profile `defaultProfile = "char"` creates.
+    maxProfileNameLength = MAX_PROFILE_NAME_LENGTH,
+    pathKeyLimit = 1,
+}
+local LIMIT_CEILINGS = {
+    maxProfileNameLength = 1024,
+    pathKeyLimit = 1024,
+}
+local UNBOUNDED_REFUSALS = {
+    maxProfileNameLength = "profile names are typed by players and shown in option screens and dropdowns",
+    pathKeyLimit = "paths show keys other players can send, and every message must stay short and printable",
+}
 
 -- The scopes a schema may declare, in the order they are documented.
 local SCOPE_NAMES = { "global", "char", "realm", "class", "faction", "profile" }
@@ -96,14 +123,15 @@ local LAYOUT_SECTIONS =
     { "global", "profiles", "profileKeys", "char", "realm", "class", "faction", "namespaces" }
 
 -- The complete set of fields an options table accepts.
-local OPTION_KEYS = { defaultProfile = true, version = true, migrations = true }
+local OPTION_KEYS =
+    { defaultProfile = true, version = true, migrations = true, maxScannedEntries = true }
 
 -- The two kinds of view: a record (a SchemaKit `table`) and a keyed section
 -- (a SchemaKit `map`).
 local KIND_RECORD = "record"
 local KIND_MAP = "map"
 
-local FACADE_METHODS = { "Open" }
+local FACADE_METHODS = { "Open", "SetLimits", "GetLimits" }
 local DATABASE_METHODS = {
     "GetProfile",
     "SetProfile",
@@ -154,6 +182,13 @@ local WEAK_VALUES = { __mode = "v" }
 ---@field defaultProfile string? `"Default"` (the default), `"char"` for one profile per character, or any other profile name.
 ---@field version integer? The saved-table version this addon writes. Omitted: no versioning.
 ---@field migrations table<integer, SettingsKit.Migration>? Steps by the version they produce; requires `version`.
+---@field maxScannedEntries (integer|table)? Most entries the secret-value scan of one written table visits: a positive integer or `SettingsKit.UNBOUNDED`; default `65536`.
+
+---The limits every consumer in the session shares. `SetLimits` accepts any
+---subset; `GetLimits` returns a fresh table.
+---@class SettingsKit.Limits
+---@field maxProfileNameLength integer Longest accepted profile name, in bytes: `64` to `1024`, default `64`.
+---@field pathKeyLimit integer Bytes of a string key a message path shows before it is cut: `1` to `1024`, default `32`.
 
 ---Called after a validated write with the database, the scope name, the key
 ---written, the value written (`nil` for a reset to the default) and the path of
@@ -199,9 +234,12 @@ local WEAK_VALUES = { __mode = "v" }
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
 ---@field DEFAULT_PROFILE string `"Default"`, the shared profile's name.
----@field MAX_PROFILE_NAME_LENGTH integer Longest accepted profile name, in bytes (`64`).
+---@field MAX_PROFILE_NAME_LENGTH integer Default longest profile name, in bytes (`64`); `GetLimits` reports the current one.
+---@field UNBOUNDED table Sentinel `maxScannedEntries` accepts to lift the scan bound; one table shared by every revision.
 ---@field Database SettingsKit.Database Shared database prototype.
 ---@field Open fun(self: SettingsKit, savedVariable: string, schema: SettingsKit.Schema?, options: SettingsKit.Options?): SettingsKit.Database
+---@field SetLimits fun(self: SettingsKit, limits: table)
+---@field GetLimits fun(self: SettingsKit): SettingsKit.Limits
 
 ---What `Open` compiles once per scope from `schema:Describe()`. Private.
 ---@class SettingsKit.Plan
@@ -310,6 +348,7 @@ local function validatePublicSurface(implementation)
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
         or type(rawget(implementation, "Database")) ~= "table"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
     then
         return false
     end
@@ -330,13 +369,18 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "views")) == "table"
         and type(rawget(currentState, "viewMetatable")) == "table"
         and type(rawget(currentState, "databaseMetatable")) == "table"
+        and type(rawget(currentState, "unbounded")) == "table"
+        and type(rawget(currentState, "limits")) == "table"
 end
 
----Whether `implementation` carries package state of this revision's schema.
+---Whether `implementation` carries package state of this revision's schema,
+---and publishes the sentinel that state keeps.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+    local currentState = rawget(implementation, "_state")
+    return validateStateBase(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -380,6 +424,16 @@ if previousRevision == nil then
         views = setmetatable({}, WEAK_KEYS),
         viewMetatable = {},
         databaseMetatable = {},
+        -- `SettingsKit.UNBOUNDED` lives here so every revision publishes the
+        -- same table and an option written against one copy keeps its meaning
+        -- after an upgrade.
+        unbounded = {},
+        -- The shared limits; `SetLimits` writes here, so a newer revision
+        -- inherits what a consumer set.
+        limits = {
+            maxProfileNameLength = MAX_PROFILE_NAME_LENGTH,
+            pathKeyLimit = DEFAULT_PATH_KEY_LIMIT,
+        },
     }
     rawset(SettingsKit, "Database", Database)
     rawset(SettingsKit, "_state", state)
@@ -395,6 +449,8 @@ local DATABASE_METATABLE = rawget(state, "databaseMetatable")
 local dispatch = rawget(state, "dispatch")
 local databases = rawget(state, "databases")
 local views = rawget(state, "views")
+local UNBOUNDED = rawget(state, "unbounded")
+local sharedLimits = rawget(state, "limits")
 
 -- Host facilities ------------------------------------------------------------
 
@@ -477,8 +533,9 @@ local function validateProfileName(value, label, level)
     if not value:find("%S") then
         error(label .. " must contain a character other than whitespace", level)
     end
-    if #value > MAX_PROFILE_NAME_LENGTH then
-        error(label .. " must be at most " .. MAX_PROFILE_NAME_LENGTH .. " bytes long", level)
+    local maxLength = rawget(sharedLimits, "maxProfileNameLength")
+    if #value > maxLength then
+        error(label .. " must be at most " .. maxLength .. " bytes long", level)
     end
 end
 
@@ -526,13 +583,35 @@ local function firstUnknownKey(options, known)
     return firstUnknown
 end
 
+---Validate `maxScannedEntries` and return the budget the scan counts down:
+---the integer itself, or `math.huge` for `SettingsKit.UNBOUNDED`, so the scan
+---compares numbers and never tests for the sentinel.
+---@param value any
+---@param level integer stack level the failure is reported at
+---@return number budget
+local function readMaxScannedEntries(value, level)
+    if value == nil then
+        return DEFAULT_MAX_SCANNED_ENTRIES
+    end
+    if value == UNBOUNDED then
+        return math.huge
+    end
+    if not isIntegerAtLeast(value, 1) then
+        error(
+            "SettingsKit:Open options.maxScannedEntries must be a positive integer or SettingsKit.UNBOUNDED",
+            level
+        )
+    end
+    return value
+end
+
 ---Validate `Open`'s options and return what the database keeps of them.
 ---@param options any
 ---@param level integer stack level the failures are reported at
----@return string defaultProfile, integer|false version, table|false migrations
+---@return string defaultProfile, integer|false version, table|false migrations, number maxScannedEntries
 local function readOptions(options, level)
     if options == nil then
-        return DEFAULT_PROFILE_NAME, false, false
+        return DEFAULT_PROFILE_NAME, false, false, DEFAULT_MAX_SCANNED_ENTRIES
     end
     if type(options) ~= "table" then
         error("SettingsKit:Open options must be a table", level)
@@ -579,7 +658,9 @@ local function readOptions(options, level)
         end
     end
 
-    return defaultProfile, version or false, migrations or false
+    local maxScannedEntries = readMaxScannedEntries(rawget(options, "maxScannedEntries"), level + 1)
+
+    return defaultProfile, version or false, migrations or false, maxScannedEntries
 end
 
 ---Validate `Open`'s schema argument: a table of SchemaKit nodes or schemas
@@ -771,11 +852,6 @@ local VALUE_REFUSALS = {
     size = " refused a table too large or too deep to scan",
 }
 
--- A string key shown in a path is cut to this many bytes, as SchemaKit cuts
--- the keys in its failure paths. Keyed-section keys can come from other
--- players, and a path must stay short and printable.
-local PATH_KEY_LIMIT = 32
-
 ---Return the visible form of one byte `quoteKey` escapes.
 ---@param character string
 ---@return string
@@ -797,16 +873,17 @@ end
 ---sequence (`|T...|t` textures, `|H...|h` links, `|c` colours) in any text
 ---the client renders. `|` is doubled (the client shows one literal `|`),
 ---`\` and `"` are escaped as in Lua, and every other control byte (0 to 31
----and 127) becomes `\ddd`. A key longer than `PATH_KEY_LIMIT` bytes is cut,
----never inside a UTF-8 sequence, and marked with `...`.
+---and 127) becomes `\ddd`. A key longer than the shared `pathKeyLimit` is
+---cut, never inside a UTF-8 sequence, and marked with `...`.
 ---@param key string
 ---@return string
 local function quoteKey(key)
     local shown = key
-    if #shown > PATH_KEY_LIMIT then
+    local pathKeyLimit = rawget(sharedLimits, "pathKeyLimit")
+    if #shown > pathKeyLimit then
         -- While the first byte left out is a continuation byte (0x80 to
         -- 0xBF), leave out one more, so the cut falls before a lead byte.
-        local cut = PATH_KEY_LIMIT
+        local cut = pathKeyLimit
         local nextByte = string.byte(key, cut + 1)
         while cut > 0 and nextByte >= 0x80 and nextByte <= 0xBF do
             cut = cut - 1
@@ -819,14 +896,14 @@ local function quoteKey(key)
 end
 
 ---Format a key as a path segment: `.name` for an identifier of at most
----`PATH_KEY_LIMIT` bytes, `[1]` or `["two words"]` otherwise, rendered as
+---`pathKeyLimit` bytes, `[1]` or `["two words"]` otherwise, rendered as
 ---SchemaKit renders the keys of its failure paths. Never called with a secret.
 ---@param key any
 ---@return string
 local function formatKey(key)
     local keyType = type(key)
     if keyType == "string" then
-        if #key <= PATH_KEY_LIMIT and key:find("^[%a_][%w_]*$") then
+        if #key <= rawget(sharedLimits, "pathKeyLimit") and key:find("^[%a_][%w_]*$") then
             return "." .. key
         end
         return "[" .. quoteKey(key) .. "]"
@@ -1483,7 +1560,7 @@ local function refuseWrite(node, key, value)
     if isSecretValue ~= nil and isSecretValue(value) then
         problem = "secret"
     elseif type(value) == "table" then
-        problem = scanValue(value, isSecretValue, 1, MAX_SCANNED_ENTRIES)
+        problem = scanValue(value, isSecretValue, 1, rawget(node.db, "_maxScannedEntries"))
     end
     if problem ~= nil then
         return refusalLabel(node) .. node.displayPath .. formatKey(key) .. VALUE_REFUSALS[problem]
@@ -1902,7 +1979,7 @@ local function isStoredProfileName(value)
     return type(value) == "string"
         and not isSecret(value)
         and value:find("%S") ~= nil
-        and #value <= MAX_PROFILE_NAME_LENGTH
+        and #value <= rawget(sharedLimits, "maxProfileNameLength")
 end
 
 ---Make sure the profile `name` has a table.
@@ -2496,7 +2573,7 @@ local function open(_, savedVariable, schema, options)
 
     validateSchemaTable(schema, 3)
     ---@cast schema table
-    local defaultProfile, version, migrations = readOptions(options, 3)
+    local defaultProfile, version, migrations, maxScannedEntries = readOptions(options, 3)
 
     local raw = readGlobal(savedVariable)
     if raw ~= nil and type(raw) ~= "table" then
@@ -2541,6 +2618,8 @@ local function open(_, savedVariable, schema, options)
         _profile = profileName,
         _profileRoots = {},
         _version = version,
+        -- `math.huge` when opened with `maxScannedEntries = SettingsKit.UNBOUNDED`.
+        _maxScannedEntries = maxScannedEntries,
         _signals = {
             profileChanged = SignalKit:New(),
             profileCopied = SignalKit:New(),
@@ -2561,6 +2640,85 @@ local function open(_, savedVariable, schema, options)
     connectLogout(db)
     rawset(databases, savedVariable, db)
     return db --[[@as SettingsKit.Database]]
+end
+
+---@param receiver any
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateFacade(receiver, label, level)
+    if receiver ~= SettingsKit then
+        error(label .. " must be called on the SettingsKit facade; use " .. label .. "(...)", level)
+    end
+end
+
+---Refuse a limit update before anything changes: an unknown name,
+---`SettingsKit.UNBOUNDED` (with the reason) or a value outside the range.
+---@param limits any
+---@param level integer stack level the failures are reported at
+local function validateLimitUpdate(limits, level)
+    if type(limits) ~= "table" then
+        error("SettingsKit:SetLimits limits must be a table", level)
+    end
+    local key = next(limits)
+    while key ~= nil do
+        if type(key) ~= "string" or LIMIT_CEILINGS[key] == nil then
+            error(
+                "SettingsKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
+                level
+            )
+        end
+        local value = rawget(limits, key)
+        if value == UNBOUNDED then
+            error(
+                "SettingsKit:SetLimits limits."
+                    .. key
+                    .. " cannot be SettingsKit.UNBOUNDED: "
+                    .. UNBOUNDED_REFUSALS[key],
+                level
+            )
+        end
+        local minimum = LIMIT_MINIMUMS[key]
+        local ceiling = LIMIT_CEILINGS[key]
+        if not isIntegerAtLeast(value, minimum) or value > ceiling then
+            error(
+                "SettingsKit:SetLimits limits."
+                    .. key
+                    .. " must be an integer from "
+                    .. minimum
+                    .. " to "
+                    .. ceiling,
+                level
+            )
+        end
+        key = next(limits, key)
+    end
+end
+
+---Change any subset of the shared limits. Affects every consumer in the
+---session; nothing changes when any value is refused.
+---@param self SettingsKit
+---@param limits table
+local function setLimits(self, limits)
+    validateFacade(self, "SettingsKit:SetLimits", 3)
+    validateLimitUpdate(limits, 3)
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        local value = rawget(limits, name)
+        if value ~= nil then
+            rawset(sharedLimits, name, value)
+        end
+    end
+end
+
+---Return a fresh copy of the shared limits.
+---@param self SettingsKit
+---@return SettingsKit.Limits
+local function getLimits(self)
+    validateFacade(self, "SettingsKit:GetLimits", 3)
+    return {
+        maxProfileNameLength = rawget(sharedLimits, "maxProfileNameLength"),
+        pathKeyLimit = rawget(sharedLimits, "pathKeyLimit"),
+    }
 end
 
 -- Commit ---------------------------------------------------------------------
@@ -2592,7 +2750,10 @@ rawset(SettingsKit, "API", API_GENERATION)
 rawset(SettingsKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(SettingsKit, "DEFAULT_PROFILE", DEFAULT_PROFILE_NAME)
 rawset(SettingsKit, "MAX_PROFILE_NAME_LENGTH", MAX_PROFILE_NAME_LENGTH)
+rawset(SettingsKit, "UNBOUNDED", UNBOUNDED)
 rawset(SettingsKit, "Open", open)
+rawset(SettingsKit, "SetLimits", setLimits)
+rawset(SettingsKit, "GetLimits", getLimits)
 
 rawset(dispatch, "compactOnLogout", compactOnLogout)
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)

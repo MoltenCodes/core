@@ -250,6 +250,10 @@ Bootstrap failures raise at the line that loaded the file:
 | `MoltenCodes ClientKit requires a valid Registry API 2 facade` | The published Registry has no `Bootstrap`. |
 | `MoltenCodes ClientKit package state is corrupted or incomplete` | The shared package state was modified from outside. |
 
+## Limits
+
+ClientKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`. It retains a fixed set of values probed at load (flavour, interface number, build, a fixed list of capability flags, the bound host functions) and nothing any call can grow: the probes and shims answer from the host on every call and cache nothing.
+
 ## Embedded identity and upgrades
 
 ClientKit bootstraps through `Registry:Bootstrap` like every Kit (see

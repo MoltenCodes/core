@@ -53,6 +53,13 @@ local DEFAULT_MEMOIZE_MAX_ENTRIES = 128
 -- nameplates, frames); the default only has to stop a runaway `read`.
 local DEFAULT_SNAPSHOT_MAX_ENTRIES = 1024
 
+-- A bounded cache needs no separate bound on its free list, because live plus
+-- free entries never exceed `maxEntries`. A cache opened with
+-- `CacheKit.UNBOUNDED` has no such bound, so its free list keeps at most this
+-- many blank entry tables and lets the collector have the rest: after a burst
+-- the cache retains what it holds live, not its peak.
+local UNBOUNDED_FREE_LIST_LIMIT = 1024
+
 -- The complete set of fields each option table accepts. File-local constants
 -- keep option validation allocation-free.
 local LRU_OPTION_KEYS = { maxEntries = true }
@@ -85,21 +92,21 @@ local SNAPSHOT_METHODS = { "Refresh", "Get", "GetCount", "Pairs", "Close", "IsCl
 
 ---Option table accepted by `CacheKit:NewLru`.
 ---@class CacheKit.LruOptions
----@field maxEntries integer Required. The most entries the cache holds; at least `1`.
+---@field maxEntries integer|table Required. The most entries the cache holds, at least `1`, or `CacheKit.UNBOUNDED`.
 
 ---Option table accepted by `CacheKit:NewTtl`.
 ---@class CacheKit.TtlOptions
----@field maxEntries integer Required. The most entries the cache holds; at least `1`.
+---@field maxEntries integer|table Required. The most entries the cache holds, at least `1`, or `CacheKit.UNBOUNDED`.
 ---@field ttlSeconds number Required. Seconds an entry stays valid after it was last set.
 
 ---Option table accepted by `CacheKit:Memoize`.
 ---@class CacheKit.MemoizeOptions
----@field maxEntries integer? Defaults to `128`.
+---@field maxEntries (integer|table)? Positive integer or `CacheKit.UNBOUNDED`; defaults to `128`.
 ---@field ttlSeconds number? When given, remembered results expire after this many seconds.
 
 ---Option table accepted by `CacheKit:NewSnapshot`.
 ---@class CacheKit.SnapshotOptions
----@field maxEntries integer? The most keys one read may fill. Defaults to `1024`.
+---@field maxEntries (integer|table)? The most keys one read may fill: a positive integer or `CacheKit.UNBOUNDED`; defaults to `1024`.
 
 ---Counters of one cache. `GetStats` returns the same table on every call.
 ---@class CacheKit.Stats
@@ -144,6 +151,7 @@ local SNAPSHOT_METHODS = { "Refresh", "Get", "GetCount", "Pairs", "Close", "IsCl
 ---@field REVISION integer Compatible implementation revision.
 ---@field Cache CacheKit.Cache Shared cache prototype.
 ---@field Snapshot CacheKit.Snapshot Shared snapshot prototype.
+---@field UNBOUNDED table Sentinel a `maxEntries` option accepts to lift the bound; one table shared by every revision.
 ---@field NewLru fun(self: CacheKit, options: CacheKit.LruOptions): CacheKit.Cache
 ---@field NewTtl fun(self: CacheKit, options: CacheKit.TtlOptions): CacheKit.Cache
 ---@field Memoize fun(self: CacheKit, fn: fun(key: string|number): any, options: CacheKit.MemoizeOptions?): CacheKit.Memoized, CacheKit.Cache
@@ -222,6 +230,7 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "REVISION")) ~= "number"
         or type(rawget(implementation, "Cache")) ~= "table"
         or type(rawget(implementation, "Snapshot")) ~= "table"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
     then
         return false
     end
@@ -241,13 +250,17 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "runtimeRevision")) == "number"
         and type(rawget(currentState, "cacheMetatable")) == "table"
         and type(rawget(currentState, "snapshotMetatable")) == "table"
+        and type(rawget(currentState, "unbounded")) == "table"
 end
 
----Whether `implementation` carries package state of this revision's schema.
+---Whether `implementation` carries package state of this revision's schema,
+---and publishes the sentinel that state keeps.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+    local currentState = rawget(implementation, "_state")
+    return validateStateBase(currentState)
+        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -290,6 +303,10 @@ if previousRevision == nil then
         runtimeRevision = 0,
         cacheMetatable = {},
         snapshotMetatable = {},
+        -- `CacheKit.UNBOUNDED` lives here so every revision publishes the same
+        -- table and a `maxEntries` option written against one copy keeps its
+        -- meaning after an upgrade.
+        unbounded = {},
     }
     rawset(CacheKit, "Cache", Cache)
     rawset(CacheKit, "Snapshot", Snapshot)
@@ -304,6 +321,7 @@ end
 local CACHE_METATABLE = rawget(state, "cacheMetatable")
 local SNAPSHOT_METATABLE = rawget(state, "snapshotMetatable")
 local dispatch = rawget(state, "dispatch")
+local UNBOUNDED = rawget(state, "unbounded")
 rawset(CACHE_METATABLE, "__index", Cache)
 rawset(SNAPSHOT_METATABLE, "__index", Snapshot)
 
@@ -380,12 +398,18 @@ local function validateOptionKeys(options, allowedKeys, methodName, level)
     end
 end
 
+---Refuse a `maxEntries` that is neither a positive integer nor
+---`CacheKit.UNBOUNDED`. The entries are the consumer's own data, so the
+---consumer may lift the bound.
 ---@param value any
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateMaxEntries(value, methodName, level)
     if value == nil then
         error(methodName .. " maxEntries is required", level)
+    end
+    if value == UNBOUNDED then
+        return
     end
     if
         type(value) ~= "number"
@@ -394,8 +418,21 @@ local function validateMaxEntries(value, methodName, level)
         or value == math.huge
         or math.floor(value) ~= value
     then
-        error(methodName .. " maxEntries must be a positive integer", level)
+        error(methodName .. " maxEntries must be a positive integer or CacheKit.UNBOUNDED", level)
     end
+end
+
+---The bound a cache or snapshot compares against: the integer itself, or
+---`math.huge` for `CacheKit.UNBOUNDED`, so the hot paths compare two numbers
+---and never test for the sentinel.
+---@param maxEntries integer|table a validated `maxEntries`
+---@return number
+local function capacityOf(maxEntries)
+    -- Validation lets exactly one table through: `CacheKit.UNBOUNDED`.
+    if type(maxEntries) == "number" then
+        return maxEntries
+    end
+    return math.huge
 end
 
 ---@param value any
@@ -477,9 +514,11 @@ end
 
 ---Drop what an unlinked entry references and keep its table for reuse.
 ---
----No bound check is needed: an entry is recycled only when the live count
----drops by one, and a new key takes from the free list before it allocates, so
----live entries plus free entries never exceed `maxEntries`.
+---A bounded cache never reaches `_freeLimit`: an entry is recycled only when
+---the live count drops by one, and a new key takes from the free list before
+---it allocates, so live entries plus free entries never exceed `maxEntries`.
+---An unbounded cache stops keeping blank entries at
+---`UNBOUNDED_FREE_LIST_LIMIT` and leaves the rest to the collector.
 ---@param cache table
 ---@param entry CacheKit.Entry
 local function recycle(cache, entry)
@@ -488,6 +527,9 @@ local function recycle(cache, entry)
     entry.expiresAt = false
 
     local freeCount = rawget(cache, "_freeCount") + 1
+    if freeCount > rawget(cache, "_freeLimit") then
+        return
+    end
     rawget(cache, "_free")[freeCount] = entry
     rawset(cache, "_freeCount", freeCount)
 end
@@ -632,20 +674,27 @@ end
 
 ---Build an open cache. Every private field exists from the start, so no later
 ---write adds a key to the cache table.
----@param maxEntries integer
+---@param maxEntries integer|table a positive integer or `CacheKit.UNBOUNDED`
 ---@param ttlSeconds number|false `false` for no age limit
 ---@return CacheKit.Cache
 local function newCache(maxEntries, ttlSeconds)
+    local freeLimit = maxEntries
+    if maxEntries == UNBOUNDED then
+        freeLimit = UNBOUNDED_FREE_LIST_LIMIT
+    end
+
     local cache = {
         _schema = CACHE_SCHEMA,
         _entries = {},
         _newest = false,
         _oldest = false,
         _count = 0,
-        _maxEntries = maxEntries,
+        -- `math.huge` when the cache was opened with `CacheKit.UNBOUNDED`.
+        _maxEntries = capacityOf(maxEntries),
         _ttlSeconds = ttlSeconds,
         _free = {},
         _freeCount = 0,
+        _freeLimit = freeLimit,
         _hits = 0,
         _misses = 0,
         _evictions = 0,
@@ -1128,7 +1177,7 @@ end
 
 ---Build an open, empty snapshot.
 ---@param read CacheKit.Read
----@param maxEntries integer
+---@param maxEntries integer|table a positive integer or `CacheKit.UNBOUNDED`
 ---@return CacheKit.Snapshot
 local function newSnapshot(read, maxEntries)
     local snapshot = setmetatable({
@@ -1140,7 +1189,8 @@ local function newSnapshot(read, maxEntries)
         _stamp = 0,
         _count = 0,
         _filledCount = 0,
-        _maxEntries = maxEntries,
+        -- `math.huge` when the snapshot was opened with `CacheKit.UNBOUNDED`.
+        _maxEntries = capacityOf(maxEntries),
         _added = {},
         _removed = {},
         _changed = {},
@@ -1410,6 +1460,7 @@ rawset(Snapshot, "IsClosed", snapshotIsClosed)
 
 rawset(CacheKit, "API", API_GENERATION)
 rawset(CacheKit, "REVISION", IMPLEMENTATION_REVISION)
+rawset(CacheKit, "UNBOUNDED", UNBOUNDED)
 rawset(CacheKit, "NewLru", packageNewLru)
 rawset(CacheKit, "NewTtl", packageNewTtl)
 rawset(CacheKit, "Memoize", packageMemoize)

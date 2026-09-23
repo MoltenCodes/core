@@ -26,6 +26,7 @@ describe("CodecKit limits", function()
             maxValues = 65536,
             maxStringLength = 65536,
             maxOutputBytes = 1048576,
+            maxListValues = 4096,
         }, limits)
         limits.maxDepth = 1
         assert.are.equal(16, CodecKit:GetLimits().maxDepth)
@@ -40,6 +41,7 @@ describe("CodecKit limits", function()
             maxValues = 10,
             maxStringLength = 65536,
             maxOutputBytes = 64,
+            maxListValues = 4096,
         }, CodecKit:GetLimits())
         CodecKit:SetLimits({})
         assert.are.equal(4, CodecKit:GetLimits().maxDepth)
@@ -52,6 +54,13 @@ describe("CodecKit limits", function()
             { maxValues = 1.5 },
             { maxStringLength = -1 },
             { maxOutputBytes = 2 ^ 31 },
+            { maxListValues = 0 },
+            { maxListValues = 7901 },
+            { maxValues = {} },
+            { maxDepth = CodecKit.UNBOUNDED },
+            { maxOutputBytes = CodecKit.UNBOUNDED },
+            { maxListValues = CodecKit.UNBOUNDED },
+            { maxValues = CodecKit.UNBOUNDED, maxDepth = CodecKit.UNBOUNDED },
             { maxDepth = "8" },
             { maxDepth = 8, unknown = 1 },
         }
@@ -60,7 +69,71 @@ describe("CodecKit limits", function()
                 CodecKit:SetLimits(cases[index])
             end)
         end
-        assert.are.equal(16, CodecKit:GetLimits().maxDepth)
+        assert.are.same({
+            maxDepth = 16,
+            maxValues = 65536,
+            maxStringLength = 65536,
+            maxOutputBytes = 1048576,
+            maxListValues = 4096,
+        }, CodecKit:GetLimits())
+    end)
+
+    it("publishes one UNBOUNDED sentinel table, kept across a reload", function()
+        assert.are.equal("table", type(CodecKit.UNBOUNDED))
+        assert.are.equal(CodecKit.UNBOUNDED, CodecKit._state.unbounded)
+        assert.are.equal(CodecKit.UNBOUNDED, TestEnv.ReloadPackage().UNBOUNDED)
+    end)
+
+    it("lifts maxValues and maxStringLength with UNBOUNDED on both sides", function()
+        local sentinel = CodecKit.UNBOUNDED
+        CodecKit:SetLimits({ maxValues = sentinel, maxStringLength = sentinel })
+        local limits = CodecKit:GetLimits()
+        assert.are.equal(sentinel, limits.maxValues)
+        assert.are.equal(sentinel, limits.maxStringLength)
+
+        local many = {}
+        for index = 1, 70000 do
+            many[index] = true
+        end
+        local long = string.rep("x", 70000)
+        local ok, bytes = CodecKit:Serialize({ many, long })
+        assert.is_true(ok)
+        local decodedOk, decoded = CodecKit:Deserialize(bytes)
+        assert.is_true(decodedOk)
+        assert.are.equal(70000, #decoded[1])
+        assert.are.equal(long, decoded[2])
+
+        CodecKit:SetLimits({ maxValues = 65536, maxStringLength = 65536 })
+        local refused, reason = CodecKit:Deserialize(bytes)
+        assert.is_false(refused)
+        assert.are.equal("maxValues", reason)
+    end)
+
+    it("still bounds lifted counts and lengths by maxOutputBytes", function()
+        CodecKit:SetLimits({
+            maxValues = CodecKit.UNBOUNDED,
+            maxStringLength = CodecKit.UNBOUNDED,
+            maxOutputBytes = 1000,
+        })
+        local ok, reason = CodecKit:Serialize(string.rep("x", 2000))
+        assert.is_false(ok)
+        assert.are.equal("maxOutputBytes", reason)
+        local many = {}
+        for index = 1, 2000 do
+            many[index] = true
+        end
+        ok, reason = CodecKit:Serialize(many)
+        assert.is_false(ok)
+        assert.are.equal("maxOutputBytes", reason)
+
+        -- A hostile array claiming 2^40 values: the count cannot fit in the
+        -- bytes that remain, whatever maxValues says.
+        ok, reason = CodecKit:Deserialize("\8\128\128\128\128\128\32")
+        assert.is_false(ok)
+        assert.are.equal("truncated", reason)
+        ok, reason = CodecKit:Deserialize(string.rep("\1", 1001))
+        assert.is_false(ok)
+        assert.are.equal("maxOutputBytes", reason)
     end)
 
     it("bounds nesting depth on both sides", function()
@@ -166,7 +239,38 @@ describe("CodecKit limits", function()
         assert.are.equal("maxOutputBytes", reason)
     end)
 
-    it("caps an argument list at 4096 entries on both sides, without raising", function()
+    it("accepts the maxDepth ceiling of 128 on both sides", function()
+        CodecKit:SetLimits({ maxDepth = 128 })
+        local ok, text = CodecKit:Encode(nested(128), { compress = "deflate" })
+        assert.is_true(ok)
+        local decodedOk = CodecKit:Decode(text)
+        assert.is_true(decodedOk)
+    end)
+
+    it("caps an argument list at maxListValues, raised up to 7900", function()
+        local entries = {}
+        for index = 1, 7901 do
+            entries[index] = index
+        end
+        CodecKit:SetLimits({ maxListValues = 7900 })
+        local ok, text = CodecKit:EncodeMany(nil, unpack(entries, 1, 7900))
+        assert.is_true(ok)
+        assert.are.equal(7901, select("#", CodecKit:DecodeMany(text)))
+        local refused, reason = CodecKit:EncodeMany(nil, unpack(entries, 1, 7901))
+        assert.is_false(refused)
+        assert.are.equal("maxValues", reason)
+
+        CodecKit:SetLimits({ maxListValues = 10 })
+        assert.are.equal(10, CodecKit:GetLimits().maxListValues)
+        refused, reason = CodecKit:EncodeMany(nil, unpack(entries, 1, 11))
+        assert.is_false(refused)
+        assert.are.equal("maxValues", reason)
+        refused, reason = CodecKit:DecodeMany(text)
+        assert.is_false(refused)
+        assert.are.equal("maxValues", reason)
+    end)
+
+    it("caps an argument list at 4096 entries by default on both sides, without raising", function()
         local entries = {}
         for index = 1, 4097 do
             entries[index] = index
@@ -181,6 +285,7 @@ describe("CodecKit limits", function()
         -- A hostile list of 9000 nils fits every other bound, and `unpack`
         -- cannot return that many values in Lua 5.1: the decoder must refuse
         -- it rather than raise. 9000 is the varint 0xA8 0x46.
+        CodecKit:SetLimits({ maxValues = CodecKit.UNBOUNDED, maxListValues = 7900 })
         local hostile = "\1\1\11\168\70" .. string.rep("\1", 9000)
         local called, decoded, why = pcall(CodecKit.DecodeMany, CodecKit, hostile)
         assert.is_true(called, tostring(decoded))

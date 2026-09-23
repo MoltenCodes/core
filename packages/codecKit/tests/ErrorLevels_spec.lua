@@ -198,7 +198,15 @@ describe("CodecKit error levels", function()
             },
             {
                 { maxValues = 2 ^ 25 },
-                "CodecKit:SetLimits limits.maxValues must be an integer from 1 to 16777216",
+                "CodecKit:SetLimits limits.maxValues must be an integer from 1 to 16777216 or CodecKit.UNBOUNDED",
+            },
+            {
+                { maxListValues = 7901 },
+                "CodecKit:SetLimits limits.maxListValues must be an integer from 1 to 7900",
+            },
+            {
+                { maxDepth = CodecKit.UNBOUNDED },
+                "CodecKit:SetLimits limits.maxDepth cannot be CodecKit.UNBOUNDED because the reader and writer recurse on the Lua call stack; use an integer from 1 to 128",
             },
             {
                 { maxOutputBytes = 0.5 },
