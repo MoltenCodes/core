@@ -93,6 +93,90 @@ describe("Registry package-state corruption handling", function()
         end
     end)
 
+    it("raises corrupted state found through Bootstrap at the Bootstrap call", function()
+        ---A request for `demoKit` API 1 at `revision`.
+        local function request(revision, fields)
+            local built = {
+                package = "demoKit",
+                api = 1,
+                revision = revision,
+                label = "MoltenCodes DemoKit",
+                validatePublicSurface = function()
+                    return true
+                end,
+            }
+            for key, value in pairs(fields or {}) do
+                built[key] = value
+            end
+            return built
+        end
+
+        ---Install revision 1 of `demoKit` with a complete facade.
+        local function installRevisionOne()
+            local implementation = Registry:Bootstrap(request(1))
+            implementation.API = 1
+            implementation.REVISION = 1
+        end
+
+        ---Corrupt `demoKit`'s entry the way a hand edit would.
+        local function corruptEntry()
+            rawset(state.entries.demoKit, 1, "corrupted")
+        end
+
+        local source = debug.getinfo(1, "S").short_src
+        local cases = {
+            -- The existing-copy lookup: the bucket itself is damaged.
+            function()
+                rawset(state.entries, "demoKit", "corrupted")
+                local line
+                local ok, message = pcall(function()
+                    line = debug.getinfo(1, "l").currentline + 1
+                    Registry:Bootstrap(request(2))
+                end)
+                return line, ok, message
+            end,
+            -- Registration, after a retire hook damaged the entry it hands over.
+            function()
+                installRevisionOne()
+                Registry:OnRetire("demoKit", 1, corruptEntry)
+                local line
+                local ok, message = pcall(function()
+                    line = debug.getinfo(1, "l").currentline + 1
+                    Registry:Bootstrap(request(2))
+                end)
+                return line, ok, message
+            end,
+            -- `adopt`, after a resume hook damaged the entry it adopts.
+            function()
+                installRevisionOne()
+                local resume = function()
+                    corruptEntry()
+                    return 1
+                end
+                local line
+                local ok, message = pcall(function()
+                    line = debug.getinfo(1, "l").currentline + 1
+                    Registry:Bootstrap(request(1, { resume = resume }))
+                end)
+                return line, ok, message
+            end,
+        }
+
+        for index = 1, #cases do
+            rawset(state.entries, "demoKit", nil)
+            local line, ok, message = cases[index]()
+            message = tostring(message)
+
+            assert.is_false(ok, "case " .. index)
+            assert.is_not_nil(string.find(message, "package state is corrupted", 1, true), message)
+            assert.are.equal(
+                1,
+                string.find(message, source .. ":" .. line .. ":", 1, true),
+                message
+            )
+        end
+    end)
+
     it("refuses to list malformed state instead of returning it as rows", function()
         local malformedBuckets = {
             { [1] = { revision = 0, implementation = {} } },

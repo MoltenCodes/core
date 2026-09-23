@@ -771,21 +771,73 @@ local VALUE_REFUSALS = {
     size = " refused a table too large or too deep to scan",
 }
 
----Format a key as a path segment: `.name` for identifiers, `[1]` or
----`["two words"]` otherwise. Never called with a secret.
+-- A string key shown in a path is cut to this many bytes, as SchemaKit cuts
+-- the keys in its failure paths. Keyed-section keys can come from other
+-- players, and a path must stay short and printable.
+local PATH_KEY_LIMIT = 32
+
+---Return the visible form of one byte `quoteKey` escapes.
+---@param character string
+---@return string
+local function escapeKeyCharacter(character)
+    if character == "|" then
+        return "||"
+    elseif character == "\\" then
+        return "\\\\"
+    elseif character == '"' then
+        return '\\"'
+    end
+    return string.format("\\%03d", string.byte(character))
+end
+
+---Render a string key for a message or a path, quoted, following the rule
+---SchemaKit applies to its failure paths so both Kits show a key the same
+---way. `%q` is not enough: in Lua 5.1 it leaves most control bytes as they
+---are, and nothing escapes `|`, which starts a World of Warcraft escape
+---sequence (`|T...|t` textures, `|H...|h` links, `|c` colours) in any text
+---the client renders. `|` is doubled (the client shows one literal `|`),
+---`\` and `"` are escaped as in Lua, and every other control byte (0 to 31
+---and 127) becomes `\ddd`. A key longer than `PATH_KEY_LIMIT` bytes is cut,
+---never inside a UTF-8 sequence, and marked with `...`.
+---@param key string
+---@return string
+local function quoteKey(key)
+    local shown = key
+    if #shown > PATH_KEY_LIMIT then
+        -- While the first byte left out is a continuation byte (0x80 to
+        -- 0xBF), leave out one more, so the cut falls before a lead byte.
+        local cut = PATH_KEY_LIMIT
+        local nextByte = string.byte(key, cut + 1)
+        while cut > 0 and nextByte >= 0x80 and nextByte <= 0xBF do
+            cut = cut - 1
+            nextByte = string.byte(key, cut + 1)
+        end
+        shown = key:sub(1, cut) .. "..."
+    end
+    local escaped = shown:gsub('[%c\127\\"|]', escapeKeyCharacter)
+    return '"' .. escaped .. '"'
+end
+
+---Format a key as a path segment: `.name` for an identifier of at most
+---`PATH_KEY_LIMIT` bytes, `[1]` or `["two words"]` otherwise, rendered as
+---SchemaKit renders the keys of its failure paths. Never called with a secret.
 ---@param key any
 ---@return string
 local function formatKey(key)
     local keyType = type(key)
     if keyType == "string" then
-        if key:find("^[%a_][%w_]*$") then
+        if #key <= PATH_KEY_LIMIT and key:find("^[%a_][%w_]*$") then
             return "." .. key
         end
-        return "[" .. string.format("%q", key) .. "]"
+        return "[" .. quoteKey(key) .. "]"
     end
-    if keyType == "number" or keyType == "boolean" then
+    if keyType == "number" then
+        return "[" .. string.format("%.14g", key) .. "]"
+    end
+    if keyType == "boolean" then
         return "[" .. tostring(key) .. "]"
     end
+    -- A table, function or userdata key has no stable, safe printable form.
     return "[" .. keyType .. "]"
 end
 

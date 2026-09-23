@@ -19,6 +19,7 @@ The ModuleKit suite covers:
 - deterministic activation order on a larger layered graph fixture;
 - module scopes (`Scope_spec.lua`): lazy creation, release on disable, `DisableAll`, shutdown and a failed `OnEnable`, absent Kits, and the enable window (TimerKit and SchedulerKit are recording fakes registered through Registry; EventKit is covered both by a fake and by the real `EventKit:CreateScope()`; HookKit, the SignalKit bus, CommandKit and CommKit are covered against the real Kits);
 - intent versus fact (`EnableState_spec.lua`): recovery after a dependency enables, explicit disable winning over recovery, the `ready` phase respecting an explicit disable, and both fields surviving an in-place upgrade;
+- dependency cycles reported at the caller's line from every entry method (`Cycle_spec.lua`);
 - halted addons (`Halted_spec.lua`): the addon's own halt, a required addon's halt, a halt raised from inside `OnEnable`, `requiresAddons` validation and LifecycleKit's dependency bound, and the halted state across an in-place upgrade.
 
 Spec files:
@@ -27,6 +28,7 @@ Spec files:
 |---|---|
 | `ModuleKit_spec.lua` | per-addon containers, policies, module creation and lookup, idempotent transitions |
 | `Graph_spec.lua` | hard, optional and ordering-only edges, topological order, cycle detection |
+| `Cycle_spec.lua` | a two-module cycle reported at the calling line from `InitializeAll`, `EnableAll`, `Initialize`, `Enable` and `Activate`, and an enable from an unexpected state |
 | `DependencyPolicy_spec.lua` | `automatic` and `strict` enable and disable |
 | `Injection_spec.lua` | values, singletons, module-scoped and transient providers, collisions and cycles |
 | `Lifecycle_spec.lua` | `loaded`/`ready`/`shutdown` integration, late modules, calls after shutdown |

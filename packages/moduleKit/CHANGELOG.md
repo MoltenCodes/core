@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.5 — 2026-09-23
+
+- A dependency cycle, a missing hard dependency or a shut-down container found by `InitializeAll()`, `EnableAll()`, `Initialize()` or `Activate()` is raised at the caller's line, as `Enable()` already was since 0.6.3. `InitializeAll()` and `EnableAll()` reached the graph check through a tail call, so the error carried no position at all, and the `automatic` recursion of `Initialize()` and `Activate()` reported a line inside ModuleKit. The whole-container passes now take the level from the public method, which no longer tail-calls them; `initializeWithPolicy` adds its recursion depth to the level as `enableWithPolicy` does; `hardDependencies` and `ensureNotShutdown` take the level from their callers.
+- `Enable()` and `Activate()` raise `cannot be enabled from state` at the caller's line too: `enableWithPolicy` tail-called `enableOne`, whose refusal named a line inside ModuleKit. It now calls it with the level of the public method's caller. One spec in `Cycle_spec.lua` pins it.
+- `docs/API.md` states where graph errors are raised.
+- Five new specs in `Cycle_spec.lua`, one per entry method, each pinning a two-module cycle to the spec's own line, and a sixth for the unexpected-state refusal.
+- Implementation revision 13. `ModuleKit` API generation 1 is unchanged.
+
 ## 0.6.4 — 2026-09-23
 
 - Under the `automatic` policy, a dependent whose dependency was taken down by a halt inside the dependency's own `OnEnable` was recorded as blocked by that dependency even when the halt stopped the dependent too, while a direct `Enable` of the dependent, a moment later, refuses and records the halt. The dependent now records what `haltBlocker` answers for it (`"halted"` for its own addon, or the halted addon it requires) and the dependency only when the halt does not concern it, so both paths report the same block. The targeted `Enable` still returns without raising, as it does when the module's own `OnEnable` halts.

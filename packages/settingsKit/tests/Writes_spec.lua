@@ -317,3 +317,63 @@ describe("SettingsKit and secret values", function()
         )
     end)
 end)
+
+describe("SettingsKit path rendering of unusual keys", function()
+    local db
+    before_each(function()
+        local SettingsKit, _, _, _, S = TestEnv.NewPackage()
+        db = SettingsKit:Open("MyAddonDB", {
+            profile = S.table({
+                fields = {
+                    notes = S.optional(
+                        S.map({
+                            keys = S.string(),
+                            values = S.optional(
+                                S.table({ fields = { text = S.optional(S.any()) } }),
+                                {}
+                            ),
+                            max = 8,
+                        }),
+                        {}
+                    ),
+                },
+            }),
+        })
+    end)
+    after_each(TestEnv.Reset)
+
+    -- A key a hostile player could send: a texture escape and a control byte.
+    local HOSTILE = "a|Tx|t\1b"
+    -- The way SchemaKit renders the same key in its failure paths.
+    local RENDERED = '["a||Tx||t\\001b"]'
+
+    it("renders a key with escape codes and control bytes safely in a refusal", function()
+        local message = raisedAtWriter(function(mark)
+            mark()
+            db.profile.notes[HOSTILE].text = setmetatable({}, {})
+        end)
+        assert.are.equal(
+            "SettingsKit (MyAddonDB) profile.notes"
+                .. RENDERED
+                .. ".text refused a table with a metatable: saved variables cannot hold metatables",
+            message
+        )
+    end)
+
+    it("passes OnChange the same rendering in its path", function()
+        local paths = {}
+        db:OnChange("profile", function(_, _, _, _, path)
+            paths[#paths + 1] = path
+        end)
+        db.profile.notes[HOSTILE].text = "x"
+        db.profile.notes.plain_key.text = "y"
+        db.profile.notes[string.rep("é", 20)].text = "z"
+        assert.are.same({
+            "notes" .. RENDERED,
+            -- An identifier key keeps its plain dotted form.
+            "notes.plain_key",
+            -- A long key is cut at 32 bytes, never inside a UTF-8 sequence.
+            'notes["' .. string.rep("é", 16) .. '..."]',
+        }, paths)
+    end)
+end)

@@ -448,7 +448,7 @@ A newer Registry implementation revision replaces methods on the existing facade
 
 The private bootstrap key is implementation detail and must not be read or written by consumers.
 
-Registry validates package buckets and entries lazily when they are accessed. If private package state is malformed, `Register()`, `Get()`, `GetInfo()`, `Find()`, `OnRetire()` and `Packages()` fail consistently with a Registry corruption error at the calling line rather than returning partial or invalid data. `Packages()` validates every entry it lists, so a malformed one is never reported as a row.
+Registry validates package buckets and entries lazily when they are accessed. If private package state is malformed, `Register()`, `Get()`, `GetInfo()`, `Find()`, `OnRetire()`, `Packages()` and `Bootstrap()` fail consistently with a Registry corruption error at the calling line rather than returning partial or invalid data. `Packages()` validates every entry it lists, so a malformed one is never reported as a row.
 
 Bootstrap-state and facade integrity checks use raw table access. Metatable hooks on corrupted or foreign tables cannot synthesize Registry-owned fields or intercept an in-place facade upgrade.
 
@@ -553,7 +553,12 @@ Registry raises two kinds of error, and the stack level differs on purpose.
 calls or `Packages()`, point at the calling line. A package author sees their own `Registry:Register(...)` call, not a line
 inside `Registry.lua`. Failures `Bootstrap` raises on a package's behalf — a
 refused state, a failed migration step, a seal that cannot be applied — carry
-the package's `label` and point at the package's `Bootstrap` call.
+the package's `label` and point at the package's `Bootstrap` call. Corrupted
+package state that `Bootstrap` finds, in its own lookup, while registering or
+while adopting the state a hook handed over, raises the same
+`Registry: package state is corrupted` error and also points at the package's
+`Bootstrap` call (revision 10 and later; earlier revisions named a line inside
+`Registry.lua`).
 
 **Load-time failures** — incompatible or corrupted bootstrap state, a corrupted
 facade, a hostile owner of `MoltenCodes` or `MoltenCodes.Registries` — raise with

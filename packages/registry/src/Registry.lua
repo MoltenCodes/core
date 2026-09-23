@@ -37,7 +37,7 @@ local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 9
+local IMPLEMENTATION_REVISION = 10
 
 -- Lua 5.1 numbers are doubles, which represent consecutive integers exactly only
 -- up to 2^53. Past that boundary distinct values start comparing equal, so a
@@ -216,24 +216,23 @@ end
 
 ---The entry for `(packageName, api)`, or `nil`.
 ---
----The level 4 fits the public lookups: `Get` (through `get`), `GetInfo` and
----`OnRetire` call this directly, so corruption is raised four levels up (the
----accessor, this function, the public method, its caller) at the caller's line.
----
----`Registry:Bootstrap` reaches it too: through `get` for the existing copy, and
----again from `adopt` and the hand-over once that lookup proved the entry. For
----those calls level 4 is `bootstrap` itself, so corruption found through
----`Bootstrap` names a line inside Registry rather than the package file that
----bootstrapped. Only a hand edit of Registry's private state can cause it.
+---`level` is handed to the accessors unchanged, so it counts from them: the
+---accessor, this function, then every Registry frame up to the public method,
+---then its caller. A public method that calls this directly (`Get`, `GetInfo`,
+---`OnRetire`, `Bootstrap`) passes 4, which names its caller's line; `adopt`,
+---one frame deeper inside `Bootstrap`, passes 5. Corruption is therefore
+---always raised at the line that called Registry, a package file's
+---`Registry:Bootstrap(...)` included.
 ---@param packageName string
 ---@param api integer
+---@param level integer error level, counted from the accessors
 ---@return table|nil
-local function findEntry(packageName, api)
-    local packageEntries = getPackageEntries(packageName, 4)
+local function findEntry(packageName, api, level)
+    local packageEntries = getPackageEntries(packageName, level)
     if packageEntries == nil then
         return nil
     end
-    return getEntry(packageEntries, api, 4)
+    return getEntry(packageEntries, api, level)
 end
 
 -- Public types ------------------------------------------------------------
@@ -289,32 +288,25 @@ local Registry = facade
 
 -- Lookup ------------------------------------------------------------------
 
----Requests initialization rights for one package revision.
+---Select `revision` for `(packageName, api)` once the arguments are known to
+---be valid: the work behind both `Register` and `Bootstrap`.
+---
+---`level` counts from the accessors, as for `findEntry`; both callers pass 4
+---(the accessor, this function, the public method, its caller).
 ---@param packageName string
 ---@param api integer
 ---@param revision integer
----@return table|nil sharedPackageTable `nil` when an equal or newer revision already won.
----@return integer|nil previousRevision `nil` for the first accepted revision.
-local function register(_, packageName, api, revision, ...)
-    if select("#", ...) ~= 0 then
-        error(
-            "Registry:Register does not accept an implementation argument; "
-                .. "initialize the returned shared package table instead",
-            2
-        )
-    end
-
-    validatePackageName(packageName, "Register")
-    validateApi(api, "Register")
-    validateRevision(revision)
-
-    local packageEntries = getPackageEntries(packageName, 3)
+---@param level integer error level, counted from the accessors
+---@return table|nil sharedPackageTable
+---@return integer|nil previousRevision
+local function registerEntry(packageName, api, revision, level)
+    local packageEntries = getPackageEntries(packageName, level)
     if packageEntries == nil then
         packageEntries = {}
         rawset(entries, packageName, packageEntries)
     end
 
-    local entry = getEntry(packageEntries, api, 3)
+    local entry = getEntry(packageEntries, api, level)
     if entry == nil then
         local implementation = {}
         rawset(packageEntries, api, {
@@ -342,6 +334,31 @@ local function register(_, packageName, api, revision, ...)
     return rawget(entry, "implementation"), currentRevision
 end
 
+---Requests initialization rights for one package revision.
+---@param packageName string
+---@param api integer
+---@param revision integer
+---@return table|nil sharedPackageTable `nil` when an equal or newer revision already won.
+---@return integer|nil previousRevision `nil` for the first accepted revision.
+local function register(_, packageName, api, revision, ...)
+    if select("#", ...) ~= 0 then
+        error(
+            "Registry:Register does not accept an implementation argument; "
+                .. "initialize the returned shared package table instead",
+            2
+        )
+    end
+
+    validatePackageName(packageName, "Register")
+    validateApi(api, "Register")
+    validateRevision(revision)
+
+    -- Not a tail call: a tail call would drop this frame, and the level
+    -- `registerEntry` raises at counts it.
+    local implementation, previousRevision = registerEntry(packageName, api, revision, 4)
+    return implementation, previousRevision
+end
+
 ---Returns the selected shared package table and its revision.
 ---@param packageName string
 ---@param api integer
@@ -351,7 +368,7 @@ local function get(_, packageName, api)
     validatePackageName(packageName, "Get")
     validateApi(api, "Get")
 
-    local entry = findEntry(packageName, api)
+    local entry = findEntry(packageName, api, 4)
     if entry == nil then
         return nil
     end
@@ -367,7 +384,7 @@ local function getInfo(_, packageName, api)
     validatePackageName(packageName, "GetInfo")
     validateApi(api, "GetInfo")
 
-    local entry = findEntry(packageName, api)
+    local entry = findEntry(packageName, api, 4)
     if entry == nil then
         return nil
     end
@@ -474,7 +491,7 @@ local function onRetire(_, packageName, api, retire)
         error("Registry:OnRetire retire must be a function", 2)
     end
 
-    local entry = findEntry(packageName, api)
+    local entry = findEntry(packageName, api, 4)
     if entry == nil then
         error('Registry:OnRetire package "' .. packageName .. '" is not registered', 2)
     end
@@ -708,7 +725,7 @@ end
 ---@return integer|nil previousRevision
 ---@return table|nil selected
 ---@return any state
-local function bootstrap(self, request)
+local function bootstrap(_, request)
     if type(request) ~= "table" then
         error("Registry:Bootstrap request must be a table", 2)
     end
@@ -759,7 +776,8 @@ local function bootstrap(self, request)
     ---@return any state
     local function adopt(implementation, inheritedRevision, handover)
         -- `register` or the existing-copy lookup just proved the entry exists.
-        local entry = findEntry(packageName, api) --[[@as table]]
+        -- Level 5: one frame deeper than `bootstrap`, which calls this.
+        local entry = findEntry(packageName, api, 5) --[[@as table]]
         local migratedState = nil
         if inheritedRevision == nil then
             -- Nothing was inherited, so no step runs; the table is still
@@ -797,7 +815,14 @@ local function bootstrap(self, request)
         return migratedState
     end
 
-    local existing, existingRevision = get(self, packageName, api)
+    -- The entry is read directly rather than through `get`, so corruption is
+    -- raised at the package file's `Bootstrap` call, not inside Registry.
+    local existing, existingRevision = nil, nil
+    local existingEntry = findEntry(packageName, api, 4)
+    if existingEntry ~= nil then
+        existing = rawget(existingEntry, "implementation")
+        existingRevision = rawget(existingEntry, "revision")
+    end
     if existing ~= nil then
         if type(existing) ~= "table" or rawget(existing, "API") ~= api then
             refuse("package state is corrupted or incomplete")
@@ -854,11 +879,11 @@ local function bootstrap(self, request)
     -- registers, so the hook still sees the state it owns.
     local handover = nil
     if existing ~= nil then
-        local outgoingEntry = findEntry(packageName, api) --[[@as table]]
+        local outgoingEntry = findEntry(packageName, api, 4) --[[@as table]]
         handover = retireOutgoing(outgoingEntry, existing, revision, label)
     end
 
-    local implementation, previousRevision = register(self, packageName, api, revision)
+    local implementation, previousRevision = registerEntry(packageName, api, revision, 4)
     if implementation == nil then
         -- An equal or newer compatible revision owns the shared table.
         return nil, nil, existing

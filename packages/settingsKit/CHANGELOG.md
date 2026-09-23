@@ -21,4 +21,5 @@
 - A keyed-section read asks `issecretvalue` about the key before comparing it with `nil`, as a record read already did; comparing a secret raises in the client.
 - Removed private state nothing read: the plan's `kind` field, the database's `_logoutConnection` field (EventKit holds the listener; a database is never disconnected) and the depth counter threaded through compaction (the plan already bounds the walk). A write's refusal prefix is built only for a refusal.
 - API.md lists every use of `issecretvalue`, says a secret key refuses a read of any view, and qualifies the allocation of `db:Pairs` and of an array-path `Validate`.
-- 114 specs, including allocation guards, an in-place upgrade spec and pinned error levels.
+- Keys in SettingsKit messages and in the `path` argument of `OnChange` listeners are rendered with SchemaKit's rule for failure paths: an identifier of at most 32 bytes is joined with a dot; any other string is quoted with `|` doubled, `\` and `"` escaped and other control bytes shown as `\ddd`, and cut at 32 bytes between UTF-8 characters. A key a hostile player sends can therefore not render client markup when a refusal is logged, and SettingsKit and SchemaKit show a key the same way.
+- 116 specs, including allocation guards, an in-place upgrade spec and pinned error levels.

@@ -405,7 +405,7 @@ addon:ValidateGraph()
 local names = addon:GetActivationOrder()
 ```
 
-Whole-container operations validate the complete graph. Missing hard dependencies and graph cycles fail with human-readable diagnostics.
+Whole-container operations validate the complete graph. Missing hard dependencies and graph cycles fail with human-readable diagnostics, raised at the line that called `InitializeAll()`, `EnableAll()`, `ValidateGraph()`, `GetActivationOrder()`, `Initialize()`, `Enable()` or `Activate()`, however deep in a dependency chain the problem was found.
 
 Targeted `Initialize()` / `Enable()` operations intentionally inspect only the module's hard `DependsOn` closure. An unrelated invalid optional feature therefore does not prevent an otherwise independent targeted operation. Ordering-only constraints are honored by whole-container graph ordering and introspection; use `DependsOn` whenever runtime activation of another module is required.
 

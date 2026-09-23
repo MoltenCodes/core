@@ -284,6 +284,8 @@ Empties the saved variable in place, keeps its `version`, recreates the layout, 
 
 `scope` names a declared, available scope. After every validated write through that scope's views, `callback(db, scope, key, value, path)` is called with the key and value written (`nil` when a field was reset) and `path`, the path of the table holding the key relative to the scope: `""` for `db.profile.scale`, `"frame"` for `db.profile.frame.x`, `"auras[118]"` for `db.profile.auras[118].shown`.
 
+Keys in `path`, and in every SettingsKit message, are rendered the way SchemaKit renders the keys of its failure paths: an identifier of at most 32 bytes is joined with a dot, numbers and booleans are bracketed, and any other string is quoted in brackets with `|` doubled (so no World of Warcraft `|T`, `|H` or `|c` escape sequence survives), `\` and `"` backslash-escaped and every other control byte shown as `\ddd`. A longer key is cut at 32 bytes, never inside a UTF-8 sequence, and marked with `...`, so `path` is for display and logging; use `key` and the view itself to find the value. A key that is a table, a function or userdata appears as its type (`[table]`).
+
 The signal fires after the value is stored. SignalKit's dispatch rules apply: listeners run in connection order, and a listener that raises stops the dispatch and propagates to the writing line.
 
 ### Profile signals

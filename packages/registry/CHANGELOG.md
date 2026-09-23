@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.3 — 2026-09-23
+
+- Corrupted package state found through `Registry:Bootstrap` is raised at the package file's `Bootstrap` call, like the same error from `Get`, `GetInfo` and `OnRetire`. `Bootstrap` read the existing copy through `get`, registered through `register` and adopted through `findEntry` one frame deeper, so the error named a line inside `Registry.lua`. `findEntry` now takes the level from its caller, the registration work behind `Register` and `Bootstrap` is `registerEntry`, and every path passes the level that names the caller.
+- The `findEntry` comment and the "Error reporting" section of `docs/API.md` describe the new behaviour.
+- One spec in `Corruption_spec.lua` pins the line for the existing-copy lookup, for registration after a retire hook damaged the entry and for adoption after a resume hook did. The upgrade spec in `Retirement_spec.lua` now upgrades from whichever revision precedes the current one.
+- Implementation revision 10. The private state layout is unchanged from revision 9. `Registry` API generation 2 is unchanged.
+
 ## 0.6.2 — 2026-09-23
 
 - Corrupted package state found by `Get`, `GetInfo` and `OnRetire` is raised at the caller's line again. 0.6.0 routed those three through a shared lookup helper, which moved the error one frame too shallow, onto a line inside `Registry.lua`; `Register` and `Find` were unaffected.

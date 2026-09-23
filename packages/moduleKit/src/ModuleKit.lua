@@ -30,7 +30,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 12
+local IMPLEMENTATION_REVISION = 13
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -425,9 +425,10 @@ end
 ---Refuse an operation on a container whose addon has already shut down.
 ---@param addon ModuleKit.Addon
 ---@param methodName string public method name, used in the argument error
-local function ensureNotShutdown(addon, methodName)
+---@param level integer|nil error level counted from this function; `3` (a public method's caller) when omitted
+local function ensureNotShutdown(addon, methodName, level)
     if rawget(addon, "_shutdown") == true then
-        error("ModuleKit.Addon:" .. methodName .. " cannot run after addon shutdown", 3)
+        error("ModuleKit.Addon:" .. methodName .. " cannot run after addon shutdown", level or 3)
     end
 end
 
@@ -711,9 +712,15 @@ local function topologicalSort(order, adjacency, indegree)
 end
 
 ---Build and topologically sort the container's complete module graph.
+---
+---`level` is the error level of a missing dependency or a cycle, counted from
+---this function: `3` names the caller of a public method that calls it
+---directly, and the whole-container passes pass one more for their own frame.
 ---@param addon ModuleKit.Addon
+---@param level integer|nil error level; `3` when omitted
 ---@return ModuleKit.Module[] order activation order for the whole container
-local function buildGraph(addon)
+local function buildGraph(addon, level)
+    level = level or 3
     local order = rawget(addon, "_moduleOrder")
     local modules = rawget(addon, "_modules")
     local adjacency = {}
@@ -741,7 +748,7 @@ local function buildGraph(addon)
                         .. '" requires missing dependency "'
                         .. dependencyName
                         .. '"',
-                    3
+                    level
                 )
             end
             addEdge(adjacency, indegree, dependency, module)
@@ -767,7 +774,7 @@ local function buildGraph(addon)
     if result == nil then
         local cycle = findCycle(order, adjacency)
         local description = cycle and table.concat(cycle, " -> ") or "unknown cycle"
-        error("ModuleKit dependency cycle detected: " .. description, 3)
+        error("ModuleKit dependency cycle detected: " .. description, level)
     end
 
     return result
@@ -775,8 +782,9 @@ end
 
 ---Return the modules `module` requires, in deterministic order.
 ---@param module ModuleKit.Module
+---@param level integer|nil error level of a missing dependency, counted from this function; `3` when omitted
 ---@return ModuleKit.Module[]
-local function hardDependencies(module)
+local function hardDependencies(module, level)
     local addon = rawget(module, "_addon")
     local modules = rawget(addon, "_modules")
     local moduleName = rawget(module, "_name")
@@ -792,7 +800,7 @@ local function hardDependencies(module)
                     .. '" requires missing dependency "'
                     .. dependencyName
                     .. '"',
-                3
+                level or 3
             )
         end
         result[#result + 1] = dependency
@@ -1413,8 +1421,9 @@ end
 
 ---Enable exactly `module`, initializing it first when it is still `created`.
 ---@param module ModuleKit.Module
+---@param level integer error level of an unexpected-state refusal, counted from this function
 ---@return ModuleKit.Module module
-local function enableOne(module)
+local function enableOne(module, level)
     local current = rawget(module, "_state")
     if current == "enabled" then
         return module
@@ -1430,7 +1439,7 @@ local function enableOne(module)
                 .. '" cannot be enabled from state "'
                 .. tostring(current)
                 .. '"',
-            3
+            level
         )
     end
 
@@ -1480,18 +1489,24 @@ local function markWantedDisabled(module)
 end
 
 ---Initialize `module` under the container's dependency policy.
+---
+---Like `enableWithPolicy`, the `automatic` recursion adds its depth to the
+---error level, so a cycle or a missing dependency found deep in the chain is
+---reported at the line that called `Initialize` or `Activate`.
 ---@param module ModuleKit.Module
 ---@param visiting table<ModuleKit.Module, boolean>|nil recursion guard, `automatic` policy only
+---@param depth integer|nil recursion depth below the public call; `nil` at the top
 ---@return ModuleKit.Module module
-local function initializeWithPolicy(module, visiting)
+local function initializeWithPolicy(module, visiting, depth)
+    depth = depth or 0
     local addon = rawget(module, "_addon")
-    ensureNotShutdown(addon, "Initialize")
+    ensureNotShutdown(addon, "Initialize", 4 + depth)
 
     if rawget(module, "_state") ~= "created" then
         return module
     end
 
-    local dependencies = hardDependencies(module)
+    local dependencies = hardDependencies(module, 4 + depth)
     local policy = rawget(addon, "_dependencyPolicy")
 
     if policy == "automatic" then
@@ -1501,12 +1516,12 @@ local function initializeWithPolicy(module, visiting)
                 'ModuleKit dependency cycle detected while initializing "'
                     .. rawget(module, "_name")
                     .. '"',
-                3
+                3 + depth
             )
         end
         visiting[module] = true
         for index = 1, #dependencies do
-            initializeWithPolicy(dependencies[index], visiting)
+            initializeWithPolicy(dependencies[index], visiting, depth + 1)
         end
         visiting[module] = nil
     else
@@ -1542,7 +1557,7 @@ end
 local function enableWithPolicy(module, visiting, depth)
     depth = depth or 0
     local addon = rawget(module, "_addon")
-    ensureNotShutdown(addon, "Enable")
+    ensureNotShutdown(addon, "Enable", 4 + depth)
 
     -- A halt is terminal, so no dependency policy can satisfy it.
     if rawget(module, "_state") ~= "enabled" then
@@ -1553,7 +1568,7 @@ local function enableWithPolicy(module, visiting, depth)
         end
     end
 
-    local dependencies = hardDependencies(module)
+    local dependencies = hardDependencies(module, 4 + depth)
     local policy = rawget(addon, "_dependencyPolicy")
 
     if policy == "automatic" then
@@ -1611,7 +1626,10 @@ local function enableWithPolicy(module, visiting, depth)
         end
     end
 
-    return enableOne(module)
+    -- Not a tail call: the level counts this frame and every frame of the
+    -- `automatic` recursion above it.
+    enableOne(module, 4 + depth)
+    return module
 end
 
 ---Disable `module` under the container's dependency policy.
@@ -1871,10 +1889,12 @@ end
 
 ---Initialize the whole container in deterministic graph order.
 ---@param addon ModuleKit.Addon
+---@param level integer|nil error level counted from this function: `3` when `InitializeAll` calls it, the default
 ---@return ModuleKit.Addon addon
-local function initializeAllInternal(addon)
-    ensureNotShutdown(addon, "InitializeAll")
-    local order = buildGraph(addon)
+local function initializeAllInternal(addon, level)
+    level = level or 3
+    ensureNotShutdown(addon, "InitializeAll", level + 1)
+    local order = buildGraph(addon, level + 1)
     return runContainerPass(addon, runInitializeAllPass, order)
 end
 
@@ -1940,10 +1960,12 @@ end
 ---disabled.
 ---@param addon ModuleKit.Addon
 ---@param lifecycleDriven boolean|nil `true` for the LifecycleKit `ready` phase
+---@param level integer|nil error level counted from this function: `3` when `EnableAll` calls it, the default
 ---@return ModuleKit.Addon addon
-local function enableAllInternal(addon, lifecycleDriven)
-    ensureNotShutdown(addon, "EnableAll")
-    local order = buildGraph(addon)
+local function enableAllInternal(addon, lifecycleDriven, level)
+    level = level or 3
+    ensureNotShutdown(addon, "EnableAll", level + 1)
+    local order = buildGraph(addon, level + 1)
 
     if not lifecycleDriven then
         -- The whole container is meant to be enabled; the pass records which
@@ -2277,7 +2299,10 @@ end
 ---@param self ModuleKit.Module
 ---@return ModuleKit.Module self
 local function moduleInitialize(self)
-    return initializeWithPolicy(self)
+    -- Not a tail call: the error levels `initializeWithPolicy` raises at
+    -- count this frame.
+    initializeWithPolicy(self)
+    return self
 end
 
 ---Enable this module under the container's dependency policy.
@@ -2664,14 +2689,19 @@ end
 ---@param self ModuleKit.Addon
 ---@return ModuleKit.Addon self
 local function addonInitializeAll(self)
-    return initializeAllInternal(self)
+    -- Not a tail call: the error levels `initializeAllInternal` raises at count
+    -- this frame.
+    local addon = initializeAllInternal(self, 3)
+    return addon
 end
 
 ---Enable every module in the container, including ones explicitly disabled.
 ---@param self ModuleKit.Addon
 ---@return ModuleKit.Addon self
 local function addonEnableAll(self)
-    return enableAllInternal(self, false)
+    -- Not a tail call, for the same reason as `addonInitializeAll`.
+    local addon = enableAllInternal(self, false, 3)
+    return addon
 end
 
 ---Disable every enabled module without terminating the container.

@@ -109,7 +109,7 @@ Each proxy maps, through `state.views`, to a node:
 | `sectionName`, `sectionKey` | Root only: where the root's saved table lives (`profiles`/`"Default"`, `char`/`"Name - Realm"`, `global`/`false`). |
 | `dead` | Root only: detached by `DeleteProfile` or `ResetDatabase`. |
 | `defaults` | The defaults this view reads: the parent's default for this field, else the record's `ownDefaults`; for a map entry, the section's own default entry, else the wildcard default, else `ownDefaults`. |
-| `displayPath`, `path` | `profile.frame` for messages, `frame` for `OnChange`. |
+| `displayPath`, `path` | `profile.frame` for messages, `frame` for `OnChange`. Each key is rendered by `formatKey` with SchemaKit's rule for failure-path keys (`|` doubled, control bytes as `\ddd`, cut at 32 bytes between UTF-8 characters). |
 | `probe`, `probeSet`, `probeKey` | The scratch table this view contributes to a write's probe, and the one key set in it. |
 | `children` | Record: field name to child view, built with the record. |
 | `entries` | Map: key to entry view, weak-valued, built on first access. |
