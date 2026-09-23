@@ -65,15 +65,15 @@ describe("LifecycleKit event scopes", function()
         assert.are.equal(0, scope:GetActiveCount())
     end)
 
-    it("leaves an addon that never asked for a scope with a closed one", function()
+    it("records no EventKit scope for an addon that never asked for one", function()
         LifecycleKit:ForAddon("MyAddon")
         TestEnv.Logout()
 
-        local scope = EventKit:ForAddon("MyAddon")
-        assert.is_true(scope:IsClosed())
-        TestEnv.expectErrorContaining("cannot connect in a closed scope", function()
-            scope:Connect("CHAT_MSG_SAY", function() end)
-        end)
+        -- `CloseAddonScopes` answered `false` and recorded nothing, as HookKit,
+        -- CommandKit and CommKit do, so the addon-scope map does not grow with
+        -- every lifecycle instance.
+        assert.is_nil(rawget(rawget(EventKit, "_state").addonScopes, "MyAddon"))
+        assert.are.same({}, TestEnv.TakeReportedErrors())
     end)
 
     it("shuts down unchanged against an EventKit without CloseAddonScopes", function()
@@ -91,6 +91,7 @@ describe("LifecycleKit event scopes", function()
     it("reports a scope-closing failure after every lifecycle has advanced", function()
         local first = LifecycleKit:ForAddon("FirstAddon")
         local second = LifecycleKit:ForAddon("SecondAddon")
+        local secondScope = EventKit:ForAddon("SecondAddon")
         local original = rawget(EventKit, "CloseAddonScopes")
         rawset(EventKit, "CloseAddonScopes", function(_, addonName)
             if addonName == "FirstAddon" then
@@ -107,6 +108,6 @@ describe("LifecycleKit event scopes", function()
         assert.are.equal("scope teardown failed", reported[1].value)
         assert.is_true(first:IsShutdown())
         assert.is_true(second:IsShutdown())
-        assert.is_true(EventKit:ForAddon("SecondAddon"):IsClosed())
+        assert.is_true(secondScope:IsClosed())
     end)
 end)

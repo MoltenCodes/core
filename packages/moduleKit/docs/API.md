@@ -519,8 +519,9 @@ API 1, CommandKit API 1, CommKit API 1 and SignalKit API 1 when they are
 loaded, found through `Registry:Find`
 (Registry revision 7; an older Registry's `Get` is used as the equivalent
 fallback). None of them is a dependency: without them the matching scope field
-reads as `nil`. HookKit, CommandKit and CommKit are declared under
-`optionalDependencies` in the manifest.
+reads as `nil`. TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are
+declared under `optionalDependencies` in the manifest; EventKit and SignalKit
+are always present through LifecycleKit.
 
 ## Internals
 

@@ -38,7 +38,7 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local STATE_SCHEMA = 5
@@ -1971,20 +1971,25 @@ end
 ---
 ---Closing is terminal, exactly like addon shutdown: the closed scope stays the
 ---canonical scope, so a later `ForAddon(addonName)` returns it and refuses new
----connections. An addon that never asked for a scope is recorded as closed.
----@param _ EventKit
+---connections. An addon that never asked for a scope has nothing to close:
+---nothing is recorded, so the addon-scope map grows only with `ForAddon`
+---calls, as HookKit, CommandKit and CommKit do.
+---@param self EventKit
 ---@param addonName string addon folder name
----@return boolean closed `false` when the addon's scope was already closed.
-local function closeAddonScopes(_, addonName)
+---@return boolean closed `false` when the addon has no scope or it was already closed.
+local function closeAddonScopes(self, addonName)
+    if self ~= EventKit then
+        error(
+            "EventKit:CloseAddonScopes must be called on the EventKit facade; "
+                .. "use EventKit:CloseAddonScopes(addonName)",
+            2
+        )
+    end
     validateNonEmptyString(addonName, "EventKit:CloseAddonScopes addonName", 3)
 
-    local addonScopes = rawget(state, "addonScopes")
-    local scope = rawget(addonScopes, addonName)
+    local scope = rawget(rawget(state, "addonScopes"), addonName)
     if scope == nil then
-        scope = newScope(addonName)
-        rawset(scope, "_closed", true)
-        rawset(addonScopes, addonName, scope)
-        return true
+        return false
     end
     return closeScope(scope)
 end

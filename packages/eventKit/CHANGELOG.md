@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 — 2026-09-23
+
+- `EventKit:CloseAddonScopes(addonName)` for an addon that never asked for a scope now records nothing and returns `false`, as HookKit, CommandKit and CommKit do. It used to record a closed scope and return `true`, so every addon LifecycleKit shut down left an entry behind, and a later `ForAddon` for that name returned a closed scope. A scope that exists is closed exactly as before.
+- `CloseAddonScopes` now validates its receiver: a dot call raises `EventKit:CloseAddonScopes must be called on the EventKit facade` at the caller's line.
+- Two specs replace the old "recorded as closed" case: nothing is recorded for an addon without a scope, and the dot call is refused at the caller's line.
+- Implementation revision 8. `_state` schema 5 is unchanged, so a copy loading over revision 7 adopts its state as it is; a closed scope revision 7 recorded for an addon without one stays recorded. `EventKit` API generation 1 is unchanged.
+
 ## 0.5.0 — 2026-09-23
 
 - Added `EventKit:Coalesce(events, intervalSeconds, callback, options)` and `scope:Coalesce`: the listed events (a name or an array, unit events through `options.units` with `ConnectUnit` semantics) are collected into a set keyed by the first payload argument, or by event name with `byEvent` or when that argument is `nil`, and `callback(set)` runs at most once per interval. AceBucket's interval semantics: the first event starts the interval, the callback runs at its end with everything collected. The handle has `Flush`, `IsPending`, `GetStats`, `Close` and `IsClosed`; `maxKeys` and `lane` pass through to SchedulerKit.

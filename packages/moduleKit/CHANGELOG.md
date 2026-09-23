@@ -6,6 +6,7 @@
 - CommKit is declared under `optionalDependencies`; without it `Comm` reads as `nil`. The test environment loads CommKit and its remaining dependencies after the module chain (`LoadCommKit`), because CommKit requires LifecycleKit and the real TimerKit and SchedulerKit would displace the stand-ins other scope specs register.
 - Two new specs in `Scope_spec.lua`, one against the real CommKit.
 - Implementation revision 10. `ModuleKit` API generation 1 is unchanged.
+- Manifest only, after the closing review (no executed-code change, so no version or revision change): `timerKit` and `schedulerKit` API 1 are now declared under `optionalDependencies`, since `scope.Timers` and `scope.Jobs` find them through `Registry:Find`. The suite's module chain is unchanged; the scope specs still stand them in through Registry.
 
 ## 0.6.1 — 2026-09-23
 

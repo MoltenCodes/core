@@ -23,6 +23,12 @@
     },
     "hookKit": {
       "api": 1
+    },
+    "schedulerKit": {
+      "api": 1
+    },
+    "timerKit": {
+      "api": 1
     }
   }
 }

@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **7**.
+Implementation revision: **8**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -93,7 +93,7 @@ scope:Close()         -- terminal; later connections are refused
 |---|---|
 | `EventKit:CreateScope()` | Create a manually owned scope. |
 | `EventKit:ForAddon(addonName)` | Return the canonical scope of an addon, creating it on demand. |
-| `EventKit:CloseAddonScopes(addonName)` | Close that addon's scope; returns `false` when it was already closed. |
+| `EventKit:CloseAddonScopes(addonName)` | Close that addon's scope; returns `false` when it has none or it was already closed. |
 
 ### Scope methods
 
@@ -191,8 +191,15 @@ Closing is terminal, as shutdown is. The closed scope stays the addon's
 canonical scope, so a later `ForAddon("MyAddon")` returns it and refuses new
 connections rather than silently creating subscriptions that outlive the
 shutdown. Calling `CloseAddonScopes` for an addon that never asked for a scope
-records one that is already closed. Each addon keeps at most one scope table,
-so the addon-scope map is bounded by the number of addon names used.
+records nothing and returns `false`, as HookKit, CommandKit and CommKit do, so
+the addon-scope map grows only with `ForAddon` calls; a later `ForAddon` for
+that addon creates an open scope. Revisions before 8 recorded a closed scope
+instead. Each addon keeps at most one scope table, so the addon-scope map is
+bounded by the number of addon names used.
+
+`CloseAddonScopes` must be called on the facade with a colon. A dot call raises
+at the caller: `EventKit:CloseAddonScopes must be called on the EventKit
+facade; use EventKit:CloseAddonScopes(addonName)`.
 
 Manual scopes are never closed by `CloseAddonScopes`.
 

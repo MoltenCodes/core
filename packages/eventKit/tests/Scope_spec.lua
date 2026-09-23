@@ -366,12 +366,22 @@ describe("EventKit addon scopes", function()
         end)
     end)
 
-    it("records an addon that never asked for a scope as closed", function()
-        assert.is_true(EventKit:CloseAddonScopes("LateAddon"))
+    it("records nothing for an addon that never asked for a scope", function()
+        assert.is_false(EventKit:CloseAddonScopes("LateAddon"))
 
+        assert.is_nil(rawget(rawget(EventKit, "_state").addonScopes, "LateAddon"))
         local scope = EventKit:ForAddon("LateAddon")
-        assert.is_true(scope:IsClosed())
+        assert.is_false(scope:IsClosed())
         assert.are.equal("LateAddon", scope:GetAddonName())
+    end)
+
+    it("refuses CloseAddonScopes called without the facade, at the caller's line", function()
+        expectErrorAtThisSpec(
+            "EventKit:CloseAddonScopes must be called on the EventKit facade",
+            function()
+                EventKit.CloseAddonScopes("MyAddon")
+            end
+        )
     end)
 
     it("supports the documented two-step shutdown wiring without LifecycleKit", function()

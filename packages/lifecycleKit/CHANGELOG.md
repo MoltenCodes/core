@@ -7,6 +7,7 @@
 - An in-place upgrade from revision 9 replaces its shared host watchers, as the upgrades from revisions 7 and 8 do; the upgrade spec now runs for each of the three.
 - New specs in `OwnedScopes_spec.lua` against the real CommKit: a scoped prefix registration is gone after logout; a CommKit without `CloseAddonScopes` leaves shutdown unchanged; a comm-scope failure wins over a bus failure. The failure-order spec covers all five steps. The test environment loads CommKit and its remaining dependencies after the chain (`LoadCommKit`), because CommKit requires LifecycleKit.
 - Implementation revision 10. API generation 1 is unchanged.
+- Specs only, after EventKit 0.5.1 stopped recording a closed scope for an addon that never asked for one (no executed-code change here, so no version or revision change): the shutdown specs now create the EventKit scope they check, and the "never asked" case asserts that nothing is recorded.
 
 ## 0.4.2 — 2026-09-23
 
