@@ -6,8 +6,7 @@ the total time, the worst single call (the spike) and the last call. A report
 lists every section sorted by total time.
 
 ```lua
-local Registry = MoltenCodes.Registry
-local ProfileKit = Registry:Get("profileKit", 1)
+local ProfileKit = MoltenCodes.Registries[2]:Get("profileKit", 1)
 local onUpdate = ProfileKit:Section("MyAddon.OnUpdate") -- once, at file scope
 
 frame:SetScript("OnUpdate", function(_, elapsed)

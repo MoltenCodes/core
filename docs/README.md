@@ -16,6 +16,7 @@ This directory is the entry point for repository-wide documentation.
 - [`DESIGN_CONSTITUTION.md`](DESIGN_CONSTITUTION.md) defines the principles that package and tooling changes must preserve.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) explains package boundaries, dependency direction, API generations, and embedded package identity.
 - [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md) defines the canonical machine-readable package metadata contract.
+- [`ROADMAP.md`](ROADMAP.md) records what was decided and delivered in each phase, the nine-point record of every planned Kit, and the standing obligations.
 
 ## Development workflow
 

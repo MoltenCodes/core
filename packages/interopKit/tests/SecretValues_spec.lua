@@ -44,6 +44,15 @@ describe("InteropKit secret values", function()
         )
     end)
 
+    it("refuses a secret api at the caller", function()
+        Env.expectErrorContaining(
+            "InteropKit:ExposeToLibStub api must not be a secret value",
+            function()
+                InteropKit:ExposeToLibStub("interopKit", SECRET)
+            end
+        )
+    end)
+
     it("accepts ordinary names while the probe is installed", function()
         assert.is_true(InteropKit:ExposeToLibStub("interopKit", 1))
     end)

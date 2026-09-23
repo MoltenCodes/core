@@ -482,18 +482,17 @@ local stagedCallback = nil
 local stagedReady = false
 local stagedReason = nil
 
----Call the staged callback. Clearing the stage first keeps a callback that
----makes another gate ready from seeing stale arguments.
+---Call the staged callback. `callQueued` always stages one immediately before
+---this runs. Clearing the stage first keeps a callback that makes another gate
+---ready from seeing stale arguments.
 local function invokeStaged()
-    local callback = stagedCallback
+    local callback = stagedCallback --[[@as ReadinessKit.Callback]]
     local ready = stagedReady
     local reason = stagedReason
     stagedCallback = nil
     stagedReady = false
     stagedReason = nil
-    if callback ~= nil then
-        callback(ready, reason)
-    end
+    callback(ready, reason)
 end
 
 ---Call one queued callback, reporting its failure instead of raising it.
@@ -820,6 +819,16 @@ local function resolveEventKit(methodName, level)
     return EventKit
 end
 
+---Return an error value as text without the `file:line: ` prefix `error` adds,
+---so a re-raised failure carries one position: the caller's.
+---@param failure any
+---@return string
+local function withoutPosition(failure)
+    local text = tostring(failure)
+    local stripped = text:match("^[^\n]-:%d+: (.*)$")
+    return stripped or text
+end
+
 ---Build the one callback a gate connects to every event it re-probes on. It
 ---calls through the shared dispatch table so an upgrade replaces its behaviour.
 ---@param gate table
@@ -1005,7 +1014,20 @@ local function gateReprobeOn(self, eventName)
         rawset(self, "_reprobeCallback", callback)
     end
 
-    local connection = scope:Connect(eventName, callback)
+    -- EventKit reports a refused host registration at its own caller, which is
+    -- this line; re-raise it at the line that called `ReprobeOn` instead,
+    -- keeping the host's reason. The event is not recorded, so a later
+    -- `ReprobeOn` can try again.
+    local connected, connection = pcall(scope.Connect, scope, eventName, callback)
+    if not connected then
+        error(
+            "ReadinessKit.Gate:ReprobeOn could not connect "
+                .. eventName
+                .. ": "
+                .. withoutPosition(connection),
+            2
+        )
+    end
     if events == false then
         events = {}
         rawset(self, "_reprobeEvents", events)

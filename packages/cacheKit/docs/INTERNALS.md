@@ -39,11 +39,11 @@ The list is intrusive: the links live on the entries the hash already points at,
 
 ## The free list
 
-`recycle` blanks an entry's `key`, `value` and `expiresAt` (so the cache no longer holds what they referenced) and pushes it onto `_free` while `_freeCount < _maxEntries`. `takeEntry` pops from `_free` before allocating.
+`recycle` blanks an entry's `key`, `value` and `expiresAt` (so the cache no longer holds what they referenced) and pushes it onto `_free`. `takeEntry` pops from `_free` before allocating.
 
-The invariant is that live entries plus free entries never exceed `maxEntries`: an entry reaches the free list only when the live count drops by one, and a new key takes from the free list before it allocates. The bound check in `recycle` is therefore a guard rather than a policy. It also follows that a full cache has an empty free list, which is why eviction reuses the evicted entry directly instead of passing it through the list.
+The invariant is that live entries plus free entries never exceed `maxEntries`: an entry reaches the free list only when the live count drops by one, and a new key takes from the free list before it allocates. That is what bounds the free list, so `recycle` has no bound check of its own; `Property_spec.lua` checks the invariant after every step. It also follows that a full cache has an empty free list, which is why eviction reuses the evicted entry directly instead of passing it through the list.
 
-`Close` drops `_entries` and `_free` together, so a closed cache retains nothing.
+`Close` drops `_entries` and `_free` together, so a closed cache retains no entry, key or value.
 
 ## Allocation
 
@@ -94,6 +94,5 @@ The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISI
 ## Error levels
 
 `ClearOn` calls `scope:Connect` through `pcall`: EventKit raises a refused host registration at its own caller, which is a CacheKit line. The failure is re-raised at level 2 under `CacheKit.Cache:ClearOn`, with EventKit's `file:line: ` prefix stripped and its reason kept, and the event is not recorded, so a later `ClearOn` can try again.
-
 
 Every argument validator takes an explicit `level`, which is the value `error` needs *inside the function that receives it*; each further hop towards `error` adds one. Failures raised through a closure count the closure as a level: `memoizedCall` and `snapshotFill` raise at level 3 (themselves, the closure, then the caller of the closure), and `snapshotFill` passes 4 to `validateKey`.

@@ -13,4 +13,5 @@
 - Waiters live in two arrays per gate that are reused across rounds, bounded by `maxWaiters`. A poll tick on a gate that is not ready allocates nothing.
 - `gate:ReprobeOn(eventName)` through EventKit API 1, an optional dependency found with `Registry:Find` when it is called. `Close` releases the subscriptions.
 - The poll callback, re-probe callbacks and `WhenAll` callbacks call through a shared dispatch table, and gates and waiters keep their metatables across upgrades, so an in-place upgrade keeps every gate, waiter, timer and subscription.
-- 81 specs, including an allocation guard on the poll tick and an in-place upgrade spec.
+- `gate:ReprobeOn` raises a refused host registration at its caller's line as `ReadinessKit.Gate:ReprobeOn could not connect <event>: <reason>`, and the event can be connected again later.
+- 85 specs, including an allocation guard on the poll tick and an in-place upgrade spec.

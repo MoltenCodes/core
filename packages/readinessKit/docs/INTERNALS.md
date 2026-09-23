@@ -89,4 +89,6 @@ The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISI
 
 ## Error levels
 
+`ReprobeOn` calls `scope:Connect` through `pcall`: EventKit raises a refused host registration at its own caller, which is a ReadinessKit line. The failure is re-raised at level 2 under `ReadinessKit.Gate:ReprobeOn`, with EventKit's `file:line: ` prefix stripped and its reason kept, and the event is not recorded, so a later `ReprobeOn` can try again.
+
 Every argument validator takes an explicit `level`, which is the value `error` needs *inside the function that receives it*; each further hop towards `error` adds one. Public methods pass `3` to a validator (the validator, the method, the caller) and raise their own state errors at `2`.

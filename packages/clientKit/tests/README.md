@@ -26,5 +26,19 @@ The suite covers:
 - Registry publication, duplicate loads, a newer revision not being
   downgraded, an in-place upgrade that re-reads the host into the same state
   tables (a copy of the source loaded with a higher revision), load-order
-  failures, and corrupted-state refusal;
+  failures, and corrupted-state refusal on a reload and on an upgrade;
 - manifest/runtime API and revision consistency.
+
+| Spec | Covers |
+|---|---|
+| `Flavor_spec.lua` | flavour, build, interface number, `IsAtLeast` |
+| `Capabilities_spec.lua` | `Has`, the capability table, allocation guard |
+| `Taint_spec.lua` | `IsSecret`, `CanAccessFrame`, `IsEventValid` |
+| `Shims_spec.lua` | `GetSpellInfo`, `GetItemInfo`, `GetAddOnMetadata`, `IsAddOnLoaded` |
+| `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
+| `Bootstrap_spec.lua` | publication, duplicate loads, upgrades, load order, corrupted state |
+| `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement |
+
+`support/ClientKitTestEnv.lua` selects a client profile, builds frame doubles
+for `CanAccessFrame` and loads the source at a patched revision for the
+upgrade specs.

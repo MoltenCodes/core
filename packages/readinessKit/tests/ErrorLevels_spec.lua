@@ -294,4 +294,21 @@ describe("ReadinessKit error levels", function()
             absentValue
         )
     end)
+
+    it("points a refused ReprobeOn registration at the caller", function()
+        local gate = ReadinessKit:Gate("a", probe)
+        TestEnv.FailNextRegisterEvent()
+        local line
+        local ok, value = pcall(function()
+            line = currentLine() + 1
+            gate:ReprobeOn("SPELLS_CHANGED")
+        end)
+        assertReportedAt(
+            line,
+            "ReadinessKit.Gate:ReprobeOn could not connect SPELLS_CHANGED: "
+                .. "EventKit.Scope:Connect could not register event SPELLS_CHANGED",
+            ok,
+            value
+        )
+    end)
 end)

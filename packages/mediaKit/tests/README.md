@@ -11,9 +11,25 @@ The MediaKit suite covers:
 - `OnRegistered`: arguments, per-type delivery, nothing for refused or identical registrations, the connection's lifetime, the entry visible to a listener, and a listener error propagating after the entry is stored;
 - LibSharedMedia: `"absent"` without LibStub and with a LibStub that holds no LibSharedMedia; adoption of the five shared types, signals in sorted order, adopted names refused with other data and accepted with the same, MediaKit's entry kept on a clash, invalid entries skipped, a later pack arriving through the callback, idempotence with one subscription, and a LibSharedMedia without CallbackHandler; mirroring with names LibSharedMedia holds skipped, icons and textures kept out, later registrations mirrored, idempotence, and the `langmask` built from a font's declared scripts (western only for an undeclared font); and both directions at once without an adopted entry mirrored back, a mirrored entry returning as a duplicate or a second signal;
 - allocation guards (`collectgarbage("count")` with the collector stopped) on `Fetch` and `Has` with and without options, on `List` while nothing was registered, and on `defaults:Get`;
-- secret values: a secret type, name or data refused at the caller through an `issecretvalue` stub looked up at call time, and secret LibSharedMedia entries skipped;
+- secret values: a secret type, name, data or script name refused at the caller through an `issecretvalue` stub looked up at call time, and secret LibSharedMedia entries skipped;
 - duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, missing SignalKit, an incomplete facade, and an in-place upgrade that keeps entries, lists, connections, defaults, adoption, the single subscription and mirroring;
 - `error` levels: every argument failure reports the caller's own line;
 - manifest/runtime API and revision consistency, and the declared dependencies.
 
 The shared fixture does not stub `GetLocale` or LibStub, so `support/MediaKitTestEnv.lua` installs `GetLocale` before MediaKit loads (`NewPackage(clientLocale)`, `SetClientLocale`), provides a minimal LibStub (`InstallLibStub`) and a LibSharedMedia-3.0 stub (`InstallLibSharedMedia`) with `Register`, `Fetch`, `HashTable`, the `LOCALE_BIT_*` fields, a CallbackHandler-shaped `RegisterCallback` fired synchronously from `Register`, and counters for idempotence checks, and removes both globals on `Reset`.
+
+| Spec | Covers |
+|---|---|
+| `Register_spec.lua` | `Register`, the cap and identical re-registrations |
+| `Fetch_spec.lua` | `Fetch`, `Has` and `IsFileDataID` |
+| `List_spec.lua` | sorted, cached lists |
+| `Scripts_spec.lua` | script filtering per client locale |
+| `BuiltIns_spec.lua` | the client's built-in media |
+| `Defaults_spec.lua` | defaults objects and their fallbacks |
+| `OnRegistered_spec.lua` | registration signals |
+| `LibSharedMedia_spec.lua` | adoption and mirroring |
+| `SecretValues_spec.lua` | secret arguments and LibSharedMedia entries |
+| `Allocation_spec.lua` | allocation guards |
+| `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
+| `Bootstrap_spec.lua` | publication, duplicate loads, load order, upgrades |
+| `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement, declared dependencies |

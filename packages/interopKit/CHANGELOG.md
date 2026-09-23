@@ -8,4 +8,4 @@
 - `ExposeAll(options)` exposes every active package `Registry:Packages()` lists, skipping `options.except`, and returns the exposed, skipped and refused counts.
 - `AdoptFromLibStub(major)` returns a LibStub library and its minor through the silent `GetLibrary(major, true)` and records it; `Find(major)` reads the record without LibStub and without allocating; `Adopted()` lists every adoption sorted by major.
 - `IsLibStubPresent()` reports whether a global `LibStub` with `NewLibrary` and `GetLibrary` is loaded.
-- Argument errors name the method and parameter and point at the caller's line; a secret `packageName` or `major` is refused before it is compared or formatted.
+- Argument errors name the method and parameter and point at the caller's line; a secret `packageName`, `api` or `major` is refused before it is compared or formatted.

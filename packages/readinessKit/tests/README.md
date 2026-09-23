@@ -8,7 +8,7 @@ The ReadinessKit suite covers:
 - waiters: FIFO order, the `maxWaiters` cap and `"full"`, `Cancel` (also from an earlier callback of the same batch), queued callback errors routed to the host error handler while the batch continues, immediate callback errors raised at the caller, waiters queued during a flush, and the two waiter arrays reused across rounds;
 - probes that raise: treated as not ready, polling continues, the first failure of each round reported and every failure counted, the `print` fallback without a host handler;
 - a probe that closes its own gate, on every path that runs a probe (definition, poll, timing-out poll, `Probe`, re-probe event): the gate stays closed;
-- `ReprobeOn` through the real EventKit, connections released by `Close`, a gate closed during the dispatch in flight, and the error when `Registry:Find` refuses EventKit;
+- `ReprobeOn` through the real EventKit, connections released by `Close`, a gate closed during the dispatch in flight, a refused host registration re-raised at the caller and connectable again later, and the errors when `Registry:Find` refuses EventKit, when the embedded Registry has no `Find`, and when the EventKit facade has no `CreateScope`;
 - `WhenAll`: success, already-ready gates, the empty list, the first timeout, a gate already timed out, a gate closed while waiting, the gates' caps, and `Cancel`;
 - `Close`: waiters told `"closed"`, the name freed, stale ticks ignored, closing from inside a callback;
 - a host without `GetTimePreciseSec`: timeouts counted in polls, negative cache disabled;
@@ -20,3 +20,19 @@ The ReadinessKit suite covers:
 TimerKit depends on LifecycleKit, EventKit and SignalKit, so the whole chain is in the manifest dependency closure the runner puts on `LUA_PATH` (EventKit is also listed under `optionalDependencies`). EventKit therefore cannot be absent in this suite; `support/ReadinessKitTestEnv.lua` models the absent case by making `Registry:Find` refuse EventKit, which is exactly the lookup ReadinessKit performs.
 
 The allocation guard calls the native ticker's callback directly rather than through the fixture's `FireNative`, because that helper checks its argument with luassert and allocates on every call.
+
+| Spec | Covers |
+|---|---|
+| `Gate_spec.lua` | definition, polling, repeated definitions, options, `Close` |
+| `Timeout_spec.lua` | timeouts and the clock-less host |
+| `NegativeCache_spec.lua` | the negative cache |
+| `Waiters_spec.lua` | waiter order, cap, `Cancel`, callback errors |
+| `ProbeErrors_spec.lua` | probes that raise |
+| `CloseFromProbe_spec.lua` | a probe that closes its own gate |
+| `ReprobeOn_spec.lua` | re-probing on events |
+| `WhenAll_spec.lua` | `WhenAll` groups |
+| `Invalidate_spec.lua` | `Invalidate` |
+| `Allocation_spec.lua` | allocation guards |
+| `ErrorLevels_spec.lua` | argument and refusal errors reported at the caller's line |
+| `Bootstrap_spec.lua` | publication, duplicate loads, load order, upgrades |
+| `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement |

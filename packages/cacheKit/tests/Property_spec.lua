@@ -95,6 +95,12 @@ describe("CacheKit LRU property", function()
                 cache:GetStats().evictions,
                 "evictions at step " .. step
             )
+            -- The invariant that lets `recycle` push without a bound check:
+            -- live plus free entries never exceed the bound.
+            assert.is_true(
+                cache:GetCount() + cache._freeCount <= maxEntries,
+                "free list within the bound at step " .. step
+            )
             for index = 1, #model.order do
                 local stored = model.order[index]
                 assert.are.equal(model.values[stored], cache:Peek(stored))

@@ -110,6 +110,17 @@ describe("ClientKit bootstrap", function()
         end)
     end)
 
+    it("refuses to upgrade over state that lost its host table", function()
+        local ClientKit = Env.NewPackageFor("mainline")
+        rawset(ClientKit._state, "host", nil)
+        Env.expectErrorContaining(
+            "MoltenCodes ClientKit package state is corrupted or incomplete",
+            function()
+                Env.LoadSourceAtRevision(2)
+            end
+        )
+    end)
+
     it("rejects same-revision state with a capability that is not a boolean", function()
         local ClientKit = Env.NewPackageFor("mainline")
         rawset(ClientKit._state.capabilities, "C_Spell", "yes")

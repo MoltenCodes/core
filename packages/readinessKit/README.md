@@ -3,7 +3,7 @@
 ReadinessKit gives World of Warcraft addons named gates for host data that arrives after load and is `nil` or wrong until then: spell and item information, the spellbook, talents, the guild roster. You describe the fact you need as a probe, and wait for the gate instead of guessing with a timer.
 
 ```lua
-local ReadinessKit = MoltenCodes.Registry:Get("readinessKit", 1)
+local ReadinessKit = MoltenCodes.Registries[2]:Get("readinessKit", 1)
 
 -- One gate per name for the whole session; the first definition wins.
 local spellbook = ReadinessKit:Gate("MyAddon.spellbook", function()
@@ -67,5 +67,6 @@ load.
 
 Optional: EventKit API 1, used only by `gate:ReprobeOn`. TimerKit's own
 dependencies already embed it, so in practice it is always present; ReadinessKit
-still looks it up with `Registry:Find` when `ReprobeOn` is called rather than
-declaring it, so an incompatible or retired EventKit only disables re-probing.
+still lists it only under `optionalDependencies` and looks it up with
+`Registry:Find` when `ReprobeOn` is called, so an incompatible or retired
+EventKit only disables re-probing.

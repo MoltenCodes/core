@@ -28,7 +28,7 @@ CacheKit does not rely on `require()` at runtime.
 | `GetTimePreciseSec` | age limits (`NewTtl`, `Memoize` with `ttlSeconds`) | CacheKit loads normally and every age limit is disabled: entries never expire, and a TTL cache behaves as a plain LRU cache. |
 | EventKit API 1 | `cache:ClearOn` | `ClearOn` raises at the caller: `CacheKit.Cache:ClearOn requires EventKit API 1, which is not loaded (absent)`. Everything else works. |
 
-EventKit is looked up with `Registry:Find("eventKit", 1)` when `ClearOn` is called, not at load, so EventKit may be embedded before or after CacheKit. The package manifest lists only required dependencies, so it names Registry alone.
+EventKit is looked up with `Registry:Find("eventKit", 1)` when `ClearOn` is called, not at load, so EventKit may be embedded before or after CacheKit. The manifest names it under `optionalDependencies`, which the release load order ignores; `dependencies` names Registry alone.
 
 ## Public surface
 
@@ -135,7 +135,7 @@ Returns a table with three counters:
 
 Clears the cache whenever the host event `eventName` fires, through a private EventKit scope the cache owns. Returns `true` when it connected, `false` when the cache already clears on that event. The subscriptions are bounded by the number of distinct event names.
 
-`eventName` must be a non-empty string. When the host refuses the registration, the failure is raised at the caller's line with the host reason kept: `CacheKit.Cache:ClearOn could not connect SPELLS_CHANGED: EventKit.Scope:Connect could not register event SPELLS_CHANGED`, and a later `ClearOn` for the same event may try again. A closed cache refuses: `CacheKit.Cache:ClearOn cannot subscribe a closed cache`. When EventKit is not loaded, or its entry is retired, the error names the `Registry:Find` reason (`absent`, `generation_mismatch` or `retired`).
+`eventName` must be a non-empty string. When the host refuses the registration, the failure is raised at the caller's line with the host reason kept: `CacheKit.Cache:ClearOn could not connect SPELLS_CHANGED: EventKit.Scope:Connect could not register event SPELLS_CHANGED`, and a later `ClearOn` for the same event may try again. A closed cache refuses: `CacheKit.Cache:ClearOn cannot subscribe a closed cache`. When EventKit is not loaded, or its entry is retired, the error names the `Registry:Find` reason (`absent`, `generation_mismatch` or `retired`). An embedded Registry older than API 2 revision 7 has no `Find`, and `ClearOn` then raises `CacheKit.Cache:ClearOn requires Registry:Find (Registry API 2 revision 7 or newer)`.
 
 A cache closed from inside a listener of the same event is not cleared again by a delivery EventKit still owes it; see EventKit's *Closing during a dispatch*.
 
@@ -243,7 +243,7 @@ local isSecret = issecretvalue or function()
 end
 ```
 
-`fill` checks for you when the client has `issecretvalue`: it refuses a secret key or value at the reader's line (`CacheKit.Snapshot fill key must not be a secret value`) before any comparison, and that refusal fails the refresh like any other. Cache methods (`Get`, `Set`, `Peek`, `Delete`) and memoised functions do not probe, to keep their hot paths free of an extra call; a secret key reaching them raises the client's own error.
+`fill` checks for you when the client has `issecretvalue`: it refuses a secret key or value at the reader's line (`CacheKit.Snapshot fill key must not be a secret value`) before any comparison, and that refusal fails the refresh like any other. Cache methods (`Get`, `Set`, `Peek`, `Delete`), memoised functions and `snapshot:Get` do not probe, to keep their hot paths free of an extra call; a secret key reaching them raises the client's own error.
 
 ## Error behaviour
 

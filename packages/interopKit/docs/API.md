@@ -127,9 +127,9 @@ never upgrades them and never registers them with LibStub again.
 
 ## Secret values
 
-On a client with secret values, a `packageName` or `major` that `issecretvalue`
-reports secret is refused at the caller before it is compared, matched or
-formatted:
+On a client with secret values, a `packageName`, `api` or `major` that
+`issecretvalue` reports secret is refused at the caller before it is compared,
+matched or formatted:
 
 ```text
 MyAddon/Core.lua:12: InteropKit:AdoptFromLibStub major must not be a secret value
@@ -180,8 +180,8 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
   major, 1)` and listed by `Registry:Packages()` with status `"foreign"`.
   Registry refuses any package name outside `^[a-z][A-Za-z0-9]*$`, so
   `"libstub:..."` would need a second naming rule in `Find`, `Packages`,
-  `GetInfo` and the row type, and `Registry.lua` has 35 lines left of its
-  1000-line budget. The header of `Registry.lua` says such a change moves into
+  `GetInfo` and the row type, and `Registry.lua` has almost none of its
+  1000-line budget left. The header of `Registry.lua` says such a change moves into
   a package of its own, so the lookup lives here as `InteropKit:Find(major)`
   with the same silent contract (`library, minor` or `nil, reason`), and the
   listing as `InteropKit:Adopted()`. Registry is unchanged.

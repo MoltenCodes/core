@@ -641,6 +641,10 @@ local function readScriptMask(scripts, level)
     local mask = 0
     for index = 1, #scripts do
         local script = scripts[index]
+        -- Before the lookup: a secret used as a table key raises.
+        if isSecret(script) then
+            error("MediaKit:Register scripts must not contain a secret value", level)
+        end
         local bit = type(script) == "string" and SCRIPT_BITS[script] or nil
         if bit == nil then
             error(
@@ -995,12 +999,11 @@ local function defaultsGet(self, mediaType)
     if findUsableEntry(mediaType, fallback, false) ~= nil then
         return fallback
     end
-    -- Only a font can reach this point: a CJK client, whose script no
-    -- built-in font renders. The client's list holds what it can render,
-    -- adopted LibSharedMedia fonts included.
-    local record = types[mediaType]
-    local usable = mediaType == "font" and currentClientList(record) or currentAllList(record)
-    return usable[1]
+    -- Only a font can reach this point: every other type's fallback is a
+    -- built-in, which no later registration can replace, and it is never
+    -- filtered. That leaves a client whose script no built-in font renders;
+    -- the client's list holds what it can render, adopted fonts included.
+    return currentClientList(types[mediaType])[1]
 end
 
 -- Package public API ---------------------------------------------------------
@@ -1115,7 +1118,6 @@ local function packageDefaults(_, consumerName)
     end
     defaults = setmetatable({
         _schema = DEFAULTS_SCHEMA,
-        _consumerName = consumerName,
         _names = {},
     }, DEFAULTS_METATABLE)
     consumers[consumerName] = defaults

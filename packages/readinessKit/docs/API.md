@@ -20,7 +20,7 @@ ReadinessKit.lua
 ReadinessKit depends directly on Registry API 2 and TimerKit API 1; SignalKit, EventKit and LifecycleKit are TimerKit's own dependencies. Portable WoW code resolves the package through Registry:
 
 ```lua
-local ReadinessKit = MoltenCodes.Registry:Get("readinessKit", 1)
+local ReadinessKit = MoltenCodes.Registries[2]:Get("readinessKit", 1)
 ```
 
 ReadinessKit does not rely on `require()` at runtime. Loading it without Registry raises `MoltenCodes ReadinessKit requires Registry API 2 to be loaded first`; without TimerKit, `MoltenCodes ReadinessKit requires TimerKit API 1 to be loaded first`.
@@ -154,7 +154,11 @@ Declares that the data the gate guards is no longer usable. It does not run the 
 
 Re-runs the probe whenever the host event `eventName` fires, through a private EventKit scope the gate owns. The event is fresh information, so the negative cache is ignored. A ready gate ignores the event, because readiness only ends with `Invalidate()`; to drop readiness on an event, connect it yourself and call `Invalidate()`. A timed-out gate that is still not ready starts a new polling round.
 
-Returns `true` when it connected, `false` when the gate already re-probes on that event. `eventName` must be a non-empty string. A gate closed from inside a listener of the same event is not probed by a delivery EventKit still owes it.
+Returns `true` when it connected, `false` when the gate already re-probes on that event. `eventName` must be a non-empty string. A closed gate refuses: `ReadinessKit.Gate:ReprobeOn cannot subscribe a closed gate`.
+
+When the host refuses the registration, the failure is raised at the caller's line with the host reason kept: `ReadinessKit.Gate:ReprobeOn could not connect SPELLS_CHANGED: EventKit.Scope:Connect could not register event SPELLS_CHANGED`. The event is not recorded, so a later `ReprobeOn` for it may try again. An embedded Registry older than API 2 revision 7 has no `Find`, and `ReprobeOn` then raises `ReadinessKit.Gate:ReprobeOn requires Registry:Find (Registry API 2 revision 7 or newer)`; an EventKit facade without `CreateScope` raises `ReadinessKit.Gate:ReprobeOn requires a valid EventKit API 1 facade`.
+
+A gate closed from inside a listener of the same event is not probed by a delivery EventKit still owes it.
 
 ## `gate:Close()`
 

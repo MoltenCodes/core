@@ -255,10 +255,16 @@ local function validatePackageName(value, methodName, level)
 end
 
 ---Raise at `level` unless `value` is a positive integer API generation.
+---
+---The secret check runs first for the same reason as in `validateName`: the
+---arithmetic and comparisons below would raise inside InteropKit on a secret.
 ---@param value any
 ---@param methodName string
 ---@param level integer
 local function validateApi(value, methodName, level)
+    if isSecret(value) then
+        error(methodName .. " api must not be a secret value", level)
+    end
     if type(value) ~= "number" or value % 1 ~= 0 or value < 1 or value > MAXIMUM_INTEGER then
         error(methodName .. " api must be a positive integer", level)
     end

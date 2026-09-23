@@ -66,5 +66,5 @@ load.
 Optional: EventKit API 1, used only by `cache:ClearOn`. To use it, also embed
 SignalKit and EventKit (see their own load order); they may load before or
 after CacheKit, because CacheKit looks EventKit up when `ClearOn` is called,
-not at load. The package manifest lists only required dependencies, so EventKit
-does not appear there.
+not at load. The manifest names EventKit under `optionalDependencies`, which the
+release load order ignores.

@@ -121,7 +121,7 @@ A path and a FileDataID are never "the same data", even for the same file. Scrip
 |---|---|---|
 | `scripts` | `{ "latin" }` | Fonts only; a non-empty array of script names. Refused for other types. |
 
-Raised at the caller: an unknown type; a name that is not a non-empty string; data that is neither a non-empty string nor a FileDataID; a secret type, name or data; an option table that is not a table or has an unknown field; `scripts` on a non-font, empty, not a table, or naming an unknown script.
+Raised at the caller: an unknown type; a name that is not a non-empty string; data that is neither a non-empty string nor a FileDataID; a secret type, name, data or script name; an option table that is not a table or has an unknown field; `scripts` on a non-font, empty, not a table, or naming an unknown script.
 
 A successful registration stores the entry, invalidates the type's lists, mirrors it into LibSharedMedia when mirroring is on, and then fires `OnRegistered`, in that order.
 
@@ -235,7 +235,7 @@ With both directions on, nothing bounces:
 
 ## Secret values
 
-On Retail 12.x the client hands tainted code secret values that raise when compared or used as table keys. MediaKit asks `issecretvalue` about a type, name or data before any comparison and refuses a secret one at the caller (`MediaKit:Register name must not be a secret value`); `IsFileDataID` answers `false` for a secret, and adoption skips secret LibSharedMedia entries. `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
+On Retail 12.x the client hands tainted code secret values that raise when compared or used as table keys. MediaKit asks `issecretvalue` about a type, name, data or script name before any comparison and refuses a secret one at the caller (`MediaKit:Register name must not be a secret value`); `IsFileDataID` answers `false` for a secret, and adoption skips secret LibSharedMedia entries. `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
 ## Error behaviour
 

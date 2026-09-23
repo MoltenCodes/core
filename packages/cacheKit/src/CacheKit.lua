@@ -475,9 +475,11 @@ local function touch(cache, entry)
     end
 end
 
----Drop what an unlinked entry references and keep its table for reuse while
----the free list has room. Live entries plus free entries never exceed
----`maxEntries`, so the check is a guard rather than a policy.
+---Drop what an unlinked entry references and keep its table for reuse.
+---
+---No bound check is needed: an entry is recycled only when the live count
+---drops by one, and a new key takes from the free list before it allocates, so
+---live entries plus free entries never exceed `maxEntries`.
 ---@param cache table
 ---@param entry CacheKit.Entry
 local function recycle(cache, entry)
@@ -485,12 +487,9 @@ local function recycle(cache, entry)
     entry.value = false
     entry.expiresAt = false
 
-    local freeCount = rawget(cache, "_freeCount")
-    if freeCount < rawget(cache, "_maxEntries") then
-        freeCount = freeCount + 1
-        rawget(cache, "_free")[freeCount] = entry
-        rawset(cache, "_freeCount", freeCount)
-    end
+    local freeCount = rawget(cache, "_freeCount") + 1
+    rawget(cache, "_free")[freeCount] = entry
+    rawset(cache, "_freeCount", freeCount)
 end
 
 ---Return a blank entry, from the free list when it has one.

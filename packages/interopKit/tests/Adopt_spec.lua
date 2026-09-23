@@ -120,6 +120,23 @@ describe("InteropKit adoption", function()
             assert.are.equal(4, InteropKit:Adopted()[1].minor)
         end)
 
+        it("answers Find without allocating", function()
+            libStub:NewLibrary("LibDataBroker-1.1", 4)
+            InteropKit:AdoptFromLibStub("LibDataBroker-1.1")
+            InteropKit:Find("LibDataBroker-1.1")
+
+            collectgarbage("collect")
+            collectgarbage("stop")
+            local before = collectgarbage("count")
+            for _ = 1, 1000 do
+                InteropKit:Find("LibDataBroker-1.1")
+                InteropKit:Find("LibNeverAdopted-1.0")
+            end
+            local allocated = collectgarbage("count") - before
+            collectgarbage("restart")
+            assert.are.equal(0, allocated)
+        end)
+
         it("adopts a Kit the bridge exposed", function()
             InteropKit:ExposeToLibStub("interopKit", 1)
             local library, minor = InteropKit:AdoptFromLibStub("MoltenCodes-InteropKit-1")

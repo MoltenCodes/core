@@ -42,6 +42,22 @@ describe("MediaKit and secret values", function()
         assert.is_false(MediaKit:IsFileDataID(12345))
     end)
 
+    it("refuses a secret script name at the caller", function()
+        TestEnv.InstallSecretProbe("cyrillic")
+        TestEnv.expectErrorContaining(
+            "MediaKit:Register scripts must not contain a secret value",
+            function()
+                MediaKit:Register(
+                    "font",
+                    "Name",
+                    "Fonts\\Name.ttf",
+                    { scripts = { "latin", "cyrillic" } }
+                )
+            end
+        )
+        assert.is_false(MediaKit:Has("font", "Name", { anyScript = true }))
+    end)
+
     it("refuses a secret type", function()
         TestEnv.InstallSecretProbe("statusbar")
         TestEnv.expectErrorContaining("MediaKit:List type must not be a secret value", function()

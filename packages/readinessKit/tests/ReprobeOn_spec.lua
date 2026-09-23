@@ -102,6 +102,27 @@ describe("ReadinessKit ReprobeOn", function()
         assert.are.same({}, TestEnv.ReportedErrors())
     end)
 
+    it("reports a refused host registration and can connect again later", function()
+        local ReadinessKit = TestEnv.NewPackage()
+        local ready = false
+        local gate = ReadinessKit:Gate("reprobe.refused", function()
+            return ready
+        end)
+
+        TestEnv.FailNextRegisterEvent()
+        TestEnv.expectErrorContaining(
+            "ReadinessKit.Gate:ReprobeOn could not connect SPELLS_CHANGED: ",
+            function()
+                gate:ReprobeOn("SPELLS_CHANGED")
+            end
+        )
+
+        assert.is_true(gate:ReprobeOn("SPELLS_CHANGED"))
+        ready = true
+        TestEnv.Emit("SPELLS_CHANGED")
+        assert.is_true(gate:IsReady())
+    end)
+
     it("raises at the caller when EventKit is not available", function()
         local ReadinessKit = TestEnv.NewPackageWithoutEventKit()
         local gate = ReadinessKit:Gate("spellbook", function()
@@ -115,5 +136,35 @@ describe("ReadinessKit ReprobeOn", function()
         )
         assert.is_false(gate:IsClosed())
         assert.is_true(gate:Close())
+    end)
+
+    it("names Registry:Find when the embedded Registry predates it", function()
+        local ReadinessKit, Registry = TestEnv.NewPackage()
+        local gate = ReadinessKit:Gate("spellbook", function()
+            return false
+        end)
+        rawset(Registry, "Find", nil)
+        TestEnv.expectErrorContaining(
+            "ReadinessKit.Gate:ReprobeOn requires Registry:Find (Registry API 2 revision 7 or newer)",
+            function()
+                gate:ReprobeOn("SPELLS_CHANGED")
+            end
+        )
+    end)
+
+    it("refuses an EventKit facade without CreateScope", function()
+        local ReadinessKit, Registry = TestEnv.NewPackage()
+        local gate = ReadinessKit:Gate("spellbook", function()
+            return false
+        end)
+        rawset(Registry, "Find", function()
+            return {}
+        end)
+        TestEnv.expectErrorContaining(
+            "ReadinessKit.Gate:ReprobeOn requires a valid EventKit API 1 facade",
+            function()
+                gate:ReprobeOn("SPELLS_CHANGED")
+            end
+        )
     end)
 end)

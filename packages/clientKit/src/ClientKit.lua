@@ -254,16 +254,18 @@ if previousRevision == nil then
         host = {},
     }
     rawset(ClientKit, "_state", state)
-elseif type(state) ~= "table" or type(rawget(state, "capabilities")) ~= "table" then
+elseif
+    type(state) ~= "table"
+    or type(rawget(state, "capabilities")) ~= "table"
+    or type(rawget(state, "host")) ~= "table"
+then
+    -- Revision 1 created both tables, so an inherited state without either was
+    -- modified from outside and is refused rather than silently rebuilt.
     error("MoltenCodes ClientKit package state is corrupted or incomplete", 2)
 end
 
 local capabilities = rawget(state, "capabilities")
 local host = rawget(state, "host")
-if type(host) ~= "table" then
-    host = {}
-    rawset(state, "host", host)
-end
 
 -- Host probing ---------------------------------------------------------------
 --

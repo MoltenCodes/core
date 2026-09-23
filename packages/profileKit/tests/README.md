@@ -11,7 +11,9 @@ The ProfileKit suite covers:
   backwards clock jump dropped with `"clockReset"`;
 - `Measure` passing arguments in and every result out (trailing `nil`s
   included), re-raising string and table errors unchanged after recording the
-  span, sharing a section with `Section`, and recursion measured once;
+  span, sharing a section with `Section`, recursion measured once, running
+  unmeasured under an open manual `Begin`, and a span `fn` ends itself recorded
+  once;
 - the section cap: `nil, "capped"` beyond `DEFAULT_MAX_SECTIONS`, existing
   sections still returned, and `Measure` running unmeasured for a refused name;
 - `Report` ordering and fresh tables, `Reset`, and `Disable` then `Enable`
@@ -27,3 +29,13 @@ The ProfileKit suite covers:
 The clock is the shared fixture's `ClockStub`. A spec that needs a host without
 the clock calls `ProfileKitTestEnv.NewPackageWithoutProfilingClock()`, because
 `NewPackage` resets the stubs and would restore it.
+
+| Spec | Covers |
+|---|---|
+| `ProfileKit_spec.lua` | switching, sections, statistics, nesting, clock resets, `Report`, `Reset` |
+| `Measure_spec.lua` | `Measure` results, errors, recursion and self-ended spans |
+| `Disabled_spec.lua` | the no-op bindings and both allocation guards |
+| `Cap_spec.lua` | the section cap |
+| `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
+| `Bootstrap_spec.lua` | publication, duplicate loads, upgrades, corrupted state |
+| `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement, declared dependencies |

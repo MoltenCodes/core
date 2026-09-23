@@ -121,6 +121,35 @@ describe("ProfileKit:Measure", function()
         assert.are.equal(0, rowFor(ProfileKit, "switch off").count)
     end)
 
+    it("runs unmeasured while a manual Begin of the same section is open", function()
+        local section = ProfileKit:Section("shared")
+        section:Begin()
+        Env.AdvanceProfileMs(2)
+        assert.are.equal(
+            "inner",
+            ProfileKit:Measure("shared", function()
+                Env.AdvanceProfileMs(3)
+                return "inner"
+            end)
+        )
+        assert.are.equal(0, rowFor(ProfileKit, "shared").count)
+        assert.are.equal(5, section:End())
+        assert.are.equal(1, rowFor(ProfileKit, "shared").count)
+    end)
+
+    it("records the span once when fn ends the section itself", function()
+        local section = ProfileKit:Section("self-ended")
+        ProfileKit:Measure("self-ended", function()
+            Env.AdvanceProfileMs(4)
+            section:End()
+            Env.AdvanceProfileMs(1)
+        end)
+        assert.are.same(
+            { name = "self-ended", count = 1, total = 4, max = 4, last = 4 },
+            rowFor(ProfileKit, "self-ended")
+        )
+    end)
+
     it("passes through unchanged while disabled", function()
         ProfileKit:Disable()
         local failure = { code = 1 }

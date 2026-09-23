@@ -72,6 +72,7 @@ three build values are `nil` and the interface number is `0`, so
 `IsAtLeast(n)` answers `false` for every real `n`.
 
 `IsAtLeast(interfaceNumber)` is `GetInterfaceNumber() >= interfaceNumber`.
+A non-number `interfaceNumber`, and NaN, raise at the caller.
 Interface numbers are ordered **within one flavour only**: Classic Era's
 `11509` is lower than Mists Classic's `50504` though both are current. When a
 floor depends on the flavour, test the flavour first:

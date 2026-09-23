@@ -122,6 +122,34 @@ describe("CacheKit clear-on-event", function()
         assert.is_true(cache:Close())
     end)
 
+    it("names Registry:Find when the embedded Registry predates it", function()
+        local CacheKit, Registry = TestEnv.NewPackageWithoutEventKit()
+        local cache = CacheKit:NewLru({ maxEntries = 4 })
+        rawset(Registry, "Find", nil)
+
+        TestEnv.expectErrorContaining(
+            "CacheKit.Cache:ClearOn requires Registry:Find (Registry API 2 revision 7 or newer)",
+            function()
+                cache:ClearOn("SPELLS_CHANGED")
+            end
+        )
+    end)
+
+    it("refuses an EventKit facade without CreateScope", function()
+        local CacheKit, Registry = TestEnv.NewPackageWithoutEventKit()
+        local cache = CacheKit:NewLru({ maxEntries = 4 })
+        rawset(Registry, "Find", function()
+            return {}
+        end)
+
+        TestEnv.expectErrorContaining(
+            "CacheKit.Cache:ClearOn requires a valid EventKit API 1 facade",
+            function()
+                cache:ClearOn("SPELLS_CHANGED")
+            end
+        )
+    end)
+
     it("finds an EventKit loaded after CacheKit", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
