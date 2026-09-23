@@ -17,6 +17,7 @@ This directory is the entry point for repository-wide documentation.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) explains package boundaries, dependency direction, API generations, and embedded package identity.
 - [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md) defines the canonical machine-readable package metadata contract.
 - [`ROADMAP.md`](ROADMAP.md) records what was decided and delivered in each phase, the nine-point record of every planned Kit, and the standing obligations.
+- [`API_KIT_DESIGN.md`](API_KIT_DESIGN.md) is the design baseline of `apiKit`, the planned flavour-aware wrapper over the WoW addon API: namespaces, naming rules, metadata pipeline, outputs and definition of done.
 
 ## Development workflow
 

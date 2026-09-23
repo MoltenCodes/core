@@ -158,8 +158,9 @@ Repository mechanics that keep the above honest as the framework grows.
 Decided 2026-09-23 after a study of seven references (Ace3 and LibStub,
 LibRangeCheck-3.0, LibSpellRange-1.0, WeakAuras_SharedMedia, LibGetFrame-1.0,
 and the 309-entry WowAce library directory). Ideas and designs were taken,
-never code. The work is sequenced in five packages, A to E; each package ends
-with an acceptance review before the next begins. A new Kit is recorded here
+never code. The work was sequenced in five packages, A to E, then F and G; each package
+ends with an acceptance review before the next begins. Package H, the WoW
+API wrapper, was added on 2026-09-23 from the owner's design brief. A new Kit is recorded here
 with the nine points of the "Planned package policy" before its code is
 written; capabilities added to an existing Kit are checkboxes under that Kit.
 
@@ -977,6 +978,145 @@ the Kits or depend on the installed addon, and Registry lets both coexist.
       addon embeds Kits while the standalone addon is also installed; the root
       README says the framework installs as an addon or embeds.
 
+#### Package H — apiKit, the WoW API wrapper
+
+Decided 2026-09-23 with the project owner, from the owner's design brief. The
+brief is consolidated as [`API_KIT_DESIGN.md`](API_KIT_DESIGN.md), which is
+the canonical design; this entry records the nine points and the delivery
+sequence. Seven points where the brief and the repository's conventions
+differed were settled before anything was written: the package is `apiKit`
+(not `api`); the `wow` global is published only when free and the
+namespaces are always reachable as `MoltenCodes.wow…`; the source is the
+client's own documentation tables through the community mirror at pinned
+commits, with only normalised metadata committed; names follow generated
+rules with a reviewed alias table; one flavour is populated per session;
+the generator is Python under `tooling/api/` with outputs under the package;
+the whole documented surface is generated, the hand work is the pipeline,
+the rules, the exceptions, the validation and the tests.
+
+Nothing in this package is ticked until its acceptance review closes, the
+way packages A to G were handled. Code starts only after the owner's go.
+
+##### Package H planned Kit — the nine points
+
+**apiKit** — facade `ApiKit`
+
+1. Package `apiKit`, facade `ApiKit`, API generation 1.
+2. Purpose: a complete, typed, documented, flavour-aware developer interface
+   over the public World of Warcraft addon API. Per flavour (Retail, Classic
+   Era, Mists of Pandaria Classic, PTR, Beta) a generated file binds every
+   documented `C_*` function and documented global function to a readable
+   name (`api.addOnProfiler.measureCall`, alias `api.profiler`), exposes
+   event names and enum tables, and ships LuaCATS definitions so an editor
+   completes exactly what that flavour has. Metadata normalised from the
+   client's documentation tables is the single source of truth for the
+   runtime file, the types, the reference and the change reports.
+   Non-goals: replacing or emulating the Blizzard API, flattening flavours,
+   hiding protected or taint behaviour, ergonomic helpers in the initial
+   release, wrappers for undocumented FrameXML functions.
+3. Dependencies: registry API 2. No other Kit; flavour detection is a few
+   host reads inside the facade. Development-time only: the Python tooling
+   under `tooling/api/` and the pinned StyLua for generated Lua.
+4. Surface: `ApiKit:GetFlavor()` → `"retail" | "classic-era" |
+   "classic-mop" | "ptr" | "beta" | "unsupported"`; `ApiKit:GetGlobalStatus()`
+   → `"published" | "taken"`; `ApiKit:RegisterFlavor(flavour, install)` (the
+   entry point the generated flavour files call; the installer runs only when
+   `flavour` is the running one, otherwise it is dropped and nothing is
+   retained); `ApiKit:GetMetadataBuild(flavour)` → the build string the
+   committed metadata was captured from, so an addon can compare it with
+   `GetBuildInfo()`; the namespace root `MoltenCodes.wow` with `retail`,
+   `classic.era`, `classic.mop`, `ptr`, `beta` each holding an `api` table
+   (populated for the running flavour, empty for the others); the `wow` global
+   under the publication rule; per flavour `api.<namespace>.<function>`,
+   `api.events.<name>` string constants and `api.enums.<name>` aliases.
+   `API`, `REVISION` and `SUPPORTED_FLAVORS` (a read-only proxy) on the
+   facade. No `SetLimits`: the package holds no growing state, and its docs
+   say so.
+5. Ownership: the facade is bootstrapped through Registry and upgraded in
+   place; a flavour installer runs once per session, at file load, writing
+   into package state that Registry hands to a newer compatible revision; an
+   addon owns nothing and closes nothing. The `wow` global is written once,
+   only when `nil`, and is never reclaimed or overwritten.
+6. Performance: the normal call path is one table index over a raw call;
+   bindings are direct aliases, never forwarding functions; no closures,
+   temporary tables, string work, reflection or retained tooling metadata at
+   runtime. Load cost is one pass over the running flavour's bindings; a
+   file for another flavour returns after its guard. Parse time and retained
+   memory per flavour file are measured and recorded before the first release
+   (the brief's performance review).
+7. Tests: Python tests for the Lua-literal parser, normalisation, every naming
+   rule, initialism and exception, aliases, flavour partitioning, version
+   comparison and history, each generator, the validator, and byte-identical
+   output on a second run, over project-written fixtures in the documentation
+   format; Busted specs for bootstrap and upgrade, flavour detection on stubbed
+   hosts including PTR and Beta probes and an unsupported client, the `wow`
+   rule in both states, `RegisterFlavor` for the running and for another
+   flavour, alias resolution preserving multiple returns and `nil`, no
+   argument transformation, absent host functions absent from the wrapper,
+   error levels, manifest; a sampled spec per committed flavour that loads the
+   generated file against a metadata-built stub host; a regression test for
+   every generation or mapping defect.
+8. Docs: README (what it is, the three access paths, the `.luarc.json` entry
+   for types, footprint); `docs/API.md` (the facade contract, the wrapper
+   function exceptions, the raw escape hatch); `docs/NAMING.md` (rules,
+   initialisms, exceptions, aliases); `docs/UPDATING.md` (new-build
+   procedure); `metadata/SCHEMA.md`; generated reference and change reports;
+   CHANGELOG naming the captured build per flavour; EMBEDDING.md gains the
+   second-global rule, the footprint row and the load-order entries;
+   ARCHITECTURE.md and `docs/README.md` list the package; the design document
+   stays current.
+9. Status: planned; recorded 2026-09-23. Nothing implemented.
+
+##### Delivery sequence
+
+Each step ends with the gates green and a read-only review before the next
+begins; H4 to H6 may overlap where they do not share files.
+
+- [ ] **H0 — repository prerequisites.** The builder, the TOC generator, the
+      standalone-addon TOC and the repository validator list a package's
+      additional runtime files (`src/flavours/*.lua`) after its facade in
+      load order, in the bundle manifest and in `.pkgmeta`; the spell and
+      link gates skip generated `docs/reference/` and `docs/changes/`
+      directories; `tooling/api/flavours.json` maps each apiKit flavour to
+      its mirror branch and its detection facts. Tooling tests for each.
+- [ ] **H1 — metadata schema and normaliser.** `metadata/SCHEMA.md`;
+      `tooling.api.fetch` (one flavour, one pinned mirror commit, scratch
+      directory outside the repository, provenance recorded);
+      `tooling.api.normalize` with a Lua-literal parser for the documentation
+      tables, the naming rules from `tooling/api/naming.json`, the alias
+      table and collision failure; `tooling.api.validate` for the checks in
+      the design document; tests over project-written fixtures.
+- [ ] **H2 — generators.** `tooling.api.generate` writes the runtime flavour
+      file, the LuaCATS definitions, the Markdown reference, the search index
+      and the change report from one metadata capture; StyLua formats the
+      Lua outputs; `luac -p` and the validator gate every output;
+      determinism test; `tooling.api.diff` and the history model.
+- [ ] **H3 — the facade.** `packages/apiKit/src/ApiKit.lua` with the surface
+      in point 4, its specs, manifest, README, `docs/API.md`, `docs/NAMING.md`,
+      CHANGELOG; the `wow` publication rule; error levels at the caller.
+- [ ] **H4 — Retail.** First capture at a pinned mirror commit and build;
+      metadata, runtime file, types, reference and search index committed
+      together; the sampled generated-output spec; the naming exception table
+      filled from the real collisions; load-cost measurement recorded.
+- [ ] **H5 — Classic Era and Mists of Pandaria Classic.** Same as H4 per
+      flavour; flavour-isolation checks across the three captures.
+- [ ] **H6 — PTR and Beta.** Same as H4 when the mirror branches carry the
+      documentation tables; until then the flavours exist as empty surfaces
+      and the README says so.
+- [ ] **H7 — documentation and review.** `docs/UPDATING.md`; EMBEDDING,
+      ARCHITECTURE, `docs/README.md`, RELEASES (how a metadata refresh is
+      versioned) updated; performance review written; acceptance review;
+      `API_KIT_DESIGN.md` checked against what shipped.
+
+Open for the project owner before H1: whether Blizzard's documentation prose
+is carried into hover text and the reference (recommendation: yes, with
+provenance, since the same text is republished by the community references
+addon authors already use); how a metadata refresh is versioned
+(recommendation: a minor version per refresh with the change report in the
+changelog, a removal noted as breaking for that flavour, the API generation
+unchanged because the facade contract does not move); whether the generated
+Markdown reference stays committed once its size is known.
+
 ### Standing obligations
 
 These apply to every phase rather than being completed once.
@@ -1037,5 +1177,6 @@ duplicating those specifications.
 
 ---
 
-Last roadmap baseline update: 2026-09-23 (phases 0 through 4 complete: 24
-packages, every gate green; the standing obligations continue).
+Last roadmap baseline update: 2026-09-23 (phases 0 through 4 and packages F
+and G complete: 24 packages, every gate green; package H, `apiKit`, planned
+and awaiting the owner's go; the standing obligations continue).

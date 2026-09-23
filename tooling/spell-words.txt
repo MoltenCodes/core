@@ -32,6 +32,7 @@ libstub
 MAXEMOTEINDEX
 MOLTENCODES
 myaddon
+nilable
 Pandaria
 Quadrata
 REGEN
