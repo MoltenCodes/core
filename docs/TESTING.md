@@ -11,8 +11,23 @@ Package integration tests
         ↓
 Cross-package tests
         ↓
+In-client suites (testKit)
+        ↓
 World of Warcraft integration tests
 ```
+
+### In-client suites
+
+Only the real client proves four things: event order and payload shapes, combat
+lockdown, taint (`issecurevariable` after our code runs) and the fidelity of the
+shared fixture itself. `testKit` (development-only, never bundled) runs suites
+for exactly those inside the client, gated on LifecycleKit phases and driven by
+SchedulerKit jobs; everything else stays a Busted spec.
+`packages/testKit/fidelity/FixtureFidelity.lua` runs in both environments
+through `packages/testKit/tests/FixtureFidelity_spec.lua`, which lists what the
+fixture does not model yet (`InCombatLockdown` in `AddonStub`, `C_Timer.After`
+in `TimerStub`) and fails as soon as one of them starts passing, so the list
+stays truthful. Add a fidelity test whenever a stub models a new host fact.
 
 Pure Lua tests should remain independent from the WoW client whenever practical. WoW-specific integration should be isolated at narrow boundaries.
 
@@ -51,6 +66,10 @@ python3 -m tooling.test.run
 The runner discovers packages from manifests, generates `LUA_PATH` entries for
 package source, package test support and the shared fixture, then invokes Busted
 for every discovered package.
+
+A package whose manifest declares `"distribution": "development"` is tested
+exactly like any other but is never bundled or published; see
+[`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md#distribution).
 
 ### Which package sources a suite can `require`
 

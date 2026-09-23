@@ -38,6 +38,11 @@ those defaults when they are documented and observable.
 - [x] `hookKit`
 - [x] `settingsKit`
 - [x] `optionsKit`
+- [x] `commandKit`
+- [x] `codecKit`
+- [x] `interopKit`
+- [x] `mediaKit`
+- [x] `testKit` (development only)
 
 These entries describe packages present in this repository snapshot. A checked
 item means its implementation is part of the repository; it does not mean the
@@ -359,7 +364,7 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
       bus at shutdown, the two-step already used for EventKit scopes.
 - [x] `optionsKit` — typed, validated, introspectable options schema with no
       renderer.
-- [ ] `commandKit` — slash commands, hyperlink-aware argument parsing,
+- [x] `commandKit` — slash commands, hyperlink-aware argument parsing,
       output sinks, schema binding, tab completion.
 
 #### Package C planned Kits — the nine points
@@ -605,21 +610,22 @@ the WowAce directory item W6 (a shared validation core).
 8. Docs: README, API.md with a full slash-command example, CHANGELOG;
    EMBEDDING.md host row (`SlashCmdList`, `SLASH_*`, `DEFAULT_CHAT_FRAME`,
    `ChatEdit_CustomTabPressed`).
-9. Status: planned (package C3).
+9. Status: implemented (package C3, 0.1.0); deviations recorded in
+   `packages/commandKit/docs/API.md`.
 
 #### Package D — interoperability and distribution
 
-- [ ] `codecKit` — serialise, compress and channel-encode as three stages
+- [x] `codecKit` — serialise, compress and channel-encode as three stages
       behind a one-byte header; asynchronous variants under the scheduler
       budget.
 - [ ] `commKit` — addon messaging: prefixes, chunking, bounded reassembly,
       priority queues that reject rather than grow, content-hash sync sets.
-- [ ] `mediaKit` — a typed media registry mirroring LibSharedMedia when it is
+- [x] `mediaKit` — a typed media registry mirroring LibSharedMedia when it is
       present.
-- [ ] `interopKit` — the LibStub bridge (expose to LibStub, adopt from it);
+- [x] `interopKit` — the LibStub bridge (expose to LibStub, adopt from it);
       its own package because the registry's line budget is spent.
-- [ ] `testKit` — test suites that run inside the client.
-- [ ] A publish workflow on tags through the packager to the addon sites, in
+- [x] `testKit` — test suites that run inside the client.
+- [x] A publish workflow on tags through the packager to the addon sites, in
       dry-run until the site projects exist.
 
 #### Package D planned Kits — the nine points
@@ -673,7 +679,8 @@ and W9) and the WeakAuras media pack (LibSharedMedia).
 8. Docs: README, API.md specifying the wire format byte by byte with the
    header and extension rules, the type matrix and the security note that
    decoded data is untrusted; INTERNALS.md (compressor design); CHANGELOG.
-9. Status: planned (package D).
+9. Status: implemented (package D, 0.1.0); deviations recorded in
+   `packages/codecKit/docs/API.md`.
 
 **commKit** — facade `CommKit`
 
@@ -762,7 +769,8 @@ and W9) and the WeakAuras media pack (LibSharedMedia).
    levels.
 8. Docs: README, API.md, CHANGELOG; EMBEDDING.md "Coexisting with LibStub"
    gains the shipped bridge.
-9. Status: planned (package D).
+9. Status: implemented (package D, 0.1.0); deviations recorded in
+   `packages/interopKit/docs/API.md`.
 
 **mediaKit** — facade `MediaKit`
 
@@ -791,7 +799,8 @@ and W9) and the WeakAuras media pack (LibSharedMedia).
    a LibSharedMedia stub, no allocation on `Fetch`, upgrade, manifest,
    error levels.
 8. Docs: README, API.md, CHANGELOG; EMBEDDING.md host row.
-9. Status: planned (package D).
+9. Status: implemented (package D, 0.1.0); deviations recorded in
+   `packages/mediaKit/docs/API.md`.
 
 **testKit** — facade `TestKit`
 
@@ -815,7 +824,8 @@ and W9) and the WeakAuras media pack (LibSharedMedia).
 7. Tests: Busted specs for the harness itself (restore on error, tallying,
    async timeouts, filter), plus the fixture-fidelity suite.
 8. Docs: README, API.md, CHANGELOG; a TESTING.md layer "in-client suites".
-9. Status: planned (package D).
+9. Status: implemented (package D, 0.1.0); deviations recorded in
+   `packages/testKit/docs/API.md`.
 
 #### Package E — the last and largest
 
@@ -955,4 +965,4 @@ duplicating those specifications.
 ---
 
 Last roadmap baseline update: 2026-09-23 (phases 0 through 3 complete; phase 4
-packages A and B complete, package C is next).
+packages A to D complete except commKit; package E is next).

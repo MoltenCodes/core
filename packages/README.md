@@ -25,3 +25,8 @@ Current packages:
 - [`hookKit`](hookKit/) — reversible, secure-first hooking of functions, methods and frame scripts.
 - [`settingsKit`](settingsKit/) — saved-variable databases: scopes, validated writes, wildcard defaults, profiles, migrations.
 - [`optionsKit`](optionsKit/) — typed, validated, introspectable options tree with no renderer.
+- [`commandKit`](commandKit/) — slash commands: hyperlink-aware parsing, generated usage, schema-checked arguments, sinks, completion, OptionsKit command line.
+- [`codecKit`](codecKit/) — serialise, compress and channel-encode values; decoding never raises.
+- [`interopKit`](interopKit/) — the LibStub bridge.
+- [`mediaKit`](mediaKit/) — typed media registry, font scripts, sorted lists, per-consumer defaults, LibSharedMedia bridge.
+- [`testKit`](testKit/) — development-only in-client test suites: phase-gated, SchedulerKit-driven, secret-safe expectations, structured results.

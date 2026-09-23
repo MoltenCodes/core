@@ -128,12 +128,16 @@ registry
 ├──→ cacheKit
 ├──→ profileKit
 ├──→ schemaKit
+│       ├──→ commandKit
 │       ├──→ settingsKit   (also needs signalKit)
 │       └──→ optionsKit    (also needs signalKit)
 ├──→ localeKit
 ├──→ hookKit
+├──→ interopKit
 ├──→ poolKit
+│       └──→ codecKit
 └──→ signalKit
+       ├──→ mediaKit
        ↓
      eventKit
        ↓
@@ -143,6 +147,7 @@ registry
     │       ├──→ readinessKit
     │       ↓
     └──→ schedulerKit
+            └──→ testKit   (also lifecycleKit; development only, never bundled)
 ```
 
 Any order consistent with that graph works. This one is consistent with it and
@@ -152,15 +157,19 @@ is what the release artifact's `manifest.json` records under `loadOrder`:
 registry/Registry.lua
 cacheKit/CacheKit.lua
 clientKit/ClientKit.lua
+poolKit/PoolKit.lua
+codecKit/CodecKit.lua
+schemaKit/SchemaKit.lua
+commandKit/CommandKit.lua
 signalKit/SignalKit.lua
 eventKit/EventKit.lua
 hookKit/HookKit.lua
+interopKit/InteropKit.lua
 lifecycleKit/LifecycleKit.lua
 localeKit/LocaleKit.lua
+mediaKit/MediaKit.lua
 moduleKit/ModuleKit.lua
-schemaKit/SchemaKit.lua
 optionsKit/OptionsKit.lua
-poolKit/PoolKit.lua
 profileKit/ProfileKit.lua
 timerKit/TimerKit.lua
 readinessKit/ReadinessKit.lua
@@ -459,15 +468,20 @@ actually touch, which is deliberately small:
 | Kit | Requires | Degrades gracefully without |
 |---|---|---|
 | `registry`, `poolKit` | nothing but Lua 5.1 | — |
-| `moduleKit` | LifecycleKit's surface | HookKit API 1, TimerKit API 1, SchedulerKit API 1, EventKit scopes and SignalKit buses through `Registry:Find` (a missing Kit leaves that `module.scope` field `nil`) |
+| `moduleKit` | LifecycleKit's surface | HookKit, CommandKit, TimerKit and SchedulerKit API 1, EventKit scopes and SignalKit buses through `Registry:Find` (a missing Kit leaves that `module.scope` field `nil`) |
 | `signalKit` | nothing but Lua 5.1 | `securecallfunction` (bus deliveries fall back to `xpcall`), `geterrorhandler` (falls back to `print`), `issecretvalue` (only guards a validator's refusal reason) |
 | `schemaKit` | nothing but Lua 5.1 | `issecretvalue` (looked up at every check; absent: nothing is treated as secret) |
 | `localeKit` | nothing but Lua 5.1 | `GetLocale` (client locale `enUS`), `geterrorhandler` (missing-key reports fall back to `print`), `issecretvalue` (`Format` treats nothing as secret) |
 | `settingsKit` | SchemaKit's and SignalKit's surfaces | `UnitName` and `GetRealmName` (`db.char`, and `db.realm` without `GetRealmName`, unavailable), `UnitClass` (`db.class` unavailable), `UnitFactionGroup` (`db.faction` unavailable); an unavailable scope raises at the reader; `issecretvalue` (nothing treated as secret), `geterrorhandler` (`print`), EventKit API 1 through `Registry:Find` (no compaction at `PLAYER_LOGOUT`; call `db:Compact()`) |
 | `optionsKit` | SchemaKit's and SignalKit's surfaces | `issecretvalue` (looked up at every call; absent: nothing is treated as secret), SettingsKit API 1 through `Registry:Find` (`Define` with `options.db` raises; `get`/`set` options unaffected) |
+| `commandKit` | SchemaKit's surface; `SlashCmdList` (`Register` and `BindOptions` raise at the caller) | `SLASH_<key><n>` and `SecureCmdList` (the taken check finds nothing), `DEFAULT_CHAT_FRAME` (`print`), `ChatEdit_CustomTabPressed` (`EnableCompletion` returns `false`), `ChatEdit_GetActiveWindow`, `geterrorhandler` (`print`), ClientKit API 1 / `issecretvalue`, OptionsKit API 1 (`BindOptions` raises), LocaleKit API 1 (`Printf` uses `string.format`) |
+| `codecKit` | PoolKit's surface | SchedulerKit API 1 through `Registry:Find` (`EncodeAsync` and `DecodeAsync` raise at the caller), `issecretvalue` (looked up at every call; absent: nothing is treated as secret) |
+| `interopKit` | nothing but Lua 5.1 | `LibStub` (every call returns `"absent"`), `issecretvalue` (nothing treated as secret) |
+| `mediaKit` | SignalKit's surface | `GetLocale` (the client writes Latin), `issecretvalue` (nothing is secret), `LibStub` and LibSharedMedia-3.0 (`AdoptLibSharedMedia` and `MirrorToLibSharedMedia` return `false, "absent"`) |
+| `testKit` (development only) | LifecycleKit's and SchedulerKit's surfaces | `issecretvalue` (nothing treated as secret), `issecurevariable` (`ToBeSecure` fails), `GetTimePreciseSec` (`durationMs` 0), `geterrorhandler` (`print`), EventKit and TimerKit API 1 through `Registry:Find` |
 | `hookKit` | nothing but Lua 5.1 | `hooksecurefunc` (`SecureHook` raises at the caller), `issecurevariable` (nothing treated as secure), `Frame:HookScript` / `Frame:GetScript` / `Frame:SetScript` (the matching script hooks raise at the caller), `Frame:IsProtected` (frame not protected), `InCombatLockdown` (never in combat), ClientKit API 1 (`issecretvalue`) |
 | `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript` | `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`) |
-| `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat), HookKit API 1 through `Registry:Find` (its addon scopes are closed at logout when present; the SignalKit addon bus is closed the same way) |
+| `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat), HookKit and CommandKit API 1 through `Registry:Find` (their addon scopes are closed at logout when present, then the SignalKit addon bus) |
 | `readinessKit` | TimerKit's surface | `GetTimePreciseSec` (negative cache disabled, timeouts counted in polls), EventKit API 1 through `Registry:Find` (`gate:ReprobeOn` raises at the caller) |
 | `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | `GetTimePreciseSec` (`GetRemaining` and `GetDeadline` then return `nil`) |
 | `clientKit` | nothing but Lua 5.1 | `WOW_PROJECT_ID` (flavour `"classic"`), `GetBuildInfo` (interface `0`), `issecretvalue` (`IsSecret` false), `C_EventUtils.IsEventValid` (`IsEventValid` nil), `IsForbidden` / `CanBeAccessedInContext` (`CanAccessFrame` true), `C_AddOns` / `C_Spell` / `C_Item` (legacy globals, then nil or false) |
@@ -481,47 +495,43 @@ revision.
 
 ## Coexisting with LibStub
 
-**The Registry is not LibStub, and the two do not interact.**
+**The Registry is not LibStub.** They solve the same problem in different
+ways. LibStub keys a library by name and a single integer minor version, and
+hands out one table per name. Registry keys a package by `(name, API
+generation)`, orders implementations inside a generation by revision, and never
+replaces the table it handed out. The two live side by side in one addon with
+nothing special: they are different globals (`LibStub` and `MoltenCodes`) with
+different state, so embedding Ace3 and MoltenCodes together only means listing
+each library's files in your `.toc` in its own required order. The framework
+never requires LibStub to be present.
 
-They solve the same problem in different ways. LibStub keys a library by name
-and a single integer minor version, and hands out one table per name. Registry
-keys a package by `(name, API generation)`, orders implementations inside a
-generation by revision, and never replaces the table it handed out. The
-consequences differ enough that pretending one is the other would be misleading,
-so the framework does not try.
-
-What this means in practice:
-
-- **Both can live in one addon.** They are different globals (`LibStub` and
-  `MoltenCodes`) with different state. Embedding Ace3 and MoltenCodes side by
-  side needs nothing special; list each library's files in your `.toc` in its own
-  required order.
-- **MoltenCodes Kits are not LibStub libraries.** No Kit calls
-  `LibStub:NewLibrary` or `LibStub:GetLibrary`, and no Kit appears in a LibStub
-  listing. Do not write `LibStub("SignalKit-1.0")`; it will return `nil`.
-- **The framework does not depend on LibStub being present**, and does not care
-  whether it is.
-
-If you genuinely need a LibStub-visible handle — for example a plugin API of
-your own that other authors reach through LibStub — bridge it in **your** addon
-rather than in the framework:
+**The shipped bridge is `InteropKit`** (package `interopKit`). Without it, no
+Kit is a LibStub library: `LibStub("MoltenCodes-EventKit-1")` returns `nil`.
+With it:
 
 ```lua
--- In your addon, after the MoltenCodes files have loaded.
-if LibStub then
-    local bridge, oldMinor = LibStub:NewLibrary("MyAddon-Signals-1.0", 1)
-    if bridge and not oldMinor then
-        local Registry = MoltenCodes.Registries[2]
-        bridge.SignalKit = Registry:Get("signalKit", 1)
-    end
-end
+local InteropKit = MoltenCodes.Registries[2]:Get("interopKit", 1)
+
+-- Publish one Kit, or every active Kit, to LibStub consumers.
+InteropKit:ExposeToLibStub("eventKit", 1)   -- LibStub("MoltenCodes-EventKit-1")
+InteropKit:ExposeAll()
+
+-- Read a LibStub library with Registry:Find's silent contract.
+local LDB = InteropKit:AdoptFromLibStub("LibDataBroker-1.1")
 ```
 
-Two warnings about doing that. First, the bridge table is yours and its
-versioning is yours; do not present it as the framework's contract. Second,
-`bridge.SignalKit` is a reference to the shared Kit table, which is exactly the
-reference that stays valid across revision upgrades — so store the table, never
-individual methods off it.
+The major is `MoltenCodes-<Facade>-<api>` and the minor is the implementation
+revision, so a newer embedded copy raises the minor exactly as LibStub expects.
+A major another library already holds is refused, never overwritten. The
+bridge's only write into LibStub's tables is replacing the table
+`LibStub:NewLibrary` just created with the shared Kit facade, so consumers get
+the same table Registry hands out, the one that stays valid across revision
+upgrades. Store that table, never individual methods off it. The exact contract
+is in [`interopKit/docs/API.md`](../packages/interopKit/docs/API.md).
+
+Two Kits read LibStub libraries themselves, at call time and only when asked:
+`MediaKit` adopts and mirrors LibSharedMedia-3.0, and `InteropKit` is the
+bridge above. Every other Kit ignores LibStub.
 
 ## Taint
 

@@ -30,6 +30,7 @@ license-output: LICENSE
 
 # Everything that exists for development rather than for the game client.
 ignore:
+  - packages/testKit
   - .busted
   - .editorconfig
   - .gitattributes
@@ -74,3 +75,7 @@ move-folders:
   MoltenCodes/packages/hookKit/src: MoltenCodes/hookKit
   MoltenCodes/packages/settingsKit/src: MoltenCodes/settingsKit
   MoltenCodes/packages/optionsKit/src: MoltenCodes/optionsKit
+  MoltenCodes/packages/commandKit/src: MoltenCodes/commandKit
+  MoltenCodes/packages/codecKit/src: MoltenCodes/codecKit
+  MoltenCodes/packages/interopKit/src: MoltenCodes/interopKit
+  MoltenCodes/packages/mediaKit/src: MoltenCodes/mediaKit

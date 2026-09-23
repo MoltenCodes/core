@@ -48,6 +48,11 @@ Current package entry points:
 - [`HookKit`](../packages/hookKit/README.md) — reversible, secure-first hooking in three named semantics.
 - [`SettingsKit`](../packages/settingsKit/README.md) — saved-variable databases with scopes, validated writes, profiles and migrations.
 - [`OptionsKit`](../packages/optionsKit/README.md) — typed, validated, introspectable options tree with no renderer.
+- [`CommandKit`](../packages/commandKit/README.md) — slash commands with hyperlink-aware parsing, generated usage, sinks, completion and an OptionsKit command line.
+- [`CodecKit`](../packages/codecKit/README.md) — serialise, compress and channel-encode values into addon-channel or printable strings; decoding never raises.
+- [`InteropKit`](../packages/interopKit/README.md) — the LibStub bridge.
+- [`MediaKit`](../packages/mediaKit/README.md) — typed media registry with font scripts, per-consumer defaults and LibSharedMedia mirroring.
+- [`TestKit`](../packages/testKit/README.md) — development-only in-client test suites with structured results.
 
 Each package keeps its complete public contract under its own `docs/API.md`.
 
