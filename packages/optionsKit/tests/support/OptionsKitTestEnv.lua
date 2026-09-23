@@ -60,6 +60,10 @@ function OptionsKitTestEnv.NewDatabase(defaults)
     function db:OnChange(_, _)
         return nil
     end
+    -- The stand-in's scopes declare no schema, so every write is accepted.
+    function db:Validate(_, _, _)
+        return true
+    end
     return db
 end
 

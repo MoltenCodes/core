@@ -13,6 +13,7 @@ The SettingsKit suite covers:
 - values a saved variable cannot hold: a view assigned as a value (the review's aliasing probe, on a host without `issecretvalue`), a view nested in a table, tables with a metatable;
 - keyed-section reads storing nothing: twelve reads of a `max = 3` section with a plain-table wildcard, a key the key schema refuses, and a plain-table default read inside an entry that is not saved;
 - `db:Pairs`: record and keyed-section views, undeclared saved keys, no allocation, and refusal of anything but a view of the database;
+- `db:Validate`: accepted values with nothing written or signalled, refusal messages identical to a refused write's (schema, undeclared field, key schema, view, metatable, secret value and key), a full keyed section, paths through a non-record, the current profile, argument errors, and no allocation for a valid array-path check;
 - a secret read key on a record view, and undeclared keys surviving `Compact`;
 - allocation guards (`collectgarbage("count")` with the collector stopped) on a default read, top-level, nested and through a wildcard entry, and on a validated write of an existing key with a listener connected;
 - duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, SchemaKit or SignalKit, an incomplete facade, loading without EventKit, and an in-place upgrade to revision 2 that keeps the database, its views, its listeners and its logout compaction;

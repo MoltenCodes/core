@@ -1149,6 +1149,33 @@ local function walkBound(tree, record, methodName, level)
     return container, count
 end
 
+---Ask the database whether writing `value` at a bound option's path would be
+---accepted, without writing. The key array split at `Define` is passed as it
+---is, which SettingsKit checks without allocating. Returns `true`, or `false`
+---and SettingsKit's message: the text `Set` would raise after its prefix.
+---@param tree OptionsKit.Tree
+---@param record table
+---@param value any
+---@param methodName string
+---@param level integer
+---@return boolean accepted
+---@return string|nil message
+local function validateBound(tree, record, value, methodName, level)
+    local db = rawget(tree, "_db")
+    local scope = rawget(record, "_bindScope")
+    if type(rawget(db, scope)) ~= "table" then
+        error(
+            methodName .. ' bind scope "' .. scope .. '" is not an available scope of the database',
+            level
+        )
+    end
+    local accepted, message = db:Validate(scope, rawget(record, "_bindKeys"), value)
+    if accepted == true then
+        return true, nil
+    end
+    return false, withoutPosition(message)
+end
+
 ---@param tree OptionsKit.Tree
 ---@param record table
 ---@param methodName string
@@ -1308,7 +1335,11 @@ local function treeValidate(self, path, value)
         local where = failure.path == "" and "" or failure.path .. ": "
         return false, where .. "expected " .. failure.expected .. ", found " .. failure.found
     end
-    return runValidate(record, value)
+    local accepted, message = runValidate(record, value)
+    if not accepted or not rawget(record, "_bindScope") then
+        return accepted, message
+    end
+    return validateBound(self, record, value, "OptionsKit.Tree:Validate", 3)
 end
 
 ---Reset a bound option to its SettingsKit default by clearing the stored
@@ -1523,7 +1554,11 @@ local function readDefineOptions(options, level)
     if type(SettingsKit) ~= "table" then
         error("OptionsKit:Define options.db needs SettingsKit API 1 to be loaded", level)
     end
-    if type(db) ~= "table" or type(db.OnChange) ~= "function" then
+    if
+        type(db) ~= "table"
+        or type(db.OnChange) ~= "function"
+        or type(db.Validate) ~= "function"
+    then
         error("OptionsKit:Define options.db must be a SettingsKit database", level)
     end
     return db

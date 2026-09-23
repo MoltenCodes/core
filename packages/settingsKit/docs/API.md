@@ -66,6 +66,7 @@ Databases:
 | `Compact()` | Remove every saved value equal to its default. |
 | `GetSavedVariable()` | The global name the database was opened over. |
 | `Pairs(view)` | Iterate a view: keys with defaults, then saved keys. |
+| `Validate(scope, path, value)` | Whether a write would be accepted, without writing. |
 
 The `On*` methods return SignalKit connections; `connection:Disconnect()` stops the listener.
 
@@ -298,6 +299,22 @@ The signal fires after the value is stored. SignalKit's dispatch rules apply: li
 
 `for key, value in db:Pairs(db.profile) do ... end` iterates a view of this database: first every key that has a default (a record's field defaults, or a keyed section's own default entries — never its wildcard, which covers every possible key), then every saved key without a default, including undeclared ones. Each value is what reading `view[key]` returns, so a record field yields its child view. Order within each phase is `next` order. The iterator is stateless and allocates nothing. As with `pairs`, do not add keys to the view while iterating it. Anything but a view of this database is refused at your line.
 
+## `db:Validate(scope, path, value)`
+
+```lua
+local ok, message = db:Validate("profile", { "auras", 118, "shown" }, false)
+local ok, message = db:Validate("profile", "frame.x", 120)
+```
+
+Returns `true` when writing `value` at `path` in `scope` would be accepted, and `false, message` otherwise, where `message` is exactly the text the refused write would raise, without the `file:line:` prefix. It runs every check a write through a view runs, in the same order — the secret refusal, the view and metatable refusal, the schema check, and the key schema and `max` of every keyed section on the path — and writes nothing: no saved table, no keyed-section entry, no `OnChange`. A `profile` path is checked against the current profile.
+
+`path` is either:
+
+- **an array of keys**, `{ "auras", 118, "shown" }`, used exactly as given. A valid check allocates nothing, provided the entry views on the path are alive: entry views are cached while referenced, and a collection may drop an unreferenced one, which the next check rebuilds;
+- **a dotted string**, `"auras.118.shown"`. Each segment is a string key, except that a segment indexing a keyed section whose key schema is a number becomes a number when it reads as one. Splitting the string allocates the segments.
+
+Every step but the last must lead to a record or keyed-section field; otherwise the result is `false, "SettingsKit (MyAddonDB) profile.scale is not a record or keyed section"`. A secret, `nil` or NaN key on the path gives `false` and the matching message. A scope that is not declared and available, an empty array, an empty segment (`"frame..x"`) or a path of another type raises at your line.
+
 ## `db:Compact()`
 
 Walks every declared scope — every stored character, realm, class and faction entry and every profile, not only the current ones — and removes:
@@ -335,7 +352,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **A read resolves the saved table through each nesting level** instead of holding it. That keeps every view valid across `ResetProfile`, `CopyProfile` and `ResetDatabase`, which replace or empty saved tables, at the cost of one lookup per level.
 - **The profile choice is recorded by `SetProfile`**, not at `Open`, so a character that never switches writes nothing.
 - **Views are refused as values**, together with any table carrying a metatable. A stored view would alias another view's data and be written through without validation, because Lua 5.1 calls `__newindex` only for absent keys.
-- **Additions:** `db:Pairs(view)`, because Lua 5.1 cannot iterate a proxy with `pairs`; `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` methods; a fifth `path` argument to `OnChange` listeners; `db:GetSavedVariable()`; `Compact` returns a count; `SettingsKit.DEFAULT_PROFILE` and `SettingsKit.MAX_PROFILE_NAME_LENGTH`.
+- **Additions:** `db:Validate(scope, path, value)`, for an options layer that checks a value before it writes it (optionsKit binds options to database paths); `db:Pairs(view)`, because Lua 5.1 cannot iterate a proxy with `pairs`; `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` methods; a fifth `path` argument to `OnChange` listeners; `db:GetSavedVariable()`; `Compact` returns a count; `SettingsKit.DEFAULT_PROFILE` and `SettingsKit.MAX_PROFILE_NAME_LENGTH`.
 
 ## Embedded copies and upgrades
 

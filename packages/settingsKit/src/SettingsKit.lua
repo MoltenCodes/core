@@ -120,6 +120,7 @@ local DATABASE_METHODS = {
     "Compact",
     "GetSavedVariable",
     "Pairs",
+    "Validate",
 }
 
 local WEAK_KEYS = { __mode = "k" }
@@ -190,6 +191,7 @@ local WEAK_VALUES = { __mode = "v" }
 ---@field OnProfileDeleted fun(self: SettingsKit.Database, callback: SettingsKit.ProfileListener): SignalKit.Connection
 ---@field Compact fun(self: SettingsKit.Database): integer
 ---@field GetSavedVariable fun(self: SettingsKit.Database): string
+---@field Validate fun(self: SettingsKit.Database, scope: SettingsKit.ScopeName, path: string|any[], value: any): boolean, string?
 ---@field Pairs fun(self: SettingsKit.Database, view: table): (fun(view: table, key: any): any, any), table, nil
 
 ---The SettingsKit package facade published through Registry.
@@ -210,6 +212,7 @@ local WEAK_VALUES = { __mode = "v" }
 ---@field ownDefaults table|false Record: every field default, filled.
 ---@field values SettingsKit.Plan|false Map: the plan of every value.
 ---@field max integer|false Map: the most entries it may hold.
+---@field keyKind string|false Map: the SchemaKit kind of its keys, for converting a dotted path segment.
 ---@field default any The declared default, filled; for a map's values, the wildcard default.
 
 -- Dependencies ---------------------------------------------------------------
@@ -870,6 +873,7 @@ local function compilePlan(description, depth, label)
         ownDefaults = false,
         values = false,
         max = false,
+        keyKind = false,
         default = fillDefaults(description, nil, depth),
     }
     if depth > MAX_DEPTH then
@@ -904,6 +908,7 @@ local function compilePlan(description, depth, label)
         plan.proxied = KIND_MAP
         plan.values = valuesPlan
         plan.max = description.max
+        plan.keyKind = description.keys and description.keys.kind or false
     end
     return plan
 end
@@ -1389,33 +1394,26 @@ local function failureMessage(node, failure)
         .. failure.found
 end
 
----Validate and store `node[key] = value`, then fire the scope's change signal.
----Every refusal is raised at the writing line: this function is called by
----`viewNewIndex`, which is called by the writer, so `level` is 3.
+---Return why the write `node[key] = value` would be refused, or `nil` when it
+---would be accepted. Runs every check a write runs, in the same order, and
+---writes nothing: the probe chain is set and cleared again. The message is
+---built only for a refusal, so an accepted write allocates nothing here.
 ---@param node table
 ---@param key any
 ---@param value any
-local function writeView(node, key, value)
-    local db = node.db
-    local label = "SettingsKit (" .. db._name .. ") "
+---@return string|nil refusal
+local function refuseWrite(node, key, value)
+    local label = "SettingsKit (" .. node.db._name .. ") "
     if node.root.dead then
-        error(
-            label .. node.displayPath .. " belongs to a profile that was deleted or reset away",
-            3
-        )
+        return label .. node.displayPath .. " belongs to a profile that was deleted or reset away"
     end
 
     local isSecretValue = readIsSecret()
     if isSecretValue ~= nil and isSecretValue(key) then
-        error(
-            label
-                .. node.displayPath
-                .. " refused a secret key: saved variables never hold secret values",
-            3
-        )
+        return label
+            .. node.displayPath
+            .. " refused a secret key: saved variables never hold secret values"
     end
-    -- A nil or NaN key never gets here: Lua 5.1 refuses it while looking for
-    -- the slot, before it consults `__newindex`.
     -- Every table is scanned, whether or not the host has secret values: a
     -- view stored in a saved table would alias another view's data and be
     -- written through without validation, and a metatable never survives a
@@ -1427,37 +1425,55 @@ local function writeView(node, key, value)
         problem = scanValue(value, isSecretValue, 1, MAX_SCANNED_ENTRIES)
     end
     if problem ~= nil then
-        error(label .. node.displayPath .. formatKey(key) .. VALUE_REFUSALS[problem], 3)
+        return label .. node.displayPath .. formatKey(key) .. VALUE_REFUSALS[problem]
     end
 
     local ok, failure = checkWrite(node, key, value)
     if not ok then
         ---@cast failure SchemaKit.Failure
-        error(failureMessage(node, failure), 3)
+        return failureMessage(node, failure)
+    end
+
+    if value ~= nil then
+        local fullMap = findFullMap(node, key)
+        if fullMap ~= nil then
+            return label
+                .. fullMap.displayPath
+                .. ": expected at most "
+                .. fullMap.plan.max
+                .. " entries"
+        end
+    end
+    return nil
+end
+
+---Validate and store `node[key] = value`, then fire the scope's change signal.
+---Every refusal is raised at the writing line: this function is called by
+---`viewNewIndex`, which is called by the writer, so the level is 3.
+---
+---A nil or NaN key never gets here: Lua 5.1 refuses it while looking for the
+---slot, before it consults `__newindex`.
+---@param node table
+---@param key any
+---@param value any
+local function writeView(node, key, value)
+    local refusal = refuseWrite(node, key, value)
+    if refusal ~= nil then
+        error(refusal, 3)
     end
 
     local container
     if value == nil then
         container = resolveContainer(node)
     else
-        local fullMap = findFullMap(node, key)
-        if fullMap ~= nil then
-            error(
-                label
-                    .. fullMap.displayPath
-                    .. ": expected at most "
-                    .. fullMap.plan.max
-                    .. " entries",
-                3
-            )
-        end
         container = resolveForWrite(node)
     end
     if container ~= nil then
         rawset(container, key, value)
     end
 
-    node.scope.signal:Fire(db, node.scope.name, key, value, node.path)
+    local scope = node.scope
+    scope.signal:Fire(node.db, scope.name, key, value, node.path)
 end
 
 ---The `__newindex` of every view.
@@ -2159,6 +2175,131 @@ local function databasePairs(self, view)
     return pairsNext, view, nil
 end
 
+---Step from `node` to the view of its record field or keyed-section entry
+---`key`, the way reading `node[key]` would, without reading any value.
+---@param node table
+---@param key any
+---@return table|nil child, string|nil refusal
+local function descendPath(node, key)
+    local label = "SettingsKit (" .. node.db._name .. ") "
+    if isSecret(key) then
+        return nil,
+            label
+                .. node.displayPath
+                .. " refused a secret key: saved variables never hold secret values"
+    end
+    if key == nil or key ~= key then
+        return nil, label .. node.displayPath .. " key must not be nil or NaN"
+    end
+
+    local child = nil
+    if node.kind == KIND_RECORD then
+        child = node.children[key]
+    elseif node.plan.values.proxied ~= false then
+        child = entryView(node, key)
+    end
+    if child == nil then
+        return nil,
+            label .. node.displayPath .. formatKey(key) .. " is not a record or keyed section"
+    end
+    return rawget(views, child)
+end
+
+---Turn a dotted-path segment into the key it names: a number when it is one
+---and the segment indexes a keyed section whose keys are numbers.
+---@param node table
+---@param segment string
+---@return string|number
+local function segmentKey(node, segment)
+    if node.kind == KIND_MAP and node.plan.keyKind == "number" then
+        local number = tonumber(segment)
+        if number ~= nil then
+            return number
+        end
+    end
+    return segment
+end
+
+---Check whether writing `value` at `path` in `scope` would be accepted,
+---without writing anything.
+---
+---Runs exactly the checks a write through a view runs: the secret, view and
+---metatable refusals, the schema check, and the key schema and `max` of every
+---keyed section on the path. `path` is a dotted string (`"frame.x"`,
+---`"auras.118.shown"`, where a segment indexing a keyed section with number
+---keys becomes a number) or an array of keys (`{ "auras", 118, "shown" }`),
+---whose keys are used as they are. An array path allocates nothing for a
+---valid value; a dotted string allocates its segments.
+---@param self SettingsKit.Database
+---@param scopeName SettingsKit.ScopeName
+---@param path string|any[]
+---@param value any
+---@return boolean ok, string|nil message the text a refused write would raise, without a position
+local function databaseValidate(self, scopeName, path, value)
+    validateDatabase(self, "SettingsKit.Database:Validate", 3)
+    local db = self --[[@as table]]
+    local scope = type(scopeName) == "string" and rawget(db._scopes, scopeName) or nil
+    if scope == nil or not scope.available then
+        error("SettingsKit.Database:Validate scope must name a declared, available scope", 2)
+    end
+    local node = rawget(views, rawget(db, scopeName))
+    local refusal = nil
+    local key = nil
+
+    local pathType = type(path)
+    if pathType == "table" and rawget(views, path) == nil then
+        local count = #path
+        if count == 0 then
+            error(
+                "SettingsKit.Database:Validate path must be a dotted string or a non-empty array of keys",
+                2
+            )
+        end
+        for index = 1, count - 1 do
+            node, refusal = descendPath(node, rawget(path, index))
+            if node == nil then
+                return false, refusal
+            end
+        end
+        key = rawget(path, count)
+    elseif pathType == "string" and not isSecret(path) and path ~= "" then
+        local start = 1
+        while true do
+            local stop = path:find(".", start, true)
+            local segment = path:sub(start, stop and stop - 1 or -1)
+            if segment == "" then
+                error("SettingsKit.Database:Validate path must not contain an empty segment", 2)
+            end
+            if stop == nil then
+                key = segmentKey(node, segment)
+                break
+            end
+            node, refusal = descendPath(node, segmentKey(node, segment))
+            if node == nil then
+                return false, refusal
+            end
+            start = stop + 1
+        end
+    else
+        error(
+            "SettingsKit.Database:Validate path must be a dotted string or a non-empty array of keys",
+            2
+        )
+    end
+
+    -- A write would never reach SettingsKit with these keys; say so the same
+    -- way a step on the path does.
+    if not isSecret(key) and (key == nil or key ~= key) then
+        return false,
+            "SettingsKit (" .. db._name .. ") " .. node.displayPath .. " key must not be nil or NaN"
+    end
+    refusal = refuseWrite(node, key, value)
+    if refusal ~= nil then
+        return false, refusal
+    end
+    return true
+end
+
 ---Remove every saved value equal to its default, in every character, realm,
 ---class, faction and profile entry of every declared scope.
 ---@param self SettingsKit.Database
@@ -2384,6 +2525,7 @@ rawset(Database, "OnProfileDeleted", databaseOnProfileDeleted)
 rawset(Database, "Compact", databaseCompact)
 rawset(Database, "GetSavedVariable", databaseGetSavedVariable)
 rawset(Database, "Pairs", databasePairs)
+rawset(Database, "Validate", databaseValidate)
 
 rawset(VIEW_METATABLE, "__index", viewIndex)
 rawset(VIEW_METATABLE, "__newindex", viewNewIndex)

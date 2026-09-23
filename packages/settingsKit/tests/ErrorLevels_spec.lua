@@ -144,6 +144,7 @@ describe("SettingsKit error levels", function()
             "Compact",
             "GetSavedVariable",
             "Pairs",
+            "Validate",
         }
         for _, method in ipairs(methods) do
             assertReportedAtCaller(
@@ -201,6 +202,12 @@ describe("SettingsKit error levels", function()
                 "SettingsKit.Database:OnChange callback must be a function",
                 function()
                     db:OnChange("profile", nil)
+                end,
+            },
+            {
+                "SettingsKit.Database:Validate path must be a dotted string or a non-empty array of keys",
+                function()
+                    db:Validate("profile", nil, 1)
                 end,
             },
             {

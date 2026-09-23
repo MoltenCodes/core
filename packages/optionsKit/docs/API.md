@@ -81,13 +81,13 @@ What it refuses:
 - a key in `args` that is not an identifier (`[%a_][%w_]*`), so a dotted path is never ambiguous;
 - more than `MAX_OPTIONS` options below the root (groups count), and an option path longer than `MAX_DEPTH` keys — which also turns a cyclic tree into an error;
 - a value option with neither `get` and `set` nor `bind`, or with both; a `bind` without `options.db`;
-- `options.db` when `Registry:Find("settingsKit", 1)` finds nothing, or when it is not a table with an `OnChange` method; a `bind` whose scope the database did not declare or cannot provide on this client (`OptionsKit:Define tree.args.x.bind scope "realm" is not an available scope of options.db`). The scope is read with `rawget`, so SettingsKit's own error for an undeclared scope never escapes from inside OptionsKit.
+- `options.db` when `Registry:Find("settingsKit", 1)` finds nothing, or when it is not a table with `OnChange` and `Validate` methods; a `bind` whose scope the database did not declare or cannot provide on this client (`OptionsKit:Define tree.args.x.bind scope "realm" is not an available scope of options.db`). The scope is read with `rawget`, so SettingsKit's own error for an undeclared scope never escapes from inside OptionsKit.
 
 The tree is **copied**: labels, values tables and sorting arrays are read once, and later edits to the tables you passed have no effect. Functions (`get`, `set`, `validate`, `disabled`, `hidden`, `values`, `func`) are kept by reference.
 
 ## A complete options tree
 
-An addon with saved settings in SettingsKit, one option with its own accessors, and every kind of option. The SettingsKit schema declares what is stored; the options tree declares what is configurable and how it is presented. Bounds that appear in both are kept equal, because `Validate` checks the option's schema only.
+An addon with saved settings in SettingsKit, one option with its own accessors, and every kind of option. The SettingsKit schema declares what is stored; the options tree declares what is configurable and how it is presented. Where the two declare bounds for one value, both are checked: the option's by OptionsKit, the stored field's by SettingsKit.
 
 ```lua
 local Registry = MoltenCodes.Registries[2]
@@ -318,7 +318,7 @@ A table value (`multiselect`, `color`) is handed to `set`, or stored at the bind
 
 Runs steps 1 to 3 without raising for the value and without writing: `true`, or `false` and a message such as `expected number <= 2, found larger number`, `r: expected number <= 1, found larger number`, `secret value`, or `validate`'s own message. Command lines and edit boxes use it to answer the user before calling `Set`.
 
-**For a bound option, `Validate` does not consult the database.** It checks the option's own schema and `validate` only, so it can return `true` for a value SettingsKit then refuses in `Set` — when the SettingsKit schema at the bind path is narrower than the option's (a `range` of `0..10` bound to a field declared `0..3`). SettingsKit API 1 offers no way to check a value at a path without writing it. Declare the option's bounds to match the database's until it does.
+**For a bound option, `Validate` also asks the database.** After the option's own schema and `validate` accept the value, it calls `db:Validate(scope, keys, value)` with the key array split at `Define` (which SettingsKit checks without allocating) and returns SettingsKit's answer. `Validate` and `Set` therefore agree: when the SettingsKit schema at the bind path is narrower than the option's (a `range` of `0..10` bound to a field declared `0..3`), `Validate` returns `false, "SettingsKit (MyAddonDB) profile.frame.x: expected number <= 3, found larger number"` and `Set` raises the same text after `OptionsKit.Tree:Set frame.x refused by the database: `. The database checks a path through a record that does not exist yet without creating it.
 
 ### `tree:Reset(path)`
 
@@ -434,8 +434,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`color { hasAlpha }`** rather than `color { alpha }`: the AceConfig name, which addon authors already know.
 - **`Set` returns `false, message` when `validate` refuses** instead of raising. A schema refusal is a caller's mistake and raises at the caller's line as planned; a `validate` refusal is a message for the user, and a renderer should not need `pcall` to show it.
 - **`Reset` clears the stored value** instead of writing a default read from the SettingsKit schema. The SettingsKit database surface does not expose its schema, and a cleared value is exactly what SettingsKit's default fallback answers for — without ever writing the default into the saved variables. `Reset` on an option with `get`/`set` raises, since no default exists for OptionsKit to restore.
-- **`Validate` of a bound option does not ask the database**, so it can accept what SettingsKit refuses in `Set`; see [`tree:Validate`](#treevalidatepath-value). SettingsKit API 1 has no check-without-write.
-- **`options.db` is checked structurally**: `Registry:Find("settingsKit", 1)` must find SettingsKit, and the database must be a table with an `OnChange` method whose bound scopes are tables. SettingsKit API 1 publishes no predicate that recognises its databases.
+- **`options.db` is checked structurally**: `Registry:Find("settingsKit", 1)` must find SettingsKit, and the database must be a table with `OnChange` and `Validate` methods whose bound scopes are tables. SettingsKit API 1 publishes no predicate that recognises its databases.
 - **Additions:** `tree:Validate`, `tree:Execute`, `tree:IsDisabled` and `tree:IsHidden` — a renderer and a command line need to check typed input, run a button and re-evaluate predicates without rebuilding the whole description — and `OptionsKit:Undefine`, `OptionsKit.MAX_OPTIONS` and `OptionsKit.MAX_DEPTH`.
 - **Not carried over from AceConfig:** `order` and `name` as functions (no user code inside a sort), inherited `get`/`set`/`handler` (each value option names its own reader and writer or `bind`), `width`, `arg`, and validation at render time (everything is checked once at `Define`).
 

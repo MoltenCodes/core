@@ -9,7 +9,7 @@
 - Added the tree methods `Get`, `Set` (schema asserted at the caller's line, then `validate`, then the write, then `OnChange`), `Validate`, `Reset` (bound options only), `Execute`, `IsDisabled`, `IsHidden` (a group's flag applies below it), `Walk` (pre-sorted, depth-first), `Describe` (a fresh plain table for renderers) and `OnChange` (a SignalKit connection).
 - `Get`, `Set`, `Walk`, `Validate` of a valid value, `IsDisabled` and `IsHidden` allocate nothing: paths are indexed and siblings sorted at `Define`, and each option's `info` table is built once and reused.
 - `Set` refuses a secret value at the caller's line.
-- A SettingsKit refusal of a bound write is raised at the caller's line of `Set` or `Reset`, with SettingsKit's message kept. `Validate` of a bound option does not consult the database (SettingsKit API 1 has no check-without-write); the disagreement is documented.
+- A SettingsKit refusal of a bound write is raised at the caller's line of `Set` or `Reset`, with SettingsKit's message kept. `Validate` of a bound option then asks the database through `db:Validate(scope, keys, value)`, so `Validate` and `Set` agree; `options.db` must offer `Validate` as well as `OnChange`.
 - A bind path through a record that has no default and no saved data reads as `nil`, and `Set` writes the missing records as one nested table; a scope the database does not provide is refused at the caller's line of `Define` (and of later calls) with OptionsKit's own message instead of SettingsKit's.
 - `docs/API.md` carries a complete options tree example over a SettingsKit database.
-- 99 specs, including allocation guards, pinned error levels, an in-place upgrade spec and a binding spec against a real SettingsKit database (pending when SettingsKit is not on the path).
+- 100 specs, including allocation guards, pinned error levels, an in-place upgrade spec and a binding spec against a real SettingsKit database (pending when SettingsKit is not on the path).

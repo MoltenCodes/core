@@ -149,6 +149,8 @@ Both kinds refuse a secret key before using it to index anything.
 5. Store with `rawset` into the resolved (or created) table.
 6. Fire the scope's signal with `(db, scope, key, value, path)`.
 
+The checks of steps 1 to 4 live in `refuseWrite`, which returns the refusal message or `nil`; `writeView` raises the message at the writing line, and `db:Validate` returns it. `Validate` reaches the node holding the last key the way reads do (`descendPath`: a record's child view, or a keyed section's entry view) and calls `refuseWrite`, so it uses the same probe chain, sets and clears it the same way, and never stores anything.
+
 A probe key left behind by a custom check that raised mid-check is cleared by the next write that uses that probe (`probeSet` / `probeKey`), so a stale key can never leak into a later check.
 
 ## Compaction

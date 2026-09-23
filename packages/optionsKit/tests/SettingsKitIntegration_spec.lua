@@ -87,39 +87,55 @@ describe("OptionsKit with the real SettingsKit", function()
         return OptionsKit, db
     end
 
-    it("raises a SettingsKit refusal at the caller of Set, keeping its message", function()
-        local OptionsKit, db = openFrameDatabase()
-        -- The option accepts 0..10; the database only 0..3.
-        local tree = OptionsKit:Define("Addon", {
-            type = "group",
-            args = {
-                x = { type = "range", name = "X", min = 0, max = 10, bind = "profile.frame.x" },
-            },
-        }, { db = db })
-        tree:Set("x", 1)
+    it(
+        "refuses a value the database refuses: Validate returns its message, Set raises it at the caller",
+        function()
+            local OptionsKit, db = openFrameDatabase()
+            -- The option accepts 0..10; the database only 0..3.
+            local tree = OptionsKit:Define("Addon", {
+                type = "group",
+                args = {
+                    x = { type = "range", name = "X", min = 0, max = 10, bind = "profile.frame.x" },
+                },
+            }, { db = db })
+            tree:Set("x", 1)
 
-        local source = debug.getinfo(1, "S").short_src
-        local expectedLine
-        local ok, message = pcall(function()
-            expectedLine = debug.getinfo(1, "l").currentline + 1
-            tree:Set("x", 5)
-        end)
-        assert.is_false(ok)
-        assert.are.equal(
-            source
-                .. ":"
-                .. expectedLine
-                .. ": OptionsKit.Tree:Set x refused by the database: SettingsKit ("
-                .. SAVED_VARIABLE
-                .. ") profile.frame.x: expected number <= 3, found larger number",
-            message
-        )
-        assert.are.equal(1, db.profile.frame.x)
+            local source = debug.getinfo(1, "S").short_src
+            local expectedLine
+            local ok, message = pcall(function()
+                expectedLine = debug.getinfo(1, "l").currentline + 1
+                tree:Set("x", 5)
+            end)
+            assert.is_false(ok)
+            assert.are.equal(
+                source
+                    .. ":"
+                    .. expectedLine
+                    .. ": OptionsKit.Tree:Set x refused by the database: SettingsKit ("
+                    .. SAVED_VARIABLE
+                    .. ") profile.frame.x: expected number <= 3, found larger number",
+                message
+            )
+            assert.are.equal(1, db.profile.frame.x)
 
-        -- Validate knows only the option's own schema: SettingsKit API 1 has no
-        -- way to check a value without writing it (docs/API.md, "Bound options").
-        assert.are.same({ true }, { tree:Validate("x", 5) })
-    end)
+            -- Validate asks the database after the option's own schema, so it
+            -- refuses what Set refuses, with the text Set raises after its prefix.
+            local valid, reason = tree:Validate("x", 5)
+            assert.is_false(valid)
+            assert.are.equal(
+                "SettingsKit ("
+                    .. SAVED_VARIABLE
+                    .. ") profile.frame.x: expected number <= 3, found larger number",
+                reason
+            )
+            assert.are.equal(
+                "refused by the database: " .. reason,
+                message:match("refused by the database: .*$")
+            )
+            assert.are.same({ true }, { tree:Validate("x", 3) })
+            assert.are.equal(1, db.profile.frame.x)
+        end
+    )
 
     it("binds through a record without a default, across a profile switch", function()
         local OptionsKit, db = openFrameDatabase()
@@ -132,6 +148,10 @@ describe("OptionsKit with the real SettingsKit", function()
 
         assert.is_nil(db.profile.frame)
         assert.is_nil(tree:Get("x"))
+        -- The database checks a path through a record that does not exist yet.
+        assert.are.same({ true }, { tree:Validate("x", 2) })
+        assert.is_false((tree:Validate("x", 3.5)))
+        assert.is_nil(db.profile.frame)
         assert.is_nil(tree:Reset("x"))
         assert.is_true(tree:Set("x", 1))
         assert.are.equal(1, db.profile.frame.x)
@@ -166,5 +186,22 @@ describe("OptionsKit with the real SettingsKit", function()
                 .. ': OptionsKit:Define tree.args.x.bind scope "realm" is not an available scope of options.db',
             message
         )
+    end)
+    it("allocates nothing on Validate of a bound option once the path exists", function()
+        local OptionsKit, db = openFrameDatabase()
+        local tree = OptionsKit:Define("Addon", {
+            type = "group",
+            args = {
+                x = { type = "range", name = "X", min = 0, max = 3, bind = "profile.frame.x" },
+            },
+        }, { db = db })
+        tree:Set("x", 1)
+        tree:Validate("x", 2)
+        local allocated = TestEnv.AllocatedKilobytes(function()
+            for _ = 1, 2000 do
+                tree:Validate("x", 2)
+            end
+        end)
+        assert.is_true(allocated < 1, "Validate allocated " .. allocated .. " KiB")
     end)
 end)

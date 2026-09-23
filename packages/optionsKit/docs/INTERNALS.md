@@ -63,6 +63,8 @@ The bind path is split once at `Define` into `_bindScope` and `_bindKeys`. `walk
 
 The write itself runs as `pcall(assignField, container, key, value)`. `assignField` is a file-level function, so the protected call allocates nothing on success; a SettingsKit refusal is re-raised at the caller's level with the `file:line:` prefix of SettingsKit's message (which points into OptionsKit) removed and the rest kept.
 
+`validateBound` hands SettingsKit the same `_bindKeys` array for `db:Validate`, so `Validate` of a bound option allocates nothing once SettingsKit's entry views on the path are alive.
+
 ## Sorted arrays
 
 Siblings are sorted once, at `Define`, by `compareRecords`: `_order`, then `_name`, then `_key`. Keys are unique among siblings, so the order is total and does not depend on `pairs`. The comparator reads plain fields only: no consumer code runs inside `table.sort`, which is what lets AceConfig's `order` functions corrupt its `info` or make `table.sort` raise "invalid order function".
