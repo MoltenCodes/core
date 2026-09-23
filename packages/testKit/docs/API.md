@@ -262,6 +262,8 @@ Every suite with at least one result appears, in registration order; tests appea
 | `C_Timer.After exists` | `C_Timer.After` is a function. |
 | `C_Timer.NewTimer and C_Timer.NewTicker exist` | Both constructors are functions. |
 | `GetTimePreciseSec returns a number` | The wall clock exists and answers a number. |
+| `Show and Hide fire OnShow and OnHide on a change only` | Hiding or showing a frame without a parent runs its `OnHide` or `OnShow` once; hiding a hidden frame or showing a shown one runs nothing. |
+| `SetFocus moves the edit focus from one edit box to another` | Focusing a second edit box runs the first box's `OnEditFocusLost`, then the second's `OnEditFocusGained`; `ClearFocus` on a box without the focus runs nothing. |
 | `issecurevariable reports a Blizzard global as secure` | `issecurevariable("CreateFrame")` answers secure; on a host without `issecurevariable` the test logs that and passes. |
 
 `tests/FixtureFidelity_spec.lua` loads the same file into the fixture and runs the same suite. **The two environments must agree.** The spec lists by name the facts the fixture does not model yet (today `InCombatLockdown` and `C_Timer.After`) and requires them to fail there; every other test must pass. When the fixture learns one of them the spec fails until the entry is removed.

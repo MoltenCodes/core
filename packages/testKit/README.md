@@ -66,7 +66,7 @@ Everything else — branching, bounds, error paths, state machines — belongs i
 
 ## The fixture-fidelity suite
 
-[`fidelity/FixtureFidelity.lua`](fidelity/FixtureFidelity.lua) registers the suite `FixtureFidelity`: a handful of host facts the shared Busted fixture (`tests/support/FrameworkTestEnv.lua`) models, such as the `ADDON_LOADED` payload, `InCombatLockdown()` answering a boolean and `C_Timer.After` existing. The same file runs in both environments:
+[`fidelity/FixtureFidelity.lua`](fidelity/FixtureFidelity.lua) registers the suite `FixtureFidelity`: a handful of host facts the shared Busted fixture (`tests/support/FrameworkTestEnv.lua`) models, such as the `ADDON_LOADED` payload, `InCombatLockdown()` answering a boolean, `C_Timer.After` existing, `OnShow` / `OnHide` firing on a change only, and the edit focus moving between edit boxes with its scripts. The same file runs in both environments:
 
 - in the client, listed in a development addon's `.toc` after `TestKit.lua` (see the load order below), with `/run MoltenCodes.Registry:Get("testKit", 1):Run("FixtureFidelity")`;
 - under Busted, through [`tests/FixtureFidelity_spec.lua`](tests/FixtureFidelity_spec.lua), which loads the file into the fixture and runs the same suite.

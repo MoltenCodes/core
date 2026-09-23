@@ -121,6 +121,66 @@ suite:Test("GetTimePreciseSec returns a number", function(ctx)
     ctx:Expect(type(getTimePreciseSec())):ToBe("number")
 end)
 
+suite:Test("Show and Hide fire OnShow and OnHide on a change only", function(ctx)
+    -- A frame without a parent is visible whenever it is shown, so a change of its
+    -- shown flag is a change of its visibility.
+    local frame = readHost("CreateFrame")("Frame")
+    local calls = {}
+    frame:SetScript("OnShow", function()
+        calls[#calls + 1] = "OnShow"
+    end)
+    frame:SetScript("OnHide", function()
+        calls[#calls + 1] = "OnHide"
+    end)
+    frame:Hide()
+    frame:Hide()
+    frame:Show()
+    frame:Show()
+    frame:SetScript("OnShow", nil)
+    frame:SetScript("OnHide", nil)
+    ctx:Expect(calls):ToEqual({ "OnHide", "OnShow" })
+end)
+
+suite:Test("SetFocus moves the edit focus from one edit box to another", function(ctx)
+    local createFrame = readHost("CreateFrame")
+    local first = createFrame("EditBox")
+    local second = createFrame("EditBox")
+    first:SetAutoFocus(false)
+    second:SetAutoFocus(false)
+    first:ClearFocus()
+    second:ClearFocus()
+
+    local calls = {}
+    local function record(box, name, event)
+        box:SetScript(event, function()
+            calls[#calls + 1] = name .. " " .. event
+        end)
+    end
+    record(first, "first", "OnEditFocusGained")
+    record(first, "first", "OnEditFocusLost")
+    record(second, "second", "OnEditFocusGained")
+    record(second, "second", "OnEditFocusLost")
+
+    first:SetFocus()
+    second:SetFocus()
+    second:ClearFocus()
+    -- A box without the focus has nothing to lose.
+    second:ClearFocus()
+    first:ClearFocus()
+
+    for _, box in ipairs({ first, second }) do
+        box:SetScript("OnEditFocusGained", nil)
+        box:SetScript("OnEditFocusLost", nil)
+        box:Hide()
+    end
+    ctx:Expect(calls):ToEqual({
+        "first OnEditFocusGained",
+        "first OnEditFocusLost",
+        "second OnEditFocusGained",
+        "second OnEditFocusLost",
+    })
+end)
+
 suite:Test("issecurevariable reports a Blizzard global as secure", function(ctx)
     if readHost("issecurevariable") == nil then
         ctx:Log("issecurevariable is absent on this host; nothing to check")

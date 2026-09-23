@@ -397,11 +397,13 @@ describe("WidgetKit base widgets", function()
             assert.is_false(second:IsOpen())
             assert.is_false(catcher:IsShown())
 
-            -- Hiding the dropdown's frame closes its list too.
+            -- Hiding the dropdown's frame closes its list too, through the
+            -- frame's own OnHide.
             first:Open()
-            TestEnv.RunScript(first.frame, "OnHide")
+            first:Hide()
             assert.is_false(first:IsOpen())
             assert.is_false(catcher:IsShown())
+            first:Show()
 
             -- Releasing an open dropdown closes it and hides the catcher.
             second:Open()

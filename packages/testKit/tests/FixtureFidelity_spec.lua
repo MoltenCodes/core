@@ -38,7 +38,7 @@ describe("the fixture-fidelity suite against the shared fixture", function()
         local report = TestEnv.RunToEnd(TestKit, "FixtureFidelity")
         assert.is_not_nil(report)
         local tests = report.suites[1].tests
-        assert.is_true(#tests >= 7)
+        assert.are.equal(9, #tests)
 
         local seenGaps = {}
         for index = 1, #tests do
