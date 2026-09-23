@@ -1,7 +1,7 @@
 ---@meta
 
--- Client runtime services used for budgeting, error reporting, taint isolation
--- and combat-log payload access.
+-- Client runtime services used for budgeting, error reporting, taint isolation,
+-- secret-value checks and combat-log payload access.
 
 ---Addon CPU milliseconds since the profiler was last reset.
 ---
@@ -25,6 +25,28 @@ function geterrorhandler() end
 ---@param ... any
 ---@return any ...
 function securecallfunction(callback, ...) end
+
+---Whether `value` is a secret value.
+---
+---The Retail 12.x client hands insecure code secret values from some unit and
+---aura APIs while restrictions apply. Tainted code may store a secret and pass it
+---on, but comparing, concatenating, printing it or using it as a table key
+---raises. Clients without secret values do not publish this function; probe it
+---and treat its absence as "never secret". See docs/EMBEDDING.md, "Secret
+---values".
+---@param value any
+---@return boolean isSecret
+function issecretvalue(value) end
+
+---Whether a global variable, or a field of `table`, still holds a secure value.
+---
+---Probe this before repairing shared state: a secure value must be left alone.
+---@param table table
+---@param variable string
+---@return boolean isSecure
+---@return string? taintedBy The addon that tainted the variable, when it is not secure.
+---@overload fun(variable: string): isSecure: boolean, taintedBy: string?
+function issecurevariable(table, variable) end
 
 ---The payload of the combat-log event currently being dispatched.
 ---

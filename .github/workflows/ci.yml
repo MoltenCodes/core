@@ -204,6 +204,48 @@ jobs:
         working-directory: ${{ runner.temp }}/bundle
         run: sha256sum --check --strict CHECKSUMS.txt
 
+  spell:
+    name: Spell check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # The runner is Python like the rest of the tooling, so it runs on the
+        # floor and on the current release; cspell itself is Node.
+        python-version: ["3.10", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # The pinned cspell release (`CSPELL_VERSION` in tooling/spell.py) needs
+      # Node 22.18 or newer. The runner image's own Node is whatever the image
+      # ships that week, so the version is set here instead of assumed.
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      # `--require` turns "Node is missing" into a failure. Locally the same
+      # command skips with a note so a contributor without Node is not blocked;
+      # here the gate must never be skipped silently.
+      - name: Spell-check the documentation
+        run: python3 -m tooling.spell --require
+
+      # The unit suite in the repository job stays offline; these tests run the
+      # real, pinned cspell against a misspelled fixture and a project word.
+      - name: Run the spell-check integration tests
+        env:
+          MOLTENCODES_SPELL_INTEGRATION: "1"
+        run: python3 -m unittest tooling.tests.test_spell
+
   repository:
     name: Repository validation
     runs-on: ubuntu-latest

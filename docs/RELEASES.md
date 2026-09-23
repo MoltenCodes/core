@@ -31,6 +31,24 @@ A tag names the package whose `version` changed. Tagging several packages in one
 commit means several tags on that commit; there is no combined framework tag,
 because there is no combined framework version.
 
+## Before tagging: the supported clients
+
+Every release states which clients it was checked against, so bumping the
+`## Interface` numbers is a release step, not a chore for later:
+
+1. Compare [`../tooling/validation/supported_clients.json`](../tooling/validation/supported_clients.json)
+   with the current patch table (`Template:LatestPatchInfo` on warcraft.wiki.gg,
+   or `/dump (select(4, GetBuildInfo()))` in each client).
+2. If anything changed, follow the update procedure in
+   [`TOOLING.md`](TOOLING.md#supported-clients-one-table): edit the table and its
+   `verified` date, paste what `python3 -m tooling.validation.interface_numbers`
+   prints, and commit the bump on its own.
+3. If nothing changed, still move `verified` to today's date and update the date
+   in `EMBEDDING.md`, so the documentation says when the numbers were last true.
+
+Repository validation fails until every quoted number agrees with the table,
+so a half-done bump cannot be tagged from a green tree.
+
 ## Building an artifact
 
 ```bash
@@ -157,6 +175,7 @@ python3 -m tooling.validation.validate_repository
 python3 -m unittest discover -s tooling/tests -p "test_*.py"
 python3 -m tooling.test.run
 python3 -m tooling.lint
+python3 -m tooling.spell
 stylua --check .
 ```
 

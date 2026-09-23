@@ -28,6 +28,19 @@ Lint runtime Lua:
 python3 -m tooling.lint
 ```
 
+Spell-check the documentation (needs Node 22.18 or newer; skips with a note
+without it):
+
+```bash
+python3 -m tooling.spell
+```
+
+Print the supported `## Interface` line from `validation/supported_clients.json`:
+
+```bash
+python3 -m tooling.validation.interface_numbers
+```
+
 Run tooling unit tests:
 
 ```bash

@@ -1,0 +1,65 @@
+# Project dictionary for the spell-check gate (`python3 -m tooling.spell`).
+#
+# One word per line. Lines starting with `#` are comments. cspell splits
+# camelCase and PascalCase identifiers into their parts, so `SignalKit` or
+# `GetTimePreciseSec` never needs an entry; only all-lowercase run-together
+# names and genuine domain terms do.
+#
+# Rule for adding a word: it must be spelled correctly, it must be a name or a
+# term the documentation uses on purpose, and it goes under the heading that
+# says why it is here. A typo is fixed in the document, never added here.
+# cspell is configured for English with British spellings (`en,en-GB` in
+# cspell.json) because the documentation uses them, so British forms such as
+# "behaviour" and "licence" are not listed.
+
+# World of Warcraft client API names, written as one lowercase word.
+debugprofilestart
+debugprofilestop
+geterrorhandler
+hooksecurefunc
+issecretvalue
+issecurevariable
+securecallfunction
+
+# World of Warcraft terms, and fragments of event names (`PLAYER_REGEN_ENABLED`).
+CLEU
+Pandaria
+REGEN
+Wago
+
+# Lua 5.1 standard library and language terms.
+collectgarbage
+gsub
+luac
+metamethod
+metatable
+metatables
+newindex
+pcall
+rawget
+rawset
+setmetatable
+upvalue
+upvalues
+vararg
+xpcall
+
+# Tools, their files and their flags.
+checklevel
+hererocks
+luarc
+luarocks
+luassert
+nolib
+pkgmeta
+pyproject
+stylua
+
+# Terms of art the documentation uses deliberately.
+entrancy
+indegree
+introspectable
+resetless
+serialiser
+unregistration
+versionable

@@ -14,6 +14,7 @@ below explains why that example looks the way it does.
 - [Directory layout inside your addon](#directory-layout-inside-your-addon)
 - [Load order](#load-order)
 - [A complete example addon](#a-complete-example-addon)
+- [TOC fields and packaging](#toc-fields-and-packaging)
 - [Several addons, several copies](#several-addons-several-copies)
 - [Supported client versions](#supported-client-versions)
 - [Coexisting with LibStub](#coexisting-with-libstub)
@@ -270,6 +271,91 @@ Three things are worth pointing out:
   after its phase already happened runs immediately instead of never. You do not
   have to race the client's events.
 
+## TOC fields and packaging
+
+### The fields the client and the addon sites read
+
+Your `.toc` is read by three different consumers: the game client, the BigWigs
+packager that builds your upload, and the addon sites and addon managers that
+display it. Which field matters to whom:
+
+| Field | Read by | What it does |
+|---|---|---|
+| `## Interface` | client, packager | The client versions the `.toc` is written for. The packager also turns every number into a supported game version when it uploads. See [Supported client versions](#supported-client-versions). |
+| `## IconTexture` | client | The icon shown next to your addon in the in-game addon list, as a texture path or a FileDataID. |
+| `## Version` | client, addon managers | Your version string. Write `## Version: @project-version@` and the packager substitutes the tag (or a commit-based version for untagged builds) when it builds the zip; an unpackaged checkout shows the literal placeholder. |
+| `## X-Curse-Project-ID` | packager | The CurseForge project the packager uploads to. |
+| `## X-Wago-ID` | packager | The Wago Addons project the packager uploads to. |
+| `## X-WoWI-ID` | packager | The WoWInterface addon ID the packager uploads to. |
+| `## X-Flavor` | people | A label naming the flavour a per-flavour `.toc` targets. Neither the client nor the packager reads it; flavour selection comes from the Interface numbers and the `_Mainline` / `_Mists` / `_TBC` / `_Vanilla` file suffixes. |
+| `## X-Category` | people, some addon managers | A free-text category. The addon sites take the real category from the project page, not from the `.toc`. |
+| `## X-Website` | people, some addon managers | A link to the addon's home page or repository. |
+| `## X-Embeds` | people | Which libraries are bundled. A convention, as described above. |
+
+The three project IDs only matter once the projects exist on the sites; leave
+them out until then rather than inventing placeholders, because a wrong ID
+uploads to somebody else's project or fails the build.
+
+### `## Dependencies` and `## OptionalDeps` with embedded Kits
+
+**Never list MoltenCodes in `## Dependencies` (or its synonym
+`## RequiredDeps`).** Those fields name other *addons* that must be installed and
+enabled. The framework is not an addon: it has no `.toc`, nothing called
+`MoltenCodes` appears in the addon list, and an addon that declares it as a
+dependency never loads.
+
+**`## OptionalDeps` is not needed for the Kits either.** It only asks the client
+to load the named addons before yours when they are installed. Whether your copy
+of a Kit loads before or after another addon's copy makes no difference to
+correctness: Registry selects the highest revision whichever order the copies
+arrive in, and every addon ends up with the same shared table (see
+[Several addons, several copies](#several-addons-several-copies)). Use
+`## OptionalDeps` for the standalone addons you integrate with, exactly as you
+would without the framework.
+
+### Pulling the Kits in with the packager (`externals`)
+
+Copying the Kits by hand, as the example addon does, is always supported. If you
+build your releases with the BigWigs packager, you can instead let it fetch the
+Kits at build time with `externals` in your addon's `.pkgmeta`, so your
+repository holds only your own code.
+
+> **Not yet available.** The framework repository is not published yet, so the
+> URL below does not resolve today. The form is documented now so that nothing
+> about your layout has to change when it is.
+
+Each package is tagged separately (`<package>-v<version>`, see
+[`RELEASES.md`](RELEASES.md)), and each external takes one package's `src/`
+directory into the same `Libs/MoltenCodes/<packageId>/` directory a manual copy
+uses:
+
+```yaml
+externals:
+  Libs/MoltenCodes/registry:
+    url: https://github.com/MoltenCodes/core
+    tag: registry-v1.0.0
+    path: packages/registry/src
+  Libs/MoltenCodes/signalKit:
+    url: https://github.com/MoltenCodes/core
+    tag: signalKit-v1.0.0
+    path: packages/signalKit/src
+  Libs/MoltenCodes/eventKit:
+    url: https://github.com/MoltenCodes/core
+    tag: eventKit-v1.0.0
+    path: packages/eventKit/src
+```
+
+Three things to keep in mind:
+
+- **Pin a tag, never a branch.** A tag is the version you tested against; a
+  branch is whatever was pushed last. The tags above are illustrations: use the
+  release you actually tested.
+- **List the dependency closure yourself.** The packager fetches exactly what
+  you name. A Kit whose dependency is missing raises at load, with the messages
+  in [Troubleshooting](#troubleshooting).
+- **The load order is still yours.** `externals` puts the files on disk; your
+  `.toc` or `embeds.xml` still lists them, Registry first.
+
 ## Several addons, several copies
 
 Assume three addons ship `SignalKit.lua`: one at revision 1, two at revision 2.
@@ -307,10 +393,21 @@ The full rules are in
 
 ## Supported client versions
 
-Interface numbers current as of **2026-09**. Every number below was read from
-`Template:LatestPatchInfo` on warcraft.wiki.gg (page last edited 2026-09-19);
-the wiki can lag a hotfix, so the ground truth on any machine is
-`/dump (select(4, GetBuildInfo()))` typed into that client.
+Interface numbers verified on **2026-09-23** against
+`Template:LatestPatchInfo` on warcraft.wiki.gg. The wiki can lag a hotfix, so the
+ground truth on any machine is `/dump (select(4, GetBuildInfo()))` typed into
+that client.
+
+The numbers are kept in one machine-readable table,
+[`tooling/validation/supported_clients.json`](../tooling/validation/supported_clients.json).
+Repository validation fails when the table below, the example addon's `.toc` or
+any `## Interface` line quoted in the documentation disagrees with it, and
+`python3 -m tooling.validation.interface_numbers` prints the line to paste into
+your own `.toc`:
+
+```toc
+## Interface: 120100, 50504, 20506, 11509
+```
 
 | Flavour | `## Interface` | Patch | Packager TOC suffix |
 |---|---|---|---|
@@ -323,8 +420,9 @@ Hardcore and Season of Discovery are not separate TOC flavours; they run on
 Classic Era's number.
 
 Two more flavours exist and are deliberately **not** listed above. "Forever"
-(the Classic+ client, packager suffix `_Camelot`) had not shipped when this was
-written, and the Chinese Titan Reforged client is region-locked. If you target
+(the Classic+ client, packager suffix `_Camelot`; the wiki listed `16001` on
+2026-09-23) is new enough that the framework has not been considered against it,
+and the Chinese Titan Reforged client (`38002`) is region-locked. If you target
 either, verify the number against the current client rather than copying one
 from here.
 
@@ -425,6 +523,144 @@ continues to the listeners behind it. That is a deliberate multi-tenant
 guarantee: your bug must not silence someone else's addon. It also means a
 listener error does **not** propagate to your code, so check the error frame
 rather than expecting a `pcall` to catch it.
+
+### Secret values (Retail 12.x)
+
+On the Retail 12.x client, some APIs hand addon code **secret values** instead of
+ordinary ones while restrictions apply — in combat and in instanced content, and
+most visibly on unit and aura APIs: names, health, aura data, and in some cases
+the unit token an event carries. A secret looks like an ordinary string, number
+or boolean, but insecure code may not look inside it. Each of these raises an
+error at the line that tries it:
+
+- comparing it with anything (`==`, `~=`, `<`, …), including another secret;
+- concatenating it, formatting it into a string, or doing arithmetic on it;
+- printing it, or otherwise turning it into text;
+- using it as a table key, for reading or for writing.
+
+What stays allowed is holding it: store it in a local or as a table *value*, pass
+it on unchanged, and hand it to the client widget APIs documented to accept
+secrets (a `FontString` or `StatusBar`, for example), which display it without
+revealing it to Lua.
+
+`issecretvalue(value)` returns `true` for a secret. Ask it before any of the
+operations above on a value that came from the client during combat. Clients
+without secret values (the Classic flavours, and Retail before 12.0) do not have
+the function, so probe it once:
+
+```lua
+local isSecret = issecretvalue or function()
+    return false
+end
+```
+
+**What a handler may do with a secret argument.** An EventKit or SignalKit
+listener receives whatever the client or the emitter passed, secrets included,
+and no Kit inspects or unwraps an event's payload. Your handler may store the value, forward
+it, or pass it to a widget; it may not compare it, key a cache by it, log it or
+build a message from it. Filter on something that is never secret first — the
+event name, a frame you own — and check `isSecret(value)` before any test on the
+value itself.
+
+### Frames you did not create
+
+A frame reached by enumeration — `EnumerateFrames`, `GetChildren`,
+`GetRegions`, the nameplate list, the mouse focus — may belong to protected
+Blizzard UI. Calling a method on a **forbidden** frame from insecure code is an
+error, and on 12.x a frame can also refuse access in the current execution
+context. Before touching such a frame, ask both:
+
+- `frame:IsForbidden()` — `true` when the frame has been explicitly marked
+  forbidden, whatever the execution context.
+- `frame:CanBeAccessedInContext()` (12.x) — `false` when the current execution
+  is tainted and the frame is forbidden or enforces access restrictions.
+
+Both are methods, and older clients lack the second, so test for the method
+before calling it:
+
+```lua
+local function canTouch(frame)
+    if frame.IsForbidden and frame:IsForbidden() then
+        return false
+    end
+    if frame.CanBeAccessedInContext and not frame:CanBeAccessedInContext() then
+        return false
+    end
+    return true
+end
+```
+
+Frames your addon created are never forbidden to it; the check is for frames
+you found.
+
+### Secure calls and secure variables
+
+- `securecallfunction(callback, ...)` calls `callback` so that taint picked up
+  inside it does not spread into the code that runs after it, and reports an
+  error inside it to the error handler instead of propagating it. This is what
+  EventKit uses between listeners where the client provides it.
+- `issecurevariable([table,] name)` returns whether a global (or a field of
+  `table`) still holds a secure value, and, when it does not, the name of the
+  addon that tainted it. Ask it before you "repair" shared state: a secure
+  value must be left alone.
+
+### Rules for taint-safe addon code
+
+These are the rules the survey of existing libraries shows every author learns
+the hard way. The framework follows them, and a contribution that breaks one is
+a defect:
+
+1. **Post-hook, never replace.** Use `hooksecurefunc` (or a post-hook on a
+   script) and never assign over a Blizzard global, method or script handler.
+2. **Never attach your own tables or fields to a frame Blizzard code indexes.**
+   Keep your per-frame state in a table of your own, keyed by the frame.
+3. **Delete, do not overwrite, a key you tainted by mistake.** Another value
+   written from your code is still yours and still tainted; setting the key to
+   `nil` lets secure code create it again cleanly.
+4. **Probe `issecurevariable` before repairing shared state.**
+5. **Persist intent always; apply only out of combat.** Record what the user
+   asked for immediately, and apply anything that touches protected frames on
+   `PLAYER_REGEN_ENABLED`.
+6. **Never recycle a region without clearing its secret values.** A pooled
+   `FontString` or texture that displayed a secret must be cleared before it is
+   reused for something else.
+7. **Return an `(iterator, state, control)` triplet, not a closure,** from an
+   iterator a secure path may call. A closure belongs to the code that created
+   it, and a secure caller that runs it runs your code.
+
+**How a Kit reports errors.** A Kit never formats a value it did not create into
+an error message without asking `issecretvalue` first: a secret is described by
+a fixed placeholder such as `<secret value>`, never printed, concatenated or
+formatted. Argument errors name the parameter and the expected type,
+not the value received. Your own error messages should follow the same rule,
+because an error built from a secret is itself an error, raised at the point
+where you were trying to report the first one.
+
+**A tooltip or nameplate consumer, written safely.**
+
+```lua
+local plates = {} -- per-plate state, keyed by the frame; never stored on it
+
+EventKit:Connect("NAME_PLATE_UNIT_ADDED", function(_, unit)
+    local plate = C_NamePlate.GetNamePlateForUnit(unit)
+    if not plate or not canTouch(plate) then
+        return -- a forbidden plate, such as a friendly one in an instance
+    end
+
+    local name = UnitName(unit)
+    plates[plate] = plates[plate] or {}
+    plates[plate].name = name -- storing a secret is allowed
+
+    if not isSecret(name) and name == trackedName then
+        -- only a non-secret name may be compared
+    end
+end)
+```
+
+The same shape applies to a tooltip post-hook
+(`TooltipDataProcessor.AddTooltipPostCall`): check the tooltip frame with `canTouch`, treat every
+field of the tooltip data as possibly secret, and add lines with the widget
+methods rather than by building strings from the values.
 
 ## The combat log
 

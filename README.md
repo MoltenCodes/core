@@ -68,6 +68,12 @@ runtime code:
 python3 -m tooling.lint
 ```
 
+The documentation is spell-checked with a pinned cspell, which needs Node.js:
+
+```bash
+python3 -m tooling.spell
+```
+
 ## Repository structure
 
 ```text
@@ -76,6 +82,7 @@ python3 -m tooling.lint
 ├── .pkgmeta                 # Addon-site packager metadata
 ├── .vscode/                 # Editor integration only
 ├── busted.yml               # Selene standard library for Busted test code
+├── cspell.json              # Spell-check configuration for the documentation
 ├── docs/                    # Repository-wide documentation
 │   └── EMBEDDING.md         # How an addon embeds the framework
 ├── examples/                # A complete example addon, loaded by its own spec

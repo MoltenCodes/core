@@ -8,6 +8,10 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote
 
+from tooling.validation.interface_numbers import (
+    SupportedClients,
+    load_supported_clients,
+)
 from tooling.validation.validate_manifests import (
     ROOT,
     error,
@@ -72,6 +76,37 @@ PYTHON_FLOOR = (3, 10)
 
 #: `requires-python` in `pyproject.toml`, which the floor above must match.
 REQUIRES_PYTHON_RE = re.compile(r'^\s*requires-python\s*=\s*"\s*>=\s*([0-9]+)\.([0-9]+)', re.M)
+
+#: The supported-client table, relative to the repository root. It is the one
+#: place the supported `## Interface` numbers are written by hand; see
+#: `tooling/validation/interface_numbers.py`.
+SUPPORTED_CLIENTS = Path("tooling/validation/supported_clients.json")
+
+#: Documents that must quote the supported `## Interface` line at least once,
+#: each occurrence equal to the table. `examples/*.toc` is checked as well, by
+#: glob, so a second example addon is covered without editing this list.
+REQUIRED_INTERFACE_DOCUMENTS = (
+    Path("docs/EMBEDDING.md"),
+    Path("packages/registry/docs/API.md"),
+)
+
+#: Documents that need not quote an `## Interface` line, but whose every
+#: occurrence must equal the table when they do.
+OPTIONAL_INTERFACE_DOCUMENTS = (Path("README.md"),)
+
+#: The document whose supported-client table is checked row by row.
+SUPPORTED_CLIENTS_DOCUMENT = Path("docs/EMBEDDING.md")
+
+#: The heading of the section in `SUPPORTED_CLIENTS_DOCUMENT` holding that table.
+SUPPORTED_CLIENTS_HEADING = "## Supported client versions"
+
+#: An `## Interface: 120100, 50504` line, in a `.toc` or quoted in a document.
+#: The name must be followed directly by a colon, so a per-flavour field such as
+#: `## Interface-Mists:` is not mistaken for it.
+INTERFACE_LINE_RE = re.compile(r"^[ \t]*##[ \t]*Interface[ \t]*:[ \t]*(.*?)[ \t]*$", re.M)
+
+#: A row of the supported-client table: a cell holding a backticked number.
+SUPPORTED_CLIENT_ROW_RE = re.compile(r"^\|.*\|[ \t]*`[0-9]+`[ \t]*\|.*\|[ \t]*$", re.M)
 
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 IGNORED_DIRECTORY_NAMES = {
@@ -298,6 +333,139 @@ def validate_package_layout() -> list[str]:
     return errors
 
 
+def parse_interface_numbers(value: str) -> list[int] | None:
+    """Parse the value of an `## Interface` line, or return `None` if it is malformed."""
+    numbers: list[int] = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item.isdigit():
+            return None
+        numbers.append(int(item))
+    return numbers
+
+
+def validate_interface_lines(
+    path: Path, expected: SupportedClients, *, required: bool
+) -> list[str]:
+    """Check every `## Interface` line in one file against the supported-client table.
+
+    The comparison is by set: the client reads the numbers in any order, and an
+    addon's `.toc` is not wrong for listing them in a different one. A missing,
+    extra or malformed number is an error, and the message carries the line to
+    paste, which is what `python3 -m tooling.validation.interface_numbers`
+    prints.
+    """
+    if not path.is_file():
+        # A missing required document is `validate_required_root_files`' error.
+        return []
+
+    lines = INTERFACE_LINE_RE.findall(path.read_text(encoding="utf-8"))
+    if not lines:
+        if required:
+            return [error(path, f'no "## Interface" line; expected "{expected.toc_line()}"')]
+        return []
+
+    wanted = set(expected.interface_numbers())
+    errors: list[str] = []
+    for value in lines:
+        numbers = parse_interface_numbers(value)
+        if numbers is None or set(numbers) != wanted or len(numbers) != len(wanted):
+            errors.append(
+                error(
+                    path,
+                    f'"## Interface: {value}" does not match {SUPPORTED_CLIENTS}; '
+                    f'expected "{expected.toc_line()}"',
+                )
+            )
+    return errors
+
+
+def markdown_section(text: str, heading: str) -> str | None:
+    """Return the text under a level-two `heading`, up to the next level-two heading.
+
+    Lines inside fenced code blocks are never headings, which matters here: the
+    `## Interface` line of a quoted `.toc` looks exactly like one.
+    """
+    collected: list[str] | None = None
+    in_fence = False
+    for line in text.splitlines():
+        if line.lstrip().startswith(("```", "~~~")):
+            in_fence = not in_fence
+        elif not in_fence and line.startswith("## "):
+            if collected is not None:
+                break
+            if line.rstrip() == heading:
+                collected = []
+                continue
+        if collected is not None:
+            collected.append(line)
+    return None if collected is None else "\n".join(collected)
+
+
+def validate_supported_client_table(path: Path, expected: SupportedClients) -> list[str]:
+    """Check the supported-client table in `docs/EMBEDDING.md` row by row.
+
+    The rows must be exactly what `interface_numbers --table` prints, in the
+    same order, and the section must state the table's verification date, so a
+    bump that forgets the prose is caught as well as one that forgets a number.
+    """
+    if not path.is_file():
+        return []
+
+    section = markdown_section(path.read_text(encoding="utf-8"), SUPPORTED_CLIENTS_HEADING)
+    if section is None:
+        return [error(path, f'no "{SUPPORTED_CLIENTS_HEADING}" section')]
+
+    errors: list[str] = []
+    rows = [row.rstrip() for row in SUPPORTED_CLIENT_ROW_RE.findall(section)]
+    if rows != expected.markdown_rows():
+        errors.append(
+            error(
+                path,
+                f"supported-client table does not match {SUPPORTED_CLIENTS}; expected rows:\n"
+                + "\n".join(f"      {row}" for row in expected.markdown_rows()),
+            )
+        )
+    if expected.verified not in section:
+        errors.append(
+            error(
+                path,
+                f'"{SUPPORTED_CLIENTS_HEADING}" does not state the verification date '
+                f"{expected.verified} recorded in {SUPPORTED_CLIENTS}",
+            )
+        )
+    return errors
+
+
+def validate_interface_numbers(expected: SupportedClients | None = None) -> list[str]:
+    """Check that every quoted `## Interface` number agrees with the one table.
+
+    `expected` defaults to the table in the repository; tests pass their own.
+    """
+    if expected is None:
+        table_path = ROOT / SUPPORTED_CLIENTS
+        try:
+            expected = load_supported_clients(table_path)
+        except (OSError, ValueError) as exc:
+            return [error(table_path, f"unable to read the supported-client table: {exc}")]
+
+    errors: list[str] = []
+
+    tables = sorted((ROOT / "examples").glob("*.toc"))
+    if not tables:
+        errors.append(error(ROOT / "examples", "no .toc file to check Interface numbers in"))
+    for toc in tables:
+        errors.extend(validate_interface_lines(toc, expected, required=True))
+
+    for relative in REQUIRED_INTERFACE_DOCUMENTS:
+        errors.extend(validate_interface_lines(ROOT / relative, expected, required=True))
+    for relative in OPTIONAL_INTERFACE_DOCUMENTS:
+        errors.extend(validate_interface_lines(ROOT / relative, expected, required=False))
+
+    errors.extend(validate_supported_client_table(ROOT / SUPPORTED_CLIENTS_DOCUMENT, expected))
+    return errors
+
+
 def _is_external_link(target: str) -> bool:
     lowered = target.lower()
     return (
@@ -350,6 +518,7 @@ def validate_repository() -> tuple[dict[str, dict[str, object]], list[str]]:
     errors.extend(validate_language_server_configs(manifests))
     errors.extend(validate_example_language_server_config())
     errors.extend(validate_package_layout())
+    errors.extend(validate_interface_numbers())
     errors.extend(validate_markdown_links())
     return manifests, errors
 

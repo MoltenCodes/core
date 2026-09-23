@@ -38,6 +38,7 @@ ignore:
   - .luarc.json
   - .vscode
   - busted.yml
+  - cspell.json
   - docs
   - examples
   - meta

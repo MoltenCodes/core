@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+  "version": "0.2",
+  "language": "en,en-GB",
+  "files": [
+    "README.md",
+    "docs/**/*.md",
+    "packages/*/README.md",
+    "packages/*/CHANGELOG.md",
+    "packages/*/docs/*.md"
+  ],
+  "ignorePaths": ["build/**", "dist/**", "node_modules/**"],
+  "dictionaryDefinitions": [
+    {
+      "name": "moltencodes",
+      "path": "./tooling/spell-words.txt",
+      "addWords": true
+    }
+  ],
+  "dictionaries": ["moltencodes"],
+  "patterns": [
+    {
+      "name": "fenced-code-block",
+      "pattern": "/^[ \\t]*(`{3,}|~{3,})[\\s\\S]*?^[ \\t]*\\1/gm"
+    }
+  ],
+  "ignoreRegExpList": ["fenced-code-block"]
+}

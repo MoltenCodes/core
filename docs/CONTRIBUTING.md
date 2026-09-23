@@ -14,12 +14,16 @@ Before submitting a change:
 4. Run `python3 -m tooling.lint`, which covers runtime and test Lua. Both scopes
    must report zero errors and zero warnings.
 5. Run `stylua --check .`.
-6. Run `lua-language-server --check packages/<name>/src --checklevel=Warning` for every
+6. Run `python3 -m tooling.spell` when you changed documentation. A word it does
+   not know is either a typo to fix or a deliberate term to add to
+   [`tooling/spell-words.txt`](../tooling/spell-words.txt) under the rule in
+   [`TOOLING.md`](TOOLING.md#adding-a-word).
+7. Run `lua-language-server --check packages/<name>/src --checklevel=Warning` for every
    package you touched, and `lua-language-server --check examples --checklevel=Warning`
    when the public surface changed.
-7. Run `actionlint` when you changed `.github/workflows/`.
-8. Update package documentation when public behavior changes.
-9. Update the owning package changelog for user-visible changes.
+8. Run `actionlint` when you changed `.github/workflows/`.
+9. Update package documentation when public behavior changes.
+10. Update the owning package changelog for user-visible changes.
 
 ## LuaCATS annotations
 
@@ -77,6 +81,30 @@ A Kit that starts calling a new client API adds it there rather than silencing
 the diagnostic.
 
 See [`DEVELOPMENT.md`](DEVELOPMENT.md) for local setup.
+
+## Taint and secret values
+
+Code that runs inside the client follows the taint rules in
+[`EMBEDDING.md`](EMBEDDING.md#rules-for-taint-safe-addon-code). Before submitting
+runtime Lua, check it against this list:
+
+- [ ] No assignment over a Blizzard global, method or script handler; hooks are
+      post-hooks.
+- [ ] No field or table of ours is attached to a frame Blizzard code indexes;
+      per-frame state lives in a table of our own, keyed by the frame.
+- [ ] A key tainted by mistake is set to `nil`, not overwritten.
+- [ ] Shared state is repaired only after `issecurevariable` says it is not
+      secure.
+- [ ] User intent is recorded at once; anything that touches protected frames is
+      applied out of combat.
+- [ ] A recycled region is cleared of secret values before it is reused.
+- [ ] An iterator a secure path may call returns `(iterator, state, control)`,
+      not a closure.
+- [ ] No value the Kit did not create is compared, concatenated, formatted,
+      printed or used as a table key without `issecretvalue` first; error
+      messages describe a secret with a fixed placeholder.
+- [ ] A frame found by enumeration is touched only after `IsForbidden` and
+      `CanBeAccessedInContext` allow it.
 
 ## Commit scope
 

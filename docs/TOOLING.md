@@ -7,15 +7,23 @@ Repository tooling lives under `tooling/` and is never a runtime dependency.
 ```text
 tooling/
 ├── lint.py                         # discovers and lints runtime and test Lua
+├── spell.py                        # runs the pinned cspell over the documentation
+├── spell-words.txt                 # the project dictionary cspell reads
 ├── package/
 │   └── build.py                   # assembles a checksummed distributable bundle
 ├── test/
 │   └── run.py                     # package-aware Busted orchestration
 ├── tests/                         # Python unit tests for repository tooling
 └── validation/
+    ├── interface_numbers.py       # reads the supported-client table, prints the .toc line
+    ├── supported_clients.json     # the supported `## Interface` numbers, by flavour
     ├── validate_manifests.py      # manifest schema and dependency graph checks
-    └── validate_repository.py     # structure, editor configuration and link checks
+    └── validate_repository.py     # structure, editor configuration, Interface and link checks
 ```
+
+[`../cspell.json`](../cspell.json) at the repository root configures the spell
+check; it lives there because that is where cspell and its editor extension look
+for it.
 
 `tooling/test/` (singular) is the Busted orchestration package; `tooling/tests/`
 (plural) is the tooling's own unit-test suite. The names differ by one letter, so
@@ -32,8 +40,8 @@ exists so the floor is written down once, in a machine-readable place.
 `python3 -m tooling.validation.validate_repository` refuses to certify the
 repository from an older interpreter, and checks that the declaration and the
 constant in the validator still agree, so the two cannot drift apart. Every CI
-job that runs repository tooling — the Lua tests, the linter, repository
-validation and the release build — runs on both the floor and the release
+job that runs repository tooling — the Lua tests, the linter, the spell check,
+repository validation and the release build — runs on both the floor and the release
 developers use, so the documented minimum is exercised rather than merely
 asserted. There is no exemption: a job that could only run on the newer
 interpreter would make the floor a claim instead of a supported version.
@@ -113,6 +121,74 @@ preserves a `nil` or `false` error object depend on that. The bundled `lua51`
 description says `string`. Because a chained std (`lua51+busted`) can only add
 entries, `busted.yml` declares `base: lua51` and redefines `error` outright. The
 runtime `selene.toml` keeps the stricter default.
+
+## Supported clients: one table
+
+The `## Interface` numbers the framework supports are written by hand in exactly
+one place, [`tooling/validation/supported_clients.json`](../tooling/validation/supported_clients.json):
+one entry per flavour with its name, Interface number, patch, packager TOC
+suffix and whether the framework promises to run on it, plus the date the
+numbers were last verified and the page they were verified against.
+
+Every other occurrence is checked against it by
+`python3 -m tooling.validation.validate_repository`:
+
+- every `## Interface` line in `examples/*.toc`;
+- every `## Interface` line quoted in `docs/EMBEDDING.md`,
+  `packages/registry/docs/API.md` and, if it ever quotes one, `README.md`;
+- the supported-client table in `docs/EMBEDDING.md`, row by row, and the
+  verification date stated above it.
+
+A quoted line may list the numbers in any order, because the client and the
+packager do; it may not add, drop or repeat one. A per-flavour field such as
+`## Interface-Mists:` is a different field and is not checked.
+
+To update the numbers after a patch:
+
+1. Read the current numbers from `Template:LatestPatchInfo` on
+   warcraft.wiki.gg, or from `/dump (select(4, GetBuildInfo()))` in each client.
+2. Edit `supported_clients.json`: the numbers, the patches and `verified`.
+3. Run `python3 -m tooling.validation.interface_numbers` and paste the line it
+   prints into every place the validator names; run it with `--table` for the
+   rows of the table in `docs/EMBEDDING.md`, and update the date above that
+   table.
+4. Run `python3 -m tooling.validation.validate_repository` until it passes.
+
+The update is one commit. [`RELEASES.md`](RELEASES.md) makes it a release step.
+
+## Spell check
+
+`python3 -m tooling.spell` runs [cspell](https://cspell.org) over the Markdown
+the repository publishes: `README.md`, `docs/`, and every package's README,
+changelog and `docs/`. The globs are the `files` list in
+[`../cspell.json`](../cspell.json), which the runner reads, so the command line
+and an editor running the cspell extension check the same files.
+
+- **Pinned.** The runner calls `npx --yes cspell@<version>` with the release in
+  `CSPELL_VERSION` in `tooling/spell.py`; nothing is installed into the
+  repository. That release needs Node 22.18 or newer.
+- **British and American English.** The language is `en,en-GB`, because the
+  documentation is written with British spellings ("behaviour", "licence") and
+  both are correct English.
+- **Code blocks are skipped.** Fenced blocks hold Lua, shell and `.toc` text that
+  other gates own. Inline code spans are checked, which is why the dictionary
+  holds a few all-lowercase client functions.
+- **Without Node** the command prints a note and exits 0, so a contributor
+  without Node is not blocked. CI passes `--require`, which turns the same case
+  into a failure, and additionally runs the integration tests in
+  `tooling/tests/test_spell.py` against the real cspell; they are skipped
+  unless the environment switch named at the top of that file is set, so the
+  ordinary unit suite stays offline.
+
+### Adding a word
+
+The project dictionary is [`tooling/spell-words.txt`](../tooling/spell-words.txt).
+A word belongs there only when it is spelled correctly and the documentation
+uses it on purpose: a client API name, a Lua or tool term, a domain term. Put it
+under the heading that says why it is there, in alphabetical order within that
+group (a unit test checks the order). cspell already splits `camelCase` and
+`PascalCase`, so names such as `SignalKit` or `GetTimePreciseSec` never need an
+entry. A typo is fixed in the document, never added to the dictionary.
 
 ## Release tooling
 

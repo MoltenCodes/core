@@ -14,12 +14,15 @@ Repository tooling requires:
 | Busted | 2.3.0-1 | pure-Lua test framework |
 | StyLua | 2.5.2 | the authoritative Lua formatter |
 | Selene | 0.31.0 | runtime Lua linting |
+| Node.js | 22.18 or newer (CI runs 24) | runs the pinned cspell for the spell check; optional locally |
 
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) pins these versions and
 is the source of truth. When the table above and CI disagree, CI wins and this
 document is the thing that needs fixing.
 
 No Python third-party package is required by the repository tooling itself.
+cspell is not installed into the repository either: `python3 -m tooling.spell`
+runs a pinned release through `npx`, and skips with a note when Node is missing.
 
 ## Installing the toolchain
 
@@ -135,6 +138,25 @@ Test code is judged against the Busted standard library in
 [`../selene.toml`](../selene.toml). Both scopes run, and both must report zero
 errors and zero warnings.
 
+Spell-check the documentation:
+
+```bash
+python3 -m tooling.spell
+```
+
+It runs the cspell release pinned in `tooling/spell.py` over the files
+[`../cspell.json`](../cspell.json) lists, and needs Node 22.18 or newer; without
+it the command prints a note and exits 0. A word cspell does not know is either
+a typo to fix or a deliberate term for
+[`../tooling/spell-words.txt`](../tooling/spell-words.txt); the rule for telling
+them apart is in [`TOOLING.md`](TOOLING.md#adding-a-word).
+
+Print the supported `## Interface` line, from the one table that defines it:
+
+```bash
+python3 -m tooling.validation.interface_numbers
+```
+
 Check Lua formatting:
 
 ```bash
@@ -178,8 +200,29 @@ Repository tooling supports Python 3.10 and newer, declared once as
 `requires-python` in [`../pyproject.toml`](../pyproject.toml). Repository
 validation refuses to run on anything older and checks that the declaration and
 the validator's own constant agree. Every CI job that runs repository tooling —
-the Lua tests, the linter, repository validation and the release build — runs on
-both 3.10 and 3.13, so the floor is exercised rather than asserted.
+the Lua tests, the linter, the spell check, repository validation and the
+release build — runs on both 3.10 and 3.13, so the floor is exercised rather than asserted.
+
+## Client behaviour the test stubs do not model yet
+
+The shared fixture under `tests/support/` stands in for the client; its stubs
+are described in [`TESTING.md`](TESTING.md). It does not yet model the Retail
+12.x access rules that [`EMBEDDING.md`](EMBEDDING.md#secret-values-retail-12x)
+documents for consumers:
+
+- `issecretvalue(value)` reports a **secret value**: one that insecure code may
+  store and pass on, but not compare, concatenate, print or use as a table key.
+  Some unit and aura APIs return secrets in combat.
+- `frame:IsForbidden()` and `frame:CanBeAccessedInContext()` say whether a frame
+  found by enumeration may be touched at all.
+- `issecurevariable` and `securecallfunction` are the taint probes and the
+  isolation call; the fixture already stubs `securecallfunction`.
+
+Their signatures are declared in [`../meta/wow/`](../meta/wow/). Until the
+fixture stubs `issecretvalue` (planned with the `clientKit` work), a spec that
+needs a secret installs its own stand-in and removes it in `finally`, and code
+under test must treat a missing `issecretvalue` as "never secret", which is what
+every client without secret values looks like.
 
 ## Building a release bundle
 
