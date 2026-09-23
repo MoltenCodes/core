@@ -13,15 +13,26 @@
 ---                  `SetAllPoints`), and `GetRect` / `GetCenter` / `GetWidth`
 ---                  resolved from those anchors the way the client resolves
 ---                  them: two anchors on opposite edges size a region, one
----                  anchor positions it at its own size;
+---                  anchor positions it at its own size. An anchor to the
+---                  region itself, or one that would close an anchor cycle,
+---                  raises as the client refuses it. Scale is recorded and
+---                  reported (`GetScale`, `GetEffectiveScale`) but never
+---                  applied: every rect is in unscaled coordinates;
 ---   hierarchy      `SetParent` / `GetParent`, named frames published as
 ---                  globals, visibility through the parent chain, scale;
+---   visibility     `Show` / `Hide` / `SetShown` fire `OnShow` / `OnHide`
+---                  when the frame's own shown flag changes. The client fires
+---                  them on a change of *visibility*, children included; the
+---                  stub fires them only for the frame whose flag changed,
+---                  never for its children;
 ---   regions        `CreateFontString` and `CreateTexture`, with text,
 ---                  texture and colour state a spec can read back;
 ---   frame types    `Button`, `CheckButton`, `Slider`, `EditBox` and
 ---                  `ScrollFrame` with the state and scripts they carry;
 ---   interaction    mouse, keyboard, movable and resizable flags, drag
----                  registration, `StartMoving` / `StopMovingOrSizing`;
+---                  registration, `StartMoving` / `StopMovingOrSizing`, and
+---                  one focused `EditBox` at a time with its
+---                  `OnEditFocusLost` / `OnEditFocusGained` scripts;
 ---   templates      accepted and recorded, otherwise no-ops.
 ---
 --- Every function here takes the environment's shared state table rather than
@@ -260,6 +271,39 @@ function resolveRect(region, depth)
     return left, bottom, width, height
 end
 
+---Whether `region`'s position depends on `target`: `region` is `target`, or
+---one of its anchors leads to `target`, following an anchor's relative region
+---(its parent when the anchor names none) and a scroll child's scroll frame.
+---Walks without allocating.
+---@param region table?
+---@param target table
+---@param depth integer
+---@return boolean
+local function dependsOn(region, target, depth)
+    if region == nil or depth > MAXIMUM_RESOLVE_DEPTH then
+        return false
+    end
+    if region == target then
+        return true
+    end
+
+    local points = region._points
+    local count = points ~= nil and points.count or 0
+    local parent = region.parentFrame
+    if count == 0 then
+        return parent ~= nil
+            and parent._scrollChild == region
+            and dependsOn(parent, target, depth + 1)
+    end
+    for index = 1, count do
+        local slot = points[index]
+        if dependsOn(slot.relativeTo or parent, target, depth + 1) then
+            return true
+        end
+    end
+    return false
+end
+
 ---Split the client's five `SetPoint` call forms into one shape.
 ---@return table? relativeTo, string relativePoint, number x, number y
 local function readPointArguments(point, first, second, third, fourth)
@@ -407,6 +451,18 @@ function RegionMethods:SetPoint(point, first, second, third, fourth)
     if HORIZONTAL_EDGE[relativePoint] == nil then
         error("SetPoint stub: unknown relative point " .. tostring(relativePoint), 2)
     end
+    -- The client refuses both of these at the caller's line, in these words,
+    -- rather than resolve a rect that depends on itself.
+    local anchoredTo = relativeTo or self.parentFrame
+    if anchoredTo == self then
+        error("Action[SetPoint] failed because[Cannot anchor to itself]", 2)
+    end
+    if dependsOn(anchoredTo, self, 0) then
+        error(
+            "Action[SetPoint] failed because[SetPoint would result in anchor family connection]",
+            2
+        )
+    end
 
     local points = self._points
     if points == nil then
@@ -482,16 +538,34 @@ function RegionMethods:SetAllPoints(relativeTo)
     self:SetPoint("BOTTOMRIGHT", relativeTo or self.parentFrame, "BOTTOMRIGHT", 0, 0)
 end
 
+---Set the region's own shown flag and, on a Frame whose flag changed, run
+---`OnShow` or `OnHide` after the change, as the client does. FontStrings and
+---Textures carry no scripts.
+---@param region table
+---@param hidden boolean
+local function setHidden(region, hidden)
+    local wasHidden = region._hidden == true
+    region._hidden = hidden or nil
+    local scripts = region.scripts
+    if scripts == nil or wasHidden == hidden then
+        return
+    end
+    local handler = hidden and scripts.OnHide or scripts.OnShow
+    if handler ~= nil then
+        handler(region)
+    end
+end
+
 function RegionMethods:Show()
-    self._hidden = nil
+    setHidden(self, false)
 end
 
 function RegionMethods:Hide()
-    self._hidden = true
+    setHidden(self, true)
 end
 
 function RegionMethods:SetShown(shown)
-    self._hidden = not shown or nil
+    setHidden(self, not shown)
 end
 
 function RegionMethods:IsShown()
@@ -1033,12 +1107,40 @@ function EditBoxMethods:SetAutoFocus(autoFocus)
     self.autoFocus = autoFocus
 end
 
+---Take the keyboard focus. The client focuses one edit box at a time, so the
+---box that held it loses it first: `OnEditFocusLost` on that box, then
+---`OnEditFocusGained` on this one. Focusing the focused box does nothing.
 function EditBoxMethods:SetFocus()
+    local state = self.stubState
+    local previous = state.focusedEditBox
+    if previous == self then
+        return
+    end
+    if previous ~= nil then
+        previous:ClearFocus()
+    end
     self.focused = true
+    state.focusedEditBox = self
+    local onFocusGained = self.scripts.OnEditFocusGained
+    if onFocusGained ~= nil then
+        onFocusGained(self)
+    end
 end
 
+---Give up the focus and run `OnEditFocusLost`; a box without it does nothing.
 function EditBoxMethods:ClearFocus()
+    if self.focused ~= true then
+        return
+    end
     self.focused = nil
+    local state = self.stubState
+    if state.focusedEditBox == self then
+        state.focusedEditBox = nil
+    end
+    local onFocusLost = self.scripts.OnEditFocusLost
+    if onFocusLost ~= nil then
+        onFocusLost(self)
+    end
 end
 
 function EditBoxMethods:HasFocus()
@@ -1246,6 +1348,7 @@ function FrameStub.Reset(state)
     state.frames = {}
     state.namedRegions = {}
     state.anchorLog = nil
+    state.focusedEditBox = nil
     state.nextRegisterEventResult = nil
     state.nextRegisterUnitEventResult = nil
     state.failNextSetScript = nil
@@ -1357,6 +1460,10 @@ function FrameStub.Attach(environment, state)
     ---Move `frame` the way the client leaves a frame after the user dragged
     ---it: one `BOTTOMLEFT` anchor to its parent, so that its bottom-left
     ---corner sits at (`left`, `bottom`) in screen coordinates.
+    ---
+    ---Like all of the stub's geometry this ignores scale: `left` and `bottom`
+    ---are unscaled coordinates, where the client would divide the dragged
+    ---position by the frame's effective scale.
     ---@param frame table
     ---@param left number
     ---@param bottom number
