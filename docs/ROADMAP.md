@@ -470,6 +470,88 @@ the WowAce directory item W6 (a shared validation core).
    EMBEDDING.md host row and a taint-section cross-reference.
 9. Status: implemented (package C2, 0.1.0).
 
+**settingsKit** — facade `SettingsKit`
+
+1. Package `settingsKit`, facade `SettingsKit`, API generation 1.
+2. Purpose: saved variables done once: a database opened over the addon's
+   SavedVariables table with scopes (`global`, `char`, `realm`, `class`,
+   `faction`, `profile`), defaults applied without being written back
+   (including wildcard defaults for keyed sections), profiles with copy,
+   reset and delete, change notifications, and versioned migrations.
+   v1 ships profiles; spec-aware profiles and namespaces are v2 (recorded
+   here so the state layout leaves room: a `namespaces` table and a
+   `profileKeys` table exist from v1). Non-goals: an options UI, storage
+   outside SavedVariables, encryption.
+3. Dependencies: registry API 2, schemaKit API 1 (defaults and validation),
+   signalKit API 1 (change and profile signals); lifecycleKit API 1
+   optional through `Registry:Find` (flush hook at shutdown is the host's
+   job; nothing to do — documented).
+4. Surface: `SettingsKit:Open(savedVariable, schema, options)` where
+   `savedVariable` is the global name from the TOC (the table is created if
+   missing), `schema` a `SchemaKit.table` per scope (`{ global = ..., profile
+   = ..., char = ... }`), options `defaultProfile` (`"Default"` or `"char"`
+   for one profile per character), `version` and `migrations = { [n] = fn(db) }`;
+   the returned `db` exposes `db.global`, `db.char`, `db.realm`, `db.class`,
+   `db.faction`, `db.profile` as live tables whose reads fall back to
+   defaults through a metatable and whose writes are validated against the
+   schema at the writer's line; `db:GetProfile()`, `db:SetProfile(name)`,
+   `db:GetProfiles()` (sorted, allocating), `db:CopyProfile(from)`,
+   `db:ResetProfile()`, `db:DeleteProfile(name)`, `db:ResetDatabase()`,
+   `db:OnChange(scope, callback)` / `db:OnProfileChanged(callback)` returning
+   SignalKit connections; `db:Compact()` removes values equal to defaults
+   before logout (called automatically on `PLAYER_LOGOUT` when EventKit is
+   present, documented).
+5. Ownership: one `db` per saved-variable name in package state; connections
+   are the consumer's; upgrades keep databases and their listeners.
+6. Performance: a read is one table read or one default lookup; a write is
+   one schema check plus one table write; no per-read allocation; default
+   fallback never writes into the saved table, so files stay small; scopes
+   are resolved once at `Open` from `UnitName`, `GetRealmName`,
+   `UnitClass`, `UnitFactionGroup` (stubbed in tests).
+7. Tests: defaults not written back, wildcard defaults, validated writes at
+   the caller's line, each scope key, profile switch with signal, copy,
+   reset, delete (current profile refused), migrations in order once,
+   Compact, OnChange, upgrade keeping the db, manifest, error levels.
+8. Docs: README, API.md with a full addon example (TOC `## SavedVariables`,
+   schema, Open in OnLoaded), INTERNALS.md (layout of the saved table),
+   CHANGELOG; EMBEDDING.md host row and a saved-variables section.
+9. Status: planned (package C2).
+
+**optionsKit** — facade `OptionsKit`
+
+1. Package `optionsKit`, facade `OptionsKit`, API generation 1.
+2. Purpose: a typed, validated, introspectable options tree with no
+   renderer: what an addon exposes as configurable, how each option is
+   read and written, and what a UI or a command line needs to present it.
+   Non-goals: widgets, a dialog, slash parsing (commandKit binds to it).
+3. Dependencies: registry API 2, schemaKit API 1 (value validation),
+   signalKit API 1 (change signals); settingsKit API 1 optional through
+   `Registry:Find` (binding an option to a database path).
+4. Surface: `OptionsKit:Define(addonName, tree)` where the tree is nested
+   groups of typed options: `group`, `toggle`, `range { min, max, step }`,
+   `select { values }`, `multiselect { values }`, `input { pattern,
+   multiline }`, `color { alpha }`, `keybinding`, `execute { func }`,
+   `header`, `description`; each with `name`, `desc`, `order`, `get`/`set`
+   or `bind = "profile.path.to.value"` (settingsKit), `disabled`/`hidden`
+   as booleans or predicates, `validate`; `options:Get(path)`,
+   `options:Set(path, value)` (validated through the option's schema at the
+   caller's line, then the setter, then a change signal), `options:Walk(fn)`
+   in order, `options:Describe()` (plain table for renderers, allocating),
+   `options:OnChange(callback)`, `options:Reset(path)` to the bound default;
+   `OptionsKit:Get(addonName)`.
+5. Ownership: one tree per addon name in package state; the tree is sealed
+   at `Define`; upgrades keep trees.
+6. Performance: `Get` and `Set` are path lookups on a pre-indexed map (no
+   string splitting per call after Define); `Walk` allocates nothing;
+   `Describe` allocates by design.
+7. Tests: every option type validated, bind to settingsKit and to
+   getters, order, disabled/hidden predicates, change signal, Reset,
+   unknown path errors at the caller, Describe shape, Walk order, upgrade,
+   manifest, error levels.
+8. Docs: README, API.md with a complete options tree example, CHANGELOG;
+   a note on how a renderer (widgetKit, package E) consumes Describe.
+9. Status: planned (package C3).
+
 #### Package D — interoperability and distribution
 
 - [ ] `codecKit` — serialise, compress and channel-encode as three stages
