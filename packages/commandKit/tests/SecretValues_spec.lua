@@ -78,6 +78,26 @@ describe("CommandKit and secret values", function()
         end)
     end)
 
+    it("skips secret completion candidates and secret slash globals", function()
+        scope:Register("pick", {
+            handler = function() end,
+            complete = function()
+                return { "hidden", "shown" }
+            end,
+        })
+        TestEnv.SetGlobal("issecretvalue", function(value)
+            return value == "hidden" or value == "/secretemote"
+        end)
+        scope:EnableCompletion()
+        local editBox = TestEnv.NewEditBox("/pick ")
+        assert.is_true(TestEnv.PressTab(editBox))
+        assert.are.equal("/pick shown ", editBox.text)
+
+        TestEnv.SetGlobal("EMOTE3_CMD1", "/secretemote")
+        TestEnv.SetGlobal("SLASH_SAY3", "/secretemote")
+        assert.is_true(scope:Register("secretemote", { handler = function() end }))
+    end)
+
     it("shows a secret option value as a placeholder", function()
         TestEnv.Reset()
         local Kit, _, _, _, OptionsKit = TestEnv.NewPackage()

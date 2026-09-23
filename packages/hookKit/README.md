@@ -3,7 +3,7 @@
 HookKit hooks global functions, object methods and frame scripts in World of Warcraft addons, reversibly, under three named semantics whose taint consequences are spelled out — and refuses the hooks that break the client's secure code.
 
 ```lua
-local HookKit = MoltenCodes.Registry:Get("hookKit", 1)
+local HookKit = MoltenCodes.Registries[2]:Get("hookKit", 1)
 local hooks = HookKit:ForAddon("MyAddon")
 
 -- Secure post-hook: runs after the original, taints nothing but your handler.

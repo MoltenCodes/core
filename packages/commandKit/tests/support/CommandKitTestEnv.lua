@@ -25,8 +25,9 @@
 --- OptionsKit, LocaleKit and ClientKit are optional dependencies of
 --- CommandKit, declared under `optionalDependencies`, so the test runner puts
 --- them on `LUA_PATH`; `NewPackage` loads OptionsKit (and SignalKit, which it
---- needs), `NewPackageWithLocaleKit` adds LocaleKit, and `NewPackageAlone`
---- models an addon that embeds only Registry, SchemaKit and CommandKit.
+--- needs), `NewPackageWithLocaleKit` adds LocaleKit, `NewPackageWithClientKit`
+--- adds ClientKit, and `NewPackageAlone` models an addon that embeds only
+--- Registry, SchemaKit and CommandKit.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local CommandKitTestEnv = FrameworkTestEnv.New({

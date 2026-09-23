@@ -467,7 +467,7 @@ end
 ---@return string|nil
 local function readThroughProxy(proxy, key)
     local record = proxyRecords[proxy]
-    if record == nil or key == nil then
+    if record == nil then
         return nil
     end
     return rawget(record.strings, key)
@@ -790,7 +790,8 @@ end
 ---Unindexed specifiers take the arguments in order, independently of indexed
 ---ones. `%s` takes a string or a number, `%d` and `%f` a number. A specifier
 ---past the last argument, an unsupported specifier, a wrong argument type or a
----secret value raises at the caller. Allocates only strings, no tables.
+---secret template or argument raises at the caller. Allocates only strings,
+---no tables.
 ---@param _ LocaleKit
 ---@param template string
 ---@param ... any
@@ -805,6 +806,11 @@ local function packageFormat(_, template, ...)
     -- selene: allow(global_usage)
     local isSecretValue = rawget(_G, "issecretvalue")
     if type(isSecretValue) == "function" then
+        -- A read table hands a secret key back as itself, so `Format(L[name])`
+        -- can pass a secret template; `string.gsub` must never see one.
+        if isSecretValue(template) then
+            error("LocaleKit:Format template must not be a secret value", 2)
+        end
         for index = 1, count do
             if isSecretValue((select(index, ...))) then
                 error("LocaleKit:Format argument " .. index .. " must not be a secret value", 2)

@@ -36,7 +36,7 @@ HookKit.lua
 HookKit depends only on Registry API 2. Portable WoW code resolves the package through Registry:
 
 ```lua
-local HookKit = MoltenCodes.Registry:Get("hookKit", 1)
+local HookKit = MoltenCodes.Registries[2]:Get("hookKit", 1)
 ```
 
 HookKit does not rely on `require()` at runtime. Loading it without Registry raises `MoltenCodes HookKit requires Registry API 2 to be loaded first`.
@@ -169,9 +169,9 @@ Argument errors name the parameter: `HookKit.Scope:Hook method must be a non-emp
 |---|---|---|
 | `secure`, `secureScript` | The closure stays, inert. The host owns it. | The same. |
 | `hook`, `rawHook` | The original is written back. When the original came through `__index` (the field was not a raw field before the hook), the field is **deleted** instead, so the inherited function shows through again and no addon-written value stays in the field (the host may still report the slot as tainted). | The closure stays in their chain, inert: it forwards every argument to the original and returns its results. Restoring under them would cut their hook out. |
-| `hookScript`, `rawHookScript` | `frame:SetScript(script, previous)`, where `previous` may be `nil`. On a protected frame in combat lockdown (a conservative HookKit rule), or on a frame that has become forbidden or inaccessible, the closure stays, inert, instead. | The closure stays, inert, forwarding to the previous script. |
+| `hookScript`, `rawHookScript` | `frame:SetScript(script, previous)`, where `previous` may be `nil`. The closure stays, inert, instead while any HookKit scope holds a `SecureHookScript` post-hook on that script (restoring would drop it), on a protected frame in combat lockdown (a conservative HookKit rule), and on a frame that has become forbidden or inaccessible. | The closure stays, inert, forwarding to the previous script. |
 
-"Still HookKit's" is `rawget(object, method) == installed` for a field and `frame:GetScript(script) == installed` for a script. **Install direction for scripts.** `HookScript` and `RawHookScript` install with `SetScript`. If the host drops the post-hooks added with `Frame:HookScript` when `SetScript` runs, installing a pre-hook after them would silently remove them — other addons' and HookKit's own — while `IsHooked` still answered `true` for HookKit's. HookKit therefore refuses a script pre-hook or replacement while any HookKit scope holds a `SecureHookScript` post-hook on that script, and the safe order is pre-hook first, post-hooks after. It cannot see other addons' `HookScript` post-hooks; prefer `SecureHookScript`, which never calls `SetScript`.
+"Still HookKit's" is `rawget(object, method) == installed` for a field and `frame:GetScript(script) == installed` for a script. **Install direction for scripts.** `HookScript` and `RawHookScript` install with `SetScript`. If the host drops the post-hooks added with `Frame:HookScript` when `SetScript` runs, installing a pre-hook after them would silently remove them — other addons' and HookKit's own — while `IsHooked` still answered `true` for HookKit's. HookKit therefore refuses a script pre-hook or replacement while any HookKit scope holds a `SecureHookScript` post-hook on that script, and the safe order is pre-hook first, post-hooks after. For the same reason, unhooking a pre-hook or replacement that has a HookKit post-hook installed after it leaves its closure in place, inert, rather than calling `SetScript`. It cannot see other addons' `HookScript` post-hooks; prefer `SecureHookScript`, which never calls `SetScript`.
 
 `UnhookAll` and `Close` release every hook, newest first. A host failure in one release (a `SetScript` that raises) does not stop the others: every hook is released and leaves the scope, and the first error object is re-raised unchanged afterwards.
 

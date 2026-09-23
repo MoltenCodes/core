@@ -66,7 +66,6 @@ A database is a table carrying its views as plain fields (`global`, `char`, ...,
 | `_profileRoots` | Profile name to its cached root view. |
 | `_version` | `options.version`, or `false`. |
 | `_signals` | The four profile signals. |
-| `_logoutConnection` | The EventKit connection, or `false`. |
 
 A scope record holds the scope's `name`, its own sealed `schema`, its compiled `plan`, the `sectionName` and `sectionKey` of its saved table, whether it is `available`, and its `OnChange` `signal`.
 
@@ -78,11 +77,11 @@ A missing scope field falls through to the metatable's `__index`, which looks fo
 
 | Field | Meaning |
 |---|---|
-| `kind` | The SchemaKit kind. |
 | `proxied` | `"record"` for a `table`, `"map"` for a `map`, `false` for everything else or below depth 16. |
 | `fieldNames`, `fields` | Record: sorted names and each field's plan. |
 | `ownDefaults` | Record: every field default, filled the way `schema:Apply` fills them. |
 | `values`, `max` | Map: the plan of the values and the entry bound. |
+| `keyKind` | Map: the SchemaKit kind of the keys, so `Validate` can turn a dotted-path segment into a number key. |
 | `default` | The declared default, filled. On a map's `values` plan this is the wildcard default. |
 
 `fillDefaults` mirrors `Apply`: a missing value takes a copy of the declared default, then records are filled field by field, maps entry by entry and arrays element by element. `oneOf` defaults are not filled inside, because `Apply` picks the alternative by checking. Plans never change after `Open` and are shared by every view of the scope; the default tables in them are never handed to a consumer.
@@ -132,7 +131,7 @@ Views are built recursively down to SchemaKit's `MAX_DEPTH` (16), the deepest va
 - **record**: read the key from the resolved saved table. A value is returned as is, except that a table under a record or map field returns the child view. Nothing saved: a record or map field returns its child view when it has a default, a scalar returns its default, and a plain table default is copied into the saved table (`materialise`) and returned.
 - **map**: the same, with the default taken from the section's default entries and then the wildcard default, and entry views built on demand. A plain-table default of a missing entry is returned as a fresh copy and never stored, and `materialise` stores nothing when the view sits inside an entry that is not saved yet (`wouldCreateEntry`), so reads never grow a keyed section past its `max` or store a key its key schema refuses.
 
-Both kinds refuse a secret key before using it to index anything.
+Both kinds ask `issecretvalue` about the key before comparing it or using it to index anything; a secret key raises at the reading line.
 
 ### Iteration
 
@@ -155,12 +154,12 @@ A probe key left behind by a custom check that raised mid-check is cleared by th
 
 ## Compaction
 
-`compactRecord`, `compactMap` and `compactValue` walk a saved table together with its plan and defaults. A value deeply equal to its default is removed (`deepEqual` treats a secret as unequal to everything and stops at depth 16). A record or map table is compacted first and then removed when it is empty and has a default to fall back to. `compactScope` walks every entry of a section, removes empty character, realm, class and faction entries, and keeps empty profiles. The logout listener calls `dispatch.compactOnLogout(db)`, which runs `compactDatabase` under `pcall` and reports a failure through `geterrorhandler()`.
+`compactRecord`, `compactMap` and `compactValue` walk a saved table together with its plan and defaults. A value deeply equal to its default is removed (`deepEqual` treats a secret as unequal to everything and stops at depth 16). A record or map table is compacted first and then removed when it is empty and has a default to fall back to. The walk follows the plan, which `compilePlan` stops at depth 16, so it carries no depth counter of its own; keys the plan does not declare are never visited, so undeclared data survives. `compactScope` walks every entry of a section, removes empty character, realm, class and faction entries, and keeps empty profiles. The logout listener calls `dispatch.compactOnLogout(db)`, which runs `compactDatabase` under `pcall` and reports a failure through `geterrorhandler()`.
 
 ## Closures and upgrades
 
-SettingsKit hands out one closure per database: the `PLAYER_LOGOUT` listener, which calls through `state.dispatch`. Views and databases get their behaviour from the two metatables in `_state` and the `Database` prototype, which a newer revision rewrites in place. Databases, nodes and plans carry layout numbers so a revision that changes a layout can upgrade them lazily. The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to 2 and checks that a database opened before the upgrade, its views, its `OnChange` and profile listeners and its logout compaction keep working.
+SettingsKit hands out one closure per database: the `PLAYER_LOGOUT` listener, which calls through `state.dispatch`. The connection EventKit returns is not kept: a database lives for the session and is never disconnected. Views and databases get their behaviour from the two metatables in `_state` and the `Database` prototype, which a newer revision rewrites in place. Databases, nodes and plans carry layout numbers so a revision that changes a layout can upgrade them lazily. The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to 2 and checks that a database opened before the upgrade, its views, its `OnChange` and profile listeners and its logout compaction keep working.
 
 ## Error levels
 
-Every argument validator takes an explicit `level`, which is the value `error` needs *inside the function that receives it*; each further hop towards `error` adds one. Public methods pass `3` to helpers they call directly and raise their own errors at `2`. The functions behind the view metatable are called by the writing or reading line, so `viewNewIndex` passes through to `writeView`, which raises at `3`, `readMap` raises at `3`, and `databaseIndex` and `databaseNewIndex` raise at `2`. Lua 5.1 refuses a `nil` or NaN key while looking for the slot, before any metamethod runs, so those never reach SettingsKit.
+Every argument validator takes an explicit `level`, which is the value `error` needs *inside the function that receives it*; each further hop towards `error` adds one. Public methods pass `3` to helpers they call directly and raise their own errors at `2`. The functions behind the view metatable are called by the writing or reading line, so `viewNewIndex` passes through to `writeView`, which raises at `3`, `readRecord` and `readMap` raise at `3`, and `databaseIndex` and `databaseNewIndex` raise at `2`. Lua 5.1 refuses a `nil` or NaN key while looking for the slot, before any metamethod runs, so those never reach SettingsKit.

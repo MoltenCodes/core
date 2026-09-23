@@ -3,7 +3,7 @@
 OptionsKit describes what a World of Warcraft addon exposes as configurable — a tree of groups and typed options — and checks every value written through it against a SchemaKit schema. It draws nothing: a dialog (WidgetKit) and a command line (CommandKit) read the same tree.
 
 ```lua
-local Registry = MoltenCodes.Registry
+local Registry = MoltenCodes.Registries[2]
 local OptionsKit = Registry:Get("optionsKit", 1)
 
 local options = OptionsKit:Define("MyAddon", {

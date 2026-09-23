@@ -28,7 +28,7 @@ OptionsKit does not rely on `require()` at runtime.
 | Facility | Used by | Without it |
 |---|---|---|
 | SettingsKit API 1, through `Registry:Find` | `Define` with `options.db`, which every `bind` needs | `Define` with `options.db` raises; options with `get`/`set` work as usual. |
-| `issecretvalue` | `Set`, `Validate`, and every path and addon-name argument | Nothing is treated as secret, which is correct on clients without secret values. |
+| `issecretvalue` | `Set`, `Validate`, `Describe`'s copy of a value, and every path and addon-name argument | Nothing is treated as secret, which is correct on clients without secret values. |
 
 `issecretvalue` is read from the global table at every call, as SchemaKit reads it, so a probe that appears later is used at once.
 
@@ -306,7 +306,7 @@ In this order:
 1. `value` must not be a secret (`OptionsKit.Tree:Set value must not be a secret value`, raised at your line);
 2. the option's schema is asserted **at your line**: `OptionsKit.Tree:Set general.scale: expected number <= 2, found larger number`;
 3. `validate(info, value)` runs; a refusal returns `false, message` and writes nothing;
-4. `set(info, value)` runs, or the value is written at the bind path; a refusal by SettingsKit (its schema is narrower, or the profile view is detached) is raised again **at your line** with SettingsKit's message kept: `OptionsKit.Tree:Set frame.x refused by the database: SettingsKit (MyAddonDB) profile.frame.x: expected number <= 3, found larger number`;
+4. `set(info, value)` runs, or the value is written at the bind path; a refusal by SettingsKit (its schema is narrower, or the profile view is detached) is raised again **at your line** with SettingsKit's message kept: `OptionsKit.Tree:Set frame.x refused by the database: SettingsKit (MyAddonDB) profile.frame.x: expected number <= 3, found larger number`. An error raised by one of the database's own `OnChange` listeners, after SettingsKit stored the value, is not a refusal and propagates unchanged;
 5. `OnChange` listeners run with `(tree, path, value)`;
 6. `Set` returns `true`.
 
@@ -380,7 +380,7 @@ A fresh plain table describing the whole tree, built on every call and safe to e
 | `addonName` | the root | |
 | `children` | `group` | Child nodes, sorted as `Walk` visits them. |
 | `inline` | `group` | When defined. |
-| `value` | value kinds | The current value, as `Get` returns it. |
+| `value` | value kinds | The current value, as `Get` returns it, except that a table is copied (at most 8 tables deep): a bound value that SettingsKit returns as a view is copied through `db:Pairs`, defaults included, so the description never holds the getter's table or a view that writes through to the saved variable. A secret value is passed through without being copied (see [Secret values](#secret-values)). |
 | `schema` | value kinds | `schema:Describe()` of the option's SchemaKit schema. |
 | `bind` | bound options | The bind path. |
 | `values` | `select`, `multiselect` | A copy of the values table; a values function is called and its result copied. |
@@ -411,7 +411,7 @@ A command line needs no widgets: `Walk` lists the paths, `Describe` gives each o
 
 ## Secret values
 
-On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). `Set` refuses a secret value at your line before anything compares it, and `Validate` reports it as `false, "secret value"`. A secret path or addon name is refused before it is used as a table key. `Get` and `Describe` return what a getter returns, secret or not, without inspecting it. A secret nested in a table value (a `color` field) is refused by the schema with SchemaKit's `secret` rule.
+On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). `Set` refuses a secret value at your line before anything compares it, and `Validate` reports it as `false, "secret value"`. A secret path or addon name is refused before it is used as a table key. `Get` and `Describe` return what a getter returns, secret or not, without inspecting it: `Describe` asks `issecretvalue` before it copies a table value, and passes a secret, at the top or nested inside the table, through without being copied. A secret nested in a table value (a `color` field) is refused by the schema with SchemaKit's `secret` rule.
 
 ## Error behaviour
 

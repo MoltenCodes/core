@@ -32,7 +32,7 @@ commands:Register("myaddon", {
 })
 ```
 
-Typing `/myaddon` prints the generated usage; `/myaddon scale 3` prints `/myaddon scale: argument 1: expected number <= 2, found larger number` and the usage line; `/myaddon link` followed by a shift-clicked item receives the whole link as one argument.
+Typing `/myaddon` prints the generated usage; `/myaddon scale 3` prints `/myaddon scale: argument 1: expected number <= 2, found larger number` followed by the usage; `/myaddon link` followed by a shift-clicked item receives the whole link as one argument.
 
 What each piece promises:
 

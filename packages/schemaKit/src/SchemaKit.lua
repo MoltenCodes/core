@@ -116,6 +116,14 @@ local ARRAY_SPEC_KEYS = { of = true, min = true, max = true }
 local MAP_SPEC_KEYS = { keys = true, values = true, max = true }
 local SEAL_OPTION_KEYS = { freshFailures = true }
 
+-- Lua 5.1's `string.find` treats a pattern without one of these characters as
+-- plain text, and never interprets it. The class is the `SPECIALS` string of
+-- `lstrlib.c` written as a Lua pattern.
+local PATTERN_SPECIALS = "[%^%$%*%+%?%.%(%[%%%-]"
+
+-- `LUA_MAXCAPTURES` in Lua 5.1: a pattern opening more captures raises.
+local MAX_PATTERN_CAPTURES = 32
+
 -- The published surface, listed once so the public-surface predicate reads as
 -- a checklist instead of a long boolean expression.
 local FACADE_FUNCTIONS = {
@@ -1246,6 +1254,25 @@ local function refuseColonCall(argument, label, level)
     end
 end
 
+---Return the alphabetically first key of `options` outside `allowedKeys`, as
+---it appears in a message, or `nil` when every key is allowed. Sorting makes
+---the reported field independent of hash order.
+---@param options table
+---@param allowedKeys table<string, true>
+---@return string?
+local function firstUnknownField(options, allowedKeys)
+    local firstUnknown = nil
+    for key in next, options do
+        if allowedKeys[key] ~= true then
+            local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
+            if firstUnknown == nil or text < firstUnknown then
+                firstUnknown = text
+            end
+        end
+    end
+    return firstUnknown
+end
+
 ---Refuse a non-table spec and any field outside `allowedKeys`, reporting the
 ---alphabetically first unknown field.
 ---@param spec any
@@ -1256,15 +1283,7 @@ local function validateSpecKeys(spec, allowedKeys, label, level)
     if type(spec) ~= "table" then
         error(label .. " spec must be a table", level)
     end
-    local firstUnknown = nil
-    for key in next, spec do
-        if allowedKeys[key] ~= true then
-            local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
-            if firstUnknown == nil or text < firstUnknown then
-                firstUnknown = text
-            end
-        end
-    end
+    local firstUnknown = firstUnknownField(spec, allowedKeys)
     if firstUnknown ~= nil then
         error(label .. ' spec contains unknown field "' .. firstUnknown .. '"', level)
     end
@@ -1422,6 +1441,135 @@ local function compileLiterals(list, length, label, level)
     return set, copy, "one of " .. rendered
 end
 
+---Return the index just past the single-character class that starts at
+---`index` (`x`, `%x` or a `[...]` set), or `nil` when the class is malformed.
+---Mirrors `classEnd` in Lua 5.1's `lstrlib.c`, including a `]` or `%]` right
+---after `[` or `[^` being a member of the set rather than its end.
+---@param pattern string
+---@param index integer
+---@param length integer
+---@return integer?
+local function patternClassEnd(pattern, index, length)
+    local character = sub(pattern, index, index)
+    index = index + 1
+    if character == "%" then
+        if index > length then
+            return nil
+        end
+        return index + 1
+    elseif character == "[" then
+        if sub(pattern, index, index) == "^" then
+            index = index + 1
+        end
+        repeat
+            if index > length then
+                return nil
+            end
+            local member = sub(pattern, index, index)
+            index = index + 1
+            if member == "%" and index <= length then
+                index = index + 1
+            end
+        until sub(pattern, index, index) == "]"
+        return index + 1
+    end
+    return index
+end
+
+---Whether `string.find` can use `pattern` on every subject without raising.
+---
+---Lua 5.1 reports a malformed pattern only when matching reaches the broken
+---part, so a pattern such as `"a["` finds nothing in `""` without complaint
+---and raises on `"ab"`. Trying the pattern once when the node is built is
+---therefore not enough: `Check` would raise from inside SchemaKit on the
+---first string that gets that far. This walks the whole pattern the way the
+---matcher would and refuses every construct the matcher raises on: a trailing
+---`%`, an unclosed `[`, `%b` without two characters, `%f` without a set, a
+---back-reference to a capture that is not closed, an unbalanced `(` or `)`,
+---and more than 32 captures.
+---@param pattern string
+---@return boolean
+local function isValidPattern(pattern)
+    -- The matcher stops at the first NUL byte, so nothing after it matters.
+    local nulIndex = find(pattern, "\0", 1, true)
+    if nulIndex ~= nil then
+        pattern = sub(pattern, 1, nulIndex - 1)
+    end
+    if find(pattern, PATTERN_SPECIALS) == nil then
+        return true
+    end
+
+    local length = #pattern
+    local index = 1
+    if sub(pattern, 1, 1) == "^" then
+        index = 2
+    end
+    local captureCount = 0
+    local openCaptures = {}
+    local openCount = 0
+    local closedCaptures = {}
+    while index <= length do
+        local character = sub(pattern, index, index)
+        local following = sub(pattern, index + 1, index + 1)
+        if character == "(" then
+            captureCount = captureCount + 1
+            if captureCount > MAX_PATTERN_CAPTURES then
+                return false
+            end
+            if following == ")" then
+                -- A position capture is complete at once.
+                closedCaptures[captureCount] = true
+                index = index + 2
+            else
+                openCount = openCount + 1
+                openCaptures[openCount] = captureCount
+                index = index + 1
+            end
+        elseif character == ")" then
+            if openCount == 0 then
+                return false
+            end
+            closedCaptures[openCaptures[openCount]] = true
+            openCount = openCount - 1
+            index = index + 1
+        elseif character == "$" and index == length then
+            index = index + 1
+        elseif character == "%" and following == "b" then
+            if index + 3 > length then
+                return false
+            end
+            index = index + 4
+        elseif character == "%" and following == "f" then
+            index = index + 2
+            if sub(pattern, index, index) ~= "[" then
+                return false
+            end
+            local classEnd = patternClassEnd(pattern, index, length)
+            if classEnd == nil then
+                return false
+            end
+            index = classEnd
+        elseif character == "%" and find(following, "^%d$") ~= nil then
+            local captureIndex = byte(following) - 48
+            if closedCaptures[captureIndex] ~= true then
+                return false
+            end
+            index = index + 2
+        else
+            local classEnd = patternClassEnd(pattern, index, length)
+            if classEnd == nil then
+                return false
+            end
+            index = classEnd
+            local quantifier = sub(pattern, index, index)
+            if quantifier == "*" or quantifier == "+" or quantifier == "-" or quantifier == "?" then
+                index = index + 1
+            end
+        end
+    end
+    return openCount == 0
+end
+
 -- Builders -------------------------------------------------------------------
 
 ---Describe a string, optionally bounded in length, matched against a pattern
@@ -1456,7 +1604,7 @@ local function buildString(spec)
         if type(pattern) ~= "string" or pattern == "" then
             error("SchemaKit.string pattern must be a non-empty string", 2)
         end
-        if not pcall(find, "", pattern) then
+        if not isValidPattern(pattern) then
             error("SchemaKit.string pattern is not a valid Lua pattern", 2)
         end
         node.pattern = pattern
@@ -1553,7 +1701,9 @@ local function buildTable(spec)
     validateSpecKeys(spec, TABLE_SPEC_KEYS, "SchemaKit.table", 3)
 
     local fields = rawget(spec, "fields")
-    if type(fields) ~= "table" then
+    -- A node or a sealed schema is a table with no keys of its own, which
+    -- would otherwise be read as a table schema with no fields at all.
+    if type(fields) ~= "table" or compiledNodes[fields] ~= nil or schemaRecords[fields] ~= nil then
         error("SchemaKit.table fields must be a table of schema nodes by name", 2)
     end
     local open = rawget(spec, "open")
@@ -1843,15 +1993,7 @@ local function packageSeal(facade, node, options)
         if type(options) ~= "table" then
             error("SchemaKit:Seal options must be a table", 2)
         end
-        local firstUnknown = nil
-        for key in next, options do
-            if SEAL_OPTION_KEYS[key] ~= true then
-                local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
-                if firstUnknown == nil or text < firstUnknown then
-                    firstUnknown = text
-                end
-            end
-        end
+        local firstUnknown = firstUnknownField(options, SEAL_OPTION_KEYS)
         if firstUnknown ~= nil then
             error('SchemaKit:Seal options contains unknown field "' .. firstUnknown .. '"', 2)
         end

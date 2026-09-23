@@ -36,20 +36,20 @@ This document describes implementation invariants for maintainers. It is not an 
 
 ## Record layout
 
-`Register` compiles a spec into one record per command and sub-command, with every field present from the start; nothing writes a record after `Register` returns, except `_scope` and `_key`, set once before the command becomes active.
+`Register` compiles a spec into one record per command and sub-command, with every field present from the start; nothing writes a record after `Register` returns, except `_scope`, set once on every record of the tree before the command becomes active.
 
 | Field | Meaning |
 |---|---|
 | `_schema` | The record layout version, `1`. |
-| `_name`, `_path` | The lower-case name and the full path, `"/cmd sub"`. |
+| `_path` | The full lower-case path, `"/cmd sub"`. |
 | `_handler`, `_complete` | The spec's functions, or `false`. |
 | `_mode` | `"none"`, `"positions"` or `"array"`. |
 | `_schemas`, `_coercions`, `_positionCount` | Sealed schemas and their token conversions (`"number"`, `"boolean"`, `"string"`); for `"array"` one of each for the element. |
+| `_defaulted` | Per position, whether the schema is an `optional` with a default; a missing argument there is filled with `schema:Apply(nil)`. Empty for `"none"` and `"array"`. |
 | `_usage`, `_description` | The usage tail and the description (`false` when absent). |
 | `_subcommands`, `_subcommandNames` | Lower-case name to child record, and the names sorted. |
 | `_usageLines` | The lines `Usage()` writes, built once. |
 | `_scope` | The owning scope, on every record of the tree. |
-| `_key` | The slash-table key, on the top-level record. |
 
 A record never changes owner: unregistering drops it, and a later registration compiles a new one.
 
@@ -67,7 +67,7 @@ function(text, editBox) dispatch.slash(key, text, editBox) end
 
 A frame is `{ tokens = {}, arguments = {}, context = <context> }`. `acquireFrame` hands out `frames[frameDepth + 1]`, creating it on first use, and `releaseFrame` retires the context (`_live = false`) and decrements the depth. Dispatch runs `runCommand` inside `pcall` so the frame is always released, whatever a sink or a handler does. A handler that runs another command gets the next frame, so the outer command's tokens, arguments and context are untouched when it continues.
 
-`tokenize` clears `tokens` after the count; `runCommand` copies the argument tokens to `arguments` and clears the rest the same way, so an array schema always sees keys exactly `1..n`. Conversions write in place. Nothing in the path allocates when the text has been seen before: token strings are interned, `string.lower` of a known sub-command name returns the existing string, number conversion and `Check` of a valid value allocate nothing, and `pcall(handler, context, unpack(arguments, 1, n))` creates no closure.
+`tokenize` clears `tokens` after the count; `runCommand` copies the argument tokens to `arguments` and clears the rest the same way, so an array schema always sees keys exactly `1..n`. Conversions, and a default filled for a missing position, write in place. Nothing in the path allocates when the text has been seen before: token strings are interned, `string.lower` of a known sub-command name returns the existing string, number conversion and `Check` of a valid value allocate nothing, and `pcall(handler, context, unpack(arguments, 1, n))` creates no closure.
 
 ## Parser state machine
 
@@ -89,6 +89,7 @@ QUOTED      scanning for the closing quote
   \ + quote or \ + \   skip two bytes, remember an escape
   |H                    skip the link (missing |h: "unterminated link")
   ||                    skip two bytes
+  other |               skip the pipe alone
   other                 advance
 
 BARE        up to whitespace or the end; quotes are ordinary bytes here
@@ -99,13 +100,14 @@ ESCAPE
   ||      skip two bytes
   |H      find "|h", then the next "|h"; skip past it (missing: "unterminated link")
   |c      find "|r"; skip past it when it comes before the next "|c",
-          otherwise skip two bytes
-  |T      find "|t"; skip past it (missing: skip two bytes)
-  other   skip two bytes
+          otherwise skip the pipe alone
+  |T      find "|t"; skip past it (missing: skip the pipe alone)
+  other   skip the pipe alone: the next byte is read normally, so
+          whitespace or a quote right after a stray pipe still ends the run
 ```
 
 - Adjacent segments join (`"a"b` is `ab`); a token of one segment is one `string.sub`, so joining allocates only when segments really are joined.
-- Inside quotes only `||` and hyperlinks are skipped as units: a link's text may contain a quote, while colour codes and textures cannot hide the closing quote.
+- Inside quotes only `||` and hyperlinks are skipped as units: a link's text may contain a quote, while colour codes, textures and a stray pipe cannot hide the closing quote.
 - Escapes are removed with one `gsub` only when the segment had one.
 - A single quote that does not close before a boundary is read as an apostrophe, so `'twas` and `don't` never fail; only an unclosed double quote is refused.
 - On a refusal every slot of the array is cleared, so a caller never sees half a parse.

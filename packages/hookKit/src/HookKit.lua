@@ -1081,6 +1081,14 @@ local function releaseRecord(scope, object, method, record)
         if object:GetScript(method) ~= installed then
             return
         end
+        local secureCounts = rawget(secureScripts, object)
+        if secureCounts ~= nil and rawget(secureCounts, method) ~= nil then
+            -- A `SecureHookScript` post-hook was added after this pre-hook
+            -- (the install order HookKit allows). `SetScript` may drop the
+            -- host's `HookScript` hooks, so restoring would silently cut it
+            -- out; the inert closure already forwards to the original.
+            return
+        end
         if isProtectedFrame(object) and inCombatLockdown() then
             -- As a conservative rule HookKit does not call `SetScript` on a
             -- protected frame during combat lockdown; the inert closure
@@ -1424,7 +1432,9 @@ end
 ---@param label string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-    if receiver ~= HookKit then
+    -- `rawequal`: the receiver is caller-supplied, and `~=` could run an
+    -- `__eq` metamethod or raise on a secret value.
+    if not rawequal(receiver, HookKit) then
         error(label .. " must be called on the HookKit facade; use " .. label .. "(...)", level)
     end
 end

@@ -320,6 +320,23 @@ describe("OptionsKit:Define", function()
             { type = "group", args = {} },
             { database = {} }
         )
+        -- The alphabetically first unknown field, and a non-string key named
+        -- by its type, so no `__tostring` runs.
+        assertRefused(
+            'OptionsKit:Define options contains unknown field "alpha"',
+            { type = "group", args = {} },
+            { zeta = 1, alpha = 1, mid = 1 }
+        )
+        local key = setmetatable({}, {
+            __tostring = function()
+                error("__tostring must not run")
+            end,
+        })
+        assertRefused(
+            'OptionsKit:Define options contains unknown field "<table key>"',
+            { type = "group", args = {} },
+            { [key] = true }
+        )
         assertRefused(
             "OptionsKit:Define options.db needs SettingsKit API 1 to be loaded",
             { type = "group", args = {} },

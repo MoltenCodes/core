@@ -329,6 +329,7 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "ownedKeys")) == "table"
         and type(rawget(currentState, "slashHandlers")) == "table"
         and type(rawget(currentState, "frames")) == "table"
+        and type(rawget(currentState, "frameDepth")) == "number"
         and type(rawget(currentState, "completion")) == "table"
 end
 
@@ -490,7 +491,9 @@ local function reportError(failure)
 end
 
 ---Whether `value` is a secret value, asking ClientKit when one is registered
----and the host's `issecretvalue` otherwise. Never used on the dispatch path.
+---and the host's `issecretvalue` otherwise. It looks ClientKit up on every
+---call, so the allocation-free dispatch path never calls it: typed text is
+---never secret. Only failures, output and the options binding do.
 ---@param value any
 ---@return boolean
 local function isSecret(value)
@@ -644,7 +647,9 @@ end
 ---the position after it. A hyperlink without both of its `|h` markers is
 ---refused. A colour code groups its text only when its `|r` comes before the
 ---next `|c`, so an unclosed colour never swallows text up to another colour's
----`|r`; an unclosed colour code or texture is ordinary text.
+---`|r`. Anything else, an unclosed colour code or texture included, skips the
+---pipe alone: the byte after it is read normally, so a pipe before whitespace
+---or a closing quote never hides it.
 ---@param text string
 ---@param position integer the position of a `|`
 ---@param length integer `#text`
@@ -689,7 +694,7 @@ local function skipEscape(text, position, length, inQuotes)
             end
         end
     end
-    return position + 2
+    return position + 1
 end
 
 ---Find the closing quote of a quoted segment opened at `position`. A
@@ -762,9 +767,6 @@ local function readBare(text, position, length)
         else
             cursor = cursor + 1
         end
-    end
-    if cursor > length + 1 then
-        cursor = length + 1
     end
     return text:sub(position, cursor - 1), cursor
 end
@@ -1082,9 +1084,10 @@ end
 ---@param arguments any
 ---@param label string argument description, used in the argument errors
 ---@param level integer stack level the failures are reported at
----@return table compiled `{ mode, schemas, coercions, count, usage }`
+---@return table compiled `{ mode, schemas, coercions, defaulted, count, usage }`
 local function compileArguments(arguments, label, level)
-    local compiled = { mode = "none", schemas = {}, coercions = {}, count = 0, usage = "" }
+    local compiled =
+        { mode = "none", schemas = {}, coercions = {}, defaulted = {}, count = 0, usage = "" }
     if arguments == nil then
         return compiled
     end
@@ -1119,6 +1122,7 @@ local function compileArguments(arguments, label, level)
         local description = schema:Describe()
         compiled.schemas[position] = schema
         compiled.coercions[position] = coercionOf(description)
+        compiled.defaulted[position] = description.default ~= nil
         words[position] = usageWord(description)
     end
     compiled.mode = "positions"
@@ -1225,7 +1229,6 @@ local function compileSubcommands(record, subcommands, label, depth, level)
         end
         local child = compileSpec(
             rawget(subcommands, key),
-            name,
             rawget(record, "_path") .. " " .. name,
             childLabel,
             depth + 1,
@@ -1239,13 +1242,12 @@ end
 
 ---Compile one command or sub-command spec into a record.
 ---@param spec any
----@param name string lower-case name
----@param path string `"/cmd sub"`
+---@param path string `"/cmd sub"`, lower case
 ---@param label string argument description, used in the argument errors
 ---@param depth integer 0 for a top-level command
 ---@param level integer stack level the failures are reported at
 ---@return table record
-compileSpec = function(spec, name, path, label, depth, level)
+compileSpec = function(spec, path, label, depth, level)
     if type(spec) ~= "table" then
         error(label .. " must be a table", level)
     end
@@ -1266,7 +1268,6 @@ compileSpec = function(spec, name, path, label, depth, level)
 
     local record = {
         _schema = RECORD_SCHEMA,
-        _name = name,
         _path = path,
         _handler = handler or false,
         _complete = complete or false,
@@ -1274,14 +1275,14 @@ compileSpec = function(spec, name, path, label, depth, level)
         _schemas = arguments.schemas,
         _coercions = arguments.coercions,
         _positionCount = arguments.count,
+        _defaulted = arguments.defaulted,
         _usage = usage or arguments.usage,
         _description = description or false,
         _subcommands = {},
         _subcommandNames = {},
         _usageLines = false,
-        -- Set on the top-level record only, when it is registered.
+        -- Set on every record of the tree when the command is registered.
         _scope = false,
-        _key = false,
     }
 
     local subcommands = rawget(spec, "subcommands")
@@ -1292,6 +1293,11 @@ compileSpec = function(spec, name, path, label, depth, level)
     if handler == nil then
         if #names == 0 then
             error(label .. " needs a handler or subcommands", level)
+        end
+        -- Without a handler nothing would receive the arguments, and the
+        -- generated usage below would hide that they were ignored.
+        if arguments.mode ~= "none" then
+            error(label .. ".arguments needs a handler to receive them", level)
         end
         if usage == nil then
             rawset(record, "_usage", "<" .. table.concat(names, "|") .. ">")
@@ -1345,7 +1351,7 @@ local function deriveKey(scope, name)
     end
     local key = base
     local suffix = 1
-    while ownedKeys[key] ~= nil and ownedKeys[key] ~= name do
+    while ownedKeys[key] ~= nil do
         suffix = suffix + 1
         key = base .. "_" .. suffix
     end
@@ -1395,6 +1401,7 @@ local function isChatTypeSlash(upperSlash)
     if type(chatTypes) ~= "table" then
         return false
     end
+    local probe = readGlobal("issecretvalue")
     for chatType in next, chatTypes do
         if type(chatType) == "string" then
             for index = 1, MAX_SLASH_ALIASES do
@@ -1402,7 +1409,8 @@ local function isChatTypeSlash(upperSlash)
                 if type(value) ~= "string" then
                     break
                 end
-                if value:upper() == upperSlash then
+                local secret = type(probe) == "function" and probe(value) == true
+                if not secret and value:upper() == upperSlash then
                     return true
                 end
             end
@@ -1423,13 +1431,15 @@ local function isEmoteSlash(upperSlash)
     if type(hostCount) == "number" and hostCount >= 0 and hostCount < count then
         count = hostCount
     end
+    local probe = readGlobal("issecretvalue")
     for index = 1, count do
         for command = 1, MAX_EMOTE_COMMANDS do
             local value = readGlobal("EMOTE" .. index .. "_CMD" .. command)
             if type(value) ~= "string" then
                 break
             end
-            if value:upper() == upperSlash then
+            local secret = type(probe) == "function" and probe(value) == true
+            if not secret and value:upper() == upperSlash then
                 return true
             end
         end
@@ -1472,8 +1482,7 @@ local function registerCommand(scope, name, spec, methodName, level)
     if type(slashList) ~= "table" then
         error(methodName .. " requires the host's SlashCmdList table", level)
     end
-    local record =
-        compileSpec(spec, lowerName, "/" .. lowerName, methodName .. " spec", 0, level + 1)
+    local record = compileSpec(spec, "/" .. lowerName, methodName .. " spec", 0, level + 1)
 
     if rawget(scope, "_count") >= MAX_COMMANDS then
         return nil, "full"
@@ -1507,7 +1516,6 @@ local function registerCommand(scope, name, spec, methodName, level)
     end
     ownedKeys[key] = lowerName
     keyByName[lowerName] = key
-    rawset(record, "_key", key)
     attachScope(record, scope)
     rawset(slashList, key, handler)
     writeGlobal("SLASH_" .. key .. "1", "/" .. lowerName)
@@ -1643,17 +1651,28 @@ local function checkArguments(scope, record, arguments, count)
     end
     local positions = rawget(record, "_positionCount")
     if count > positions then
-        failWithUsage(scope, record, "expected at most " .. positions .. " arguments")
+        local noun = positions == 1 and " argument" or " arguments"
+        failWithUsage(scope, record, "expected at most " .. positions .. noun)
         return nil
     end
+    local defaulted = rawget(record, "_defaulted")
     for position = 1, positions do
+        local schema = schemas[position]
         local value = coerce(arguments[position], coercions[position])
-        arguments[position] = value
-        local ok, failure = schemas[position]:Check(value)
+        local ok, failure = schema:Check(value)
         if not ok then
             failWithUsage(scope, record, describeFailure("argument " .. position, failure))
             return nil
         end
+        if value == nil and defaulted[position] then
+            -- `Check` never fills a default; `Apply` hands out a fresh copy
+            -- of the one `SchemaKit.optional` declared.
+            local applied, filled = schema:Apply(nil)
+            if applied then
+                value = filled
+            end
+        end
+        arguments[position] = value
     end
     return positions
 end
@@ -1951,7 +1970,7 @@ local function formatValue(node, value)
     end
     if kind == "select" then
         local label = type(node.values) == "table" and node.values[value] or nil
-        if label ~= nil and tostring(label) ~= tostring(value) then
+        if label ~= nil and not isSecret(label) and tostring(label) ~= tostring(value) then
             return tostring(value) .. " (" .. tostring(label) .. ")"
         end
         return tostring(value)
@@ -1996,7 +2015,7 @@ local function matchValueKey(node, word)
     end
     local lowerWord = word:lower()
     for key, label in next, values do
-        if tostring(label):lower() == lowerWord then
+        if not isSecret(label) and tostring(label):lower() == lowerWord then
             return key
         end
     end
@@ -2411,11 +2430,13 @@ local function commonPrefix(candidates)
 end
 
 ---Add `candidate` to `candidates` when it starts with `partial`, ignoring case.
+---A secret candidate (a `complete` function may return names read from the
+---client) is skipped before it is compared.
 ---@param candidates string[]
 ---@param candidate any
 ---@param lowerPartial string
 local function offer(candidates, candidate, lowerPartial)
-    if type(candidate) ~= "string" or #candidates >= MAX_COMPLETIONS then
+    if type(candidate) ~= "string" or #candidates >= MAX_COMPLETIONS or isSecret(candidate) then
         return
     end
     if candidate:sub(1, #lowerPartial):lower() == lowerPartial then

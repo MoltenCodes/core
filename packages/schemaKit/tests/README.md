@@ -2,7 +2,7 @@
 
 The SchemaKit suite covers:
 
-- every builder's accept and reject cases, including the spec errors each builder raises, a colon call refused, a metatable on a checked value ignored, and composition of nodes and sealed schemas;
+- every builder's accept and reject cases, including the spec errors each builder raises, malformed string patterns refused at build time (including those Lua reports only while matching) and well-formed ones checked exactly like `string.find`, a node refused as `table` fields, a colon call refused, a metatable on a checked value ignored, and composition of nodes and sealed schemas;
 - failures: exact `{ path, rule, expected, found }` for nested fields, elements and map entries, sorted field order, map key failures named as keys, `oneOf` reported at the `oneOf`, unusual keys rendered briefly and safely (World of Warcraft `|` escape codes doubled, control bytes shown as `\ddd`, long keys never cut inside a UTF-8 sequence), the reused failure table versus `freshFailures`, a custom check re-entering its own schema, and no checked value ever appearing in a failure;
 - `Apply`: defaults filled into a copy, `false` kept, table defaults copied freshly each call, per-entry defaults of maps and arrays (the wildcard default), root defaults, open-table extras kept, `oneOf` alternatives, and failures reported like `Check`;
 - sealed immutability: writes to schemas and nodes refused, both metatables protected, later edits to spec tables, defaults and descriptions without effect, forged schemas refused, re-sealing;
@@ -16,3 +16,18 @@ The SchemaKit suite covers:
 - manifest/runtime API and revision consistency, and the dependency list.
 
 SchemaKit is pure Lua, so `support/SchemaKitTestEnv.lua` builds its environment with `wowApi = false` and installs the `issecretvalue` stub only in the specs that need it.
+
+| Spec | Covers |
+|---|---|
+| `Builders_spec.lua` | every builder's accept, reject and spec-error cases, composition |
+| `Failures_spec.lua` | failure fields, paths, key rendering, failure-table reuse |
+| `Apply_spec.lua` | defaults filled into a copy |
+| `Sealed_spec.lua` | immutability, forged receivers, re-sealing, `Seal` options |
+| `Bounds_spec.lua` | depth, array, map and closed-table bounds |
+| `SecretValues_spec.lua` | secret values refused before any use |
+| `Allocation_spec.lua` | allocation guards |
+| `Describe_spec.lua` | `Describe` output |
+| `Cookbook_spec.lua` | the `docs/API.md` cookbook, run as written |
+| `ErrorLevels_spec.lua` | errors reported at the caller's line |
+| `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |
+| `Manifest_spec.lua` | manifest and runtime metadata |

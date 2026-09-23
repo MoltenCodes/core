@@ -43,6 +43,55 @@ describe("SchemaKit builders", function()
             assert.are.same({ false, "pattern" }, { check(node, "Frame1") })
         end)
 
+        it("refuses at build time a pattern Lua would only reject while matching", function()
+            -- Each of these finds nothing in "" without raising, so trying
+            -- the pattern once is not enough: the matcher reports the broken
+            -- part only when a subject gets that far.
+            local malformed = { "a[", "a%", "(a", "a.)", "a%b", "a%bx", "a%fx", "(a)%2", "(a%1)" }
+            for _, pattern in ipairs(malformed) do
+                TestEnv.expectErrorContaining(
+                    "SchemaKit.string pattern is not a valid Lua pattern",
+                    function()
+                        S.string({ pattern = pattern })
+                    end
+                )
+            end
+            TestEnv.expectErrorContaining(
+                "SchemaKit.string pattern is not a valid Lua pattern",
+                function()
+                    S.string({ pattern = string.rep("()", 33) })
+                end
+            )
+        end)
+
+        it("accepts every well-formed pattern and checks with it", function()
+            local subjects = { "", "a", "ab", "a]b", "(x)", "a%b", "x.y" }
+            local wellFormed = {
+                "a)",
+                "^%a+$",
+                "[]]",
+                "[^]a]",
+                "[%]]",
+                "%bxy",
+                "%f[%w]%w+",
+                "(a)%1",
+                "()a",
+                "a$b",
+                "a-b*c?d+",
+                string.rep("()", 32),
+            }
+            for _, pattern in ipairs(wellFormed) do
+                local schema = S:Seal(S.string({ pattern = pattern }))
+                for _, subject in ipairs(subjects) do
+                    local ok, failure = schema:Check(subject)
+                    assert.are.equal(string.find(subject, pattern) ~= nil, ok)
+                    if not ok then
+                        assert.are.equal("pattern", failure.rule)
+                    end
+                end
+            end
+        end)
+
         it("restricts to a list", function()
             local node = S.string({ oneOf = { "TOP", "BOTTOM" } })
             assert.is_true(check(node, "TOP"))
@@ -244,6 +293,13 @@ describe("SchemaKit builders", function()
             end)
             TestEnv.expectErrorContaining("SchemaKit.table fields must be a table", function()
                 S.table({})
+            end)
+            -- A node is a table too; it must not read as a table with no fields.
+            TestEnv.expectErrorContaining("SchemaKit.table fields must be a table", function()
+                S.table({ fields = S.string() })
+            end)
+            TestEnv.expectErrorContaining("SchemaKit.table fields must be a table", function()
+                S.table({ fields = S:Seal(S.string()) })
             end)
             TestEnv.expectErrorContaining(
                 "SchemaKit.table field names must be non-empty strings",

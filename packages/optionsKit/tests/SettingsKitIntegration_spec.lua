@@ -187,6 +187,83 @@ describe("OptionsKit with the real SettingsKit", function()
             message
         )
     end)
+    it("re-raises a SettingsKit listener's error as it is, not as a refusal", function()
+        local OptionsKit, db = openFrameDatabase()
+        local tree = OptionsKit:Define("Addon", {
+            type = "group",
+            args = {
+                -- Wider than the database's 0..3, so the database can refuse.
+                x = { type = "range", name = "X", min = 0, max = 10, bind = "profile.frame.x" },
+            },
+        }, { db = db })
+        db:OnChange("profile", function()
+            error("listener broke", 0)
+        end)
+
+        -- The value is valid and stored; only the listener failed after it.
+        local ok, message = pcall(tree.Set, tree, "x", 2)
+        assert.is_false(ok)
+        assert.are.equal("listener broke", message)
+        assert.are.equal(2, db.profile.frame.x)
+
+        -- A refused write is still reported as a refusal.
+        local refused, refusal = pcall(tree.Set, tree, "x", 5)
+        assert.is_false(refused)
+        assert.is_truthy(tostring(refusal):find("refused by the database", 1, true))
+    end)
+
+    it("describes a bound table value as a plain copy, never as a SettingsKit view", function()
+        local OptionsKit = TestEnv.NewPackage()
+        local SettingsKit = require("SettingsKit")
+        local S = require("SchemaKit")
+        local db = SettingsKit:Open(SAVED_VARIABLE, {
+            profile = S.table({
+                fields = {
+                    channels = S.optional(
+                        S.map({ keys = S.string(), values = S.boolean(), max = 8 }),
+                        { SAY = true }
+                    ),
+                    tint = S.optional(
+                        S.table({
+                            fields = {
+                                r = S.optional(S.number({ min = 0, max = 1 }), 1),
+                                g = S.optional(S.number({ min = 0, max = 1 }), 1),
+                                b = S.optional(S.number({ min = 0, max = 1 }), 1),
+                            },
+                        }),
+                        {}
+                    ),
+                },
+            }),
+        })
+        local tree = OptionsKit:Define("Addon", {
+            type = "group",
+            args = {
+                channels = {
+                    type = "multiselect",
+                    name = "Channels",
+                    values = { SAY = "Say", YELL = "Yell" },
+                    bind = "profile.channels",
+                },
+                tint = { type = "color", name = "Tint", bind = "profile.tint" },
+            },
+        }, { db = db })
+        db.profile.channels.YELL = true
+        db.profile.tint.g = 0.5
+
+        local described = tree:Describe().children
+        local channels, tint = described[1].value, described[2].value
+        assert.are.equal(nil, getmetatable(channels))
+        assert.are.same({ SAY = true, YELL = true }, channels)
+        assert.are.same({ r = 1, g = 0.5, b = 1 }, tint)
+
+        -- The description is safe to edit: nothing reaches the database.
+        channels.SAY = false
+        tint.r = 0
+        assert.is_true(db.profile.channels.SAY)
+        assert.are.equal(1, db.profile.tint.r)
+    end)
+
     it("allocates nothing on Validate of a bound option once the path exists", function()
         local OptionsKit, db = openFrameDatabase()
         local tree = OptionsKit:Define("Addon", {

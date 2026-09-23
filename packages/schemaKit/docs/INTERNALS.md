@@ -37,6 +37,8 @@ A builder validates its spec and compiles it at once into a flat table of fixed 
 | `alternatives` | `oneOf`. |
 | `check` | `custom`. |
 
+`pattern` is accepted only after `isValidPattern` has walked it the way Lua 5.1's own pattern matcher would: every class, set, `%b`, `%f`, capture and back-reference is checked for the errors the matcher raises. Trying the pattern once on `""` is not enough, because the matcher reports a malformed part only when a subject reaches it; without the walk, `Check` could raise from inside SchemaKit on the first string that got that far. A pattern without any of `^$*+?.([%-` is plain text to `string.find` and is always valid.
+
 Compiled nodes refer to their children's compiled nodes directly. Nodes are built bottom-up and never change, so the graph is acyclic by construction and no cycle check is needed. Every phrase a failure can report from the schema is built here, once, so a failure copies string references instead of formatting.
 
 A node proxy is an empty table with `nodeMetatable`; a sealed schema is an empty table with `schemaMetatable`, whose `__index` is the shared `Schema` prototype.

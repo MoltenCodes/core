@@ -61,7 +61,7 @@ Records are never modified after `Define`, which is what "the tree is sealed at 
 
 The bind path is split once at `Define` into `_bindScope` and `_bindKeys`. `walkBound` reads the scope view with `rawget(db, _bindScope)` on every call — SettingsKit replaces `db.profile` on a profile switch, and reading an undeclared scope through the database's metatable would raise inside OptionsKit — then walks `_bindKeys[1 .. _bindCount - 1]` with ordinary indexing, so SettingsKit's views supply defaults. It returns the deepest table reached and the index of the key to use there: the last key, or the first key whose record is missing, because SettingsKit reads a record without a default and without saved data as `nil`. `readValue` answers `nil` for a missing record; `writeBound` wraps the value in nested tables for the missing keys (the only allocating `Set`) and does nothing for a `nil` write.
 
-The write itself runs as `pcall(assignField, container, key, value)`. `assignField` is a file-level function, so the protected call allocates nothing on success; a SettingsKit refusal is re-raised at the caller's level with the `file:line:` prefix of SettingsKit's message (which points into OptionsKit) removed and the rest kept.
+The write itself runs as `pcall(assignField, container, key, value)`. `assignField` is a file-level function, so the protected call allocates nothing on success. The protected call also catches an error from a SettingsKit `OnChange` listener, which runs after SettingsKit stored the value, so on failure `writeBound` asks `db:Validate` with the same keys and the unwrapped value: when the database accepts it, the write was not refused and the listener's error is re-raised unchanged (level `0`); otherwise the refusal is re-raised at the caller's level with the `file:line:` prefix of SettingsKit's message (which points into OptionsKit) removed and the rest kept. The extra check runs on the failure path only.
 
 `validateBound` hands SettingsKit the same `_bindKeys` array for `db:Validate`, so `Validate` of a bound option allocates nothing once SettingsKit's entry views on the path are alive.
 
@@ -84,6 +84,10 @@ A `select` or `multiselect` whose values are a function gets a `SchemaKit.custom
 ## Level bookkeeping
 
 `Define` checks a tree recursively, and every refusal must still report the line that called `Define`. Each helper that can raise takes `level`, the value `error` needs inside that helper, and passes `level + 1` to every helper it calls. `ErrorLevels_spec.lua` pins refusals several groups deep, bound reads under `Describe`'s recursion, and every tree method. The one refusal SchemaKit would report itself — an invalid `input` pattern — is caught with `pcall` around the builder and raised again at the right level.
+
+## Describe
+
+`describeRecord` builds a fresh node per record. A value option's current value goes through `snapshotValue`, which first passes a secret through untouched (at every level, before `type`, `getmetatable` or `pairs` sees it: a copy would touch the secret and hide it from a consumer's own secret check), then copies a table (to `MAX_DEPTH` levels, so a cyclic getter value ends) and, for a bound option whose value is a SettingsKit view (`getmetatable` answers `"SettingsKit.View"`), iterates it with `db:Pairs` so the copy holds the view's defaults as well as its saved keys. A view is an empty proxy to `pairs` and writes through to the saved variable, so handing one out would break both "plain" and "safe to edit".
 
 ## Upgrades
 

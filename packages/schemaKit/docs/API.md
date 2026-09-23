@@ -97,7 +97,7 @@ The seal is a guard against mistakes, not a security boundary between addons, wh
 | Field | Meaning |
 |---|---|
 | `min`, `max` | Length bounds in bytes, non-negative integers, `min <= max`. |
-| `pattern` | A Lua pattern the string must contain (`string.find`). Anchor it with `^` and `$` to match the whole string. Validated when the node is built. |
+| `pattern` | A Lua pattern the string must contain (`string.find`). Anchor it with `^` and `$` to match the whole string. Validated as a whole when the node is built: Lua 5.1 reports a malformed pattern (`"a["`, `"(a"`, `"a%"`, a back-reference to an unclosed capture) only when matching reaches the broken part, so SchemaKit walks the pattern once and refuses it at your line instead of letting `Check` raise later. |
 | `oneOf` | A non-empty array of distinct strings; nothing else is accepted. |
 
 Rules: `type`, `enum`, `min`, `max`, `pattern`, checked in that order. A pattern runs in time proportional to the string, so give strings you receive from other players a `max`.
@@ -175,7 +175,7 @@ Rules:
 | `oneOf` | No alternative accepted the value. |
 | `custom` | A custom check refused the value. |
 
-**The failure table is reused.** Every failing call on one schema returns the same table and overwrites it, so a valid check and a failing check at the root allocate nothing. Read or copy the fields before checking again with that schema, or seal it with `freshFailures = true`. A failure below the root builds its `path` string, which allocates.
+**The failure table is reused.** Every failing call on one schema returns the same table and overwrites it, so a valid check allocates nothing and a failing check at the root allocates nothing beyond the `found` phrases that carry a count (`string of length N` for a string out of its length bounds, `array of N elements` for an array below its `min`). Read or copy the fields before checking again with that schema, or seal it with `freshFailures = true`. A failure below the root also builds its `path` string.
 
 ## `schema:Assert(value, argumentName?, level?)`
 
@@ -198,7 +198,7 @@ Returns `true` and a copy of `value` with every declared default filled in, or `
 
 **Wildcard defaults.** A map's `values` or an array's `of` may be `optional(schema, default)`. Every entry present is filled from `schema`'s own defaults, and `Describe` publishes `default` as the value for a new entry, which is what a settings layer materialises for a key it has not seen (AceDB's `["*"]`). `Apply` itself cannot invent keys that are not there.
 
-`Apply` allocates: a new table per copied table and a copy per default used. It is bounded exactly like `Check`.
+`Apply` allocates: a new table per copied table and a copy per default used. It is bounded like `Check`, with one difference: `Check` never looks at the undeclared fields of an open table, while `Apply` walks all of them to keep them in the copy, so give an open table you receive from other players a closed schema instead.
 
 ## `schema:Describe()`
 
@@ -339,8 +339,8 @@ Builder, `Seal` and method argument failures report the line that called them, n
 |---|---|
 | Building a node, sealing | Load time; allocates the node. |
 | `Check`, `Assert` on a valid value | O(size of the value as the schema describes it); no allocation. |
-| `Check` failing at the root | No allocation (the failure table is reused). |
-| `Check` failing below the root | Builds the path string. |
+| `Check` failing at the root | The failure table is reused; only a `string of length N` or `array of N elements` phrase is built. |
+| `Check` failing below the root | Also builds the path string, and `key <expected>` for a failing map key. |
 | `Apply`, `Describe` | Allocate their results. |
 
 Each node costs one function call plus one `issecretvalue` call when the client has it. The compiled form behind these numbers is in [`INTERNALS.md`](INTERNALS.md).

@@ -205,7 +205,6 @@ local WEAK_VALUES = { __mode = "v" }
 
 ---What `Open` compiles once per scope from `schema:Describe()`. Private.
 ---@class SettingsKit.Plan
----@field kind string The SchemaKit kind of the value.
 ---@field proxied "record"|"map"|false Whether reads of this value go through a view, and which kind.
 ---@field fieldNames string[]|false Record: declared field names, sorted.
 ---@field fields table<string, SettingsKit.Plan>|false Record: the plan of each field.
@@ -866,7 +865,6 @@ end
 local function compilePlan(description, depth, label)
     ---@type SettingsKit.Plan
     local plan = {
-        kind = description.kind,
         proxied = false,
         fieldNames = false,
         fields = false,
@@ -1214,9 +1212,8 @@ end
 ---@param key any
 ---@return any
 local function readMap(node, key)
-    if key == nil then
-        return nil
-    end
+    -- The secret probe comes first: even `key == nil` compares the key, which
+    -- raises on a secret.
     if isSecret(key) then
         -- readMap <- viewIndex <- the reading line
         error(
@@ -1227,6 +1224,10 @@ local function readMap(node, key)
                 .. " cannot be read with a secret key",
             3
         )
+    end
+    -- Without this, `view[nil]` would answer with the wildcard default.
+    if key == nil then
+        return nil
     end
 
     local container = resolveContainer(node)
@@ -1394,6 +1395,13 @@ local function failureMessage(node, failure)
         .. failure.found
 end
 
+---The `SettingsKit (<saved variable>) ` prefix every refusal starts with.
+---@param node table
+---@return string
+local function refusalLabel(node)
+    return "SettingsKit (" .. node.db._name .. ") "
+end
+
 ---Return why the write `node[key] = value` would be refused, or `nil` when it
 ---would be accepted. Runs every check a write runs, in the same order, and
 ---writes nothing: the probe chain is set and cleared again. The message is
@@ -1403,14 +1411,15 @@ end
 ---@param value any
 ---@return string|nil refusal
 local function refuseWrite(node, key, value)
-    local label = "SettingsKit (" .. node.db._name .. ") "
     if node.root.dead then
-        return label .. node.displayPath .. " belongs to a profile that was deleted or reset away"
+        return refusalLabel(node)
+            .. node.displayPath
+            .. " belongs to a profile that was deleted or reset away"
     end
 
     local isSecretValue = readIsSecret()
     if isSecretValue ~= nil and isSecretValue(key) then
-        return label
+        return refusalLabel(node)
             .. node.displayPath
             .. " refused a secret key: saved variables never hold secret values"
     end
@@ -1425,7 +1434,7 @@ local function refuseWrite(node, key, value)
         problem = scanValue(value, isSecretValue, 1, MAX_SCANNED_ENTRIES)
     end
     if problem ~= nil then
-        return label .. node.displayPath .. formatKey(key) .. VALUE_REFUSALS[problem]
+        return refusalLabel(node) .. node.displayPath .. formatKey(key) .. VALUE_REFUSALS[problem]
     end
 
     local ok, failure = checkWrite(node, key, value)
@@ -1437,7 +1446,7 @@ local function refuseWrite(node, key, value)
     if value ~= nil then
         local fullMap = findFullMap(node, key)
         if fullMap ~= nil then
-            return label
+            return refusalLabel(node)
                 .. fullMap.displayPath
                 .. ": expected at most "
                 .. fullMap.plan.max
@@ -1543,13 +1552,14 @@ end
 
 local compactValue
 
+---The recursion follows the plan, which `compilePlan` stops at `MAX_DEPTH`,
+---so it needs no depth bound of its own.
 ---@param plan SettingsKit.Plan a record plan
 ---@param container table
 ---@param defaults table|false
 ---@param isSecretValue (fun(value: any): boolean)|nil
----@param depth integer
 ---@return integer removed
-local function compactRecord(plan, container, defaults, isSecretValue, depth)
+local function compactRecord(plan, container, defaults, isSecretValue)
     local removed = 0
     local fieldNames = plan.fieldNames --[[@as string[] ]]
     for index = 1, #fieldNames do
@@ -1561,15 +1571,7 @@ local function compactRecord(plan, container, defaults, isSecretValue, depth)
                 default = rawget(defaults, name)
             end
             removed = removed
-                + compactValue(
-                    plan.fields[name],
-                    container,
-                    name,
-                    value,
-                    default,
-                    isSecretValue,
-                    depth
-                )
+                + compactValue(plan.fields[name], container, name, value, default, isSecretValue)
         end
     end
     return removed
@@ -1579,9 +1581,8 @@ end
 ---@param container table
 ---@param defaults table|false|nil
 ---@param isSecretValue (fun(value: any): boolean)|nil
----@param depth integer
 ---@return integer removed
-local function compactMap(plan, container, defaults, isSecretValue, depth)
+local function compactMap(plan, container, defaults, isSecretValue)
     local removed = 0
     local valuesPlan = plan.values --[[@as SettingsKit.Plan]]
     for key, entry in next, container do
@@ -1592,8 +1593,7 @@ local function compactMap(plan, container, defaults, isSecretValue, depth)
         if default == nil then
             default = valuesPlan.default
         end
-        removed = removed
-            + compactValue(valuesPlan, container, key, entry, default, isSecretValue, depth)
+        removed = removed + compactValue(valuesPlan, container, key, entry, default, isSecretValue)
     end
     return removed
 end
@@ -1605,9 +1605,8 @@ end
 ---@param value any
 ---@param default any
 ---@param isSecretValue (fun(value: any): boolean)|nil
----@param depth integer
 ---@return integer removed
-compactValue = function(plan, container, key, value, default, isSecretValue, depth)
+compactValue = function(plan, container, key, value, default, isSecretValue)
     if plan.proxied ~= false and type(value) == "table" then
         local removed
         if plan.proxied == KIND_RECORD then
@@ -1615,9 +1614,9 @@ compactValue = function(plan, container, key, value, default, isSecretValue, dep
             if childDefaults == nil then
                 childDefaults = plan.ownDefaults
             end
-            removed = compactRecord(plan, value, childDefaults, isSecretValue, depth + 1)
+            removed = compactRecord(plan, value, childDefaults, isSecretValue)
         else
-            removed = compactMap(plan, value, default, isSecretValue, depth + 1)
+            removed = compactMap(plan, value, default, isSecretValue)
         end
         if default ~= nil and next(value) == nil then
             rawset(container, key, nil)
@@ -1645,13 +1644,13 @@ local function compactScope(raw, scope, isSecretValue)
         return 0
     end
     if scope.name == "global" then
-        return compactRecord(plan, section, plan.ownDefaults, isSecretValue, 1)
+        return compactRecord(plan, section, plan.ownDefaults, isSecretValue)
     end
 
     local removed = 0
     for sectionKey, container in next, section do
         if type(container) == "table" then
-            removed = removed + compactRecord(plan, container, plan.ownDefaults, isSecretValue, 1)
+            removed = removed + compactRecord(plan, container, plan.ownDefaults, isSecretValue)
             -- An empty profile is still a profile; an empty character, realm,
             -- class or faction entry is just an absent one.
             if scope.name ~= "profile" and next(container) == nil then
@@ -1699,19 +1698,20 @@ local function compactOnLogout(db)
     end
 end
 
----Connect the logout compaction when EventKit is embedded.
+---Connect the logout compaction when EventKit is embedded. The connection is
+---not kept: a database lives for the session and is never disconnected, and
+---EventKit holds the listener.
 ---@param db table
----@return table|false connection
 local function connectLogout(db)
     local findPackage = rawget(Registry, "Find")
     if type(findPackage) ~= "function" then
-        return false
+        return
     end
     local EventKit = findPackage(Registry, "eventKit", OPTIONAL_EVENTKIT_API)
     if type(EventKit) ~= "table" or type(rawget(EventKit, "Connect")) ~= "function" then
-        return false
+        return
     end
-    return EventKit:Connect("PLAYER_LOGOUT", newLogoutListener(db))
+    EventKit:Connect("PLAYER_LOGOUT", newLogoutListener(db))
 end
 
 -- Scope keys -----------------------------------------------------------------
@@ -2181,15 +2181,14 @@ end
 ---@param key any
 ---@return table|nil child, string|nil refusal
 local function descendPath(node, key)
-    local label = "SettingsKit (" .. node.db._name .. ") "
     if isSecret(key) then
         return nil,
-            label
+            refusalLabel(node)
                 .. node.displayPath
                 .. " refused a secret key: saved variables never hold secret values"
     end
     if key == nil or key ~= key then
-        return nil, label .. node.displayPath .. " key must not be nil or NaN"
+        return nil, refusalLabel(node) .. node.displayPath .. " key must not be nil or NaN"
     end
 
     local child = nil
@@ -2200,7 +2199,10 @@ local function descendPath(node, key)
     end
     if child == nil then
         return nil,
-            label .. node.displayPath .. formatKey(key) .. " is not a record or keyed section"
+            refusalLabel(node)
+                .. node.displayPath
+                .. formatKey(key)
+                .. " is not a record or keyed section"
     end
     return rawget(views, child)
 end
@@ -2229,7 +2231,9 @@ end
 ---`"auras.118.shown"`, where a segment indexing a keyed section with number
 ---keys becomes a number) or an array of keys (`{ "auras", 118, "shown" }`),
 ---whose keys are used as they are. An array path allocates nothing for a
----valid value; a dotted string allocates its segments.
+---valid value while the entry views on it are cached (a keyed-section entry
+---view is rebuilt after a collection dropped it); a dotted string allocates
+---its segments.
 ---@param self SettingsKit.Database
 ---@param scopeName SettingsKit.ScopeName
 ---@param path string|any[]
@@ -2491,7 +2495,6 @@ local function open(_, savedVariable, schema, options)
             profileReset = SignalKit:New(),
             profileDeleted = SignalKit:New(),
         },
-        _logoutConnection = false,
     }, DATABASE_METATABLE)
 
     for index = 1, #SCOPE_NAMES do
@@ -2503,7 +2506,7 @@ local function open(_, savedVariable, schema, options)
     end
     publishProfileView(db)
 
-    rawset(db, "_logoutConnection", connectLogout(db))
+    connectLogout(db)
     rawset(databases, savedVariable, db)
     return db --[[@as SettingsKit.Database]]
 end

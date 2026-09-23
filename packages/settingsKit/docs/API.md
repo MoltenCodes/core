@@ -30,7 +30,7 @@ SettingsKit does not rely on `require()` at runtime. Loading it without one of i
 | `UnitName("player")`, `GetRealmName()` | the `char` scope key `"<name> - <realm>"`; `realm` needs only `GetRealmName` | The scope is unavailable (below). `defaultProfile = "char"` falls back to `"Default"` and the profile choice is not recorded. |
 | `UnitClass("player")` | the `class` scope key, its second result (`"MAGE"`) | The `class` scope is unavailable. |
 | `UnitFactionGroup("player")` | the `faction` scope key (`"Alliance"`, `"Horde"`, `"Neutral"`) | The `faction` scope is unavailable. |
-| `issecretvalue` | every validated write, keyed-section reads, the scope keys | Nothing is treated as secret, which is correct on clients without secret values. Read at every call. |
+| `issecretvalue` | every read and validated write through a view, `Validate`, `Compact`, profile names, the scope keys | Nothing is treated as secret, which is correct on clients without secret values. Read at every call. |
 | `geterrorhandler` | reporting a logout compaction that failed | Falls back to `print`. |
 | EventKit API 1 | compaction on `PLAYER_LOGOUT` | `db:Compact()` is the addon's to call. |
 
@@ -246,7 +246,7 @@ Every refusal is raised at the writing line and stores nothing. A table you assi
 
 - `pairs`, `next` and `#` see an empty table: Lua 5.1 has no `__pairs` or `__len` for tables. Use `db:Pairs(view)` instead.
 - A view of a deleted profile, or of any profile after `ResetDatabase`, is **detached**: it reads defaults and refuses writes with `... belongs to a profile that was deleted or reset away`.
-- Reading a keyed section with a secret key raises at the reading line.
+- Reading a view with a secret key raises at the reading line.
 
 ## Profiles
 
@@ -297,7 +297,7 @@ The signal fires after the value is stored. SignalKit's dispatch rules apply: li
 
 ## `db:Pairs(view)`
 
-`for key, value in db:Pairs(db.profile) do ... end` iterates a view of this database: first every key that has a default (a record's field defaults, or a keyed section's own default entries — never its wildcard, which covers every possible key), then every saved key without a default, including undeclared ones. Each value is what reading `view[key]` returns, so a record field yields its child view. Order within each phase is `next` order. The iterator is stateless and allocates nothing. As with `pairs`, do not add keys to the view while iterating it. Anything but a view of this database is refused at your line.
+`for key, value in db:Pairs(db.profile) do ... end` iterates a view of this database: first every key that has a default (a record's field defaults, or a keyed section's own default entries — never its wildcard, which covers every possible key), then every saved key without a default, including undeclared ones. Each value is what reading `view[key]` returns, so a record field yields its child view. Order within each phase is `next` order. The iterator is stateless and allocates nothing beyond what the reads themselves do (the first read of a plain-table default stores a copy, as above). As with `pairs`, do not add keys to the view while iterating it. Anything but a view of this database is refused at your line.
 
 ## `db:Validate(scope, path, value)`
 

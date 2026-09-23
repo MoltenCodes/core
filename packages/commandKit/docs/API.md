@@ -34,7 +34,7 @@ CommandKit does not rely on `require()` at runtime.
 | `geterrorhandler` | handler and completion failures | Falls back to `print`. |
 | OptionsKit API 1, through `Registry:Find` | `BindOptions` | `BindOptions` raises at the caller. |
 | LocaleKit API 1, through `Registry:Find` | `context:Printf` | `string.format`, without indexed specifiers. |
-| ClientKit API 1, through `Registry:Find` | every secret check | The host's `issecretvalue`; without that, nothing is secret. |
+| ClientKit API 1, through `Registry:Find` | every secret check but the taken check, which asks `issecretvalue` directly | The host's `issecretvalue`; without that, nothing is secret. |
 
 Host globals are read with `rawget` when they are used, never cached at load.
 
@@ -236,11 +236,11 @@ A slash name keeps the key of its first registration for the session. When any s
 | `subcommands` | table of name → spec | Named sub-commands, at most `MAX_DEPTH` (3) levels below the command and 64 per level. |
 | `complete` | `fun(context, text, position): string[]?` | Candidates for tab completion of argument `position` (1-based), starting with `text`. |
 
-A spec with an unknown field raises (`CommandKit.Scope:Register spec.subcommands.frame contains unknown field "desc"`), as does a sub-command key that is not a valid name, two keys equal without case, a spec with neither `handler` nor `subcommands`, and nesting deeper than three levels. The spec is compiled into records once; later edits to your tables have no effect. Functions are kept by reference.
+A spec with an unknown field raises (`CommandKit.Scope:Register spec.subcommands.frame contains unknown field "desc"`), as does a sub-command key that is not a valid name, two keys equal without case, a spec with neither `handler` nor `subcommands`, `arguments` without a `handler` to receive them, and nesting deeper than three levels. The spec is compiled into records once; later edits to your tables have no effect. Functions are kept by reference.
 
 ### Arguments
 
-A **list of schemas** declares one schema per position, at most 16. The handler receives exactly that many arguments (`nil` for a missing optional one). Typing more tokens than positions is refused (`expected at most 2 arguments`).
+A **list of schemas** declares one schema per position, at most 16. The handler receives exactly that many arguments. A missing `optional` position is `nil`, or a fresh copy of its default when it was declared with one (`SchemaKit.optional(SchemaKit.number(), 10)`). Typing more tokens than positions is refused (`expected at most 2 arguments`).
 
 A **`SchemaKit.array` schema** checks the whole argument list at once; its `min` and `max` bound the count. The handler receives every token.
 
@@ -309,6 +309,7 @@ A handler, and a `complete` function, receive a context. **It is valid only whil
 | `|cffa335ee|H…|h[Some Long Item]|h|r` | the whole colour-wrapped text, which is how the client inserts a shift-clicked link. |
 | `|TInterface\Icons\X:16|t` | the whole texture. |
 | `a||b` | `a||b`: an escaped pipe is ordinary text. |
+| `a| b`, `"a|"` | `a|` and `b`, `a|`: a pipe that starts none of the sequences above is one ordinary byte, so the whitespace or quote after it still counts. |
 
 Refusals, returned as `nil, reason`:
 
@@ -339,7 +340,7 @@ Registers `/commandName` with five sub-commands over an OptionsKit tree handle (
 |---|---|
 | `get <path>` | Prints `path = value`. |
 | `set <path> <value...>` | Parses the value for the option's kind, asks `tree:Validate`, then `tree:Set`; prints `path = value`, or the refusal. |
-| `reset <path>` | `tree:Reset` for a bound option; prints the value it reset to. An option with its own `get`/`set` has no default: `"label" has no default to reset to`. |
+| `reset <path>` | `tree:Reset` for a bound option; prints the value it reset to. An option with its own `get`/`set` has no default: `"path" has no default to reset to`. |
 | `list [path]` | Lists the visible children of a group (the root without a path): `path = value - Name`, `path - Name (group)`, `path - Name (exec)`, with ` (disabled)` appended where it applies. For one option: its line, its `desc`, and its values. |
 | `exec <path> [confirm]` | `tree:Execute`. An option with `confirm` prints its question (when it is a string) and `Type /cmd exec path confirm to run it.` unless the word `confirm` follows. |
 
@@ -381,7 +382,8 @@ On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDD
 
 - `context:Print` and `context:Printf` refuse a secret argument (the template included) at the caller: `CommandKit.Context:Print argument 2 must not be a secret value`. A secret never becomes part of chat output by accident.
 - `Parse`, `ParseInto`, every name argument, and `Fail`'s reason refuse a secret before comparing it.
-- A bound option whose getter returns a secret prints as `(secret value)`.
+- A bound option whose getter returns a secret prints as `(secret value)`; a secret `select` label is neither shown nor matched.
+- A secret completion candidate is skipped, and the taken check skips a secret `SLASH_<key><n>` or `EMOTE<n>_CMD<m>` value.
 - A handler failure whose message is secret is written to the sink without the message and handed to the host error handler unchanged.
 
 Text typed by the user never is secret, so dispatch does not probe it.

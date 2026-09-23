@@ -122,6 +122,27 @@ describe("SettingsKit defaults", function()
         )
     end)
 
+    it("reads nil for a nil key of a keyed section, after asking the secret probe", function()
+        local db = openProfile({
+            flags = S.optional(
+                S.map({ keys = S.string(), values = S.optional(S.boolean(), true), max = 8 }),
+                {}
+            ),
+        })
+        -- Comparing a secret with `nil` raises in the client, so the probe
+        -- must see the key before the nil test does.
+        local asked = 0
+        TestEnv.SetGlobal("issecretvalue", function()
+            asked = asked + 1
+            return false
+        end)
+        local flags = db.profile.flags
+        asked = 0
+        assert.is_nil(flags[nil])
+        assert.are.equal(1, asked)
+        assert.is_true(flags.anything)
+    end)
+
     it("serves scalar wildcard defaults", function()
         local db = openProfile({
             counts = S.optional(

@@ -100,6 +100,13 @@ describe("CommandKit parsing", function()
         )
     end)
 
+    it("reads a pipe that starts no escape sequence as one ordinary byte", function()
+        assert.are.same({ "a|", "b" }, CommandKit:Parse("a| b"))
+        assert.are.same({ "a|", "b" }, CommandKit:Parse('"a|" b'))
+        assert.are.same({ "x|", "y" }, CommandKit:Parse("'x|' y"))
+        assert.are.same({ "|" }, CommandKit:Parse("|"))
+    end)
+
     it("refuses an unterminated hyperlink", function()
         assert.are.same({ nil, "unterminated link" }, { CommandKit:Parse("|Hitem:1 no marker") })
         assert.are.same({ nil, "unterminated link" }, { CommandKit:Parse("|Hitem:1|h[Half open") })

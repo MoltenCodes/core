@@ -15,7 +15,10 @@
 - Reading a missing keyed-section entry never stores anything, so reads cannot grow a section past its `max` or store a key its key schema refuses; only a validated write creates an entry.
 - Added `db:Pairs(view)`: a stateless, allocation-free iterator over a view's keys with defaults, then its saved keys.
 - A record view refuses a secret read key, as a keyed-section view does.
-- Added `db:Validate(scope, path, value)`: `true`, or `false` and the exact message a write would raise, running every check of a write (secret, view and metatable refusal, schema, keyed-section key and `max`) without writing. `path` is a dotted string or an array of keys; an array path allocates nothing for a valid value.
+- Added `db:Validate(scope, path, value)`: `true`, or `false` and the exact message a write would raise, running every check of a write (secret, view and metatable refusal, schema, keyed-section key and `max`) without writing. `path` is a dotted string or an array of keys; an array path allocates nothing for a valid value while the entry views on it are cached.
 - The manifest lists EventKit API 1 under `optionalDependencies`.
 - A default read and a validated write of an existing key allocate nothing. Databases, views and their listeners survive an in-place upgrade.
-- 113 specs, including allocation guards, an in-place upgrade spec and pinned error levels.
+- A keyed-section read asks `issecretvalue` about the key before comparing it with `nil`, as a record read already did; comparing a secret raises in the client.
+- Removed private state nothing read: the plan's `kind` field, the database's `_logoutConnection` field (EventKit holds the listener; a database is never disconnected) and the depth counter threaded through compaction (the plan already bounds the walk). A write's refusal prefix is built only for a refusal.
+- API.md lists every use of `issecretvalue`, says a secret key refuses a read of any view, and qualifies the allocation of `db:Pairs` and of an array-path `Validate`.
+- 114 specs, including allocation guards, an in-place upgrade spec and pinned error levels.

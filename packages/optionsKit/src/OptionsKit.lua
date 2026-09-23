@@ -1198,6 +1198,12 @@ end
 ---validates like any other write; clearing a value whose record does not
 ---exist does nothing. A SettingsKit refusal is raised again at the caller's
 ---line with its message kept.
+---
+---The protected write also catches an error from one of SettingsKit's own
+---`OnChange` listeners, which runs after the value was stored. Only on that
+---failure path, `db:Validate` tells the two apart: it accepts the value when
+---the write was not refused, and the listener's error is then re-raised
+---unchanged rather than reported as a refusal.
 ---@param tree OptionsKit.Tree
 ---@param record table
 ---@param value any
@@ -1207,16 +1213,21 @@ local function writeBound(tree, record, value, methodName, level)
     local container, index = walkBound(tree, record, methodName, level + 1)
     local keys = rawget(record, "_bindKeys")
     local count = rawget(record, "_bindCount")
+    local stored = value
     if index < count then
         if value == nil then
             return
         end
         for position = count, index + 1, -1 do
-            value = { [keys[position]] = value }
+            stored = { [keys[position]] = stored }
         end
     end
-    local written, failure = pcall(assignField, container, keys[index], value)
+    local written, failure = pcall(assignField, container, keys[index], stored)
     if not written then
+        local db = rawget(tree, "_db")
+        if db:Validate(rawget(record, "_bindScope"), keys, value) == true then
+            error(failure, 0)
+        end
         error(
             methodName
                 .. " "
@@ -1429,6 +1440,40 @@ end
 
 -- Describe -------------------------------------------------------------------
 
+-- What `getmetatable` answers for a SettingsKit view: its `__metatable`.
+local SETTINGS_VIEW = "SettingsKit.View"
+
+---Copy a value for `Describe`, so a description holds only fresh plain
+---tables: never the table a getter returned, and never a SettingsKit view,
+---which `pairs` sees as empty and which writes through to the saved variable.
+---A view of the tree's own database is copied through `db:Pairs`, so its
+---defaults are included. Copying stops `MAX_DEPTH` tables down, which also
+---ends a cyclic getter value.
+---
+---A secret value, at the top or nested, is passed through as it is, before
+---anything inspects it: a copy would both touch the secret and turn it into
+---a table a consumer no longer recognises as secret.
+---@param value any
+---@param db table|false the tree's database, for a bound option
+---@param depth integer
+---@return any
+local function snapshotValue(value, db, depth)
+    if isSecret(value) or type(value) ~= "table" or depth > MAX_DEPTH then
+        return value
+    end
+    local copy = {}
+    if db and getmetatable(value) == SETTINGS_VIEW then
+        for key, item in db:Pairs(value) do
+            copy[key] = snapshotValue(item, db, depth + 1)
+        end
+    else
+        for key, item in pairs(value) do
+            copy[key] = snapshotValue(item, db, depth + 1)
+        end
+    end
+    return copy
+end
+
 ---Copy a `values` table, calling the function first when the values are one.
 ---@param record table
 ---@param level integer
@@ -1489,7 +1534,9 @@ local function describeRecord(tree, record, level)
         end
         node.children = described
     elseif VALUE_KINDS[kind] then
-        node.value = readValue(tree, record, "OptionsKit.Tree:Describe", level + 1)
+        local bound = rawget(record, "_bindScope") and rawget(tree, "_db") or false
+        node.value =
+            snapshotValue(readValue(tree, record, "OptionsKit.Tree:Describe", level + 1), bound, 1)
         node.schema = rawget(record, "_schema"):Describe()
         local bind = rawget(record, "_bind")
         if bind then
@@ -1535,13 +1582,20 @@ local function readDefineOptions(options, level)
     if type(options) ~= "table" then
         error("OptionsKit:Define options must be a table", level)
     end
+    -- Name the alphabetically first unknown field, so the message does not
+    -- depend on hash order, and name a key that is not a string by its type:
+    -- `tostring` could run a caller's `__tostring`.
+    local firstUnknown = nil
     for key in pairs(options) do
         if DEFINE_OPTION_KEYS[key] ~= true then
-            error(
-                'OptionsKit:Define options contains unknown field "' .. tostring(key) .. '"',
-                level
-            )
+            local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
+            if firstUnknown == nil or text < firstUnknown then
+                firstUnknown = text
+            end
         end
+    end
+    if firstUnknown ~= nil then
+        error('OptionsKit:Define options contains unknown field "' .. firstUnknown .. '"', level)
     end
     local db = options.db
     if db == nil then

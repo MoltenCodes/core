@@ -80,4 +80,29 @@ describe("OptionsKit and secret values", function()
         stored = secret
         assert.is_true(rawequal(secret, tree:Get("label")))
     end)
+
+    it("Describe passes a secret value through uncopied, at the top and nested", function()
+        stored = secret
+        local label = tree:Describe().children[1]
+        assert.is_true(rawequal(secret, label.value))
+
+        -- A table value is copied, but a secret inside it is passed through.
+        local colour = { r = secret, g = 0, b = 0 }
+        local withColour = OptionsKit:Define("Colours", {
+            type = "group",
+            args = {
+                tint = {
+                    type = "color",
+                    name = "Tint",
+                    get = function()
+                        return colour
+                    end,
+                    set = function() end,
+                },
+            },
+        })
+        local described = withColour:Describe().children[1].value
+        assert.is_false(rawequal(colour, described))
+        assert.is_true(rawequal(secret, described.r))
+    end)
 end)

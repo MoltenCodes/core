@@ -14,4 +14,5 @@
 - A read table returns a secret key (through `issecretvalue`, looked up at call time) unchanged, without storing, recording or reporting it.
 - The proxy and read-table metatables are protected with `__metatable`, and a table carrying a proxy metatable that `NewLocale` did not return is refused at the assignment line.
 - An unknown option key that is not a string is named by its type, so no `__tostring` runs.
-- 86 specs, including interleaved registration by two addons, an in-place upgrade spec, allocation guards on translated and missing lookups and on `Format`, and error levels pinned for every argument, write-proxy and template failure.
+- `Format` refuses a secret template as well as a secret argument (`LocaleKit:Format template must not be a secret value`, at the caller). A read table returns a secret key as itself, so a template read with runtime data could be secret, and `string.gsub` must not run over it.
+- 87 specs, including interleaved registration by two addons, an in-place upgrade spec, allocation guards on translated and missing lookups and on `Format`, and error levels pinned for every argument, write-proxy and template failure.

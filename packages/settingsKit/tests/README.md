@@ -3,7 +3,7 @@
 The SettingsKit suite covers:
 
 - `Open`: the saved variable created with the full layout when missing, adopted when the client loaded it, refused when it is not a table; the same database for a second `Open` of the name (and a refusal for a different schema table or a replaced global); nodes and sealed schemas both accepted, with SettingsKit's own failure table; the "every field optional" rule with the offending path, also inside keyed-section records; malformed schema tables, options and saved-variable names;
-- defaults: scalar and nested record defaults read without being written back, defaults declared inside a table default, a saved record without a default reading its own field defaults, wildcard defaults of a keyed section (records and scalars), a section's own default entries before its wildcard, the first-read copy of an array default, undeclared fields, and views being empty proxies;
+- defaults: scalar and nested record defaults read without being written back, defaults declared inside a table default, a saved record without a default reading its own field defaults, wildcard defaults of a keyed section (records and scalars), a section's own default entries before its wildcard, the first-read copy of an array default, undeclared fields, views being empty proxies, and a `nil` key of a keyed section reading `nil` after the secret probe was asked;
 - validated writes: stored when valid, refused at the writer's line with SchemaKit's failure text, undeclared fields of closed records, nested record fields, whole tables, keyed-section keys, values and entries, the keyed-section bound, `nil` resetting to the default, NaN keys, and `OnChange` with its `(db, scope, key, value, path)` arguments (also not firing for a refused write);
 - secret values: a secret value, a secret nested in a table value, a secret key and a secret read key, each refused at the line that used it with nothing stored;
 - scopes: each of the six scope keys in the saved table, keys resolved once, other characters kept apart, unavailable scopes for each missing identity function (including an empty or secret answer) raising at the reader's line, undeclared scopes, and `OnChange` refused for either;
@@ -21,3 +21,19 @@ The SettingsKit suite covers:
 - manifest/runtime API and revision consistency.
 
 `support/SettingsKitTestEnv.lua` loads Registry, SignalKit, EventKit, SchemaKit and SettingsKit in that order. It stubs the player identity (`UnitName`, `GetRealmName`, `UnitClass`, `UnitFactionGroup`) through `SetPlayer`, where a field set to `false` leaves that function out, and removes it again in `Reset`, together with every saved variable a spec named or SettingsKit created; the shared fixture does not model these globals. `InstallSecretProbe` and `NewSecret` provide an `issecretvalue` that reports the spec's own secret tables. EventKit is an optional dependency, so the runner puts it on `LUA_PATH`; `NewPackageWithoutEventKit` simply leaves it out of the module chain.
+
+| Spec | Covers |
+|---|---|
+| `Open_spec.lua` | `Open`, the saved variable, schema and option refusals |
+| `Defaults_spec.lua` | default reads, wildcard defaults, the first-read copy |
+| `Writes_spec.lua` | validated writes, `OnChange`, secret values and keys |
+| `Scopes_spec.lua` | scope keys and unavailable or undeclared scopes |
+| `Profiles_spec.lua` | profile methods and signals, `ResetDatabase` |
+| `Migrations_spec.lua` | versioned migrations |
+| `Compact_spec.lua` | `Compact` and the logout compaction |
+| `Aliasing_spec.lua` | views and metatables refused as values, keyed-section reads storing nothing, `db:Pairs`, undeclared keys through `Compact` |
+| `Validate_spec.lua` | `db:Validate` |
+| `Allocation_spec.lua` | allocation guards |
+| `ErrorLevels_spec.lua` | errors reported at the caller's line |
+| `Bootstrap_spec.lua` | publication, duplicate loads, upgrades |
+| `Manifest_spec.lua` | manifest and runtime metadata |

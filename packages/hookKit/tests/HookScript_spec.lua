@@ -243,6 +243,37 @@ describe("HookKit script replacement next to secure script hooks", function()
         assert.are.same({ "pre", "post" }, calls)
     end)
 
+    it("keeps a later SecureHookScript post-hook when the pre-hook under it is released", function()
+        local calls = {}
+        local frame = TestEnv.NewFrame()
+        frame:SetScript("OnShow", function()
+            calls[#calls + 1] = "original"
+        end)
+        local scope = HookKit:CreateScope()
+        scope:HookScript(frame, "OnShow", function()
+            calls[#calls + 1] = "pre"
+        end)
+        local installed = frame:GetScript("OnShow")
+        local secure = HookKit:CreateScope()
+        secure:SecureHookScript(frame, "OnShow", function()
+            calls[#calls + 1] = "post"
+        end)
+
+        -- Restoring with SetScript would drop the post-hook, so the pre-hook
+        -- stays installed, inert, forwarding to the original.
+        assert.is_true(scope:Unhook(frame, "OnShow"))
+        assert.are.equal(installed, frame:GetScript("OnShow"))
+        TestEnv.RunScript(frame, "OnShow")
+        assert.are.same({ "original", "post" }, calls)
+
+        -- Once the post-hook is released too, nothing is left to protect.
+        secure:Unhook(frame, "OnShow")
+        local again = HookKit:CreateScope()
+        again:HookScript(frame, "OnShow", function() end)
+        assert.is_true(again:Unhook(frame, "OnShow"))
+        assert.are.equal(installed, frame:GetScript("OnShow"))
+    end)
+
     it("refuses a forbidden frame at the caller and leaves a hook inert on it", function()
         local forbidden = TestEnv.NewFrame({ forbidden = true })
         local scope = HookKit:CreateScope()

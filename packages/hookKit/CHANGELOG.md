@@ -15,4 +15,7 @@
 - A script pre-hook or replacement is refused while any HookKit scope holds a `SecureHookScript` post-hook on that script, since `SetScript` may drop it.
 - Script hooks refuse a forbidden or inaccessible frame at the caller, and release leaves the closure inert on one.
 - `CloseAddonScopes` records nothing for an addon without a scope and returns `false`; `ForAddon` and `CloseAddonScopes` refuse a receiver other than the facade.
-- 82 specs, including an allocation guard on hooked calls and an in-place upgrade spec.
+- Releasing a script pre-hook or replacement leaves its closure in place, inert, while any HookKit scope holds a `SecureHookScript` post-hook on that script. That post-hook was installed after the pre-hook (the order HookKit allows), and restoring with `SetScript` could drop it. The test frame's `SetScript` now drops `HookScript` post-hooks, so the suite exercises that case.
+- The facade receiver check compares by raw identity, so it never compares a caller-supplied value with `~=`.
+- README and API.md resolve the package with `MoltenCodes.Registries[2]:Get`, the generation-pinned form `docs/EMBEDDING.md` recommends, instead of the `MoltenCodes.Registry` alias.
+- 83 specs, including an allocation guard on hooked calls and an in-place upgrade spec.

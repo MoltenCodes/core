@@ -29,7 +29,7 @@ LocaleKit reads three host functions, each at call time rather than at load, and
 |---|---|---|
 | `GetLocale` | `NewLocale`, to learn the client locale | The client locale is `enUS`. An answer that is not a locale code is treated the same way. |
 | `geterrorhandler` | the `"report"` missing-key mode | The report is passed to `print`. |
-| `issecretvalue` | `Format` | Nothing is treated as secret. |
+| `issecretvalue` | `Format`, and a read of an undefined key in `"report"` or `"silent"` mode | Nothing is treated as secret. |
 
 ## Public surface
 
@@ -165,13 +165,13 @@ Raised at the caller's line:
 - `LocaleKit:Format template has an unsupported specifier "%x"`, including a `%` at the end of the template;
 - `LocaleKit:Format template has an invalid specifier "%100s"`, for a shape `string.format` refuses: a width or precision over two digits, or a repeated flag;
 - `LocaleKit:Format argument 1 must be a number, got string` (and `must be a string or a number` for `%s`);
-- `LocaleKit:Format argument 2 must not be a secret value`, see below.
+- `LocaleKit:Format template must not be a secret value` and `LocaleKit:Format argument 2 must not be a secret value`, see below.
 
 `Format` runs one `string.gsub` per call and allocates only strings (the formatted piece of each specifier and the result), no table and no closure.
 
 ### Secret values
 
-On Retail 12.x the client hands tainted code secret values that raise when compared or used as table keys, and formatting one produces a secret result. `Format` asks `issecretvalue` about every argument before formatting and refuses a secret one at the caller, so a secret never becomes part of a translated message by accident. `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
+On Retail 12.x the client hands tainted code secret values that raise when compared or used as table keys, and formatting one produces a secret result. `Format` asks `issecretvalue` about the template and every argument before formatting and refuses a secret one at the caller, so a secret never becomes part of a translated message by accident. The template check matters because a read table hands a secret key back as itself: `LocaleKit:Format(L[unitName], ...)` with a secret `unitName` raises at your line instead of running `string.gsub` over the secret. `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
 ## `LocaleKit:SetLocaleOverride(locale?)`
 

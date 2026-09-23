@@ -38,7 +38,7 @@ What each piece promises:
 - **`NewLocale`** returns a fresh write proxy when the client needs that locale (it is the client's, or `isDefault` marks it as the fallback) and `nil` otherwise. Proxies are per call, so two addons registering at the same time cannot corrupt each other. The default proxy never overwrites a key already present, so translation files may load before or after the default file.
 - **`GetLocale`** returns one table: the default strings with the client's on top. A lookup is one table read. `missing = "report"` (the default) returns an undefined key as itself and reports it once through the host error handler; `"silent"` does the same without the report; `"raw"` returns `nil`. The first call fixes the mode.
 - **`MissingKeys`** returns the sorted keys an addon read but never defined, for a coverage report.
-- **`Format`** supports `%s`, `%d`, `%f` with flags, width and precision, indexed `%1$s` in any order and any number of times, and `%%`. It raises at the caller for an argument that is missing, of the wrong type or secret.
+- **`Format`** supports `%s`, `%d`, `%f` with flags, width and precision, indexed `%1$s` in any order and any number of times, and `%%`. It raises at the caller for an argument that is missing, of the wrong type or secret, and for a secret template.
 - **`SetLocaleOverride`** lets a translator run another locale on their own client. `enGB` clients are folded to `enUS`.
 
 Non-goals: plural rules, grammatical gender, runtime locale switching, and shipping any translations.

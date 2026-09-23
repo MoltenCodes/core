@@ -117,8 +117,26 @@ describe("CommandKit dispatch", function()
         assert.are.equal("/scale: argument 1: expected number, found nil", sink:Messages()[1])
         sink:Clear()
         TestEnv.RunSlash("/scale 1 2")
-        assert.are.equal("/scale: expected at most 1 arguments", sink:Messages()[1])
+        assert.are.equal("/scale: expected at most 1 argument", sink:Messages()[1])
         assert.are.equal(0, calls)
+    end)
+
+    it("fills the default an optional position declares when it is left out", function()
+        local received
+        scope:Register("size", {
+            handler = function(_, width, height)
+                received = { width, height }
+            end,
+            arguments = {
+                SchemaKit.number(),
+                SchemaKit.optional(SchemaKit.number(), 10),
+            },
+        })
+        TestEnv.RunSlash("/size 4")
+        assert.are.same({ 4, 10 }, received)
+        TestEnv.RunSlash("/size 4 5")
+        assert.are.same({ 4, 5 }, received)
+        assert.are.same({}, sink:Messages())
     end)
 
     it("checks an array schema over every argument", function()

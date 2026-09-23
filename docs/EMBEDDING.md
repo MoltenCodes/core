@@ -533,7 +533,7 @@ actually touch, which is deliberately small:
 | `moduleKit` | LifecycleKit's surface | HookKit, CommandKit, CommKit, TimerKit and SchedulerKit API 1, EventKit scopes and SignalKit buses through `Registry:Find` (a missing Kit leaves that `module.scope` field `nil`) |
 | `signalKit` | nothing but Lua 5.1 | `securecallfunction` (bus deliveries fall back to `xpcall`), `geterrorhandler` (falls back to `print`), `issecretvalue` (only guards a validator's refusal reason) |
 | `schemaKit` | nothing but Lua 5.1 | `issecretvalue` (looked up at every check; absent: nothing is treated as secret) |
-| `localeKit` | nothing but Lua 5.1 | `GetLocale` (client locale `enUS`), `geterrorhandler` (missing-key reports fall back to `print`), `issecretvalue` (`Format` treats nothing as secret) |
+| `localeKit` | nothing but Lua 5.1 | `GetLocale` (client locale `enUS`), `geterrorhandler` (missing-key reports fall back to `print`), `issecretvalue` (`Format` and missing-key reads treat nothing as secret) |
 | `settingsKit` | SchemaKit's and SignalKit's surfaces | `UnitName` and `GetRealmName` (`db.char`, and `db.realm` without `GetRealmName`, unavailable), `UnitClass` (`db.class` unavailable), `UnitFactionGroup` (`db.faction` unavailable); an unavailable scope raises at the reader; `issecretvalue` (nothing treated as secret), `geterrorhandler` (`print`), EventKit API 1 through `Registry:Find` (no compaction at `PLAYER_LOGOUT`; call `db:Compact()`) |
 | `optionsKit` | SchemaKit's and SignalKit's surfaces | `issecretvalue` (looked up at every call; absent: nothing is treated as secret), SettingsKit API 1 through `Registry:Find` (`Define` with `options.db` raises; `get`/`set` options unaffected) |
 | `commandKit` | SchemaKit's surface; `SlashCmdList` (`Register` and `BindOptions` raise at the caller) | `SLASH_<key><n>`, `SecureCmdList`, `ChatTypeInfo`, `EMOTE<n>_CMD<m>` and `MAXEMOTEINDEX` (the taken check finds nothing), `DEFAULT_CHAT_FRAME` (`print`), `ChatEdit_CustomTabPressed` (`EnableCompletion` returns `false`), `ChatEdit_GetActiveWindow`, `geterrorhandler` (`print`), ClientKit API 1 / `issecretvalue`, OptionsKit API 1 (`BindOptions` raises), LocaleKit API 1 (`Printf` uses `string.format`) |
@@ -1057,7 +1057,8 @@ fix is to embed the missing Kit, in load order, not to change the call.
 
 A write into a saved-variable view failed its schema at the writer's line. The
 message is SchemaKit's failure text; fix the value or widen the schema. A
-secret value is refused with the rule `secret`; never store one.
+secret value is refused before the schema runs, with `refused a secret value:
+saved variables never hold secret values`; never store one.
 
 ### `CommandKit ... nil, "taken"` or `nil, "emote"`
 

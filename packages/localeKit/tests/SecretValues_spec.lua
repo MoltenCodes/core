@@ -31,6 +31,26 @@ describe("LocaleKit:Format and secret values", function()
         end)
     end)
 
+    it("refuses a secret template, such as a secret key handed back by a read table", function()
+        local default = LocaleKit:NewLocale("MyAddon", "enUS", { isDefault = true })
+        default["Hello"] = true
+        local L = LocaleKit:GetLocale("MyAddon")
+        -- A string stand-in: string.gsub would run over it unless Format asked first.
+        TestEnv.InstallSecretProbe("%s is here")
+        local template = L["%s is here"]
+        local source = debug.getinfo(1, "S").short_src
+        local line
+        local ok, failure = pcall(function()
+            line = debug.getinfo(1, "l").currentline + 1
+            LocaleKit:Format(template, "Alice")
+        end)
+        assert.is_false(ok)
+        assert.are.equal(
+            source .. ":" .. line .. ": LocaleKit:Format template must not be a secret value",
+            failure
+        )
+    end)
+
     it("formats ordinary values when the probe exists", function()
         TestEnv.InstallSecretProbe({})
         assert.are.equal("a 1", LocaleKit:Format("%s %d", "a", 1))

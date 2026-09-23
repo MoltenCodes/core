@@ -46,7 +46,7 @@ A proxy is an empty table per call. Nothing is ever stored in it, so `__newindex
 
 ## Missing keys
 
-`GetLocale` sets `reportMetatable` or `silentMetatable` on `strings` when it fixes the mode (`"raw"` sets none). Their `__index` is `readMissing`: it `rawset`s the key as its own value, adds it to `missing`, and reports it in `"report"` mode. The `rawset` is what makes the report happen once and later reads plain table reads. A write that defines a missing key removes it from `missing`.
+`GetLocale` sets `reportMetatable` or `silentMetatable` on `strings` when it fixes the mode (`"raw"` sets none). Their `__index` functions, `readMissingReported` and `readMissingSilently`, both call `readMissing`, which `rawset`s the key as its own value, adds it to `missing`, and reports it in `"report"` mode. The `rawset` is what makes the report happen once and later reads plain table reads. A write that defines a missing key removes it from `missing`.
 
 A key `issecretvalue` reports as secret is returned before any of this, because storing it or concatenating it into the report would raise.
 

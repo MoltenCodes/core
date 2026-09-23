@@ -49,7 +49,7 @@ One record per hook, created by `newRecord` with every field present:
 | `_active` | The one flag the closure reads. Cleared by `Unhook` and never set again: a re-hook makes a new record and closure. |
 | `_sequence` | Creation order within the scope; `Hooks()` and the release order use it. |
 
-A record never references its object, so the weak key can be collected. It does reference the closure, which references the record; both go when the object does (or, for a secure hook, never, because the host keeps the closure).
+A record never references its object, so the weak key can be collected. It does reference the closure, which references the record; both go when the object does (or, for a secure hook, never, because the host keeps the closure). Lua 5.1 weak tables are not ephemeron tables: a handler that captures the hooked object keeps it, and its entry, alive through the record.
 
 ## Installed closures
 
@@ -69,7 +69,7 @@ The original is passed first to a replacement handler because Lua 5.1 cannot app
 
 ## Order of work in an install
 
-1. Validate the receiver, that the scope is open, the object or frame, the name, the handler, and (for field hooks) that the target is a function and not already hooked in this scope.
+1. Validate the receiver, that the scope is open, the object or frame, the name, the handler, and that the target is not already hooked in this scope; for field hooks, that the target is a function; for script hooks, that the frame may be touched and has the frame methods the semantic calls.
 2. Read the option table.
 3. Refuse: the secure target (`wasSecure`, which fills the memo on first use) or the protected-frame rules.
 4. Check the capacity (`nil, "full"`).
@@ -79,7 +79,7 @@ Every public method calls its installer and returns the results through locals r
 
 ## Release
 
-`releaseRecord` removes the record and clears `_active` first, so the scope is consistent even when the host write that follows raises. It then restores only when the installed function is still HookKit's (`rawget` for fields, `GetScript` for scripts), and never calls `SetScript` on a protected frame during combat lockdown (a conservative rule) or on a frame that has become forbidden or inaccessible. `releaseAll` collects the records into three parallel arrays sorted by `_sequence` with an insertion sort (at most `MAX_HOOKS`), releases them newest first under `pcall`, and re-raises the first failure with level `0` so the host's error object is unchanged.
+`releaseRecord` removes the record and clears `_active` first, so the scope is consistent even when the host write that follows raises. It then restores only when the installed function is still HookKit's (`rawget` for fields, `GetScript` for scripts), and never calls `SetScript` while `secureScripts` counts a HookKit post-hook on that script (it was installed after the pre-hook, and `SetScript` may drop it), on a protected frame during combat lockdown (a conservative rule) or on a frame that has become forbidden or inaccessible. `releaseAll` collects the records into three parallel arrays sorted by `_sequence` with an insertion sort (at most `MAX_HOOKS`), releases them newest first under `pcall`, and re-raises the first failure with level `0` so the host's error object is unchanged.
 
 ## Upgrades
 

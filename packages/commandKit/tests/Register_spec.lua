@@ -3,9 +3,10 @@ local TestEnv = require("CommandKitTestEnv")
 local function noop() end
 
 describe("CommandKit registration", function()
-    local CommandKit
+    local CommandKit, SchemaKit
     before_each(function()
-        CommandKit = TestEnv.NewPackage()
+        local _
+        CommandKit, _, _, SchemaKit = TestEnv.NewPackage()
     end)
     after_each(TestEnv.Reset)
 
@@ -141,6 +142,12 @@ describe("CommandKit registration", function()
         end)
         TestEnv.expectErrorContaining("spec.subcommands.a.handler must be a function", function()
             scope:Register("x", { subcommands = { a = { handler = true } } })
+        end)
+        TestEnv.expectErrorContaining("spec.arguments needs a handler to receive them", function()
+            scope:Register("x", {
+                arguments = { SchemaKit.number() },
+                subcommands = { a = { handler = noop } },
+            })
         end)
         TestEnv.expectErrorContaining("spec.arguments[1] must be a SchemaKit schema", function()
             scope:Register("x", { handler = noop, arguments = { "number" } })

@@ -14,6 +14,8 @@
 ---   fake frames          `NewFrame` builds a table with `GetScript`,
 ---                        `SetScript`, `HookScript` and `IsProtected` in its
 ---                        metatable, and `RunScript` fires one of its scripts.
+---                        Its `SetScript` drops the script's `HookScript`
+---                        post-hooks, the case HookKit must never cause.
 ---
 --- These globals are installed before HookKit loads (it reads them at load
 --- time) and removed again by `Reset`, because they are not among the globals
@@ -229,6 +231,9 @@ function HookKitTestEnv.NewFrame(options)
             error("Frame:SetScript stub: handler must be a function or nil", 2)
         end
         scripts[script] = handler
+        -- Modelled as the worst case HookKit guards against: `SetScript`
+        -- drops the post-hooks `HookScript` added to that script.
+        postHooks[script] = nil
     end
 
     function methods.HookScript(_, script, handler)
