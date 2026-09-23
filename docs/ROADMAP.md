@@ -930,7 +930,7 @@ without it.
       LifecycleKit, it gates on phases by purpose).
 - [x] **lifecycleKit** — calls `TimerKit:CloseAddonScopes` and
       `SchedulerKit:CloseAddonScopes` at shutdown when those Kits are present.
-- [x] Every fixed limit becomes an option, a `SetLimits` entry or accepts
+- [ ] Every fixed limit becomes an option, a `SetLimits` entry or accepts
       `Kit.UNBOUNDED`, per principle 4a: signalKit (bus, topic and listener
       caps), eventKit (unit-filter frames), hookKit, commandKit, localeKit,
       mediaKit, profileKit, cacheKit (`UNBOUNDED`), schemaKit (depth and
@@ -939,7 +939,7 @@ without it.
       (`UNBOUNDED` where safe), moduleKit and lifecycleKit (dependency and
       queue caps), readinessKit, schedulerKit (lanes, watchers, debounce
       arguments), testKit.
-- [x] Every package README states its minimum footprint; EMBEDDING.md gains a
+- [ ] Every package README states its minimum footprint; EMBEDDING.md gains a
       footprint table and the dependency graph is redrawn.
 
 ### Standing obligations
