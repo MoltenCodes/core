@@ -3,8 +3,7 @@ local TestEnv = require("LifecycleKitTestEnv")
 -- Shutdown closes what the addon owns through the other Kits' addon scopes:
 -- its TimerKit scope, its SchedulerKit scope, its EventKit scope, its HookKit
 -- scope, its CommandKit scope, its CommKit scope and its SignalKit bus, in that
--- order. Apart from CommKit, which also closes its addon scopes from its own
--- shutdown subscription, none of those Kits observes shutdown itself, so
+-- order. None of those Kits observes shutdown itself, so
 -- LifecycleKit performs the second half of the two-step each of them
 -- documents. TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are
 -- optional and found through `Registry:Find`; SignalKit is a required

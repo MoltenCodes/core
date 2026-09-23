@@ -111,9 +111,9 @@ LifecycleKitTestEnv.RunSlash = runSlash
 
 -- CommKit ------------------------------------------------------------------
 --
--- CommKit is an optional dependency, and it requires LifecycleKit, TimerKit,
--- SchedulerKit and PoolKit. It cannot sit in the module chain above: it must
--- load after LifecycleKit. `LoadCommKit` loads the four on top of a chain
+-- CommKit is an optional dependency; it requires SignalKit, EventKit, TimerKit,
+-- SchedulerKit and PoolKit, not LifecycleKit. It is kept out of the module
+-- chain above so the plain suites load without it. `LoadCommKit` loads the four on top of a chain
 -- `NewPackage` already loaded, which is also how the shutdown specs reach
 -- TimerKit and SchedulerKit; the runner puts them on `LUA_PATH` as optional
 -- dependencies and as CommKit's required closure, and `Reset` clears them.

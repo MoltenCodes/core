@@ -90,7 +90,7 @@ registry
 ├──→ timerKit
 │       ├──→ readinessKit
 │       └──→ schedulerKit
-│               ├──→ commKit   (also signalKit, eventKit, lifecycleKit, poolKit)
+│               ├──→ commKit   (also signalKit, eventKit, poolKit)
 │               └──→ testKit   (also lifecycleKit; development only, never bundled)
 └──→ signalKit
        ├──→ mediaKit
@@ -237,6 +237,6 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 
 `testKit` depends on Registry API 2, LifecycleKit API 1 and SchedulerKit API 1 and is development-only, never bundled (`"distribution": "development"` in its manifest, ignored by `.pkgmeta`). Suites wait for a LifecycleKit phase; tests run one at a time in a SchedulerKit job, one coroutine per step; EventKit and TimerKit are found through `Registry:Find`, adding no load-order edge.
 
-`commKit` depends on Registry API 2 and on SignalKit, EventKit, LifecycleKit, SchedulerKit and PoolKit API 1. It owns addon messaging: a control-byte chunk protocol, reassembly bounded in streams, bytes per sender and time (the sender keeps the same in-flight and byte bounds so a well-behaved peer never trips them, and an abort chunk tells receivers a cancelled stream is gone), three bounded priority queues with per-destination round-robin, one token bucket shared by the session and charged for outside traffic through HookKit when present, and content-hash sync sets. The send driver is a SchedulerKit job that exists only while something is queued. TimerKit is found through `Registry:Find`; CodecKit, HookKit and SchemaKit are optional.
+`commKit` depends on Registry API 2 and on SignalKit, EventKit, TimerKit, SchedulerKit and PoolKit API 1; LifecycleKit closes its addon scopes at shutdown through `CommKit:CloseAddonScopes` when both are present. It owns addon messaging: a control-byte chunk protocol, reassembly bounded in streams, bytes per sender and time (the sender keeps the same in-flight and byte bounds so a well-behaved peer never trips them, and an abort chunk tells receivers a cancelled stream is gone), three bounded priority queues with per-destination round-robin, one token bucket shared by the session and charged for outside traffic through HookKit when present, and content-hash sync sets. The send driver is a SchedulerKit job that exists only while something is queued. TimerKit is found through `Registry:Find`; CodecKit, HookKit and SchemaKit are optional.
 
 `widgetKit` depends on Registry API 2, PoolKit API 1 and SignalKit API 1. It owns a versioned registry of widget types, each drawn from one capped, generation-stamped PoolKit pool; containers laid out by registered layout functions only when asked, never from `OnSizeChanged`; a plain anchor value type with position bindings; and a renderer for OptionsKit trees. OptionsKit, SchedulerKit and MediaKit are found at call time through `Registry:Find`, adding no load-order edge; a SettingsKit scope view is accepted as the position storage table without WidgetKit depending on SettingsKit.

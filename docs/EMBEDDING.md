@@ -149,7 +149,7 @@ registry
 ├──→ timerKit
 │       ├──→ readinessKit
 │       └──→ schedulerKit
-│               ├──→ commKit   (also signalKit, eventKit, lifecycleKit, poolKit)
+│               ├──→ commKit   (also signalKit, eventKit, poolKit)
 │               └──→ testKit   (also lifecycleKit; development only, never bundled)
 └──→ signalKit
        ├──→ mediaKit
@@ -171,7 +171,6 @@ poolKit/PoolKit.lua
 codecKit/CodecKit.lua
 signalKit/SignalKit.lua
 eventKit/EventKit.lua
-lifecycleKit/LifecycleKit.lua
 timerKit/TimerKit.lua
 schedulerKit/SchedulerKit.lua
 commKit/CommKit.lua
@@ -179,6 +178,7 @@ schemaKit/SchemaKit.lua
 commandKit/CommandKit.lua
 hookKit/HookKit.lua
 interopKit/InteropKit.lua
+lifecycleKit/LifecycleKit.lua
 localeKit/LocaleKit.lua
 mediaKit/MediaKit.lua
 moduleKit/ModuleKit.lua
@@ -221,8 +221,8 @@ optional and found at call time, so embedding one Kit costs this many files:
 | 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
 | 4 | `widgetKit` | `poolKit`, `signalKit` |
 | 5 | `moduleKit` | `signalKit`, `eventKit`, `lifecycleKit` |
+| 7 | `commKit` | `signalKit`, `eventKit`, `timerKit`, `schedulerKit`, `poolKit` |
 | 7 | `testKit` (development only) | `signalKit`, `eventKit`, `lifecycleKit`, `timerKit`, `schedulerKit` |
-| 8 | `commKit` | `signalKit`, `eventKit`, `lifecycleKit`, `timerKit`, `schedulerKit`, `poolKit` |
 
 The release artifact's `manifest.json` records the same closures, and
 `python3 -m tooling.package.build --package <id>` ships exactly that set.
