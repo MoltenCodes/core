@@ -1,0 +1,91 @@
+name: Kit proposal
+description: Propose a new Kit, following the "Planned package policy" in docs/ROADMAP.md.
+title: "Kit proposal: <packageId>"
+labels: ["enhancement", "roadmap", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A Kit is added to `docs/ROADMAP.md` when its scope and name are
+        accepted, before or together with its implementation. The nine fields
+        below are the nine points that section asks every planned Kit to
+        record, in its words, so an accepted proposal can be copied into the
+        roadmap as it stands. They exist to keep speculative package names from
+        becoming accidental architecture.
+
+        Read `docs/DESIGN_CONSTITUTION.md` and `docs/PACKAGE_MANIFEST.md`
+        first: a package ID is lowerCamelCase ending in `Kit`, and its facade is
+        the PascalCase name (`eventKit` / `EventKit`).
+
+  - type: input
+    id: identity
+    attributes:
+      label: 1. Package ID and runtime facade name
+      placeholder: "tooltipKit / TooltipKit"
+    validations:
+      required: true
+
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 2. Purpose and non-goals
+      description: What the Kit is responsible for, and what it deliberately leaves to other Kits or to the addon.
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 3. Dependencies
+      description: Required and optional Kits, with the API generation of each. Fewer is better; see principle 4b of the design constitution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: api
+    attributes:
+      label: 4. Public API surface
+      description: The facade's functions and the objects they return, as LuaCATS-style signatures.
+      render: lua
+    validations:
+      required: true
+
+  - type: textarea
+    id: lifecycle
+    attributes:
+      label: 5. Lifecycle/ownership model
+      description: Who owns what the Kit creates, how it is released, and what happens at `/reload` and logout.
+    validations:
+      required: true
+
+  - type: textarea
+    id: performance
+    attributes:
+      label: 6. Performance and memory constraints
+      description: Hot paths, allocation per call, retained state and the default limits that bound it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: 7. Test plan
+      description: The Busted specs against the fake client, and any in-client fidelity tests with testKit.
+    validations:
+      required: true
+
+  - type: textarea
+    id: documentation
+    attributes:
+      label: 8. Documentation requirements
+      description: README, `docs/API.md`, the embedding guide and anything else that has to change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: status
+    attributes:
+      label: 9. Implementation status
+      description: Nothing yet, a prototype (link it), or work in progress.
+    validations:
+      required: true

@@ -1,0 +1,31 @@
+# Dependabot keeps the workflow pins current.
+#
+# Only the github-actions ecosystem is configured. The runtime is Lua 5.1 with
+# no package manifest, the Python tooling uses the standard library only
+# (pyproject.toml declares no dependencies), and cspell is pinned in
+# tooling/spell.py. The downloaded binaries in ci.yml and release.yml (Selene,
+# lua-language-server, actionlint, gitleaks) are pinned by version and SHA-256
+# in `env`, which Dependabot does not read; they are bumped by hand.
+#
+# Every `uses:` is pinned to a commit SHA with the release in a trailing
+# comment. Dependabot updates the SHA and rewrites that comment in the same
+# change, so the pinning discipline survives automated updates.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # One pull request per week for every action update, instead of one each.
+    groups:
+      github-actions:
+        patterns: ["*"]
+    # `ci(deps): bump ...`, which the commit-subject gate accepts.
+    commit-message:
+      prefix: ci
+      include: scope
+    labels:
+      - "area: ci"
+    open-pull-requests-limit: 5

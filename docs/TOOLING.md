@@ -9,6 +9,8 @@ tooling/
 ├── lint.py                         # discovers and lints runtime and test Lua
 ├── spell.py                        # runs the pinned cspell over the documentation
 ├── spell-words.txt                 # the project dictionary cspell reads
+├── ci/
+│   └── check_commits.py           # checks commit subjects and pull request titles
 ├── package/
 │   ├── build.py                   # assembles a checksummed bundle that installs as an addon
 │   ├── list.py                    # prints package IDs from the manifests
@@ -315,6 +317,54 @@ procedure is in [`RELEASES.md`](RELEASES.md#release-procedure).
 The release notes live in `RELEASES.md` rather than in a generated release
 manifest because the package manifests already are the machine-readable record
 of every version; a second file would be a second list to keep in step.
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every push to
+`main` and every pull request. Its jobs, each with read-only permissions and a
+timeout:
+
+| Job | What it checks |
+|---|---|
+| `test` | `python3 -m tooling.test.run`: every package suite and the example addon, under Lua 5.1.5 and Busted |
+| `types` | `lua-language-server --check` for every package source directory and `examples/` |
+| `format` | `stylua --check .` |
+| `lint` | `python3 -m tooling.lint`, both scopes |
+| `package` | `tooling.package.build --all --verify`, then `sha256sum --check --strict` |
+| `spell` | `python3 -m tooling.spell --require` and the cspell integration tests |
+| `repository` | repository validation, the tooling unit tests, `compileall` |
+| `commits` | pull requests only: `python3 -m tooling.ci.check_commits` over the new commits and the title |
+| `secrets` | gitleaks over the whole history, with found values redacted from the log |
+| `workflows` | actionlint (and the shellcheck it runs) over every workflow |
+| `ci` | needs every job above and fails if any failed or was cancelled |
+
+Branch protection requires the one check `ci`, so adding a gate means adding
+it to that job's `needs`, not editing the protection rule. The workflow has no
+path filter: every file is judged by some gate, and a skipped workflow would
+leave the required check waiting. Jobs that run repository tooling use both
+supported Pythons, as described above.
+
+Every `uses:` is pinned to a full commit SHA with the release it came from in a
+trailing comment. [`.github/dependabot.yml`](../.github/dependabot.yml) proposes
+updates to those pins once a week, grouped into one pull request with a
+`ci(deps):` subject. The downloaded binaries (Selene, lua-language-server,
+actionlint, gitleaks) are pinned by version and SHA-256 in the workflow's `env`
+and are bumped by hand, both values in the same change. gitleaks runs as the
+release binary rather than through its action, because the action needs a
+licence key for repositories that belong to an organisation.
+
+The other workflows maintain the repository rather than judge a change:
+
+| Workflow | What it does |
+|---|---|
+| [`labels.yml`](../.github/workflows/labels.yml) | applies [`.github/labels.yml`](../.github/labels.yml), the source of truth for labels, on a push to `main` that changes it; a hand-started run from another branch is a dry run |
+| [`pr-labeler.yml`](../.github/workflows/pr-labeler.yml) | labels a pull request `kit: <packageId>` and `area: ...` from the paths it changes, following [`.github/labeler.yml`](../.github/labeler.yml) |
+| [`stale.yml`](../.github/workflows/stale.yml) | marks issues inactive for 60 days `stale` and closes them 30 days later; never touches pull requests or issues labelled `pinned`, `security` or `roadmap` |
+| [`release.yml`](../.github/workflows/release.yml) | builds and drafts a release; see [`RELEASES.md`](RELEASES.md#the-release-workflow) |
+
+A new Kit needs a `kit: <packageId>` label in `labels.yml`, a matching rule in
+`labeler.yml` and an option in the Kit lists of the bug report and feature
+request forms under `.github/ISSUE_TEMPLATE/`.
 
 ## Future tooling
 

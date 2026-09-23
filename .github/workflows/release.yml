@@ -38,16 +38,21 @@ on:
         type: string
         default: ""
 
-permissions:
-  contents: read
+# Nothing by default; each job asks for exactly what it uses. Only `publish`
+# writes, and only to draft the GitHub release.
+permissions: {}
 
 concurrency:
-  # Never cancel a release half-way; queue a second run for the same ref instead.
+  # Never cancel a release half-way; queue a second run for the same ref
+  # instead. This is the one workflow that does not cancel a superseded run,
+  # because a cancelled release can leave a draft half-uploaded.
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 env:
-  # Kept in step with ci.yml, which is where these pins are reviewed.
+  # Kept in step with ci.yml, which is where these pins are reviewed. Every
+  # `uses:` below is pinned to a commit SHA with its release in a trailing
+  # comment, like ci.yml; Dependabot proposes updates to both.
   SELENE_VERSION: "0.31.0"
   SELENE_SHA256: "0580eed94b56e8b4bad3b1d6f5a4f9e1a9f5d88ae5bc511290c3cd33cc5e0360"
   LUALS_VERSION: "3.19.0"
@@ -61,6 +66,8 @@ jobs:
     name: Resolve the tag
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
 
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
@@ -105,6 +112,8 @@ jobs:
     needs: resolve
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
 
     strategy:
       fail-fast: true
@@ -197,6 +206,8 @@ jobs:
     needs: resolve
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
 
     env:
       KIND: ${{ needs.resolve.outputs.kind }}

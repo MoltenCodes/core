@@ -1,0 +1,49 @@
+name: Labels
+
+# Synchronises the repository's labels with .github/labels.yml, which is their
+# source of truth (see the comment at the top of that file).
+#
+# A push to main that changes the file applies it. A hand-started run applies
+# it only when started from main; started from any other branch it is a dry
+# run that prints what it would change, so a branch can be previewed safely.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/labels.yml
+      - .github/workflows/labels.yml
+  workflow_dispatch:
+
+# Nothing by default; the job asks for what it uses.
+permissions: {}
+
+concurrency:
+  # A newer run for the same ref applies a newer file; the older one is moot.
+  group: labels-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Sync labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Creating, editing and deleting labels is an issues permission.
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Pinned to a commit SHA like every action here; Dependabot proposes
+      # updates to the SHA and the version comment together.
+      - name: Apply .github/labels.yml
+        uses: crazy-max/ghaction-github-labeler@548a7c3603594ec17c819e1239f281a3b801ab4d # v6.0.0
+        with:
+          yaml-file: .github/labels.yml
+          skip-delete: false
+          dry-run: ${{ github.ref != 'refs/heads/main' }}

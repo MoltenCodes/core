@@ -4,7 +4,13 @@
   "language": "en,en-GB",
   "files": [
     "README.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "SUPPORT.md",
     "docs/**/*.md",
+    ".github/**/*.md",
+    ".github/ISSUE_TEMPLATE/*.yml",
     "packages/*/README.md",
     "packages/*/CHANGELOG.md",
     "packages/*/docs/*.md"

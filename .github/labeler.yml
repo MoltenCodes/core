@@ -1,0 +1,146 @@
+# Path-to-label rules for .github/workflows/pr-labeler.yml (actions/labeler).
+#
+# Every label named here is defined in .github/labels.yml. A pull request gets
+# every label whose globs match at least one changed file, so a change that
+# touches two Kits carries both labels, which is the reviewer's cue to ask for
+# one Kit per pull request. Labels are only added, never removed, so a label a
+# maintainer sets by hand stays.
+
+"kit: cacheKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/cacheKit/**"
+
+"kit: clientKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/clientKit/**"
+
+"kit: codecKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/codecKit/**"
+
+"kit: commKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/commKit/**"
+
+"kit: commandKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/commandKit/**"
+
+"kit: eventKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/eventKit/**"
+
+"kit: hookKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/hookKit/**"
+
+"kit: interopKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/interopKit/**"
+
+"kit: lifecycleKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/lifecycleKit/**"
+
+"kit: localeKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/localeKit/**"
+
+"kit: mediaKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/mediaKit/**"
+
+"kit: moduleKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/moduleKit/**"
+
+"kit: optionsKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/optionsKit/**"
+
+"kit: poolKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/poolKit/**"
+
+"kit: profileKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/profileKit/**"
+
+"kit: readinessKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/readinessKit/**"
+
+"kit: registry":
+  - changed-files:
+      - any-glob-to-any-file: "packages/registry/**"
+
+"kit: schedulerKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/schedulerKit/**"
+
+"kit: schemaKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/schemaKit/**"
+
+"kit: settingsKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/settingsKit/**"
+
+"kit: signalKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/signalKit/**"
+
+"kit: testKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/testKit/**"
+
+"kit: timerKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/timerKit/**"
+
+"kit: widgetKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/widgetKit/**"
+
+"area: tooling":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tooling/**"
+          - "pyproject.toml"
+          - "cspell.json"
+          - "selene.toml"
+          - "selene-tests.toml"
+          - "busted.yml"
+          - "stylua.toml"
+          - ".busted"
+          - ".luarc.json"
+          - "meta/**"
+          - ".vscode/**"
+          - ".editorconfig"
+
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "README.md"
+          - "CONTRIBUTING.md"
+          - "CODE_OF_CONDUCT.md"
+          - "SECURITY.md"
+          - "SUPPORT.md"
+          - "packages/README.md"
+
+"area: ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - ".pkgmeta"
+
+"area: fixture":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/support/**"
+
+"area: examples":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "examples/**"

@@ -1,0 +1,13 @@
+# Issue forms only: every issue starts from one of the forms in this directory,
+# so the maintainer gets the version, client and reproduction up front.
+blank_issues_enabled: false
+contact_links:
+  - name: Embedding guide
+    url: https://github.com/MoltenCodes/core/blob/main/docs/EMBEDDING.md
+    about: How an addon embeds or depends on the framework, load order, taint rules and the error each mistake produces.
+  - name: Questions and ideas (Discussions, when enabled)
+    url: https://github.com/MoltenCodes/core/discussions
+    about: Ask how to do something, or talk an idea through before opening an issue. Discussions may not be enabled yet.
+  - name: Report a security vulnerability
+    url: https://github.com/MoltenCodes/core/blob/main/SECURITY.md
+    about: Never in a public issue. SECURITY.md says how to report privately.

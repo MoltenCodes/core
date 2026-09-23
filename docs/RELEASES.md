@@ -275,9 +275,15 @@ without a tag check. It has four jobs:
 | Job | What it does |
 |---|---|
 | `resolve` | `check_tag` for the tag, and exports what it releases: `tag`, `kind` (`bundle` or `package`), `package` and `version`. |
-| `verify` | Needs `resolve`. Every CI gate: repository validation, tooling unit tests, Lua tests, Selene, StyLua, lua-language-server and the spell check, on both supported Pythons. |
+| `verify` | Needs `resolve`. Every CI gate that judges the tagged tree: repository validation, tooling unit tests, Lua tests, Selene, StyLua, lua-language-server and the spell check, on both supported Pythons. The commit-subject check, the secret scan and actionlint judge changes and run in CI before anything reaches `main`; they are not repeated here. |
 | `build` | Needs `resolve`. Bundle tag: `tooling.package.build --all --zip --verify` for the framework, and `--package <id> --zip --verify` for every package `tooling.package.list --release` prints. Package tag: `--package <id> --zip --verify` for that package. Each checked again with `sha256sum --check --strict` and uploaded as workflow artifacts. |
 | `publish` | Needs all three. Writes the addon's `.toc` (and, for a package tag, the narrowed packager metadata) into its checkout, runs the BigWigs packager, then attaches the zips and `SHA256SUMS.txt` to a draft GitHub release (only when the run's ref is the released tag). |
+
+The workflow grants no permissions by default. `resolve`, `verify` and `build`
+read the checkout only; `publish` alone may write repository contents, which it
+needs to create or update the draft release. Two runs for the same tag queue
+rather than cancel each other, so a release is never stopped half-way through
+an upload.
 
 ### Dry run
 

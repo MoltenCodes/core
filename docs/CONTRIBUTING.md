@@ -22,8 +22,13 @@ Before submitting a change:
    package you touched, and `lua-language-server --check examples --checklevel=Warning`
    when the public surface changed.
 8. Run `actionlint` when you changed `.github/workflows/`.
-9. Update package documentation when public behavior changes.
-10. Update the owning package changelog for user-visible changes.
+9. Run `python3 -m tooling.ci.check_commits origin/main..HEAD` to check your
+   commit subjects (see [Commit subjects](#commit-subjects)).
+10. Update package documentation when public behavior changes.
+11. Update the owning package changelog for user-visible changes.
+
+CI runs all of these, and a secret scan, on every pull request; see
+[`TOOLING.md`](TOOLING.md#continuous-integration).
 
 ## LuaCATS annotations
 
@@ -120,7 +125,45 @@ add a release section or a tag.
 
 Prefer commits that represent one coherent change.
 
-Do not mix unrelated package changes without a reason.
+Do not mix unrelated package changes without a reason. A pull request changes
+one Kit; work on two Kits is two pull requests unless one cannot land without
+the other, and the description says why.
+
+## Commit subjects
+
+Every commit subject follows `type(scope): subject`:
+
+- `type` is one of `feat`, `fix`, `docs`, `chore`, `refactor`, `test`,
+  `build`, `ci`, `perf`, `style`;
+- `scope` is required: the package ID of the Kit changed (`timerKit`), or an
+  area such as `repo`, `tooling`, `docs`, `ci`, `fixture`, `examples` or
+  `deps`; an `!` after it marks a breaking change (`feat(registry)!: ...`);
+- one space follows the colon, and the subject does not end with a full stop.
+
+`python3 -m tooling.ci.check_commits <base>..<head>` checks a range, and
+`--subject TEXT` checks a single line. CI runs it over the commits a pull
+request adds and over the pull request's title, which becomes the subject of a
+squash merge. Merge commits are skipped; `fixup!` and `squash!` commits are
+refused until they are squashed.
+
+## Repository policies
+
+- [`CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md): the Contributor Covenant 2.1,
+  which everyone taking part follows.
+- [`SECURITY.md`](../SECURITY.md): supported versions and how to report a
+  vulnerability privately.
+- [`SUPPORT.md`](../SUPPORT.md): where to ask questions and what to include.
+- [`CONTRIBUTING.md`](../CONTRIBUTING.md): the short path through this
+  document.
+- [`.github/CODEOWNERS`](../.github/CODEOWNERS) names who reviews each part of
+  the repository; issues start from the forms in
+  [`.github/ISSUE_TEMPLATE/`](../.github/ISSUE_TEMPLATE/), pull requests from
+  [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md), and
+  the labels are defined in [`.github/labels.yml`](../.github/labels.yml).
+
+Assistant and personal tool configuration (instruction files, per-user
+settings directories) is never committed; it stays in the contributor's home
+directory.
 
 ## Public API changes
 

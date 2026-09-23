@@ -63,6 +63,7 @@ xpcall
 
 # Tools, their files and their flags.
 checklevel
+compileall
 hererocks
 luarc
 luarocks
@@ -70,6 +71,7 @@ luassert
 nolib
 pkgmeta
 pyproject
+shellcheck
 stylua
 
 # Terms of art the documentation uses deliberately.

@@ -1,0 +1,48 @@
+name: Documentation
+description: Documentation is missing, wrong or unclear.
+title: "docs: "
+labels: ["documentation", "area: docs", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping the documentation stay true. For a typo or a
+        broken link, a pull request is often quicker than an issue.
+
+  - type: input
+    id: location
+    attributes:
+      label: Document
+      description: The file and heading, or the link to it.
+      placeholder: "docs/EMBEDDING.md, \"Load order\""
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is wrong
+      options:
+        - It is wrong (the code or the client behaves differently)
+        - It is missing
+        - It is unclear or hard to find
+        - It is out of date
+        - A link or an example is broken
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: What the document says, what is true instead, and how you found out.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested wording
+      description: Optional; how you would write it.
+    validations:
+      required: false

@@ -1,0 +1,42 @@
+name: Pull request labels
+
+# Labels a pull request by the paths it changes, following
+# .github/labeler.yml: one `kit: <packageId>` label per Kit touched and an
+# `area: ...` label for tooling, docs, CI, the fixture and the example addon.
+#
+# `pull_request_target` runs in the context of the base branch, which is what
+# lets it label pull requests from forks. That is safe here only because the
+# job never checks out or runs the pull request's code: actions/labeler reads
+# the list of changed files and the configuration through the API. Do not add a
+# checkout of the head ref to this workflow.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+# Nothing by default; the job asks for what it uses.
+permissions: {}
+
+concurrency:
+  # A new push to the pull request supersedes the labelling of the old one.
+  group: pr-labeler-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: Label by changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      # Pinned to a commit SHA like every action here; Dependabot proposes
+      # updates to the SHA and the version comment together.
+      - name: Apply .github/labeler.yml
+        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        with:
+          configuration-path: .github/labeler.yml
+          # Only add labels: one a maintainer set by hand is never removed.
+          sync-labels: false

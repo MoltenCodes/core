@@ -1,15 +1,31 @@
 name: CI
 
+# Every gate a change must pass, and one summary job, `ci`, that needs all of
+# them. Branch protection requires `ci` alone, so adding or renaming a gate
+# never means editing the protection rule.
+#
+# There is deliberately no `paths` or `paths-ignore` filter. Every file in the
+# repository is judged by at least one gate (Lua by the tests and linters,
+# Markdown by the spell check and link validation, workflows by actionlint,
+# everything by the secret scan), and a workflow skipped by a path filter
+# leaves a required check waiting forever instead of passing.
+#
+# Keeping the pins current: Dependabot (.github/dependabot.yml) proposes new
+# SHAs for every `uses:` line below, weekly, and rewrites the trailing version
+# comment with them. The binaries downloaded by version and SHA-256 in `env`
+# are not tracked by Dependabot; they are bumped by hand, both values together.
+
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
+# Nothing by default; each job asks for exactly what it uses.
+permissions: {}
 
 concurrency:
+  # A newer push to the same branch or pull request supersedes the running one.
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -24,11 +40,25 @@ env:
   LUALS_VERSION: "3.19.0"
   LUALS_SHA256: "624ae8dd3bfbd5c2ee3ccf2f3547d33aeefa209971cce8c11d48f69fc1ec065a"
 
+  # The workflow linter the `workflows` job runs, from its release page's
+  # `actionlint_<version>_checksums.txt`.
+  ACTIONLINT_VERSION: "1.7.12"
+  ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+
+  # The secret scanner the `secrets` job runs, from its release page's
+  # `gitleaks_<version>_checksums.txt`. The binary is used rather than
+  # gitleaks-action because that action needs a licence key for repositories
+  # owned by an organisation, and this one is.
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
 jobs:
   test:
     name: Lua 5.1 tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
 
     strategy:
       fail-fast: false
@@ -75,6 +105,8 @@ jobs:
     name: lua-language-server
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -109,6 +141,8 @@ jobs:
     name: StyLua
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -128,6 +162,8 @@ jobs:
     name: Selene
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
 
     strategy:
       fail-fast: false
@@ -171,6 +207,8 @@ jobs:
     name: Release bundle
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
 
     strategy:
       fail-fast: false
@@ -208,6 +246,8 @@ jobs:
     name: Spell check
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
 
     strategy:
       fail-fast: false
@@ -250,6 +290,8 @@ jobs:
     name: Repository validation
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
 
     strategy:
       fail-fast: false
@@ -276,3 +318,123 @@ jobs:
 
       - name: Compile Python tooling
         run: python3 -m compileall -q tooling
+
+  commits:
+    name: Commit subjects
+    # Only a pull request has a range of new commits and a title to judge.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Repository tooling runs on the floor and the current release.
+        python-version: ["3.10", "3.13"]
+
+    steps:
+      # Full history, so both ends of the pull request's range are present.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # The title is checked too, because a squash merge makes it the commit
+      # subject. Both values travel through the environment, never through
+      # the script text, so a crafted title cannot become shell.
+      - name: Check every commit subject and the title
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python3 -m tooling.ci.check_commits "${BASE_SHA}..${HEAD_SHA}" --subject "${PR_TITLE}"
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      # Full history: a secret removed by a later commit is still published.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --output gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check --strict -
+          mkdir -p "${RUNNER_TEMP}/gitleaks"
+          tar -xzf gitleaks.tar.gz -C "${RUNNER_TEMP}/gitleaks" gitleaks
+          echo "${RUNNER_TEMP}/gitleaks" >> "${GITHUB_PATH}"
+
+      # `--redact` keeps a found secret out of the public job log.
+      - name: Scan the whole history
+        run: gitleaks git --redact --no-banner --verbose .
+
+  workflows:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # actionlint also runs shellcheck over every `run:` block; the runner
+      # image ships shellcheck, so the script checks are part of this gate.
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --output actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum --check --strict -
+          mkdir -p "${RUNNER_TEMP}/actionlint"
+          tar -xzf actionlint.tar.gz -C "${RUNNER_TEMP}/actionlint" actionlint
+          echo "${RUNNER_TEMP}/actionlint" >> "${GITHUB_PATH}"
+
+      - name: Lint every workflow
+        run: actionlint -color
+
+  # The one check branch protection requires. It runs even when a gate failed
+  # or was cancelled (`always()`), so it reports that failure instead of being
+  # skipped, which branch protection would count as passing. `commits` is
+  # skipped on pushes by design; a skip is therefore accepted, a failure or a
+  # cancellation is not.
+  ci:
+    name: ci
+    if: always()
+    needs: [test, types, format, lint, package, spell, repository, commits, secrets, workflows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+
+    steps:
+      - name: Require every gate
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "Gate results: ${RESULTS}"
+          if [[ "${FAILED}" == "true" ]]; then
+            echo "::error::At least one gate failed or was cancelled."
+            exit 1
+          fi

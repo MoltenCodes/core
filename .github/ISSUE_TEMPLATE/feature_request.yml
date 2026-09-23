@@ -1,0 +1,95 @@
+name: Feature request
+description: Propose a new capability or an improvement to an existing Kit.
+title: "<kit>: "
+labels: ["enhancement", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the suggestion. A capability for an existing Kit is
+        tracked as a checkbox under that Kit in `docs/ROADMAP.md`. A whole new
+        Kit has its own form, **Kit proposal**, because it needs a scope and a
+        name before any code.
+
+        Changes are judged against `docs/DESIGN_CONSTITUTION.md`; saying which
+        principles your idea touches saves a round of review.
+
+  - type: dropdown
+    id: kit
+    attributes:
+      label: Kit
+      description: The package the capability belongs to.
+      multiple: true
+      options:
+        - registry
+        - cacheKit
+        - clientKit
+        - codecKit
+        - commandKit
+        - commKit
+        - eventKit
+        - hookKit
+        - interopKit
+        - lifecycleKit
+        - localeKit
+        - mediaKit
+        - moduleKit
+        - optionsKit
+        - poolKit
+        - profileKit
+        - readinessKit
+        - schedulerKit
+        - schemaKit
+        - settingsKit
+        - signalKit
+        - testKit
+        - timerKit
+        - widgetKit
+        - Repository tooling
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do in your addon, and why the Kit makes it hard or impossible today.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API or behaviour
+      description: How you would like to call it. A short Lua sketch of the calling code is ideal.
+      render: lua
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What you do today instead, and other shapes you thought about.
+    validations:
+      required: false
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Compatibility, performance and taint
+      description: >-
+        Does it change a public contract (a new API generation)? Does it run on
+        a hot path, allocate per call or retain state? Does it touch protected
+        frames, combat or secret values? Which client flavours need it?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to open the pull request for this myself.

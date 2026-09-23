@@ -1,0 +1,62 @@
+name: Stale issues
+
+# Marks issues with no activity for 60 days as `stale` and closes them 30 days
+# later if nobody replies. Any comment or update removes the mark.
+#
+# Pull requests are never marked and never closed: a pull request is somebody's
+# finished work, and only a maintainer decides what happens to it. Issues
+# labelled `pinned`, `security` or `roadmap` are exempt, as are issues in a
+# milestone or assigned to someone.
+
+on:
+  schedule:
+    # Daily, at an off-peak minute.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+# Nothing by default; the job asks for what it uses.
+permissions: {}
+
+concurrency:
+  # Two sweeps at once would only race each other; the newer one wins.
+  group: stale-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stale:
+    name: Mark stale issues
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+
+    steps:
+      # Pinned to a commit SHA like every action here; Dependabot proposes
+      # updates to the SHA and the version comment together.
+      - name: Mark and close inactive issues
+        uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          days-before-issue-stale: 60
+          days-before-issue-close: 30
+          # -1 turns both off for pull requests.
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          stale-issue-label: stale
+          exempt-issue-labels: pinned,security,roadmap
+          exempt-all-issue-milestones: true
+          exempt-all-issue-assignees: true
+          remove-issue-stale-when-updated: true
+          close-issue-reason: not_planned
+          stale-issue-message: >-
+            Thank you for taking the time to open this issue. It has had no
+            activity for 60 days, so it has been marked as stale. If it still
+            matters to you, please leave a comment, ideally with anything new
+            (a newer Kit revision, a smaller reproduction), and the mark will be
+            removed. Otherwise it will be closed in 30 days; closing is not a
+            judgement on the report, and it can be reopened at any time.
+          close-issue-message: >-
+            Closing this issue after 90 days without activity. Thank you for
+            reporting it. If it is still relevant, please reopen it or open a
+            new issue that links here, with the current Kit version and
+            revision.
+          operations-per-run: 100

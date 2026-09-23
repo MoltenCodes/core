@@ -1,0 +1,20 @@
+# Code owners: who is asked to review a pull request that touches a path.
+#
+# Later lines take precedence over earlier ones. The repository has one
+# maintainer today, so every rule names the same owner; the paths are split
+# anyway so that a second owner can be added to exactly the area they look
+# after by appending a handle to one line (`/tooling/ @yankikucuk @someone`).
+# Every handle listed must have write access, or GitHub ignores the line.
+
+# Everything not matched below.
+*                   @yankikucuk
+
+# Workflows, templates, labels and this file: changes here alter what CI
+# enforces and who reviews what.
+/.github/           @yankikucuk
+
+# Repository tooling: validation, test orchestration, packaging and release.
+/tooling/           @yankikucuk
+
+# Repository-wide documentation, including the design constitution.
+/docs/              @yankikucuk

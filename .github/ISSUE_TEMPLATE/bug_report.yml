@@ -1,0 +1,178 @@
+name: Bug report
+description: A Kit, the tooling or the documentation does not behave as documented.
+title: "<kit>: "
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. The more of this form you fill in, the
+        faster it can be reproduced against the fake client in `tests/support/`
+        and fixed with a regression spec.
+
+        **A security problem is not a bug report.** If another player's addon
+        message, saved variable or hyperlink can crash, taint or take over an
+        addon that uses a Kit, or a secret value leaks, report it privately as
+        [`SECURITY.md`](https://github.com/MoltenCodes/core/blob/main/SECURITY.md)
+        describes, not here.
+
+  - type: dropdown
+    id: flavour
+    attributes:
+      label: Client flavour
+      description: The client the problem happens in. Choose every one you tried.
+      multiple: true
+      options:
+        - Retail (Midnight)
+        - Mists of Pandaria Classic
+        - Burning Crusade Classic (Anniversary)
+        - Classic Era (also Hardcore, Season of Discovery)
+        - Not in the client (Busted specs, tooling or documentation)
+    validations:
+      required: true
+
+  - type: input
+    id: interface
+    attributes:
+      label: Interface number
+      description: "Type `/dump (select(4, GetBuildInfo()))` in the client and paste the number."
+      placeholder: "120100"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: kit
+    attributes:
+      label: Kit
+      description: The package that misbehaves. If several are involved, choose each one.
+      multiple: true
+      options:
+        - registry
+        - cacheKit
+        - clientKit
+        - codecKit
+        - commandKit
+        - commKit
+        - eventKit
+        - hookKit
+        - interopKit
+        - lifecycleKit
+        - localeKit
+        - mediaKit
+        - moduleKit
+        - optionsKit
+        - poolKit
+        - profileKit
+        - readinessKit
+        - schedulerKit
+        - schemaKit
+        - settingsKit
+        - signalKit
+        - testKit
+        - timerKit
+        - widgetKit
+        - Not sure
+        - None (tooling or documentation)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Kit version and revision
+      description: >-
+        `version` and `revision` from the Kit's `package.manifest.json`, or from
+        `manifest.json` in the bundle you installed. For a clone of the
+        repository, the commit hash.
+      placeholder: "timerKit 0.6.0, revision 7"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: How the Kit is loaded
+      options:
+        - Embedded in an addon (copied into its Libs folder)
+        - Installed as the standalone MoltenCodes addon
+        - Installed as a single-Kit addon (MoltenCodes-<Facade>)
+        - More than one of the above at once
+        - Not in the client
+    validations:
+      required: true
+
+  - type: textarea
+    id: addons
+    attributes:
+      label: Other addons involved
+      description: >-
+        Your addon, and every other addon enabled when it happens, with their
+        versions. Say whether the problem remains with only your addon enabled.
+      placeholder: |
+        MyAddon 1.2.0 (embeds registry, signalKit, timerKit)
+        Problem remains with only MyAddon enabled: yes
+    validations:
+      required: true
+
+  - type: textarea
+    id: dump
+    attributes:
+      label: "`/dump MoltenCodes` output"
+      description: >-
+        Type `/dump MoltenCodes` in the client after the problem happens and paste
+        the output. It shows which copies of which Kits won the Registry. Leave
+        empty if the problem is not in the client.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest sequence that shows the problem, from a fresh `/reload`. Code that calls the Kit is best.
+      placeholder: |
+        1. Embed timerKit in an empty addon.
+        2. Call `TimerKit:After(1, callback)` during `ADDON_LOADED`.
+        3. `/reload` before the timer fires.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What should have happened, with a link to the part of the Kit's `docs/API.md` or README that says so if there is one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Error text
+      description: >-
+        The full error and stack trace from BugSack, BugGrabber or the client's
+        own error frame (`/console scriptErrors 1`), or the failing spec's output.
+        Remove anything that identifies your account.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: taint
+    attributes:
+      label: Taint and secret values
+      description: Tick what applies; these change where the fix belongs.
+      options:
+        - label: "The client reported \"action blocked\" or an addon being blocked from a protected action (taint)."
+        - label: The problem only happens in combat, or only after entering combat once.
+        - label: A secret value is involved (an error mentions a secret, or `issecretvalue` is true for the value).
+        - label: A frame found by enumeration is involved (`IsForbidden` or `CanBeAccessedInContext`).
