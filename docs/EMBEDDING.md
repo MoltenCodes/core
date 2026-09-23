@@ -650,7 +650,9 @@ a defect:
 4. **Probe `issecurevariable` before repairing shared state.**
 5. **Persist intent always; apply only out of combat.** Record what the user
    asked for immediately, and apply anything that touches protected frames on
-   `PLAYER_REGEN_ENABLED`.
+   `PLAYER_REGEN_ENABLED`. `LifecycleKit` does the waiting for you:
+   `instance:WhenOutOfCombat(callback)` runs at once when safe and otherwise
+   queues the callback, bounded, for the next `PLAYER_REGEN_ENABLED`.
 6. **Never recycle a region without clearing its secret values.** A pooled
    `FontString` or texture that displayed a secret must be cleared before it is
    reused for something else.
@@ -752,8 +754,9 @@ only if you use the parts that exist rather than rebuilding them.
 - **Do not do work per high-frequency event.** `UNIT_HEALTH`, `BAG_UPDATE`,
   `UNIT_AURA` and their kind arrive in bursts. `EventKit:Coalesce` delivers one
   callback per interval with the set of payloads, and `EventKit:Derive` keeps a
-  value recomputed from a set of events. Both need SchedulerKit loaded; without
-  it `Derive` recomputes on every event and `Coalesce` is refused.
+  value recomputed from a set of events. Coalescing needs SchedulerKit loaded:
+  without it `Coalesce` is refused at the caller and `Derive` still works but
+  recomputes synchronously on every event.
 - **Ration a server resource through a lane.** Inspect requests, `/who`, addon
   messages and other calls the server throttles go through one shared
   `SchedulerKit:Lane` (in-flight cap, minimum interval, retry with backoff)

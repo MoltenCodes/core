@@ -11,7 +11,7 @@ This repository is a monorepo. Every publishable runtime package lives under `pa
 | [`registry`](packages/registry/) | Implemented | Zero-dependency shared package registration, discovery, and in-place revision upgrades. |
 | [`signalKit`](packages/signalKit/) | Implemented | Deterministic, re-entrant pure-Lua callback dispatch with explicit connection lifetimes. |
 | [`eventKit`](packages/eventKit/) | Implemented | Lazy World of Warcraft event subscriptions backed by SignalKit, including unit-event filtering. |
-| [`lifecycleKit`](packages/lifecycleKit/) | Implemented | Replay-aware per-addon loading, readiness, and shutdown coordination. |
+| [`lifecycleKit`](packages/lifecycleKit/) | Implemented | Replay-aware per-addon loading, readiness, and shutdown coordination, a shared combat gate with a bounded out-of-combat queue, and a halted state announced to dependents. |
 | [`moduleKit`](packages/moduleKit/) | Implemented | Addon-scoped module lifecycle, dependency graphs, dependency injection, and automatic/strict dependency policies. |
 | [`timerKit`](packages/timerKit/) | Implemented | Cancelable one-shot/repeating timers, ownership scopes, and LifecycleKit-driven cleanup. |
 | [`schedulerKit`](packages/schedulerKit/) | Implemented | Cooperative frame-budgeted scheduling with priorities, cancellation scopes, and TimerKit delays. |

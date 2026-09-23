@@ -11,7 +11,7 @@ Current packages:
 - [`registry`](registry/) — shared package registration and revision resolution.
 - [`signalKit`](signalKit/) — deterministic pure-Lua callback dispatch and connection lifecycle.
 - [`eventKit`](eventKit/) — lazy WoW Frame-event subscriptions and unit-event filtering built on SignalKit.
-- [`lifecycleKit`](lifecycleKit/) — replay-aware per-addon loading, readiness, and shutdown coordination.
+- [`lifecycleKit`](lifecycleKit/) — replay-aware per-addon loading, readiness, and shutdown coordination, a shared combat gate with a bounded out-of-combat queue, and a halted state announced to dependents.
 - [`moduleKit`](moduleKit/) — addon-scoped module lifecycle, dependency graphs, dependency injection, and dependency policies.
 - [`timerKit`](timerKit/) — cancelable one-shot/repeating timers, ownership scopes, and lifecycle-driven cleanup.
 - [`schedulerKit`](schedulerKit/) — cooperative frame-budgeted scheduling, priorities, cancellation scopes, and delayed work.

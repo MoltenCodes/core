@@ -34,7 +34,7 @@ Current package entry points:
 - [`Registry`](../packages/registry/README.md) — shared package identity and revision resolution.
 - [`SignalKit`](../packages/signalKit/README.md) — deterministic pure-Lua callback dispatch.
 - [`EventKit`](../packages/eventKit/README.md) — lazy WoW Frame-event subscriptions and unit-event filtering built on SignalKit.
-- [`LifecycleKit`](../packages/lifecycleKit/README.md) — per-addon loading, readiness, and shutdown coordination.
+- [`LifecycleKit`](../packages/lifecycleKit/README.md) — per-addon loading, readiness, and shutdown coordination, the combat gate, and the halted state.
 - [`ModuleKit`](../packages/moduleKit/README.md) — addon-scoped module lifecycle, dependency graphs, and dependency injection.
 - [`TimerKit`](../packages/timerKit/README.md) — cancelable, scope-aware timers with LifecycleKit shutdown cleanup.
 - [`SchedulerKit`](../packages/schedulerKit/README.md) — cooperative, frame-budgeted priority scheduling with TimerKit delays.

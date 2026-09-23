@@ -347,6 +347,11 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
       format specifiers.
 - [ ] `hookKit` — secure-first, reversible hooking, released with the module.
 - [ ] **signalKit** — a named message bus with a validated topic policy.
+- [ ] **moduleKit** — map a halted LifecycleKit dependency to the blocked
+      enable state, and give `module.scope` the `Hooks` and `Messages`
+      scopes once hookKit and the signalKit bus exist.
+- [ ] **lifecycleKit** — close the addon's HookKit scopes and its SignalKit
+      bus at shutdown, the two-step already used for EventKit scopes.
 - [ ] `optionsKit` — typed, validated, introspectable options schema with no
       renderer.
 - [ ] `commandKit` — slash commands, hyperlink-aware argument parsing,
