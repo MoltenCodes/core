@@ -274,20 +274,26 @@ describe("CommKit throttled sends", function()
         assert.are.same({ text }, received)
     end)
 
-    it("fails a message on any other result and names it", function()
+    it("fails a message on a result the enum names, and retries one it does not", function()
         TestEnv.QueueSendResults(TestEnv.SEND_RESULT.NotInGroup, 42)
         local outcomes = {}
         local function onComplete(handle, state, reason)
             outcomes[#outcomes + 1] = { handle:GetState(), state, reason }
         end
         scope:Send({ prefix = PREFIX, text = "a", distribution = "PARTY", onComplete = onComplete })
-        scope:Send({ prefix = PREFIX, text = "b", distribution = "PARTY", onComplete = onComplete })
+        local second = scope:Send({
+            prefix = PREFIX,
+            text = "b",
+            distribution = "PARTY",
+            onComplete = onComplete,
+        })
         TestEnv.Advance(0)
-        assert.are.same({
-            { "failed", "failed", "NotInGroup" },
-            { "failed", "failed", "result42" },
-        }, outcomes)
-        assert.are.equal(2, CommKit:GetStatistics().messagesFailed)
+        assert.are.same({ { "failed", "failed", "NotInGroup" } }, outcomes)
+        assert.are.equal("queued", second:GetState())
+        assert.are.equal(1, CommKit:GetStatistics().throttled)
+        TestEnv.Advance(0.35)
+        assert.are.same({ "sent", "sent" }, { outcomes[2][1], outcomes[2][2] })
+        assert.are.equal(1, CommKit:GetStatistics().messagesFailed)
     end)
 
     it("fails a message whose send raises, and reports the error", function()

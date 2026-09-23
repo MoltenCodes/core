@@ -2,7 +2,7 @@
 
 CommKit API generation **1** sends and receives addon messages of any length: prefix registration, a chunk protocol with bounded reassembly, three priority queues that refuse rather than grow, a bandwidth budget shared with everything else in the session, and a `SyncSet` of named fields versioned by content hash.
 
-Implementation revision: **1**. Wire protocol: control bytes `0x01`–`0x04`, specified in [Wire protocol](#wire-protocol).
+Implementation revision: **1**. Wire protocol: control bytes `0x01`–`0x05`, specified in [Wire protocol](#wire-protocol).
 
 ## Loading
 
@@ -142,7 +142,7 @@ local handle, reason = scope:Send({
 | `prefix` | yes | 1 to 16 bytes. Sending does not require a registration. |
 | `text` | yes | The message, any length up to the queue's byte limit. |
 | `distribution` | yes | `PARTY`, `RAID`, `INSTANCE_CHAT`, `GUILD`, `OFFICER`, `WHISPER`, `CHANNEL`, `YELL` or `SAY`. |
-| `target` | for `WHISPER` and `CHANNEL` | A non-empty player name for `WHISPER`; a channel name or number for `CHANNEL`. Ignored for the others. |
+| `target` | for `WHISPER` and `CHANNEL` | A non-empty player name for `WHISPER`; a channel number (a number or a string of digits) for `CHANNEL`. Ignored for the others. |
 | `priority` | no | `CommKit.Priority.ALERT`, `NORMAL` (default) or `BULK`. |
 | `constraints` | no | `{ logged = boolean, battleNet = boolean }`; see below. |
 | `onProgress` | no | Called after every chunk that left, with the text bytes sent so far. |
@@ -153,9 +153,9 @@ An unknown field, a wrong type, a secret value or an unknown priority raises at 
 | Refusal | When |
 |---|---|
 | `"closed"` | The scope is closed. |
-| `"badDistribution"` | `distribution` is not one of the nine, or `WHISPER`/`CHANNEL` has no usable `target`. |
+| `"badDistribution"` | `distribution` is not one of the nine, or `WHISPER`/`CHANNEL` has no usable `target` (a `CHANNEL` target that is not a channel number). |
 | `"forbiddenByte"` | `text` contains NUL (`0x00`), line feed (`0x0A`), carriage return (`0x0D`) or `\|` (`0x7C`). |
-| `"tooLarge"` | `text` is longer than `maxQueuedBytes`, or needs more than 16383 chunks. It could never be queued. |
+| `"tooLarge"` | `text` is longer than `maxQueuedBytes`, needs more chunks than its header can number (16383, or 5624 on the logged channel), or declares more bytes than one receiver accepts from one sender (`maxReassemblyBytesPerSender`). It could never be delivered. |
 | `"queueFull"` | Queueing it would pass `maxQueuedMessages` or `maxQueuedBytes`. It may fit later. |
 | `"unavailable"` | The client lacks the send function the constraints select. |
 
@@ -179,9 +179,11 @@ queued ──→ sending ──→ sent
 |---|---|
 | `"sent"` | `nil` |
 | `"cancelled"` | `"cancelled"` (`handle:Cancel()`, `scope:CancelAll()`), `"closed"` (`scope:Close()`), `"shutdown"` (the addon's shutdown or `CloseAddonScopes`) |
-| `"failed"` | the key of `Enum.SendAddonMessageResult` the client returned (`"NotInGroup"`, `"InvalidChatType"`, ...), `"result<n>"` for a value the enum does not name, `"GeneralError"` for a legacy `false`, `"error"` when the send function raised (the error is reported), `"unavailable"` when the send function disappeared |
+| `"failed"` | the key of `Enum.SendAddonMessageResult` the client returned (`"NotInGroup"`, `"InvalidChatType"`, ...), `"GeneralError"` for a legacy `false`, `"error"` when the send function raised (the error is reported), `"unavailable"` when the send function disappeared |
 
-Cancelling a message mid-send stops its remaining chunks; the receivers drop the incomplete stream when it expires. Callbacks run isolated, like receive callbacks, after CommKit's own state is settled, so a callback may send, cancel or close.
+A result the enum does not name — one a client newer than this file added — is treated like a throttle: the pipe is set aside and the chunk retried, rather than the message failed.
+
+Cancelling a message mid-send stops its remaining chunks and queues an [abort](#abort) at the head of its pipe, so receivers drop the incomplete stream at once and silently. Callbacks run isolated, like receive callbacks, after CommKit's own state is settled, so a callback may send, cancel or close.
 
 ## Wire protocol
 
@@ -211,9 +213,16 @@ A message of 255 bytes or more is split into `n = ceil(length / 251)` chunks, `2
 
 The first chunk is index 1; middle chunks carry 2 to `n − 1`. First and middle chunks carry exactly 251 bytes, so every chunk but the last is exactly 255 bytes long.
 
-**Digits.** The stream id and the two-byte number are written as digits in base 128, each digit `d` as the byte `80 + d`: the stream id as one digit (0–127), a number `k` as `80 + floor(k / 128)` then `80 + k mod 128`. Every header byte after the control byte is therefore in `80`–`FF`: the addon channel carries it, and it is never a control byte.
+**Digits.** The stream id and the two-byte number are written as digits, the stream id as one digit and a number `k` as `floor(k / radix)` then `k mod radix`. There are two schemes:
 
-**Stream ids** count up from 0 for every multi-chunk message a session sends, across all prefixes and destinations, and wrap after 127. Single chunks use none.
+| Channel | Digit `d` is the byte | Radix | Stream ids | Most chunks |
+|---|---|---|---|---|
+| ordinary (`SendAddonMessage`, `CHAT_MSG_ADDON`) | `80 + d` | 128 | 0–127 | 16383 |
+| logged (`SendAddonMessageLogged`, `CHAT_MSG_ADDON_LOGGED`) | `30 + d` | 75 | 0–74 | 5624 |
+
+On the ordinary channel every header byte after the control byte is in `80`–`FF`: the channel carries it, and it is never a control byte. The logged channel may insist on valid UTF-8 text, which lone bytes above `7F` are not, so its digits are printable ASCII from `30` (`0`) to `7A` (`z`), below the pipe `7C`. A receiver decodes a header with the scheme of the event that delivered it. The payload itself is the caller's: logged payloads should be printable text, such as CodecKit's print channel.
+
+**Stream ids** count up from 0 for every multi-chunk message a session sends, one counter per scheme across all prefixes and destinations, and wrap at the radix. Single chunks use none.
 
 A 510-byte message on stream 5 is three chunks:
 
@@ -223,7 +232,19 @@ A 510-byte message on stream 5 is three chunks:
 04 85 80 83 <bytes 503..510>    last:   index 3, 8 bytes
 ```
 
-A 130-chunk message writes its count as `81 82` (1 × 128 + 2).
+A 130-chunk message writes its count as `81 82` (1 × 128 + 2). On the logged channel the same 510-byte message on stream 0 starts `02 30 30 33`.
+
+### Abort
+
+A sender that cancels a message after its first chunk left sends one four-byte chunk and nothing after it:
+
+| Byte | Content |
+|---|---|
+| 1 | `05` |
+| 2 | the stream id |
+| 3, 4 | `n`, the chunk count the first chunk declared |
+
+A 3-chunk message on stream 0 is aborted with `05 80 80 83`. A receiver holding that stream with that count drops it without a report (`streamsAborted`); any other abort is refused.
 
 ### What a receiver accepts
 
@@ -232,13 +253,14 @@ A stream is keyed by prefix, distribution, sender and stream id. The receiver:
 - delivers a single chunk at once;
 - opens a stream with a first chunk whose count is 2 to 16383 and whose payload is 251 bytes, if the [bounds](#reassembly) allow it; a first chunk for a key that already has a stream drops the old one (`"restarted"`) and opens the new one;
 - adds a middle chunk whose index is 2 to `n − 1` and whose payload is 251 bytes, and a last chunk whose index is `n`, in any order after the first;
-- delivers the message when all `n` chunks arrived, as the concatenation of their payloads in index order.
+- delivers the message when all `n` chunks arrived, as the concatenation of their payloads in index order;
+- drops a stream on an abort naming its count.
 
-It refuses, and counts in `chunksRefused`, a chunk shorter than five bytes with a multi-chunk control byte, a header byte below `80`, a first chunk outside the rules above, a middle or last chunk for a stream it does not hold, and any other control byte. A middle or last chunk that breaks the rules for a stream it holds — an index out of range, a middle chunk that is not full, a last chunk whose index is not `n`, an index received twice — is refused and **drops the stream**.
+A stream is keyed by the channel too, so logged and ordinary streams never mix. It refuses, and counts in `chunksRefused`, a multi-chunk chunk shorter than five bytes or an abort that is not exactly four, a header byte outside the scheme's digits, a first chunk outside the rules above, a middle, last or abort chunk for a stream it does not hold, and any other control byte. A middle or last chunk that breaks the rules for a stream it holds — an index out of range, a middle chunk that is not full, a last chunk whose index is not `n`, an index received twice — is refused and **drops the stream**.
 
 ### Extension rules
 
-Control bytes `05`–`7F` are reserved. A receiver of this generation refuses them, so a new control byte is only compatible with receivers that know it; a sender that needs older receivers must not use it. The header layout of `01`–`04` never changes within API generation 1.
+Control bytes `06`–`7F` are reserved. A receiver of this generation refuses them, so a new control byte is only compatible with receivers that know it; a sender that needs older receivers must not use it. The header layout of `01`–`05` never changes within API generation 1.
 
 ## Reassembly
 
@@ -251,17 +273,21 @@ Everything a stranger can make CommKit hold is bounded in count, bytes and time:
 | `maxReassemblyBytesPerSender` | 16384 | Bytes one sender's streams may hold, counted from the size each first chunk declares: `251 (n − 1) + 1`, the least a message of `n` chunks can be. |
 | `reassemblyTimeout` | 30 s | Time since a stream's last chunk before it expires. |
 
-A first chunk that would pass any of the first three is refused before anything is stored, so a sender announcing 9999 chunks costs one comparison. A message larger than the receiver's per-sender byte limit can never be received; senders should keep messages below 16 KB unless every receiver raised it.
+In all, reassembly holds at most `maxReassemblyStreams` streams of at most `maxReassemblyBytesPerSender` declared bytes each: 64 × 16 KB, about 1 MB, with the defaults.
 
-A stream that is dropped after it opened — expired, malformed, restarted, or evicted because its sender left the group — is **reported once** through the host error handler, naming the prefix, distribution, sender, reason and how many chunks arrived:
+A first chunk that would pass any of the first three is refused before anything is stored, so a sender announcing 9999 chunks costs one comparison.
+
+**The sender keeps within the receiver's bounds.** A multi-chunk message waits in its pipe, without interleaving its chunks, while starting it would give this client more than `maxInFlightPerSender` streams in flight or more than `maxReassemblyBytesPerSender` declared bytes in flight, counted across every destination because the audiences of different distributions overlap; other pipes keep going. A message that alone declares more than `maxReassemblyBytesPerSender` is refused as `"tooLarge"`. Both sides read the same two limits, so **addons that share a prefix must keep them equal**; the defaults are.
+
+**Reports.** Every dropped stream is counted by reason: `streamsExpired`, `streamsEvicted` (the sender left the group), `streamsMalformed`, `streamsRestarted`, `streamsAborted`, `streamsDiscarded` (the last registration of its prefix went), and a first chunk refused at quota in `chunksRefusedQuota`. Expired, departed, malformed, restarted and quota drops are also reported through the host error handler, **at most once per sender per minute**: a sender's first drop is reported at once, and the drops of the following minute are reported together when it ends:
 
 ```text
-CommKit dropped an incomplete message on prefix MyAddon (PARTY) from Friend-Realm: expired, 2 of 3 chunks received
+CommKit dropped 99 incomplete messages from Friend-Realm: 1 expired, 98 restarted
 ```
 
-Refused chunks are counted, not reported, so a stranger cannot fill the error log.
+At most 64 senders are tracked at once; past that, drops are reported under `(other senders)`. Aborted and discarded streams are never reported, and neither are chunks refused before any stream exists (an unknown stream, a malformed header), so a stranger can cause at most one report per minute.
 
-**Expiry** runs on one TimerKit timer, armed for the earliest deadline and re-armed after each sweep; nothing polls while no stream is open.
+**Expiry** runs on one TimerKit timer, armed for the earliest deadline and re-armed after each sweep; nothing polls while no stream is open. The drop reports use one more TimerKit timer, armed only while a sender's minute is running.
 
 **Peer departure.** On `GROUP_ROSTER_UPDATE`, every stream received on `PARTY`, `RAID` or `INSTANCE_CHAT` whose sender neither `UnitInParty` nor `UnitInRaid` places in the group — asked with the full `Name-Realm`, then with the name alone — is dropped as `"departed"`. A secret answer counts as a member. Streams on other distributions are left to expire.
 
@@ -279,7 +305,7 @@ Priority is service preference, not ordering: a message in one priority may arri
 
 The queue is bounded across every scope by `maxQueuedMessages` (256) and `maxQueuedBytes` (65536 bytes of text), and a send that would pass either is refused. Lowering a bound drops nothing already queued; new sends are refused until the queue is below it. `GetQueueDepth(priority)` reports messages and text bytes.
 
-**The driver** is one SchedulerKit job, and it exists only while something is queued. A run sends chunks until the bucket, the queue or a cap of 32 chunks runs out, then schedules its successor: after the time the bucket needs, after the earliest throttled pipe is reinstated, or on the next frame. When the queue empties, nothing is scheduled and no per-frame handler remains.
+**The driver** is one SchedulerKit job, and it exists only while something is queued. A run sends chunks until the bucket, the queue or a cap of 32 chunks runs out, then schedules its successor: after the time the bucket needs, after the earliest throttled pipe is reinstated, or on the next frame. There is never more than one: a send made from a callback during a run is picked up by that run, and scheduling a successor replaces any job already scheduled. When the queue empties, nothing is scheduled and no per-frame handler remains.
 
 ## Bandwidth
 
@@ -297,7 +323,7 @@ The frame rate is sampled from `GetFramerate` once when the driver wakes from id
 
 **Traffic CommKit did not send.** When HookKit is loaded, CommKit secure-hooks `C_ChatInfo.SendAddonMessage`, `SendAddonMessageLogged` and `SendChatMessage` (the legacy globals where `C_ChatInfo` lacks one) with `HookKit:CreateScope():SecureHook`, the first time the driver wakes after HookKit is found. Every message another addon sends through them is charged to the bucket — prefix, text and overhead, or the most one message can cost when an argument is secret — and may drive the bucket down to two seconds of debt (−1600 bytes by default), which is repaid before CommKit sends again. A flag set around CommKit's own calls keeps its chunks from being charged twice. Secure hooks cannot be removed; they stay installed for the session.
 
-**Throttled sends.** When the client answers `AddonMessageThrottle` or `ChannelThrottle`, the chunk was not sent and is not charged; its pipe is set aside for 0.35 s, doubling on every consecutive throttle of that pipe up to 5.6 s, and reset by the next success. Other pipes keep going. When the pipe is reinstated, the same chunk is tried again.
+**Throttled sends.** When the client answers `AddonMessageThrottle`, `ChannelThrottle` or a value its enum does not name, the chunk was not sent and is not charged; its pipe is set aside for 0.35 s, doubling on every consecutive throttle of that pipe up to 5.6 s, and reset by the next success. Other pipes keep going. When the pipe is reinstated, the same chunk is tried again.
 
 `GetBudget()` returns the available bytes (negative while repaying debt), the current refill rate, the capacity and the mode.
 
@@ -323,8 +349,11 @@ local level = sync:GetRemote("Friend-Realm", "level")
 - `schema`, optional, maps declared fields to sealed SchemaKit schemas. A received value that fails its schema is dropped and counted in `syncRejected`; a local `Set` that fails returns `nil, "schema"`.
 - `Set(field, value)` returns `true, changed`, or `nil` and CodecKit's reason (`"cycle"`, `"unsupportedType"`, a limit) or `"tableKey"`. `nil` clears the field. The value is kept by reference: after changing a table, call `Set` again.
 - `Request(target)` whispers the request; the SyncSet registers its prefix like `Register` does and counts toward the scope's 32 registrations. Replies are whispers too, at NORMAL priority, through the same queue and budget.
-- A SyncSet answers one peer at most once a second; requests in between are dropped and counted.
-- The peer cache holds 64 peers; the least recently seen is evicted.
+- A SyncSet answers a request only when it arrived as a whisper; a request on any other distribution is refused and counted in `syncRejected`.
+- It answers one peer at most once a second; requests in between are dropped and counted in `syncRejected`.
+- At most one reply per peer is in the queue, and at most 8 KB of replies across every SyncSet; a reply past either is dropped and counted in `syncReplyDropped`, so requests can never fill the queue other sends share.
+- The peer cache holds 64 peers; the least recently seen peer not answered in the last second is evicted, so eviction never lifts a reply interval. When every cached peer was answered in the last second, a new peer's request or delivery is dropped.
+- A field named in both `values` and `removed` of one delivery is removed, and `OnChanged` fires once.
 - `OnChanged` accepts 16 listeners; they run isolated, like receive callbacks.
 
 ### Frames
@@ -390,9 +419,11 @@ local limits = CommKit:GetLimits() -- a fresh table
 | `outsideMessages`, `outsideBytes` | traffic charged from the HookKit hooks |
 | `messagesReceived`, `bytesReceived` | whole messages delivered and their bytes |
 | `chunksReceived`, `chunksRefused` | addon messages on registered prefixes, and those refused |
-| `streamsOpened`, `streamsCompleted`, `streamsExpired`, `streamsEvicted`, `streamsDropped` | reassembly streams |
+| `streamsOpened`, `streamsCompleted`, `streamsExpired`, `streamsEvicted` | reassembly streams opened, completed, expired, and evicted when their sender left the group |
 | `secretsDropped` | received messages dropped because an argument was secret |
+| `streamsMalformed`, `streamsRestarted`, `streamsAborted`, `streamsDiscarded`, `chunksRefusedQuota` | reassembly drops by reason |
 | `syncRequests`, `syncAcknowledgements`, `syncDeliveries`, `syncRejected` | SyncSet messages received, and those refused |
+| `syncReplyDropped` | SyncSet replies not queued: one already pending for that peer, or the 8 KB reply allowance full |
 | `queuedMessages`, `queuedBytes`, `openStreams` | the current queue and reassembly totals |
 
 ## Scopes and shutdown
@@ -405,14 +436,14 @@ Retail clients hand addon code **secret values** in restricted contexts; see [`E
 
 ## Security: received data is untrusted
 
-A received message is whatever the sender chose to send, and a sender may be hostile. CommKit bounds what a sender can make it hold and refuses malformed chunks, but it does not authenticate senders or check what a message says. **Decode received text with CodecKit, validate the result with SchemaKit, and treat a failure like any other malformed message**; see [`codecKit/docs/API.md`](../../codecKit/docs/API.md#security-decoded-data-is-untrusted). A SyncSet checks the shape of every frame and each field against its schema when one is given; give one. Never run received text as code or a macro, and never use it as a frame name, a global name or a format string. The `sender` string is filled in by the server, but the addon behind it can send anything.
+A received message is whatever the sender chose to send, and a sender may be hostile. CommKit bounds what a sender can make it hold and refuses malformed chunks, but it does not authenticate senders or check what a message says. **Decode received text with CodecKit, validate the result with SchemaKit, and treat a failure like any other malformed message**; see [`codecKit/docs/API.md`](../../codecKit/docs/API.md#security-decoded-data-is-untrusted). A SyncSet checks the shape of every frame and each field against its schema when one is given; give one. A SyncSet also caches deliveries nobody requested: any sender can whisper a delivery and have its values stored under its own name, up to 64 peers, so treat `GetRemote` and `OnChanged` values as claims of that sender, never as facts. Never run received text as code or a macro, and never use it as a frame name, a global name or a format string. The `sender` string is filled in by the server, but the addon behind it can send anything.
 
 ## Cost
 
 - **Receiving a single chunk allocates no table**: the payload is one `string.sub`, and the lookup, the counters and the dispatch allocate nothing. Specs guard this with `collectgarbage("count")`.
 - A multi-chunk stream leases a stream record and a chunk list from PoolKit table pools and returns both when it completes or is dropped; the key is one string per chunk and the message one `table.concat`.
 - A send allocates its handle and one string per chunk; the queue record is leased from a pool.
-- An idle CommKit runs nothing: no job, no per-frame handler, no ticker. The expiry timer exists only while a stream is open.
+- An idle CommKit runs nothing: no job, no per-frame handler, no ticker. The frame-rate ticker runs only while something is queued, the expiry timer only while a stream is open, and the drop-report timer only while a sender's report minute is running.
 
 ## Deviations from the planned contract
 
@@ -428,6 +459,11 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`SyncSet` additions**: `Get`, `GetHash`, `GetRemote`, `Close` and `IsClosed`; a reply interval of one second per peer; a peer cache of 64; `OnChanged` receives `nil` for a cleared field. `schema` maps each field to its own sealed schema, because a delivery carries only the fields that changed.
 - **Scope additions**: `UnregisterAll`, `CancelAll`, `GetRegistrationCount`, `GetPendingCount`; **facade additions**: `CloseAddonScopes`, `MAX_MESSAGE_BYTES`, `MAX_REGISTRATIONS`.
 - **Every message carries a control byte**, including single chunks, so no message is ever escaped and a receiver can tell CommKit traffic from anything else on the prefix.
+- **The driver is a chain of plain SchedulerKit jobs, not a lane.** The plan names a lane; a lane rations concurrent work and spacing between starts, while the driver is a single consumer whose pacing comes from the byte bucket, so one job at a time — scheduled with `Schedule`, `After` for a bucket or backoff wait, or `NextFrame` after the per-run cap — gives the same "exists only while something is queued" with no lane registered in the session-wide lane table.
+- **Additions to the protocol**: the abort chunk (`05`), and a printable digit scheme for the logged channel.
+- **The sender keeps within the receiver's stream bounds**, counted across all destinations rather than per destination, because one receiver can be in the party, the raid and the guild at once.
+- **A send result the client's enum does not name is retried like a throttle**, not failed.
+- **Dropped streams are reported at most once per sender per minute**, aggregated, where the plan reports each dropped stream once; a report per stream would let a stranger fill the error log.
 
 ## Upgrades
 

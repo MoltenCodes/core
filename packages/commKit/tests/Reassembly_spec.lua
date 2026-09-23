@@ -124,8 +124,10 @@ describe("CommKit reassembly", function()
         assert.are.equal(0, CommKit:GetStatistics().openStreams)
         local reports = TestEnv.TakeReportedErrors()
         assert.are.equal(1, #reports)
-        assert.is_truthy(reports[1].value:find("expired, 2 of 3 chunks received", 1, true))
-        assert.is_truthy(reports[1].value:find(SENDER, 1, true))
+        assert.are.equal(
+            "CommKit dropped 1 incomplete message from " .. SENDER .. ": 1 expired",
+            reports[1].value
+        )
         TestEnv.Advance(60)
         assert.are.equal(0, #TestEnv.TakeReportedErrors())
         TestEnv.Deliver(PREFIX, chunks[2], "PARTY", SENDER)
@@ -191,9 +193,16 @@ describe("CommKit reassembly", function()
         TestEnv.Deliver(PREFIX, chunk(0x03, 7, 2, "short"), "GUILD", SENDER)
         TestEnv.Deliver(PREFIX, chunks[1], "RAID", SENDER)
         TestEnv.Deliver(PREFIX, chunk(0x04, 7, 3, "early"), "RAID", SENDER)
-        assert.are.equal(3, CommKit:GetStatistics().streamsDropped)
+        assert.are.equal(3, CommKit:GetStatistics().streamsMalformed)
         assert.are.equal(0, CommKit:GetStatistics().openStreams)
-        assert.are.equal(3, #TestEnv.TakeReportedErrors())
+        -- One report at once; the other two wait for the sender's quiet minute.
+        assert.are.equal(1, #TestEnv.TakeReportedErrors())
+        TestEnv.Advance(60)
+        assert.are.same({
+            {
+                value = "CommKit dropped 2 incomplete messages from " .. SENDER .. ": 2 malformed",
+            },
+        }, TestEnv.TakeReportedErrors())
     end)
 
     it("bounds streams in flight per sender", function()

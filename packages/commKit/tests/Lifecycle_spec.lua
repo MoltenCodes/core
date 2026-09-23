@@ -62,7 +62,10 @@ describe("CommKit send handles", function()
         assert.are.same({ "sending", 251 }, { handle:GetState(), handle:GetBytesSent() })
         assert.is_true(handle:Cancel())
         TestEnv.Advance(30)
-        assert.are.equal(0, #TestEnv.TakeOutbox())
+        -- Only the abort of stream 0, which declared 3 chunks, followed.
+        local after = TestEnv.TakeOutbox()
+        assert.are.equal(1, #after)
+        assert.are.equal("\005\128\128\131", after[1].text)
         assert.are.same({ "cancelled", 251, 600 }, {
             handle:GetState(),
             handle:GetBytesSent(),
@@ -78,7 +81,9 @@ describe("CommKit send handles", function()
         end
         handle = assert(scope:Send(request))
         TestEnv.Advance(0)
-        assert.are.equal(1, #TestEnv.TakeOutbox())
+        local sent = TestEnv.TakeOutbox()
+        assert.are.equal(2, #sent)
+        assert.are.equal(0x05, sent[2].text:byte(1))
         assert.are.same({ { handle, "cancelled", "cancelled" } }, outcomes)
     end)
 

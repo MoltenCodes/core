@@ -378,14 +378,19 @@ function CommKitTestEnv.DeliverLogged(prefix, text, channel, sender)
 end
 
 ---Deliver every message in the outbox as received from `sender`, in order,
----and clear it. Returns how many were delivered.
+---on the channel it was sent on, and clear it. Returns how many were
+---delivered.
 ---@param sender string
 ---@return integer
 function CommKitTestEnv.Loopback(sender)
     local taken = CommKitTestEnv.TakeOutbox()
     for index = 1, #taken do
         local entry = taken[index]
-        CommKitTestEnv.Deliver(entry.prefix, entry.text, entry.distribution, sender)
+        if entry.logged then
+            CommKitTestEnv.DeliverLogged(entry.prefix, entry.text, entry.distribution, sender)
+        else
+            CommKitTestEnv.Deliver(entry.prefix, entry.text, entry.distribution, sender)
+        end
     end
     return #taken
 end

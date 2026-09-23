@@ -16,7 +16,7 @@ describe("CommKit statistics", function()
             assert.are.equal(0, value, name)
         end
         assert.are.equal(
-            32,
+            37,
             (function()
                 local count = 0
                 for _ in pairs(statistics) do

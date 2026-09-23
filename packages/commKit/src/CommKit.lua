@@ -85,28 +85,37 @@ local LAYOUT = { state = 1, scope = 1, handle = 1, connection = 1, syncSet = 1 }
 
 -- Wire protocol. The client carries at most 255 bytes of text per addon
 -- message. Every message CommKit sends starts with one control byte; a chunk
--- of a longer message adds a stream id byte and a two-digit number. Stream
--- ids and chunk numbers are digits written as bytes 0x80..0xFF: every one of
--- them survives the addon channel and none of them is a control byte. The
--- channel cannot carry NUL, line feed, carriage return or the pipe that
--- introduces the client's UI escape sequences. Prefixes are at most 16 bytes.
+-- of a longer message, and the abort that ends a cancelled one, add a stream
+-- id byte and a two-digit number. The channel cannot carry NUL, line feed,
+-- carriage return or the pipe that introduces the client's UI escape
+-- sequences. Prefixes are at most 16 bytes.
+--
+-- Stream ids and chunk numbers are digits in one of two schemes. On the
+-- ordinary channel a digit is a byte in 0x80..0xFF: every one survives the
+-- channel and none is a control byte. The logged channel may insist on valid
+-- UTF-8 text, which bytes above 0x7F alone are not, so there a digit is a
+-- printable ASCII byte in 0x30..0x7A (below the pipe, 0x7C).
 local WIRE = {
     maxMessageBytes = 255,
     single = 0x01,
     first = 0x02,
     middle = 0x03,
     last = 0x04,
+    abort = 0x05,
     chunkHeaderBytes = 4,
-    digitOffset = 0x80,
-    digitRadix = 128,
     forbiddenBytePattern = "[%z\n\r|]",
     maxPrefixBytes = 16,
+    plain = { offset = 0x80, radix = 128 },
+    logged = { offset = 0x30, radix = 75 },
 }
 WIRE.singlePayloadBytes = WIRE.maxMessageBytes - 1
 WIRE.chunkPayloadBytes = WIRE.maxMessageBytes - WIRE.chunkHeaderBytes
-WIRE.streamIdCount = WIRE.digitRadix
-WIRE.maxChunks = WIRE.digitRadix * WIRE.digitRadix - 1
+WIRE.plain.maxChunks = WIRE.plain.radix * WIRE.plain.radix - 1
+WIRE.logged.maxChunks = WIRE.logged.radix * WIRE.logged.radix - 1
 WIRE.singleControlText = string.char(WIRE.single)
+-- What a message whose size cannot be read (a secret argument) is charged:
+-- the most one addon message can cost.
+WIRE.unknownSizeBytes = WIRE.maxPrefixBytes + WIRE.maxMessageBytes
 
 -- Distributions the client accepts for addon messages, and the two that need
 -- a target.
@@ -167,12 +176,16 @@ local REASON = {
     schema = "schema",
 }
 
--- Why a received stream was dropped, as the error report names it.
+-- Why a received stream was dropped or refused, as the statistics and the
+-- aggregated error report name it, in the order the report lists them.
 local DROP = {
     expired = "expired",
     departed = "departed",
     malformed = "malformed",
     restarted = "restarted",
+    quota = "quota",
+    aborted = "aborted",
+    discarded = "discarded",
 }
 
 -- The client's result codes, used when `Enum` is absent, and the reasons a
@@ -213,6 +226,12 @@ local POLICY = {
     maxThrottleBackoffSeconds = 5.6,
     maxChunksPerRun = 32,
     dueToleranceSeconds = 0.001,
+    -- Dropped streams are reported at most once per sender per minute, and
+    -- at most this many senders are tracked; the rest share one entry.
+    dropReportSeconds = 60,
+    maxDropReportSenders = 64,
+    otherSenders = "(other senders)",
+    dropReportOrder = { "expired", "departed", "malformed", "restarted", "quota" },
 }
 
 -- SyncSet verbs (the first element of every SyncSet message) and bounds.
@@ -225,6 +244,10 @@ local SYNC = {
     maxPeers = 64,
     maxListeners = 16,
     replyIntervalSeconds = 1,
+    -- Text bytes of SyncSet replies queued at once, across every SyncSet.
+    maxReplyBytes = 8192,
+    -- CodecKit options for SyncSet frames.
+    codecOptions = { channel = "addon" },
 }
 
 -- FNV-1a, 32 bits. The prime 16777619 is 2^24 + 403, which is what lets the
@@ -300,12 +323,17 @@ local STATISTIC_NAMES = {
     "streamsCompleted",
     "streamsExpired",
     "streamsEvicted",
-    "streamsDropped",
+    "streamsMalformed",
+    "streamsRestarted",
+    "streamsAborted",
+    "streamsDiscarded",
+    "chunksRefusedQuota",
     "secretsDropped",
     "syncRequests",
     "syncAcknowledgements",
     "syncDeliveries",
     "syncRejected",
+    "syncReplyDropped",
 }
 
 -- The statistics counter a refusal, a terminal send state and a dropped
@@ -327,8 +355,11 @@ local STATISTIC_FOR = {
     drop = {
         [DROP.expired] = "streamsExpired",
         [DROP.departed] = "streamsEvicted",
-        [DROP.malformed] = "streamsDropped",
-        [DROP.restarted] = "streamsDropped",
+        [DROP.malformed] = "streamsMalformed",
+        [DROP.restarted] = "streamsRestarted",
+        [DROP.quota] = "chunksRefusedQuota",
+        [DROP.aborted] = "streamsAborted",
+        [DROP.discarded] = "streamsDiscarded",
     },
 }
 
@@ -688,6 +719,7 @@ local STATE_TABLE_FIELDS = {
     "streamList",
     "senders",
     "expiry",
+    "dropReports",
     "prefixSignals",
     "prefixCounts",
     "clientPrefixes",
@@ -782,7 +814,16 @@ local function newState()
         queuedMessages = 0,
         queuedBytes = 0,
         rotationCursor = 1,
+        -- The next stream id of each digit scheme.
         nextStreamId = 0,
+        nextLoggedStreamId = 0,
+        -- Multi-chunk messages whose first chunk left and last did not, and
+        -- the bytes their first chunks declared: kept within what one
+        -- receiver accepts from one sender.
+        inFlightStreams = 0,
+        inFlightBytes = 0,
+        -- Text bytes of SyncSet replies in the queue.
+        syncReplyBytes = 0,
         -- Starts full so the first messages of a session leave at once.
         budget = {
             tokens = DEFAULT_LIMITS.burst,
@@ -790,7 +831,16 @@ local function newState()
             zoningUntil = 0,
             framesPerSecond = false,
         },
-        driver = { job = false, delayed = false, sampler = false },
+        -- `running` is true while a run is on the stack; a send made by one of
+        -- its callbacks sets `wakeRequested` instead of scheduling a second
+        -- job.
+        driver = {
+            job = false,
+            delayed = false,
+            sampler = false,
+            running = false,
+            wakeRequested = false,
+        },
         -- True while CommKit itself is inside the client's send function, so
         -- the outside-traffic hook does not charge the same bytes twice.
         sendingOwnTraffic = false,
@@ -802,6 +852,9 @@ local function newState()
         streamList = {},
         senders = {},
         expiry = { timer = false, due = false },
+        -- Sender to { reportedAt, pending, reasons }: the aggregated drop
+        -- reports, and the one timer that flushes them.
+        dropReports = { bySender = {}, count = 0, timer = false, due = false },
         prefixSignals = {},
         prefixCounts = {},
         -- Prefixes this session registered with the client.
@@ -869,6 +922,7 @@ local streams = rawget(state, "streams")
 local streamList = rawget(state, "streamList")
 local senders = rawget(state, "senders")
 local expiry = rawget(state, "expiry")
+local dropReports = rawget(state, "dropReports")
 local prefixSignals = rawget(state, "prefixSignals")
 local prefixCounts = rawget(state, "prefixCounts")
 local clientPrefixes = rawget(state, "clientPrefixes")
@@ -1429,15 +1483,84 @@ end
 
 -- Send completion ------------------------------------------------------------
 
+---The digit scheme of a record: the logged channel's printable one, or the
+---ordinary channel's high bytes.
+---@param logged boolean
+---@return table
+local function digitScheme(logged)
+    if logged then
+        return WIRE.logged
+    end
+    return WIRE.plain
+end
+
+---The bytes the first chunk of an `n`-chunk message declares: the least such
+---a message can hold. Sender and receiver count streams by the same measure.
+---@param totalChunks integer
+---@return integer
+local function declaredBytes(totalChunks)
+    return (totalChunks - 1) * WIRE.chunkPayloadBytes + 1
+end
+
+---Queue the abort of a stream that was cancelled after its first chunk left,
+---at the head of the same pipe, so receivers drop it at once and silently.
+---@param record table the cancelled message
+local function queueAbort(record)
+    local abort = rawget(pools, "records"):Acquire()
+    abort.kind = "abort"
+    abort.handle = false
+    abort.scope = false
+    abort.prefix = rawget(record, "prefix")
+    abort.text = ""
+    abort.textLength = 0
+    abort.distribution = rawget(record, "distribution")
+    abort.target = rawget(record, "target")
+    abort.priority = rawget(record, "priority")
+    abort.logged = rawget(record, "logged")
+    abort.pipeKey = rawget(record, "pipeKey")
+    abort.totalChunks = rawget(record, "totalChunks")
+    abort.nextIndex = 1
+    abort.bytesSent = 0
+    abort.streamId = rawget(record, "streamId")
+    abort.onProgress = false
+    abort.onComplete = false
+    enqueueRecord(abort)
+    -- Move it from the tail to the head of its pipe.
+    local fifo = rawget(rawget(abort, "pipe"), "fifo")
+    table.remove(fifo)
+    table.insert(fifo, 1, abort)
+end
+
+---Release the in-flight allowance a started multi-chunk message holds.
+---@param record table
+local function releaseInFlight(record)
+    if not rawget(record, "inFlight") then
+        return
+    end
+    rawset(record, "inFlight", false)
+    rawset(state, "inFlightStreams", rawget(state, "inFlightStreams") - 1)
+    rawset(
+        state,
+        "inFlightBytes",
+        rawget(state, "inFlightBytes") - declaredBytes(rawget(record, "totalChunks"))
+    )
+end
+
 ---Move a queued message to a terminal state, release its record and tell the
 ---caller. The callback runs last, isolated, when CommKit's state is settled.
+---A message cancelled after its first chunk left queues an abort.
 ---@param record table
 ---@param terminalState string
 ---@param reason string|nil
 local function completeSend(record, terminalState, reason)
     local handle = rawget(record, "handle")
     local onComplete = rawget(record, "onComplete")
+    local started = rawget(record, "inFlight") == true
     dequeueRecord(record)
+    releaseInFlight(record)
+    if started and terminalState == SEND_STATE.cancelled then
+        queueAbort(record)
+    end
     rawset(handle, "_state", terminalState)
     rawset(handle, "_record", false)
     removeFromList(rawget(rawget(record, "scope"), "_pending"), handle)
@@ -1449,19 +1572,33 @@ local function completeSend(record, terminalState, reason)
     end
 end
 
+---Take an abort record out of the queue once it was sent or refused.
+---@param record table
+local function finishAbort(record)
+    dequeueRecord(record)
+    rawget(pools, "records"):Release(record)
+end
+
 -- Driver ---------------------------------------------------------------------
 --
 -- One SchedulerKit job at a time, and only while something is queued. A run
 -- refills the bucket, reinstates pipes whose backoff has passed, and sends
 -- chunks in rotation until the bucket, the queue or the per-run cap runs out;
 -- then it arranges the next run: after the time the bucket needs, after the
--- earliest reinstatement, or on the next frame.
+-- earliest reinstatement, or on the next frame. While a run is on the stack a
+-- send made by one of its callbacks only sets `wakeRequested`: the run sees
+-- the new message on its next chunk, and nothing schedules a second job.
 
----Arrange the next driver run. `why` records what it waits for, so a new send
----knows whether waking the driver early can help.
+---Arrange the next driver run, replacing any run already scheduled. `why`
+---records what it waits for, so a new send knows whether waking the driver
+---early can help.
 ---@param delay number seconds; 0 means the next frame
 ---@param why string `"budget"`, `"blocked"` or `"frame"`
 local function scheduleDriver(delay, why)
+    local existing = rawget(driver, "job")
+    if existing ~= false then
+        existing:Cancel()
+    end
     local scope = getSchedulerScope()
     local job
     if delay <= 0 then
@@ -1474,7 +1611,8 @@ local function scheduleDriver(delay, why)
 end
 
 ---The client's send result as `"sent"`, `"throttled"` or `"failed"` and a
----reason.
+---reason. `AddonMessageThrottle`, `ChannelThrottle` and any value the enum
+---does not name are throttles.
 ---@param result any
 ---@return string outcome
 ---@return string|nil reason
@@ -1504,8 +1642,14 @@ local function classifySendResult(result)
     then
         return "throttled", nil
     end
-    return SEND_STATE.failed,
-        readEnumName("SendAddonMessageResult", result) or ("result" .. tostring(result))
+    -- A result the client's enum names is a real refusal. One it does not
+    -- name comes from a client newer than this file, and is treated like a
+    -- throttle: set aside and retried, rather than losing the message.
+    local name = readEnumName("SendAddonMessageResult", result)
+    if name == nil then
+        return "throttled", nil
+    end
+    return SEND_STATE.failed, name
 end
 
 ---Hand one chunk to the client.
@@ -1536,39 +1680,66 @@ local function transmit(record, chunk)
     return outcome, reason
 end
 
----Build the next chunk of a message and the payload bytes it carries.
+---Build the next chunk of a message, or the abort of a cancelled one, and the
+---payload bytes it carries.
 ---@param record table
 ---@return string chunk
 ---@return integer payloadBytes
 local function buildChunk(record)
     local text = rawget(record, "text")
     local totalChunks = rawget(record, "totalChunks")
-    if totalChunks == 1 then
+    local isAbort = rawget(record, "kind") == "abort"
+    if totalChunks == 1 and not isAbort then
         return WIRE.singleControlText .. text, #text
     end
 
+    local scheme = digitScheme(rawget(record, "logged"))
     local index = rawget(record, "nextIndex")
-    local first = (index - 1) * WIRE.chunkPayloadBytes + 1
-    local last = math.min(first + WIRE.chunkPayloadBytes - 1, #text)
     local control, number
-    if index == 1 then
+    if isAbort then
+        control, number = WIRE.abort, totalChunks
+    elseif index == 1 then
         control, number = WIRE.first, totalChunks
     elseif index == totalChunks then
         control, number = WIRE.last, index
     else
         control, number = WIRE.middle, index
     end
-    local high = math.floor(number / WIRE.digitRadix)
+    local high = math.floor(number / scheme.radix)
     local header = string.char(
         control,
-        WIRE.digitOffset + rawget(record, "streamId"),
-        WIRE.digitOffset + high,
-        WIRE.digitOffset + number - high * WIRE.digitRadix
+        scheme.offset + rawget(record, "streamId"),
+        scheme.offset + high,
+        scheme.offset + number - high * scheme.radix
     )
+    if isAbort then
+        return header, 0
+    end
+    local first = (index - 1) * WIRE.chunkPayloadBytes + 1
+    local last = math.min(first + WIRE.chunkPayloadBytes - 1, #text)
     return header .. string.sub(text, first, last), last - first + 1
 end
 
----Find the pipe the rotation serves next without moving any cursor.
+---Whether the head of `pipe` may be served now. A multi-chunk message that
+---has not started waits while starting it would pass what one receiver
+---accepts from one sender: `maxInFlightPerSender` streams and
+---`maxReassemblyBytesPerSender` declared bytes. Everything else may go.
+---@param pipe table
+---@return boolean
+local function headMayStart(pipe)
+    local record = rawget(pipe, "fifo")[1]
+    local totalChunks = rawget(record, "totalChunks")
+    if rawget(record, "kind") == "abort" or totalChunks == 1 or rawget(record, "inFlight") then
+        return true
+    end
+    return rawget(state, "inFlightStreams") < rawget(limits, "maxInFlightPerSender")
+        and rawget(state, "inFlightBytes") + declaredBytes(totalChunks)
+            <= rawget(limits, "maxReassemblyBytesPerSender")
+end
+
+---Find the pipe the rotation serves next without moving any cursor: in the
+---next priority that has one, the first pipe from the ring's cursor whose
+---head may be served.
 ---@return table|nil queue
 ---@return integer ringIndex
 ---@return integer slot
@@ -1577,13 +1748,17 @@ local function peekNextPipe()
     local slot = rawget(state, "rotationCursor")
     for _ = 1, rotationLength do
         local queue = rawget(queues, PRIORITY_ROTATION[slot])
-        local ringLength = #rawget(queue, "ring")
-        if ringLength > 0 then
-            local index = rawget(queue, "cursor")
+        local ring = rawget(queue, "ring")
+        local ringLength = #ring
+        local index = rawget(queue, "cursor")
+        for _ = 1, ringLength do
             if index > ringLength then
                 index = 1
             end
-            return queue, index, slot
+            if headMayStart(ring[index]) then
+                return queue, index, slot
+            end
+            index = index + 1
         end
         slot = slot % rotationLength + 1
     end
@@ -1642,16 +1817,30 @@ local function acceptChunk(record, pipe, cost, chunkBytes, payloadBytes)
     rawset(pipe, "backoff", POLICY.throttleBackoffSeconds)
     count("chunksSent")
     count("bytesSent", chunkBytes)
+    if rawget(record, "kind") == "abort" then
+        finishAbort(record)
+        return
+    end
 
     local handle = rawget(record, "handle")
+    local totalChunks = rawget(record, "totalChunks")
     local bytesSent = rawget(record, "bytesSent") + payloadBytes
     local nextIndex = rawget(record, "nextIndex") + 1
     rawset(record, "bytesSent", bytesSent)
     rawset(record, "nextIndex", nextIndex)
     rawset(handle, "_bytesSent", bytesSent)
-    local finished = nextIndex > rawget(record, "totalChunks")
+    local finished = nextIndex > totalChunks
     if not finished then
         rawset(handle, "_state", SEND_STATE.sending)
+        if nextIndex == 2 then
+            rawset(record, "inFlight", true)
+            rawset(state, "inFlightStreams", rawget(state, "inFlightStreams") + 1)
+            rawset(
+                state,
+                "inFlightBytes",
+                rawget(state, "inFlightBytes") + declaredBytes(totalChunks)
+            )
+        end
     end
 
     local onProgress = rawget(record, "onProgress")
@@ -1689,10 +1878,9 @@ local function finishRun(currentTime, hitRunCap)
     end
 end
 
----One driver run. Called by the SchedulerKit job through the dispatch table.
-local function runDriver()
-    rawset(driver, "job", false)
-    rawset(driver, "delayed", false)
+---Send chunks until the bucket, the queue or the per-run cap runs out, then
+---arrange the next run.
+local function driveChunks()
     local currentTime = now()
     refill(currentTime)
     reinstatePipes(currentTime)
@@ -1719,11 +1907,40 @@ local function runDriver()
             acceptChunk(record, pipe, cost, #chunk, payloadBytes)
         elseif outcome == "throttled" then
             setPipeAside(queue, pipe, currentTime)
+        elseif rawget(record, "kind") == "abort" then
+            finishAbort(record)
         else
             completeSend(record, SEND_STATE.failed, reason)
         end
     end
     finishRun(currentTime, true)
+end
+
+---One driver run. Called by the SchedulerKit job through the dispatch table.
+---An internal error is reported and the driver retried a second later rather
+---than left marked as running for the session.
+local function runDriver()
+    rawset(driver, "job", false)
+    rawset(driver, "delayed", false)
+    rawset(driver, "running", true)
+    rawset(driver, "wakeRequested", false)
+    local ok, failure = pcall(driveChunks)
+    rawset(driver, "running", false)
+    if not ok then
+        reportError(failure)
+        if rawget(state, "queuedMessages") > 0 then
+            scheduleDriver(1, "frame")
+        end
+        return
+    end
+    -- A callback queued something after the run decided to stop.
+    if
+        rawget(driver, "wakeRequested")
+        and rawget(driver, "job") == false
+        and rawget(state, "queuedMessages") > 0
+    then
+        scheduleDriver(0, "frame")
+    end
 end
 
 -- Outside traffic ------------------------------------------------------------
@@ -1732,10 +1949,6 @@ end
 -- is present, so bytes other code sends are charged to the shared bucket.
 -- `sendingOwnTraffic` is true while CommKit is inside the same functions, so
 -- its own chunks are charged once.
-
--- What a message whose size cannot be read (a secret argument) is charged:
--- the most one addon message can cost.
-local UNKNOWN_SIZE_BYTES = WIRE.maxPrefixBytes + WIRE.maxMessageBytes
 
 ---Charge an addon message another sender sent.
 ---@param prefix any
@@ -1746,7 +1959,7 @@ local function chargeOutsideAddon(prefix, text)
     end
     local cost
     if type(prefix) ~= "string" or type(text) ~= "string" or isSecret(prefix) or isSecret(text) then
-        cost = UNKNOWN_SIZE_BYTES + rawget(limits, "messageOverhead")
+        cost = WIRE.unknownSizeBytes + rawget(limits, "messageOverhead")
     else
         cost = messageCost(#prefix, #text)
     end
@@ -1763,7 +1976,7 @@ local function chargeOutsideChat(text)
     end
     local cost
     if type(text) ~= "string" or isSecret(text) then
-        cost = UNKNOWN_SIZE_BYTES + rawget(limits, "messageOverhead")
+        cost = WIRE.unknownSizeBytes + rawget(limits, "messageOverhead")
     else
         cost = messageCost(0, #text)
     end
@@ -1772,40 +1985,50 @@ local function chargeOutsideChat(text)
     count("outsideBytes", cost)
 end
 
----Secure-hook one send function, on `C_ChatInfo` or as the legacy global.
----A refusal (no `hooksecurefunc`, say) leaves that function unmeasured.
----@param hookScope table
----@param name string
----@param handler function
-local function hookSender(hookScope, name, handler)
-    local chatInfo = readHostTable("C_ChatInfo")
-    if chatInfo ~= nil and type(rawget(chatInfo, name)) == "function" then
-        pcall(hookScope.SecureHook, hookScope, chatInfo, name, handler)
-    elseif readHostFunction(name) ~= nil then
-        pcall(hookScope.SecureHook, hookScope, name, handler)
+-- Only `installOutsideHooks` is used outside this block.
+local installOutsideHooks
+
+do
+    ---Secure-hook one send function, on `C_ChatInfo` or as the legacy global.
+    ---A refusal (no `hooksecurefunc`, say) leaves that function unmeasured.
+    ---@param hookScope table
+    ---@param name string
+    ---@param handler function
+    local function hookSender(hookScope, name, handler)
+        local chatInfo = readHostTable("C_ChatInfo")
+        if chatInfo ~= nil and type(rawget(chatInfo, name)) == "function" then
+            pcall(hookScope.SecureHook, hookScope, chatInfo, name, handler)
+        elseif readHostFunction(name) ~= nil then
+            pcall(hookScope.SecureHook, hookScope, name, handler)
+        end
+    end
+
+    ---Install the outside-traffic hooks once, when HookKit is present. Tried again
+    ---every time the driver wakes from idle until HookKit is found.
+    function installOutsideHooks()
+        if rawget(state, "outsideHooks") ~= false then
+            return
+        end
+        local HookKit = findOptional("hookKit", DEPENDENCY_API.hookKit)
+        if HookKit == nil or type(rawget(HookKit, "CreateScope")) ~= "function" then
+            return
+        end
+        local hookScope = HookKit:CreateScope()
+        rawset(state, "outsideHooks", hookScope)
+        hookSender(hookScope, "SendAddonMessage", rawget(trampolines, "outsideAddon"))
+        hookSender(hookScope, "SendAddonMessageLogged", rawget(trampolines, "outsideAddon"))
+        hookSender(hookScope, "SendChatMessage", rawget(trampolines, "outsideChat"))
     end
 end
 
----Install the outside-traffic hooks once, when HookKit is present. Tried again
----every time the driver wakes from idle until HookKit is found.
-local function installOutsideHooks()
-    if rawget(state, "outsideHooks") ~= false then
-        return
-    end
-    local HookKit = findOptional("hookKit", DEPENDENCY_API.hookKit)
-    if HookKit == nil or type(rawget(HookKit, "CreateScope")) ~= "function" then
-        return
-    end
-    local hookScope = HookKit:CreateScope()
-    rawset(state, "outsideHooks", hookScope)
-    hookSender(hookScope, "SendAddonMessage", rawget(trampolines, "outsideAddon"))
-    hookSender(hookScope, "SendAddonMessageLogged", rawget(trampolines, "outsideAddon"))
-    hookSender(hookScope, "SendChatMessage", rawget(trampolines, "outsideChat"))
-end
-
----Make sure a driver run is coming. A run already scheduled is kept, unless
----it waits only for a throttled pipe: the new message may use another pipe.
+---Make sure a driver run is coming. During a run only a flag is set; a run
+---already scheduled is kept, unless it waits only for a throttled pipe: the
+---new message may use another pipe.
 local function wakeDriver()
+    if rawget(driver, "running") then
+        rawset(driver, "wakeRequested", true)
+        return
+    end
     local job = rawget(driver, "job")
     if job ~= false then
         if rawget(driver, "delayed") ~= "blocked" then
@@ -1867,28 +2090,142 @@ local function closeStream(stream)
     rawget(pools, "streams"):Release(stream)
 end
 
----Drop an incomplete stream and report it once through the host error
----handler. The sender, prefix and distribution were checked not to be secret
----when the stream opened.
+-- Only `noteDrop` and `flushDropReports` are used outside this block.
+local noteDrop, flushDropReports
+
+do
+    ---Describe the drops pending in a report entry, reasons in a fixed order.
+    ---@param entry table
+    ---@return string
+    local function describeDrops(entry)
+        local reasons = rawget(entry, "reasons")
+        local parts = {}
+        for index = 1, #POLICY.dropReportOrder do
+            local why = POLICY.dropReportOrder[index]
+            local amount = rawget(reasons, why)
+            if amount ~= nil then
+                parts[#parts + 1] = amount .. " " .. why
+            end
+        end
+        return table.concat(parts, ", ")
+    end
+
+    ---Report what one sender's entry holds, and start its quiet minute.
+    ---@param sender string
+    ---@param entry table
+    ---@param currentTime number
+    local function flushDropEntry(sender, entry, currentTime)
+        local pending = rawget(entry, "pending")
+        reportError(
+            "CommKit dropped "
+                .. pending
+                .. (pending == 1 and " incomplete message from " or " incomplete messages from ")
+                .. sender
+                .. ": "
+                .. describeDrops(entry)
+        )
+        rawset(entry, "pending", 0)
+        rawset(entry, "reasons", {})
+        rawset(entry, "reportedAt", currentTime)
+    end
+
+    ---Arm the flush timer for `due` unless it is already due no later.
+    ---@param due number
+    local function armDropFlush(due)
+        local timer = rawget(dropReports, "timer")
+        local armedFor = rawget(dropReports, "due")
+        if timer ~= false and armedFor ~= false and armedFor <= due then
+            return
+        end
+        if timer ~= false then
+            timer:Cancel()
+        end
+        local delay = math.max(due - now(), 0)
+        rawset(
+            dropReports,
+            "timer",
+            getTimerScope():After(delay, rawget(trampolines, "flushDrops"))
+        )
+        rawset(dropReports, "due", due)
+    end
+
+    ---The flush timer fired: report every entry whose quiet minute is over and
+    ---that has drops pending, forget entries with nothing pending, and arm the
+    ---timer for the next one.
+    function flushDropReports()
+        rawset(dropReports, "timer", false)
+        rawset(dropReports, "due", false)
+        local currentTime = now()
+        local bySender = rawget(dropReports, "bySender")
+        local window = POLICY.dropReportSeconds
+        ---@type number|nil
+        local earliest = nil
+        for sender, entry in pairs(bySender) do
+            ---@type number|nil
+            local due = rawget(entry, "reportedAt") + window
+            if due <= currentTime + POLICY.dueToleranceSeconds then
+                if rawget(entry, "pending") > 0 then
+                    flushDropEntry(sender, entry, currentTime)
+                    due = currentTime + window
+                else
+                    rawset(bySender, sender, nil)
+                    rawset(dropReports, "count", rawget(dropReports, "count") - 1)
+                    due = nil
+                end
+            end
+            if due ~= nil and (earliest == nil or due < earliest) then
+                earliest = due
+            end
+        end
+        if earliest ~= nil then
+            armDropFlush(earliest)
+        end
+    end
+
+    ---Note a dropped stream or a refused first chunk of `sender`. The first drop
+    ---of a sender is reported at once; later ones within the minute are counted
+    ---and reported together when it ends, so a stranger can cause at most one
+    ---report per minute. Past 64 senders the rest share one entry.
+    ---@param sender string
+    ---@param why string
+    function noteDrop(sender, why)
+        local bySender = rawget(dropReports, "bySender")
+        local entry = rawget(bySender, sender)
+        if entry == nil and rawget(dropReports, "count") >= POLICY.maxDropReportSenders then
+            sender = POLICY.otherSenders
+            entry = rawget(bySender, sender)
+        end
+        if entry == nil then
+            entry = { reportedAt = false, pending = 0, reasons = {} }
+            rawset(bySender, sender, entry)
+            rawset(dropReports, "count", rawget(dropReports, "count") + 1)
+        end
+        rawset(entry, "pending", rawget(entry, "pending") + 1)
+        local reasons = rawget(entry, "reasons")
+        rawset(reasons, why, (rawget(reasons, why) or 0) + 1)
+
+        local currentTime = now()
+        local reportedAt = rawget(entry, "reportedAt")
+        if reportedAt == false then
+            flushDropEntry(sender, entry, currentTime)
+            armDropFlush(currentTime + POLICY.dropReportSeconds)
+        else
+            armDropFlush(reportedAt + POLICY.dropReportSeconds)
+        end
+    end
+end
+
+---Drop an incomplete stream: count it by reason and note it for the sender's
+---aggregated report. An aborted stream is dropped silently.
 ---@param stream table
 ---@param why string
 local function dropStream(stream, why)
-    local message = "CommKit dropped an incomplete message on prefix "
-        .. rawget(stream, "prefix")
-        .. " ("
-        .. rawget(stream, "distribution")
-        .. ") from "
-        .. rawget(stream, "sender")
-        .. ": "
-        .. why
-        .. ", "
-        .. rawget(stream, "received")
-        .. " of "
-        .. rawget(stream, "total")
-        .. " chunks received"
+    local sender = rawget(stream, "sender")
     closeStream(stream)
     count(STATISTIC_FOR.drop[why])
-    reportError(message)
+    if why ~= DROP.aborted then
+        noteDrop(sender, why)
+    end
 end
 
 ---Drop every stream of `prefix` without a report: nobody listens any more.
@@ -1899,7 +2236,7 @@ local function discardStreamsOf(prefix)
         local stream = streamList[index]
         if rawget(stream, "prefix") == prefix then
             closeStream(stream)
-            count("streamsDropped")
+            count(STATISTIC_FOR.drop[DROP.discarded])
         else
             index = index + 1
         end
@@ -1962,10 +2299,11 @@ end
 ---@param sender string
 ---@param total integer the chunk count the first chunk declares
 ---@param text string the whole chunk, header included
-local function openStream(key, prefix, distribution, sender, total, text)
+---@param scheme table the digit scheme of the channel it arrived on
+local function openStream(key, prefix, distribution, sender, total, text, scheme)
     if
         total < 2
-        or total > WIRE.maxChunks
+        or total > scheme.maxChunks
         or #text - WIRE.chunkHeaderBytes ~= WIRE.chunkPayloadBytes
     then
         refuseChunk()
@@ -1979,13 +2317,15 @@ local function openStream(key, prefix, distribution, sender, total, text)
     local senderRecord = rawget(senders, sender)
     local senderStreams = senderRecord ~= nil and rawget(senderRecord, "streams") or 0
     local senderBytes = senderRecord ~= nil and rawget(senderRecord, "bytes") or 0
-    local reserved = (total - 1) * WIRE.chunkPayloadBytes + 1
+    local reserved = declaredBytes(total)
     if
         #streamList >= rawget(limits, "maxReassemblyStreams")
         or senderStreams >= rawget(limits, "maxInFlightPerSender")
         or senderBytes + reserved > rawget(limits, "maxReassemblyBytesPerSender")
     then
         refuseChunk()
+        count(STATISTIC_FOR.drop[DROP.quota])
+        noteDrop(sender, DROP.quota)
         return
     end
 
@@ -2027,6 +2367,15 @@ local function continueStream(control, key, number, text)
         return
     end
     local total = rawget(stream, "total")
+    if control == WIRE.abort then
+        -- The sender cancelled the message; the abort names its chunk count.
+        if number == total then
+            dropStream(stream, DROP.aborted)
+        else
+            refuseChunk()
+        end
+        return
+    end
     local payloadLength = #text - WIRE.chunkHeaderBytes
     local parts = rawget(stream, "parts")
     if
@@ -2058,31 +2407,47 @@ local function continueStream(control, key, number, text)
     deliverMessage(prefix, message, distribution, sender)
 end
 
----Route one chunk of a multi-chunk message.
+---Route one chunk of a multi-chunk message, or an abort.
 ---@param control integer
 ---@param prefix string
 ---@param text string
 ---@param distribution string
 ---@param sender string
-local function receiveChunk(control, prefix, text, distribution, sender)
-    if #text <= WIRE.chunkHeaderBytes then
-        refuseChunk()
-        return
-    end
-    local streamByte, highByte, lowByte = string.byte(text, 2, 4)
+---@param logged boolean whether it arrived on the logged channel
+local function receiveChunk(control, prefix, text, distribution, sender, logged)
+    local length = #text
     if
-        streamByte < WIRE.digitOffset
-        or highByte < WIRE.digitOffset
-        or lowByte < WIRE.digitOffset
+        length < WIRE.chunkHeaderBytes
+        or (length == WIRE.chunkHeaderBytes) ~= (control == WIRE.abort)
     then
         refuseChunk()
         return
     end
-    local streamId = streamByte - WIRE.digitOffset
-    local number = (highByte - WIRE.digitOffset) * WIRE.digitRadix + lowByte - WIRE.digitOffset
-    local key = prefix .. "\t" .. distribution .. "\t" .. sender .. "\t" .. streamId
+    local scheme = digitScheme(logged)
+    local lowest, highest = scheme.offset, scheme.offset + scheme.radix - 1
+    local streamByte, highByte, lowByte = string.byte(text, 2, 4)
+    if
+        streamByte < lowest
+        or streamByte > highest
+        or highByte < lowest
+        or highByte > highest
+        or lowByte < lowest
+        or lowByte > highest
+    then
+        refuseChunk()
+        return
+    end
+    local streamId = streamByte - lowest
+    local number = (highByte - lowest) * scheme.radix + lowByte - lowest
+    local key = prefix
+        .. "\t"
+        .. distribution
+        .. "\t"
+        .. sender
+        .. (logged and "\tlogged\t" or "\t")
+        .. streamId
     if control == WIRE.first then
-        openStream(key, prefix, distribution, sender, number, text)
+        openStream(key, prefix, distribution, sender, number, text, scheme)
     else
         continueStream(control, key, number, text)
     end
@@ -2094,7 +2459,8 @@ end
 ---@param text any
 ---@param channel any
 ---@param sender any
-local function onAddonMessage(prefix, text, channel, sender)
+---@param logged boolean? true for CHAT_MSG_ADDON_LOGGED
+local function onAddonMessage(prefix, text, channel, sender, logged)
     if
         type(prefix) ~= "string"
         or type(text) ~= "string"
@@ -2118,50 +2484,55 @@ local function onAddonMessage(prefix, text, channel, sender)
     local control = string.byte(text, 1)
     if control == WIRE.single then
         deliverMessage(prefix, string.sub(text, 2), channel, sender)
-    elseif control == WIRE.first or control == WIRE.middle or control == WIRE.last then
-        receiveChunk(control, prefix, text, channel, sender)
+    elseif control ~= nil and control >= WIRE.first and control <= WIRE.abort then
+        receiveChunk(control, prefix, text, channel, sender, logged == true)
     else
         refuseChunk()
     end
 end
 
----Whether the client places `name` in the player's group. A secret answer
----cannot be read and counts as a member.
----@param name string
----@param unitInParty function|nil
----@param unitInRaid function|nil
----@return boolean
-local function askGroupMembership(name, unitInParty, unitInRaid)
-    if unitInParty ~= nil then
-        local answer = unitInParty(name)
-        if isSecret(answer) or answer then
-            return true
-        end
-    end
-    if unitInRaid ~= nil then
-        local answer = unitInRaid(name)
-        if isSecret(answer) or answer ~= nil then
-            return true
-        end
-    end
-    return false
-end
+-- Only `isGroupMember` is used outside this block.
+local isGroupMember
 
----Whether `sender` is in the player's group, asking with the full
----`Name-Realm` first and then with the name alone.
----@param sender string
----@param unitInParty function|nil
----@param unitInRaid function|nil
----@return boolean
-local function isGroupMember(sender, unitInParty, unitInRaid)
-    if askGroupMembership(sender, unitInParty, unitInRaid) then
-        return true
-    end
-    local shortName = string.match(sender, "^([^%-]+)%-")
-    if shortName == nil then
+do
+    ---Whether the client places `name` in the player's group. A secret answer
+    ---cannot be read and counts as a member.
+    ---@param name string
+    ---@param unitInParty function|nil
+    ---@param unitInRaid function|nil
+    ---@return boolean
+    local function askGroupMembership(name, unitInParty, unitInRaid)
+        if unitInParty ~= nil then
+            local answer = unitInParty(name)
+            if isSecret(answer) or answer then
+                return true
+            end
+        end
+        if unitInRaid ~= nil then
+            local answer = unitInRaid(name)
+            if isSecret(answer) or answer ~= nil then
+                return true
+            end
+        end
         return false
     end
-    return askGroupMembership(shortName, unitInParty, unitInRaid)
+
+    ---Whether `sender` is in the player's group, asking with the full
+    ---`Name-Realm` first and then with the name alone.
+    ---@param sender string
+    ---@param unitInParty function|nil
+    ---@param unitInRaid function|nil
+    ---@return boolean
+    function isGroupMember(sender, unitInParty, unitInRaid)
+        if askGroupMembership(sender, unitInParty, unitInRaid) then
+            return true
+        end
+        local shortName = string.match(sender, "^([^%-]+)%-")
+        if shortName == nil then
+            return false
+        end
+        return askGroupMembership(shortName, unitInParty, unitInRaid)
+    end
 end
 
 ---GROUP_ROSTER_UPDATE: drop the group streams of senders no longer in the
@@ -2199,7 +2570,7 @@ local function connectChatEvents()
     local scope = getEventScope()
     rawset(state, "chatConnections", {
         scope:Connect("CHAT_MSG_ADDON", rawget(trampolines, "addonMessage")),
-        scope:Connect("CHAT_MSG_ADDON_LOGGED", rawget(trampolines, "addonMessage")),
+        scope:Connect("CHAT_MSG_ADDON_LOGGED", rawget(trampolines, "addonMessageLogged")),
         scope:Connect("GROUP_ROSTER_UPDATE", rawget(trampolines, "roster")),
     })
 end
@@ -2216,60 +2587,65 @@ local function disconnectChatEvents()
     end
 end
 
----Lower-case the first letter of an enum key, the form reasons take.
----@param name string
----@return string
-local function reasonFromEnumName(name)
-    return string.lower(string.sub(name, 1, 1)) .. string.sub(name, 2)
-end
+-- Only `registerClientPrefix` is used outside this block.
+local registerClientPrefix
 
----Register `prefix` with the client once per session.
----@param prefix string
----@return boolean|nil registered
----@return string|nil reason
-local function registerClientPrefix(prefix)
-    if rawget(clientPrefixes, prefix) then
-        return true, nil
-    end
-    local isRegistered = readChatFunction("IsAddonMessagePrefixRegistered")
-    if isRegistered ~= nil and isRegistered(prefix) == true then
-        rawset(clientPrefixes, prefix, true)
-        return true, nil
-    end
-    local register = readChatFunction("RegisterAddonMessagePrefix")
-    if register == nil then
-        -- Outside a client there is nothing to register with.
-        rawset(clientPrefixes, prefix, true)
-        return true, nil
+do
+    ---Lower-case the first letter of an enum key, the form reasons take.
+    ---@param name string
+    ---@return string
+    local function reasonFromEnumName(name)
+        return string.lower(string.sub(name, 1, 1)) .. string.sub(name, 2)
     end
 
-    local result = register(prefix)
-    if
-        result == nil
-        or result == true
-        or result == readEnumValue(
-            "RegisterAddonMessagePrefixResult",
-            "Success",
-            CLIENT_RESULT.registerSuccess
-        )
-        or result
-            == readEnumValue(
+    ---Register `prefix` with the client once per session.
+    ---@param prefix string
+    ---@return boolean|nil registered
+    ---@return string|nil reason
+    function registerClientPrefix(prefix)
+        if rawget(clientPrefixes, prefix) then
+            return true, nil
+        end
+        local isRegistered = readChatFunction("IsAddonMessagePrefixRegistered")
+        if isRegistered ~= nil and isRegistered(prefix) == true then
+            rawset(clientPrefixes, prefix, true)
+            return true, nil
+        end
+        local register = readChatFunction("RegisterAddonMessagePrefix")
+        if register == nil then
+            -- Outside a client there is nothing to register with.
+            rawset(clientPrefixes, prefix, true)
+            return true, nil
+        end
+
+        local result = register(prefix)
+        if
+            result == nil
+            or result == true
+            or result == readEnumValue(
                 "RegisterAddonMessagePrefixResult",
-                "DuplicatePrefix",
-                CLIENT_RESULT.registerDuplicate
+                "Success",
+                CLIENT_RESULT.registerSuccess
             )
-    then
-        rawset(clientPrefixes, prefix, true)
-        return true, nil
+            or result
+                == readEnumValue(
+                    "RegisterAddonMessagePrefixResult",
+                    "DuplicatePrefix",
+                    CLIENT_RESULT.registerDuplicate
+                )
+        then
+            rawset(clientPrefixes, prefix, true)
+            return true, nil
+        end
+        if result == false then
+            return nil, "refused"
+        end
+        local name = readEnumName("RegisterAddonMessagePrefixResult", result)
+        if name ~= nil then
+            return nil, reasonFromEnumName(name)
+        end
+        return nil, CLIENT_RESULT.registerNames[result] or "unknownResult"
     end
-    if result == false then
-        return nil, "refused"
-    end
-    local name = readEnumName("RegisterAddonMessagePrefixResult", result)
-    if name ~= nil then
-        return nil, reasonFromEnumName(name)
-    end
-    return nil, CLIENT_RESULT.registerNames[result] or "unknownResult"
 end
 
 ---Register `callback` for whole messages on `prefix` in `scope`.
@@ -2360,126 +2736,131 @@ end
 -- exclusive or touches only the low byte, and the multiplication by
 -- 16777619 = 2^24 + 403 is split so every intermediate stays below 2^53.
 
----The exclusive or of two bytes.
----@param left integer
----@param right integer
----@return integer
-local function xorByte(left, right)
-    local result = 0
-    local bitValue = 1
-    for _ = 1, 8 do
-        local leftBit = left % 2
-        local rightBit = right % 2
-        if leftBit ~= rightBit then
-            result = result + bitValue
+-- Only `hashValue` is used outside this block.
+local hashValue
+
+do
+    ---The exclusive or of two bytes.
+    ---@param left integer
+    ---@param right integer
+    ---@return integer
+    local function xorByte(left, right)
+        local result = 0
+        local bitValue = 1
+        for _ = 1, 8 do
+            local leftBit = left % 2
+            local rightBit = right % 2
+            if leftBit ~= rightBit then
+                result = result + bitValue
+            end
+            left = (left - leftBit) / 2
+            right = (right - rightBit) / 2
+            bitValue = bitValue * 2
         end
-        left = (left - leftBit) / 2
-        right = (right - rightBit) / 2
-        bitValue = bitValue * 2
+        return result
     end
-    return result
-end
 
----Feed `bytes` into an FNV-1a hash.
----@param hash integer
----@param bytes string
----@return integer
-local function fnvUpdate(hash, bytes)
-    for index = 1, #bytes do
-        local low = hash % 256
-        hash = hash - low + xorByte(low, string.byte(bytes, index))
-        hash = ((hash % 256) * FNV.twoPow24 + hash * FNV.primeLow) % FNV.twoPow32
-    end
-    return hash
-end
-
--- Sort rank of each key type in the canonical encoding.
-local KEY_TYPE_RANK = { boolean = 1, number = 2, string = 3 }
-
----Whether string `left` sorts before `right`, byte by byte. `<` on strings
----follows the C library's collation, which is not the same on every client.
----@param left string
----@param right string
----@return boolean
-local function stringBefore(left, right)
-    local leftLength, rightLength = #left, #right
-    for index = 1, math.min(leftLength, rightLength) do
-        local leftByte, rightByte = string.byte(left, index), string.byte(right, index)
-        if leftByte ~= rightByte then
-            return leftByte < rightByte
+    ---Feed `bytes` into an FNV-1a hash.
+    ---@param hash integer
+    ---@param bytes string
+    ---@return integer
+    local function fnvUpdate(hash, bytes)
+        for index = 1, #bytes do
+            local low = hash % 256
+            hash = hash - low + xorByte(low, string.byte(bytes, index))
+            hash = ((hash % 256) * FNV.twoPow24 + hash * FNV.primeLow) % FNV.twoPow32
         end
-    end
-    return leftLength < rightLength
-end
-
----The canonical order of two table keys.
----@param left any
----@param right any
----@return boolean
-local function keyBefore(left, right)
-    local leftRank, rightRank = KEY_TYPE_RANK[type(left)], KEY_TYPE_RANK[type(right)]
-    if leftRank ~= rightRank then
-        return leftRank < rightRank
-    end
-    if leftRank == 1 then
-        return left == false and right == true
-    end
-    if leftRank == 2 then
-        return left < right
-    end
-    return stringBefore(left, right)
-end
-
----Hash the canonical encoding of `value` into `hash`.
----@param codec table CodecKit
----@param value any a value CodecKit already serialised successfully
----@param hash integer
----@return integer|nil hash
----@return string|nil reason
-local function hashCanonical(codec, value, hash)
-    if type(value) ~= "table" then
-        local _, bytes = codec:Serialize(value)
-        return fnvUpdate(hash, bytes), nil
+        return hash
     end
 
-    local keys = {}
-    for key in pairs(value) do
-        if KEY_TYPE_RANK[type(key)] == nil then
-            return nil, "tableKey"
+    -- Sort rank of each key type in the canonical encoding.
+    local KEY_TYPE_RANK = { boolean = 1, number = 2, string = 3 }
+
+    ---Whether string `left` sorts before `right`, byte by byte. `<` on strings
+    ---follows the C library's collation, which is not the same on every client.
+    ---@param left string
+    ---@param right string
+    ---@return boolean
+    local function stringBefore(left, right)
+        local leftLength, rightLength = #left, #right
+        for index = 1, math.min(leftLength, rightLength) do
+            local leftByte, rightByte = string.byte(left, index), string.byte(right, index)
+            if leftByte ~= rightByte then
+                return leftByte < rightByte
+            end
         end
-        keys[#keys + 1] = key
+        return leftLength < rightLength
     end
-    table.sort(keys, keyBefore)
 
-    hash = fnvUpdate(hash, FNV.canonicalOpen)
-    for index = 1, #keys do
-        local key = keys[index]
-        local keyHash, keyReason = hashCanonical(codec, key, hash)
-        if keyHash == nil then
-            return nil, keyReason
+    ---The canonical order of two table keys.
+    ---@param left any
+    ---@param right any
+    ---@return boolean
+    local function keyBefore(left, right)
+        local leftRank, rightRank = KEY_TYPE_RANK[type(left)], KEY_TYPE_RANK[type(right)]
+        if leftRank ~= rightRank then
+            return leftRank < rightRank
         end
-        local valueHash, valueReason = hashCanonical(codec, value[key], keyHash)
-        if valueHash == nil then
-            return nil, valueReason
+        if leftRank == 1 then
+            return left == false and right == true
         end
-        hash = valueHash
+        if leftRank == 2 then
+            return left < right
+        end
+        return stringBefore(left, right)
     end
-    return fnvUpdate(hash, FNV.canonicalClose), nil
-end
 
----The content hash of `value`, or `nil` and CodecKit's reason when it cannot
----be serialised (a cycle, a function, a limit), or `"tableKey"`.
----@param codec table CodecKit
----@param value any
----@return integer|nil hash
----@return string|nil reason
-local function hashValue(codec, value)
-    local ok, bytesOrReason = codec:Serialize(value)
-    if not ok then
-        return nil, bytesOrReason
+    ---Hash the canonical encoding of `value` into `hash`.
+    ---@param codec table CodecKit
+    ---@param value any a value CodecKit already serialised successfully
+    ---@param hash integer
+    ---@return integer|nil hash
+    ---@return string|nil reason
+    local function hashCanonical(codec, value, hash)
+        if type(value) ~= "table" then
+            local _, bytes = codec:Serialize(value)
+            return fnvUpdate(hash, bytes), nil
+        end
+
+        local keys = {}
+        for key in pairs(value) do
+            if KEY_TYPE_RANK[type(key)] == nil then
+                return nil, "tableKey"
+            end
+            keys[#keys + 1] = key
+        end
+        table.sort(keys, keyBefore)
+
+        hash = fnvUpdate(hash, FNV.canonicalOpen)
+        for index = 1, #keys do
+            local key = keys[index]
+            local keyHash, keyReason = hashCanonical(codec, key, hash)
+            if keyHash == nil then
+                return nil, keyReason
+            end
+            local valueHash, valueReason = hashCanonical(codec, value[key], keyHash)
+            if valueHash == nil then
+                return nil, valueReason
+            end
+            hash = valueHash
+        end
+        return fnvUpdate(hash, FNV.canonicalClose), nil
     end
-    local hash, reason = hashCanonical(codec, value, FNV.offsetBasis)
-    return hash, reason
+
+    ---The content hash of `value`, or `nil` and CodecKit's reason when it cannot
+    ---be serialised (a cycle, a function, a limit), or `"tableKey"`.
+    ---@param codec table CodecKit
+    ---@param value any
+    ---@return integer|nil hash
+    ---@return string|nil reason
+    function hashValue(codec, value)
+        local ok, bytesOrReason = codec:Serialize(value)
+        if not ok then
+            return nil, bytesOrReason
+        end
+        local hash, reason = hashCanonical(codec, value, FNV.offsetBasis)
+        return hash, reason
+    end
 end
 
 -- SyncSet --------------------------------------------------------------------
@@ -2493,108 +2874,99 @@ end
 --   ack       { 2 }                     every hash matched
 --   deliver   { 3, values, removed }    only the fields whose hash differs
 
--- CodecKit options for SyncSet frames.
-local ADDON_CHANNEL_OPTIONS = { channel = "addon" }
-
----Return the peer record for `sender`, creating it when `create` is true and
----evicting the least recently used peer when the cache is full.
----@param syncSet CommKit.SyncSet
----@param sender string
----@param create boolean
----@return table|nil
-local function obtainPeer(syncSet, sender, create)
-    local peers = rawget(syncSet, "_peers")
-    local touch = rawget(syncSet, "_touch") + 1
-    rawset(syncSet, "_touch", touch)
-    local peer = rawget(peers, sender)
-    if peer ~= nil then
-        rawset(peer, "touched", touch)
-        return peer
-    end
-    if not create then
-        return nil
-    end
-
-    if rawget(syncSet, "_peerCount") >= SYNC.maxPeers then
-        local oldestName, oldestTouch = nil, nil
-        for name, candidate in pairs(peers) do
-            local touched = rawget(candidate, "touched")
-            if oldestTouch == nil or touched < oldestTouch then
-                oldestName, oldestTouch = name, touched
-            end
-        end
-        rawset(peers, oldestName, nil)
-        rawset(syncSet, "_peerCount", rawget(syncSet, "_peerCount") - 1)
-    end
-    peer = { values = {}, hashes = {}, touched = touch, repliedAt = false }
-    rawset(peers, sender, peer)
-    rawset(syncSet, "_peerCount", rawget(syncSet, "_peerCount") + 1)
-    return peer
-end
-
----Encode a SyncSet message, or `nil` when CodecKit is gone or refuses it.
----@param message table
----@return string|nil
-local function encodeSyncMessage(message)
-    local codec = findOptional("codecKit", DEPENDENCY_API.codecKit)
-    if codec == nil then
-        return nil
-    end
-    local ok, text = codec:Encode(message, ADDON_CHANNEL_OPTIONS)
-    if not ok then
-        return nil
-    end
-    return text
-end
-
 -- Forward declaration: the SyncSet sends through the same queue as scope:Send.
 local enqueueSend
 
----Answer a request with an ack or a delta.
----@param syncSet CommKit.SyncSet
----@param claimed any the requester's hashes
----@param sender string
-local function answerRequest(syncSet, claimed, sender)
-    if type(claimed) ~= "table" then
-        count("syncRejected")
-        return
-    end
-    count("syncRequests")
-    local peer = obtainPeer(syncSet, sender, true) --[[@as table]]
-    local currentTime = now()
-    local repliedAt = rawget(peer, "repliedAt")
-    if repliedAt ~= false and currentTime - repliedAt < SYNC.replyIntervalSeconds then
-        count("syncRejected")
-        return
-    end
-    rawset(peer, "repliedAt", currentTime)
+-- Only `encodeSyncMessage` and `receiveSync` are used outside this block.
+local encodeSyncMessage, receiveSync
 
-    local ownValues = rawget(syncSet, "_values")
-    local ownHashes = rawget(syncSet, "_hashes")
-    local fieldList = rawget(syncSet, "_fieldList")
-    local values, removed = {}, {}
-    local differs = false
-    for index = 1, #fieldList do
-        local field = fieldList[index]
-        local mine = rawget(ownHashes, field)
-        local theirs = rawget(claimed, field)
-        if mine ~= nil and mine ~= theirs then
-            values[field] = rawget(ownValues, field)
-            differs = true
-        elseif mine == nil and theirs ~= nil then
-            removed[#removed + 1] = field
-            differs = true
+do
+    ---Return the peer record for `sender`, creating it when `create` is true.
+    ---When the cache is full, the least recently seen peer that was not
+    ---answered within the reply interval is evicted; when every peer was, `nil`
+    ---is returned, so an eviction can never lift a peer's reply interval.
+    ---@param syncSet CommKit.SyncSet
+    ---@param sender string
+    ---@param create boolean
+    ---@return table|nil
+    local function obtainPeer(syncSet, sender, create)
+        local peers = rawget(syncSet, "_peers")
+        local touch = rawget(syncSet, "_touch") + 1
+        rawset(syncSet, "_touch", touch)
+        local peer = rawget(peers, sender)
+        if peer ~= nil then
+            rawset(peer, "touched", touch)
+            return peer
         end
+        if not create then
+            return nil
+        end
+
+        if rawget(syncSet, "_peerCount") >= SYNC.maxPeers then
+            local currentTime = now()
+            local oldestName, oldestTouch = nil, nil
+            for name, candidate in pairs(peers) do
+                local touched = rawget(candidate, "touched")
+                local repliedAt = rawget(candidate, "repliedAt")
+                local throttled = repliedAt ~= false
+                    and currentTime - repliedAt < SYNC.replyIntervalSeconds
+                if not throttled and (oldestTouch == nil or touched < oldestTouch) then
+                    oldestName, oldestTouch = name, touched
+                end
+            end
+            if oldestName == nil then
+                return nil
+            end
+            rawset(peers, oldestName, nil)
+            rawset(syncSet, "_peerCount", rawget(syncSet, "_peerCount") - 1)
+        end
+        peer = { values = {}, hashes = {}, touched = touch, repliedAt = false, reply = false }
+        rawset(peers, sender, peer)
+        rawset(syncSet, "_peerCount", rawget(syncSet, "_peerCount") + 1)
+        return peer
     end
 
-    local text
-    if differs then
-        text = encodeSyncMessage({ SYNC.deliver, values, removed })
-    else
-        text = encodeSyncMessage({ SYNC.ack })
+    ---Encode a SyncSet message, or `nil` when CodecKit is gone or refuses it.
+    ---@param message table
+    ---@return string|nil
+    function encodeSyncMessage(message)
+        local codec = findOptional("codecKit", DEPENDENCY_API.codecKit)
+        if codec == nil then
+            return nil
+        end
+        local ok, text = codec:Encode(message, SYNC.codecOptions)
+        if not ok then
+            return nil
+        end
+        return text
     end
-    if text ~= nil then
-        enqueueSend(
+
+    ---Whether a reply to `peer` is still in the queue.
+    ---@param peer table
+    ---@return boolean
+    local function replyPending(peer)
+        local reply = rawget(peer, "reply")
+        if reply == false then
+            return false
+        end
+        local replyState = rawget(reply, "_state")
+        return replyState == SEND_STATE.queued or replyState == SEND_STATE.sending
+    end
+
+    ---Queue a reply to `sender`, counting its bytes against the shared reply
+    ---allowance until it is terminal.
+    ---@param syncSet CommKit.SyncSet
+    ---@param peer table
+    ---@param sender string
+    ---@param text string
+    local function queueReply(syncSet, peer, sender, text)
+        local length = #text
+        if rawget(state, "syncReplyBytes") + length > SYNC.maxReplyBytes then
+            count("syncReplyDropped")
+            return
+        end
+        local handle
+        handle = enqueueSend(
             rawget(syncSet, "_scope"),
             rawget(syncSet, "_prefix"),
             text,
@@ -2603,109 +2975,185 @@ local function answerRequest(syncSet, claimed, sender)
             PRIORITY.NORMAL,
             false,
             false,
-            false
+            function()
+                rawset(state, "syncReplyBytes", rawget(state, "syncReplyBytes") - length)
+                if rawget(peer, "reply") == handle then
+                    rawset(peer, "reply", false)
+                end
+            end
         )
+        if handle == nil then
+            count("syncReplyDropped")
+            return
+        end
+        rawset(state, "syncReplyBytes", rawget(state, "syncReplyBytes") + length)
+        rawset(peer, "reply", handle)
     end
-end
 
----Store a delivered value when it passes the field's schema and differs.
----@param syncSet CommKit.SyncSet
----@param codec table CodecKit
----@param peer table
----@param sender string
----@param field string
----@param value any
-local function acceptDelivered(syncSet, codec, peer, sender, field, value)
-    local schemas = rawget(syncSet, "_schemas")
-    local schema = schemas ~= false and rawget(schemas, field) or nil
-    if schema ~= nil and schema:Check(value) ~= true then
-        count("syncRejected")
-        return
-    end
-    local hash = hashValue(codec, value)
-    if hash == nil then
-        count("syncRejected")
-        return
-    end
-    local peerHashes = rawget(peer, "hashes")
-    if rawget(peerHashes, field) == hash then
-        return
-    end
-    rawset(rawget(peer, "values"), field, value)
-    rawset(peerHashes, field, hash)
-    rawget(syncSet, "_signal"):Fire(sender, field, value)
-end
+    ---Answer a request with an ack or a delta. Requests are answered only when
+    ---whispered, at most once a second per peer, with at most one reply per
+    ---peer in the queue and at most 8 KB of replies queued in all.
+    ---@param syncSet CommKit.SyncSet
+    ---@param claimed any the requester's hashes
+    ---@param sender string
+    ---@param distribution string
+    local function answerRequest(syncSet, claimed, sender, distribution)
+        if type(claimed) ~= "table" or distribution ~= "WHISPER" then
+            count("syncRejected")
+            return
+        end
+        count("syncRequests")
+        local peer = obtainPeer(syncSet, sender, true)
+        if peer == nil then
+            count("syncReplyDropped")
+            return
+        end
+        local currentTime = now()
+        local repliedAt = rawget(peer, "repliedAt")
+        if repliedAt ~= false and currentTime - repliedAt < SYNC.replyIntervalSeconds then
+            count("syncRejected")
+            return
+        end
+        if replyPending(peer) then
+            count("syncReplyDropped")
+            return
+        end
+        rawset(peer, "repliedAt", currentTime)
 
----Apply a delivery: changed values, then removed fields.
----@param syncSet CommKit.SyncSet
----@param codec table CodecKit
----@param values any
----@param removed any
----@param sender string
-local function applyDelivery(syncSet, codec, values, removed, sender)
-    if type(values) ~= "table" or type(removed) ~= "table" then
-        count("syncRejected")
-        return
-    end
-    count("syncDeliveries")
-    local peer = obtainPeer(syncSet, sender, true) --[[@as table]]
-    local fields = rawget(syncSet, "_fields")
-    local fieldList = rawget(syncSet, "_fieldList")
-    for index = 1, #fieldList do
-        local field = fieldList[index]
-        local value = rawget(values, field)
-        if value ~= nil then
-            acceptDelivered(syncSet, codec, peer, sender, field, value)
+        local ownValues = rawget(syncSet, "_values")
+        local ownHashes = rawget(syncSet, "_hashes")
+        local fieldList = rawget(syncSet, "_fieldList")
+        local values, removed = {}, {}
+        local differs = false
+        for index = 1, #fieldList do
+            local field = fieldList[index]
+            local mine = rawget(ownHashes, field)
+            local theirs = rawget(claimed, field)
+            if mine ~= nil and mine ~= theirs then
+                values[field] = rawget(ownValues, field)
+                differs = true
+            elseif mine == nil and theirs ~= nil then
+                removed[#removed + 1] = field
+                differs = true
+            end
+        end
+
+        local text
+        if differs then
+            text = encodeSyncMessage({ SYNC.deliver, values, removed })
+        else
+            text = encodeSyncMessage({ SYNC.ack })
+        end
+        if text ~= nil then
+            queueReply(syncSet, peer, sender, text)
         end
     end
 
-    local peerValues = rawget(peer, "values")
-    local peerHashes = rawget(peer, "hashes")
-    for index = 1, #fieldList do
-        local field = rawget(removed, index)
-        if field == nil then
-            break
+    ---Store a delivered value when it passes the field's schema and differs.
+    ---@param syncSet CommKit.SyncSet
+    ---@param codec table CodecKit
+    ---@param peer table
+    ---@param sender string
+    ---@param field string
+    ---@param value any
+    local function acceptDelivered(syncSet, codec, peer, sender, field, value)
+        local schemas = rawget(syncSet, "_schemas")
+        local schema = schemas ~= false and rawget(schemas, field) or nil
+        if schema ~= nil and schema:Check(value) ~= true then
+            count("syncRejected")
+            return
         end
-        if
-            type(field) == "string"
-            and rawget(fields, field)
-            and rawget(peerHashes, field) ~= nil
-        then
-            rawset(peerValues, field, nil)
-            rawset(peerHashes, field, nil)
-            rawget(syncSet, "_signal"):Fire(sender, field, nil)
+        local hash = hashValue(codec, value)
+        if hash == nil then
+            count("syncRejected")
+            return
         end
+        local peerHashes = rawget(peer, "hashes")
+        if rawget(peerHashes, field) == hash then
+            return
+        end
+        rawset(rawget(peer, "values"), field, value)
+        rawset(peerHashes, field, hash)
+        rawget(syncSet, "_signal"):Fire(sender, field, value)
     end
-end
 
----A SyncSet frame arrived on the SyncSet's prefix. Received data is
----untrusted: every shape is checked before use and a bad frame is counted.
----@param syncSet CommKit.SyncSet
----@param text string
----@param sender string
-local function receiveSync(syncSet, text, sender)
-    if rawget(syncSet, "_closed") then
-        return
+    ---Apply a delivery: removed fields, then changed values. A field named in
+    ---both is removed, once.
+    ---@param syncSet CommKit.SyncSet
+    ---@param codec table CodecKit
+    ---@param values any
+    ---@param removed any
+    ---@param sender string
+    local function applyDelivery(syncSet, codec, values, removed, sender)
+        if type(values) ~= "table" or type(removed) ~= "table" then
+            count("syncRejected")
+            return
+        end
+        local peer = obtainPeer(syncSet, sender, true)
+        if peer == nil then
+            count("syncRejected")
+            return
+        end
+        count("syncDeliveries")
+        local fields = rawget(syncSet, "_fields")
+        local fieldList = rawget(syncSet, "_fieldList")
+        local peerValues = rawget(peer, "values")
+        local peerHashes = rawget(peer, "hashes")
+        local removedSet = {}
+        for index = 1, #fieldList do
+            local field = rawget(removed, index)
+            if field == nil then
+                break
+            end
+            if type(field) == "string" and rawget(fields, field) then
+                removedSet[field] = true
+                if rawget(peerHashes, field) ~= nil then
+                    rawset(peerValues, field, nil)
+                    rawset(peerHashes, field, nil)
+                    rawget(syncSet, "_signal"):Fire(sender, field, nil)
+                end
+            end
+        end
+
+        for index = 1, #fieldList do
+            local field = fieldList[index]
+            local value = rawget(values, field)
+            if value ~= nil and not removedSet[field] then
+                acceptDelivered(syncSet, codec, peer, sender, field, value)
+            end
+        end
     end
-    local codec = findOptional("codecKit", DEPENDENCY_API.codecKit)
-    if codec == nil then
-        return
-    end
-    local ok, message = codec:Decode(text, ADDON_CHANNEL_OPTIONS)
-    if not ok or type(message) ~= "table" then
-        count("syncRejected")
-        return
-    end
-    local verb = rawget(message, 1)
-    if verb == SYNC.request then
-        answerRequest(syncSet, rawget(message, 2), sender)
-    elseif verb == SYNC.ack then
-        count("syncAcknowledgements")
-        obtainPeer(syncSet, sender, false)
-    elseif verb == SYNC.deliver then
-        applyDelivery(syncSet, codec, rawget(message, 2), rawget(message, 3), sender)
-    else
-        count("syncRejected")
+
+    ---A SyncSet frame arrived on the SyncSet's prefix. Received data is
+    ---untrusted: every shape is checked before use and a bad frame is counted.
+    ---@param syncSet CommKit.SyncSet
+    ---@param text string
+    ---@param sender string
+    ---@param distribution string
+    function receiveSync(syncSet, text, sender, distribution)
+        if rawget(syncSet, "_closed") then
+            return
+        end
+        local codec = findOptional("codecKit", DEPENDENCY_API.codecKit)
+        if codec == nil then
+            return
+        end
+        local ok, message = codec:Decode(text, SYNC.codecOptions)
+        if not ok or type(message) ~= "table" then
+            count("syncRejected")
+            return
+        end
+        local verb = rawget(message, 1)
+        if verb == SYNC.request then
+            answerRequest(syncSet, rawget(message, 2), sender, distribution)
+        elseif verb == SYNC.ack then
+            count("syncAcknowledgements")
+            obtainPeer(syncSet, sender, false)
+        elseif verb == SYNC.deliver then
+            applyDelivery(syncSet, codec, rawget(message, 2), rawget(message, 3), sender)
+        else
+            count("syncRejected")
+        end
     end
 end
 
@@ -2749,7 +3197,9 @@ local function targetFits(distribution, target)
         return type(target) == "string" and target ~= ""
     end
     if distribution == "CHANNEL" then
-        return (type(target) == "string" and target ~= "") or type(target) == "number"
+        -- The client addresses a channel by its number.
+        return type(target) == "number"
+            or (type(target) == "string" and string.find(target, "^%d+$") ~= nil)
     end
     return true
 end
@@ -2797,7 +3247,15 @@ enqueueSend = function(
         totalChunks = math.ceil(length / WIRE.chunkPayloadBytes)
     end
     local maxQueuedBytes = rawget(limits, "maxQueuedBytes")
-    if length > maxQueuedBytes or totalChunks > WIRE.maxChunks then
+    local scheme = digitScheme(logged)
+    if
+        length > maxQueuedBytes
+        or totalChunks > scheme.maxChunks
+        or (
+            totalChunks > 1
+            and declaredBytes(totalChunks) > rawget(limits, "maxReassemblyBytesPerSender")
+        )
+    then
         return refuseSend(REASON.tooLarge)
     end
     if
@@ -2813,8 +3271,9 @@ enqueueSend = function(
 
     local streamId = 0
     if totalChunks > 1 then
-        streamId = rawget(state, "nextStreamId")
-        rawset(state, "nextStreamId", (streamId + 1) % WIRE.streamIdCount)
+        local counter = logged and "nextLoggedStreamId" or "nextStreamId"
+        streamId = rawget(state, counter)
+        rawset(state, counter, (streamId + 1) % scheme.radix)
     end
 
     local handle = setmetatable({
@@ -2825,6 +3284,8 @@ enqueueSend = function(
         _record = false,
     }, HANDLE_METATABLE)
     local record = rawget(pools, "records"):Acquire()
+    record.kind = "message"
+    record.inFlight = false
     record.handle = handle
     record.scope = scope
     record.prefix = prefix
@@ -3392,9 +3853,13 @@ function ScopeMethods.SyncSet(self, prefix, options)
         _closed = false,
     }, SYNC_SET_METATABLE)
 
-    local registration, reason = registerInScope(self, prefix, function(_, text, _, sender)
-        rawget(dispatch, "receiveSync")(syncSet, text, sender)
-    end)
+    local registration, reason = registerInScope(
+        self,
+        prefix,
+        function(_, text, distribution, sender)
+            rawget(dispatch, "receiveSync")(syncSet, text, sender, distribution)
+        end
+    )
     if registration == nil then
         return nil, reason
     end
@@ -3670,6 +4135,7 @@ rawset(dispatch, "isolatedCall", isolatedCall)
 rawset(dispatch, "runDriver", runDriver)
 rawset(dispatch, "sampleFrameRate", sampleFrameRate)
 rawset(dispatch, "onExpiryTimer", onExpiryTimer)
+rawset(dispatch, "flushDropReports", flushDropReports)
 rawset(dispatch, "onAddonMessage", onAddonMessage)
 rawset(dispatch, "onRosterUpdate", onRosterUpdate)
 rawset(dispatch, "onEnteringWorld", onEnteringWorld)
@@ -3680,31 +4146,42 @@ rawset(dispatch, "closeScope", closeScope)
 
 -- The trampolines are created once per session and handed to EventKit,
 -- TimerKit, SchedulerKit and HookKit; they only look up the dispatch table.
-if rawget(trampolines, "driver") == nil then
-    rawset(trampolines, "driver", function()
+-- Each missing one is created, so a later revision can add one.
+for name, trampoline in pairs({
+    driver = function()
         rawget(dispatch, "runDriver")()
-    end)
-    rawset(trampolines, "sample", function()
+    end,
+    sample = function()
         rawget(dispatch, "sampleFrameRate")()
-    end)
-    rawset(trampolines, "expire", function()
+    end,
+    expire = function()
         rawget(dispatch, "onExpiryTimer")()
-    end)
-    rawset(trampolines, "addonMessage", function(_, ...)
+    end,
+    flushDrops = function()
+        rawget(dispatch, "flushDropReports")()
+    end,
+    addonMessage = function(_, ...)
         rawget(dispatch, "onAddonMessage")(...)
-    end)
-    rawset(trampolines, "roster", function()
+    end,
+    addonMessageLogged = function(_, prefix, text, channel, sender)
+        rawget(dispatch, "onAddonMessage")(prefix, text, channel, sender, true)
+    end,
+    roster = function()
         rawget(dispatch, "onRosterUpdate")()
-    end)
-    rawset(trampolines, "enteringWorld", function()
+    end,
+    enteringWorld = function()
         rawget(dispatch, "onEnteringWorld")()
-    end)
-    rawset(trampolines, "outsideAddon", function(prefix, text)
+    end,
+    outsideAddon = function(prefix, text)
         rawget(dispatch, "chargeOutsideAddon")(prefix, text)
-    end)
-    rawset(trampolines, "outsideChat", function(text)
+    end,
+    outsideChat = function(text)
         rawget(dispatch, "chargeOutsideChat")(text)
-    end)
+    end,
+}) do
+    if rawget(trampolines, name) == nil then
+        rawset(trampolines, name, trampoline)
+    end
 end
 
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)

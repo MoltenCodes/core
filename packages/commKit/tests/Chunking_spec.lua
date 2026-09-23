@@ -101,7 +101,12 @@ describe("CommKit chunking", function()
     end)
 
     it("writes two-digit chunk numbers past 127", function()
-        CommKit:SetLimits({ maxQueuedBytes = 65536, burst = 1000000, maxCps = 100000 })
+        CommKit:SetLimits({
+            maxQueuedBytes = 65536,
+            maxReassemblyBytesPerSender = 65536,
+            burst = 1000000,
+            maxCps = 100000,
+        })
         local text = TestEnv.Text(251 * 129 + 1)
         local scope = CommKit:CreateScope()
         local handle = assert(scope:Send({ prefix = PREFIX, text = text, distribution = "GUILD" }))
