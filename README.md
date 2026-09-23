@@ -1,5 +1,9 @@
 # MoltenCodes WoW Framework
 
+[![CI](https://github.com/MoltenCodes/core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MoltenCodes/core/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/MoltenCodes/core?include_prereleases&sort=semver)](https://github.com/MoltenCodes/core/releases)
+
+
 A modular Lua framework for professional World of Warcraft addon development.
 
 This repository is a monorepo. Every publishable runtime package lives under `packages/` and owns its source, tests, documentation, changelog, and package manifest. Repository tooling discovers packages from that structure instead of maintaining a second hard-coded package list.
@@ -99,7 +103,7 @@ python3 -m tooling.spell
 
 ```text
 .
-├── .github/                 # Continuous integration
+├── .github/                 # CI, templates, labels, Dependabot, CODEOWNERS
 ├── .pkgmeta                 # Addon-site packager metadata
 ├── .vscode/                 # Editor integration only
 ├── busted.yml               # Selene standard library for Busted test code
@@ -168,3 +172,11 @@ Start with [`docs/README.md`](docs/README.md) for the documentation map.
 ## Project roadmap
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the canonical framework development roadmap.
+
+## Community
+
+Contributions are welcome: start with [`CONTRIBUTING.md`](CONTRIBUTING.md),
+which links to the full guide in [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md).
+Ask questions and report bugs as [`SUPPORT.md`](SUPPORT.md) describes, report
+vulnerabilities privately as [`SECURITY.md`](SECURITY.md) describes, and follow
+the [Code of Conduct](CODE_OF_CONDUCT.md) in every project space.
