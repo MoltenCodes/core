@@ -47,11 +47,15 @@ class LintScope(NamedTuple):
 def discover_runtime_lua_files() -> list[Path]:
     """Return every runtime Lua file in deterministic order.
 
-    That is each package's `src/` tree plus the example addon's own source. The
+    That is each package's `src/` tree, each package's `fidelity/` tree (a
+    suite that runs in the game client) and the example addon's own source. The
     example is addon code rather than test code, so it is held to the runtime
     standard library: a Busted global there would be a real defect.
     """
     discovered = [path for path in PACKAGES.glob("*/src/**/*.lua") if path.is_file()]
+    # A fidelity suite runs inside the game client, not under Busted, so it is
+    # runtime code and is held to the runtime standard library.
+    discovered.extend(path for path in PACKAGES.glob("*/fidelity/**/*.lua") if path.is_file())
     discovered.extend(
         path
         for path in EXAMPLES.glob("*.lua")

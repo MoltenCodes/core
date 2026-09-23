@@ -161,13 +161,14 @@ jobs:
           (cd dist/framework && sha256sum --check --strict CHECKSUMS.txt)
 
       # Kits are independently publishable, so each one also gets a bundle of
-      # its own (with its dependency closure). The package list is discovered
-      # from the manifests, never written here.
+      # its own (with its dependency closure). The list comes from the
+      # manifests through tooling and leaves out development packages, which
+      # are tested but never bundled.
       - name: Build one bundle per package
         run: |
           set -euo pipefail
-          for manifest in packages/*/package.manifest.json; do
-            package_id="$(basename "$(dirname "${manifest}")")"
+          package_ids="$(python3 -m tooling.package.list --release)"
+          for package_id in ${package_ids}; do
             python3 -m tooling.package.build --package "${package_id}" \
               --out "dist/packages/${package_id}" --zip --verify
             (cd "dist/packages/${package_id}" && sha256sum --check --strict CHECKSUMS.txt)

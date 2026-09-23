@@ -15,6 +15,7 @@ from tooling.validation.interface_numbers import (
 from tooling.validation.validate_manifests import (
     ROOT,
     error,
+    is_development,
     load_manifests,
     package_directories,
     validate_graph,
@@ -107,6 +108,9 @@ INTERFACE_LINE_RE = re.compile(r"^[ \t]*##[ \t]*Interface[ \t]*:[ \t]*(.*?)[ \t]
 
 #: A row of the supported-client table: a cell holding a backticked number.
 SUPPORTED_CLIENT_ROW_RE = re.compile(r"^\|.*\|[ \t]*`[0-9]+`[ \t]*\|.*\|[ \t]*$", re.M)
+
+#: The packager metadata whose `ignore:` list must hold every development package.
+PKGMETA = Path(".pkgmeta")
 
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 IGNORED_DIRECTORY_NAMES = {
@@ -485,6 +489,56 @@ def validate_interface_numbers(expected: SupportedClients | None = None) -> list
     return errors
 
 
+def pkgmeta_ignore_entries(text: str) -> list[str]:
+    """Return the entries of the top-level `ignore:` list in a `.pkgmeta` file.
+
+    `.pkgmeta` is YAML, but only this one block-list shape is read, so the
+    standard library suffices: the `ignore:` key at column 0, followed by
+    indented `- entry` lines, ending at the next line that starts at column 0.
+    Comments and blank lines inside the list are skipped.
+    """
+    entries: list[str] = []
+    in_ignore = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if not line[0].isspace():
+            in_ignore = stripped == "ignore:"
+            continue
+        if in_ignore and stripped.startswith("- "):
+            entries.append(stripped[2:].strip().strip("\"'").rstrip("/"))
+    return entries
+
+
+def validate_development_packages_ignored(manifests: dict[str, dict[str, object]]) -> list[str]:
+    """Check that the packager ignores every development package.
+
+    The local builder skips development packages on its own, but the BigWigs
+    packager copies whatever `.pkgmeta` does not ignore. A development package
+    missing from `ignore:` would therefore ship to the addon sites.
+    """
+    development = sorted(name for name, data in manifests.items() if is_development(data))
+    if not development:
+        return []
+
+    path = ROOT / PKGMETA
+    if not path.is_file():
+        # `validate_required_root_files` already reports the missing file.
+        return []
+
+    ignored = set(pkgmeta_ignore_entries(path.read_text(encoding="utf-8")))
+    return [
+        error(
+            path,
+            f'development package "{name}" is not ignored; add "  - packages/{name}" '
+            'under "ignore:"',
+        )
+        for name in development
+        if f"packages/{name}" not in ignored
+    ]
+
+
 def _is_external_link(target: str) -> bool:
     lowered = target.lower()
     return (
@@ -538,6 +592,7 @@ def validate_repository() -> tuple[dict[str, dict[str, object]], list[str]]:
     errors.extend(validate_example_language_server_config())
     errors.extend(validate_package_layout())
     errors.extend(validate_interface_numbers())
+    errors.extend(validate_development_packages_ignored(manifests))
     errors.extend(validate_markdown_links())
     return manifests, errors
 

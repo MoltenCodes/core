@@ -32,6 +32,28 @@ with it.
 | Field | Type | Description |
 |---|---|---|
 | `optionalDependencies` | object | Packages this package uses when they are present, found at call time. Same shape as `dependencies`. See [Optional dependencies](#optional-dependencies). |
+| `distribution` | string | `"release"` (the default when absent) or `"development"`. See [Distribution](#distribution). |
+
+## Distribution
+
+`distribution` says whether a package ships to addon authors:
+
+| Value | Tested and linted | Bundled by `tooling.package.build` | Published through `.pkgmeta` |
+|---|---|---|---|
+| `"release"` (default) | yes | yes | yes, moved into the embeddable layout |
+| `"development"` | yes | no: `--all` skips it and lists it under `skipped` in `manifest.json`; `--package` refuses it | no: it must appear in the `ignore:` list as `packages/<id>` |
+
+A development package is test and diagnostic tooling that runs against the
+framework, for example a fidelity suite under `packages/<id>/fidelity/` that is
+executed inside the game client. Rules:
+
+- only the two values are accepted;
+- a **release** package may not list a development package in `dependencies` or
+  `optionalDependencies`, because no shipped bundle ever contains one;
+- a **development** package may depend on anything;
+- repository validation fails until `.pkgmeta` ignores every development
+  package with a `- packages/<id>` line under `ignore:`, because the packager
+  otherwise copies whatever is not ignored.
 
 ## Runtime API fields
 

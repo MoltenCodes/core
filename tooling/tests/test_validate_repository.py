@@ -544,3 +544,76 @@ class RepositoryInterfaceNumberTests(unittest.TestCase):
 
     def test_repository_quotes_only_the_supported_numbers(self):
         self.assertEqual([], module.validate_interface_numbers())
+
+
+class DevelopmentPackagePkgmetaTests(unittest.TestCase):
+    """Every development package must be in `.pkgmeta`'s `ignore:` list."""
+
+    PKGMETA = """\
+package-as: MoltenCodes
+
+# Development files.
+ignore:
+  - docs
+  # The test tooling package is never shipped.
+  - packages/testKit/
+  - "packages/benchKit"
+move-folders:
+  MoltenCodes/packages/registry/src: MoltenCodes/registry
+"""
+
+    MANIFESTS = {
+        "registry": {"dependencies": {}},
+        "testKit": {"dependencies": {}, "distribution": "development"},
+        "benchKit": {"dependencies": {}, "distribution": "development"},
+    }
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        self.original_root = module.ROOT
+        module.ROOT = self.root
+
+    def tearDown(self):
+        module.ROOT = self.original_root
+        self.tempdir.cleanup()
+
+    def write_pkgmeta(self, text: str) -> None:
+        (self.root / module.PKGMETA).write_text(text, encoding="utf-8")
+
+    def test_ignore_entries_are_read_from_the_block_list_only(self):
+        self.assertEqual(
+            ["docs", "packages/testKit", "packages/benchKit"],
+            module.pkgmeta_ignore_entries(self.PKGMETA),
+        )
+
+    def test_ignored_development_packages_are_accepted(self):
+        self.write_pkgmeta(self.PKGMETA)
+
+        self.assertEqual([], module.validate_development_packages_ignored(self.MANIFESTS))
+
+    def test_missing_ignore_line_is_reported_with_the_line_to_add(self):
+        self.write_pkgmeta(self.PKGMETA.replace('  - "packages/benchKit"\n', ""))
+
+        errors = module.validate_development_packages_ignored(self.MANIFESTS)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('development package "benchKit" is not ignored', errors[0])
+        self.assertIn('"  - packages/benchKit"', errors[0])
+
+    def test_a_move_folders_mention_does_not_count_as_ignored(self):
+        self.write_pkgmeta(
+            "ignore:\n  - docs\nmove-folders:\n  - packages/testKit\n  - packages/benchKit\n"
+        )
+
+        errors = module.validate_development_packages_ignored(self.MANIFESTS)
+
+        self.assertEqual(2, len(errors))
+
+    def test_release_packages_need_no_ignore_line(self):
+        self.write_pkgmeta("ignore:\n  - docs\n")
+
+        self.assertEqual(
+            [], module.validate_development_packages_ignored({"registry": {"dependencies": {}}})
+        )
+

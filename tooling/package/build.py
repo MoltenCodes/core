@@ -29,6 +29,7 @@ from typing import Any, Iterable, Sequence
 
 from tooling.validation.validate_manifests import (
     ROOT,
+    is_development,
     load_manifests,
     validate_graph,
 )
@@ -297,7 +298,13 @@ def build(
 
     ``package_name`` selects a single package; its runtime dependencies are
     included as well, because a bundle that cannot load is not a release
-    artifact. Omitting it builds every package in the repository.
+    artifact. Omitting it builds every release package in the repository.
+
+    Development packages (``"distribution": "development"``) are never bundled:
+    an ``--all`` build skips them and lists them under ``skipped`` in the
+    bundle's ``manifest.json``, and naming one as ``package_name`` is an error.
+    Validation guarantees no release package depends on one, so skipping them
+    never breaks a load order.
     """
     manifests, errors = load_manifests()
     errors.extend(validate_graph(manifests))
@@ -308,13 +315,21 @@ def build(
         if not isinstance(manifest.get("license"), str) or not manifest["license"].strip():
             raise BuildError(f'packages/{name}: manifest is missing a "license"')
 
+    skipped = sorted(name for name, data in manifests.items() if is_development(data))
+
     if package_name is None:
         subject = None
         bundle_name = FRAMEWORK_BUNDLE_NAME
-        selected = sorted(manifests)
+        selected = sorted(name for name in manifests if name not in skipped)
     else:
         if package_name not in manifests:
             raise BuildError(f'unknown package "{package_name}"')
+        if package_name in skipped:
+            raise BuildError(
+                f'package "{package_name}" has "distribution": "development"; development '
+                "packages are tested but never bundled"
+            )
+        skipped = []
         subject = package_name
         bundle_name = f"{FRAMEWORK_BUNDLE_NAME}-{package_name}"
         selected = [package_name]
@@ -334,6 +349,7 @@ def build(
     shutil.copyfile(license_source, bundle_dir / "LICENSE")
 
     manifest = build_manifest(bundle_name, subject, ordered, manifests, published_files)
+    manifest["skipped"] = skipped
     (bundle_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=False) + "\n", encoding="utf-8"
     )
@@ -390,6 +406,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if "api" in entry:
             runtime = f" [API {entry['api']}, Revision {entry['revision']}]"
         print(f"  - {name} {entry['version']}{runtime} ({entry['role']})")
+    for name in manifest["skipped"]:
+        print(f"  - {name} skipped (development package, never bundled)")
     print("  load order:")
     for relative in manifest["loadOrder"]:
         print(f"    {relative}")

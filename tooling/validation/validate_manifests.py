@@ -27,7 +27,7 @@ SEMVER_RE = re.compile(
 )
 
 REQUIRED = {"name", "displayName", "description", "version", "license", "dependencies"}
-OPTIONAL = {"api", "revision", "optionalDependencies"}
+OPTIONAL = {"api", "revision", "optionalDependencies", "distribution"}
 ALLOWED = REQUIRED | OPTIONAL
 
 #: The two dependency maps a manifest can carry. Both have the same shape,
@@ -36,6 +36,12 @@ ALLOWED = REQUIRED | OPTIONAL
 #: through ``Registry:Find`` and is never part of the load order or the bundle.
 #: See docs/PACKAGE_MANIFEST.md.
 DEPENDENCY_FIELDS = ("dependencies", "optionalDependencies")
+
+#: A release package is bundled and published; a development package (test
+#: tooling, for example) is tested and linted like any other but never bundled.
+RELEASE_DISTRIBUTION = "release"
+DEVELOPMENT_DISTRIBUTION = "development"
+DISTRIBUTIONS = (RELEASE_DISTRIBUTION, DEVELOPMENT_DISTRIBUTION)
 
 #: The repository ships under one licence, so a package declaring a different
 #: one would contradict the LICENSE file that is packaged beside it.
@@ -174,6 +180,11 @@ def load_manifests() -> tuple[dict[str, dict[str, Any]], list[str]]:
 
         errors.extend(validate_optional_dependency_position(path, data))
 
+        if "distribution" in data and data["distribution"] not in DISTRIBUTIONS:
+            errors.append(
+                error(path, f'"distribution" must be one of {", ".join(DISTRIBUTIONS)}')
+            )
+
         for field in DEPENDENCY_FIELDS:
             if field == "optionalDependencies" and field not in data:
                 continue
@@ -204,6 +215,17 @@ def validate_dependency_map(path: Path, field: str, value: Any) -> list[str]:
         if not positive_integer(contract.get("api")):
             errors.append(error(path, f"{field}.{dep}.api must be positive"))
     return errors
+
+
+def distribution(data: dict[str, Any]) -> str:
+    """Return a manifest's distribution, `"release"` when the field is absent."""
+    value = data.get("distribution", RELEASE_DISTRIBUTION)
+    return value if value in DISTRIBUTIONS else RELEASE_DISTRIBUTION
+
+
+def is_development(data: dict[str, Any]) -> bool:
+    """Whether a manifest declares a development package, which is never bundled."""
+    return distribution(data) == DEVELOPMENT_DISTRIBUTION
 
 
 def dependency_label(field: str) -> str:
@@ -255,7 +277,8 @@ def validate_graph(manifests: dict[str, dict[str, Any]]) -> list[str]:
     Required and optional dependencies are checked the same way: each must name
     an existing package that exposes the requested API generation, and neither
     may name the package itself. A package may not list the same dependency in
-    both maps.
+    both maps. A release package may not depend, in either map, on a
+    development package; a development package may depend on anything.
 
     Cycles are searched for in the *required* graph only. A required edge means
     "loaded first and resolved at file scope", so a required cycle can never
@@ -290,6 +313,19 @@ def validate_graph(manifests: dict[str, dict[str, Any]]) -> list[str]:
                 dependency = manifests.get(dep)
                 if dependency is None:
                     errors.append(error(path, f'{label} "{dep}" does not exist'))
+                    continue
+
+                # A release bundle can never contain a development package, so
+                # a release package that needed one could not load (required)
+                # or could never find it (optional) in any shipped bundle.
+                if not is_development(data) and is_development(dependency):
+                    errors.append(
+                        error(
+                            path,
+                            f'release package "{name}" must not use development package '
+                            f'"{dep}" as {"an" if label.startswith("o") else "a"} {label}',
+                        )
+                    )
                     continue
 
                 required_api = contracts[dep]["api"]

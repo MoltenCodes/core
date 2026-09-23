@@ -52,6 +52,16 @@ class LuaLintDiscoveryTests(unittest.TestCase):
 
         self.assertEqual([top, child], files)
 
+    def test_fidelity_suites_are_runtime_lua(self):
+        """A fidelity suite runs in the game client, so it is judged as runtime code."""
+        fidelity = self.packages / "testKit" / "fidelity" / "cases"
+        fidelity.mkdir(parents=True)
+        suite = fidelity / "Timers.lua"
+        suite.write_text("", encoding="utf-8")
+
+        self.assertIn(suite, module.discover_runtime_lua_files())
+        self.assertNotIn(suite, module.discover_test_lua_files())
+
     def test_run_invokes_selene_with_every_runtime_lua_file(self):
         source = self.packages / "eventKit" / "src"
         source.mkdir(parents=True)

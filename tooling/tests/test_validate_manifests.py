@@ -55,6 +55,7 @@ class ManifestRepositoryTests(unittest.TestCase):
         revision: int | None = 1,
         dependencies=None,
         optional_dependencies=None,
+        distribution=None,
         license_name: str | None = "MIT",
     ) -> None:
         package_dir = self.packages / name
@@ -74,6 +75,8 @@ class ManifestRepositoryTests(unittest.TestCase):
             data["revision"] = revision
         if optional_dependencies is not None:
             data["optionalDependencies"] = optional_dependencies
+        if distribution is not None:
+            data["distribution"] = distribution
         (package_dir / "package.manifest.json").write_text(
             json.dumps(data), encoding="utf-8"
         )
@@ -311,6 +314,56 @@ class OptionalDependencyTests(ManifestRepositoryTests):
 
         self.assertEqual(1, len(errors))
         self.assertIn('must come after the top-level "api"', errors[0])
+
+
+class DistributionTests(ManifestRepositoryTests):
+    """`distribution`: release packages are bundled, development ones never are."""
+
+    def test_both_values_and_the_default_are_accepted(self):
+        self.write_manifest("baseKit")
+        self.write_manifest("releaseKit", distribution="release")
+        self.write_manifest("testKit", distribution="development")
+
+        self.assertEqual([], self.validate())
+        self.assertFalse(module.is_development({}))
+        self.assertTrue(module.is_development({"distribution": "development"}))
+
+    def test_unknown_value_is_reported(self):
+        self.write_manifest("baseKit", distribution="internal")
+
+        errors = self.validate()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('"distribution" must be one of release, development', errors[0])
+
+    def test_release_package_may_not_require_a_development_package(self):
+        self.write_manifest("testKit", distribution="development")
+        self.write_manifest("cacheKit", dependencies={"testKit": {"api": 1}})
+
+        errors = self.validate()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('release package "cacheKit" must not use development package', errors[0])
+
+    def test_release_package_may_not_optionally_use_a_development_package(self):
+        self.write_manifest("testKit", distribution="development")
+        self.write_manifest("cacheKit", optional_dependencies={"testKit": {"api": 1}})
+
+        errors = self.validate()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("as an optional dependency", errors[0])
+
+    def test_development_package_may_depend_on_anything(self):
+        self.write_manifest("baseKit")
+        self.write_manifest("fixtureKit", distribution="development")
+        self.write_manifest(
+            "testKit",
+            distribution="development",
+            dependencies={"baseKit": {"api": 1}, "fixtureKit": {"api": 1}},
+        )
+
+        self.assertEqual([], self.validate())
 
 if __name__ == "__main__":
     unittest.main()

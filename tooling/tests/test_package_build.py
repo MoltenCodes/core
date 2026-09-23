@@ -78,6 +78,7 @@ class TemporaryRepositoryTests(unittest.TestCase):
         facade: str,
         dependencies=None,
         optional_dependencies=None,
+        distribution=None,
         license_name: str | None = "MIT",
         with_api_doc: bool = True,
     ) -> Path:
@@ -106,6 +107,8 @@ class TemporaryRepositoryTests(unittest.TestCase):
             manifest["license"] = license_name
         if optional_dependencies is not None:
             manifest["optionalDependencies"] = optional_dependencies
+        if distribution is not None:
+            manifest["distribution"] = distribution
         (package_dir / "package.manifest.json").write_text(
             json.dumps(manifest), encoding="utf-8"
         )
@@ -216,6 +219,46 @@ class BuildTests(TemporaryRepositoryTests):
             {"signalKit": {"api": 1}}, manifest["packages"]["cacheKit"]["optionalDependencies"]
         )
         self.assertEqual({}, manifest["packages"]["registry"]["optionalDependencies"])
+
+    def write_repository_with_a_development_package(self):
+        self.write_minimal_repository()
+        self.write_package(
+            "testKit",
+            facade="TestKit",
+            dependencies={"signalKit": {"api": 1}},
+            distribution="development",
+        )
+
+    def test_all_skips_development_packages_and_records_them(self):
+        self.write_repository_with_a_development_package()
+
+        manifest = module.build(self.output)
+
+        self.assertNotIn("testKit", manifest["packages"])
+        self.assertFalse((self.output / "MoltenCodes" / "testKit").exists())
+        self.assertEqual(["testKit"], manifest["skipped"])
+        written = json.loads((self.output / "MoltenCodes" / "manifest.json").read_text())
+        self.assertEqual(["testKit"], written["skipped"])
+
+    def test_all_without_development_packages_skips_nothing(self):
+        self.write_minimal_repository()
+
+        self.assertEqual([], module.build(self.output)["skipped"])
+
+    def test_building_a_development_package_is_refused(self):
+        self.write_repository_with_a_development_package()
+
+        with self.assertRaisesRegex(module.BuildError, "development packages are tested but never bundled"):
+            module.build(self.output, package_name="testKit")
+
+    def test_command_line_reports_skipped_packages(self):
+        self.write_repository_with_a_development_package()
+
+        with mock.patch("sys.stdout", io.StringIO()) as output:
+            status = module.main(["--all", "--out", str(self.output)])
+
+        self.assertEqual(0, status)
+        self.assertIn("testKit skipped (development package, never bundled)", output.getvalue())
 
     def test_checksums_cover_every_artifact_file(self):
         self.write_minimal_repository()
@@ -410,12 +453,15 @@ class ChecksumVerificationTests(TemporaryRepositoryTests):
 class PkgmetaTests(unittest.TestCase):
     """`.pkgmeta` and the builder must describe the same shipped layout."""
 
-    def test_pkgmeta_moves_every_package_source_directory(self):
+    def test_pkgmeta_moves_every_release_package_source_directory(self):
+        """Development packages are ignored instead; validate_repository checks that."""
         manifests, errors = validate_manifests.load_manifests()
         self.assertEqual([], errors)
 
         text = (validate_manifests.ROOT / ".pkgmeta").read_text(encoding="utf-8")
-        for name in manifests:
+        for name, data in manifests.items():
+            if validate_manifests.is_development(data):
+                continue
             self.assertIn(
                 f"MoltenCodes/packages/{name}/src: MoltenCodes/{name}",
                 text,

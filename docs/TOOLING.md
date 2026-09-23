@@ -80,6 +80,24 @@ are read by the same code, but the tools use them differently:
 The semantics are defined in
 [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md#optional-dependencies).
 
+## Release and development packages
+
+A manifest's `distribution` (see
+[`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md#distribution)) changes what each tool
+does with a package:
+
+| Tool | `"release"` (default) | `"development"` |
+|---|---|---|
+| `validation/validate_manifests.py` | may not depend on a development package | may depend on anything |
+| `validation/validate_repository.py` | layout checks | the same layout checks, plus a `- packages/<id>` line under `.pkgmeta` `ignore:` |
+| `test/run.py` | tested | tested the same way |
+| `lint.py` | linted | linted the same way |
+| `package/build.py --all` | bundled | skipped, printed as skipped, listed under `skipped` in `manifest.json` |
+| `package/build.py --package <id>` | builds it with its closure | refused with an error |
+
+A fidelity suite under `packages/<id>/fidelity/` runs inside the game client, so
+the linter judges it as runtime Lua, not test Lua.
+
 ## Lint policy: deliberate `_G` access
 
 Selene's `global_usage` lint is deliberately left at its default severity in
@@ -122,7 +140,7 @@ standard libraries:
 
 | Scope | Files | Configuration |
 |---|---|---|
-| runtime Lua | `packages/*/src/**`, `examples/*.lua` | [`selene.toml`](../selene.toml) |
+| runtime Lua | `packages/*/src/**`, `packages/*/fidelity/**`, `examples/*.lua` | [`selene.toml`](../selene.toml) |
 | test Lua | `packages/*/tests/**`, `examples/tests/**`, `tests/support/**` | [`selene-tests.toml`](../selene-tests.toml) |
 
 Both scopes run even when the first fails, so one broken scope cannot hide the

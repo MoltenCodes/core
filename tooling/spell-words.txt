@@ -23,16 +23,25 @@ securecallfunction
 
 # World of Warcraft terms, and fragments of event and variable names
 # (`PLAYER_REGEN_ENABLED`, `CURSEFORGE_PROJECT_ID`, `WOWI_ID`).
+ARIALN
 CLEU
 CURSEFORGE
+FRIZQT
+langmask
+libstub
+MOLTENCODES
+myaddon
 Pandaria
+Quadrata
 REGEN
+Skurri
 spellbook
 Wago
 WOWI
 
 # Lua 5.1 standard library and language terms.
 collectgarbage
+frexp
 getmetatable
 gsub
 luac
@@ -48,6 +57,7 @@ tostring
 upvalue
 upvalues
 vararg
+varint
 xpcall
 
 # Tools, their files and their flags.
