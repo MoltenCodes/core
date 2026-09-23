@@ -16,6 +16,9 @@ This repository is a monorepo. Every publishable runtime package lives under `pa
 | [`timerKit`](packages/timerKit/) | Implemented | Cancelable one-shot/repeating timers, ownership scopes, and LifecycleKit-driven cleanup. |
 | [`schedulerKit`](packages/schedulerKit/) | Implemented | Cooperative frame-budgeted scheduling with priorities, cancellation scopes, and TimerKit delays. |
 | [`poolKit`](packages/poolKit/) | Implemented | Allocation-conscious bounded object pooling with deterministic ownership and cleanup. |
+| [`clientKit`](packages/clientKit/) | Implemented | Client flavour, build floor, probed capability flags, secret-value and frame-access probes, and shims with one shape per host call. |
+| [`cacheKit`](packages/cacheKit/) | Implemented | Bounded LRU and TTL caches, memoisation, snapshots with diffs and clear-on-event. |
+| [`profileKit`](packages/profileKit/) | Implemented | Zero-cost-when-off performance sections with count, total, spike and a sorted report. |
 
 ## Using the framework in an addon
 
@@ -95,7 +98,10 @@ python3 -m tooling.spell
 │   ├── moduleKit/
 │   ├── timerKit/
 │   ├── schedulerKit/
-│   └── poolKit/
+│   ├── poolKit/
+│   ├── clientKit/
+│   ├── cacheKit/
+│   └── profileKit/
 ├── pyproject.toml           # Python tooling metadata and the supported floor
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua

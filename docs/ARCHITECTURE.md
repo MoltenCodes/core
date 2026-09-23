@@ -12,6 +12,9 @@ packages/
 ├── timerKit/
 ├── schedulerKit/
 ├── poolKit/
+├── clientKit/
+├── cacheKit/
+├── profileKit/
 ├── <future-package>/
 └── ...
 ```
@@ -20,7 +23,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -58,6 +61,9 @@ The current runtime dependency graph is:
 
 ```text
 registry
+├──→ clientKit
+├──→ cacheKit
+├──→ profileKit
 ├──→ poolKit
 └──→ signalKit
        ↓
@@ -175,3 +181,9 @@ The first dependency layer above Registry is `signalKit`. SignalKit uses Registr
 
 
 `poolKit` depends only on Registry API 2. Its pooling algorithm is pure Lua and intentionally sits outside the lifecycle/event/scheduling branch: consumers can reuse objects without pulling in Frames, timers, coroutines, or addon lifecycle state. Retention is bounded by default, with `PoolKit.UNBOUNDED` as an explicit caller-owned escape hatch.
+
+`clientKit` depends only on Registry API 2. It answers which client flavour is running and what the host exposes, through a capability table probed once at bootstrap, and offers shims that give the few flavour-dependent host calls one shape. Every flag is `false` when the host lacks the feature, and an absent `WOW_PROJECT_ID` yields the most conservative flavour, never "everything true".
+
+`cacheKit` depends only on Registry API 2. It gives consumers bounded caches (LRU by count, TTL by age, memoisation, snapshots with diffs) so that "bounded by default" is a structure rather than a rule to remember. Clearing on a host event is resolved at call time through `Registry:Find("eventKit", 1)`, so EventKit is optional and never an edge in the load order.
+
+`profileKit` depends only on Registry API 2. It measures named sections with count, total, spike and last time from `debugprofilestop`, costs a table read and a call while disabled, and refuses sections beyond a fixed cap instead of growing.

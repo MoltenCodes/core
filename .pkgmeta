@@ -65,3 +65,6 @@ move-folders:
   MoltenCodes/packages/timerKit/src: MoltenCodes/timerKit
   MoltenCodes/packages/schedulerKit/src: MoltenCodes/schedulerKit
   MoltenCodes/packages/poolKit/src: MoltenCodes/poolKit
+  MoltenCodes/packages/clientKit/src: MoltenCodes/clientKit
+  MoltenCodes/packages/cacheKit/src: MoltenCodes/cacheKit
+  MoltenCodes/packages/profileKit/src: MoltenCodes/profileKit

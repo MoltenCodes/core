@@ -25,6 +25,7 @@ securecallfunction
 CLEU
 Pandaria
 REGEN
+spellbook
 Wago
 
 # Lua 5.1 standard library and language terms.

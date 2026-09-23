@@ -188,11 +188,11 @@ namespaces follow in v2; event coalescing and scheduler lanes are one design.
 
 #### Package B — foundations every later Kit needs
 
-- [ ] `clientKit` — client flavour, build floor, capability flags, normalised
+- [x] `clientKit` — client flavour, build floor, capability flags, normalised
       shims, `IsSecret`, `CanAccessFrame`, event validity probes.
-- [ ] `cacheKit` — bounded LRU and TTL caches, `Memoize`, diffed `Snapshot`,
+- [x] `cacheKit` — bounded LRU and TTL caches, `Memoize`, diffed `Snapshot`,
       clear-on-event.
-- [ ] `profileKit` — zero-cost-when-off performance sections with count, total
+- [x] `profileKit` — zero-cost-when-off performance sections with count, total
       and spike, and a report.
 - [ ] **schedulerKit** — `Debounce`, `Coalesce`, `Watch`, and lanes that
       ration a shared resource (in flight, interval, retry, backoff), designed
@@ -236,7 +236,7 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
    `IsEventValid` for a known, an unknown and an invalid name, upgrade.
 8. Docs: README, API.md with the capability table and the shim shapes,
    EMBEDDING.md host-requirements row, CHANGELOG.
-9. Status: planned (package B1).
+9. Status: implemented (package B1, 0.1.0).
 
 **cacheKit** — facade `CacheKit`
 
@@ -251,8 +251,8 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
 4. Surface: `CacheKit:NewLru{ maxEntries }`, `CacheKit:NewTtl{ maxEntries,
    ttlSeconds }` with `Get`, `Set`, `Peek`, `Delete`, `Clear`, `GetCount`,
    `GetStats()` (hits, misses, evictions); `CacheKit:Memoize(fn, options)`
-   for one string-or-number key; `CacheKit:NewSnapshot(read)` with
-   `Refresh()` returning added, removed and changed keys without
+   for one string-or-number key; `CacheKit:NewSnapshot(read, options)` where
+   `read(fill)` calls `fill(key, value)`, with `Refresh()` returning added, removed and changed keys without
    allocating per unchanged key; `cache:ClearOn(eventName)` when eventKit
    is present.
 5. Ownership: caches are owned by their creator and closed with `Close()`;
@@ -266,7 +266,7 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
    miss, snapshot diff, clear-on-event, `Close`, allocation guard, upgrade.
 8. Docs: README, API.md, INTERNALS.md (list and free-list layout),
    CHANGELOG.
-9. Status: planned (package B1).
+9. Status: implemented (package B1, 0.1.0).
 
 **profileKit** — facade `ProfileKit`
 
@@ -293,7 +293,7 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
    through, cap refusal, `Reset`, upgrade.
 8. Docs: README, API.md, CHANGELOG; a DEVELOPMENT.md paragraph on
    measuring a Kit change.
-9. Status: planned (package B1).
+9. Status: implemented (package B1, 0.1.0).
 
 #### Package C — the consumer story
 

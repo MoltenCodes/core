@@ -39,6 +39,9 @@ Current package entry points:
 - [`TimerKit`](../packages/timerKit/README.md) — cancelable, scope-aware timers with LifecycleKit shutdown cleanup.
 - [`SchedulerKit`](../packages/schedulerKit/README.md) — cooperative, frame-budgeted priority scheduling with TimerKit delays.
 - [`PoolKit`](../packages/poolKit/README.md) — allocation-conscious bounded object pooling with deterministic ownership and cleanup.
+- [`ClientKit`](../packages/clientKit/README.md) — client flavour, capability flags, secret-value and frame-access probes, shims.
+- [`CacheKit`](../packages/cacheKit/README.md) — bounded LRU and TTL caches, memoisation, snapshots with diffs.
+- [`ProfileKit`](../packages/profileKit/README.md) — zero-cost-when-off performance sections and a sorted report.
 
 Each package keeps its complete public contract under its own `docs/API.md`.
 

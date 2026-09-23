@@ -16,3 +16,6 @@ Current packages:
 - [`timerKit`](timerKit/) — cancelable one-shot/repeating timers, ownership scopes, and lifecycle-driven cleanup.
 - [`schedulerKit`](schedulerKit/) — cooperative frame-budgeted scheduling, priorities, cancellation scopes, and delayed work.
 - [`poolKit`](poolKit/) — allocation-conscious bounded object pooling with deterministic ownership and cleanup.
+- [`clientKit`](clientKit/) — client flavour, build floor, probed capability flags, secret-value and frame-access probes, shims with one shape per host call.
+- [`cacheKit`](cacheKit/) — bounded LRU and TTL caches, memoisation, snapshots with diffs, clear-on-event.
+- [`profileKit`](profileKit/) — zero-cost-when-off performance sections with count, total, spike and a report.

@@ -124,6 +124,9 @@ after the packages it depends on.** The current graph is:
 
 ```text
 registry
+├──→ clientKit
+├──→ cacheKit
+├──→ profileKit
 ├──→ poolKit
 └──→ signalKit
        ↓
@@ -141,6 +144,9 @@ is what the release artifact's `manifest.json` records under `loadOrder`:
 
 ```text
 registry/Registry.lua
+cacheKit/CacheKit.lua
+clientKit/ClientKit.lua
+profileKit/ProfileKit.lua
 signalKit/SignalKit.lua
 eventKit/EventKit.lua
 lifecycleKit/LifecycleKit.lua
@@ -443,7 +449,10 @@ actually touch, which is deliberately small:
 | `registry`, `signalKit`, `poolKit`, `moduleKit` | nothing but Lua 5.1 | — |
 | `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript` | `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`) |
 | `lifecycleKit` | EventKit's surface | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn` |
-| `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | — |
+| `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | `GetTimePreciseSec` (`GetRemaining` and `GetDeadline` then return `nil`) |
+| `clientKit` | nothing but Lua 5.1 | `WOW_PROJECT_ID` (flavour `"classic"`), `GetBuildInfo` (interface `0`), `issecretvalue` (`IsSecret` false), `C_EventUtils.IsEventValid` (`IsEventValid` nil), `IsForbidden` / `CanBeAccessedInContext` (`CanAccessFrame` true), `C_AddOns` / `C_Spell` / `C_Item` (legacy globals, then nil or false) |
+| `cacheKit` | nothing but Lua 5.1 | `GetTimePreciseSec` (age limits disabled: TTL caches never expire), EventKit API 1 (`cache:ClearOn` raises at the caller) |
+| `profileKit` | nothing but Lua 5.1 | `debugprofilestop` (`Enable` returns `false, "unavailable"`) |
 | `schedulerKit` | `CreateFrame`, `GetTimePreciseSec` | `debugprofilestop` (falls back to the wall clock), `debug.traceback` (failures then report the error value only) |
 
 Runtime code stays Lua 5.1-compatible because that is what every client runs.
@@ -652,9 +661,9 @@ error message only after `issecretvalue` says it is not secret; a secret is
 described by a fixed placeholder such as `<secret value>`; argument errors name
 the parameter and the expected type. **Today's Kits do not check yet.** Several
 argument and failure messages in SchedulerKit, TimerKit, PoolKit and Registry
-pass the offending value through `tostring`. The check arrives with the
-`IsSecret` probe of the planned `clientKit` (roadmap package B). Until then,
-do not pass a value that may be secret as an argument a Kit validates. Your own
+pass the offending value through `tostring`. The probe exists now:
+`ClientKit:IsSecret(value)` (package `clientKit`); routing every Kit's error
+formatting through it is package B2 work. Until then, do not pass a value that may be secret as an argument a Kit validates. Your own
 error messages should follow the rule from the start.
 
 **A tooltip or nameplate consumer, written safely.**
