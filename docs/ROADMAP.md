@@ -352,6 +352,115 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
 - [ ] `commandKit` — slash commands, hyperlink-aware argument parsing,
       output sinks, schema binding, tab completion.
 
+#### Package C planned Kits — the nine points
+
+Recorded 2026-09-23, before implementation. Sources: the phase 4 reference
+notes on Ace3 (AceLocale, AceHook, AceEvent messages, AceDB, AceConfig) and
+the WowAce directory item W6 (a shared validation core).
+
+**schemaKit** — facade `SchemaKit`
+
+1. Package `schemaKit`, facade `SchemaKit`, API generation 1.
+2. Purpose: one validation core for the values a Kit receives from outside
+   its own code: API arguments, saved variables, options, received messages.
+   A schema is built once, sealed, and then validates values with structured
+   failures (path, rule, expected, found) that never print the offending
+   value. Non-goals: type inference from Lua, coercion beyond what a schema
+   declares, JSON Schema compatibility.
+3. Dependencies: registry API 2 only.
+4. Surface: builders `S.string{...}`, `S.number{min,max,integer}`,
+   `S.boolean()`, `S.enum{...}`, `S.table{fields, open}`, `S.array{of, min,
+   max}`, `S.map{keys, values, max}`, `S.optional(schema, default)`,
+   `S.oneOf{...}`, `S.any()`, `S.custom(check, description)`;
+   `SchemaKit:Seal(schema)` (deep-freezes and pre-compiles); `schema:Check(value)`
+   → `true` or `false, failure` (failure is a reused table per schema unless
+   `options.freshFailures`); `schema:Assert(value, argumentName, level)`
+   raises at the caller with a message built from the failure;
+   `schema:Apply(value)` fills defaults into a copy (allocating, documented);
+   `schema:Describe()` for documentation and options UIs; secret values are
+   refused with rule `"secret"` before any comparison when `issecretvalue`
+   exists.
+5. Ownership: schemas are immutable after Seal and safe to share across
+   addons; nothing to tear down.
+6. Performance: `Check` allocates nothing for a valid value and reuses one
+   failure table per schema for an invalid one; nested checks recurse without
+   closures; depth bounded (`maxDepth` 16) and array/map sizes bounded by the
+   schema, so a hostile message cannot make validation unbounded.
+7. Tests: every builder's accept and reject cases, nested paths in failures,
+   defaults applied, sealed immutability, depth and size bounds, secret
+   refusal, allocation guard on valid checks, Describe output, upgrade,
+   manifest, error levels pinned.
+8. Docs: README, API.md with a schema cookbook, INTERNALS.md (compiled form),
+   CHANGELOG; EMBEDDING.md host row.
+9. Status: planned (package C1).
+
+**localeKit** — facade `LocaleKit`
+
+1. Package `localeKit`, facade `LocaleKit`, API generation 1.
+2. Purpose: translations per addon and locale with the cost of one table on
+   any client, missing-key reporting once per key, a coverage report, and
+   indexed format specifiers so translators can reorder arguments. Non-goals:
+   plural rules, gender, shipping any translations.
+3. Dependencies: registry API 2 only.
+4. Surface: `LocaleKit:NewLocale(addonName, locale, options)` → a write
+   proxy for that locale, or `nil` when the client does not need it
+   (`options.isDefault` marks the fallback locale; a per-call proxy, never a
+   shared one; the default proxy never overwrites a translated key);
+   `LocaleKit:GetLocale(addonName, options)` → the read table for the
+   running client, `__index` returning the key and reporting once through
+   the host error handler (`options.missing = "report" | "silent" |
+   "raw"`); `LocaleKit:Format(template, ...)` supporting `%1$s`-style
+   indexed specifiers; `LocaleKit:MissingKeys(addonName)` → sorted array;
+   `LocaleKit:SetLocaleOverride(locale)` for translators; `enGB` folded to
+   `enUS`.
+5. Ownership: locale tables are package state keyed by addon name; nothing
+   to tear down; upgrades keep them.
+6. Performance: a translation lookup is one table read; a missing key is
+   `rawset` on first use so it costs the report once; `Format` allocates its
+   result string only.
+7. Tests: proxy for the running locale versus `nil`, default proxy not
+   overwriting, missing-key modes, report once, MissingKeys sorted,
+   indexed format including reordering and repeated arguments, override,
+   enGB folding, upgrade, manifest, error levels pinned.
+8. Docs: README, API.md, CHANGELOG; a translation-file example.
+9. Status: planned (package C2).
+
+**hookKit** — facade `HookKit`
+
+1. Package `hookKit`, facade `HookKit`, API generation 1.
+2. Purpose: reversible hooking with the three semantics named and the taint
+   consequences spelled out: secure post-hook (default, wraps
+   `hooksecurefunc` and `frame:HookScript`, made reversible by an active
+   flag on a closure that stays installed), safe pre-hook (handler first,
+   original always runs, returns untouched) and raw replacement (original
+   handed to the handler). Non-goals: hooking secure functions insecurely
+   without an explicit override, hooking protected scripts on protected
+   frames.
+3. Dependencies: registry API 2; clientKit API 1 optional through
+   `Registry:Find` for `IsSecret` and capability flags.
+4. Surface: `HookKit:CreateScope()` / `HookKit:ForAddon(addonName)` →
+   scope with `SecureHook(object, method, handler)`, `SecureHookScript(frame,
+   script, handler)`, `Hook(object, method, handler, options)`,
+   `RawHook(object, method, handler, options)`, `HookScript(frame, script,
+   handler, options)`, `Unhook(object, method)`, `UnhookAll()`, `IsHooked`,
+   `Hooks()` (enumeration for diagnostics), `Close()`; `options.forceSecure`
+   is the explicit override for a non-secure hook of a secure target and the
+   target's secure status is remembered from before the first hook.
+5. Ownership: hooks belong to a scope; moduleKit's `module.scope` gains
+   `Hooks` lazily; restoration on unhook happens only when the installed
+   function is still ours, otherwise the closure stays and turns inert.
+6. Performance: one record per hook keyed by object and method in a
+   weak-keyed table (no auto-vivifying registry); the installed closure
+   reads one flag before dispatching; bounded hooks per scope
+   (`maxHooks` 256).
+7. Tests: each of the three semantics, unhook with and without a later
+   foreign hook, secure target refusal and override, protected script
+   refusal, scope Close, IsHooked and Hooks, secret argument passing through
+   untouched, upgrade, manifest, error levels pinned.
+8. Docs: README, API.md leading with the taint model, CHANGELOG;
+   EMBEDDING.md host row and a taint-section cross-reference.
+9. Status: planned (package C2).
+
 #### Package D — interoperability and distribution
 
 - [ ] `codecKit` — serialise, compress and channel-encode as three stages
