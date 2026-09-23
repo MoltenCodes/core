@@ -266,3 +266,24 @@ describe("SchedulerKit Watch", function()
         assert.is_true(allocated < 1, "watch ticks allocated " .. allocated .. " KiB")
     end)
 end)
+
+describe("SchedulerKit Watch callback reports", function()
+    after_each(TestEnv.Reset)
+
+    it("reports a raising callback with a traceback", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        SchedulerKit:Watch(
+            function()
+                return 1
+            end,
+            1,
+            function()
+                error("callback failure")
+            end
+        )
+        TestEnv.FireNative(1)
+        local reported = TestEnv.TakeReportedErrors()
+        assert.are.equal(1, #reported)
+        assert.is_not_nil(string.find(tostring(reported[1].value), "stack traceback", 1, true))
+    end)
+end)

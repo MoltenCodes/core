@@ -190,7 +190,12 @@ Internal/native failures that occur in direct API operations may still be re-rai
 
 `Debounce`, `Coalesce`, `Watch` and lanes live in one installer function,
 `installCoalescingFamily`, rather than at the top level of the chunk: Lua 5.1
-allows 200 locals per function and the main chunk is close to that. The
+allows 200 locals per function and the main chunk is close to that.
+
+Headroom at revision 8, as `luac -l -l` counts it (declared locals, an upper
+bound on the active ones the limit applies to): the main chunk declares 177 of
+200 locals; the installer declares 107 locals and uses 41 of 60 upvalues. New
+top-level code belongs in the installer or in a function of its own. The
 installer commits its own methods; only four hooks forward-declared above the
 job machinery (`laneJobFinished`, `retryLaneJob`, `cancelFamilyMembers`,
 `closeFamilyMembers`) escape it.
@@ -220,6 +225,12 @@ reading; the timer, armed once per quiet window, re-arms for the remainder when
 it wakes early. `maxWaitSeconds` only shortens the due time while a trailing
 fire is owed.
 
+Every computed wait (the Debounce remainder, the lane interval) is clamped to
+the delay or interval it came from, so a clock that steps backwards cannot
+stretch it. A Debounce timer that cannot be armed leaves the handle idle with
+its fire still owed; `debounceCall` only treats the handle as "waiting" while a
+timer really exists.
+
 `Coalesce` keeps two set tables and swaps them at each delivery, so the
 callback can record keys without touching the table it is iterating, and
 `wipe` empties the delivered table in place so its hash part is reused.
@@ -239,7 +250,15 @@ the outcome, tells a `Debounce`/`Coalesce` owner its delivery ended, and pumps
 the lane again.
 
 A waiting submission cancelled in place leaves a stale FIFO entry, like a
-cancelled job in a ready queue. When the backing array reaches `maxQueued`
+cancelled job in a ready queue. The indices restart at `1, 0` whenever the FIFO
+drains, so they do not climb for the lane's whole life; between drains
+`_tail` rises by one per submission, bounded by compaction.
+
+Each lane also keeps `_admitted`, the set of its admitted, unfinished jobs,
+maintained by `pumpLane` and `laneJobFinished`. `Close()` walks it to cancel
+jobs waiting out a retry backoff. A retry's delay is at least the lane's
+remaining minimum interval, and `wakeDelayed` records the lane's last start
+when an admitted lane job wakes from its backoff. When the backing array reaches `maxQueued`
 entries while fewer are live, `compactLaneQueue` rewrites it, so the array
 never exceeds `maxQueued` whatever the churn.
 

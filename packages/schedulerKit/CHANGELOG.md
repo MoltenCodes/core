@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.1 — 2026-09-23
+
+Fixes from the acceptance review of 0.5.0.
+
+- A `Debounce` re-delivery that met a full lane swapped the refused, older arguments back over a newer burst, so the newest call was never delivered. The newer burst now supersedes them and the refused arguments are discarded.
+- `Flush()` on a `Coalesce` handle whose previous set is still in its lane claimed success while deferring; it now returns `false, "deferred"`. Both `Flush()` methods return `false, "deferred"` or `false, "dropped"` when a lane does not take the delivery.
+- `Close()` on a `Debounce` or `Coalesce` handle cancelled its lane delivery even after the lane admitted it. It now cancels only a delivery still waiting for admission and lets an admitted one finish, matching the lane's own drain rule; closing the scope still cancels both.
+- A `Debounce` handle could get stuck after TimerKit failed to arm its timer: it stayed "waiting" with no timer, and later calls only marked a fire owed. The failure is now reported, the handle goes idle with the fire kept, the next call opens a new window, and `Flush()` delivers an owed fire even when no window is open.
+- Lane retries now honour `minIntervalSeconds`: a retry waits at least until the interval has passed since the lane's last start, and counts as a start when its backoff expires. `Lane:Close()` cancels admitted jobs still waiting out a retry backoff, and an attempt that raises after `Close()` fails instead of retrying.
+- Computed waits in the lane pump and in `Debounce` are clamped to the interval or delay they came from, so a clock stepping backwards cannot stretch them.
+- A raising `Watch` callback is reported with a traceback, like a raising predicate. The lane FIFO restarts its indices whenever it drains.
+- Documentation: a closed lane's refusal is counted by the lane and by a `Coalesce` handle, not by a `Debounce` handle; a `Coalesce` set delivered through a lane lives until the job's terminal state, across retries; a NaN predicate result changes on every tick; `INTERNALS.md` records the local and upvalue headroom.
+- Implementation revision 8. Lanes gain an admitted-job set, created on first use for a lane that revision 7 made. 13 new specs: 11 for the fixes, the member-close spec split into its waiting and admitted cases, and the revision-7 upgrade.
+
 ## 0.5.0 — 2026-09-23
 
 - Added the coalescing family, designed as one thing with EventKit's `Coalesce` and `Derive` and documented together in `docs/API.md` under *Coalescing and lanes*:

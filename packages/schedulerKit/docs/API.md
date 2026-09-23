@@ -464,7 +464,9 @@ monotonic wall clock TimerKit's own deadlines use. Timers are TimerKit timers:
 a `Debounce` or `Coalesce` arms at most one timer at a time in its scope's
 TimerKit scope, and `Watch` tickers and lane interval timers live in one
 package-internal TimerKit scope. A timer that wakes within one millisecond of
-its due time counts as due. Nothing in the family keeps an `OnUpdate` handler
+its due time counts as due. A computed wait is never longer than the delay,
+interval or minimum interval it was derived from, so a clock that steps
+backwards cannot stretch it. Nothing in the family keeps an `OnUpdate` handler
 alive while it waits.
 
 ### `Debounce(callback, delaySeconds[, options])`
@@ -495,13 +497,16 @@ refresh("BAG_UPDATE")  -- returns true; call it as often as you like
   arguments; received 9`. Pass a table if you need more.
 - `delaySeconds = 0` means the next frame, as `NextFrame` does.
 - Calling the handle returns `true`, or `false` once it is closed.
+- If TimerKit cannot arm the handle's timer, the failure is reported through
+  the host error handler and the owed fire is kept: the next call opens a new
+  window, and `Flush()` delivers it at once.
 
 | Method | Purpose |
 |---|---|
 | `Cancel()` | Drop the owed fire; returns whether one was owed. The handle stays usable. |
-| `Flush()` | Run the owed fire now; returns `false` when nothing was owed. |
+| `Flush()` | Run the owed fire now; returns `true`, or `false` when nothing was owed. With a lane it returns `false, "deferred"` when the lane is full (the fire stays owed and is retried one delay later) and `false, "dropped"` when the lane is closed. |
 | `IsPending()` | Whether a fire is owed and has not been handed off yet. |
-| `Close()` | Drop what is owed, cancel a delivery waiting in a lane, and leave the scope. Terminal. |
+| `Close()` | Drop what is owed, cancel a delivery still waiting for the lane, and leave the scope. A delivery the lane already admitted finishes, as lane admissions do. Terminal. |
 | `IsClosed()` | Whether the handle is closed. |
 
 ### `Coalesce(callback, intervalSeconds[, options])`
@@ -526,8 +531,10 @@ changed("player") -- one set { player = true, target = true } in 0.1 s
 ```
 
 **The set is reused.** It is one of two tables the handle swaps at every
-delivery and it is emptied as soon as `callback` returns. `callback` must not
-keep a reference to it; copy what you need. Keys recorded while `callback`
+delivery. Without a lane it is emptied as soon as `callback` returns; delivered
+through a lane it lives until the lane job reaches a terminal state, across
+every retry, and is emptied then. `callback` must not keep a reference to it;
+copy what you need. Keys recorded while `callback`
 runs go into the other table and arrive with the next interval.
 
 | Option | Meaning |
@@ -544,10 +551,10 @@ or NaN key raises at the caller.
 | Method | Purpose |
 |---|---|
 | `Cancel()` | Drop the collected keys; returns whether there were any. The handle stays usable. |
-| `Flush()` | Deliver now; returns `false` when nothing was collected. |
+| `Flush()` | Deliver now; returns `true`, or `false` when nothing was collected. With a lane it returns `false, "deferred"` while the previous set is still in the lane or the lane is full (the keys stay collected and the interval timer delivers them), and `false, "dropped"` when the lane is closed. |
 | `IsPending()` | Whether keys are waiting for delivery. |
 | `GetStats()` | `{ keys, refused, delivered, deferred, dropped }`, in a table reused by every call. |
-| `Close()` | Drop the keys, cancel a delivery waiting in a lane, and leave the scope. Terminal. |
+| `Close()` | Drop the keys, cancel a delivery still waiting for the lane, and leave the scope. A delivery the lane already admitted finishes. Terminal. |
 | `IsClosed()` | Whether the handle is closed. |
 
 `Flush()` called from inside the handle's own callback returns `false`: the
@@ -562,6 +569,9 @@ previous)`:
 - on the **first** tick, with the first result and `previous = nil`;
 - afterwards only when the result differs (`~=`) from the previous tick's;
 - or on every tick with `options.everyTick = true`.
+
+A predicate that returns NaN changes on every tick, because NaN is never equal
+to itself; return something comparable.
 
 Every watch with the same interval shares **one** TimerKit ticker, created with
 the first watch and cancelled with the last; a tick samples its watches in
@@ -632,10 +642,12 @@ package-level scope by default).
 A submission waits in the `delayed` state until the lane admits it; admission
 queues it exactly as an expiring delay would. A submission that raises and has
 attempts left is re-armed: the *n*-th retry waits
-`backoffSeconds × multiplier^(n − 1)`, capped at `maxBackoffSeconds`. It keeps
-its in-flight slot while it waits, which is what backing off a resource means. A retried attempt is **not** reported; the attempt that
-exhausts the policy fails the job and is reported with its traceback, like any
-job failure.
+`backoffSeconds × multiplier^(n − 1)`, capped at `maxBackoffSeconds`, and at
+least until `minIntervalSeconds` have passed since the lane's last start; a
+retry counts as a start when its backoff expires. It keeps its in-flight slot
+while it waits, which is what backing off a resource means. A retried attempt
+is **not** reported; the attempt that exhausts the policy fails the job and is
+reported with its traceback, like any job failure.
 
 | Method | Purpose |
 |---|---|
@@ -647,7 +659,10 @@ job failure.
 
 `Close()` **drains** what is in flight rather than cancelling it: an admitted
 job may already have spent the resource, and cancelling it would lose the
-answer. Cancel the job itself, or close its scope, to stop it. A lane is not
+answer. Cancel the job itself, or close its scope, to stop it. Retries are
+the exception: an admitted job waiting out a retry backoff has not started its
+next attempt, so `Close()` cancels it, and an attempt still running that raises
+after `Close()` fails instead of retrying. A lane is not
 owned by a scope; each submission's job is.
 
 ### Firing into a lane
@@ -664,8 +679,15 @@ callback, and a raising callback is retried.
   collecting into the current set and tries again one interval later
   (`deferred` in `GetStats()`).
 - A lane that is **full** defers the fire by one delay or interval; it is never
-  dropped. A lane that is **closed** drops it, counts it (`dropped`) and
-  reports it through the host error handler.
+  dropped. When a `Debounce` re-delivery meets a full lane after a newer burst
+  has started, the newer burst's arguments win and the refused ones are
+  discarded.
+- A lane that is **closed** drops the fire and reports it through the host
+  error handler; the lane counts the refusal (`refused`), and a `Coalesce`
+  handle also counts it (`dropped`). A `Debounce` handle keeps no counters.
+- `Close()` on the handle cancels a delivery still waiting for the lane and lets
+  an admitted one finish; closing the owning scope cancels both, because the
+  job belongs to the scope.
 
 ### Scopes and release
 
@@ -698,6 +720,11 @@ The facade, Job/Scope/Context prototypes, metatables, ready queues, scopes, acti
 The installed OnUpdate trampoline does not permanently close over one implementation revision. It resolves the current shared dispatch function on every scheduler frame. TimerKit delay callbacks use the same dispatch indirection.
 
 A future compatible SchedulerKit revision can therefore update execution behavior while preserving existing facade, Job, Scope, Context, queue, and addon-scope identity.
+
+Revision 8 changes only behaviour, plus one field: each lane keeps the set of
+its admitted jobs (`_admitted`) so `Close()` can cancel pending retries. A lane
+created by revision 7 has none and gains it on first use; jobs it admitted
+before the upgrade finish as they would have.
 
 Revision 7 adds the coalescing family to shared state: the lane registry, the
 watch groups, the package-internal TimerKit scope, and one metatable and method

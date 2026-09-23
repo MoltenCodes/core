@@ -405,7 +405,7 @@ describe("SchedulerKit Debounce and Coalesce into a lane", function()
         assert.are.equal(1, #TestEnv.TakeReportedErrors())
     end)
 
-    it("cancels a member's lane delivery when the member closes", function()
+    it("lets an admitted delivery finish when the member closes", function()
         local SchedulerKit = TestEnv.NewPackage()
         local lane = SchedulerKit:Lane("released")
         local calls = 0
@@ -417,8 +417,137 @@ describe("SchedulerKit Debounce and Coalesce into a lane", function()
         fireLatest()
         assert.are.equal(1, lane:GetStats().inFlight)
         debounced:Close()
+        assert.are.equal(0, lane:GetStats().cancelled)
+        TestEnv.Tick()
+        assert.are.equal(1, calls)
+        assert.are.equal(1, lane:GetStats().completed)
+    end)
+
+    it("cancels a delivery still waiting for the lane when the member closes", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local lane = SchedulerKit:Lane("waiting")
+        local gate, started = {}, {}
+        lane:Submit(gatedJob(gate, 1, started))
+        local calls = 0
+        local coalesced = SchedulerKit:Coalesce(function()
+            calls = calls + 1
+        end, 0, { lane = lane })
+
+        coalesced("a")
+        fireLatest()
+        assert.are.equal(1, lane:GetStats().queued)
+        coalesced:Close()
+        assert.are.equal(0, lane:GetStats().queued)
         assert.are.equal(1, lane:GetStats().cancelled)
+        gate[1] = true
         TestEnv.Tick()
         assert.are.equal(0, calls)
+    end)
+end)
+
+describe("SchedulerKit lanes after the acceptance review", function()
+    after_each(TestEnv.Reset)
+
+    it("keeps the newest debounce arguments when a re-delivery meets a full lane", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local lane = SchedulerKit:Lane("full", { maxInFlight = 1, maxQueued = 1 })
+        local received = {}
+        local debounced
+        debounced = SchedulerKit:Debounce(function(value)
+            received[#received + 1] = value
+            if value == "X" then
+                -- Occupy the only queue slot, then start two newer bursts.
+                lane:Submit(function() end)
+                debounced("Y")
+                debounced:Flush()
+                debounced("Z")
+            end
+        end, 0, { lane = lane })
+
+        debounced("X")
+        fireLatest()
+        for _ = 1, 4 do
+            TestEnv.Tick()
+            fireLatest()
+        end
+        TestEnv.Tick()
+
+        -- Y was superseded by the newer burst Z; Z must not be lost.
+        assert.are.same({ "X", "Z" }, received)
+        assert.is_false(debounced:IsPending())
+    end)
+
+    it("makes a retry wait out the lane's minimum interval", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local lane = SchedulerKit:Lane("spaced", {
+            minIntervalSeconds = 5,
+            retry = { attempts = 1, backoffSeconds = 1 },
+        })
+        local attempts = 0
+        lane:Submit(function()
+            attempts = attempts + 1
+            error("again")
+        end)
+        TestEnv.Tick()
+        assert.are.equal(1, attempts)
+        assert.are.equal(5, latestSeconds())
+    end)
+
+    it("cancels a retry waiting out its backoff when the lane closes", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local lane =
+            SchedulerKit:Lane("closing retries", { retry = { attempts = 3, backoffSeconds = 1 } })
+        local attempts = 0
+        local job = lane:Submit(function()
+            attempts = attempts + 1
+            error("again")
+        end)
+        TestEnv.Tick()
+        assert.are.equal("delayed", job:GetState())
+
+        lane:Close()
+        assert.are.equal("cancelled", job:GetState())
+        assert.is_false(fireLatest())
+        assert.are.equal(1, attempts)
+        assert.are.equal(0, lane:GetStats().inFlight)
+    end)
+
+    it("does not retry an attempt that raises after the lane closed", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        SchedulerKit:SetMaxResumesPerFrame(1)
+        local lane = SchedulerKit:Lane("closing run", { retry = { attempts = 3 } })
+        local job = lane:Submit(function(context)
+            context:Yield()
+            error("after close")
+        end)
+        TestEnv.Tick()
+        lane:Close()
+        TestEnv.Tick()
+        assert.are.equal("failed", job:GetState())
+        assert.are.equal(0, lane:GetStats().retried)
+        assert.are.equal(1, #TestEnv.TakeReportedErrors())
+    end)
+
+    it("clamps the interval wait when the clock steps backwards", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local lane = SchedulerKit:Lane("stepped", { maxInFlight = 2, minIntervalSeconds = 1 })
+        lane:Submit(function() end)
+        lane:Submit(function() end)
+        assert.are.equal(1, latestSeconds())
+        TestEnv.AdvanceMs(-5000)
+        fireLatest()
+        assert.are.equal(1, latestSeconds())
+    end)
+
+    it("restarts its queue indices once drained", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local lane = SchedulerKit:Lane("indices")
+        for _ = 1, 20 do
+            lane:Submit(function() end)
+            TestEnv.Tick()
+        end
+        assert.are.equal(20, lane:GetStats().completed)
+        assert.are.equal(0, rawget(lane, "_tail"))
+        assert.are.equal(1, rawget(lane, "_head"))
     end)
 end)

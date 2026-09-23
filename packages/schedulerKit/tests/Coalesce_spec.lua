@@ -242,3 +242,29 @@ describe("SchedulerKit Coalesce", function()
         assert.is_true(allocated < 1, "coalesce calls allocated " .. allocated .. " KiB")
     end)
 end)
+
+describe("SchedulerKit Coalesce Flush with a lane", function()
+    after_each(TestEnv.Reset)
+
+    it('returns false and "deferred" while the previous set is still in the lane', function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local lane = SchedulerKit:Lane("flush")
+        local deliveries = 0
+        local coalesced = SchedulerKit:Coalesce(function()
+            deliveries = deliveries + 1
+        end, 1, { lane = lane })
+
+        coalesced("a")
+        assert.is_true(coalesced:Flush())
+        coalesced("b")
+        local flushed, reason = coalesced:Flush()
+        assert.is_false(flushed)
+        assert.are.equal("deferred", reason)
+        assert.is_true(coalesced:IsPending())
+
+        TestEnv.Tick()
+        fireLatest()
+        TestEnv.Tick()
+        assert.are.equal(2, deliveries)
+    end)
+end)

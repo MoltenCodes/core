@@ -21,6 +21,7 @@ The suite covers:
 - `Coalesce`: set accumulation, the interval, `maxKeys` refusal and stats, reuse of the two set tables, keys recorded by the callback, `Flush`, scope release, and an allocation guard;
 - `Watch`: edge trigger, `everyTick`, one shared ticker per interval, both caps, a raising predicate or callback, cancellation during a tick, scope release, and an allocation guard;
 - lanes: sharing by name, `maxInFlight`, `minIntervalSeconds`, retry with capped backoff, `maxQueued` refusal, queue compaction, `Close`, scope release, and `Debounce`/`Coalesce` delivering through a lane;
-- the revision-6 upgrade of shared state and older scopes.
+- the revision-6 upgrade of shared state and older scopes;
+- the 0.5.1 review fixes: newest debounce arguments against a full lane, `Flush` deferral, member close against admitted and waiting deliveries, timer-arm failure recovery, retries against the minimum interval and `Close`, backwards clock steps, Watch callback tracebacks, FIFO index reset, and the revision-7 upgrade.
 
 Tests intentionally avoid production-only test hooks. The fake host lives under `tests/support/` and is never part of the published runtime API.

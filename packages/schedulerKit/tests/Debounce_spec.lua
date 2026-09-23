@@ -323,3 +323,55 @@ describe("SchedulerKit Debounce", function()
         assert.are.equal(1, #TestEnv.NativeTimers())
     end)
 end)
+
+describe("SchedulerKit Debounce timer failures", function()
+    after_each(TestEnv.Reset)
+
+    it("recovers on the next call after a failed re-arm", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local received = {}
+        local debounced = SchedulerKit:Debounce(function(value)
+            received[#received + 1] = value
+        end, 1)
+
+        debounced("a")
+        TestEnv.AdvanceMs(500)
+        debounced("b")
+        TestEnv.AdvanceMs(500)
+        TestEnv.FailNextTimerCreate("re-arm failed")
+        fireLatest()
+        assert.are.equal(1, #TestEnv.TakeReportedErrors())
+
+        debounced("c")
+        TestEnv.AdvanceMs(1000)
+        fireLatest()
+        assert.are.same({ "c" }, received)
+    end)
+
+    it("lets Flush deliver the fire a failed re-arm left owed", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local received = {}
+        local debounced = SchedulerKit:Debounce(function(value)
+            received[#received + 1] = value
+        end, 1)
+
+        debounced("a")
+        TestEnv.AdvanceMs(500)
+        debounced("b")
+        TestEnv.AdvanceMs(500)
+        TestEnv.FailNextTimerCreate("re-arm failed")
+        fireLatest()
+        assert.is_true(debounced:IsPending())
+        assert.is_true(debounced:Flush())
+        assert.are.same({ "b" }, received)
+    end)
+
+    it("clamps the remaining wait when the clock steps backwards", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local debounced = SchedulerKit:Debounce(function() end, 1)
+        debounced()
+        TestEnv.AdvanceMs(-5000)
+        fireLatest()
+        assert.are.equal(1, latestSeconds())
+    end)
+end)

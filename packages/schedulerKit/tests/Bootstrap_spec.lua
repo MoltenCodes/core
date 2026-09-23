@@ -1,5 +1,32 @@
 local TestEnv = require("SchedulerKitTestEnv")
 
+---Load the SchedulerKit source as a copy carrying `revision`, the way an older
+---embedded copy of the same file would have loaded first.
+---@param revision integer
+---@return table SchedulerKit
+local function loadSchedulerKitAsRevision(revision)
+    local path = nil
+    for template in package.path:gmatch("[^;]+") do
+        local candidate = template:gsub("%?", "SchedulerKit")
+        local file = io.open(candidate, "r")
+        if file ~= nil then
+            file:close()
+            path = candidate
+            break
+        end
+    end
+    assert(path ~= nil, "SchedulerKit.lua is not on package.path")
+    local file = assert(io.open(path, "r"))
+    local text = file:read("*a")
+    file:close()
+    local patched, replacements = text:gsub(
+        "local IMPLEMENTATION_REVISION = %d+",
+        "local IMPLEMENTATION_REVISION = " .. revision
+    )
+    assert(replacements == 1, "IMPLEMENTATION_REVISION not found")
+    return assert(loadstring(patched, "@" .. path))()
+end
+
 describe("SchedulerKit bootstrap", function()
     after_each(TestEnv.Reset)
 
@@ -47,7 +74,7 @@ describe("SchedulerKit bootstrap", function()
             return require("SchedulerKit")
         end)
         assert.is_true(ok)
-        assert.are.equal(7, SchedulerKit.REVISION)
+        assert.are.equal(8, SchedulerKit.REVISION)
 
         local scope = SchedulerKit:CreateScope()
         assert.is_false(scope:IsClosed())
@@ -151,7 +178,7 @@ describe("SchedulerKit bootstrap", function()
 
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(7, upgraded.REVISION)
+        assert.are.equal(8, upgraded.REVISION)
 
         -- Revision 4's lane bookkeeping is derived from the inherited queues
         -- rather than assumed empty, so work an older copy had already queued
@@ -227,7 +254,7 @@ describe("SchedulerKit bootstrap", function()
 
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(7, upgraded.REVISION)
+        assert.are.equal(8, upgraded.REVISION)
         local state = rawget(upgraded, "_state")
         assert.are.same({}, rawget(state, "lanes"))
         assert.are.equal(0, rawget(state, "laneCount"))
@@ -247,6 +274,36 @@ describe("SchedulerKit bootstrap", function()
         assert.is_true(legacyScope:Close())
         assert.is_true(debounced:IsClosed())
         assert.is_false(watcher:IsActive())
+    end)
+
+    it("upgrades revision-7 lanes in place, adopting lanes without an admitted set", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        require("LifecycleKit")
+        require("TimerKit")
+
+        local old = loadSchedulerKitAsRevision(7)
+        assert.are.equal(7, old.REVISION)
+        local lane = old:Lane("upgraded", { retry = { attempts = 2, backoffSeconds = 1 } })
+        -- Revision 7 lanes kept no admitted set.
+        rawset(lane, "_admitted", nil)
+
+        package.loaded["SchedulerKit"] = nil
+        local upgraded = require("SchedulerKit")
+        assert.are.equal(old, upgraded)
+        assert.are.equal(8, upgraded.REVISION)
+        assert.are.equal(lane, upgraded:Lane("upgraded"))
+
+        local job = lane:Submit(function()
+            error("again")
+        end)
+        TestEnv.Tick()
+        assert.are.equal("delayed", job:GetState())
+        lane:Close()
+        assert.are.equal("cancelled", job:GetState())
     end)
 
     it("keeps live family handles working across a compatible reload", function()

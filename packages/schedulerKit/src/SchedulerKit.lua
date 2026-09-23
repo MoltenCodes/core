@@ -29,7 +29,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local REQUIRED_TIMER_API = 1
@@ -215,7 +215,7 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@class SchedulerKit.DebounceHandle
 ---@overload fun(...: any): boolean
 ---@field Cancel fun(self: SchedulerKit.DebounceHandle): boolean
----@field Flush fun(self: SchedulerKit.DebounceHandle): boolean
+---@field Flush fun(self: SchedulerKit.DebounceHandle): boolean, string?
 ---@field IsPending fun(self: SchedulerKit.DebounceHandle): boolean
 ---@field Close fun(self: SchedulerKit.DebounceHandle): boolean
 ---@field IsClosed fun(self: SchedulerKit.DebounceHandle): boolean
@@ -233,7 +233,7 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@class SchedulerKit.CoalesceHandle
 ---@overload fun(key: any, value: any?): boolean
 ---@field Cancel fun(self: SchedulerKit.CoalesceHandle): boolean
----@field Flush fun(self: SchedulerKit.CoalesceHandle): boolean
+---@field Flush fun(self: SchedulerKit.CoalesceHandle): boolean, string?
 ---@field IsPending fun(self: SchedulerKit.CoalesceHandle): boolean
 ---@field GetStats fun(self: SchedulerKit.CoalesceHandle): SchedulerKit.CoalesceStats
 ---@field Close fun(self: SchedulerKit.CoalesceHandle): boolean
@@ -1543,6 +1543,12 @@ local function wakeDelayed(job, generation)
 
     rawset(job, "_delayTimer", false)
     rawset(job, "_state", "pending")
+    -- An admitted lane job waking from its retry backoff starts again, so the
+    -- lane's minimum interval is measured from here.
+    local lane = rawget(job, "_lane")
+    if lane ~= nil and lane ~= false and rawget(job, "_laneAdmitted") == true then
+        rawset(lane, "_lastStart", nowFromPreciseClock() / 1000)
+    end
     queuePush(job)
     local ok, value = pcall(updateDriver)
     if not ok then
@@ -2167,6 +2173,8 @@ local function installCoalescingFamily()
     -- scope, so closing the scope cancels it wherever it is, and `finishJob`
     -- reports every terminal state back to the lane.
 
+    local admittedJobs
+
     ---Whether `job` is still waiting for admission and should be served.
     ---@param job any
     ---@return boolean
@@ -2209,6 +2217,12 @@ local function installCoalescingFamily()
             items[head] = nil
             head = head + 1
             if isWaitingLaneJob(job) then
+                if head > tail then
+                    -- Drained: restart at the front so the indices do not
+                    -- climb for the lane's whole life.
+                    head, tail = 1, 0
+                    rawset(lane, "_tail", 0)
+                end
                 rawset(lane, "_head", head)
                 return job
             end
@@ -2223,6 +2237,19 @@ local function installCoalescingFamily()
     ---@param seconds number
     local function armLaneTimer(lane, seconds)
         armOwnerTimer(lane, ensureFamilyTimerScope(), seconds)
+    end
+
+    ---Return the set of the lane's admitted, unfinished jobs. A lane created by
+    ---revision 7 has none; it is created on first use.
+    ---@param lane SchedulerKit.Lane
+    ---@return table<SchedulerKit.Job, boolean>
+    function admittedJobs(lane)
+        local admitted = rawget(lane, "_admitted")
+        if type(admitted) ~= "table" then
+            admitted = {}
+            rawset(lane, "_admitted", admitted)
+        end
+        return admitted
     end
 
     ---Admit waiting submissions while the lane has room and its interval allows.
@@ -2244,6 +2271,11 @@ local function installCoalescingFamily()
             local lastStart = rawget(lane, "_lastStart")
             if minInterval > 0 and lastStart ~= false then
                 local wait = lastStart + minInterval - nowSeconds()
+                -- A clock that stepped backwards cannot stretch the wait
+                -- past one interval.
+                if wait > minInterval then
+                    wait = minInterval
+                end
                 if wait > DUE_TOLERANCE_SECONDS then
                     local ok, value = pcall(armLaneTimer, lane, wait)
                     if not ok then
@@ -2265,6 +2297,7 @@ local function installCoalescingFamily()
             rawset(lane, "_lastStart", nowSeconds())
             rawset(job, "_laneAdmitted", true)
             rawset(job, "_state", "pending")
+            admittedJobs(lane)[job] = true
             queuePush(job)
             admitted = true
         end
@@ -2326,6 +2359,7 @@ local function installCoalescingFamily()
     function laneJobFinished(job, lane, terminalState)
         rawset(job, "_lane", false)
         if rawget(job, "_laneAdmitted") == true then
+            admittedJobs(lane)[job] = nil
             rawset(lane, "_inFlight", rawget(lane, "_inFlight") - 1)
         else
             rawset(lane, "_queued", rawget(lane, "_queued") - 1)
@@ -2367,7 +2401,12 @@ local function installCoalescingFamily()
     ---@return boolean retried
     function retryLaneJob(job, lane)
         local attempt = rawget(job, "_attempt")
-        if type(attempt) ~= "number" or attempt >= rawget(lane, "_attempts") then
+        if
+            type(attempt) ~= "number"
+            or attempt >= rawget(lane, "_attempts")
+            or rawget(lane, "_closed") == true
+        then
+            -- A closed lane retries nothing: the attempt that raised fails.
             return false
         end
 
@@ -2380,6 +2419,21 @@ local function installCoalescingFamily()
         local maxBackoff = rawget(lane, "_maxBackoff")
         if maxBackoff ~= false and backoff > maxBackoff then
             backoff = maxBackoff
+        end
+
+        -- A retry is a start: it waits at least until the lane's minimum
+        -- interval has passed since the last start. The start itself is
+        -- recorded when the backoff expires (see `wakeDelayed`).
+        local minInterval = rawget(lane, "_minInterval")
+        local lastStart = rawget(lane, "_lastStart")
+        if minInterval > 0 and lastStart ~= false then
+            local wait = lastStart + minInterval - nowSeconds()
+            if wait > minInterval then
+                wait = minInterval
+            end
+            if wait > backoff then
+                backoff = wait
+            end
         end
 
         local ok, value = pcall(armDelay, job, backoff)
@@ -2654,6 +2708,18 @@ local function installCoalescingFamily()
         rawset(self, "_head", 1)
         rawset(self, "_tail", 0)
 
+        -- An admitted job waiting out a retry backoff has not started its next
+        -- attempt yet; it is cancelled. Running attempts finish, and one that
+        -- raises now fails instead of retrying (see `retryLaneJob`).
+        for job in next, admittedJobs(self) do
+            if rawget(job, "_state") == "delayed" then
+                local cancelOk, cancelError = pcall(cancelJob, job)
+                if not cancelOk and firstError == nil then
+                    firstError = { value = cancelError }
+                end
+            end
+        end
+
         if firstError ~= nil then
             error(firstError.value, 0)
         end
@@ -2721,8 +2787,24 @@ local function installCoalescingFamily()
         rawset(member, "_firing", false)
     end
 
+    ---Arm a member's timer, or report the failure and leave the member idle
+    ---with its owed fire intact, so the next call or `Flush` recovers it.
+    ---@param member table
+    ---@param seconds number
+    ---@return boolean armed
+    local function armMemberTimerOrReport(member, seconds)
+        local ok, value = pcall(armMemberTimer, member, seconds)
+        if not ok then
+            rawset(member, "_waiting", false)
+            reportError(value)
+            return false
+        end
+        return true
+    end
+
     ---Hand the delivery slot to the lane as one job.
     ---@param member SchedulerKit.DebounceHandle
+    ---@return "delivered"|"deferred"|"dropped" status
     local function submitDebounceDelivery(member)
         local lane = rawget(member, "_lane")
         local job, reason = submitToLane(
@@ -2735,25 +2817,33 @@ local function installCoalescingFamily()
         )
         if job ~= nil then
             rawset(member, "_deliveryJob", job)
-            return
+            return "delivered"
         end
 
         if reason == "full" and rawget(member, "_closed") ~= true then
-            -- Take the arguments back as the owed call and try again one delay
-            -- later. A full lane defers a debounce fire; it never drops it.
-            local args = rawget(member, "_args")
-            rawset(member, "_args", rawget(member, "_deliveryArgs"))
-            rawset(member, "_deliveryArgs", args)
-            rawset(member, "_argCount", rawget(member, "_deliveryCount"))
-            rawset(member, "_deliveryCount", 0)
-            rawset(member, "_trailing", true)
-            rawset(member, "_waiting", true)
-            rawset(member, "_lastCall", nowSeconds())
-            rawset(member, "_burstStart", rawget(member, "_lastCall"))
-            if rawget(member, "_timer") == false then
-                armMemberTimer(member, rawget(member, "_delay"))
+            -- A full lane defers a debounce fire; it never drops it.
+            if rawget(member, "_trailing") == true then
+                -- A newer burst is already owed. Its arguments supersede the
+                -- ones the lane refused, which are discarded.
+                clearArguments(rawget(member, "_deliveryArgs"))
+                rawset(member, "_deliveryCount", 0)
+            else
+                -- Take the arguments back as the owed call.
+                local args = rawget(member, "_args")
+                rawset(member, "_args", rawget(member, "_deliveryArgs"))
+                rawset(member, "_deliveryArgs", args)
+                rawset(member, "_argCount", rawget(member, "_deliveryCount"))
+                rawset(member, "_deliveryCount", 0)
+                rawset(member, "_trailing", true)
+                rawset(member, "_lastCall", nowSeconds())
+                rawset(member, "_burstStart", rawget(member, "_lastCall"))
             end
-            return
+            -- Try again one delay later.
+            rawset(member, "_waiting", true)
+            if rawget(member, "_timer") == false then
+                armMemberTimerOrReport(member, rawget(member, "_delay"))
+            end
+            return "deferred"
         end
 
         clearArguments(rawget(member, "_deliveryArgs"))
@@ -2761,14 +2851,16 @@ local function installCoalescingFamily()
         reportError(
             'SchedulerKit debounce fire dropped: lane "' .. rawget(lane, "_name") .. '" is closed'
         )
+        return "dropped"
     end
 
     ---Deliver the owed call: synchronously, or through the lane.
     ---@param member SchedulerKit.DebounceHandle
+    ---@return "delivered"|"deferred"|"dropped" status
     local function deliverDebounce(member)
         if rawget(member, "_lane") == false then
             fireDebounceDirect(member)
-            return
+            return "delivered"
         end
 
         -- Swap the owed arguments into the delivery slot. Arguments a delivery
@@ -2786,9 +2878,10 @@ local function installCoalescingFamily()
             -- The job reads the delivery slot when it starts; if it has already
             -- started, `_deliveryDirty` makes it deliver once more afterwards.
             rawset(member, "_deliveryDirty", true)
-            return
+            return "delivered"
         end
-        submitDebounceDelivery(member)
+        local status = submitDebounceDelivery(member)
+        return status
     end
 
     ---The debounce timer woke: fire if the burst is over, else re-arm.
@@ -2808,8 +2901,12 @@ local function installCoalescingFamily()
         end
 
         local remaining = due - nowSeconds()
+        -- A clock that stepped backwards cannot stretch the wait past one delay.
+        if remaining > rawget(member, "_delay") then
+            remaining = rawget(member, "_delay")
+        end
         if remaining > DUE_TOLERANCE_SECONDS then
-            armMemberTimer(member, remaining)
+            armMemberTimerOrReport(member, remaining)
             return
         end
 
@@ -2844,7 +2941,7 @@ local function installCoalescingFamily()
         local reading = nowSeconds()
         rawset(member, "_lastCall", reading)
 
-        if rawget(member, "_waiting") == true then
+        if rawget(member, "_waiting") == true and rawget(member, "_timer") ~= false then
             rawset(member, "_trailing", true)
             return true
         end
@@ -2931,11 +3028,12 @@ local function installCoalescingFamily()
 
     ---Deliver the collected set: synchronously, or through the lane.
     ---@param member SchedulerKit.CoalesceHandle
+    ---@return "delivered"|"deferred"|"dropped" status
     local function deliverCoalesce(member)
         local lane = rawget(member, "_lane")
         if lane == false then
             fireCoalesceDirect(member)
-            return
+            return "delivered"
         end
 
         if rawget(member, "_deliveryJob") ~= false then
@@ -2945,7 +3043,7 @@ local function installCoalescingFamily()
             if rawget(member, "_timer") == false then
                 armMemberTimer(member, rawget(member, "_interval"))
             end
-            return
+            return "deferred"
         end
 
         local set = rawget(member, "_set")
@@ -2966,7 +3064,7 @@ local function installCoalescingFamily()
         if job ~= nil then
             rawset(member, "_deliveryJob", job)
             rawset(member, "_delivered", rawget(member, "_delivered") + 1)
-            return
+            return "delivered"
         end
 
         -- Refused: the set goes back to collecting.
@@ -2979,7 +3077,7 @@ local function installCoalescingFamily()
             if rawget(member, "_timer") == false then
                 armMemberTimer(member, rawget(member, "_interval"))
             end
-            return
+            return "deferred"
         end
 
         wipe(set)
@@ -2990,6 +3088,7 @@ local function installCoalescingFamily()
                 .. rawget(lane, "_name")
                 .. '" is closed'
         )
+        return "dropped"
     end
 
     ---The coalesce timer woke: deliver whatever the interval collected.
@@ -3187,10 +3286,8 @@ local function installCoalescingFamily()
         rawset(watcher, "_sampled", true)
         rawset(watcher, "_value", value)
         if first or value ~= previous or rawget(watcher, "_everyTick") == true then
-            local callbackOk, failure = pcall(rawget(watcher, "_callback"), value, previous)
-            if not callbackOk then
-                reportError(failure)
-            end
+            -- Reported with a traceback, like the predicate.
+            callProtected(rawget(watcher, "_callback"), 2, value, previous)
         end
     end
 
@@ -3452,8 +3549,10 @@ local function installCoalescingFamily()
 
     -- Member release ----------------------------------------------------------
 
-    ---Close one Debounce or Coalesce member: drop what it owes, cancel its lane
-    ---delivery and leave its scope. Terminal and idempotent.
+    ---Close one Debounce or Coalesce member: drop what it owes, cancel a lane
+    ---delivery still waiting for admission, and leave its scope. A delivery the
+    ---lane already admitted finishes, as the lane's own `Close` lets admitted
+    ---work drain. Terminal and idempotent.
     ---@param member table
     ---@return boolean closed `false` when it was already closed.
     local function closeTimedMember(member)
@@ -3471,7 +3570,7 @@ local function installCoalescingFamily()
         end
 
         local deliveryJob = rawget(member, "_deliveryJob")
-        if deliveryJob ~= false then
+        if deliveryJob ~= false and rawget(deliveryJob, "_laneAdmitted") ~= true then
             local cancelOk, cancelError = pcall(cancelJob, deliveryJob)
             if not cancelOk and firstError == nil then
                 firstError = { value = cancelError }
@@ -3573,7 +3672,8 @@ local function installCoalescingFamily()
 
     ---Fire now if a fire is owed, ending the burst.
     ---@param self SchedulerKit.DebounceHandle
-    ---@return boolean fired `false` when nothing was owed, or during the handle's own fire.
+    ---@return boolean fired `false` when nothing was owed, during the handle's own fire, or when the lane deferred or dropped it.
+    ---@return "deferred"|"dropped"|nil reason why a lane did not take the fire
     local function debounceHandleFlush(self)
         validateMember(
             self,
@@ -3581,16 +3681,24 @@ local function installCoalescingFamily()
             "SchedulerKit.DebounceHandle:Flush",
             "debounce handle"
         )
-        if rawget(self, "_waiting") ~= true or rawget(self, "_firing") == true then
-            return false
+        if rawget(self, "_firing") == true then
+            return false, nil
         end
-        cancelOwnerTimer(self)
-        rawset(self, "_waiting", false)
+        if rawget(self, "_waiting") == true then
+            cancelOwnerTimer(self)
+            rawset(self, "_waiting", false)
+        end
+        -- An owed fire is flushed even when no window is open, which is how a
+        -- handle whose timer could not be armed is recovered by hand.
         if rawget(self, "_trailing") ~= true then
-            return false
+            return false, nil
         end
-        deliverDebounce(self)
-        return true
+        local status = deliverDebounce(self)
+        if status ~= "delivered" then
+            -- Narrowed by the test above.
+            return false, status --[[@as "deferred"|"dropped"]]
+        end
+        return true, nil
     end
 
     ---Whether a fire is owed and has not been handed off yet.
@@ -3647,7 +3755,8 @@ local function installCoalescingFamily()
 
     ---Deliver the collected keys now instead of at the end of the interval.
     ---@param self SchedulerKit.CoalesceHandle
-    ---@return boolean delivered `false` when nothing was collected, or during the handle's own delivery.
+    ---@return boolean delivered `false` when nothing was collected, during the handle's own delivery, or when the lane deferred or dropped it.
+    ---@return "deferred"|"dropped"|nil reason why a lane did not take the delivery
     local function coalesceHandleFlush(self)
         validateMember(
             self,
@@ -3656,11 +3765,20 @@ local function installCoalescingFamily()
             "coalesce handle"
         )
         if rawget(self, "_keyCount") == 0 or rawget(self, "_firing") == true then
-            return false
+            return false, nil
+        end
+        if rawget(self, "_deliveryJob") ~= false then
+            -- The previous set is still in the lane; the interval timer keeps
+            -- running and delivers once that set is done.
+            return false, "deferred"
         end
         cancelOwnerTimer(self)
-        deliverCoalesce(self)
-        return true
+        local status = deliverCoalesce(self)
+        if status ~= "delivered" then
+            -- Narrowed by the test above.
+            return false, status --[[@as "deferred"|"dropped"]]
+        end
+        return true, nil
     end
 
     ---Whether keys are collected and waiting for delivery.

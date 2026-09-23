@@ -247,7 +247,7 @@ end
 
 ---Events coalesced into one callback per interval.
 ---@class EventKit.CoalesceHandle
----@field Flush fun(self: EventKit.CoalesceHandle): boolean
+---@field Flush fun(self: EventKit.CoalesceHandle): boolean, string?
 ---@field IsPending fun(self: EventKit.CoalesceHandle): boolean
 ---@field GetStats fun(self: EventKit.CoalesceHandle): table<string, integer>
 ---@field Close fun(self: EventKit.CoalesceHandle): boolean
@@ -1728,6 +1728,7 @@ end
 ---Deliver what the handle collected now instead of at the end of the interval.
 ---@param self EventKit.CoalesceHandle
 ---@return boolean delivered `false` when nothing was collected or it is closed.
+---@return string? reason `"deferred"` or `"dropped"` when a SchedulerKit lane did not take it
 local function coalesceFlush(self)
     validateCompositeReceiver(
         self,

@@ -251,8 +251,10 @@ end, { units = { "player", "target" } })
 
 - Every value in the set is `true`. An event whose first argument is `nil`
   (or NaN) is keyed by its event name, so `BAG_UPDATE_DELAYED` still counts.
-- **The set is reused and emptied as soon as the callback returns.** Do not
-  keep it; copy what you need.
+- **The set is reused.** Without a lane it is emptied as soon as the callback
+  returns; delivered through a lane it lives until the lane job reaches a
+  terminal state, across retries, and is emptied then. Do not keep it; copy
+  what you need.
 - A raising callback is reported through the host error handler, as any
   listener is.
 
@@ -260,7 +262,7 @@ The handle:
 
 | Method | Purpose |
 |---|---|
-| `Flush()` | Deliver now; `false` when nothing was collected. |
+| `Flush()` | Deliver now; `false` when nothing was collected, or `false, "deferred"` / `false, "dropped"` when a lane did not take the delivery. |
 | `IsPending()` | Whether payloads wait for delivery. |
 | `GetStats()` | SchedulerKit's `{ keys, refused, delivered, deferred, dropped }`, in a reused table. |
 | `Close()` | Unregister the events, drop what was collected, leave the scope. Terminal; `false` if already closed. |
@@ -295,7 +297,9 @@ print(freeSlots:Get())
 | `IsClosed()` | Whether the handle is closed. |
 
 A `compute` that raises during a recompute is reported and the previous value
-is kept; so is an `equals` that raises, which then counts as a change.
+is kept; so is an `equals` that raises, which then counts as a change. With the
+default `==`, a `compute` that returns NaN counts as a change on every
+recompute, because NaN is never equal to itself.
 
 ### Ownership
 

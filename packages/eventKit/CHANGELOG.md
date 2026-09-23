@@ -8,6 +8,7 @@
 - A `Coalesce` or `Derive` handle joins its EventKit scope as one member; the scope sweep releases its event registrations and its SchedulerKit scope, deferred like any connection when the scope closes during a dispatch. The steady-state per-event path allocates nothing.
 - Implementation revision 7; `_state` schema 5. A copy loading over revision 6 adds the composite dispatch table and handle metatables in place. 22 new specs: Coalesce (10), Derive (11) and the revision-6 upgrade; the test environment gains a SchedulerKit-backed variant that puts the sibling sources on the path.
 - `EventKit` API generation 1 is unchanged; the additions are compatible.
+- Documentation only, after the acceptance review (no executed-code change, so no version or revision change): a set delivered through a lane lives until the lane job's terminal state, across retries; a NaN `Derive` value counts as a change on every recompute; `CoalesceHandle:Flush()` passes SchedulerKit's `"deferred"`/`"dropped"` reason through, now stated in its annotations.
 
 ## 0.4.1 — 2026-09-23
 
