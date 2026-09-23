@@ -660,7 +660,7 @@ and W9) and the WeakAuras media pack (LibSharedMedia).
    frame.
 7. Tests: round-trip of every type and edge (control bytes, the escape
    byte, empty and long strings, integers past 2^53, `math.huge`, NaN,
-   denormals), nested and mixed tables, nil in the middle of an argument
+   subnormal numbers), nested and mixed tables, nil in the middle of an argument
    list, cycle refusal, every limit, malformed input of every shape never
    raising, a fuzz pass over random bytes, compression round-trips against
    known vectors, asynchronous encode under a budget with the scheduler
@@ -682,7 +682,7 @@ and W9) and the WeakAuras media pack (LibSharedMedia).
    Non-goals: serialisation (codecKit), encryption, guaranteed delivery or
    ordering across priorities, exceeding the client's rate limits.
 3. Dependencies: registry API 2, signalKit API 1, eventKit API 1
-   (`CHAT_MSG_ADDON`), schedulerKit API 1 (the despool driver is a lane that
+   (`CHAT_MSG_ADDON`), schedulerKit API 1 (the send driver is a lane that
    exists only while something is queued), poolKit API 1 (message and chunk
    records); codecKit API 1 and hookKit API 1 optional through
    `Registry:Find` (hashing for SyncSet, the outside-traffic hook);
