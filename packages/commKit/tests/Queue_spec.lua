@@ -54,6 +54,25 @@ describe("CommKit queue bounds and refusals", function()
         assert.are.equal(4, #TestEnv.TakeOutbox())
     end)
 
+    it("fails a queued message that no longer fits a lowered reassembly bound", function()
+        local outcome
+        local handle = assert(scope:Send(request({
+            text = TestEnv.Text(600),
+            onComplete = function(_, state, reason)
+                outcome = { state, reason }
+            end,
+        })))
+        local short = assert(scope:Send(request({ text = TestEnv.Text(300) })))
+        CommKit:SetLimits({ maxReassemblyBytesPerSender = 300 })
+        assert.are.same({ "failed", "tooLarge" }, outcome)
+        assert.are.equal("failed", handle:GetState())
+        assert.are.equal("queued", short:GetState())
+        TestEnv.Advance(0)
+        assert.are.equal("sent", short:GetState())
+        assert.are.same({ 0, 0 }, { CommKit:GetQueueDepth() })
+        assert.are.equal(0, TestEnv.ActiveOnUpdateCount())
+    end)
+
     it("refuses every byte the addon channel cannot carry", function()
         for _, text in ipairs({ "a\0b", "a\nb", "a\rb", "a|b" }) do
             assert.are.same({ nil, "forbiddenByte" }, { scope:Send(request({ text = text })) })

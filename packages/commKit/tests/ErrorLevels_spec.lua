@@ -330,4 +330,32 @@ describe("CommKit error levels", function()
             end
         )
     end)
+
+    it("refuses a secret constraint or limit at the caller before comparing it", function()
+        -- A secret boolean and a secret number: neither may be compared.
+        -- selene: allow(global_usage)
+        rawset(_G, "issecretvalue", function(value)
+            return value == true or value == 17
+        end)
+        assertReportedAtCaller(
+            "CommKit.Scope:Send request.constraints must not hold a secret value",
+            function(mark)
+                mark()
+                scope:Send({
+                    prefix = "P",
+                    text = "x",
+                    distribution = "PARTY",
+                    constraints = { logged = true },
+                })
+            end
+        )
+        assertReportedAtCaller(
+            "CommKit:SetLimits limits.maxQueuedMessages must not be a secret value",
+            function(mark)
+                mark()
+                CommKit:SetLimits({ maxQueuedMessages = 17 })
+            end
+        )
+        assert.are.equal(256, CommKit:GetLimits().maxQueuedMessages)
+    end)
 end)

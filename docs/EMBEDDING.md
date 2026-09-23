@@ -1062,9 +1062,9 @@ secret value is refused with the rule `secret`; never store one.
 ### `CommandKit ... nil, "taken"` or `nil, "emote"`
 
 The slash name is already a chat type (`/s`, `/g`), an emote (`/dance`) or
-another addon's command. Pick another name; the client resolves chat types
-before slash commands and emotes after them, so a colliding command would
-silently never run.
+another addon's command. Pick another name: the client resolves chat types
+before slash commands and emotes after them, so a command named like a chat
+type would never run, and one named like an emote would hide the emote.
 
 ### Nothing happens, and there is no error
 

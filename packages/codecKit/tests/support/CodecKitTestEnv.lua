@@ -192,8 +192,8 @@ function CodecKitTestEnv.RandomText(random, wordCount)
 end
 
 ---Deep equality for decoded values: NaN equals NaN, -0 differs from 0, and
----tables compare by contents with keys that are tables matched by identity
----of neither side (a table key must appear once on each side).
+---tables compare by contents. A key that is a table is matched by contents
+---rather than identity, since decoding builds new key tables.
 ---@param left any
 ---@param right any
 ---@return boolean

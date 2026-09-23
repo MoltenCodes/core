@@ -27,7 +27,7 @@ What each piece promises:
 - **Never raises on input.** `Decode`, `Deserialize`, `Decompress` and the channel decoders return `false, reason` for any string, from a fixed vocabulary, and stay within the limits whatever the string holds.
 - **Bounded by default.** `maxDepth` 16, `maxValues` 65536, `maxStringLength` 65536 and `maxOutputBytes` 1 MiB, shared by every consumer, changed with `SetLimits`. The output limit also caps what inflating a hostile stream can produce.
 - **Standard compression.** `Compress` writes raw DEFLATE that any inflater reads, and `Decompress` reads any raw DEFLATE stream; levels 1 to 9.
-- **Every stage on its own.** `Serialize`/`Deserialize`, `Compress`/`Decompress`, `EncodeForAddon`/`DecodeForAddon`, `EncodeForPrint`/`DecodeForPrint`; `EncodeMany`/`DecodeMany` for argument lists with `nil`s.
+- **Every stage on its own.** `Serialize`/`Deserialize`, `Compress`/`Decompress`, `EncodeForAddon`/`DecodeForAddon`, `EncodeForPrint`/`DecodeForPrint`; `EncodeMany`/`DecodeMany` for argument lists of up to 4096 values, `nil`s included.
 - **Never freezes a frame.** `EncodeAsync` and `DecodeAsync` run on a SchedulerKit scope and yield when the frame budget is spent.
 - **Re-entrant and cheap.** Buffers are leased from a PoolKit table pool and returned on every path; encoding a small value again allocates nothing.
 - **Secrets refused.** A secret value anywhere in the value raises at your line.

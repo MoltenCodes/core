@@ -8,7 +8,8 @@
 --                  middle and last chunk carrying a stream id and an index; the
 --                  protocol is specified byte by byte in `docs/API.md`.
 --   reassembly     bounded in streams, bytes per sender, streams in flight per
---                  sender and time; a dropped stream is reported once.
+--                  sender and time; dropped streams are reported at most once
+--                  per sender per minute.
 --   queues         three priorities (ALERT, NORMAL, BULK) with per-destination
 --                  round-robin inside each, bounded in messages and bytes; a
 --                  send that would pass a bound is refused with a named reason.
@@ -49,7 +50,9 @@
 --   Registrations ......... prefixes, connections, delivery
 --   Content hashes ........ FNV-1a over a canonical encoding
 --   SyncSet ............... fields, request, ack, deliver
---   Public methods ........ connections, send handles, SyncSets, scopes
+--   Send path ............. request validation, queueing, cancellation, close
+--   Public methods ........ method tables for connections, send handles,
+--                           SyncSets and scopes
 --   Package public API .... the facade published through Registry
 --   Commit ................ prototype/facade assignment and self-check
 --
@@ -263,7 +266,10 @@ local FNV = {
     canonicalClose = string.char(0x0D),
 }
 
--- Limits: the defaults, and the range SetLimits accepts for each.
+-- Limits: the defaults, and the range SetLimits accepts for each. The largest
+-- byte bounds, 1048576, cap a message at 4178 chunks, below the 5624 the
+-- logged channel's header can number, so `Send` never needs to count chunks
+-- against the header.
 local DEFAULT_LIMITS = {
     maxQueuedBytes = 65536,
     maxQueuedMessages = 256,
@@ -462,7 +468,7 @@ local SURFACE = {
 ---The table `scope:SyncSet` accepts.
 ---@class CommKit.SyncSetOptions
 ---@field fields string[] The field names, 1 to 32 of them, each 1 to 64 bytes.
----@field schema table<string, table>? A sealed SchemaKit schema per field that received values must pass.
+---@field schema table<string, table>? A sealed SchemaKit schema per field that received and local values must pass.
 
 ---The limits `SetLimits` accepts and `GetLimits` returns.
 ---@class CommKit.Limits
@@ -832,14 +838,13 @@ local function newState()
             framesPerSecond = false,
         },
         -- `running` is true while a run is on the stack; a send made by one of
-        -- its callbacks sets `wakeRequested` instead of scheduling a second
+        -- its callbacks then schedules nothing, so there is never a second
         -- job.
         driver = {
             job = false,
             delayed = false,
             sampler = false,
             running = false,
-            wakeRequested = false,
         },
         -- True while CommKit itself is inside the client's send function, so
         -- the outside-traffic hook does not charge the same bytes twice.
@@ -1105,7 +1110,8 @@ end
 ---@param label string
 ---@param level integer
 local function validateOptionalCallback(value, label, level)
-    if value ~= nil and type(value) ~= "function" then
+    local kind = type(value)
+    if kind ~= "nil" and kind ~= "function" then
         error(label .. " must be a function or nil", level)
     end
 end
@@ -1312,14 +1318,20 @@ local function startSampler()
     rawset(driver, "sampler", timer)
 end
 
----Stop the frame-rate sampler; nothing is queued.
-local function stopSampler()
-    local timer = rawget(driver, "sampler")
-    if timer == false then
-        return
+---Cancel any scheduled driver run and stop the frame-rate sampler: nothing is
+---queued, so nothing may stay armed.
+local function stopDriver()
+    local job = rawget(driver, "job")
+    if job ~= false then
+        rawset(driver, "job", false)
+        rawset(driver, "delayed", false)
+        job:Cancel()
     end
-    rawset(driver, "sampler", false)
-    timer:Cancel()
+    local timer = rawget(driver, "sampler")
+    if timer ~= false then
+        rawset(driver, "sampler", false)
+        timer:Cancel()
+    end
 end
 
 ---Enter the zoning mode: the host just loaded a world. What the bucket earned
@@ -1504,14 +1516,16 @@ end
 
 ---Queue the abort of a stream that was cancelled after its first chunk left,
 ---at the head of the same pipe, so receivers drop it at once and silently.
+---Receivers hold the stream until the abort arrives, so the abort takes over
+---the message's in-flight allowance and keeps its stream id in use. An abort
+---has no handle, scope, text or callbacks: only what `transmit` and the queue
+---read.
 ---@param record table the cancelled message
 local function queueAbort(record)
     local abort = rawget(pools, "records"):Acquire()
     abort.kind = "abort"
-    abort.handle = false
-    abort.scope = false
+    abort.inFlight = true
     abort.prefix = rawget(record, "prefix")
-    abort.text = ""
     abort.textLength = 0
     abort.distribution = rawget(record, "distribution")
     abort.target = rawget(record, "target")
@@ -1519,11 +1533,7 @@ local function queueAbort(record)
     abort.logged = rawget(record, "logged")
     abort.pipeKey = rawget(record, "pipeKey")
     abort.totalChunks = rawget(record, "totalChunks")
-    abort.nextIndex = 1
-    abort.bytesSent = 0
     abort.streamId = rawget(record, "streamId")
-    abort.onProgress = false
-    abort.onComplete = false
     enqueueRecord(abort)
     -- Move it from the tail to the head of its pipe.
     local fifo = rawget(rawget(abort, "pipe"), "fifo")
@@ -1531,7 +1541,8 @@ local function queueAbort(record)
     table.insert(fifo, 1, abort)
 end
 
----Release the in-flight allowance a started multi-chunk message holds.
+---Release the in-flight allowance a started multi-chunk message, or the
+---abort that took it over, holds.
 ---@param record table
 local function releaseInFlight(record)
     if not rawget(record, "inFlight") then
@@ -1548,34 +1559,41 @@ end
 
 ---Move a queued message to a terminal state, release its record and tell the
 ---caller. The callback runs last, isolated, when CommKit's state is settled.
----A message cancelled after its first chunk left queues an abort.
+---A message cancelled after its first chunk left queues an abort. Outside a
+---driver run, the message that empties the queue also disarms the driver.
 ---@param record table
 ---@param terminalState string
 ---@param reason string|nil
 local function completeSend(record, terminalState, reason)
     local handle = rawget(record, "handle")
     local onComplete = rawget(record, "onComplete")
-    local started = rawget(record, "inFlight") == true
     dequeueRecord(record)
-    releaseInFlight(record)
-    if started and terminalState == SEND_STATE.cancelled then
+    if rawget(record, "inFlight") == true and terminalState == SEND_STATE.cancelled then
+        rawset(record, "inFlight", false)
         queueAbort(record)
+    else
+        releaseInFlight(record)
     end
     rawset(handle, "_state", terminalState)
     rawset(handle, "_record", false)
     removeFromList(rawget(rawget(record, "scope"), "_pending"), handle)
     count(STATISTIC_FOR.terminal[terminalState])
     rawget(pools, "records"):Release(record)
+    if rawget(state, "queuedMessages") == 0 and not rawget(driver, "running") then
+        stopDriver()
+    end
 
     if onComplete ~= false then
         isolatedCall(onComplete, handle, terminalState, reason)
     end
 end
 
----Take an abort record out of the queue once it was sent or refused.
+---Take an abort record out of the queue once it was sent or refused; the
+---receivers no longer hold its stream.
 ---@param record table
 local function finishAbort(record)
     dequeueRecord(record)
+    releaseInFlight(record)
     rawget(pools, "records"):Release(record)
 end
 
@@ -1586,14 +1604,14 @@ end
 -- chunks in rotation until the bucket, the queue or the per-run cap runs out;
 -- then it arranges the next run: after the time the bucket needs, after the
 -- earliest reinstatement, or on the next frame. While a run is on the stack a
--- send made by one of its callbacks only sets `wakeRequested`: the run sees
--- the new message on its next chunk, and nothing schedules a second job.
+-- send made by one of its callbacks schedules nothing: the run sees the new
+-- message on its next chunk, or arranges the run after it when it ends.
 
 ---Arrange the next driver run, replacing any run already scheduled. `why`
 ---records what it waits for, so a new send knows whether waking the driver
 ---early can help.
 ---@param delay number seconds; 0 means the next frame
----@param why string `"budget"`, `"blocked"` or `"frame"`
+---@param why string `"budget"`, `"blocked"`, `"frame"` or `"retry"`
 local function scheduleDriver(delay, why)
     local existing = rawget(driver, "job")
     if existing ~= false then
@@ -1680,6 +1698,74 @@ local function transmit(record, chunk)
     return outcome, reason
 end
 
+-- Only `assignStreamId` is used outside this block.
+local assignStreamId
+
+do
+    ---Whether the head of `pipe` holds `streamId` of the digit scheme `logged`
+    ---selects: a started message or an abort, whose stream receivers may still
+    ---hold. Either is always the head of its pipe.
+    ---@param pipe table
+    ---@param logged boolean
+    ---@param streamId integer
+    ---@return boolean
+    local function headHolds(pipe, logged, streamId)
+        local head = rawget(pipe, "fifo")[1]
+        return rawget(head, "inFlight") == true
+            and rawget(head, "logged") == logged
+            and rawget(head, "streamId") == streamId
+    end
+
+    ---Whether a started message or a queued abort holds `streamId`.
+    ---@param logged boolean
+    ---@param streamId integer
+    ---@return boolean
+    local function streamIdInUse(logged, streamId)
+        for _, queue in pairs(queues) do
+            local ring = rawget(queue, "ring")
+            for index = 1, #ring do
+                if headHolds(ring[index], logged, streamId) then
+                    return true
+                end
+            end
+        end
+        for index = 1, #blockedPipes do
+            if headHolds(blockedPipes[index], logged, streamId) then
+                return true
+            end
+        end
+        return false
+    end
+
+    ---Give a multi-chunk message whose first chunk has not left the stream id
+    ---it will start with: the scheme's next id that no stream of this client
+    ---still in flight holds, so a receiver never sees two open streams with one
+    ---id. Streams in flight, aborts included, number at most
+    ---`maxInFlightPerSender` (64), below either radix, so a free id exists. The
+    ---counter moves only when the first chunk leaves (`acceptChunk`), and the
+    ---id is chosen again on every attempt until then.
+    ---@param record table
+    function assignStreamId(record)
+        if
+            rawget(record, "kind") ~= "message"
+            or rawget(record, "totalChunks") == 1
+            or rawget(record, "nextIndex") ~= 1
+        then
+            return
+        end
+        local logged = rawget(record, "logged")
+        local radix = digitScheme(logged).radix
+        local candidate = rawget(state, logged and "nextLoggedStreamId" or "nextStreamId")
+        for _ = 1, radix do
+            if not streamIdInUse(logged, candidate) then
+                break
+            end
+            candidate = (candidate + 1) % radix
+        end
+        rawset(record, "streamId", candidate)
+    end
+end
+
 ---Build the next chunk of a message, or the abort of a cancelled one, and the
 ---payload bytes it carries.
 ---@param record table
@@ -1729,7 +1815,8 @@ end
 local function headMayStart(pipe)
     local record = rawget(pipe, "fifo")[1]
     local totalChunks = rawget(record, "totalChunks")
-    if rawget(record, "kind") == "abort" or totalChunks == 1 or rawget(record, "inFlight") then
+    -- A started message or an abort already holds its allowance.
+    if totalChunks == 1 or rawget(record, "inFlight") then
         return true
     end
     return rawget(state, "inFlightStreams") < rawget(limits, "maxInFlightPerSender")
@@ -1833,6 +1920,12 @@ local function acceptChunk(record, pipe, cost, chunkBytes, payloadBytes)
     if not finished then
         rawset(handle, "_state", SEND_STATE.sending)
         if nextIndex == 2 then
+            local logged = rawget(record, "logged")
+            rawset(
+                state,
+                logged and "nextLoggedStreamId" or "nextStreamId",
+                (rawget(record, "streamId") + 1) % digitScheme(logged).radix
+            )
             rawset(record, "inFlight", true)
             rawset(state, "inFlightStreams", rawget(state, "inFlightStreams") + 1)
             rawset(
@@ -1859,7 +1952,7 @@ end
 ---@param hitRunCap boolean
 local function finishRun(currentTime, hitRunCap)
     if rawget(state, "queuedMessages") == 0 then
-        stopSampler()
+        stopDriver()
         return
     end
     if hitRunCap then
@@ -1893,6 +1986,7 @@ local function driveChunks()
         end
         local pipe = rawget(queue, "ring")[ringIndex]
         local record = rawget(pipe, "fifo")[1]
+        assignStreamId(record)
         local chunk, payloadBytes = buildChunk(record)
         local cost = messageCost(#rawget(record, "prefix"), #chunk)
         local wait = secondsUntilAffordable(cost, currentTime)
@@ -1917,29 +2011,23 @@ local function driveChunks()
 end
 
 ---One driver run. Called by the SchedulerKit job through the dispatch table.
----An internal error is reported and the driver retried a second later rather
----than left marked as running for the session.
+---An internal error is reported and the driver retried a second later, or
+---disarmed when nothing is queued, rather than left marked as running for the
+---session.
 local function runDriver()
     rawset(driver, "job", false)
     rawset(driver, "delayed", false)
     rawset(driver, "running", true)
-    rawset(driver, "wakeRequested", false)
     local ok, failure = pcall(driveChunks)
     rawset(driver, "running", false)
-    if not ok then
-        reportError(failure)
-        if rawget(state, "queuedMessages") > 0 then
-            scheduleDriver(1, "frame")
-        end
+    if ok then
         return
     end
-    -- A callback queued something after the run decided to stop.
-    if
-        rawget(driver, "wakeRequested")
-        and rawget(driver, "job") == false
-        and rawget(state, "queuedMessages") > 0
-    then
-        scheduleDriver(0, "frame")
+    reportError(failure)
+    if rawget(state, "queuedMessages") > 0 then
+        scheduleDriver(1, "retry")
+    else
+        stopDriver()
     end
 end
 
@@ -2021,12 +2109,12 @@ do
     end
 end
 
----Make sure a driver run is coming. During a run only a flag is set; a run
----already scheduled is kept, unless it waits only for a throttled pipe: the
----new message may use another pipe.
+---Make sure a driver run is coming. During a run nothing is scheduled: the
+---run picks the new message up or arranges its successor. A run already
+---scheduled is kept, unless it waits only for a throttled pipe: the new
+---message may use another pipe.
 local function wakeDriver()
     if rawget(driver, "running") then
-        rawset(driver, "wakeRequested", true)
         return
     end
     local job = rawget(driver, "job")
@@ -2069,7 +2157,8 @@ local function deliverMessage(prefix, text, distribution, sender)
     signal:Fire(prefix, text, distribution, sender)
 end
 
----Forget a stream and give back what it held. Reports nothing.
+---Forget a stream and give back what it held; the last one disarms the
+---expiry timer. Reports nothing.
 ---@param stream table
 local function closeStream(stream)
     local sender = rawget(stream, "sender")
@@ -2088,6 +2177,14 @@ local function closeStream(stream)
 
     rawget(pools, "parts"):Release(rawget(stream, "parts"))
     rawget(pools, "streams"):Release(stream)
+
+    -- The expiry timer runs only while a stream is open.
+    local timer = rawget(expiry, "timer")
+    if #streamList == 0 and timer ~= false then
+        rawset(expiry, "timer", false)
+        rawset(expiry, "due", false)
+        timer:Cancel()
+    end
 end
 
 -- Only `noteDrop` and `flushDropReports` are used outside this block.
@@ -2287,11 +2384,6 @@ local function onExpiryTimer()
     end
 end
 
----Count a chunk refused before it touched any stream.
-local function refuseChunk()
-    count("chunksRefused")
-end
-
 ---Open a stream from its first chunk.
 ---@param key string
 ---@param prefix string
@@ -2306,7 +2398,7 @@ local function openStream(key, prefix, distribution, sender, total, text, scheme
         or total > scheme.maxChunks
         or #text - WIRE.chunkHeaderBytes ~= WIRE.chunkPayloadBytes
     then
-        refuseChunk()
+        count("chunksRefused")
         return
     end
     local existing = rawget(streams, key)
@@ -2323,7 +2415,7 @@ local function openStream(key, prefix, distribution, sender, total, text, scheme
         or senderStreams >= rawget(limits, "maxInFlightPerSender")
         or senderBytes + reserved > rawget(limits, "maxReassemblyBytesPerSender")
     then
-        refuseChunk()
+        count("chunksRefused")
         count(STATISTIC_FOR.drop[DROP.quota])
         noteDrop(sender, DROP.quota)
         return
@@ -2363,7 +2455,7 @@ end
 local function continueStream(control, key, number, text)
     local stream = rawget(streams, key)
     if stream == nil then
-        refuseChunk()
+        count("chunksRefused")
         return
     end
     local total = rawget(stream, "total")
@@ -2372,7 +2464,7 @@ local function continueStream(control, key, number, text)
         if number == total then
             dropStream(stream, DROP.aborted)
         else
-            refuseChunk()
+            count("chunksRefused")
         end
         return
     end
@@ -2385,7 +2477,7 @@ local function continueStream(control, key, number, text)
         or (control == WIRE.middle and payloadLength ~= WIRE.chunkPayloadBytes)
         or parts[number] ~= nil
     then
-        refuseChunk()
+        count("chunksRefused")
         dropStream(stream, DROP.malformed)
         return
     end
@@ -2420,7 +2512,7 @@ local function receiveChunk(control, prefix, text, distribution, sender, logged)
         length < WIRE.chunkHeaderBytes
         or (length == WIRE.chunkHeaderBytes) ~= (control == WIRE.abort)
     then
-        refuseChunk()
+        count("chunksRefused")
         return
     end
     local scheme = digitScheme(logged)
@@ -2434,7 +2526,7 @@ local function receiveChunk(control, prefix, text, distribution, sender, logged)
         or lowByte < lowest
         or lowByte > highest
     then
-        refuseChunk()
+        count("chunksRefused")
         return
     end
     local streamId = streamByte - lowest
@@ -2459,7 +2551,7 @@ end
 ---@param text any
 ---@param channel any
 ---@param sender any
----@param logged boolean? true for CHAT_MSG_ADDON_LOGGED
+---@param logged boolean true for CHAT_MSG_ADDON_LOGGED
 local function onAddonMessage(prefix, text, channel, sender, logged)
     if
         type(prefix) ~= "string"
@@ -2485,9 +2577,9 @@ local function onAddonMessage(prefix, text, channel, sender, logged)
     if control == WIRE.single then
         deliverMessage(prefix, string.sub(text, 2), channel, sender)
     elseif control ~= nil and control >= WIRE.first and control <= WIRE.abort then
-        receiveChunk(control, prefix, text, channel, sender, logged == true)
+        receiveChunk(control, prefix, text, channel, sender, logged)
     else
-        refuseChunk()
+        count("chunksRefused")
     end
 end
 
@@ -3246,11 +3338,11 @@ enqueueSend = function(
     if length > WIRE.singlePayloadBytes then
         totalChunks = math.ceil(length / WIRE.chunkPayloadBytes)
     end
+    -- The two byte bounds also keep every message within the chunk numbers
+    -- the header can write: see `LIMIT_RANGES`.
     local maxQueuedBytes = rawget(limits, "maxQueuedBytes")
-    local scheme = digitScheme(logged)
     if
         length > maxQueuedBytes
-        or totalChunks > scheme.maxChunks
         or (
             totalChunks > 1
             and declaredBytes(totalChunks) > rawget(limits, "maxReassemblyBytesPerSender")
@@ -3267,13 +3359,6 @@ enqueueSend = function(
     local functionName = logged and "SendAddonMessageLogged" or "SendAddonMessage"
     if readChatFunction(functionName) == nil then
         return refuseSend(REASON.unavailable)
-    end
-
-    local streamId = 0
-    if totalChunks > 1 then
-        local counter = logged and "nextLoggedStreamId" or "nextStreamId"
-        streamId = rawget(state, counter)
-        rawset(state, counter, (streamId + 1) % scheme.radix)
     end
 
     local handle = setmetatable({
@@ -3299,7 +3384,8 @@ enqueueSend = function(
     record.totalChunks = totalChunks
     record.nextIndex = 1
     record.bytesSent = 0
-    record.streamId = streamId
+    -- Assigned when the first chunk is built; see `assignStreamId`.
+    record.streamId = false
     record.onProgress = onProgress
     record.onComplete = onComplete
     rawset(handle, "_record", record)
@@ -3343,16 +3429,19 @@ local function readSendRequest(request, level)
         error(label .. ".distribution must not be a secret value", level)
     end
 
+    -- A field may hold a secret, which may not even be compared with `nil`:
+    -- only `type` and `isSecret` look at a value before it is known not to be.
     local target = rawget(request, "target")
-    if target ~= nil and type(target) ~= "string" and type(target) ~= "number" then
+    local targetType = type(target)
+    if targetType ~= "nil" and targetType ~= "string" and targetType ~= "number" then
         error(label .. ".target must be a string, a number or nil", level)
     end
-    if target ~= nil and isSecret(target) then
+    if isSecret(target) then
         error(label .. ".target must not be a secret value", level)
     end
 
     local priority = rawget(request, "priority")
-    if priority == nil then
+    if type(priority) == "nil" then
         priority = PRIORITY.NORMAL
     elseif type(priority) ~= "string" or isSecret(priority) or PRIORITY[priority] ~= priority then
         error(label .. ".priority must be CommKit.Priority.ALERT, NORMAL or BULK", level)
@@ -3360,18 +3449,22 @@ local function readSendRequest(request, level)
 
     local logged = false
     local constraints = rawget(request, "constraints")
-    if constraints ~= nil then
-        if type(constraints) ~= "table" then
+    local constraintsType = type(constraints)
+    if constraintsType ~= "nil" then
+        if constraintsType ~= "table" then
             error(label .. ".constraints must be a table or nil", level)
         end
         validateKeys(constraints, OPTION_KEYS.constraints, label .. ".constraints", level + 1)
         local loggedValue = rawget(constraints, "logged")
         local battleNet = rawget(constraints, "battleNet")
-        if loggedValue ~= nil and type(loggedValue) ~= "boolean" then
+        if type(loggedValue) ~= "nil" and type(loggedValue) ~= "boolean" then
             error(label .. ".constraints.logged must be a boolean or nil", level)
         end
-        if battleNet ~= nil and type(battleNet) ~= "boolean" then
+        if type(battleNet) ~= "nil" and type(battleNet) ~= "boolean" then
             error(label .. ".constraints.battleNet must be a boolean or nil", level)
+        end
+        if isSecret(loggedValue) or isSecret(battleNet) then
+            error(label .. ".constraints must not hold a secret value", level)
         end
         logged = loggedValue == true
     end
@@ -3499,7 +3592,8 @@ local function validateHandle(receiver, label, level)
 end
 
 ---Cancel a queued or partly sent message. Chunks already sent stay sent; a
----receiver drops the incomplete stream when it expires.
+---partly sent message is followed by an abort chunk, so receivers drop the
+---incomplete stream at once.
 ---@param self CommKit.SendHandle
 ---@return boolean cancelled `false` when the message was already terminal
 function HandleMethods.Cancel(self)
@@ -3567,6 +3661,9 @@ function SyncSetMethods.Set(self, field, value)
     if rawget(self, "_closed") then
         return nil, REASON.closed
     end
+    if isSecret(value) then
+        error("CommKit.SyncSet:Set value must not be a secret value", 2)
+    end
     local values = rawget(self, "_values")
     local hashes = rawget(self, "_hashes")
     if value == nil then
@@ -3574,9 +3671,6 @@ function SyncSetMethods.Set(self, field, value)
         rawset(values, field, nil)
         rawset(hashes, field, nil)
         return true, changed
-    end
-    if isSecret(value) then
-        error("CommKit.SyncSet:Set value must not be a secret value", 2)
     end
 
     local schemas = rawget(self, "_schemas")
@@ -3789,7 +3883,7 @@ end
 ---@param level integer
 ---@return table|false
 local function readSyncSchemas(schema, fieldSet, level)
-    if schema == nil then
+    if type(schema) == "nil" then
         return false
     end
     local label = "CommKit.Scope:SyncSet options.schema"
@@ -4005,7 +4099,7 @@ end
 ---@return integer bytes
 function FacadeMethods.GetQueueDepth(self, priority)
     validateFacade(self, "CommKit:GetQueueDepth", 3)
-    if priority == nil then
+    if type(priority) == "nil" then
         return rawget(state, "queuedMessages"), rawget(state, "queuedBytes")
     end
     if type(priority) ~= "string" or isSecret(priority) or PRIORITY[priority] ~= priority then
@@ -4035,7 +4129,9 @@ function FacadeMethods.GetBudget(self)
 end
 
 ---Change any subset of the shared limits. Every value is checked before any
----is changed. Lowering a queue limit drops nothing already queued.
+---is changed. Lowering a queue limit drops nothing already queued; lowering
+---`maxReassemblyBytesPerSender` fails, as `"tooLarge"`, every queued message
+---that has not started and now declares more.
 ---@param self CommKit
 ---@param newLimits CommKit.Limits
 function FacadeMethods.SetLimits(self, newLimits)
@@ -4046,6 +4142,9 @@ function FacadeMethods.SetLimits(self, newLimits)
     validateKeys(newLimits, LIMIT_RANGES, "CommKit:SetLimits limits", 3)
     for name, value in pairs(newLimits) do
         local range = LIMIT_RANGES[name]
+        if type(value) == "number" and isSecret(value) then
+            error("CommKit:SetLimits limits." .. name .. " must not be a secret value", 2)
+        end
         if
             type(value) ~= "number"
             or value ~= value
@@ -4070,6 +4169,41 @@ function FacadeMethods.SetLimits(self, newLimits)
     refill(now())
     for name, value in pairs(newLimits) do
         rawset(limits, name, value)
+    end
+
+    -- A message that has not started and declares more than the new bound
+    -- could never start (see `headMayStart`) and would hold its pipe for the
+    -- session, so it fails the way `Send` would now refuse it. The records are
+    -- collected first: completing one runs a callback that may change the
+    -- queue.
+    local bound = rawget(newLimits, "maxReassemblyBytesPerSender")
+    if bound == nil then
+        return
+    end
+    local unstartable = {}
+    for _, queue in pairs(queues) do
+        for _, pipe in pairs(rawget(queue, "pipes")) do
+            local fifo = rawget(pipe, "fifo")
+            for index = 1, #fifo do
+                local record = fifo[index]
+                local totalChunks = rawget(record, "totalChunks")
+                if
+                    rawget(record, "kind") == "message"
+                    and not rawget(record, "inFlight")
+                    and totalChunks > 1
+                    and declaredBytes(totalChunks) > bound
+                then
+                    unstartable[#unstartable + 1] = record
+                end
+            end
+        end
+    end
+    for index = 1, #unstartable do
+        local record = unstartable[index]
+        -- An earlier callback may have cancelled it already.
+        if rawget(rawget(record, "handle"), "_record") == record then
+            completeSend(record, SEND_STATE.failed, REASON.tooLarge)
+        end
     end
 end
 
@@ -4160,8 +4294,10 @@ for name, trampoline in pairs({
     flushDrops = function()
         rawget(dispatch, "flushDropReports")()
     end,
-    addonMessage = function(_, ...)
-        rawget(dispatch, "onAddonMessage")(...)
+    -- Only the first four event arguments are passed on: the fifth, the
+    -- target, is a foreign value that must not reach the `logged` slot.
+    addonMessage = function(_, prefix, text, channel, sender)
+        rawget(dispatch, "onAddonMessage")(prefix, text, channel, sender, false)
     end,
     addonMessageLogged = function(_, prefix, text, channel, sender)
         rawget(dispatch, "onAddonMessage")(prefix, text, channel, sender, true)

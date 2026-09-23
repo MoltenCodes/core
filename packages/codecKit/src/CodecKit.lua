@@ -131,6 +131,12 @@ local LIMIT_CEILINGS = {
     maxOutputBytes = 67108864,
 }
 
+-- The most entries an argument list may hold on either side. `DecodeMany`
+-- returns the entries with `unpack`, which Lua 5.1 refuses beyond about 8000
+-- results, so a longer list would make the decoder raise; `EncodeMany` refuses
+-- the same count so that everything it writes can be read back.
+local MAX_LIST_VALUES = 4096
+
 -- The largest magnitude every integer up to which is exactly representable in
 -- a double. Integral numbers within it are written as varints; everything else
 -- as an IEEE-754 double.
@@ -156,10 +162,9 @@ local SINK_BATCH_SIZE = 1024
 local SINK_FRAGMENT_SIZE = 1024
 
 -- How often the asynchronous variants ask `context:ShouldYield()`: every this
--- many serialised values, input positions or decoded symbols.
+-- many serialised values or print groups. The compressor and the inflater
+-- keep their own two intervals inside the DEFLATE scope.
 local PAUSE_VALUES = 256
-local PAUSE_POSITIONS = 2048
-local PAUSE_SYMBOLS = 4096
 local PAUSE_GROUPS = 2048
 
 -- The published surface, listed once so the public-surface predicate reads as
@@ -240,7 +245,6 @@ local sub = string.sub
 local find = string.find
 local gsub = string.gsub
 local concat = table.concat
-local sort = table.sort
 local floor = math.floor
 local frexp = math.frexp
 local ldexp = math.ldexp
@@ -675,6 +679,21 @@ local function isArrayKey(key, arrayLength)
     return type(key) == "number" and key >= 1 and key <= arrayLength and key % 1 == 0
 end
 
+---The length of the array part of `value`: the leading run of non-nil indexes
+---up to `#value`, so a hole ends it whatever border `#` picked. Elements are
+---tested with `type` rather than `~= nil`, because an element may be a secret
+---and comparing a secret raises.
+---@param value table
+---@return integer
+local function arrayPartLength(value)
+    local border = #value
+    local arrayLength = 0
+    while arrayLength < border and type(rawget(value, arrayLength + 1)) ~= "nil" do
+        arrayLength = arrayLength + 1
+    end
+    return arrayLength
+end
+
 local writeValue
 
 ---Write a table: the array part `1..n` holds every leading non-nil index,
@@ -700,13 +719,7 @@ local function writeTable(work, sink, value, depth)
     end
     visited[value] = true
 
-    local border = #value
-    local arrayLength = 0
-    -- `type` rather than `~= nil`: an element may be a secret, and comparing a
-    -- secret raises. Elements are asked about secrecy only in `writeValue`.
-    while arrayLength < border and type(rawget(value, arrayLength + 1)) ~= "nil" do
-        arrayLength = arrayLength + 1
-    end
+    local arrayLength = arrayPartLength(value)
     local mapCount = 0
     local key = next(value)
     while type(key) ~= "nil" do
@@ -823,7 +836,7 @@ local function serializeBody(work, value, count)
     local ok, reason
     if count == nil then
         ok, reason = writeValue(work, sink, value, 0)
-    elseif count > work.maxValues then
+    elseif count > work.maxValues or count > MAX_LIST_VALUES then
         ok, reason = false, REASON.maxValues
     else
         ok = true
@@ -1073,7 +1086,7 @@ local function deserializeBody(work, text, allowList)
             return false, count
         end
         position = afterCount
-        if count > work.maxValues then
+        if count > work.maxValues or count > MAX_LIST_VALUES then
             return false, REASON.maxValues
         end
         if count > textLength - position + 1 then
@@ -1126,6 +1139,12 @@ do
     local MAX_CODE_BITS = 15
     local MAX_CODE_LENGTH_BITS = 7
 
+    -- How often an asynchronous call asks `context:ShouldYield()`: every this
+    -- many input positions of the compressor and decoded symbols of the
+    -- inflater.
+    local PAUSE_POSITIONS = 2048
+    local PAUSE_SYMBOLS = 4096
+
     -- A length-3 match further back than this costs more bits than three
     -- literals usually do; zlib makes the same call.
     local TOO_FAR = 4096
@@ -1134,6 +1153,8 @@ do
     -- comes first. The byte bound keeps a stored block under the format's 65535.
     local BLOCK_MAX_TOKENS = 16384
     local BLOCK_MAX_BYTES = 32768
+
+    local sort = table.sort
 
     -- Powers of two, looked up rather than computed in the bit loops.
     local POW2 = {}
@@ -2864,29 +2885,40 @@ local function decodeFrame(work, text, expectedChannel, allowList)
 end
 
 ---Look for a secret anywhere in `value` before an asynchronous encode is
----scheduled, so the refusal is raised at the caller. Bounded like the encoder:
----it stops at `maxDepth` and after `maxValues` values, where the encoder
----itself refuses.
+---scheduled, so the refusal is raised at the caller. The walk visits values
+---in the encoder's order and counts them the way `writeValue` does, and stops
+---where the encoder would refuse with `"maxValues"` or `"maxDepth"`, so every
+---value the job could reach has been asked about.
 ---@param work table
 ---@param value any
----@param depth integer
+---@param depth integer nesting of the table holding this value, 0 at the top
 ---@return boolean
 local function containsSecret(work, value, depth)
     if work.isSecret(value) then
         return true
     end
+    local count = work.valueCount + 1
+    if count > work.maxValues then
+        return false
+    end
+    work.valueCount = count
     if type(value) ~= "table" or depth >= work.maxDepth then
         return false
     end
+    local arrayLength = arrayPartLength(value)
+    for index = 1, arrayLength do
+        if containsSecret(work, rawget(value, index), depth + 1) then
+            return true
+        end
+    end
     local key = next(value)
     while type(key) ~= "nil" do
-        work.valueCount = work.valueCount + 2
-        if work.valueCount > work.maxValues then
-            return false
-        end
         if
-            containsSecret(work, key, depth + 1)
-            or containsSecret(work, rawget(value, key), depth + 1)
+            not isArrayKey(key, arrayLength)
+            and (
+                containsSecret(work, key, depth + 1)
+                or containsSecret(work, rawget(value, key), depth + 1)
+            )
         then
             return true
         end

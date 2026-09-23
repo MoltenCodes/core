@@ -58,6 +58,53 @@ describe("CommKit send driver", function()
         assert.are.equal(0, driverJobs())
     end)
 
+    ---Native timers still armed: the sampler ticker, a delayed driver run.
+    ---@return integer
+    local function liveTimers()
+        local live = 0
+        for _, native in ipairs(TestEnv.NativeTimers()) do
+            if not native.cancelled and (native.repeating or not native.fired) then
+                live = live + 1
+            end
+        end
+        return live
+    end
+
+    it("disarms the driver when cancelling empties the queue while it waits", function()
+        CommKit:SetLimits({ burst = 255, maxCps = 1 })
+        scope:Send({ prefix = PREFIX, text = "first", distribution = "PARTY" })
+        TestEnv.Advance(0)
+        -- The bucket is now short by about 50 bytes: the driver waits 50 s.
+        scope:Send({ prefix = PREFIX, text = TestEnv.Text(254), distribution = "PARTY" })
+        TestEnv.Advance(0)
+        assert.are.equal(1, driverJobs())
+        assert.is_true(liveTimers() > 0)
+        assert.are.equal(1, scope:CancelAll())
+        assert.are.equal(0, driverJobs())
+        assert.are.equal(0, liveTimers())
+    end)
+
+    it("disarms the driver when a run fails with nothing left queued", function()
+        -- A host whose securecallfunction lets a callback error escape.
+        -- selene: allow(global_usage)
+        rawset(_G, "securecallfunction", function(callback, ...)
+            return callback(...)
+        end)
+        TestEnv.TakeReportedErrors()
+        scope:Send({
+            prefix = PREFIX,
+            text = "last",
+            distribution = "PARTY",
+            onComplete = function()
+                error("escaped", 0)
+            end,
+        })
+        TestEnv.Advance(0)
+        assert.are.same({ { value = "escaped" } }, TestEnv.TakeReportedErrors())
+        assert.are.equal(0, driverJobs())
+        assert.are.equal(0, liveTimers())
+    end)
+
     it("sends at most 32 chunks per run even when callbacks keep sending", function()
         CommKit:SetLimits({ burst = 1000000, maxCps = 100000, maxQueuedMessages = 1000 })
         local function chain()
@@ -208,6 +255,75 @@ describe("CommKit sender-side stream bounds", function()
         table.sort(received)
         assert.are.same({ first, second }, received)
         assert.are.equal(0, CommKit:GetStatistics().chunksRefusedQuota)
+    end)
+
+    it("never reuses the stream id of a message still in flight", function()
+        CommKit:SetLimits({
+            maxQueuedBytes = 200000,
+            maxReassemblyBytesPerSender = 65536,
+            burst = 1000000,
+            maxCps = 100000,
+        })
+        -- A 160-chunk BULK message on stream 0 is still in flight while 128
+        -- two-chunk ALERT messages to the same receivers take the ids after
+        -- it and wrap past 127.
+        local long = string.rep("L", 40000)
+        assert(
+            scope:Send({ prefix = PREFIX, text = long, distribution = "PARTY", priority = "BULK" })
+        )
+        local expected = { long }
+        for index = 1, 128 do
+            local text = string.rep(string.char(65 + index % 26), 300)
+            expected[#expected + 1] = text
+            assert(scope:Send({
+                prefix = PREFIX,
+                text = text,
+                distribution = "PARTY",
+                priority = "ALERT",
+            }))
+        end
+        for _ = 1, 100 do
+            TestEnv.Advance(0.1)
+            TestEnv.Loopback(SENDER)
+        end
+        table.sort(expected)
+        table.sort(received)
+        assert.are.same(expected, received)
+        local statistics = CommKit:GetStatistics()
+        assert.are.equal(0, statistics.streamsRestarted)
+        assert.are.equal(0, statistics.streamsMalformed)
+    end)
+
+    it("keeps a cancelled stream's allowance until its abort leaves", function()
+        CommKit:SetLimits({ maxInFlightPerSender = 1, burst = 1000000, maxCps = 100000 })
+        local first = assert(scope:Send({
+            prefix = PREFIX,
+            text = TestEnv.Text(600),
+            distribution = "PARTY",
+            onProgress = function(handle)
+                handle:Cancel()
+            end,
+        }))
+        -- The abort is throttled; the next message must wait for it.
+        TestEnv.QueueSendResults(
+            TestEnv.SEND_RESULT.Success,
+            TestEnv.SEND_RESULT.AddonMessageThrottle
+        )
+        local second = string.rep("s", 600)
+        assert(scope:Send({ prefix = PREFIX, text = second, distribution = "RAID" }))
+        TestEnv.Advance(0)
+        assert.are.equal("cancelled", first:GetState())
+        local controls = {}
+        for index, entry in ipairs(TestEnv.Chat().outbox) do
+            controls[index] = entry.text:byte(1)
+        end
+        assert.are.same({ 0x02 }, controls)
+        TestEnv.Advance(1)
+        TestEnv.Loopback(SENDER)
+        assert.are.same({ second }, received)
+        local statistics = CommKit:GetStatistics()
+        assert.are.equal(1, statistics.streamsAborted)
+        assert.are.equal(0, statistics.chunksRefusedQuota)
     end)
 
     it("refuses a message larger than one receiver accepts from one sender", function()

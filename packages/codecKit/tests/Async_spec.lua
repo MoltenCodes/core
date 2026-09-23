@@ -147,4 +147,26 @@ describe("CodecKit asynchronous variants", function()
         )
         assert.are.equal(0, scope:GetActiveCount())
     end)
+
+    it("scans as far as the encoder reaches before refusing a secret at the caller", function()
+        local CodecKit, SchedulerKit = Async.NewPackageWithTickingClock(0.5)
+        local scope = SchedulerKit:CreateScope()
+        local secret = TestEnv.NewSecret()
+        TestEnv.InstallSecretProbe({ [secret] = true })
+        CodecKit:SetLimits({ maxValues = 100 })
+        -- The encoder counts one per array element, so it reaches the secret
+        -- at value 62; a scan that counted keys too stopped at element 50.
+        local value = {}
+        for index = 1, 60 do
+            value[index] = index
+        end
+        value[61] = secret
+        Async.expectErrorContaining(
+            "CodecKit:EncodeAsync value must not contain a secret value",
+            function()
+                CodecKit:EncodeAsync(value, nil, scope, function() end)
+            end
+        )
+        assert.are.equal(0, scope:GetActiveCount())
+    end)
 end)

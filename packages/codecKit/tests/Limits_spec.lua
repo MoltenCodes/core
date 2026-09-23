@@ -166,6 +166,28 @@ describe("CodecKit limits", function()
         assert.are.equal("maxOutputBytes", reason)
     end)
 
+    it("caps an argument list at 4096 entries on both sides, without raising", function()
+        local entries = {}
+        for index = 1, 4097 do
+            entries[index] = index
+        end
+        local ok, text = CodecKit:EncodeMany(nil, unpack(entries, 1, 4096))
+        assert.is_true(ok)
+        assert.are.equal(4097, select("#", CodecKit:DecodeMany(text)))
+        local refused, reason = CodecKit:EncodeMany(nil, unpack(entries, 1, 4097))
+        assert.is_false(refused)
+        assert.are.equal("maxValues", reason)
+
+        -- A hostile list of 9000 nils fits every other bound, and `unpack`
+        -- cannot return that many values in Lua 5.1: the decoder must refuse
+        -- it rather than raise. 9000 is the varint 0xA8 0x46.
+        local hostile = "\1\1\11\168\70" .. string.rep("\1", 9000)
+        local called, decoded, why = pcall(CodecKit.DecodeMany, CodecKit, hostile)
+        assert.is_true(called, tostring(decoded))
+        assert.is_false(decoded)
+        assert.are.equal("maxValues", why)
+    end)
+
     it("is shared by every consumer of the package", function()
         CodecKit:SetLimits({ maxDepth = 2 })
         local reloaded = TestEnv.ReloadPackage()

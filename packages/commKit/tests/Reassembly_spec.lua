@@ -269,6 +269,17 @@ describe("CommKit reassembly", function()
         assert.are.equal(1, CommKit:GetStatistics().openStreams)
     end)
 
+    it("reads only the first four arguments of CHAT_MSG_ADDON", function()
+        -- The fifth argument is the target; a true value there must not
+        -- select the logged channel's digits.
+        local chunks = split(TestEnv.Text(300), 2)
+        for index = 1, #chunks do
+            TestEnv.Emit("CHAT_MSG_ADDON", PREFIX, chunks[index], "PARTY", SENDER, true)
+        end
+        assert.are.equal(1, #received)
+        assert.are.equal(TestEnv.Text(300), received[1].text)
+    end)
+
     it("ignores prefixes nobody registered and unknown control bytes", function()
         TestEnv.Deliver("Other", "\001hello", "PARTY", SENDER)
         TestEnv.Deliver(PREFIX, "\005future", "PARTY", SENDER)
@@ -310,5 +321,28 @@ describe("CommKit reassembly", function()
         scope:UnregisterAll()
         assert.are.equal(0, CommKit:GetStatistics().openStreams)
         assert.are.equal(0, #TestEnv.TakeReportedErrors())
+    end)
+
+    it("disarms the expiry timer when the last stream closes", function()
+        ---@return integer
+        local function liveTimers()
+            local live = 0
+            for _, native in ipairs(TestEnv.NativeTimers()) do
+                if not native.cancelled and not native.fired then
+                    live = live + 1
+                end
+            end
+            return live
+        end
+        local chunks = split(TestEnv.Text(300), 1)
+        TestEnv.Deliver(PREFIX, chunks[1], "PARTY", SENDER)
+        assert.are.equal(1, liveTimers())
+        TestEnv.Deliver(PREFIX, chunks[2], "PARTY", SENDER)
+        assert.are.equal(1, #received)
+        assert.are.equal(0, liveTimers())
+        TestEnv.Deliver(PREFIX, chunks[1], "PARTY", SENDER)
+        scope:Close()
+        assert.are.equal(0, CommKit:GetStatistics().openStreams)
+        assert.are.equal(0, liveTimers())
     end)
 end)

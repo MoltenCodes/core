@@ -28,7 +28,7 @@ A **sink** collects one stage's output:
 | `chunks`, `chunkCount` | Leased on demand: at 1024 fragments the fragments are concatenated into one chunk, so no leased array grows past 1024 entries. |
 | `total` | Bytes in fragments, for the `maxOutputBytes` checks. |
 
-A synchronous call leases the work record, the cycle set and, per sink, the sink, its batch and possibly its chunk array — at most five tables at once — and returns each one on every return path: `finishSink` and `closeSink` return a sink's tables, `closeWork` the record and the cycle set. The pool's shallow reset clears them on release, so nothing a call wrote survives into the next. Because nothing is shared between calls but the pool, calls are re-entrant.
+A synchronous call leases the work record, the cycle set, per sink the sink, its batch and possibly its chunk array, and for a short compression input the bit writer — at most five tables at once, because the bit writer only exists for inputs too short to need a chunk array — and returns each one on every return path: `finishSink` and `closeSink` return a sink's tables, `compressTiny` its writer, `closeWork` the record and the cycle set. The pool's shallow reset clears them on release, so nothing a call wrote survives into the next. Because nothing is shared between calls but the pool, calls are re-entrant.
 
 An asynchronous call sets `pooled = false` and uses plain tables throughout: SchedulerKit never resumes a cancelled job, and a table leased by an abandoned coroutine would stay in the pool's active set.
 
@@ -36,7 +36,11 @@ An asynchronous call sets `pooled = false` and uses plain tables throughout: Sch
 
 `writeValue` and `readValue` recurse once per table level, so the Lua stack depth is bounded by `maxDepth` (ceiling 128). The writer asks the secret probe before `type` dispatch, counts every value against `maxValues`, and checks the sink size after every value. A table is entered in the cycle set on the way down and removed on the way up, so a table reached twice through different paths is written twice (and bounded by `maxValues`), while a table reached from itself is a cycle.
 
-The array part is found by walking `rawget(t, i)` from 1 while below `#t`, which ends it at the first hole whatever border `#` picked. One `next` pass counts the map part, a second writes it, so no key list is allocated.
+The array part is found by `arrayPartLength`, which walks `rawget(t, i)` from 1 while below `#t` and so ends it at the first hole whatever border `#` picked; it tests elements with `type`, never `~= nil`, so a secret element is first touched by the secret probe. One `next` pass counts the map part, a second writes it, so no key list is allocated.
+
+An argument list holds at most 4096 entries (`MAX_LIST_VALUES`) on both sides, because `DecodeMany` returns them with `unpack`, which Lua 5.1 refuses beyond about 8000 results.
+
+`EncodeAsync` asks about secrets before it schedules the job. `containsSecret` visits values in the writer's order (array part, then map keys and values), counts them as `writeValue` does and stops where the writer would refuse with `maxValues` or `maxDepth`, so any secret the job could reach is found at the call.
 
 The reader bounds-checks every byte it reads with `string.byte`, which returns `nil` past the end, and refuses an array or map count larger than the bytes left before looping over it. Refusals return up the recursion as `nil, reason`; there is no `pcall`, which is what lets the asynchronous form yield from inside the recursion.
 
@@ -76,7 +80,7 @@ The DEFLATE implementation is one `do` scope that exports `compressInto` and `in
 
 ## Decompressor
 
-The reader record holds the input, the next byte position and a bit buffer filled one byte at a time. A **decoder** maps `2^length + reversedCode` to the symbol, so a lookup for a given length matches exactly the codes of that length; decoding peeks up to the longest code length and tries each length from the shortest. Building one is linear in the number of symbols, so table construction never grows with the table size; a hostile stream of tiny dynamic blocks still costs more per input byte than ordinary data — about ten times, as measured in review — but that cost is linear in the input and bounded by `maxOutputBytes` on the input side.
+The reader record holds the input, the next byte position and a bit buffer filled one byte at a time. A **decoder** maps `2^length + reversedCode` to the symbol, so a lookup for a given length matches exactly the codes of that length; decoding peeks up to the longest code length and tries each length from the shortest. Building one is linear in the number of symbols, so table construction never grows with the table size; a hostile stream of tiny dynamic blocks still costs more per input byte than ordinary data — about ten times — but that cost is linear in the input and bounded by `maxOutputBytes` on the input side.
 
 A code set is refused when over-subscribed, and when incomplete unless it is the single one-bit code RFC 1951 allows; a distance code with no lengths is accepted until a block uses a distance. A literal code without end-of-block is refused. A stored block first discards the bits to the byte boundary, then gives back the whole bytes the bit buffer read ahead, because they are the first bytes of its data.
 

@@ -37,8 +37,8 @@ SchedulerKit is found with `Registry:Find("schedulerKit", 1)` when an asynchrono
 |---|---|---|
 | `Encode(value[, options])` | `true, text` or `false, reason` | Serialise one value, then compress and channel-encode as `options` says. |
 | `Decode(text[, options])` | `true, value` or `false, reason` | Reverse whatever stages the header names. Never raises on malformed text. |
-| `EncodeMany([options,] ...)` | `true, text` or `false, reason` | Encode an argument list; `nil`s, trailing ones included, survive. `options` comes first and may be `nil`. |
-| `DecodeMany(text[, options])` | `true, ...` or `false, reason` | Decode a list into as many values as were encoded; a single-value frame gives one value. |
+| `EncodeMany(options, ...)` | `true, text` or `false, reason` | Encode an argument list of at most 4096 values; `nil`s, trailing ones included, survive. `options` is always the first argument and may be `nil`. |
+| `DecodeMany(text[, options])` | `true, ...` or `false, reason` | Decode a list into as many values as were encoded; a single-value frame gives one value. Never raises on malformed text. |
 | `Serialize(value)` | `true, bytes` or `false, reason` | Stage 1 alone, without a header. |
 | `Deserialize(bytes)` | `true, value` or `false, reason` | Its inverse. |
 | `Compress(bytes[, options])` | `true, bytes` or `false, reason` | Stage 2 alone: raw DEFLATE. `options.level` from 1 to 9. |
@@ -77,12 +77,12 @@ The reasons form a fixed vocabulary:
 | `"cycle"` | encode | A table contains itself, directly or through any chain of tables (keys included). |
 | `"unsupportedType"` | encode | A function, userdata or thread, as a value or a key. |
 | `"maxDepth"` | both | Tables nest deeper than `maxDepth`. |
-| `"maxValues"` | both | More than `maxValues` values, keys and list entries included. |
+| `"maxValues"` | both | More than `maxValues` values, keys and list entries included, or an argument list of more than 4096 entries. |
 | `"maxStringLength"` | both | One string, value or key, is longer than `maxStringLength`. |
 | `"maxOutputBytes"` | both | A stage's output (or a decoding stage's input) is larger than `maxOutputBytes`. |
 | `"truncated"` | decode | The input ends inside a header, a value or a DEFLATE stream. |
 | `"trailingData"` | decode | Bytes follow a complete value or a final DEFLATE block. |
-| `"unsupportedVersion"` | decode | The version byte is not 1, or the first byte is neither a version byte nor a print character. |
+| `"unsupportedVersion"` | decode | The version byte (the first byte, or the first decoded byte of a print frame) is not 1, or the first byte is neither `0x01`, a print character nor whitespace. |
 | `"malformedHeader"` | decode | Reserved flag bits set, the serialised bit clear, both channel bits set, or the channel bit contradicting how the frame arrived. |
 | `"channelMismatch"` | decode | `options.channel` differs from the frame's channel. |
 | `"forbiddenByte"` | decode | Addon-channel text holds a byte the channel cannot carry. |
@@ -133,7 +133,7 @@ A decoder reads the first byte: `0x01` means a binary or addon frame, whose flag
 
 ### Extension rules
 
-- An incompatible change of any stage is a new version byte. A binary version byte must stay outside the print alphabet and whitespace (`0x02`–`0x08`, `0x0B`, `0x0C`, `0x0E`–`0x1F` remain available); a print frame carries its version in its first decoded byte.
+- An incompatible change of any stage is a new version byte. A binary version byte must stay outside the print alphabet and the six whitespace bytes (tab, line feed, vertical tab, form feed, carriage return, space), and must be a byte the addon channel carries unescaped, because the header is never escaped: `0x02`–`0x08` and `0x0E`–`0x1F` qualify. A print frame carries its version in its first decoded byte.
 - A compatible addition within version 1 uses a reserved flag bit or an unassigned type byte. Version 1 decoders refuse both (`"malformedHeader"`, `"unknownType"`), so an addition is only compatible with decoders that know it, and a sender that needs older receivers must not use it.
 - Type bytes `0x0C` to `0xFF` and `0x00` are unassigned.
 
@@ -153,7 +153,7 @@ Every value is one type byte followed by its payload:
 | `0x08` | a table with only an array part | varint `n`, then `n` values |
 | `0x09` | a table with only a map part | varint `m`, then `m` key, value pairs |
 | `0x0A` | a table with both | varint `n`, `n` values, varint `m`, `m` key, value pairs |
-| `0x0B` | an argument list (top level only) | varint `n`, then `n` values, which may be `nil` |
+| `0x0B` | an argument list (top level only) | varint `n` (at most 4096), then `n` values, which may be `nil` |
 
 **Varint.** Seven bits per byte, least significant group first; the high bit is set on every byte but the last. At most eight bytes, at most 2^53, and never overlong (a last byte of zero after the first byte is refused). `300` is `AC 02`.
 
@@ -170,7 +170,7 @@ A reader accepts a frame when it is **well-formed**:
 - the header is `0x01` and a valid flags byte, and the body decodes through every stage the flags name;
 - every stage's input and output stays within the limits;
 - every type byte is assigned (`0x0B` only at the top), every varint is at most eight bytes, at most 2^53 and not overlong, and a negative integer's magnitude is not 0;
-- every count fits in the bytes that remain, and nothing follows the top-level value;
+- every count fits in the bytes that remain, an argument list holds at most 4096 entries, and nothing follows the top-level value;
 - an array element or map value is never `nil`; a key is never `nil` or NaN and never repeats within one table.
 
 Nothing else is checked. In particular the reader accepts, and decodes to the value it describes, input the writer never produces: an integral number written as a `0x06` double, a NaN with any payload, a map part holding the keys `1..n`, a mixed layout with an empty array or map part, and DEFLATE streams made by any encoder with any block choice. Re-encoding such a value gives the canonical bytes, which may differ from the input.
@@ -193,7 +193,7 @@ Nothing else is checked. In particular the reader accepts, and decodes to the va
 
 ### Compression
 
-Raw DEFLATE (RFC 1951): no zlib or gzip wrapper, no checksum. The encoder writes stored, fixed-Huffman and dynamic-Huffman blocks, choosing per block whichever is smallest; the decoder inflates all three from any conforming encoder. `level` trades time for size: levels 1 to 3 take matches greedily, 4 to 9 defer each match by one byte when the next is longer, and the chain length grows from 4 candidates at level 1 to 256 at level 9. Inputs under 64 bytes are written as one literal or stored block without matching. [`INTERNALS.md`](INTERNALS.md#compressor) has the table, and [Cost](#cost) the time per KiB at each level.
+Raw DEFLATE (RFC 1951): no zlib or gzip wrapper, no checksum. The encoder writes stored, fixed-Huffman and dynamic-Huffman blocks, choosing per block whichever is smallest; the decoder inflates all three from any conforming encoder. `level` trades time for size: levels 1 to 3 take matches greedily, 4 to 9 defer each match by one byte when the next is longer, and the chain length ranges from 4 candidates at level 1 to 256 at levels 7 and 9. Inputs under 64 bytes are written as one literal or stored block without matching. [`INTERNALS.md`](INTERNALS.md#compressor) has the table, and [Cost](#cost) the time per KiB at each level.
 
 ### Addon channel
 
@@ -267,7 +267,7 @@ The callback is never called when the job is cancelled, by `job:Cancel()`, `scop
 
 ## Secret values
 
-Retail clients hand addon code **secret values** in restricted contexts; see [`EMBEDDING.md` → Secret values](../../../docs/EMBEDDING.md#secret-values-retail-12x). CodecKit asks `issecretvalue` about every value before anything else touches it, and a secret anywhere in the value — at the top, in a table value, in a key, deep in a nested table — raises at the caller: `CodecKit:Encode value must not contain a secret value`. `EncodeAsync` scans the value for secrets at the call, bounded by `maxDepth` and `maxValues`, so its refusal is at the caller too. A decoding or stage method refuses a secret string argument the same way.
+Retail clients hand addon code **secret values** in restricted contexts; see [`EMBEDDING.md` → Secret values](../../../docs/EMBEDDING.md#secret-values-retail-12x). CodecKit asks `issecretvalue` about every value before anything else touches it, and a secret anywhere in the value — at the top, in a table value, in a key, deep in a nested table — raises at the caller: `CodecKit:Encode value must not contain a secret value`. `EncodeAsync` scans the value for secrets at the call, visiting values in the encoder's order and stopping where the encoder would refuse with `"maxDepth"` or `"maxValues"`, so its refusal is at the caller too. A decoding or stage method refuses a secret string argument the same way.
 
 ## Security: decoded data is untrusted
 
@@ -313,7 +313,7 @@ Compression time depends on the input as much as on the level. Per KiB of input,
 Inflating costs about 0.12 ms per KiB of output at any level, and print-encoding about 0.08 ms per KiB. **Synchronous callers should stay at level 6 or below**; for large exports at level 7 to 9, or any compression that might pass a few dozen KiB, use `EncodeAsync`, which spreads the work over frames. The default level is 6.
 
 - **Serialising** allocates the output string and nothing else: its fragment arrays and work record are leased from a PoolKit table pool and returned on every path. Encoding the same small value again allocates nothing.
-- **Decoding a serialised body** allocates the tables it returns and the strings in them.
+- **Decoding a serialised body** allocates the tables it returns and the strings in them; `DecodeMany` also allocates one array for the entries of a list.
 - **Compressing** an input under 64 bytes writes one literal or stored block and allocates nothing beyond its output (0.001 KiB per call measured for 32 bytes). From 64 bytes the matcher allocates working arrays proportional to the input (a few tens of bytes per input byte: the byte array, the hash chains and the tokens) plus about 35 to 40 KiB of code tables **per block** (a block covers at most 32 KiB of input); all of it is garbage after the call. **Inflating** allocates an output array of about 16 bytes per output byte.
 - One `table.concat` per stage output, per 1024 fragments.
 
@@ -331,7 +331,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`Compress` and every decoding stage refuse input larger than `maxOutputBytes`** (print text is measured before whitespace is stripped), so the limit bounds each stage's input as well as its output.
 - **Levels 8 and 9 cap their hash chains at 192 and 256 candidates** instead of zlib's 1024 and 4096, which keeps level 9 within about three times level 6 in pure Lua (2.7 times measured on the worst case above, down from 27 times).
 - **Inputs under 64 bytes skip matching** and are written as one fixed-Huffman literal block or one stored block.
-- **Additions:** `EncodeMany` and `DecodeMany` for argument lists, `PRINT_ALPHABET`, and the `"channelMismatch"` assertion.
+- **Additions:** `EncodeMany` and `DecodeMany` for argument lists (at most 4096 entries, because `DecodeMany` returns them through `unpack`, which Lua 5.1 bounds), `PRINT_ALPHABET`, and the `"channelMismatch"` assertion.
 
 ## Upgrades
 
