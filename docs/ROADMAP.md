@@ -939,6 +939,13 @@ without it.
       (`UNBOUNDED` where safe), moduleKit and lifecycleKit (dependency and
       queue caps), readinessKit, schedulerKit (lanes, watchers, debounce
       arguments), testKit.
+- [x] Addon scopes close at logout whenever the framework can observe logout,
+      whatever revisions are paired: LifecycleKit publishes
+      `CLOSES_ADDON_SCOPES`; a scope-owning Kit does nothing when that names
+      it, subscribes to an older LifecycleKit's `OnShutdown` otherwise, falls
+      back to a `PLAYER_LOGOUT` connection through EventKit when LifecycleKit
+      is absent, and documents the consumer's own call when neither is
+      loaded (decided 2026-09-23).
 - [x] Every package README states its minimum footprint; EMBEDDING.md gains a
       footprint table and the dependency graph is redrawn. Acceptance review
       2026-09-23: accepted after its findings (scheduler, test and readiness
