@@ -87,37 +87,48 @@ describe("HookKit limits", function()
         assert.are.equal(600, scope:UnhookAll())
     end)
 
-    it("applies ForAddon options whenever given and keeps them when omitted", function()
-        local scope = HookKit:ForAddon("MyAddon", { maxHooks = 1 })
-        assert.are.equal(1, scope:GetMaxHooks())
-        assert.are.equal(scope, HookKit:ForAddon("MyAddon"))
-        assert.are.equal(1, scope:GetMaxHooks())
+    it(
+        "fixes the ForAddon limit on the first call and returns the scope when options agree or are omitted",
+        function()
+            local scope = HookKit:ForAddon("MyAddon", { maxHooks = 1 })
+            assert.are.equal(1, scope:GetMaxHooks())
+            assert.are.equal(scope, HookKit:ForAddon("MyAddon"))
+            assert.are.equal(scope, HookKit:ForAddon("MyAddon", { maxHooks = 1 }))
+            assert.are.equal(1, scope:GetMaxHooks())
 
-        local target = newTarget(3)
-        assert.is_true(scope:Hook(target, "Method1", function() end))
-        local installed, reason = scope:Hook(target, "Method2", function() end)
-        assert.is_nil(installed)
-        assert.are.equal("full", reason)
+            local target = newTarget(2)
+            assert.is_true(scope:Hook(target, "Method1", function() end))
+            local installed, reason = scope:Hook(target, "Method2", function() end)
+            assert.is_nil(installed)
+            assert.are.equal("full", reason)
+        end
+    )
 
-        HookKit:ForAddon("MyAddon", { maxHooks = HookKit.UNBOUNDED })
-        assert.is_true(scope:Hook(target, "Method2", function() end))
-    end)
+    it(
+        "refuses a later ForAddon limit that differs at the caller's line and changes nothing",
+        function()
+            local message =
+                "HookKit:ForAddon options.maxHooks differs from the limit this addon's scope was created with"
+            local scope = HookKit:ForAddon("MyAddon")
+            assert.are.equal(HookKit.MAX_HOOKS, scope:GetMaxHooks())
+            assertReportedAtCaller(message, function(mark)
+                mark()
+                HookKit:ForAddon("MyAddon", { maxHooks = 2 })
+            end)
+            assertReportedAtCaller(message, function(mark)
+                mark()
+                HookKit:ForAddon("MyAddon", { maxHooks = HookKit.UNBOUNDED })
+            end)
+            assert.are.equal(HookKit.MAX_HOOKS, scope:GetMaxHooks())
 
-    it("keeps hooks already held when the limit is lowered below them", function()
-        local scope = HookKit:ForAddon("MyAddon")
-        local target = newTarget(4)
-        assert.are.equal(3, (hookMany(scope, target, 3)))
-
-        HookKit:ForAddon("MyAddon", { maxHooks = 2 })
-        assert.are.equal(3, scope:GetActiveCount())
-        local installed, reason = scope:Hook(target, "Method4", function() end)
-        assert.is_nil(installed)
-        assert.are.equal("full", reason)
-
-        scope:Unhook(target, "Method1")
-        scope:Unhook(target, "Method2")
-        assert.is_true(scope:Hook(target, "Method4", function() end))
-    end)
+            local open = HookKit:ForAddon("OtherAddon", { maxHooks = HookKit.UNBOUNDED })
+            assert.are.equal(open, HookKit:ForAddon("OtherAddon", { maxHooks = HookKit.UNBOUNDED }))
+            assertReportedAtCaller(message, function(mark)
+                mark()
+                HookKit:ForAddon("OtherAddon", { maxHooks = 256 })
+            end)
+        end
+    )
 
     it("refuses invalid maxHooks values at the caller's line", function()
         local message =

@@ -418,6 +418,29 @@ deferred.
 PoolKit stays free of any WoW dependency: it calls only the two methods of the
 group it is handed.
 
+## Limits
+
+PoolKit follows the framework rule "bounded by default, opened on purpose".
+Every limit is an option on the pool the consumer creates; PoolKit has no
+package-wide limit, so it has no `SetLimits`. A pool at a limit answers with a
+named reason or discards on release, as each row says; nothing grows silently.
+
+| Limit | Default | How to open | UNBOUNDED allowed? |
+|---|---|---|---|
+| `maxRetained`: released objects kept for reuse | `128` (`PoolKit.DEFAULT_MAX_RETAINED`); `maxCreated` when that is set and this is not | `New` / `NewTablePool` option, or `pool:SetMaxRetained(n)`; a non-negative integer (`0` retains nothing) | Yes: `PoolKit.UNBOUNDED`. The retained objects are the pool owner's own memory. A release beyond the limit is discarded. |
+| `maxCreated`: objects the factory builds over the pool's life | none | `New` option, a positive integer; `pool:SetMaxCreated(n)` raises it and never lowers it | Not needed: omitting it is unbounded. It exists for objects the host never frees (Frames, Textures). At the cap, `Acquire` returns `nil, "exhausted"` or queues. |
+| `maxActive`: objects borrowed or parked at once | none | `New` option, a positive integer | Not needed: omitting it is unbounded. At the cap, `Acquire` returns `nil, "exhausted"` or queues. |
+| `maxWaiting`: queued `Acquire(onAvailable)` requests | `0` | `New` option, a non-negative integer; requires `maxCreated` or `maxActive` | No: the queue is a ring of `maxWaiting` slots allocated once when the pool is built, so it needs a size. A request that finds it full gets `nil, "queueFull"`. |
+
+`maxActiveWarning` is a diagnostic, not a limit: it reports once when that many
+objects are borrowed and refuses nothing. Borrowed objects are caller-owned and
+unbounded unless `maxActive` is set (see
+[Active objects are caller-owned](#active-objects-are-caller-owned)).
+
+`PoolKit.UNBOUNDED` is one sentinel table kept in the package state, so every
+embedded copy and every revision publishes the same table and a pool created
+with it stays unbounded after an upgrade.
+
 ## Embedded copies
 
 PoolKit is registered as `poolKit`, API generation `1`, through Registry API 2. The facade, `Pool` prototype, metatable, and `UNBOUNDED` sentinel live in Registry-owned shared state, so compatible future revisions can preserve existing pool identity while replacing methods in place.

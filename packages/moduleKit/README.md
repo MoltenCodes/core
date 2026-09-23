@@ -54,6 +54,8 @@ Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
 Libs\MoltenCodes\moduleKit\ModuleKit.lua
 ```
 
+Minimum footprint: embed 5 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`, `eventKit/EventKit.lua`, `lifecycleKit/LifecycleKit.lua`, `moduleKit/ModuleKit.lua`.
+
 Direct runtime dependencies: LifecycleKit API 1, Registry API 2.
 Every file above is required; omitting one makes this package raise at
 load. TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are optional: `module.scope` uses

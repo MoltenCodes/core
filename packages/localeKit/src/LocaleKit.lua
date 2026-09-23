@@ -90,7 +90,7 @@ local FORMAT_PATTERN = "%%(%d*)(%$?)([-+ #0]*%d*%.?%d*)(.?)"
 ---Option table accepted by `LocaleKit:GetLocale`.
 ---@class LocaleKit.GetLocaleOptions
 ---@field missing "report"|"silent"|"raw"? What reading an undefined key does. Defaults to `"report"`; fixed by the first `GetLocale` for the addon.
----@field maxMissingKeys (integer|table)? Positive integer or `LocaleKit.UNBOUNDED`; the most missing keys the addon's table records. Default `1024`; applies whenever given.
+---@field maxMissingKeys (integer|table)? Positive integer or `LocaleKit.UNBOUNDED`; the most missing keys the addon's table records. Default `1024`; fixed by the first `GetLocale` for the addon.
 
 ---The table a translation file writes through. `L["key"] = "text"` stores a
 ---translation; `L["key"] = true` stores the key as its own text.
@@ -334,6 +334,16 @@ local function validateLimit(value, label, level)
     if secret or not isPositiveInteger(value) then
         error(label .. " must be a positive integer or LocaleKit.UNBOUNDED", level)
     end
+end
+
+---Render a validated limit for an error message.
+---@param value integer|table a positive integer or `UNBOUNDED`
+---@return string
+local function describeLimit(value)
+    if rawequal(value, UNBOUNDED) then
+        return "LocaleKit.UNBOUNDED"
+    end
+    return tostring(value)
 end
 
 -- Client locale --------------------------------------------------------------
@@ -762,11 +772,11 @@ end
 ---different mode raises, and a later call that names none accepts it.
 ---
 ---`options.maxMissingKeys` (a positive integer or `LocaleKit.UNBOUNDED`,
----default 1024) bounds how many missing keys are recorded. Unlike the mode it
----applies whenever it is given, on the first call or a later one, and a call
----that names none keeps it: changing a limit is always safe. Lowering it
----below the keys already recorded forgets none of them; raising it re-arms the
----one-time cap report.
+---default 1024) bounds how many missing keys are recorded. Like the mode, the
+---first call fixes it (the default when that call names none); a later call
+---naming a different limit raises, and one naming the same limit or none
+---accepts it. This is the rule every Kit's `ForAddon` follows for limit
+---options.
 ---@param _ LocaleKit
 ---@param addonName string
 ---@param options LocaleKit.GetLocaleOptions?
@@ -798,7 +808,8 @@ local function packageGetLocale(_, addonName, options)
     end
 
     local mode = record.mode
-    if mode == false then
+    local firstCall = mode == false
+    if firstCall then
         mode = requested or DEFAULT_MISSING_MODE
         record.mode = mode
         if mode == "report" then
@@ -819,11 +830,19 @@ local function packageGetLocale(_, addonName, options)
         )
     end
 
-    -- Applied last, so a refused call changes nothing.
     if maxMissingKeys ~= nil then
-        record.maxMissingKeys = maxMissingKeys
-        if maxMissingKeys == UNBOUNDED or record.missingCount < maxMissingKeys then
-            record.capReported = false
+        if firstCall then
+            record.maxMissingKeys = maxMissingKeys
+        elseif not rawequal(maxMissingKeys, record.maxMissingKeys) then
+            error(
+                "LocaleKit:GetLocale "
+                    .. addonName
+                    .. " already uses options.maxMissingKeys "
+                    .. describeLimit(record.maxMissingKeys)
+                    .. ", not "
+                    .. describeLimit(maxMissingKeys),
+                2
+            )
         end
     end
     return record.strings

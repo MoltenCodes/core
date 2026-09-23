@@ -421,9 +421,14 @@ Two bounds stay fixed, because they are not retention a consumer can own:
 
 - **Two unit tokens** per `ConnectUnit`: `Frame:RegisterUnitEvent` has exactly
   two filter slots (see [The two-token limit](#the-two-token-limit)).
-- **32 distinct events** per `Coalesce` or `Derive` call: an argument bound on
-  one call rather than a retained collection; a caller needing more makes more
-  than one handle.
+- **32 distinct events** per `Coalesce` or `Derive` call. The bound is per
+  call, not per session: each call copies its event list into a fresh array
+  and holds one connection per event on the handle it returns, all released by
+  `Close`. Related events that one handle should merge come in handfuls
+  (a unit's health and power events, the bag events), so 32 is several times
+  any real composite; a longer list is almost always a generated or mistaken
+  argument, refused at the caller before anything is connected. A caller that
+  needs more makes more than one handle.
 
 Scopes have no connection cap: a scope's connections are its owner's own
 registrations and are released with it.

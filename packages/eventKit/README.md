@@ -98,8 +98,10 @@ Libs\MoltenCodes\signalKit\SignalKit.lua
 Libs\MoltenCodes\eventKit\EventKit.lua
 ```
 
+Minimum footprint: embed 3 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`, `eventKit/EventKit.lua`.
+
 Direct runtime dependencies: Registry API 2, SignalKit API 1.
 Every file above is required; omitting one makes this package raise at
 load. SchedulerKit is optional and is not part of this load order: when an
-addon also embeds it (after LifecycleKit and TimerKit), `Coalesce` and `Derive`
-find it when they are called.
+addon also embeds it (after TimerKit, its one required dependency besides
+Registry), `Coalesce` and `Derive` find it when they are called.

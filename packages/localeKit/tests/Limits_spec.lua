@@ -76,32 +76,36 @@ describe("LocaleKit limits", function()
         assert.are.equal("key3000", rawget(L, "key3000"))
     end)
 
-    it("applies the limit whenever given and keeps it when omitted", function()
-        local L = LocaleKit:GetLocale("MyAddon", { maxMissingKeys = 1 })
-        assert.are.equal(L, LocaleKit:GetLocale("MyAddon"))
-        readMissing(L, "first", 2)
-        assert.are.equal(1, #LocaleKit:MissingKeys("MyAddon"))
-        assert.are.equal(2, #TestEnv.TakeReportedErrors())
+    it(
+        "fixes the limit on the first call and accepts a later call that agrees or names none",
+        function()
+            local L = LocaleKit:GetLocale("MyAddon", { maxMissingKeys = 1 })
+            assert.are.equal(L, LocaleKit:GetLocale("MyAddon"))
+            assert.are.equal(L, LocaleKit:GetLocale("MyAddon", { maxMissingKeys = 1 }))
+            readMissing(L, "first", 2)
+            assert.are.equal(1, #LocaleKit:MissingKeys("MyAddon"))
+            assert.are.equal(2, #TestEnv.TakeReportedErrors())
+        end
+    )
 
-        -- Raising the limit records again and re-arms the one-time cap report.
-        LocaleKit:GetLocale("MyAddon", { maxMissingKeys = 2 })
-        readMissing(L, "second", 2)
-        assert.are.equal(2, #LocaleKit:MissingKeys("MyAddon"))
-        local reported = TestEnv.TakeReportedErrors()
-        assert.are.equal(2, #reported)
-        assert.is_truthy(
-            tostring(reported[2].value):find("more than 2 missing translations", 1, true)
-        )
-    end)
-
-    it("forgets no recorded key when the limit is lowered below them", function()
+    it("refuses a later limit that differs at the caller's line and changes nothing", function()
         local L = LocaleKit:GetLocale("MyAddon", { missing = "silent" })
+        assertReportedAtCaller(
+            "LocaleKit:GetLocale MyAddon already uses options.maxMissingKeys 1024, not 2",
+            function(mark)
+                mark()
+                LocaleKit:GetLocale("MyAddon", { maxMissingKeys = 2 })
+            end
+        )
+        assertReportedAtCaller(
+            "LocaleKit:GetLocale MyAddon already uses options.maxMissingKeys 1024, not LocaleKit.UNBOUNDED",
+            function(mark)
+                mark()
+                LocaleKit:GetLocale("MyAddon", { maxMissingKeys = LocaleKit.UNBOUNDED })
+            end
+        )
         readMissing(L, "key", 5)
-        LocaleKit:GetLocale("MyAddon", { maxMissingKeys = 2 })
         assert.are.equal(5, #LocaleKit:MissingKeys("MyAddon"))
-        assert.are.equal("key1", rawget(L, "key1"))
-        assert.are.equal("later", L.later)
-        assert.is_nil(rawget(L, "later"))
     end)
 
     it("refuses invalid values at the caller's line and changes nothing", function()

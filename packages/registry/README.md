@@ -77,5 +77,7 @@ troubleshooting. This package's load order inside a consuming addon is:
 Libs\MoltenCodes\registry\Registry.lua
 ```
 
+Minimum footprint: embed 1 file: `registry/Registry.lua`.
+
 No runtime dependencies. Registry is the bootstrap layer, so it is the
 first MoltenCodes file every addon loads.

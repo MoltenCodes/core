@@ -31,7 +31,7 @@ A record is created by the first `NewLocale` that returns a proxy, with every fi
 | `strings` | The read table `GetLocale` returns. |
 | `missing`, `missingCount` | The set of keys read but never defined, and its size. |
 | `capReported` | Whether the missing-key limit has been reported. Cleared when `GetLocale` raises the limit above `missingCount`. |
-| `maxMissingKeys` | The most missing keys recorded: `MAX_MISSING_KEYS` (1024) until a `GetLocale` names another positive integer or the `unbounded` sentinel. |
+| `maxMissingKeys` | The most missing keys recorded: `MAX_MISSING_KEYS` (1024) unless the addon's first `GetLocale` (the one that fixes `mode`) names another positive integer or the `unbounded` sentinel; a later call naming a different value is refused. |
 | `mode` | `"report"`, `"silent"`, `"raw"`, or `false` before the first `GetLocale`. |
 | `schema` | The record layout version, `1`. |
 

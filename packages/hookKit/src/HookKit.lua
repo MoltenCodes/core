@@ -1546,11 +1546,11 @@ end
 ---addon itself on `PLAYER_LOGOUT`) closes this scope through
 ---`HookKit:CloseAddonScopes(addonName)`.
 ---
----The scope is shared by every file of the addon, so `options.maxHooks`
----applies whenever it is given, on the first call or a later one, and a call
----that names none keeps the current limit. Lowering the limit below the hooks
----already held removes none of them; further hooks are refused until the count
----drops under it.
+---The scope is shared by every file of the addon, so the first call fixes its
+---limit: `options.maxHooks`, or `HookKit.MAX_HOOKS` when that call names none.
+---A later call naming a different limit is refused at the caller; one naming
+---the same limit, or none, returns the existing scope. This is the rule every
+---Kit's `ForAddon` follows for limit options.
 ---@param self HookKit
 ---@param addonName string addon folder name
 ---@param options HookKit.ScopeOptions?
@@ -1563,8 +1563,11 @@ local function forAddon(self, addonName, options)
     if scope == nil then
         scope = newScope(addonName, maxHooks or MAX_HOOKS)
         rawset(addonScopes, addonName, scope)
-    elseif maxHooks ~= nil then
-        rawset(scope, "_maxHooks", maxHooks)
+    elseif maxHooks ~= nil and not rawequal(maxHooks, rawget(scope, "_maxHooks")) then
+        error(
+            "HookKit:ForAddon options.maxHooks differs from the limit this addon's scope was created with",
+            2
+        )
     end
     return scope
 end

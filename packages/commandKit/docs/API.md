@@ -457,7 +457,7 @@ Hard ceilings stay, because no setting makes them safe to lift:
 | Sub-command levels | 3 (`CommandKit.MAX_DEPTH`) | Compiling, usage generation and dispatch recurse once per level, so the bound fixes the Lua stack one command tree can use. | `Register` raises |
 | Nested dispatches | 4 | Each level holds one reused frame and one protected call; the bound is the number of frames kept and stops a command that runs itself before it exhausts the C stack. | the fifth prints a message and does nothing |
 | Name length | 32 bytes | The name becomes part of the `SlashCmdList` key and the `SLASH_<key><n>` global names the client keeps for the session. | `Register` raises |
-| Commands per emote read | 8 | The client defines a handful of commands per emote; the bound only stops a pathological one. | the rest are not read |
+| Commands per emote read | 8 | The scan over `EMOTE<n>_CMD<m>` reads globals by constructed name and stops at the first gap, so it needs an end that does not depend on the global table being well formed. The client defines at most a handful of commands per emote (a name and its localised aliases), so 8 ends the inner scan without missing one. | the rest are not read |
 
 ## Deviations from the planned contract
 

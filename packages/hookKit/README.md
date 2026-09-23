@@ -47,6 +47,8 @@ Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\hookKit\HookKit.lua
 ```
 
+Minimum footprint: embed 2 files: `registry/Registry.lua`, `hookKit/HookKit.lua`.
+
 Direct runtime dependency: Registry API 2.
 Both files above are required; omitting Registry makes this package raise at
 load.

@@ -28,7 +28,7 @@ A scope is one table with a fixed set of private fields, all created by `newScop
 | `_schema` | The scope layout version, `1`. |
 | `_addonName` | The owning addon name, or `false` for a manual scope. |
 | `_closed` | Whether `Close` (or `CloseAddonScopes`) ran. |
-| `_maxHooks` | The scope's limit: a positive integer (default `MAX_HOOKS`, 256) or the `unbounded` sentinel. Set at creation; `ForAddon` rewrites it when given `options.maxHooks`. |
+| `_maxHooks` | The scope's limit: a positive integer (default `MAX_HOOKS`, 256) or the `unbounded` sentinel. Set at creation and never rewritten; a later `ForAddon` naming a different value is refused. |
 | `_sequence` | The creation counter records are stamped with. |
 | `_records` | Weak-keyed: hooked object (or `_G`) to `{ [method or script] = record }`. |
 

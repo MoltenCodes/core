@@ -49,7 +49,10 @@ local STATE_SCHEMA = 6
 -- LifecycleKit, which depends on EventKit.
 local OPTIONAL_SCHEDULER_API = 1
 
--- One Coalesce or Derive listens to at most this many distinct events.
+-- One Coalesce or Derive call listens to at most this many distinct events.
+-- Per call, not per session: the handle holds one connection per event until
+-- `Close`. Real composites merge a handful of related events, so a longer list
+-- is refused at the caller as a generated or mistaken argument.
 local MAXIMUM_COMPOSITE_EVENTS = 32
 
 -- `Frame:RegisterUnitEvent(event, unit1, unit2)` has exactly two filter slots.

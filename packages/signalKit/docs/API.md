@@ -247,7 +247,10 @@ the calling line.
 ### `SignalKit:ForAddon(addonName)`
 
 Returns the default bus of an addon: the bus named after it, exactly as
-`SignalKit:Bus(addonName)` does.
+`SignalKit:Bus(addonName)` does. It takes no limit options and states none, so
+it never fixes the bus's limits; open them with
+`SignalKit:Bus(addonName, { maxTopics = n })`. See
+[Limit options on shared objects](#limit-options-on-shared-objects).
 
 ### `SignalKit:CloseAddonBus(addonName)`
 
@@ -448,6 +451,21 @@ sixteen times the default.
 
 Returns a fresh table `{ maxBuses = n }`. It allocates one table per call, so
 read it once rather than on a hot path.
+
+### Limit options on shared objects
+
+Every Kit follows one rule for limit options on an object several callers
+reach by name (an addon's scope, a named bus): the first statement fixes the
+value, a later call stating a different value raises at the caller and changes
+nothing, and a later call stating the same value or none returns the existing
+object. HookKit's and CommandKit's `ForAddon` and LocaleKit's `GetLocale` apply
+it with the first call as the statement, defaults included.
+
+SignalKit applies it to buses with one deliberate difference: a call that
+states no limit (`Bus(name)`, or `ForAddon`, which takes no options) does not
+fix the default. A shared bus is reached by subscribers from other addons,
+which may load before the owner that declares its bounds, so only a call that
+states a limit fixes it, whatever the load order.
 
 ### Lowering a limit
 

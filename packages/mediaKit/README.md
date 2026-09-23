@@ -67,6 +67,8 @@ Libs\MoltenCodes\signalKit\SignalKit.lua
 Libs\MoltenCodes\mediaKit\MediaKit.lua
 ```
 
+Minimum footprint: embed 3 files: `registry/Registry.lua`, `signalKit/SignalKit.lua`, `mediaKit/MediaKit.lua`.
+
 Direct runtime dependencies: Registry API 2, SignalKit API 1.
 Every file above is required; omitting one makes this package raise at
 load.

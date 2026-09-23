@@ -158,6 +158,20 @@ describe("SignalKit limits", function()
             assert.is_nil((statedFirst:DeclareTopic("Beyond")))
         end)
 
+        it("lets ForAddon create the addon bus without fixing its limits", function()
+            local bus = SignalKit:ForAddon("MyAddon")
+            assert.are.equal(bus, SignalKit:Bus("MyAddon", { maxTopics = 1 }))
+            assert.are.equal(bus, SignalKit:ForAddon("MyAddon"))
+            declareTopics(bus, 1)
+            assert.is_nil((bus:DeclareTopic("Beyond")))
+            expectRefusalAtCaller(
+                'SignalKit:Bus bus "MyAddon" already exists with a different maxTopics',
+                function()
+                    SignalKit:Bus("MyAddon", { maxTopics = 2 })
+                end
+            )
+        end)
+
         it("refuses a different statement at the caller and changes nothing", function()
             local bus = SignalKit:Bus("Owned", { maxTopics = 1 })
 

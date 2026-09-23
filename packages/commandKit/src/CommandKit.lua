@@ -113,7 +113,9 @@ local MAX_DEPTH = 3
 -- and it stops a command that runs itself before it exhausts the C stack.
 local MAX_NESTING = 4
 
--- The commands per emote the emote check reads before the first gap.
+-- The commands per emote the emote check reads. The scan over
+-- `EMOTE<n>_CMD<m>` stops at the first gap, but it needs an end that does not
+-- trust the global table; the client defines at most a handful per emote.
 local MAX_EMOTE_COMMANDS = 8
 
 -- The longest command or sub-command name. The name becomes part of a

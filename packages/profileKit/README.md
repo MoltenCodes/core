@@ -56,6 +56,8 @@ Libs\MoltenCodes\registry\Registry.lua
 Libs\MoltenCodes\profileKit\ProfileKit.lua
 ```
 
+Minimum footprint: embed 2 files: `registry/Registry.lua`, `profileKit/ProfileKit.lua`.
+
 Direct runtime dependencies: Registry API 2.
 Every file above is required; omitting one makes this package raise at
 load. `debugprofilestop` is optional: without it the package loads and stays

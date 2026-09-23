@@ -423,6 +423,18 @@ Limits, stated plainly:
 The seal is opt-in in API 2. It is intended to become the default in a later
 Registry API generation. No `Unseal` method exists, by design.
 
+## Limits
+
+Registry has no limits and no `UNBOUNDED` sentinel. What it retains is one
+entry per package and API generation that some embedded file registers, plus
+that entry's retirement hook. It grows only when a file registers a package
+it ships, once at load, so its size follows what the session's addons embed
+rather than anything they do at runtime. The only bound it enforces is on
+identifiers: an API generation or revision above `2^53` is refused because Lua
+5.1 numbers stop representing consecutive integers there (see
+[Package identity](#package-identity)). That is a wire-format-like ceiling, not
+retention, so it is not opened.
+
 ## Registry constants
 
 ```lua
