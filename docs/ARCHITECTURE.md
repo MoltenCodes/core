@@ -132,6 +132,15 @@ gets three of them from Registry rather than from its own code.
 4. **Build or inherit its state.** With `previousRevision == nil` the Kit creates
    its prototypes and private state; otherwise it validates and migrates what it
    inherited, in place, so objects created by the older copy keep working.
+   Since Registry revision 7 the hand-over can be explicit on both sides: the
+   outgoing copy's `retire` hook (registered through `request.retire` or
+   `Registry:OnRetire`) is called once, before the incoming copy registers, to
+   release what only it can reach — host watchers, private closures — and return
+   the state it wants carried forward; the incoming copy's
+   `request.migrations[n]` steps then run in ascending order from the inherited
+   revision + 1 to its own, each exactly once per shared table, and `Bootstrap`
+   returns the migrated state. A Kit that passes neither keeps migrating by hand
+   from `previousRevision`, exactly as before.
 
 Registry itself is the exception: it publishes the facade `Bootstrap` lives on,
 so its own bootstrap runs before any facade method exists and is written out by
@@ -142,6 +151,14 @@ upgrade. Registry keeps the shared package table's identity stable, and the Kit
 keeps the identity of everything hanging off it, so a consumer holding a
 reference from an older embedded copy observes the newer implementation instead
 of splitting across two.
+The old copy's entry points need no separate retirement for the same reason:
+its facade *is* the new facade, and its instances' metatables point at
+prototypes the new copy has already rewritten.
+
+A Kit may also pass `sealFacade = true`, which makes the shared facade refuse
+new fields written from outside the package. The Kit itself writes its facade
+exclusively through `rawset`, which every Kit in this repository already does,
+so sealing never interferes with bootstrap or upgrade.
 
 The first dependency layer above Registry is `signalKit`. SignalKit uses Registry only for embedded-package identity; its dispatch algorithm is pure Lua and does not depend on WoW Frames or event APIs.
 

@@ -59,7 +59,7 @@ A higher revision receives the exact same table plus the previously active revis
 
 Registry has no runtime package dependencies.
 
-`Get()` performs table lookups only and allocates nothing. `GetInfo()` intentionally allocates a metadata snapshot so callers cannot mutate Registry-owned metadata.
+`Get()` and `Find()` perform table lookups only and allocate nothing. `GetInfo()` intentionally allocates a metadata snapshot so callers cannot mutate Registry-owned metadata, and `Packages()` allocates a sorted listing for diagnostics. Retirement, migration and sealing run at load time only.
 
 ## Documentation
 

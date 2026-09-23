@@ -8,7 +8,7 @@ describe("Registry bootstrap", function()
         local Registry = require("Registry")
 
         assert.are.equal(2, Registry.API)
-        assert.are.equal(6, Registry.REVISION)
+        assert.are.equal(7, Registry.REVISION)
     end)
 
     it("publishes the shared facade through the portable WoW global namespace", function()
@@ -82,7 +82,7 @@ describe("Registry bootstrap", function()
         assert.is_not_nil(state)
         assert.are.equal(1, state.schema)
         assert.are.equal(2, state.registryApi)
-        assert.are.equal(6, state.registryRevision)
+        assert.are.equal(7, state.registryRevision)
         assert.are.equal(Registry, state.facade)
     end)
 
@@ -138,11 +138,11 @@ describe("Registry bootstrap", function()
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
-            registryRevision = 6,
+            registryRevision = 7,
             entries = {},
             facade = {
                 API = 2,
-                REVISION = 6,
+                REVISION = 7,
             },
         })
 
@@ -177,7 +177,7 @@ describe("Registry bootstrap", function()
         local Registry = require("Registry")
 
         assert.are.equal(oldFacade, Registry)
-        assert.are.equal(6, Registry.REVISION)
+        assert.are.equal(7, Registry.REVISION)
         assert.are_not.equal(oldRegister, Registry.Register)
         assert.are.equal(Registry, TestEnv.GetNamespace().Registry)
     end)
@@ -189,10 +189,13 @@ describe("Registry bootstrap", function()
         local bootstrapPackage = function() end
         local futureFacade = {
             API = 2,
-            REVISION = 7,
+            REVISION = 8,
             Register = register,
             Get = get,
             GetInfo = getInfo,
+            Find = function() end,
+            Packages = function() end,
+            OnRetire = function() end,
             Bootstrap = bootstrapPackage,
         }
 
@@ -201,7 +204,7 @@ describe("Registry bootstrap", function()
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
-            registryRevision = 7,
+            registryRevision = 8,
             entries = {},
             facade = futureFacade,
         })
@@ -210,7 +213,7 @@ describe("Registry bootstrap", function()
 
         assert.are.equal(futureFacade, Registry)
         assert.are.equal(register, Registry.Register)
-        assert.are.equal(7, Registry.REVISION)
+        assert.are.equal(8, Registry.REVISION)
         assert.are.equal(Registry, TestEnv.GetNamespace().Registry)
     end)
 
@@ -240,7 +243,7 @@ describe("Registry bootstrap", function()
         local facade = setmetatable({}, {
             __index = {
                 API = 2,
-                REVISION = 6,
+                REVISION = 7,
                 Register = function() end,
                 Get = function() end,
                 GetInfo = function() end,
@@ -252,7 +255,7 @@ describe("Registry bootstrap", function()
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
-            registryRevision = 6,
+            registryRevision = 7,
             entries = {},
             facade = facade,
         })
@@ -289,7 +292,7 @@ describe("Registry bootstrap", function()
         local Registry = require("Registry")
 
         assert.are.equal(oldFacade, Registry)
-        assert.are.equal(6, rawget(Registry, "REVISION"))
+        assert.are.equal(7, rawget(Registry, "REVISION"))
         assert.are.equal(0, writes)
         assert.are.equal(Registry, TestEnv.GetNamespace().Registry)
     end)

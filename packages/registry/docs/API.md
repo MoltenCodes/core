@@ -1,7 +1,7 @@
 # Registry API
 
 Registry API generation: **2**  
-Implementation revision: **6**
+Implementation revision: **7**
 
 Registry is a zero-dependency runtime resolver for independently embedded framework packages.
 
@@ -175,6 +175,54 @@ Every call returns a new metadata table. Mutating metadata fields cannot modify 
 
 `implementation` intentionally points at the live shared package table. Changes made by an accepted package upgrade are therefore visible through that reference.
 
+## `Registry:Find(packageName, api)`
+
+Silent lookup for an optional dependency. Available from revision **7**.
+
+```lua
+local SchedulerKit, revisionOrReason = Registry:Find("schedulerKit", 1)
+if SchedulerKit == nil then
+    -- revisionOrReason explains the miss; carry on without the optional Kit.
+end
+```
+
+On success it returns the same shared table `Get` returns, and its selected
+revision. On a miss it returns `nil` and one reason from a fixed vocabulary:
+
+| Reason | Meaning |
+|---|---|
+| `absent` | Nothing is registered under that package name. |
+| `generation_mismatch` | The package is registered, but not under this API generation. |
+| `retired` | The selected copy handed its state over during an upgrade whose migrations did not finish; the table is in no state to be used. |
+
+`Find` never raises because a package is missing. It raises at the caller only
+for malformed arguments, exactly as `Get` does, and it performs no allocation.
+
+## `Registry:Packages()`
+
+Diagnostic enumeration of every registration:
+
+```lua
+for _, row in ipairs(Registry:Packages()) do
+    print(row.package, row.api, row.revision, row.status)
+end
+```
+
+Returns a fresh array of fresh rows `{ package, api, revision, status }`, sorted
+by package name and then API generation. `status` is `active`, or `retired` for
+an entry `Find` would refuse. Mutating the result cannot touch Registry state.
+
+`Packages` allocates on every call by design. It is for consoles, options pages
+and debugging, never for a hot path. Available from revision **7**.
+
+## `Registry:OnRetire(packageName, api, retire)`
+
+Registers the hand-over hook of the revision currently selected for
+`(packageName, api)`. It is the alternative to passing `request.retire` to
+`Bootstrap`, for a package that only knows what to hand over once its file has
+finished. It raises at the caller when the package is not registered or `retire`
+is not a function. See [Retirement and migration](#retirement-and-migration).
+
 ## `Registry:Bootstrap(request)`
 
 Performs the reconciliation every embedded package used to repeat by hand, and
@@ -211,6 +259,9 @@ documented load order, which already puts Registry first.
 | `validatePublicSurface` | yes | `fun(implementation): boolean` — whether a table exposes the complete public API of this generation. |
 | `validateState` | no | `fun(implementation): boolean` — whether a copy carrying this exact revision already committed its private state. Without it, a same-revision copy that passes `validatePublicSurface` counts as complete. |
 | `resume` | no | `fun(implementation, complete): integer\|nil` — the same-revision repair hook described below. |
+| `retire` | no | `fun(implementation, incomingRevision): any` — this copy's hand-over hook, called once when a newer revision replaces it. Revision 7. |
+| `migrations` | no | `{ [revision] = fun(state, implementation): any }` — per-revision migration steps. Revision 7. |
+| `sealFacade` | no | `boolean` — refuse new facade fields written from outside the package. Revision 7. |
 
 ### Return values
 
@@ -219,6 +270,7 @@ documented load order, which already puts Registry first.
 | `implementation` | The shared package table to initialize, or `nil` when there is nothing to do. |
 | `previousRevision` | `nil` for a first registration, otherwise the revision whose state this copy inherits, exactly as `Register` reports it. |
 | `selected` | The copy Registry has selected. This is what the package returns when `implementation` is `nil`. |
+| `state` | What the outgoing copy handed over, after every migration step has transformed it. `nil` when nothing was handed over. |
 
 ### What it decides
 
@@ -233,10 +285,19 @@ In order:
    asks `validateState` whether that copy finished. A complete copy is returned
    unchanged; an incomplete one is a corruption error unless `resume` says
    otherwise.
-4. **An older revision is registered** — registers this one over it and reports
-   the inherited revision, so the package can migrate state in place. The older
-   copy is deliberately *not* held to this revision's public surface: it is about
-   to be replaced, and the package validates whatever it inherits itself.
+4. **An older revision is registered** — asks the older copy to retire, then
+   registers this one over it, runs the migration steps between the two
+   revisions and reports the inherited revision. The older copy is deliberately
+   *not* held to this revision's public surface: it is about to be replaced, and
+   the package validates whatever it inherits itself.
+
+| Situation | Retire hook | Migrations | Returns |
+|---|---|---|---|
+| Nothing registered | — | none | fresh table, `nil`, `nil`, `nil` |
+| Newer revision registered | — | none | `nil`, `nil`, newer copy |
+| Same revision, complete | — | none | `nil`, `nil`, that copy |
+| Same revision, `resume` returns `n` | — | steps after `max(n, last step run)` | that copy, `n`, that copy, `nil` |
+| Older revision `p` registered | outgoing hook, once | steps in `(max(p, last step run), revision]` | shared table, `p`, older copy, migrated state |
 
 ### The `resume` hook
 
@@ -272,6 +333,77 @@ Registry old enough to predate the `Registries` table.
 
 Registry is the file that publishes the facade `Bootstrap` lives on, so its own
 bootstrap has to run before any facade method exists. It stays hand-written.
+
+## Retirement and migration
+
+Revision 7 turns "the incoming copy guesses from `previousRevision`" into a
+two-sided contract.
+
+**The outgoing side.** A copy that registered a `retire` hook — through
+`request.retire` or `Registry:OnRetire` — is asked to retire exactly once, when
+a newer revision replaces it, and *before* the newer revision registers, so the
+hook still sees the state it owns. It receives the shared table and the incoming
+revision, drains what it must (disconnect host watchers, cancel work), and
+returns whatever state it wants carried forward. A hook belongs to the revision
+that registered it: an upgrade through the raw `Register` primitive discards it,
+so it can never be handed a newer copy's table.
+
+A retire hook that raises is reported through the host error handler
+(`geterrorhandler()`, or `print` outside the client) and the upgrade continues
+from no hand-over rather than from a half-drained one.
+
+**The incoming side.** `request.migrations` maps a revision to the step that
+converts state from the previous layout to that revision's. Registry runs the
+steps in `(inherited revision, this revision]` in ascending order. Each step
+receives the current state and the shared table and returns the state for the
+next step; returning `nil` keeps the current state, which suits a step that
+mutates in place. Steps outside the range are ignored, because an earlier copy
+already ran them, and a skipped range is applied cumulatively.
+
+**Exactly once.** Registry records the last step that ran for each entry. A copy
+that resumes over state an earlier copy of the same revision already migrated
+starts after that record, not after the revision it believes it inherits, so no
+step runs twice. A step that raises stops the run, is raised at the package's
+`Bootstrap` call as `<label> migration to revision <n> failed: <error>`, and
+leaves the entry `retired` (see `Find`) until a copy completes the run.
+
+**Retired entry points.** The facade table is shared and never replaced, so once
+the incoming copy has installed its methods, every reference the outgoing copy
+handed out resolves to the new ones. The same holds for instances as long as the
+package keeps its prototype tables stable and replaces methods on them in place,
+which every Kit does; `docs/ARCHITECTURE.md` "How a Kit bootstraps" states that
+rule. What the shared table cannot reach are closures the outgoing copy captured
+privately — host frame scripts, timers, callbacks registered elsewhere. Those are
+what the retire hook exists to release.
+
+Registry does not migrate saved variables, and there is no downgrade path.
+
+## Sealed facades
+
+`request.sealFacade = true` installs a metatable on the shared table whose
+`__newindex` raises at the writer's line:
+
+```text
+MyAddon.lua:12: MoltenCodes DemoKit facade is sealed; field "Extra" cannot be added from outside the package
+```
+
+The package itself writes through `rawset` during bootstrap and upgrade, which a
+metatable does not see, so upgrades keep mutating the facade. Reads, `rawget`
+and `pairs` are unchanged: the fields stay on the table itself.
+
+Limits, stated plainly:
+
+- Lua 5.1 has no metamethod for assignments to a field that already exists, so a
+  seal refuses **new** fields — a misspelled method, a monkey-patched addition —
+  but cannot stop an addon from overwriting `EventKit.Connect`. Doing that would
+  need a proxy table, which would break `rawget` and `pairs` over the facade.
+- It guards against mistakes, not malice: `rawset` and `setmetatable` still work.
+- Registry refuses to seal a facade that already carries a metatable it did not
+  install, and a newer revision that does not ask for the seal removes the one
+  Registry installed, because the newer revision owns the facade's policy.
+
+The seal is opt-in in API 2. It is intended to become the default in a later
+Registry API generation. No `Unseal` method exists, by design.
 
 ## Registry constants
 
@@ -398,10 +530,13 @@ both by number.
 
 Registry raises two kinds of error, and the stack level differs on purpose.
 
-**Argument errors** from `Register()`, `Get()` and `GetInfo()`, and corrupted
+**Argument errors** from `Register()`, `Get()`, `GetInfo()`, `Find()` and
+`OnRetire()`, and corrupted
 package state discovered while serving one of those calls, point at the calling
 line. A package author sees their own `Registry:Register(...)` call, not a line
-inside `Registry.lua`.
+inside `Registry.lua`. Failures `Bootstrap` raises on a package's behalf — a
+refused state, a failed migration step, a seal that cannot be applied — carry
+the package's `label` and point at the package's `Bootstrap` call.
 
 **Load-time failures** — incompatible or corrupted bootstrap state, a corrupted
 facade, a hostile owner of `MoltenCodes` or `MoltenCodes.Registries` — raise with

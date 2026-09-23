@@ -15,7 +15,10 @@ The Registry suite covers:
 - bootstrap/facade corruption and metatable hardening;
 - API-generation coexistence, alias ownership in both load orders, and
   generation-private bootstrap state;
-- the stack level of load-time versus argument errors.
+- the stack level of load-time versus argument errors;
+- silent lookup (`Find`) and the diagnostic listing (`Packages`);
+- retirement hand-over, per-revision migrations and their exactly-once record;
+- sealed facades.
 
 Test helpers belong under `support/` and are not public package API.
 

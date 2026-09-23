@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 — 2026-09-23
+
+- Added `Registry:Find(package, api)`: a silent lookup for optional dependencies. It returns the same table and revision `Get` returns, or `nil` and a reason from a fixed vocabulary (`absent`, `generation_mismatch`, `retired`). It never raises for a missing package, raises at the caller for malformed arguments, and allocates nothing.
+- Added `Registry:Packages()`: a sorted, freshly allocated diagnostic listing of every registration as `{ package, api, revision, status }`. It allocates by design and is documented as unsuitable for hot paths.
+- Added retirement and migration to `Registry:Bootstrap`. The outgoing copy's `retire` hook (from `request.retire` or the new `Registry:OnRetire(package, api, fn)`) is called exactly once, before the incoming copy registers, and returns the state it hands over. The incoming copy's `request.migrations = { [revision] = fn(state, implementation) }` runs in ascending order over `(inherited revision, own revision]`, each step exactly once: Registry records the last step run per entry, so a copy resuming over already-migrated state does not replay it. The migrated state is `Bootstrap`'s new fourth return value. A failing retire hook is reported through the host error handler and the upgrade continues from no hand-over; a failing step is raised at the package's `Bootstrap` call and leaves the entry `retired` until a copy completes the run. A retire hook is discarded whenever another revision is selected, so it is never handed a newer copy's table.
+- Added `request.sealFacade`, an opt-in `__newindex` metatable that refuses new facade fields written from outside the package, at the writer's line. Packages keep writing through `rawset`, so upgrades still mutate the facade, and `rawget` and `pairs` are unchanged. Lua 5.1 cannot intercept assignments to fields that already exist, so the seal refuses additions but not overwrites; `docs/API.md` states the limit. It is intended to become the default in a later API generation.
+- Documented the retirement contract, the decision table with its retire and migration columns, and the seal's limits in `docs/API.md`.
+- Added a line budget (1000 lines) and a table of contents to the top of `Registry.lua`, and moved the method definitions out of the install block into named sections, so the migration runner and the seal live in their own section beside `Bootstrap`.
+- 23 new specs: `Find_spec.lua`, `Retirement_spec.lua` (including the two-step r4 → r6 upgrade and the no-double-run case) and `Seal_spec.lua`.
+- Implementation revision 7. The public API generation is unchanged at 2; every addition is additive, and a Kit that passes none of the new request fields bootstraps exactly as before.
+
 ## 0.5.0 — 2026-09-22
 
 - Added `Registry:Bootstrap(request)`, the reconciliation every embedded package repeated by hand: look the package up, refuse to reinterpret private state owned by a newer revision, register this one, and report the revision whose state it inherits. A package now supplies only what it alone can answer — its identity, the label its failures carry, which fields make its public surface complete, whether a same-revision copy already finished, and optionally how to resume one that did not.

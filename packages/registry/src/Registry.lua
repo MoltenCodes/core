@@ -10,6 +10,25 @@
 -- `MoltenCodes.Registries[<generation>]`. `MoltenCodes.Registry` is an alias for
 -- the newest generation present, so loading a second generation never aborts the
 -- load of an addon that embedded the other one.
+--
+-- Line budget: 1000 lines, comments included. Registry sits at the bottom of
+-- every dependency chain and is loaded by every addon that embeds a Kit, so it
+-- stays small and boring. A change that would push this file past the budget
+-- moves behaviour into a package of its own (the planned LibStub bridge is the
+-- first candidate) or first shrinks what is here.
+--
+-- Contents
+--
+--   Validation ............... Identifier and revision checks.
+--   Bootstrap state .......... Finding or creating the generation-private state.
+--   Package-state access ..... Reading entries without trusting their shape.
+--   Public types ............. LuaCATS declarations for the facade.
+--   Lookup ................... Register, Get, GetInfo, Find, Packages.
+--   Retirement and migration . OnRetire, the outgoing hand-over, the migration
+--                              runner, and the sealed-facade metatable.
+--   Bootstrap ................ The reconciliation every Kit calls.
+--   Commit ................... Installing the methods and the facade self-check.
+--   Public namespace ......... `MoltenCodes.Registries[n]` and the alias.
 
 local GLOBAL_STATE_KEY = "__MOLTENCODES_REGISTRY_STATE_V2"
 local PUBLIC_NAMESPACE_KEY = "MoltenCodes"
@@ -18,7 +37,7 @@ local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 
 -- Lua 5.1 numbers are doubles, which represent consecutive integers exactly only
 -- up to 2^53. Past that boundary distinct values start comparing equal, so a
@@ -26,6 +45,16 @@ local IMPLEMENTATION_REVISION = 6
 -- future embedded copy could ever replace. Identifiers are therefore bounded.
 local MAXIMUM_INTEGER = 2 ^ 53
 local MAXIMUM_INTEGER_TEXT = "2^53"
+
+-- The fixed vocabulary `Registry:Find` explains a miss with.
+local FIND_ABSENT = "absent"
+local FIND_RETIRED = "retired"
+local FIND_GENERATION_MISMATCH = "generation_mismatch"
+
+-- Entry status values. An entry is `retired` from the moment its outgoing copy
+-- is asked to hand over until the incoming copy's migrations have all run.
+local STATUS_ACTIVE = "active"
+local STATUS_RETIRED = "retired"
 
 -- Validation ---------------------------------------------------------------
 
@@ -141,6 +170,11 @@ then
 end
 
 -- Package-state access ----------------------------------------------------
+--
+-- An entry is `{ revision, implementation }`. Revision 7 adds four optional
+-- fields that older entries simply lack: `status`, `retire` (the selected
+-- copy's hand-over hook), `migratedThrough` (the last revision whose migration
+-- step has run) and `seal` (the sealed-facade metatable Registry installed).
 
 ---@param packageName string
 ---@return table|nil
@@ -173,7 +207,19 @@ local function getEntry(packageEntries, api)
     return entry
 end
 
--- Shared facade -----------------------------------------------------------
+---The entry for `(packageName, api)`, or `nil`.
+---@param packageName string
+---@param api integer
+---@return table|nil
+local function findEntry(packageName, api)
+    local packageEntries = getPackageEntries(packageName)
+    if packageEntries == nil then
+        return nil
+    end
+    return getEntry(packageEntries, api)
+end
+
+-- Public types ------------------------------------------------------------
 
 ---Metadata snapshot returned by `Registry:GetInfo`.
 ---@class Registry.PackageInfo
@@ -181,6 +227,16 @@ end
 ---@field api integer API generation the snapshot describes.
 ---@field revision integer Currently selected implementation revision.
 ---@field implementation table The live shared package table.
+
+---One row of the diagnostic listing `Registry:Packages` returns.
+---@class Registry.PackageRow
+---@field ["package"] string Package identifier.
+---@field api integer API generation.
+---@field revision integer Currently selected implementation revision.
+---@field status "active"|"retired" Whether the selected copy finished taking over.
+
+---Why `Registry:Find` found nothing.
+---@alias Registry.FindReason "absent"|"retired"|"generation_mismatch"
 
 ---Everything `Registry:Bootstrap` needs in order to reconcile one embedded copy.
 ---
@@ -195,6 +251,9 @@ end
 ---@field validatePublicSurface fun(implementation: any): boolean Whether a table exposes the complete public API of this generation.
 ---@field validateState (fun(implementation: table): boolean)? Whether a same-revision copy already finished committing its private state.
 ---@field resume (fun(implementation: table, complete: boolean): integer|nil)? Same-revision repair hook; see `Registry:Bootstrap`.
+---@field retire (fun(implementation: table, incomingRevision: integer): any)? This copy's hand-over hook, called once when a newer revision replaces it.
+---@field migrations table<integer, fun(state: any, implementation: table): any>? Per-revision migration steps, keyed by the revision that introduced them.
+---@field sealFacade boolean? Refuse new fields written to the facade from outside the package.
 
 ---The Registry facade shared by every compatible embedded copy.
 ---@class Registry
@@ -203,265 +262,585 @@ end
 ---@field Register fun(self: Registry, packageName: string, api: integer, revision: integer): table|nil, integer|nil
 ---@field Get fun(self: Registry, packageName: string, api: integer): table|nil, integer|nil
 ---@field GetInfo fun(self: Registry, packageName: string, api: integer): Registry.PackageInfo|nil
----@field Bootstrap fun(self: Registry, request: Registry.BootstrapRequest): table|nil, integer|nil, table|nil
+---@field Find fun(self: Registry, packageName: string, api: integer): table|nil, integer|Registry.FindReason
+---@field Packages fun(self: Registry): Registry.PackageRow[]
+---@field OnRetire fun(self: Registry, packageName: string, api: integer, retire: fun(implementation: table, incomingRevision: integer): any)
+---@field Bootstrap fun(self: Registry, request: Registry.BootstrapRequest): table|nil, integer|nil, table|nil, any
 
 ---@type Registry
 local Registry = facade
+
+-- Lookup ------------------------------------------------------------------
+
+---Requests initialization rights for one package revision.
+---@param packageName string
+---@param api integer
+---@param revision integer
+---@return table|nil sharedPackageTable `nil` when an equal or newer revision already won.
+---@return integer|nil previousRevision `nil` for the first accepted revision.
+local function register(_, packageName, api, revision, ...)
+    if select("#", ...) ~= 0 then
+        error(
+            "Registry:Register does not accept an implementation argument; "
+                .. "initialize the returned shared package table instead",
+            2
+        )
+    end
+
+    validatePackageName(packageName, "Register")
+    validateApi(api, "Register")
+    validateRevision(revision)
+
+    local packageEntries = getPackageEntries(packageName)
+    if packageEntries == nil then
+        packageEntries = {}
+        rawset(entries, packageName, packageEntries)
+    end
+
+    local entry = getEntry(packageEntries, api)
+    if entry == nil then
+        local implementation = {}
+        rawset(packageEntries, api, {
+            revision = revision,
+            implementation = implementation,
+        })
+        return implementation, nil
+    end
+
+    local currentRevision = rawget(entry, "revision")
+    if revision <= currentRevision then
+        return nil
+    end
+
+    rawset(entry, "revision", revision)
+
+    -- A retire hook belongs to the revision that registered it. Once another
+    -- revision is selected the hook describes state that no longer exists, so
+    -- it must never be handed the newer copy's table.
+    rawset(entry, "retire", nil)
+
+    -- The implementation table is intentionally never replaced. Packages
+    -- upgrade this shared table in place so consumers holding older
+    -- references immediately observe the newer revision.
+    return rawget(entry, "implementation"), currentRevision
+end
+
+---Returns the selected shared package table and its revision.
+---@param packageName string
+---@param api integer
+---@return table|nil implementation
+---@return integer|nil revision
+local function get(_, packageName, api)
+    validatePackageName(packageName, "Get")
+    validateApi(api, "Get")
+
+    local entry = findEntry(packageName, api)
+    if entry == nil then
+        return nil
+    end
+
+    return rawget(entry, "implementation"), rawget(entry, "revision")
+end
+
+---Returns a freshly allocated metadata snapshot for one registration.
+---@param packageName string
+---@param api integer
+---@return Registry.PackageInfo|nil
+local function getInfo(_, packageName, api)
+    validatePackageName(packageName, "GetInfo")
+    validateApi(api, "GetInfo")
+
+    local entry = findEntry(packageName, api)
+    if entry == nil then
+        return nil
+    end
+
+    return {
+        package = packageName,
+        api = api,
+        revision = rawget(entry, "revision"),
+        implementation = rawget(entry, "implementation"),
+    }
+end
+
+---Silent lookup for an optional dependency.
+---
+---Never raises for a package that is not there; raises at the caller only for
+---malformed arguments. Allocation-free, so it is safe on any path.
+---@param packageName string
+---@param api integer
+---@return table|nil implementation
+---@return integer|Registry.FindReason revisionOrReason the revision, or why nothing was found
+local function find(_, packageName, api)
+    validatePackageName(packageName, "Find")
+    validateApi(api, "Find")
+
+    local packageEntries = getPackageEntries(packageName)
+    if packageEntries == nil or next(packageEntries) == nil then
+        return nil, FIND_ABSENT
+    end
+
+    local entry = getEntry(packageEntries, api)
+    if entry == nil then
+        return nil, FIND_GENERATION_MISMATCH
+    end
+
+    if rawget(entry, "status") == STATUS_RETIRED then
+        return nil, FIND_RETIRED
+    end
+
+    return rawget(entry, "implementation"), rawget(entry, "revision")
+end
+
+---Order two `Packages` rows by package name, then API generation.
+---@param left Registry.PackageRow
+---@param right Registry.PackageRow
+---@return boolean
+local function packageRowBefore(left, right)
+    if left.package ~= right.package then
+        return left.package < right.package
+    end
+    return left.api < right.api
+end
+
+---Diagnostic enumeration of every registration, sorted by package then API.
+---
+---Allocates a fresh array of fresh rows on every call by design; it is meant
+---for consoles and options pages, never for a hot path.
+---@return Registry.PackageRow[]
+local function packages()
+    local rows = {}
+    for packageName, packageEntries in next, entries do
+        if type(packageName) == "string" and type(packageEntries) == "table" then
+            for api, entry in next, packageEntries do
+                if type(entry) == "table" and isPositiveInteger(rawget(entry, "revision")) then
+                    rows[#rows + 1] = {
+                        package = packageName,
+                        api = api,
+                        revision = rawget(entry, "revision"),
+                        status = rawget(entry, "status") or STATUS_ACTIVE,
+                    }
+                end
+            end
+        end
+    end
+
+    table.sort(rows, packageRowBefore)
+    return rows
+end
+
+-- Retirement and migration -------------------------------------------------
+--
+-- When a newer revision replaces an older one, the outgoing copy may hand its
+-- state over (its `retire` hook) and the incoming copy runs the migration steps
+-- between the two revisions, each exactly once, in ascending order. The shared
+-- facade and the Kit's prototype tables keep their identity throughout, so the
+-- outgoing copy's entry points already resolve to the incoming methods.
+
+---Registers the retire hook of the currently selected revision.
+---
+---`Registry:Bootstrap` does this from `request.retire`; this method is for a
+---package that only knows what to hand over once its file has finished.
+---@param packageName string
+---@param api integer
+---@param retire fun(implementation: table, incomingRevision: integer): any
+local function onRetire(_, packageName, api, retire)
+    validatePackageName(packageName, "OnRetire")
+    validateApi(api, "OnRetire")
+    if type(retire) ~= "function" then
+        error("Registry:OnRetire retire must be a function", 2)
+    end
+
+    local entry = findEntry(packageName, api)
+    if entry == nil then
+        error('Registry:OnRetire package "' .. packageName .. '" is not registered', 2)
+    end
+
+    rawset(entry, "retire", retire)
+end
+
+---Hand a failure to the host error handler, or print it outside the client.
+---@param message string
+local function reportFailure(message)
+    -- geterrorhandler is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local getErrorHandler = rawget(_G, "geterrorhandler")
+    if type(getErrorHandler) == "function" then
+        local handler = getErrorHandler()
+        if type(handler) == "function" then
+            handler(message)
+            return
+        end
+    end
+    print(message)
+end
+
+---Mark the entry retired and ask the outgoing copy for its state, once.
+---
+---A failing hook is reported and the upgrade continues from no hand-over
+---rather than from a half-drained one.
+---@param entry table
+---@param implementation table
+---@param incomingRevision integer
+---@param label string
+---@return any handover
+local function retireOutgoing(entry, implementation, incomingRevision, label)
+    local retire = rawget(entry, "retire")
+    rawset(entry, "retire", nil)
+    rawset(entry, "status", STATUS_RETIRED)
+
+    if type(retire) ~= "function" then
+        return nil
+    end
+
+    local ok, handover = pcall(retire, implementation, incomingRevision)
+    if ok then
+        return handover
+    end
+    reportFailure(label .. " retire hook failed: " .. tostring(handover))
+    return nil
+end
+
+---The migration steps in `(fromRevision, toRevision]`, ascending.
+---@param migrations table
+---@param fromRevision integer
+---@param toRevision integer
+---@return integer[]|nil steps
+---@return string|nil problem
+local function selectMigrationSteps(migrations, fromRevision, toRevision)
+    local steps = {}
+    for step, migrate in next, migrations do
+        if not isPositiveInteger(step) or type(migrate) ~= "function" then
+            return nil, "request.migrations must map positive revisions to functions"
+        end
+        if step > fromRevision and step <= toRevision then
+            steps[#steps + 1] = step
+        end
+    end
+    table.sort(steps)
+    return steps, nil
+end
+
+---Run every migration step this entry has not run yet.
+---
+---`migratedThrough` is what makes each step run exactly once: a copy that
+---resumes over state an earlier copy of the same revision already migrated
+---starts after the last recorded step, not after the inherited revision.
+---@param entry table
+---@param migrations table|nil
+---@param inheritedRevision integer
+---@param revision integer
+---@param handover any
+---@param implementation table
+---@return boolean ok
+---@return any stateOrProblem the migrated state, or the failure message
+local function runMigrations(
+    entry,
+    migrations,
+    inheritedRevision,
+    revision,
+    handover,
+    implementation
+)
+    local fromRevision = inheritedRevision
+    local migratedThrough = rawget(entry, "migratedThrough")
+    if isNonNegativeInteger(migratedThrough) and migratedThrough > fromRevision then
+        fromRevision = migratedThrough
+    end
+
+    local migratedState = handover
+    if migrations ~= nil then
+        local steps, problem = selectMigrationSteps(migrations, fromRevision, revision)
+        if steps == nil then
+            return false, problem
+        end
+
+        for index = 1, #steps do
+            local step = steps[index]
+            local ok, result = pcall(rawget(migrations, step), migratedState, implementation)
+            if not ok then
+                return false, "migration to revision " .. step .. " failed: " .. tostring(result)
+            end
+            if result ~= nil then
+                migratedState = result
+            end
+            rawset(entry, "migratedThrough", step)
+        end
+    end
+
+    if fromRevision < revision then
+        rawset(entry, "migratedThrough", revision)
+    end
+    rawset(entry, "status", STATUS_ACTIVE)
+    return true, migratedState
+end
+
+---Install, keep or remove the sealed-facade metatable, as the request asks.
+---
+---Lua 5.1 has no metamethod for assignments to fields that already exist, so a
+---seal refuses *new* fields only; see `docs/API.md`. A newer revision that does
+---not ask for the seal removes the one Registry installed, because the newer
+---revision owns the facade's policy.
+---@param entry table
+---@param implementation table
+---@param wanted boolean
+---@param label string
+---@return boolean ok `false` when the facade carries a metatable Registry did not install
+local function applySeal(entry, implementation, wanted, label)
+    local seal = rawget(entry, "seal")
+    local current = getmetatable(implementation)
+
+    if not wanted then
+        if seal ~= nil and current == seal then
+            setmetatable(implementation, nil)
+        end
+        return true
+    end
+
+    if current ~= nil then
+        return current == seal
+    end
+
+    if seal == nil then
+        seal = {
+            __newindex = function(_, key)
+                error(
+                    label
+                        .. ' facade is sealed; field "'
+                        .. tostring(key)
+                        .. '" cannot be added from outside the package',
+                    2
+                )
+            end,
+        }
+        rawset(entry, "seal", seal)
+    end
+    setmetatable(implementation, seal)
+    return true
+end
+
+-- Bootstrap ---------------------------------------------------------------
+
+---@param field any
+---@param fieldName string
+---@param expectedType string
+local function validateOptionalField(field, fieldName, expectedType)
+    if field ~= nil and type(field) ~= expectedType then
+        error("Registry:Bootstrap request." .. fieldName .. " must be a " .. expectedType, 3)
+    end
+end
+
+---Perform the reconciliation every embedded package repeats verbatim.
+---
+---A package bootstrap always answers the same three questions in the same
+---order: does a copy of this `(package, api)` pair already exist, is it
+---newer than this one, and did the copy that registered this same revision
+---actually finish. Getting that order wrong is how an older embedded copy
+---reinterprets private state it does not own, so the order lives here once
+---rather than in every package.
+---
+---The return values are what the caller needs to finish:
+---
+---* `implementation` is the shared package table to initialize. When it is
+---  `nil` the caller is done and must `return selected` unchanged.
+---* `previousRevision` is `nil` for a first registration and otherwise the
+---  revision whose state this copy inherits, exactly as `Registry:Register`
+---  reports it.
+---* `selected` is the copy Registry has selected, which is what the caller
+---  returns when `implementation` is `nil`.
+---* `state` is what the outgoing copy handed over, after every migration step
+---  has transformed it; `nil` when nothing was handed over.
+---
+---`validateState`, `resume`, `retire`, `migrations` and `sealFacade` are
+---optional; `docs/API.md` documents each and the decision table.
+---
+---Registry never calls this helper for itself: it is the file that
+---publishes the facade the helper lives on, so its own bootstrap has to run
+---before any facade method exists.
+---@param request Registry.BootstrapRequest
+---@return table|nil implementation
+---@return integer|nil previousRevision
+---@return table|nil selected
+---@return any state
+local function bootstrap(self, request)
+    if type(request) ~= "table" then
+        error("Registry:Bootstrap request must be a table", 2)
+    end
+
+    local packageName = rawget(request, "package")
+    local api = rawget(request, "api")
+    local revision = rawget(request, "revision")
+    local label = rawget(request, "label")
+    local validatePublicSurface = rawget(request, "validatePublicSurface")
+    local validateState = rawget(request, "validateState")
+    local resume = rawget(request, "resume")
+    local retire = rawget(request, "retire")
+    local migrations = rawget(request, "migrations")
+    local sealFacade = rawget(request, "sealFacade")
+
+    validatePackageName(packageName, "Bootstrap")
+    validateApi(api, "Bootstrap")
+    if not isPositiveInteger(revision) then
+        error(
+            "Registry:Bootstrap revision must be a positive integer up to " .. MAXIMUM_INTEGER_TEXT,
+            2
+        )
+    end
+    if type(label) ~= "string" or label == "" then
+        error("Registry:Bootstrap request.label must be a non-empty string", 2)
+    end
+    if type(validatePublicSurface) ~= "function" then
+        error("Registry:Bootstrap request.validatePublicSurface must be a function", 2)
+    end
+    validateOptionalField(validateState, "validateState", "function")
+    validateOptionalField(resume, "resume", "function")
+    validateOptionalField(retire, "retire", "function")
+    validateOptionalField(migrations, "migrations", "table")
+    validateOptionalField(sealFacade, "sealFacade", "boolean")
+
+    -- Level 3 points at the package file that called `Registry:Bootstrap`,
+    -- which is the caller of this helper: level 1 is `refuse` itself and
+    -- level 2 is `bootstrap`.
+    local function refuse(reason)
+        error(label .. " " .. reason, 3)
+    end
+
+    ---Finish handing `implementation` to the caller: run the migration steps it
+    ---has not run yet, record its retire hook, and apply the seal it asked for.
+    ---@param implementation table
+    ---@param inheritedRevision integer|nil
+    ---@param handover any
+    ---@return any state
+    local function adopt(implementation, inheritedRevision, handover)
+        -- `register` or the existing-copy lookup just proved the entry exists.
+        local entry = findEntry(packageName, api) --[[@as table]]
+        local migratedState = nil
+        if inheritedRevision == nil then
+            -- Nothing was inherited, so no step runs; the table is still
+            -- validated, so a malformed one fails on every load, not only
+            -- on the first upgrade.
+            if
+                migrations ~= nil
+                and selectMigrationSteps(migrations, revision, revision) == nil
+            then
+                error(label .. " request.migrations must map positive revisions to functions", 3)
+            end
+            rawset(entry, "migratedThrough", revision)
+            rawset(entry, "status", STATUS_ACTIVE)
+        else
+            local ok, result = runMigrations(
+                entry,
+                migrations,
+                inheritedRevision,
+                revision,
+                handover,
+                implementation
+            )
+            if not ok then
+                error(label .. " " .. result, 3)
+            end
+            migratedState = result
+        end
+
+        if retire ~= nil then
+            rawset(entry, "retire", retire)
+        end
+        if not applySeal(entry, implementation, sealFacade == true, label) then
+            error(label .. " cannot seal a facade that already carries a metatable", 3)
+        end
+        return migratedState
+    end
+
+    local existing, existingRevision = get(self, packageName, api)
+    if existing ~= nil then
+        if type(existing) ~= "table" or rawget(existing, "API") ~= api then
+            refuse("package state is corrupted or incomplete")
+        end
+
+        -- The facade publishes its revision only once it has committed the
+        -- matching implementation, so a facade claiming to be newer than
+        -- the revision Registry accepted cannot be trusted at all.
+        local facadeRevision = rawget(existing, "REVISION")
+        if type(facadeRevision) ~= "number" or facadeRevision > existingRevision then
+            refuse("package state is corrupted or incomplete")
+        end
+
+        if existingRevision > revision then
+            -- A newer compatible embedded revision owns its own private
+            -- state schema. Older copies validate the stable API surface
+            -- and must not reinterpret state they do not understand.
+            if facadeRevision ~= existingRevision or not validatePublicSurface(existing) then
+                refuse("package state is corrupted or incomplete")
+            end
+            return nil, nil, existing
+        end
+
+        -- An older revision is deliberately not held to this revision's
+        -- public surface. It is about to be upgraded in place, and the
+        -- caller validates whatever it inherits before it reuses it.
+        if existingRevision == revision then
+            if not validatePublicSurface(existing) then
+                refuse("package state is corrupted or incomplete")
+            end
+
+            local complete = facadeRevision == existingRevision
+                and (validateState == nil or validateState(existing) == true)
+
+            if resume ~= nil then
+                local inherited = resume(existing, complete)
+                if inherited ~= nil then
+                    if not isPositiveInteger(inherited) and inherited ~= 0 then
+                        error("Registry:Bootstrap request.resume must return a revision", 2)
+                    end
+                    return existing, inherited, existing, adopt(existing, inherited, nil)
+                end
+                return nil, nil, existing
+            end
+
+            if not complete then
+                refuse("package state is corrupted or incomplete")
+            end
+            return nil, nil, existing
+        end
+    end
+
+    -- An older revision is selected: its copy hands over before this one
+    -- registers, so the hook still sees the state it owns.
+    local handover = nil
+    if existing ~= nil then
+        local outgoingEntry = findEntry(packageName, api) --[[@as table]]
+        handover = retireOutgoing(outgoingEntry, existing, revision, label)
+    end
+
+    local implementation, previousRevision = register(self, packageName, api, revision)
+    if implementation == nil then
+        -- An equal or newer compatible revision owns the shared table.
+        return nil, nil, existing
+    end
+
+    if previousRevision ~= existingRevision then
+        refuse("Registry state changed unexpectedly during bootstrap")
+    end
+
+    return implementation,
+        previousRevision,
+        existing,
+        adopt(implementation, previousRevision, handover)
+end
+
+-- Commit ------------------------------------------------------------------
 
 -- Every compatible embedded Registry copy shares this facade. A newer
 -- implementation revision replaces methods on the same table, so references
 -- acquired from older compatible copies continue to point at the upgraded
 -- Registry facade.
 if stateRevision < IMPLEMENTATION_REVISION then
-    ---Requests initialization rights for one package revision.
-    ---@param packageName string
-    ---@param api integer
-    ---@param revision integer
-    ---@return table|nil sharedPackageTable `nil` when an equal or newer revision already won.
-    ---@return integer|nil previousRevision `nil` for the first accepted revision.
-    local function register(_, packageName, api, revision, ...)
-        if select("#", ...) ~= 0 then
-            error(
-                "Registry:Register does not accept an implementation argument; "
-                    .. "initialize the returned shared package table instead",
-                2
-            )
-        end
-
-        validatePackageName(packageName, "Register")
-        validateApi(api, "Register")
-        validateRevision(revision)
-
-        local packageEntries = getPackageEntries(packageName)
-        if packageEntries == nil then
-            packageEntries = {}
-            rawset(entries, packageName, packageEntries)
-        end
-
-        local entry = getEntry(packageEntries, api)
-        if entry == nil then
-            local implementation = {}
-            rawset(packageEntries, api, {
-                revision = revision,
-                implementation = implementation,
-            })
-            return implementation, nil
-        end
-
-        local currentRevision = rawget(entry, "revision")
-        if revision <= currentRevision then
-            return nil
-        end
-
-        rawset(entry, "revision", revision)
-
-        -- The implementation table is intentionally never replaced. Packages
-        -- upgrade this shared table in place so consumers holding older
-        -- references immediately observe the newer revision.
-        return rawget(entry, "implementation"), currentRevision
-    end
-
-    ---Returns the selected shared package table and its revision.
-    ---@param packageName string
-    ---@param api integer
-    ---@return table|nil implementation
-    ---@return integer|nil revision
-    local function get(_, packageName, api)
-        validatePackageName(packageName, "Get")
-        validateApi(api, "Get")
-
-        local packageEntries = getPackageEntries(packageName)
-        if packageEntries == nil then
-            return nil
-        end
-
-        local entry = getEntry(packageEntries, api)
-        if entry == nil then
-            return nil
-        end
-
-        return rawget(entry, "implementation"), rawget(entry, "revision")
-    end
-
-    ---Returns a freshly allocated metadata snapshot for one registration.
-    ---@param packageName string
-    ---@param api integer
-    ---@return Registry.PackageInfo|nil
-    local function getInfo(_, packageName, api)
-        validatePackageName(packageName, "GetInfo")
-        validateApi(api, "GetInfo")
-
-        local packageEntries = getPackageEntries(packageName)
-        if packageEntries == nil then
-            return nil
-        end
-
-        local entry = getEntry(packageEntries, api)
-        if entry == nil then
-            return nil
-        end
-
-        return {
-            package = packageName,
-            api = api,
-            revision = rawget(entry, "revision"),
-            implementation = rawget(entry, "implementation"),
-        }
-    end
-
-    ---@param field any
-    ---@param fieldName string
-    local function validateBootstrapFunction(field, fieldName)
-        if field ~= nil and type(field) ~= "function" then
-            error("Registry:Bootstrap request." .. fieldName .. " must be a function", 3)
-        end
-    end
-
-    ---Perform the reconciliation every embedded package repeats verbatim.
-    ---
-    ---A package bootstrap always answers the same three questions in the same
-    ---order: does a copy of this `(package, api)` pair already exist, is it
-    ---newer than this one, and did the copy that registered this same revision
-    ---actually finish. Getting that order wrong is how an older embedded copy
-    ---reinterprets private state it does not own, so the order lives here once
-    ---rather than in every package.
-    ---
-    ---The three return values are what the caller needs to finish:
-    ---
-    ---* `implementation` is the shared package table to initialize. When it is
-    ---  `nil` the caller is done and must `return selected` unchanged.
-    ---* `previousRevision` is `nil` for a first registration and otherwise the
-    ---  revision whose state this copy inherits, exactly as `Registry:Register`
-    ---  reports it.
-    ---* `selected` is the copy Registry has selected, which is what the caller
-    ---  returns when `implementation` is `nil`.
-    ---
-    ---`validateState` describes what "finished" means for a copy that carries
-    ---this exact revision. Without it, a same-revision copy that passed
-    ---`validatePublicSurface` is taken as complete.
-    ---
-    ---`resume` is the escape hatch for packages whose bootstrap installs shared
-    ---runtime state that a failed earlier attempt can leave half-built. It runs
-    ---only when Registry already holds this exact revision, receives whether
-    ---that copy looks complete, and returns either `nil` to accept the copy as
-    ---it is, or the revision to inherit so the caller re-runs its own setup
-    ---against the existing shared table. It may also raise on state it judges
-    ---unrepairable.
-    ---
-    ---Registry never calls this helper for itself: it is the file that
-    ---publishes the facade the helper lives on, so its own bootstrap has to run
-    ---before any facade method exists.
-    ---@param request Registry.BootstrapRequest
-    ---@return table|nil implementation
-    ---@return integer|nil previousRevision
-    ---@return table|nil selected
-    local function bootstrap(self, request)
-        if type(request) ~= "table" then
-            error("Registry:Bootstrap request must be a table", 2)
-        end
-
-        local packageName = rawget(request, "package")
-        local api = rawget(request, "api")
-        local revision = rawget(request, "revision")
-        local label = rawget(request, "label")
-        local validatePublicSurface = rawget(request, "validatePublicSurface")
-        local validateState = rawget(request, "validateState")
-        local resume = rawget(request, "resume")
-
-        validatePackageName(packageName, "Bootstrap")
-        validateApi(api, "Bootstrap")
-        if not isPositiveInteger(revision) then
-            error(
-                "Registry:Bootstrap revision must be a positive integer up to "
-                    .. MAXIMUM_INTEGER_TEXT,
-                2
-            )
-        end
-        if type(label) ~= "string" or label == "" then
-            error("Registry:Bootstrap request.label must be a non-empty string", 2)
-        end
-        if type(validatePublicSurface) ~= "function" then
-            error("Registry:Bootstrap request.validatePublicSurface must be a function", 2)
-        end
-        validateBootstrapFunction(validateState, "validateState")
-        validateBootstrapFunction(resume, "resume")
-
-        -- Level 3 points at the package file that called `Registry:Bootstrap`,
-        -- which is the caller of this helper: level 1 is `refuse` itself and
-        -- level 2 is `bootstrap`.
-        local function refuse(reason)
-            error(label .. " " .. reason, 3)
-        end
-
-        local existing, existingRevision = get(self, packageName, api)
-        if existing ~= nil then
-            if type(existing) ~= "table" or rawget(existing, "API") ~= api then
-                refuse("package state is corrupted or incomplete")
-            end
-
-            -- The facade publishes its revision only once it has committed the
-            -- matching implementation, so a facade claiming to be newer than
-            -- the revision Registry accepted cannot be trusted at all.
-            local facadeRevision = rawget(existing, "REVISION")
-            if type(facadeRevision) ~= "number" or facadeRevision > existingRevision then
-                refuse("package state is corrupted or incomplete")
-            end
-
-            if existingRevision > revision then
-                -- A newer compatible embedded revision owns its own private
-                -- state schema. Older copies validate the stable API surface
-                -- and must not reinterpret state they do not understand.
-                if facadeRevision ~= existingRevision or not validatePublicSurface(existing) then
-                    refuse("package state is corrupted or incomplete")
-                end
-                return nil, nil, existing
-            end
-
-            -- An older revision is deliberately not held to this revision's
-            -- public surface. It is about to be upgraded in place, and the
-            -- caller validates whatever it inherits before it reuses it.
-            if existingRevision == revision then
-                if not validatePublicSurface(existing) then
-                    refuse("package state is corrupted or incomplete")
-                end
-
-                local complete = facadeRevision == existingRevision
-                    and (validateState == nil or validateState(existing) == true)
-
-                if resume ~= nil then
-                    local inherited = resume(existing, complete)
-                    if inherited ~= nil then
-                        if not isPositiveInteger(inherited) and inherited ~= 0 then
-                            error("Registry:Bootstrap request.resume must return a revision", 2)
-                        end
-                        return existing, inherited, existing
-                    end
-                    return nil, nil, existing
-                end
-
-                if not complete then
-                    refuse("package state is corrupted or incomplete")
-                end
-                return nil, nil, existing
-            end
-        end
-
-        local implementation, previousRevision = register(self, packageName, api, revision)
-        if implementation == nil then
-            -- An equal or newer compatible revision owns the shared table.
-            return nil, nil, existing
-        end
-
-        if previousRevision ~= existingRevision then
-            refuse("Registry state changed unexpectedly during bootstrap")
-        end
-
-        return implementation, previousRevision, existing
-    end
-
     rawset(Registry, "Register", register)
     rawset(Registry, "Get", get)
     rawset(Registry, "GetInfo", getInfo)
+    rawset(Registry, "Find", find)
+    rawset(Registry, "Packages", packages)
+    rawset(Registry, "OnRetire", onRetire)
     rawset(Registry, "Bootstrap", bootstrap)
     rawset(Registry, "API", API_GENERATION)
     rawset(Registry, "REVISION", IMPLEMENTATION_REVISION)
@@ -479,6 +858,9 @@ if
     or type(rawget(Registry, "Register")) ~= "function"
     or type(rawget(Registry, "Get")) ~= "function"
     or type(rawget(Registry, "GetInfo")) ~= "function"
+    or type(rawget(Registry, "Find")) ~= "function"
+    or type(rawget(Registry, "Packages")) ~= "function"
+    or type(rawget(Registry, "OnRetire")) ~= "function"
     or type(rawget(Registry, "Bootstrap")) ~= "function"
 then
     error("Registry: facade is corrupted or incompatible", 0)
