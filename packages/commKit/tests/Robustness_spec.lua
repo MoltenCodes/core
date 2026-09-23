@@ -326,6 +326,40 @@ describe("CommKit sender-side stream bounds", function()
         assert.are.equal(0, statistics.chunksRefusedQuota)
     end)
 
+    it("aborts a stream whose send fails mid-message, holding its allowance", function()
+        CommKit:SetLimits({ maxInFlightPerSender = 1, burst = 1000000, maxCps = 100000 })
+        local first = assert(
+            scope:Send({ prefix = PREFIX, text = TestEnv.Text(600), distribution = "PARTY" })
+        )
+        -- The first chunk leaves, the second fails, and the abort is throttled;
+        -- the next message must wait for the abort.
+        TestEnv.QueueSendResults(
+            TestEnv.SEND_RESULT.Success,
+            TestEnv.SEND_RESULT.GeneralError,
+            TestEnv.SEND_RESULT.AddonMessageThrottle
+        )
+        local second = string.rep("s", 600)
+        assert(scope:Send({ prefix = PREFIX, text = second, distribution = "RAID" }))
+        TestEnv.Advance(0)
+        assert.are.equal("failed", first:GetState())
+        local controls = {}
+        for index, entry in ipairs(TestEnv.Chat().outbox) do
+            controls[index] = entry.text:byte(1)
+        end
+        assert.are.same({ 0x02 }, controls)
+        TestEnv.Advance(1)
+        controls = {}
+        for index, entry in ipairs(TestEnv.Chat().outbox) do
+            controls[index] = entry.text:byte(1)
+        end
+        assert.are.equal(0x05, controls[2])
+        TestEnv.Loopback(SENDER)
+        assert.are.same({ second }, received)
+        local statistics = CommKit:GetStatistics()
+        assert.are.equal(1, statistics.streamsAborted)
+        assert.are.equal(0, statistics.chunksRefusedQuota)
+    end)
+
     it("refuses a message larger than one receiver accepts from one sender", function()
         assert.are.same(
             { nil, "tooLarge" },

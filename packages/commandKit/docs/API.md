@@ -407,7 +407,7 @@ What the user types is never an error: it is printed to the sink. Errors raised 
 | Operation | Cost |
 |---|---|
 | `Register` | Compiles the spec once; seals and describes each argument schema; scans the slash tables once. |
-| Dispatch | One read of the key's name, one of the active command, one per sub-command level; a schema `Check` per argument; the handler under `pcall`. No allocation for text seen before. |
+| Dispatch | One read of the key's name, one of the active command, one per sub-command level; a schema `Check` per argument; the handler under `pcall`. No allocation for text seen before, except the copy `Apply` makes when a table default is filled. |
 | An unregistered dispatcher | Two table reads; no allocation. |
 | `ParseInto` | One pass over the text; only token strings, none for text seen before. |
 | `Parse` | As `ParseInto`, plus the array. |

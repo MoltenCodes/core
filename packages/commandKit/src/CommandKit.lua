@@ -1542,7 +1542,8 @@ end
 -- A dispatch borrows one frame: a token array, an argument array and a
 -- context, all reused. Frames are indexed by nesting depth, so a handler that
 -- runs another command gets the next frame and nothing is shared between the
--- two. A dispatch of text seen before allocates nothing.
+-- two. A dispatch of text seen before allocates nothing, except the fresh
+-- copy `Apply` makes when a table default is filled.
 
 ---Borrow the frame of the next nesting level, or `nil` past `MAX_NESTING`.
 ---@return table|nil frame
@@ -1556,6 +1557,9 @@ local function acquireFrame()
         frame = {
             tokens = {},
             arguments = {},
+            -- The highest argument slot a dispatch at this depth may have
+            -- written, so the next one can clear them all.
+            argumentMark = 0,
             context = setmetatable({
                 _schema = CONTEXT_SCHEMA,
                 _live = false,
@@ -1721,11 +1725,17 @@ local function runCommand(frame, record, text)
     for position = 1, argumentCount do
         arguments[position] = tokens[index + position - 1]
     end
-    local position = argumentCount + 1
-    while rawget(arguments, position) ~= nil do
+    -- Clear every slot an earlier dispatch at this depth wrote. A filled
+    -- default can sit above a missing position, so a scan that stopped at the
+    -- first `nil` would leave it for the next command to receive.
+    for position = argumentCount + 1, rawget(frame, "argumentMark") or 0 do
         arguments[position] = nil
-        position = position + 1
     end
+    local writtenCount = rawget(node, "_positionCount")
+    if writtenCount < argumentCount then
+        writtenCount = argumentCount
+    end
+    frame.argumentMark = writtenCount
 
     local passCount = checkArguments(scope, node, arguments, argumentCount)
     if passCount == nil then

@@ -139,6 +139,52 @@ describe("CommandKit dispatch", function()
         assert.are.same({}, sink:Messages())
     end)
 
+    it("hands out a fresh copy of a table default on every dispatch", function()
+        local lists = {}
+        scope:Register("probe", {
+            handler = function(_, _, list)
+                list[#list + 1] = 3
+                lists[#lists + 1] = list
+            end,
+            arguments = {
+                SchemaKit.optional(SchemaKit.string()),
+                SchemaKit.optional(SchemaKit.array({ of = SchemaKit.number() }), { 1, 2 }),
+            },
+        })
+        TestEnv.RunSlash("/probe")
+        TestEnv.RunSlash("/probe")
+        TestEnv.RunSlash("/probe")
+        assert.are.equal(3, #lists)
+        assert.are_not.equal(lists[1], lists[2])
+        assert.are_not.equal(lists[2], lists[3])
+        assert.are.same({ 1, 2, 3 }, lists[3])
+        assert.are.same({}, sink:Messages())
+    end)
+
+    it("leaves no filled default behind for the next command at that depth", function()
+        local received
+        scope:Register("alpha", {
+            handler = function() end,
+            arguments = {
+                SchemaKit.optional(SchemaKit.string()),
+                SchemaKit.optional(SchemaKit.number(), 10),
+            },
+        })
+        scope:Register("beta", {
+            handler = function(_, first, second)
+                received = { first = first, second = second }
+            end,
+            arguments = {
+                SchemaKit.optional(SchemaKit.string()),
+                SchemaKit.optional(SchemaKit.string()),
+            },
+        })
+        TestEnv.RunSlash("/alpha")
+        TestEnv.RunSlash("/beta")
+        assert.are.same({}, received)
+        assert.are.same({}, sink:Messages())
+    end)
+
     it("checks an array schema over every argument", function()
         local received
         scope:Register("sum", {

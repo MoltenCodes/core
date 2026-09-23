@@ -183,7 +183,7 @@ queued ──→ sending ──→ sent
 
 A result the enum does not name — one a client newer than this file added — is treated like a throttle: the pipe is set aside and the chunk retried, rather than the message failed.
 
-Cancelling a message mid-send stops its remaining chunks and queues an [abort](#abort) at the head of its pipe, so receivers drop the incomplete stream at once and silently. Until the abort leaves, it counts as a stream in flight, as the message did. Callbacks run isolated, like receive callbacks, after CommKit's own state is settled, so a callback may send, cancel or close.
+Cancelling a message mid-send stops its remaining chunks and queues an [abort](#abort) at the head of its pipe, so receivers drop the incomplete stream at once and silently. A message that fails mid-send, because the client refused a later chunk, queues the same abort. Until the abort leaves, it counts as a stream in flight, as the message did. The abort is sent once: a throttled one waits for its pipe, and one the client refuses is dropped, leaving receivers to expire the stream. Callbacks run isolated, like receive callbacks, after CommKit's own state is settled, so a callback may send, cancel or close.
 
 ## Wire protocol
 
@@ -236,7 +236,7 @@ A 130-chunk message writes its count as `81 82` (1 × 128 + 2). On the logged ch
 
 ### Abort
 
-A sender that cancels a message after its first chunk left sends one four-byte chunk and nothing after it:
+A sender whose message is cancelled or fails after its first chunk left sends one four-byte chunk and nothing after it:
 
 | Byte | Content |
 |---|---|
@@ -277,7 +277,7 @@ In all, reassembly holds at most `maxReassemblyStreams` streams of at most `maxR
 
 A first chunk that would pass any of the first three is refused before anything is stored, so a sender announcing 9999 chunks costs one comparison.
 
-**The sender keeps within the receiver's bounds.** A multi-chunk message waits in its pipe, without interleaving its chunks, while starting it would give this client more than `maxInFlightPerSender` streams in flight or more than `maxReassemblyBytesPerSender` declared bytes in flight, counted across every destination because the audiences of different distributions overlap; other pipes keep going. A cancelled message's abort holds its allowance until it leaves, because receivers hold the stream until then. A message that alone declares more than `maxReassemblyBytesPerSender` is refused as `"tooLarge"`; one already queued when `SetLimits` lowers the bound below what it declares fails as `"tooLarge"` unless it has started. Both sides read the same two limits, so **addons that share a prefix must keep them equal**; the defaults are.
+**The sender keeps within the receiver's bounds.** A multi-chunk message waits in its pipe, without interleaving its chunks, while starting it would give this client more than `maxInFlightPerSender` streams in flight or more than `maxReassemblyBytesPerSender` declared bytes in flight, counted across every destination because the audiences of different distributions overlap; other pipes keep going. The abort of a cancelled or failed message holds its allowance until it leaves, because receivers hold the stream until then. A message that alone declares more than `maxReassemblyBytesPerSender` is refused as `"tooLarge"`; one already queued when `SetLimits` lowers the bound below what it declares fails as `"tooLarge"` unless it has started. Both sides read the same two limits, so **addons that share a prefix must keep them equal**; the defaults are.
 
 **Reports.** Every dropped stream is counted by reason: `streamsExpired`, `streamsEvicted` (the sender left the group), `streamsMalformed`, `streamsRestarted`, `streamsAborted`, `streamsDiscarded` (the last registration of its prefix went), and a first chunk refused at quota in `chunksRefusedQuota`. Expired, departed, malformed, restarted and quota drops are also reported through the host error handler, **at most once per sender per minute**: a sender's first drop is reported at once, and the drops of the following minute are reported together when it ends:
 

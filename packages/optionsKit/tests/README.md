@@ -10,7 +10,7 @@ The OptionsKit suite covers:
 - `Walk` order (order, then name, then key; groups before their children), an empty tree, visitor errors and a visitor that is not a function;
 - the `Describe` shape: the root, a value option, values and sorting copies, a values function, options without values, fresh tables per call, the bind path, a values function returning no table, and (against the real SettingsKit) bound table values described as plain copies that editing never writes back;
 - `OnChange`: arguments, connection disconnect, reading back inside a listener, listener errors after the write, `Undefine` disconnecting;
-- secret values: refused by `Set` at the caller without a write, reported by `Validate`, refused as a path and an addon name, passed through untouched from a getter, and passed through without being copied by `Describe` at the top and nested in a table value;
+- secret values: refused by `Set` at the caller without a write, reported by `Validate`, refused as a path and an addon name, passed through untouched from a getter, and passed through without being copied by `Describe` at the top and nested in a table value; `Describe` replacing a cyclic or too deep table value with a placeholder;
 - allocation guards (`collectgarbage("count")` with the collector stopped) on `Get` and `Set` through getters and binds, on `Walk`, `Validate`, `IsDisabled` and `IsHidden`;
 - duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, SchemaKit and SignalKit, an incomplete facade, and an in-place upgrade to revision 2 that keeps trees and listeners;
 - `error` levels: every argument failure, definition refusal (several groups deep), path error, value refusal and bind-path failure reports the caller's own line;

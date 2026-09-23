@@ -216,8 +216,15 @@ end
 
 ---The entry for `(packageName, api)`, or `nil`.
 ---
----Called directly by `Get`, `GetInfo` and `OnRetire`, so corruption is raised
----four levels up: the accessor, this function, the public method, its caller.
+---The level 4 fits the public lookups: `Get` (through `get`), `GetInfo` and
+---`OnRetire` call this directly, so corruption is raised four levels up (the
+---accessor, this function, the public method, its caller) at the caller's line.
+---
+---`Registry:Bootstrap` reaches it too: through `get` for the existing copy, and
+---again from `adopt` and the hand-over once that lookup proved the entry. For
+---those calls level 4 is `bootstrap` itself, so corruption found through
+---`Bootstrap` names a line inside Registry rather than the package file that
+---bootstrapped. Only a hand edit of Registry's private state can cause it.
 ---@param packageName string
 ---@param api integer
 ---@return table|nil

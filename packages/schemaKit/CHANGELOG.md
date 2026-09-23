@@ -15,7 +15,7 @@
 - `SchemaKit.Seal(node)` called with a dot raises `SchemaKit:Seal is called with a colon, not a dot`.
 - API.md states that the compiled checker in `_state` is private by convention, like every Kit's `_state`, and lists what a consumer must not do; the seal guards against mistakes and is not a boundary between addons.
 - Published `SchemaKit.MAX_DEPTH` (16) and `SchemaKit.DEFAULT_ARRAY_MAX` (1024).
-- A string `pattern` is validated as a whole when the node is built. Lua 5.1 reports a malformed pattern (`"a["`, `"(a"`, `"a%"`, `"a%b"`, `"%f"` without a set, a back-reference to an unclosed capture, more than 32 captures) only when matching reaches the broken part, so the earlier trial `find` on `""` let such a pattern through and `Check` raised from inside SchemaKit on the first string that got that far.
-- `SchemaKit.table{ fields = node }` is refused: a node or sealed schema passed as `fields` used to be read as a table with no fields.
+- A string `pattern` is validated as a whole when the node is built. Lua 5.1 reports a malformed pattern (`"a["`, `"(a"`, `"a%"`, `"a%b"`, `"%f"` without a set, a back-reference to an unclosed capture, more than 32 captures) only when matching reaches the broken part, so SchemaKit walks the whole pattern at build time and refuses it at the caller's line; `Check` never raises on a pattern.
+- `SchemaKit.table{ fields = node }` is refused: a node or sealed schema is not a table of fields.
 - `Apply` is documented as walking every undeclared field of an open table, which `Check` does not; the root-failure allocation note names the count phrases it builds.
 - 111 specs, including the three cookbook schemas from API.md run as written, an allocation guard on a valid check of a nested table, depth and size bounds, secret refusal through a local `issecretvalue` stub, an in-place upgrade spec, and pinned error levels.

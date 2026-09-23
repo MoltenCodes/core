@@ -81,6 +81,52 @@ describe("OptionsKit and secret values", function()
         assert.is_true(rawequal(secret, tree:Get("label")))
     end)
 
+    it("Describe replaces a cyclic or too deep table value instead of handing it out", function()
+        local cyclic = { r = 0 }
+        cyclic.self = cyclic
+        local deep = {}
+        local cursor = deep
+        for _ = 1, 12 do
+            cursor.next = {}
+            cursor = cursor.next
+        end
+        local values = { cyclic = cyclic, deep = deep }
+        local described = OptionsKit:Define("Shapes", {
+            type = "group",
+            args = {
+                cyclic = {
+                    type = "color",
+                    name = "C",
+                    get = function()
+                        return values.cyclic
+                    end,
+                    set = function() end,
+                },
+                deep = {
+                    type = "color",
+                    name = "D",
+                    get = function()
+                        return values.deep
+                    end,
+                    set = function() end,
+                },
+            },
+        })
+            :Describe().children
+
+        local cyclicCopy = described[1].value
+        assert.is_false(rawequal(cyclic, cyclicCopy))
+        assert.are.equal("<cycle>", cyclicCopy.self)
+        assert.are.equal(0, cyclicCopy.r)
+
+        -- The eighth nested table is still copied; the ninth is replaced.
+        local level = described[2].value
+        for _ = 1, 7 do
+            level = level.next
+        end
+        assert.are.equal("<depth exceeded>", level.next)
+    end)
+
     it("Describe passes a secret value through uncopied, at the top and nested", function()
         stored = secret
         local label = tree:Describe().children[1]

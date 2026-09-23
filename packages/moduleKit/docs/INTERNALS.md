@@ -122,8 +122,9 @@ the authority. Where it is asked:
   required addon found the module not yet enabled, so the halt pass skipped
   it; it is disabled here instead, and on its own addon's halt its scope is
   closed even when `OnDisable` fails. The `automatic` recursion checks each
-  dependency's state after enabling it and leaves the dependent blocked by a
-  dependency that was taken down this way;
+  dependency's state after enabling it and leaves the dependent off, blocked
+  by `haltBlocker(dependent)` when the halt stops the dependent too and by
+  the dependency otherwise;
 - `runEnableAllPass`: the module counts as failed, so its hard dependents are
   blocked behind it, exactly as for a failed dependency;
 - `catchUpModule`: records the refusal without raising, because definition

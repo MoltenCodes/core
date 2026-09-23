@@ -24,4 +24,23 @@ The suite covers:
 - the revision-6 upgrade of shared state and older scopes;
 - the 0.5.1 review fixes: newest debounce arguments against a full lane, `Flush` deferral, member close against admitted and waiting deliveries, timer-arm failure recovery, retries against the minimum interval and `Close`, backwards clock steps, Watch callback tracebacks, FIFO index reset, and the revision-7 upgrade.
 
+Spec files:
+
+| File | Covers |
+|---|---|
+| `SchedulerKit_spec.lua` | next-frame scheduling, nested `Schedule` versus `NextFrame`, defaults, configuration and option validation |
+| `Priority_spec.lua` | FIFO within a priority, weighted service, IDLE work and its starvation guard, the fairness cursor |
+| `Cooperative_spec.lua` | yielding, the CPU-time frame budget, the resume ceiling, runaway-slice demotion |
+| `Delayed_spec.lua` | delayed and repeating work through TimerKit, the user-data seam, stale wakeups, scopes closed mid-callback |
+| `Scope_spec.lua` | lazy TimerKit scopes, cancellation, terminal close, self-closing jobs, addon scopes at shutdown |
+| `Errors_spec.lua` | error isolation, `nil`/`false` error objects, tracebacks, arming and re-arm failures |
+| `ErrorLevels_spec.lua` | `ShouldYield`, `Yield` and context receiver guards at the caller's line |
+| `Property_spec.lua` | randomized scope and package active-count invariants |
+| `Debounce_spec.lua` | `Debounce`: restart, last arguments, `leading`, `maxWaitSeconds`, `Cancel`, `Flush`, scope release, allocation guard |
+| `Coalesce_spec.lua` | `Coalesce`: key sets, `maxKeys`, set reuse, `Flush`, raising callbacks, scope release |
+| `Watch_spec.lua` | `Watch`: edge trigger, `everyTick`, shared tickers, both caps, raising predicates and callbacks |
+| `Lane_spec.lua` | lanes: sharing, `maxInFlight`, `minIntervalSeconds`, retries, `maxQueued`, `Close`, allocation-free refusals, family delivery |
+| `Bootstrap_spec.lua` | duplicate loading, live job identity, the revision-3, -6 and -7 upgrades, live family handles |
+| `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
+
 Tests intentionally avoid production-only test hooks. The fake host lives under `tests/support/` and is never part of the published runtime API.

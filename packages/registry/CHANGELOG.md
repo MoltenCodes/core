@@ -5,6 +5,7 @@
 - Corrupted package state found by `Get`, `GetInfo` and `OnRetire` is raised at the caller's line again. 0.6.0 routed those three through a shared lookup helper, which moved the error one frame too shallow, onto a line inside `Registry.lua`; `Register` and `Find` were unaffected.
 - `Packages()` no longer lists malformed private state as data. A malformed entry used to be skipped or listed as a row, and a bucket with a non-integer API key made `table.sort` fail inside Registry; every such case now raises the same corruption error `Get` raises, at the caller.
 - Corrected `docs/API.md`: the corruption paragraph now names every method that checks state, and the migration story no longer says the framework packages still read the plain `MoltenCodes.Registry` alias — every package resolves `MoltenCodes.Registries[2]` first.
+- Corrected the `findEntry` comment: `Bootstrap` also reaches it, and corruption found through `Bootstrap` names a line inside Registry rather than the bootstrapping file (unchanged behaviour, now stated).
 - Three specs: the caller's line for corrupted state from all six methods, `Packages` refusing four kinds of malformed bucket, and an in-place upgrade from revision 8 that keeps an unfinished migration run and completes it.
 - Implementation revision 9. The private state layout is unchanged from revision 8.
 

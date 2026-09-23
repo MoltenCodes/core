@@ -19,6 +19,26 @@ The WidgetKit suite covers:
 - the client's frame scripts, run by the fixture rather than by hand: a dropdown list closed from `OnHide` once per real hide, WidgetKit's focus following the edit focus between two edit boxes and no focus-lost script for a box without the focus, every base widget laid out in every layout inside nested containers without an anchor to itself or a cycle, and the client's anchor refusals passed on (`FrameScripts_spec.lua`);
 - manifest/runtime API and revision consistency, and the position of `optionalDependencies`.
 
+| Spec | Covers |
+|---|---|
+| `Types_spec.lua` | the type registry: base types, versions, pooling, upgrades, the frame cap, constructor contract failures |
+| `Release_spec.lua` | the release contract, `IsReleasing`, refusals, the holder frame, focus on release |
+| `Widget_spec.lua` | the widget base: callbacks, user data, size requests, forwarded methods, `SetParent`, focus |
+| `Layout_spec.lua` | `List`, `Fill`, `Flow`, nesting, pausing, recursion and depth refusals, children, custom layouts |
+| `Anchor_spec.lua` | `FromRect` election and ties, `Normalize`, `Apply`, `Read`, forbidden frames |
+| `Binding_spec.lua` | position bindings without SchedulerKit, and the window scale reset |
+| `BindingHost_spec.lua` | debounced saves, `Flush` and SettingsKit scope views, with the host chain |
+| `Widgets_spec.lua` | each base widget's behaviour and callbacks, and secret values |
+| `FrameScripts_spec.lua` | `OnHide`, edit-focus scripts and anchor refusals run by the fixture |
+| `Renderer_spec.lua` | `RenderOptions` against a real OptionsKit tree, and without OptionsKit |
+| `Ownership_spec.lua` | rendering ownership, raising `validate` and builds, confirmation disarm |
+| `ConfirmHost_spec.lua` | confirmation disarmed after five seconds with SchedulerKit |
+| `Media_spec.lua` | media pickers with and without MediaKit |
+| `Allocation_spec.lua` | allocation guards |
+| `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
+| `Bootstrap_spec.lua` | publication, dependencies, duplicate loads, upgrades |
+| `Manifest_spec.lua` | manifest and runtime consistency |
+
 `support/WidgetKitTestEnv.lua` loads Registry, SignalKit, PoolKit, SchemaKit, OptionsKit and WidgetKit on the shared fixture and creates `UIParent` (1920 x 1080 at the origin); it adds `InstallSecretProbe` / `NewSecret`, `AllocatedKilobytes`, `LoadRevision`, and loaders without OptionsKit and without `UIParent`. `support/WidgetKitHostTestEnv.lua` also loads EventKit, LifecycleKit, TimerKit, SchedulerKit, SettingsKit and MediaKit, removes the saved variables a spec opens, and fires the latest native timer for debounced saves. OptionsKit, SettingsKit, SchedulerKit and MediaKit are declared under `optionalDependencies`, so the runner puts them and their closures on `LUA_PATH`.
 
 The fixture's `FrameStub` resolves a frame's rect from its anchors, so `GetWidth`, `GetHeight` and `GetRect` answer as the client would for one anchor (the frame's own size) and for two anchors on opposite edges (the size they span). It fires `OnShow` / `OnHide` when a frame's own shown flag changes, moves the edit focus between edit boxes with their `OnEditFocusLost` / `OnEditFocusGained` scripts, and refuses an anchor to the region itself or one that closes an anchor cycle, as the client does. It does not model text wrapping (a string is 6 pixels per byte and 12 per line), scale in geometry, strata ordering (a frame only records its strata), or visibility scripts on children of a frame that changed.

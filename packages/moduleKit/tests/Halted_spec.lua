@@ -353,6 +353,32 @@ describe("ModuleKit when OnEnable itself halts", function()
         assert.are.equal("Bridge", panel:GetBlockedBy())
     end)
 
+    it("blocks a dependent on its own addon's halt raised by a dependency", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local log = {}
+        local loader = createLoggedModule(addon, "Loader", log)
+        loader.OnEnable = function()
+            log[#log + 1] = "enable Loader"
+            LifecycleKit:ForAddon("MyAddon"):Halt("saved variables are unreadable")
+        end
+        local panel = createLoggedModule(addon, "Panel", log, { dependsOn = { "Loader" } })
+        addon:InitializeAll()
+
+        panel:Enable()
+
+        assert.are.same({ "enable Loader", "disable Loader" }, log)
+        assert.are.same(
+            { wanted = true, actual = false, blockedBy = "halted" },
+            panel:GetEnableState()
+        )
+        assert.are.equal("halted", panel:GetBlockedBy())
+        -- The same block a direct Enable of the halted addon's module records.
+        assert.has_error(function()
+            panel:Enable()
+        end)
+        assert.are.equal("halted", panel:GetEnableState().blockedBy)
+    end)
+
     it("reports a halted dependency deep in an automatic chain at the caller's line", function()
         local addon = ModuleKit:ForAddon("MyAddon")
         LifecycleKit:ForAddon("Other"):Halt("broken")

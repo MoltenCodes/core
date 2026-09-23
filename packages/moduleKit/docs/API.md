@@ -366,8 +366,10 @@ A module whose own `OnEnable` halts its addon, or one of its `requiresAddons`,
 is taken down as soon as the hook returns, exactly as the halt would have taken
 it down had it already been enabled: it runs `OnDisable`, keeps its intent and
 reports the halt in `blockedBy`. The `Enable` that started it does not raise
-for that; under the `automatic` policy the module that asked for it stays off,
-blocked by it.
+for that; under the `automatic` policy the module that asked for it stays off.
+That module is blocked by the halt when the halt stops it too (`"halted"` for
+its own addon, or the name of an addon it requires), the value a direct
+`Enable` of it would now record, and by the dependency otherwise.
 
 `"halted"` is the value for the addon's own halt. A module named `halted`
 would read the same; do not name a module that.

@@ -87,7 +87,7 @@ A `select` or `multiselect` whose values are a function gets a `SchemaKit.custom
 
 ## Describe
 
-`describeRecord` builds a fresh node per record. A value option's current value goes through `snapshotValue`, which first passes a secret through untouched (at every level, before `type`, `getmetatable` or `pairs` sees it: a copy would touch the secret and hide it from a consumer's own secret check), then copies a table (to `MAX_DEPTH` levels, so a cyclic getter value ends) and, for a bound option whose value is a SettingsKit view (`getmetatable` answers `"SettingsKit.View"`), iterates it with `db:Pairs` so the copy holds the view's defaults as well as its saved keys. A view is an empty proxy to `pairs` and writes through to the saved variable, so handing one out would break both "plain" and "safe to edit".
+`describeRecord` builds a fresh node per record. A value option's current value goes through `snapshotValue`, which first passes a secret through untouched (at every level, before `type`, `getmetatable` or `pairs` sees it: a copy would touch the secret and hide it from a consumer's own secret check), then copies a table, replacing a table deeper than `MAX_DEPTH` with `"<depth exceeded>"` and a table already being copied above it with `"<cycle>"`, so no original table reaches the description, and, for a bound option whose value is a SettingsKit view (`getmetatable` answers `"SettingsKit.View"`), iterates it with `db:Pairs` so the copy holds the view's defaults as well as its saved keys. A view is an empty proxy to `pairs` and writes through to the saved variable, so handing one out would break both "plain" and "safe to edit".
 
 ## Upgrades
 

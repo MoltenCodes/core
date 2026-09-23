@@ -30,7 +30,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 11
+local IMPLEMENTATION_REVISION = 12
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -1578,9 +1578,14 @@ local function enableWithPolicy(module, visiting, depth)
             enableWithPolicy(dependency, visiting, depth + 1)
             if rawget(dependency, "_state") ~= "enabled" then
                 -- A halt inside the dependency's own `OnEnable` took it down
-                -- again (see `enableOne`). This module stays off, blocked by
-                -- it, exactly as the `ready` pass would leave it.
-                recordFailure(module, nil, rawget(dependency, "_name"), false)
+                -- again (see `enableOne`). This module stays off. When the
+                -- halt stops this module too (its own addon, or an addon it
+                -- requires), the halt is what blocks it, as a direct `Enable`
+                -- of it now records; otherwise the dependency does, exactly as
+                -- the `ready` pass would leave it.
+                local blocker = haltBlocker(module) or rawget(dependency, "_name")
+                recordFailure(module, nil, blocker, false)
+                rawset(module, "_enableBlockedBy", blocker)
                 visiting[module] = nil
                 return module
             end

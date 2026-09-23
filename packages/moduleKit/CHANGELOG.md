@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.4 — 2026-09-23
+
+- Under the `automatic` policy, a dependent whose dependency was taken down by a halt inside the dependency's own `OnEnable` was recorded as blocked by that dependency even when the halt stopped the dependent too, while a direct `Enable` of the dependent, a moment later, refuses and records the halt. The dependent now records what `haltBlocker` answers for it (`"halted"` for its own addon, or the halted addon it requires) and the dependency only when the halt does not concern it, so both paths report the same block. The targeted `Enable` still returns without raising, as it does when the module's own `OnEnable` halts.
+- One new spec in `Halted_spec.lua`; the upgrade spec there covers the move from revision 11.
+- Implementation revision 12. `ModuleKit` API generation 1 is unchanged.
+
 ## 0.6.3 — 2026-09-23
 
 - Fixed a module left enabled after its own `OnEnable` halted the addon or one of its `requiresAddons`, the natural place for a module to discover that its saved variables are unusable. The halt pass skipped the module because it was not enabled yet, and the enable then completed: the module stayed enabled with its scope open, and nothing would ever close it, since LifecycleKit delivers no `shutdown` to a halted addon. `enableOne` now asks `haltBlocker` once `OnEnable` returns and takes the module down as the halt pass would have: disabled, still wanted, blocked by the halt, with its scope closed even when `OnDisable` fails on its own addon's halt. An `automatic` targeted `Enable` whose dependency is taken down that way leaves the dependent off and blocked by that dependency instead of enabling it on top of a disabled dependency.

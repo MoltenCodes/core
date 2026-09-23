@@ -88,8 +88,8 @@ local LAYOUT = { state = 1, scope = 1, handle = 1, connection = 1, syncSet = 1 }
 
 -- Wire protocol. The client carries at most 255 bytes of text per addon
 -- message. Every message CommKit sends starts with one control byte; a chunk
--- of a longer message, and the abort that ends a cancelled one, add a stream
--- id byte and a two-digit number. The channel cannot carry NUL, line feed,
+-- of a longer message, and the abort that ends a cancelled or failed one, add
+-- a stream id byte and a two-digit number. The channel cannot carry NUL, line feed,
 -- carriage return or the pipe that introduces the client's UI escape
 -- sequences. Prefixes are at most 16 bytes.
 --
@@ -1514,13 +1514,13 @@ local function declaredBytes(totalChunks)
     return (totalChunks - 1) * WIRE.chunkPayloadBytes + 1
 end
 
----Queue the abort of a stream that was cancelled after its first chunk left,
----at the head of the same pipe, so receivers drop it at once and silently.
----Receivers hold the stream until the abort arrives, so the abort takes over
----the message's in-flight allowance and keeps its stream id in use. An abort
----has no handle, scope, text or callbacks: only what `transmit` and the queue
----read.
----@param record table the cancelled message
+---Queue the abort of a stream that was cancelled, or whose send failed, after
+---its first chunk left, at the head of the same pipe, so receivers drop it at
+---once and silently instead of holding it until it expires. Until the abort
+---arrives receivers hold the stream, so the abort takes over the message's
+---in-flight allowance and keeps its stream id in use. An abort has no handle,
+---scope, text or callbacks: only what `transmit` and the queue read.
+---@param record table the cancelled or failed message
 local function queueAbort(record)
     local abort = rawget(pools, "records"):Acquire()
     abort.kind = "abort"
@@ -1559,8 +1559,9 @@ end
 
 ---Move a queued message to a terminal state, release its record and tell the
 ---caller. The callback runs last, isolated, when CommKit's state is settled.
----A message cancelled after its first chunk left queues an abort. Outside a
----driver run, the message that empties the queue also disarms the driver.
+---A message cancelled, or failed, after its first chunk left queues an abort.
+---Outside a driver run, the message that empties the queue also disarms the
+---driver.
 ---@param record table
 ---@param terminalState string
 ---@param reason string|nil
@@ -1568,7 +1569,7 @@ local function completeSend(record, terminalState, reason)
     local handle = rawget(record, "handle")
     local onComplete = rawget(record, "onComplete")
     dequeueRecord(record)
-    if rawget(record, "inFlight") == true and terminalState == SEND_STATE.cancelled then
+    if rawget(record, "inFlight") == true and terminalState ~= SEND_STATE.sent then
         rawset(record, "inFlight", false)
         queueAbort(record)
     else

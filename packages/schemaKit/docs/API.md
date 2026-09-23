@@ -100,7 +100,7 @@ The seal is a guard against mistakes, not a security boundary between addons, wh
 | `pattern` | A Lua pattern the string must contain (`string.find`). Anchor it with `^` and `$` to match the whole string. Validated as a whole when the node is built: Lua 5.1 reports a malformed pattern (`"a["`, `"(a"`, `"a%"`, a back-reference to an unclosed capture) only when matching reaches the broken part, so SchemaKit walks the pattern once and refuses it at your line instead of letting `Check` raise later. |
 | `oneOf` | A non-empty array of distinct strings; nothing else is accepted. |
 
-Rules: `type`, `enum`, `min`, `max`, `pattern`, checked in that order. A pattern runs in time proportional to the string, so give strings you receive from other players a `max`.
+Rules: `type`, `enum`, `min`, `max`, `pattern`, checked in that order. The `max` check runs before the pattern, so give strings you receive from other players a `max`. Lua patterns backtrack: a pattern made of single characters and classes without `*`, `+`, `-` or `?` runs in time proportional to the string, but one with several of those items (`(.-)(.-)x`) can take time polynomial in the string's length on a subject that almost matches. The pattern is yours to choose; anchor it with `^` so it is tried from one position only, and keep repeated items few.
 
 ### `SchemaKit.number(spec?)`
 

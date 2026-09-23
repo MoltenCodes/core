@@ -380,7 +380,7 @@ A fresh plain table describing the whole tree, built on every call and safe to e
 | `addonName` | the root | |
 | `children` | `group` | Child nodes, sorted as `Walk` visits them. |
 | `inline` | `group` | When defined. |
-| `value` | value kinds | The current value, as `Get` returns it, except that a table is copied (at most 8 tables deep): a bound value that SettingsKit returns as a view is copied through `db:Pairs`, defaults included, so the description never holds the getter's table or a view that writes through to the saved variable. A secret value is passed through without being copied (see [Secret values](#secret-values)). |
+| `value` | value kinds | The current value, as `Get` returns it, except that a table is copied: a bound value that SettingsKit returns as a view is copied through `db:Pairs`, defaults included, so the description never holds the getter's table or a view that writes through to the saved variable. A table nested deeper than 8 levels appears as the string `"<depth exceeded>"`, and a table that contains itself as `"<cycle>"`. A secret value is passed through without being copied (see [Secret values](#secret-values)). |
 | `schema` | value kinds | `schema:Describe()` of the option's SchemaKit schema. |
 | `bind` | bound options | The bind path. |
 | `values` | `select`, `multiselect` | A copy of the values table; a values function is called and its result copied. |

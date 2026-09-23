@@ -1443,12 +1443,18 @@ end
 -- What `getmetatable` answers for a SettingsKit view: its `__metatable`.
 local SETTINGS_VIEW = "SettingsKit.View"
 
+-- What `Describe` shows instead of a table it will not copy.
+local DEPTH_EXCEEDED = "<depth exceeded>"
+local CYCLE = "<cycle>"
+
 ---Copy a value for `Describe`, so a description holds only fresh plain
 ---tables: never the table a getter returned, and never a SettingsKit view,
 ---which `pairs` sees as empty and which writes through to the saved variable.
 ---A view of the tree's own database is copied through `db:Pairs`, so its
----defaults are included. Copying stops `MAX_DEPTH` tables down, which also
----ends a cyclic getter value.
+---defaults are included. A table nested deeper than `MAX_DEPTH` becomes the
+---string `"<depth exceeded>"`, and a table that contains itself (a cycle
+---through the copy's own ancestors) becomes `"<cycle>"`, so no original table
+---ever reaches the description.
 ---
 ---A secret value, at the top or nested, is passed through as it is, before
 ---anything inspects it: a copy would both touch the secret and turn it into
@@ -1456,21 +1462,31 @@ local SETTINGS_VIEW = "SettingsKit.View"
 ---@param value any
 ---@param db table|false the tree's database, for a bound option
 ---@param depth integer
+---@param ancestors table<table, true>|nil the tables being copied above this one
 ---@return any
-local function snapshotValue(value, db, depth)
-    if isSecret(value) or type(value) ~= "table" or depth > MAX_DEPTH then
+local function snapshotValue(value, db, depth, ancestors)
+    if isSecret(value) or type(value) ~= "table" then
         return value
     end
+    if ancestors ~= nil and ancestors[value] then
+        return CYCLE
+    end
+    if depth > MAX_DEPTH then
+        return DEPTH_EXCEEDED
+    end
+    ancestors = ancestors or {}
+    ancestors[value] = true
     local copy = {}
     if db and getmetatable(value) == SETTINGS_VIEW then
         for key, item in db:Pairs(value) do
-            copy[key] = snapshotValue(item, db, depth + 1)
+            copy[key] = snapshotValue(item, db, depth + 1, ancestors)
         end
     else
         for key, item in pairs(value) do
-            copy[key] = snapshotValue(item, db, depth + 1)
+            copy[key] = snapshotValue(item, db, depth + 1, ancestors)
         end
     end
+    ancestors[value] = nil
     return copy
 end
 
@@ -1535,8 +1551,12 @@ local function describeRecord(tree, record, level)
         node.children = described
     elseif VALUE_KINDS[kind] then
         local bound = rawget(record, "_bindScope") and rawget(tree, "_db") or false
-        node.value =
-            snapshotValue(readValue(tree, record, "OptionsKit.Tree:Describe", level + 1), bound, 1)
+        node.value = snapshotValue(
+            readValue(tree, record, "OptionsKit.Tree:Describe", level + 1),
+            bound,
+            1,
+            nil
+        )
         node.schema = rawget(record, "_schema"):Describe()
         local bind = rawget(record, "_bind")
         if bind then

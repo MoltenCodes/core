@@ -20,6 +20,24 @@ The Registry suite covers:
 - retirement hand-over, per-revision migrations and their exactly-once record;
 - sealed facades.
 
+Spec files:
+
+| File | Covers |
+|---|---|
+| `Registry_spec.lua` | API generation and revision, the `MoltenCodes` namespace, direct loading, reload identity, the explicit bootstrap state |
+| `Registration_spec.lua` | first registration, in-place upgrade, lower and equal revisions, package and API isolation, unknown lookups |
+| `LoadOrder_spec.lua` | highest revision wins whatever the order, one stable implementation table, equal-revision races |
+| `Metadata_spec.lua` | `GetInfo` snapshots: fresh tables, no shared mutable state, stability across upgrades |
+| `Validation_spec.lua` | package-name, API and revision validation, argument errors at the calling line, no entry on failure |
+| `Corruption_spec.lua` | corrupted buckets and entries rejected consistently and at the caller's line, `Packages` refusing malformed state |
+| `Generations_spec.lua` | API-generation coexistence, alias ownership in both load orders, generation-private bootstrap state |
+| `Bootstrap_spec.lua` | `Registry:Bootstrap`: fresh tables, inherited revisions, yielding to newer copies, resume hooks, load-time error levels |
+| `Find_spec.lua` | `Find` (absent, different generation, retired-unfinished, argument errors) and `Packages` snapshots |
+| `Retirement_spec.lua` | retire hooks and `OnRetire`, per-revision migrations run exactly once, failed steps, the upgrade from revision 8 |
+| `Seal_spec.lua` | sealed facades: refused writes at the writer's line, `rawset` upgrades, removal, foreign metatables |
+| `RegistryTestEnv_spec.lua` | the test environment's own reset and isolation |
+| `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
+
 Test helpers belong under `support/` and are not public package API.
 
 All executable specs use the `*_spec.lua` suffix so Busted discovers them with its default pattern.

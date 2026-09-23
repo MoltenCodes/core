@@ -18,6 +18,24 @@ The TestKit suite covers:
 - `error` levels: facade and suite argument errors, and facade methods called with a dot, report the caller's line, and context errors, matcher errors and matcher failures report the test's own line;
 - manifest/runtime API and revision consistency.
 
+| Spec | Covers |
+|---|---|
+| `Replace_spec.lua` | `ctx:Replace` restoration, raw access, the cap, refusals |
+| `Hooks_spec.lua` | Before and After hook order and failures |
+| `Report_spec.lua` | the `Report` shape, totals, durations, re-runs, logs |
+| `Async_spec.lua` | `Yield`, `WaitFor` (including the timeout race), `WaitUntil`, time limits, the frame budget |
+| `Matchers_spec.lua` | every matcher, negation and failure messages |
+| `SecretValues_spec.lua` | secret values in matchers, messages, `Replace` and payloads |
+| `Phases_spec.lua` | phase gating, halted and shut-down addons |
+| `Filter_spec.lua` | `Run` filters |
+| `Caps_spec.lua` | the bounds on suites, tests, hooks and callbacks |
+| `Reset_spec.lua` | `Reset` mid-run and `OnFinished` |
+| `FixtureFidelity_spec.lua` | the fixture-fidelity suite against the shared fixture |
+| `Cost_spec.lua` | no frame, timer or `OnUpdate` from loading, registering or a finished run |
+| `ErrorLevels_spec.lua` | argument errors at the caller's line, dot calls on the facade |
+| `Bootstrap_spec.lua` | publication, dependencies, duplicate loads, upgrades |
+| `Manifest_spec.lua` | manifest and runtime consistency |
+
 `support/TestKitTestEnv.lua` adds what only these specs need on top of the shared fixture. `Frame(ms)` renders one frame the way the runner experiences it: both clocks advance, every native timer that is due fires (the fixture records a timer's delay but not its creation time, so the helper notes the clock the first time it sees each timer), then every `OnUpdate` handler runs once. `RenderFrames`, `FramesUntil`, `RunToEnd` and `RunOne` drive whole runs; `RunToEnd` installs one `OnFinished` callback per facade so repeated runs do not spend the facade's sixteen slots. `SetGlobal` installs host globals the fixture does not own (`issecurevariable`) and `Reset` removes them.
 
 ## The fixture-fidelity spec

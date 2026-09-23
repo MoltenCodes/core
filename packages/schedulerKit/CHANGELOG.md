@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.3 — 2026-09-23
+
+- The driver pass no longer declares the elapsed-seconds parameter the OnUpdate
+  driver hands it; the pass measures its own CPU time and never read it. This
+  removes the last unused local the language server reported.
+- Implementation revision 9. The executed bootstrap is unchanged apart from the
+  constant; an older embedded copy upgrades in place as before.
+
 ## 0.5.2 — 2026-09-23
 
 Documentation and annotation corrections from the phase 4 audit. No runtime

@@ -29,7 +29,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local REQUIRED_TIMER_API = 1
@@ -1789,8 +1789,9 @@ local function resumeJob(job)
 end
 
 ---One driver pass: resume ready jobs until the budget or the resume cap ends it.
----@param _elapsed number seconds since the previous frame, unused
-local function runFrame(_elapsed)
+---The OnUpdate driver passes the frame's elapsed seconds; the pass measures its
+---own CPU time instead, so the argument is ignored.
+local function runFrame()
     local config = rawget(state, "config")
     local startTime = now()
     rawset(state, "frameReading", startTime)

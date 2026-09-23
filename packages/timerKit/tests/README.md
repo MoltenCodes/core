@@ -17,3 +17,20 @@ The TimerKit suite covers:
   older revision started, and on a host without `GetTimePreciseSec`;
 - duplicate embedded loading, in-place revision upgrade, and Registry publication;
 - manifest/runtime API and revision consistency.
+
+Spec files:
+
+| File | Covers |
+|---|---|
+| `TimerKit_spec.lua` | idle one-shot timers, start and completion, zero-delay `After`, idempotent cancel, restart |
+| `Repeating_spec.lua` | repeating timers, self-cancel and self-restart, errors in a repeating callback |
+| `Reentrancy_spec.lua` | completion before user code, restart from a callback, stale native callbacks |
+| `Scope_spec.lua` | active tracking, bulk cancel, terminal close, package-level convenience recovery |
+| `Lifecycle_spec.lua` | per-addon scopes closed at `PLAYER_LOGOUT`, manual scopes, closed-lifecycle scopes |
+| `Errors_spec.lua` | definition validation, non-finite delays, native creation and cancellation failures |
+| `ErrorLevels_spec.lua` | every argument failure at the caller's line |
+| `UserData_spec.lua` | opaque per-timer user data |
+| `Remaining_spec.lua` | `GetRemaining`/`GetDeadline` in every state, restarts, late hosts, rolled-back starts |
+| `Property_spec.lua` | deterministic mixed operations keep the scope active count consistent |
+| `Bootstrap_spec.lua` | duplicate loading, Registry publication, the revision-1 upgrade, older revisions' deadlines, no `GetTimePreciseSec` |
+| `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
