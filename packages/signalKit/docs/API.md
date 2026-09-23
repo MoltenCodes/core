@@ -225,7 +225,9 @@ at once.
 Returns the bus called `name`, creating it on the first request. Every later
 request for the same name, from any addon, returns the same bus.
 
-- `name` must be a non-empty string.
+- `name` must be a non-empty string. On clients with `issecretvalue`, a secret
+  name is refused at the caller before it is compared; the same applies to
+  every topic argument of the bus methods.
 - `options.openTopics` (`boolean`, default `false`) lets `Publish` use topics
   that were never declared. It is read only when the bus is created; stating a
   different policy for an existing bus raises at the caller, and omitting
@@ -250,9 +252,11 @@ addon that never asked for a bus is not recorded, so no bus slot is spent.
 
 Closing is terminal. The closed bus stays registered under its name, so
 `ForAddon` and `Bus` keep returning it; it then refuses `Subscribe`,
-`SubscribeOnce`, scope subscriptions and `CreateScope` at the caller, and
-`Publish` on it delivers nothing without raising, because other addons'
-shutdown paths may still publish into it.
+`SubscribeOnce`, scope subscriptions, `CreateScope` and `DeclareTopic` at the
+caller, so a closed bus never spends another topic slot. `Publish` on it
+delivers nothing and skips the topic policy, because other addons' shutdown
+paths may still publish into it; the topic is still checked to be a non-empty
+string.
 
 SignalKit does not observe addon shutdown itself. Whoever does — LifecycleKit,
 in the framework — calls `CloseAddonBus` at the addon's shutdown, the same
@@ -265,7 +269,7 @@ already knows 256 topics.
 
 | Option | Type | Meaning |
 |---|---|---|
-| `arguments` | integer | `Publish` must pass exactly this many arguments, counting explicit `nil`s (`select("#", ...)`). |
+| `arguments` | integer | `Publish` must pass exactly this many arguments, counting explicit `nil`s (`select("#", ...)`). A negative, fractional, infinite or NaN count is refused at the caller. |
 | `arguments` | `fun(...): boolean, string?` | A validator called with the published arguments. `true` accepts; anything else refuses, and the second return value becomes the reason. |
 | `arguments` | omitted | Any arguments are accepted. |
 | `description` | string | What the topic means, for diagnostics and documentation. |
@@ -300,8 +304,17 @@ raises, so a validator that compares its arguments must test each with
 `issecretvalue` first and refuse or skip a secret one. A refusal reason that is
 itself secret is never placed in the error message.
 
-A validator that raises propagates that error to the publisher: the policy
-belongs to the publish, not to a subscriber.
+A validator that raises does not propagate from its own line: the validator
+may belong to another addon than the publisher. Its failure becomes a refusal
+at the publishing line, and nothing is delivered:
+
+```text
+SignalKit.Bus:Publish validator for topic "Level" on bus "MyAddon" failed: <the validator's error>
+```
+
+SignalKit never adds the published argument values to a refusal message; only
+the validator's own reason or error text appears, and a secret one is replaced.
+The protected call passes the arguments through and allocates nothing.
 
 ### `bus:Publish(topic, ...)`
 
@@ -365,9 +378,12 @@ disconnect rule says. (EventKit instead defers a scope sweep until the event's
 dispatch ends; buses keep the signal rule so that their dispatch semantics stay
 exactly a signal's.)
 
-A scope remembers its connections in an array that is compacted in place once
-it reaches twice its live count at the previous compaction, so it never holds
-more than twice the subscriptions still connected.
+A scope remembers its connections in an array. Whatever disconnects one of
+them — its handle, `bus:Unsubscribe`, a `SubscribeOnce` delivery, or the bus
+closing — the scope counts it, and compacts the array in place as soon as the
+disconnected entries outnumber the connected ones. The array therefore never
+holds more than twice the subscriptions still connected, plus one, and the
+compaction is amortized `O(1)` per disconnect.
 
 `CreateScope` on a closed bus raises at the caller.
 

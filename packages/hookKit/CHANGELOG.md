@@ -10,4 +10,9 @@
 - Hook records live in a weak-keyed table per scope, never auto-vivified on reads. A hooked call allocates nothing; secret arguments pass through untouched.
 - ClientKit API 1 is an optional dependency, found with `Registry:Find` when a name is validated, for `IsSecret`.
 - `docs/API.md` leads with the taint each semantic causes.
-- 72 specs, including an allocation guard on hooked calls and an in-place upgrade spec.
+- The secure-target check of a method inherited through `__index` asks `issecurevariable` about the table that holds it (up to 8 levels), because the client reports an absent raw key as secure; a method behind an `__index` function is treated as not secure-checkable.
+- Only the click and attribute scripts are refused outright on a protected frame; the wording now says so, and that the combat-lockdown refusal is a conservative HookKit rule.
+- A script pre-hook or replacement is refused while any HookKit scope holds a `SecureHookScript` post-hook on that script, since `SetScript` may drop it.
+- Script hooks refuse a forbidden or inaccessible frame at the caller, and release leaves the closure inert on one.
+- `CloseAddonScopes` records nothing for an addon without a scope and returns `false`; `ForAddon` and `CloseAddonScopes` refuse a receiver other than the facade.
+- 82 specs, including an allocation guard on hooked calls and an in-place upgrade spec.

@@ -137,6 +137,40 @@ describe("SignalKit bus scopes", function()
         assert.are.equal(0, scope:DisconnectAll())
     end)
 
+    it("compacts on direct disconnects, without waiting for the next subscription", function()
+        local scope = bus:CreateScope()
+        local connections = {}
+        for index = 1, 100 do
+            connections[index] = scope:Subscribe("Topic", function() end)
+        end
+
+        for index = 1, 100 do
+            connections[index]:Disconnect()
+            local live = 100 - index
+            -- Private field, read only to pin the retention bound.
+            assert.is_true(rawget(scope, "_count") <= live * 2 + 1)
+        end
+
+        assert.are.equal(0, rawget(scope, "_count"))
+        assert.are.equal(0, scope:DisconnectAll())
+    end)
+
+    it("compacts when Unsubscribe or the bus closing disconnects its subscriptions", function()
+        local addonBus = SignalKit:ForAddon("Compacting")
+        local scope = addonBus:CreateScope()
+        local shared = function() end
+        for _ = 1, 50 do
+            scope:Subscribe("Topic", shared)
+        end
+        scope:Subscribe("Other", function() end)
+
+        assert.are.equal(50, addonBus:Unsubscribe("Topic", shared))
+        assert.is_true(rawget(scope, "_count") <= 3)
+
+        SignalKit:CloseAddonBus("Compacting")
+        assert.are.equal(0, rawget(scope, "_count"))
+    end)
+
     it("keeps its connection list within twice its live subscriptions", function()
         local scope = bus:CreateScope()
         scope:Subscribe("Kept", function() end)
@@ -200,6 +234,15 @@ describe("SignalKit addon buses", function()
         end)
         expectRefusalAtCaller('cannot create a scope on the closed bus "MyAddon"', function()
             bus:CreateScope()
+        end)
+        -- Declaring on a closed bus is refused, so it cannot spend a topic slot.
+        expectRefusalAtCaller('cannot declare on the closed bus "MyAddon"', function()
+            bus:DeclareTopic("Late")
+        end)
+        assert.are.same({ "Ready" }, bus:Topics())
+        -- The topic name is still type-checked on a closed bus.
+        expectRefusalAtCaller("SignalKit.Bus:Publish topic must be a non-empty string", function()
+            bus:Publish(42)
         end)
     end)
 

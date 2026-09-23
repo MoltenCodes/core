@@ -7,8 +7,9 @@
 ---
 ---   `hooksecurefunc`     a post-hook that keeps the target secure when the
 ---                        original was secure, and allocates nothing per call;
----   `issecurevariable`   secure when the field holds a function the spec
----                        marked secure with `MarkSecure`;
+---   `issecurevariable`   secure when the raw field holds a function the spec
+---                        marked secure with `MarkSecure`, and secure for an
+---                        absent raw key, as on the client;
 ---   `InCombatLockdown`   driven by `SetCombatLockdown`;
 ---   fake frames          `NewFrame` builds a table with `GetScript`,
 ---                        `SetScript`, `HookScript` and `IsProtected` in its
@@ -38,6 +39,9 @@ local secureFunctions = setmetatable({}, { __mode = "k" })
 local frameScripts = setmetatable({}, { __mode = "k" })
 
 local inCombat = false
+
+--- What `IsForbidden` answers, keyed by a fake frame's method table.
+local frameForbidden = setmetatable({}, { __mode = "k" })
 
 ---Write a host global. The fixture stands in for the World of Warcraft client,
 ---whose API only exists in the global table.
@@ -89,8 +93,10 @@ local function hookSecureFunction(first, second, third)
     rawset(target, name, wrapper)
 end
 
----The `issecurevariable` stub: a field is secure when it holds (or, when it is
----not a raw field, inherits) a function marked secure.
+---The `issecurevariable` stub, faithful to the client on the two points
+---HookKit depends on: a raw field is secure when it holds a function marked
+---secure, and an absent raw key is reported as secure (nothing tainted it),
+---whatever the table inherits through `__index`.
 local function isSecureVariable(first, second)
     local target, name = first, second
     if second == nil then
@@ -99,7 +105,7 @@ local function isSecureVariable(first, second)
     end
     local value = rawget(target, name)
     if value == nil then
-        value = target[name]
+        return true
     end
     return secureFunctions[value] == true
 end
@@ -171,6 +177,13 @@ function HookKitTestEnv.MarkSecure(fn)
     return fn
 end
 
+---Change what a fake frame built with `forbidden` answers to `IsForbidden`.
+---@param frame table
+---@param value boolean
+function HookKitTestEnv.SetForbidden(frame, value)
+    frameForbidden[getmetatable(frame).__index] = value
+end
+
 ---Enter or leave combat lockdown.
 ---@param value boolean
 function HookKitTestEnv.SetCombatLockdown(value)
@@ -195,6 +208,7 @@ end
 ---@class HookKitTestEnv.FrameOptions
 ---@field protected boolean? What `IsProtected` answers. Defaults to `false`.
 ---@field withoutIsProtected boolean? Build a frame that has no `IsProtected`.
+---@field forbidden boolean? What `IsForbidden` answers; the frame has `IsForbidden` only when this is given.
 
 ---Build a fake frame. Its methods live in its metatable, as a real frame's do,
 ---so hooking one of them writes a raw field onto the frame.
@@ -231,6 +245,13 @@ function HookKitTestEnv.NewFrame(options)
         function methods.IsProtected()
             return protected, protected
         end
+    end
+
+    if options.forbidden ~= nil then
+        function methods.IsForbidden()
+            return frameForbidden[methods] == true
+        end
+        frameForbidden[methods] = options.forbidden
     end
 
     function methods.Show() end

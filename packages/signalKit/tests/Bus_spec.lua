@@ -237,6 +237,83 @@ describe("SignalKit bus topic policy", function()
         assert.is_nil(string.find(tostring(message), ": secret reason", 1, true))
     end)
 
+    it("turns a raising validator into a refusal at the publisher's line", function()
+        local delivered = false
+        bus:DeclareTopic("Fragile", {
+            arguments = function(value)
+                return value.missing.field == 1
+            end,
+        })
+        bus:Subscribe("Fragile", function()
+            delivered = true
+        end)
+
+        local ok, message = pcall(function()
+            bus:Publish("Fragile", "sensitive argument")
+        end)
+        message = tostring(message)
+
+        assert.is_false(ok)
+        assert.is_not_nil(
+            string.find(message, SPEC_FILE, 1, true),
+            "the refusal must point at the publishing line: " .. message
+        )
+        assert.is_not_nil(
+            string.find(
+                message,
+                'SignalKit.Bus:Publish validator for topic "Fragile" on bus "Policy" failed: ',
+                1,
+                true
+            )
+        )
+        assert.is_nil(string.find(message, "sensitive argument", 1, true))
+        assert.is_false(delivered)
+    end)
+
+    it("reports a validator that raises a non-string error without printing it", function()
+        bus:DeclareTopic("Odd", {
+            arguments = function()
+                error({ code = 1 })
+            end,
+        })
+
+        expectRefusalAtCaller("failed: a non-string error", function()
+            bus:Publish("Odd")
+        end)
+    end)
+
+    it("refuses a secret bus name or topic before comparing it", function()
+        local secret = setmetatable({}, {
+            __eq = function()
+                error("compared a secret value")
+            end,
+        })
+        -- The package reads this host global at call time, so the spec installs a local stub in the global table.
+        -- selene: allow(global_usage)
+        rawset(_G, "issecretvalue", function(value)
+            return rawequal(value, secret)
+        end)
+
+        expectRefusalAtCaller("SignalKit:Bus name must not be a secret value", function()
+            SignalKit:Bus(secret)
+        end)
+        expectRefusalAtCaller("SignalKit.Bus:Publish topic must not be a secret value", function()
+            bus:Publish(secret)
+        end)
+        expectRefusalAtCaller("SignalKit.Bus:Subscribe topic must not be a secret value", function()
+            bus:Subscribe(secret, function() end)
+        end)
+        expectRefusalAtCaller(
+            "SignalKit.Bus:DeclareTopic topic must not be a secret value",
+            function()
+                bus:DeclareTopic(secret)
+            end
+        )
+
+        -- selene: allow(global_usage)
+        rawset(_G, "issecretvalue", nil)
+    end)
+
     it("accepts a repeated declaration with the same policy and refuses a different one", function()
         local validator = function()
             return true
@@ -257,8 +334,17 @@ describe("SignalKit bus topic policy", function()
         expectRefusalAtCaller("options must be a table or nil", function()
             bus:DeclareTopic("Topic", "options")
         end)
-        expectRefusalAtCaller("count must be a non-negative integer", function()
+        expectRefusalAtCaller("count must be a finite non-negative integer", function()
             bus:DeclareTopic("Topic", { arguments = 1.5 })
+        end)
+        expectRefusalAtCaller("count must be a finite non-negative integer", function()
+            bus:DeclareTopic("Topic", { arguments = math.huge })
+        end)
+        expectRefusalAtCaller("count must be a finite non-negative integer", function()
+            bus:DeclareTopic("Topic", { arguments = 0 / 0 })
+        end)
+        expectRefusalAtCaller("count must be a finite non-negative integer", function()
+            bus:DeclareTopic("Topic", { arguments = -1 })
         end)
         expectRefusalAtCaller("must be a count, a validator function or nil", function()
             bus:DeclareTopic("Topic", { arguments = "two" })

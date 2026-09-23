@@ -13,7 +13,8 @@ This document describes implementation invariants for maintainers. It is not an 
 | `runtimeRevision` | The revision that last committed its functions. |
 | `scopeMetatable` | The metatable every scope shares; its `__index` is `HookKit.Scope`. |
 | `addonScopes` | Addon name to that addon's canonical scope. At most one per addon name. |
-| `secureStatus` | Weak-keyed: hooked object to `{ [method] = boolean }`, whether the target was secure the first time HookKit checked it. |
+| `secureStatus` | Weak-keyed: hooked object to `{ [method] = boolean }`, whether the target was secure the first time HookKit checked it. For a method that is not a raw field, `findHolder` walks at most `MAX_INDEX_DEPTH` (8) `__index` tables to the table holding it, and that table is what `issecurevariable` is asked about. |
+| `secureScripts` | Weak-keyed: frame to `{ [script] = count }` of active `SecureHookScript` records across every scope. A script pre-hook or replacement is refused while the count is positive; release decrements it and deletes empty tables. |
 
 The scope prototype is published as `HookKit.Scope`, like EventKit's and TimerKit's.
 
@@ -78,7 +79,7 @@ Every public method calls its installer and returns the results through locals r
 
 ## Release
 
-`releaseRecord` removes the record and clears `_active` first, so the scope is consistent even when the host write that follows raises. It then restores only when the installed function is still HookKit's (`rawget` for fields, `GetScript` for scripts), and never calls `SetScript` on a protected frame during combat lockdown. `releaseAll` collects the records into three parallel arrays sorted by `_sequence` with an insertion sort (at most `MAX_HOOKS`), releases them newest first under `pcall`, and re-raises the first failure with level `0` so the host's error object is unchanged.
+`releaseRecord` removes the record and clears `_active` first, so the scope is consistent even when the host write that follows raises. It then restores only when the installed function is still HookKit's (`rawget` for fields, `GetScript` for scripts), and never calls `SetScript` on a protected frame during combat lockdown (a conservative rule) or on a frame that has become forbidden or inaccessible. `releaseAll` collects the records into three parallel arrays sorted by `_sequence` with an insertion sort (at most `MAX_HOOKS`), releases them newest first under `pcall`, and re-raises the first failure with level `0` so the host's error object is unchanged.
 
 ## Upgrades
 

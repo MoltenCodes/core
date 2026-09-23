@@ -93,3 +93,55 @@ describe("HookKit secure-target refusal", function()
         )
     end)
 end)
+
+describe("HookKit secure status of inherited methods", function()
+    local HookKit
+    before_each(function()
+        HookKit = TestEnv.NewPackage()
+    end)
+    after_each(TestEnv.Reset)
+
+    it("uses a stub that reports an absent raw key as secure, as the client does", function()
+        local isSecureVariable = TestEnv.GetGlobal("issecurevariable")
+        local object = setmetatable({}, { __index = { Method = function() end } })
+        assert.is_true(isSecureVariable(object, "Method"))
+    end)
+
+    it("asks about the table that holds an inherited addon method", function()
+        local mixin = { Refresh = function() end }
+        local base = setmetatable({}, { __index = mixin })
+        local object = setmetatable({}, { __index = base })
+        local scope = HookKit:CreateScope()
+        assert.is_true(scope:Hook(object, "Refresh", function() end))
+        assert.is_true(scope:RawHook(TestEnv.NewFrame(), "Show", function() end))
+    end)
+
+    it("refuses a method inherited from a secure table", function()
+        local secureMethods = { Show = TestEnv.MarkSecure(function() end) }
+        local frame = setmetatable({}, { __index = secureMethods })
+        local scope = HookKit:CreateScope()
+        TestEnv.expectErrorContaining('refuses to hook secure "Show"', function()
+            scope:Hook(frame, "Show", function() end)
+        end)
+        assert.is_true(scope:Hook(frame, "Show", function() end, { forceSecure = true }))
+    end)
+
+    it("treats a method behind an __index function as not secure-checkable", function()
+        local secureMethod = TestEnv.MarkSecure(function() end)
+        local object = setmetatable({}, {
+            __index = function()
+                return secureMethod
+            end,
+        })
+        assert.is_true(HookKit:CreateScope():Hook(object, "Method", function() end))
+    end)
+
+    it("stops following an __index chain deeper than eight tables", function()
+        local holder = { Method = TestEnv.MarkSecure(function() end) }
+        local current = holder
+        for _ = 1, 9 do
+            current = setmetatable({}, { __index = current })
+        end
+        assert.is_true(HookKit:CreateScope():Hook(current, "Method", function() end))
+    end)
+end)

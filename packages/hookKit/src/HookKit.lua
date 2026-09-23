@@ -64,6 +64,11 @@ local RECORD_SCHEMA = 1
 -- secure post-hook it installs stays in the host's call chain for the session.
 local MAX_HOOKS = 256
 
+-- How many `__index` tables the secure-status check follows to find the table
+-- that actually holds an inherited method. Real frames and mixins are one or
+-- two levels deep; the bound only stops a pathological or cyclic chain.
+local MAX_INDEX_DEPTH = 8
+
 -- The kind string each semantic records, as `Hooks()` and `IsHooked` report it.
 local KIND_SECURE = "secure"
 local KIND_SECURE_SCRIPT = "secureScript"
@@ -79,11 +84,14 @@ local SECURE_KINDS = { [KIND_SECURE] = true, [KIND_SECURE_SCRIPT] = true }
 -- Kinds installed with `Frame:SetScript` rather than by writing a table field.
 local SCRIPT_KINDS = { [KIND_HOOK_SCRIPT] = true, [KIND_RAW_HOOK_SCRIPT] = true }
 
--- Scripts the secure environment drives on protected frames: secure action
--- buttons run their action from the click scripts, and secure handlers and
--- state drivers run from `OnAttributeChanged`. Replacing one of these on a
--- protected frame breaks the frame's secure behaviour for the session, so it is
--- refused even with `forceSecure`.
+-- Scripts refused outright on a protected frame, even with `forceSecure`:
+-- secure action buttons run their action from the click scripts, and secure
+-- handlers and state drivers run from `OnAttributeChanged`, so replacing one
+-- of these breaks the frame's secure behaviour for the session. The secure
+-- handler templates drive further scripts (`OnEnter`/`OnLeave`,
+-- `OnShow`/`OnHide`, `OnMouseDown`/`OnMouseUp`, `OnMouseWheel`,
+-- `OnDragStart`/`OnReceiveDrag`); those are not refused outright, but every
+-- script of a protected frame other than these needs `forceSecure`.
 local PROTECTED_SCRIPTS = {
     OnClick = true,
     PreClick = true,
@@ -261,6 +269,7 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "scopeMetatable")) == "table"
         and type(rawget(currentState, "addonScopes")) == "table"
         and type(rawget(currentState, "secureStatus")) == "table"
+        and type(rawget(currentState, "secureScripts")) == "table"
 end
 
 ---Whether `implementation` carries package state of this revision's schema.
@@ -312,6 +321,11 @@ if previousRevision == nil then
         -- secure before HookKit first hooked it non-securely. Weak-keyed so a
         -- hooked table is never kept alive for this memo.
         secureStatus = setmetatable({}, WEAK_KEYS),
+        -- Frame to { [script] = count }: how many active SecureHookScript
+        -- hooks HookKit holds on that script, across every scope. A script
+        -- pre-hook or replacement calls `SetScript`, which may drop the host's
+        -- `HookScript` hooks, so it is refused while this count is positive.
+        secureScripts = setmetatable({}, WEAK_KEYS),
     }
     rawset(HookKit, "Scope", Scope)
     rawset(HookKit, "_state", state)
@@ -326,6 +340,7 @@ local SCOPE_METATABLE = rawget(state, "scopeMetatable")
 local dispatch = rawget(state, "dispatch")
 local addonScopes = rawget(state, "addonScopes")
 local secureStatus = rawget(state, "secureStatus")
+local secureScripts = rawget(state, "secureScripts")
 rawset(SCOPE_METATABLE, "__index", Scope)
 
 -- Error reporting ------------------------------------------------------------
@@ -473,6 +488,32 @@ end
 
 -- Target inspection ----------------------------------------------------------
 
+---Find the table whose raw field holds `object[method]`: the object itself, or
+---a table on its `__index` chain. `nil` when the chain passes through an
+---`__index` function, a protected metatable, or more than `MAX_INDEX_DEPTH`
+---tables.
+---@param object table
+---@param method string
+---@return table|nil holder
+local function findHolder(object, method)
+    local current = object
+    for _ = 0, MAX_INDEX_DEPTH do
+        if rawget(current, method) ~= nil then
+            return current
+        end
+        local metatable = getmetatable(current)
+        if type(metatable) ~= "table" then
+            return nil
+        end
+        local index = rawget(metatable, "__index")
+        if type(index) ~= "table" then
+            return nil
+        end
+        current = index
+    end
+    return nil
+end
+
 ---Whether `object[method]` is secure, as it was before HookKit first hooked it
 ---non-securely.
 ---
@@ -480,6 +521,11 @@ end
 ---`false` afterwards even though the function behind it is Blizzard's. The
 ---first answer is therefore remembered per target, and every later check reads
 ---the memo. Without `issecurevariable` nothing is secure.
+---
+---The client reports an absent raw key as secure, so asking about the object
+---itself would refuse every method it inherits. For an inherited method the
+---question goes to the table that holds it (`findHolder`); a method behind an
+---`__index` function cannot be located and is treated as not secure.
 ---@param object table the hooked table, or `_G` for a global
 ---@param method string
 ---@return boolean
@@ -497,7 +543,10 @@ local function wasSecure(object, method)
         if object == GLOBALS then
             secure = nativeIsSecureVariable(method) == true
         else
-            secure = nativeIsSecureVariable(object, method) == true
+            local holder = findHolder(object, method)
+            if holder ~= nil then
+                secure = nativeIsSecureVariable(holder, method) == true
+            end
         end
     end
 
@@ -507,6 +556,23 @@ local function wasSecure(object, method)
     end
     rawset(remembered, method, secure)
     return secure
+end
+
+---Whether HookKit may call methods on `frame` from the current execution:
+---not forbidden, and (patch 12.1.0 and later) accessible in this context.
+---Frames without the probes are accessible.
+---@param frame table
+---@return boolean
+local function canTouchFrame(frame)
+    local isForbidden = frame.IsForbidden
+    if type(isForbidden) == "function" and isForbidden(frame) then
+        return false
+    end
+    local canBeAccessed = frame.CanBeAccessedInContext
+    if type(canBeAccessed) == "function" and not canBeAccessed(frame) then
+        return false
+    end
+    return true
 end
 
 ---Whether the host reports `frame` as protected. A frame without
@@ -747,6 +813,9 @@ local function validateScriptTarget(scope, frame, script, handler, hostMethods, 
     validateTable(frame, methodName .. " frame", level + 1)
     validateName(script, methodName .. " script", level + 1)
     validateHandler(handler, methodName, level + 1)
+    if not canTouchFrame(frame) then
+        error(methodName .. " frame is forbidden or not accessible in this context", level)
+    end
     for index = 1, #hostMethods do
         if type(frame[hostMethods[index]]) ~= "function" then
             error(methodName .. " frame must have a " .. hostMethods[index] .. " method", level)
@@ -764,6 +833,9 @@ local SECURE_SCRIPT_HOST_METHODS = { "HookScript" }
 local REPLACE_SCRIPT_HOST_METHODS = { "GetScript", "SetScript" }
 
 ---Refuse a non-secure hook of a script the secure environment depends on.
+---
+---During combat lockdown HookKit declines to replace any script of a protected
+---frame, as a conservative rule rather than a host restriction it relies on.
 ---@param frame table
 ---@param script string
 ---@param forceSecure boolean
@@ -907,6 +979,12 @@ local function installSecureScriptHook(scope, frame, script, handler)
     frame:HookScript(script, installed)
     record._installed = installed
     storeRecord(scope, frame, script, record)
+    local counts = rawget(secureScripts, frame)
+    if counts == nil then
+        counts = {}
+        rawset(secureScripts, frame, counts)
+    end
+    rawset(counts, script, (rawget(counts, script) or 0) + 1)
     return true
 end
 
@@ -924,6 +1002,17 @@ local function installScriptReplacement(scope, kind, methodName, frame, script, 
     validateScriptTarget(scope, frame, script, handler, REPLACE_SCRIPT_HOST_METHODS, methodName, 4)
     local forceSecure = readHookOptions(options, methodName, 4)
     refuseProtectedScript(frame, script, forceSecure, methodName, 4)
+    local counts = rawget(secureScripts, frame)
+    if counts ~= nil and rawget(counts, script) ~= nil then
+        error(
+            methodName
+                .. ' refuses to replace script "'
+                .. script
+                .. '": HookKit holds a SecureHookScript post-hook on it, which SetScript may drop; '
+                .. "Unhook it first, or install the pre-hook before the post-hook",
+            3
+        )
+    end
     if not hasRoom(scope) then
         return nil, "full"
     end
@@ -964,6 +1053,20 @@ local function releaseRecord(scope, object, method, record)
     record._active = false
 
     local kind = rawget(record, "_kind")
+    if kind == KIND_SECURE_SCRIPT then
+        local counts = rawget(secureScripts, object)
+        local count = counts and rawget(counts, method)
+        if count ~= nil then
+            if count <= 1 then
+                rawset(counts, method, nil)
+                if next(counts) == nil then
+                    rawset(secureScripts, object, nil)
+                end
+            else
+                rawset(counts, method, count - 1)
+            end
+        end
+    end
     if SECURE_KINDS[kind] == true then
         return
     end
@@ -971,12 +1074,17 @@ local function releaseRecord(scope, object, method, record)
     local installed = rawget(record, "_installed")
     local original = rawget(record, "_original")
     if SCRIPT_KINDS[kind] == true then
+        if not canTouchFrame(object) then
+            -- A frame that became inaccessible keeps the inert closure.
+            return
+        end
         if object:GetScript(method) ~= installed then
             return
         end
         if isProtectedFrame(object) and inCombatLockdown() then
-            -- `SetScript` on a protected frame is blocked in combat; the
-            -- inert closure already forwards to the original.
+            -- As a conservative rule HookKit does not call `SetScript` on a
+            -- protected frame during combat lockdown; the inert closure
+            -- already forwards to the original.
             return
         end
         if original == false then
@@ -1311,6 +1419,16 @@ local function newScope(addonName)
     }, SCOPE_METATABLE)
 end
 
+---Refuse a receiver other than the HookKit facade (a `.` call, say).
+---@param receiver any
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateFacade(receiver, label, level)
+    if receiver ~= HookKit then
+        error(label .. " must be called on the HookKit facade; use " .. label .. "(...)", level)
+    end
+end
+
 ---Create a manually owned hook scope, closed only by its owner.
 ---@return HookKit.Scope scope
 local function createScope()
@@ -1322,10 +1440,11 @@ end
 ---HookKit does not observe addon shutdown; whoever does (LifecycleKit, or the
 ---addon itself on `PLAYER_LOGOUT`) closes this scope through
 ---`HookKit:CloseAddonScopes(addonName)`.
----@param _ HookKit
+---@param self HookKit
 ---@param addonName string addon folder name
 ---@return HookKit.Scope scope
-local function forAddon(_, addonName)
+local function forAddon(self, addonName)
+    validateFacade(self, "HookKit:ForAddon", 3)
     validateName(addonName, "HookKit:ForAddon addonName", 3)
     local scope = rawget(addonScopes, addonName)
     if scope == nil then
@@ -1338,19 +1457,17 @@ end
 ---Close the canonical scope of an addon, undoing every hook it owns.
 ---
 ---Closing is terminal: a later `ForAddon(addonName)` returns the closed scope,
----which refuses new hooks. An addon that never asked for a scope is recorded
----as closed.
----@param _ HookKit
+---which refuses new hooks. Nothing is recorded for an addon that never asked
+---for a scope, so the addon-scope map grows only with `ForAddon` calls.
+---@param self HookKit
 ---@param addonName string addon folder name
----@return boolean closed `false` when the addon's scope was already closed.
-local function closeAddonScopes(_, addonName)
+---@return boolean closed `false` when the addon has no scope or it was already closed.
+local function closeAddonScopes(self, addonName)
+    validateFacade(self, "HookKit:CloseAddonScopes", 3)
     validateName(addonName, "HookKit:CloseAddonScopes addonName", 3)
     local scope = rawget(addonScopes, addonName)
     if scope == nil then
-        scope = newScope(addonName)
-        rawset(scope, "_closed", true)
-        rawset(addonScopes, addonName, scope)
-        return true
+        return false
     end
     return scopeClose(scope)
 end

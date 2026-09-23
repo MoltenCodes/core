@@ -190,6 +190,43 @@ describe("HookKit error levels", function()
         )
     end)
 
+    it("points the review-added refusals at the caller", function()
+        local scope = HookKit:CreateScope()
+        local frame = TestEnv.NewFrame()
+        HookKit:CreateScope():SecureHookScript(frame, "OnShow", noop)
+        assertReportedAtCaller(
+            'HookKit.Scope:HookScript refuses to replace script "OnShow": HookKit holds a '
+                .. "SecureHookScript post-hook on it, which SetScript may drop; Unhook it first, "
+                .. "or install the pre-hook before the post-hook",
+            function(mark)
+                mark()
+                scope:HookScript(frame, "OnShow", noop)
+            end
+        )
+        assertReportedAtCaller(
+            "HookKit.Scope:RawHookScript frame is forbidden or not accessible in this context",
+            function(mark)
+                mark()
+                scope:RawHookScript(TestEnv.NewFrame({ forbidden = true }), "OnShow", noop)
+            end
+        )
+        assertReportedAtCaller(
+            "HookKit:ForAddon must be called on the HookKit facade; use HookKit:ForAddon(...)",
+            function(mark)
+                mark()
+                HookKit.ForAddon("MyAddon")
+            end
+        )
+        assertReportedAtCaller(
+            "HookKit:CloseAddonScopes must be called on the HookKit facade; "
+                .. "use HookKit:CloseAddonScopes(...)",
+            function(mark)
+                mark()
+                HookKit.CloseAddonScopes("MyAddon")
+            end
+        )
+    end)
+
     it("points a hook attempt on a closed scope at the caller", function()
         local scope = HookKit:CreateScope()
         scope:Close()

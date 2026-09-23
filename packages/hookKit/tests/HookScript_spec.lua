@@ -198,3 +198,66 @@ describe("HookKit script pre-hooks and replacements", function()
         )
     end)
 end)
+
+describe("HookKit script replacement next to secure script hooks", function()
+    local HookKit
+    before_each(function()
+        HookKit = TestEnv.NewPackage()
+    end)
+    after_each(TestEnv.Reset)
+
+    it("refuses a pre-hook of a script HookKit secure-hooked in any scope", function()
+        local frame = TestEnv.NewFrame()
+        local secure = HookKit:CreateScope()
+        local other = HookKit:CreateScope()
+        secure:SecureHookScript(frame, "OnShow", function() end)
+
+        for _, method in ipairs({ "HookScript", "RawHookScript" }) do
+            TestEnv.expectErrorContaining(
+                "HookKit.Scope:"
+                    .. method
+                    .. ' refuses to replace script "OnShow": HookKit holds a SecureHookScript'
+                    .. " post-hook on it, which SetScript may drop",
+                function()
+                    other[method](other, frame, "OnShow", function() end)
+                end
+            )
+        end
+        assert.is_nil(frame:GetScript("OnShow"))
+
+        secure:Unhook(frame, "OnShow")
+        assert.is_true(other:HookScript(frame, "OnShow", function() end))
+    end)
+
+    it("allows the post-hook after the pre-hook", function()
+        local calls = {}
+        local frame = TestEnv.NewFrame()
+        local scope = HookKit:CreateScope()
+        scope:HookScript(frame, "OnShow", function()
+            calls[#calls + 1] = "pre"
+        end)
+        HookKit:CreateScope():SecureHookScript(frame, "OnShow", function()
+            calls[#calls + 1] = "post"
+        end)
+        TestEnv.RunScript(frame, "OnShow")
+        assert.are.same({ "pre", "post" }, calls)
+    end)
+
+    it("refuses a forbidden frame at the caller and leaves a hook inert on it", function()
+        local forbidden = TestEnv.NewFrame({ forbidden = true })
+        local scope = HookKit:CreateScope()
+        TestEnv.expectErrorContaining(
+            "HookKit.Scope:SecureHookScript frame is forbidden or not accessible in this context",
+            function()
+                scope:SecureHookScript(forbidden, "OnShow", function() end)
+            end
+        )
+
+        local frame = TestEnv.NewFrame({ forbidden = false })
+        scope:HookScript(frame, "OnShow", function() end)
+        local installed = frame:GetScript("OnShow")
+        TestEnv.SetForbidden(frame, true)
+        assert.is_true(scope:Unhook(frame, "OnShow"))
+        assert.are.equal(installed, frame:GetScript("OnShow"))
+    end)
+end)

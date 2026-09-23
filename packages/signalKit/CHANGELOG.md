@@ -9,6 +9,9 @@
 - Bus listener errors are isolated and reported through the host error handler, through `securecallfunction` when the client provides it and `xpcall` otherwise; they never reach the publisher. Raw signals are unchanged and still propagate listener errors to the caller of `Fire`.
 - Bounded by default: 64 buses, 256 topics per bus, 256 listeners per topic, each refused with `nil, "full"`. A steady-state publish allocates nothing on either isolation path; a spec guards it.
 - Implementation revision 4, with private package state (`_state`, schema 1) introduced to carry buses, topics, scopes and subscriptions through in-place upgrades. An upgrade over revisions 1 to 3 creates the state and leaves existing signals and connections untouched. The public-surface predicate now requires `Bus`, `ForAddon` and `CloseAddonBus`.
+- A bus scope compacts its connection list as soon as disconnected entries outnumber connected ones, whichever path disconnected them, so the list never exceeds twice the live subscriptions plus one.
+- A validator that raises is turned into a refusal at the publishing line (`SignalKit.Bus:Publish validator for topic "<topic>" on bus "<bus>" failed: <reason>`), because the validator may belong to another addon. Refusal messages never include the published argument values.
+- `options.arguments` counts that are negative, fractional, infinite or NaN are refused at the caller. `DeclareTopic` on a closed bus is refused at the caller, so it cannot spend a topic slot. `Publish` on a closed bus still checks the topic's type. A secret bus name or topic is refused at the caller before any comparison, when `issecretvalue` exists.
 - `SignalKit` API generation 1 is unchanged; every existing signal method behaves as before.
 
 ## 0.3.0 — 2026-09-22

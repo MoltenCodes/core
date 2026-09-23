@@ -171,10 +171,25 @@ describe("HookKit scopes", function()
         assert.is_true(scope:IsClosed())
     end)
 
-    it("records an addon that never asked for a scope as closed", function()
-        assert.is_true(HookKit:CloseAddonScopes("Quiet"))
-        assert.is_true(HookKit:ForAddon("Quiet"):IsClosed())
+    it("records nothing for an addon that never asked for a scope", function()
         assert.is_false(HookKit:CloseAddonScopes("Quiet"))
+        assert.is_nil(rawget(rawget(HookKit, "_state").addonScopes, "Quiet"))
+        assert.is_false(HookKit:ForAddon("Quiet"):IsClosed())
+    end)
+
+    it("refuses the package methods called without the facade", function()
+        TestEnv.expectErrorContaining(
+            "HookKit:ForAddon must be called on the HookKit facade; use HookKit:ForAddon(...)",
+            function()
+                HookKit.ForAddon("MyAddon")
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "HookKit:CloseAddonScopes must be called on the HookKit facade",
+            function()
+                HookKit.CloseAddonScopes({}, "MyAddon")
+            end
+        )
     end)
 
     it("never closes a manual scope through CloseAddonScopes", function()

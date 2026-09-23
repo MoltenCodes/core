@@ -20,7 +20,7 @@ Consequences worth knowing before choosing:
 
 - **Post-hook whenever you only need to react.** It is the only semantic that cannot cause "action blocked" errors elsewhere in the UI. HookKit makes it reversible, which `hooksecurefunc` alone is not.
 - **A pre-hook or replacement of a function Blizzard calls during combat can block actions for the rest of the session.** Everything downstream of the tainted field runs tainted. This is why HookKit refuses it on a secure target unless you pass `options.forceSecure`.
-- **Unhooking does not remove taint.** Restoring the original writes it from addon code, so the field stays tainted until the next `/reload`. When the original came through `__index`, HookKit deletes the field instead, which leaves no addon-written value behind (see [Unhook](#unhook-restore-or-go-inert)). HookKit remembers that the target *was* secure, so later hooks are still refused.
+- **Unhooking does not remove taint.** Restoring the original writes it from addon code, so the field stays tainted until the next `/reload`. When the original came through `__index`, HookKit deletes the field instead, so no addon-written value stays in it; the host may still report the slot as tainted (see [Unhook](#unhook-restore-or-go-inert)). HookKit remembers that the target *was* secure, so later hooks are still refused.
 - **Running the handler through `securecallfunction` would change nothing** and HookKit does not do it. A post-hook handler is already isolated by `hooksecurefunc`; a pre-hook handler runs inside HookKit's closure, which is tainted anyway because it is addon code. Handler errors are caught with `pcall` and reported to the host error handler.
 - **Secret values pass through untouched.** Arguments and results travel through HookKit's closures as `...`; HookKit never compares, indexes, stores or formats them. Your handler receives exactly what the caller passed, secrets included, and inherits the rules in [`EMBEDDING.md` → Secret values](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
@@ -63,7 +63,7 @@ Package facade:
 |---|---|
 | `CreateScope()` | Create a manually owned hook scope. |
 | `ForAddon(addonName)` | Return the canonical scope of an addon, creating it on demand. |
-| `CloseAddonScopes(addonName)` | Close that addon's scope; returns `false` when it was already closed. |
+| `CloseAddonScopes(addonName)` | Close that addon's scope; returns `false` when it has none or it was already closed. |
 | `MAX_HOOKS` | `256`, the most hooks one scope holds at once. |
 | `API`, `REVISION` | API generation and implementation revision. |
 
@@ -144,16 +144,18 @@ Every refusal raises at the caller's line and installs nothing.
 | A non-secure hook (`Hook`, `RawHook`) of a secure target | `refuses to hook secure "<method>" non-securely; use SecureHook, or pass options.forceSecure` | `options.forceSecure = true` |
 | A non-secure script hook of a **protected script** on a protected frame | `refuses to replace protected script "<script>" of a protected frame; use SecureHookScript` | none |
 | A non-secure script hook of any other script on a protected frame | `refuses to replace script "<script>" of a protected frame; use SecureHookScript, or pass options.forceSecure` | `options.forceSecure = true` |
-| A non-secure script hook on a protected frame in combat lockdown | `cannot replace a script of a protected frame during combat lockdown` | none (`SetScript` is blocked there) |
+| A non-secure script hook on a protected frame in combat lockdown | `cannot replace a script of a protected frame during combat lockdown` | none: a conservative HookKit rule, not a host restriction HookKit relies on |
+| A non-secure script hook of a script HookKit already holds a `SecureHookScript` post-hook on, in any scope | `refuses to replace script "<script>": HookKit holds a SecureHookScript post-hook on it, which SetScript may drop; Unhook it first, or install the pre-hook before the post-hook` | none |
+| Any script hook of a frame that is forbidden (`IsForbidden`) or not accessible in this context (`CanBeAccessedInContext`) | `frame is forbidden or not accessible in this context` | none |
 | A target that is not a function | `target "<method>" is not a function` | — |
 | A second hook of the same target in one scope | `"<method>" is already hooked in this scope; Unhook it first` | — |
 | Any hook on a closed scope | `cannot hook in a closed scope` | — |
 
 **Secure status is remembered.** "Secure" means `issecurevariable(object, method)` (or `issecurevariable(globalName)`) answered `true` the first time HookKit checked that target, which is always before HookKit's first non-secure write to it. A forced hook taints the field, after which the host answers `false`; HookKit keeps answering from its memo, so a second scope, or the same scope after `Unhook`, is still refused. The memo is weak-keyed by the hooked object.
 
-A method a frame inherits from its metatable (`frame.Show`, say) is secure on the live client even on a frame your addon created, so a non-secure hook of one needs `forceSecure`.
+**Inherited methods.** The client reports an absent raw key as secure, so asking about the object itself would refuse every method it inherits. When `object[method]` is not a raw field, HookKit follows the metatables' `__index` tables (at most 8 levels) to the table that actually holds the method and asks `issecurevariable` about that one. A method your addon's mixin provides can therefore be hooked without `forceSecure`, while a method a real frame inherits from the host's method table (`frame.Show`, say) is secure even on a frame your addon created, and needs `forceSecure`. A method behind an `__index` **function**, behind a protected metatable, or deeper than 8 levels cannot be located and is treated as not secure: HookKit cannot check it, so it does not refuse it.
 
-**Protected scripts** are the scripts the secure environment drives on a protected frame: `OnClick`, `PreClick`, `PostClick`, `OnDoubleClick` and `OnAttributeChanged`. A frame is protected when `frame:IsProtected()` answers `true`. Post-hooking any of them with `SecureHookScript` is always allowed.
+**Scripts of protected frames.** A frame is protected when `frame:IsProtected()` answers `true`. Only the click and attribute scripts — `OnClick`, `PreClick`, `PostClick`, `OnDoubleClick` and `OnAttributeChanged`, from which secure action buttons, secure handlers and state drivers act — are refused outright. The secure handler templates drive further scripts (`OnEnter`/`OnLeave`, `OnShow`/`OnHide`, `OnMouseDown`/`OnMouseUp`, `OnMouseWheel`, `OnDragStart`/`OnReceiveDrag`); those, like every other script of a protected frame, are refused unless you pass `forceSecure`, and in combat lockdown not even then. Post-hooking any script with `SecureHookScript` is always allowed.
 
 **Double hooks** are refused rather than silently replaced: an implicit unhook-then-hook would reorder the chain behind the caller's back. Two *different* scopes may hook the same target; their closures chain.
 
@@ -166,10 +168,10 @@ Argument errors name the parameter: `HookKit.Scope:Hook method must be a non-emp
 | Kind | The installed function is still HookKit's | Someone hooked the target after HookKit |
 |---|---|---|
 | `secure`, `secureScript` | The closure stays, inert. The host owns it. | The same. |
-| `hook`, `rawHook` | The original is written back. When the original came through `__index` (the field was not a raw field before the hook), the field is **deleted** instead, so the inherited function shows through again and no addon-written value is left. | The closure stays in their chain, inert: it forwards every argument to the original and returns its results. Restoring under them would cut their hook out. |
-| `hookScript`, `rawHookScript` | `frame:SetScript(script, previous)`, where `previous` may be `nil`. On a protected frame in combat lockdown, the closure stays, inert, instead. | The closure stays, inert, forwarding to the previous script. |
+| `hook`, `rawHook` | The original is written back. When the original came through `__index` (the field was not a raw field before the hook), the field is **deleted** instead, so the inherited function shows through again and no addon-written value stays in the field (the host may still report the slot as tainted). | The closure stays in their chain, inert: it forwards every argument to the original and returns its results. Restoring under them would cut their hook out. |
+| `hookScript`, `rawHookScript` | `frame:SetScript(script, previous)`, where `previous` may be `nil`. On a protected frame in combat lockdown (a conservative HookKit rule), or on a frame that has become forbidden or inaccessible, the closure stays, inert, instead. | The closure stays, inert, forwarding to the previous script. |
 
-"Still HookKit's" is `rawget(object, method) == installed` for a field and `frame:GetScript(script) == installed` for a script. Whether the host keeps `HookScript` post-hooks other addons added to a script across a `SetScript` is host behaviour HookKit does not control; prefer `SecureHookScript`, which never calls `SetScript`.
+"Still HookKit's" is `rawget(object, method) == installed` for a field and `frame:GetScript(script) == installed` for a script. **Install direction for scripts.** `HookScript` and `RawHookScript` install with `SetScript`. If the host drops the post-hooks added with `Frame:HookScript` when `SetScript` runs, installing a pre-hook after them would silently remove them — other addons' and HookKit's own — while `IsHooked` still answered `true` for HookKit's. HookKit therefore refuses a script pre-hook or replacement while any HookKit scope holds a `SecureHookScript` post-hook on that script, and the safe order is pre-hook first, post-hooks after. It cannot see other addons' `HookScript` post-hooks; prefer `SecureHookScript`, which never calls `SetScript`.
 
 `UnhookAll` and `Close` release every hook, newest first. A host failure in one release (a `SetScript` that raises) does not stop the others: every hook is released and leaves the scope, and the first error object is re-raised unchanged afterwards.
 
@@ -196,7 +198,7 @@ EventKit:Once("PLAYER_LOGOUT", function()
 end)
 ```
 
-Closing is terminal. The closed scope stays the addon's canonical scope, so a later `ForAddon("MyAddon")` returns it and refuses new hooks. Calling `CloseAddonScopes` for an addon that never asked for a scope records one that is already closed. Manual scopes are never closed by `CloseAddonScopes`.
+Closing is terminal. The closed scope stays the addon's canonical scope, so a later `ForAddon("MyAddon")` returns it and refuses new hooks. Calling `CloseAddonScopes` for an addon that never asked for a scope records nothing and returns `false`, so the addon-scope map grows only with `ForAddon` calls. Manual scopes are never closed by `CloseAddonScopes`.
 
 A scope does not keep a hooked table alive: its records are keyed by object in a weak-keyed table and never reference the object. In Lua 5.1 that only helps when your handler does not itself capture the object, because a weak-keyed table cannot collect a key its value references.
 
@@ -207,6 +209,17 @@ A scope does not keep a hooked table alive: its records are keyed by object in a
 - **`IsHooked`, `Original` and `GetActiveCount`** allocate nothing. A lookup of an object the scope never hooked creates nothing.
 - **`Hooks()`, `UnhookAll()` and `Close()`** allocate one array per call (plus one row per hook for `Hooks()`); they are for diagnostics and teardown.
 - **`GetActiveCount()` and the `MAX_HOOKS` check count the records** (at most 256) rather than reading a stored counter, so the records of a garbage-collected object stop counting at once.
+
+## Deviations from the planned contract
+
+The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
+
+- **The replacement handler receives the original first**, not last; see [Raw replacement](#raw-replacement).
+- **Scripts of protected frames:** only the click and attribute scripts are refused outright; every other script of a protected frame needs `forceSecure`, and none is replaced in combat lockdown. See [Refusals](#refusals).
+- **A script pre-hook or replacement is refused while HookKit holds a `SecureHookScript` post-hook on that script**, because `SetScript` may drop it.
+- **`CloseAddonScopes` records nothing for an addon without a scope** and returns `false`, as SignalKit's `CloseAddonBus` does, instead of recording a closed scope.
+- **Additions:** `RawHookScript`; `Original`; `IsClosed`, `GetActiveCount`, `GetAddonName` and `HookKit:CloseAddonScopes` (the TimerKit and EventKit scope vocabulary); the global-name forms of the hook and lookup methods; the kind as `IsHooked`'s second result; `HookKit.MAX_HOOKS`.
+- **`securecallfunction` is not used** and ClientKit supplies only `IsSecret`; see [The taint model](#the-taint-model-read-this-first).
 
 ## Upgrades
 

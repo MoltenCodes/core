@@ -54,11 +54,6 @@ local MAXIMUM_TOPICS = 256
 -- `nil, "full"`.
 local MAXIMUM_LISTENERS = 256
 
--- A bus scope compacts its connection list once it reaches this many entries,
--- and afterwards at twice its live count, so it never grows beyond twice the
--- subscriptions it still owns.
-local MINIMUM_SCOPE_COMPACTION = 16
-
 -- Payload values staged in the reusable `xpcall` buffer with one multiple
 -- assignment; wider payloads fall back to a `select` loop for the remainder.
 local STAGED_ASSIGNMENT_SLOTS = 8
@@ -420,18 +415,28 @@ local function compact(signal, listeners)
     rawset(signal, "_tombstones", 0)
 end
 
+-- Assigned in the bus scope section; a scope-owned connection reports its
+-- disconnect so the scope can compact its list.
+local noteScopeDisconnect
+
 ---Mark `connection` disconnected and release what it references.
 ---
 ---The handle stays in the listener array until the next compaction, but the
 ---callback closures are released immediately: they are normally far larger
----than the handle that holds them. `_busCallback` exists only on bus
----subscriptions; clearing an absent field is a no-op.
+---than the handle that holds them. `_busCallback` and `_busScope` exist only on
+---bus subscriptions; clearing an absent field is a no-op.
 ---@param connection table
 local function releaseConnection(connection)
     rawset(connection, "_connected", false)
     rawset(connection, "_signal", nil)
     rawset(connection, "_callback", nil)
     rawset(connection, "_busCallback", nil)
+
+    local scope = rawget(connection, "_busScope")
+    if scope ~= nil then
+        rawset(connection, "_busScope", nil)
+        noteScopeDisconnect(scope)
+    end
 end
 
 ---@param connection table
@@ -462,8 +467,9 @@ end
 ---@param methodName "Connect"|"Once" public method name, used in the argument error
 ---@param receiverMessage string error text raised when `signal` is not a signal
 ---@param busCallback function|nil the subscriber's own callback, for `Unsubscribe`
+---@param busScope table|nil the bus scope that owns the subscription
 ---@return SignalKit.Connection
-local function connect(signal, callback, once, methodName, receiverMessage, busCallback)
+local function connect(signal, callback, once, methodName, receiverMessage, busCallback, busScope)
     local listeners = listenersOf(signal)
     if listeners == nil then
         error(receiverMessage, 3)
@@ -479,6 +485,7 @@ local function connect(signal, callback, once, methodName, receiverMessage, busC
         _connected = true,
         _once = once,
         _busCallback = busCallback,
+        _busScope = busScope,
     }, CONNECTION_METATABLE)
 
     rawset(listeners, #listeners + 1, connection)
@@ -734,6 +741,14 @@ end
 ---@param label string qualified public name of the argument
 ---@param level integer stack level the failure is reported at
 local function validateNonEmptyString(value, label, level)
+    -- A secret value raises on comparison, so it is refused before `== ""`
+    -- could raise inside SignalKit instead of at the caller.
+    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local isSecretValue = rawget(_G, "issecretvalue")
+    if type(isSecretValue) == "function" and isSecretValue(value) then
+        error(label .. " must not be a secret value", level)
+    end
     if type(value) ~= "string" or value == "" then
         error(label .. " must be a non-empty string", level)
     end
@@ -795,9 +810,16 @@ local function readTopicOptions(options, level)
     if arguments == nil then
         arguments = false
     elseif type(arguments) == "number" then
-        if arguments < 0 or arguments ~= math.floor(arguments) then
+        -- `math.huge` passes the integer test and NaN fails every comparison,
+        -- so both are named explicitly.
+        if
+            arguments ~= arguments
+            or arguments == math.huge
+            or arguments < 0
+            or arguments ~= math.floor(arguments)
+        then
             error(
-                "SignalKit.Bus:DeclareTopic options.arguments count must be a non-negative integer",
+                "SignalKit.Bus:DeclareTopic options.arguments count must be a finite non-negative integer",
                 level
             )
         end
@@ -818,10 +840,13 @@ local function readTopicOptions(options, level)
     return arguments, description
 end
 
----Describe a validator's refusal reason without ever inspecting a secret.
+---Describe a validator's refusal reason or error without ever inspecting a
+---secret. The text is the validator's own; SignalKit never adds the published
+---argument values to it.
 ---@param reason any
+---@param fallback string text used when `reason` is not a non-empty string
 ---@return string
-local function describeRefusal(reason)
+local function describeRefusal(reason, fallback)
     -- issecretvalue is a World of Warcraft client API reachable only through the global table.
     -- selene: allow(global_usage)
     local isSecretValue = rawget(_G, "issecretvalue")
@@ -831,7 +856,7 @@ local function describeRefusal(reason)
     if type(reason) == "string" and reason ~= "" then
         return reason
     end
-    return "the validator gave no reason"
+    return fallback
 end
 
 -- Bus topics -------------------------------------------------------------------
@@ -865,9 +890,10 @@ end
 ---@param topic any
 ---@param callback any
 ---@param once boolean
+---@param scope table|nil the bus scope that will own the subscription
 ---@return SignalKit.Connection|nil connection
 ---@return "full"|nil reason
-local function subscribe(bus, label, level, topic, callback, once)
+local function subscribe(bus, label, level, topic, callback, once, scope)
     validateNonEmptyString(topic, label .. " topic", level + 1)
     if type(callback) ~= "function" then
         error(label .. " callback must be a function", level)
@@ -890,8 +916,15 @@ local function subscribe(bus, label, level, topic, callback, once)
         return nil, "full"
     end
 
-    local connection =
-        connect(signal, newDelivery(callback), once, "Connect", CONNECT_RECEIVER_MESSAGE, callback)
+    local connection = connect(
+        signal,
+        newDelivery(callback),
+        once,
+        "Connect",
+        CONNECT_RECEIVER_MESSAGE,
+        callback,
+        scope
+    )
     return connection, nil
 end
 
@@ -911,6 +944,14 @@ local function busDeclareTopic(self, topic, options)
     validateBus(self, "SignalKit.Bus:DeclareTopic", 3)
     validateNonEmptyString(topic, "SignalKit.Bus:DeclareTopic topic", 3)
     local arguments, description = readTopicOptions(options, 3)
+    if rawget(self, "_closed") == true then
+        error(
+            'SignalKit.Bus:DeclareTopic cannot declare on the closed bus "'
+                .. rawget(self, "_name")
+                .. '"',
+            2
+        )
+    end
 
     local record = obtainTopicRecord(self, topic)
     if record == nil then
@@ -968,6 +1009,22 @@ local function refuseArguments(bus, topic, detail)
     )
 end
 
+---Raise a validator's own failure as a refusal at the publisher's line.
+---@param bus SignalKit.Bus
+---@param topic string
+---@param detail string
+local function refuseFailedValidator(bus, topic, detail)
+    error(
+        'SignalKit.Bus:Publish validator for topic "'
+            .. topic
+            .. '" on bus "'
+            .. rawget(bus, "_name")
+            .. '" failed: '
+            .. detail,
+        3
+    )
+end
+
 ---Deliver `...` to every subscriber of `topic`, in subscription order.
 ---
 ---Refused at the caller when the topic is undeclared on a bus without
@@ -978,12 +1035,13 @@ end
 ---@param ... any
 local function busPublish(self, topic, ...)
     validateBus(self, "SignalKit.Bus:Publish", 3)
+    validateNonEmptyString(topic, "SignalKit.Bus:Publish topic", 3)
     if rawget(self, "_closed") == true then
         -- A closed bus belongs to an addon that has shut down. Late publishes
-        -- from other addons' shutdown paths are expected and deliver nothing.
+        -- from other addons' shutdown paths are expected and deliver nothing,
+        -- so the topic policy is not applied to them.
         return
     end
-    validateNonEmptyString(topic, "SignalKit.Bus:Publish topic", 3)
 
     local record = rawget(rawget(self, "_topics"), topic)
     if record == nil or rawget(record, "declared") ~= true then
@@ -1002,9 +1060,18 @@ local function busPublish(self, topic, ...)
                 )
             end
         elseif arguments ~= false then
-            local accepted, reason = arguments(...)
-            if accepted ~= true then
-                refuseArguments(self, topic, describeRefusal(reason))
+            -- The validator may belong to another addon, so its failure is
+            -- turned into a refusal at the publisher's line. `pcall` with the
+            -- arguments passed through allocates nothing.
+            local ran, accepted, reason = pcall(arguments, ...)
+            if not ran then
+                refuseFailedValidator(self, topic, describeRefusal(accepted, "a non-string error"))
+            elseif accepted ~= true then
+                refuseArguments(
+                    self,
+                    topic,
+                    describeRefusal(reason, "the validator gave no reason")
+                )
             end
         end
     end
@@ -1094,10 +1161,13 @@ end
 
 -- Bus scopes -------------------------------------------------------------------
 --
--- A scope keeps the connections it created in an array. Disconnecting a
--- connection directly leaves its entry behind, so the array is compacted in
--- place once it reaches twice its live count at the last compaction: amortized
--- O(1) per subscription, and never more than twice the live subscriptions.
+-- A scope keeps the connections it created in an array. A connection that
+-- disconnects by any path (its handle, `Unsubscribe`, a once-delivery, the bus
+-- closing) reports it through `noteScopeDisconnect`, and the array is compacted
+-- in place as soon as its dead entries outnumber its live ones. Each compaction
+-- removes more than half of the entries it walks, so it is amortized O(1) per
+-- disconnect, and the array never holds more than twice the live subscriptions
+-- plus one.
 --
 -- Closing a scope disconnects at once, even inside a publish: a subscription
 -- disconnected mid-dispatch is skipped, exactly as SignalKit's own disconnect
@@ -1112,7 +1182,7 @@ local function newScope(bus)
         _bus = bus,
         _connections = {},
         _count = 0,
-        _compactAt = MINIMUM_SCOPE_COMPACTION,
+        _dead = 0,
         _closed = false,
     }, SCOPE_METATABLE)
 end
@@ -1132,7 +1202,18 @@ local function compactScope(scope)
         end
     end
     rawset(scope, "_count", live)
-    rawset(scope, "_compactAt", math.max(MINIMUM_SCOPE_COMPACTION, live * 2))
+    rawset(scope, "_dead", 0)
+end
+
+---Count one disconnected entry of `scope`, compacting once dead entries
+---outnumber live ones.
+---@param scope SignalKit.BusScope
+function noteScopeDisconnect(scope)
+    local dead = rawget(scope, "_dead") + 1
+    rawset(scope, "_dead", dead)
+    if dead * 2 > rawget(scope, "_count") then
+        compactScope(scope)
+    end
 end
 
 ---Validate, subscribe through the scope's bus, and remember the connection.
@@ -1149,14 +1230,12 @@ local function scopeSubscribeShared(scope, label, topic, callback, once)
         error(label .. " cannot subscribe in a closed scope", 3)
     end
 
-    local connection, reason = subscribe(rawget(scope, "_bus"), label, 4, topic, callback, once)
+    local connection, reason =
+        subscribe(rawget(scope, "_bus"), label, 4, topic, callback, once, scope)
     if connection == nil then
         return nil, reason
     end
 
-    if rawget(scope, "_count") >= rawget(scope, "_compactAt") then
-        compactScope(scope)
-    end
     local count = rawget(scope, "_count") + 1
     rawget(scope, "_connections")[count] = connection
     rawset(scope, "_count", count)
@@ -1197,12 +1276,14 @@ local function disconnectScope(scope)
     for index = 1, count do
         local connection = connections[index]
         connections[index] = nil
+        -- Detach first, so this walk is never compacted underneath itself.
+        rawset(connection, "_busScope", nil)
         if disconnectConnection(connection) then
             disconnected = disconnected + 1
         end
     end
     rawset(scope, "_count", 0)
-    rawset(scope, "_compactAt", MINIMUM_SCOPE_COMPACTION)
+    rawset(scope, "_dead", 0)
     return disconnected
 end
 
