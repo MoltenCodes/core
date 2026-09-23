@@ -44,11 +44,13 @@ The reader bounds-checks every byte it reads with `string.byte`, which returns `
 
 The DEFLATE implementation is one `do` scope that exports `compressInto` and `inflateInto`, so its tables and helpers do not count against the 200 locals Lua 5.1 allows the main chunk.
 
+**Short input.** Below 64 bytes the matcher is skipped: the input is written as one fixed-Huffman block of literals, or one stored block when that is smaller, through a leased bit writer, so a short addon message allocates nothing.
+
 **Input.** The input is loaded into an array of byte values, eight per `string.byte` call.
 
 **Hash chains.** The key of a position is its three bytes as one 24-bit number, so a chain holds only true three-byte matches and a candidate never needs its first bytes re-checked. `head[key]` is the latest position with that key and `previous[position % 32768]` the one before it. A chain is followed while the candidate is inside the 32 KiB window, the chain budget lasts, and each step moves strictly backwards (a ring slot overwritten by a newer position ends the chain).
 
-**Levels.** Parameters follow zlib's well-known configuration table:
+**Levels.** Parameters follow zlib's well-known configuration table, except that levels 8 and 9 cap the chain at 192 and 256 (zlib: 1024 and 4096) so level 9 stays within about three times level 6 on low-entropy input:
 
 | Level | Strategy | `chain` | `nice` | `good` | `lazyLimit` |
 |---|---|---|---|---|---|
@@ -59,8 +61,8 @@ The DEFLATE implementation is one `do` scope that exports `compressInto` and `in
 | 5 | lazy | 32 | 32 | 8 | 16 |
 | 6 | lazy | 128 | 128 | 8 | 16 |
 | 7 | lazy | 256 | 128 | 8 | 32 |
-| 8 | lazy | 1024 | 258 | 32 | 128 |
-| 9 | lazy | 4096 | 258 | 32 | 258 |
+| 8 | lazy | 192 | 258 | 32 | 128 |
+| 9 | lazy | 256 | 258 | 32 | 258 |
 
 `chain` is how many candidates a search visits, quartered when the match to beat is already `good`; a search stops at a match of `nice` bytes. Greedy levels take every match and insert the positions inside it only up to `lazyLimit` bytes. Lazy levels hold each match back by one position and emit a literal instead when the next position starts a longer match; no deferred search runs once the held match reaches `lazyLimit`. A three-byte match more than 4096 bytes back is dropped for literals in both.
 
@@ -74,7 +76,7 @@ The DEFLATE implementation is one `do` scope that exports `compressInto` and `in
 
 ## Decompressor
 
-The reader record holds the input, the next byte position and a bit buffer filled one byte at a time. A **decoder** maps `2^length + reversedCode` to the symbol, so a lookup for a given length matches exactly the codes of that length; decoding peeks up to the longest code length and tries each length from the shortest. Building one is linear in the number of symbols, so a hostile stream of tiny dynamic blocks cannot make table construction expensive.
+The reader record holds the input, the next byte position and a bit buffer filled one byte at a time. A **decoder** maps `2^length + reversedCode` to the symbol, so a lookup for a given length matches exactly the codes of that length; decoding peeks up to the longest code length and tries each length from the shortest. Building one is linear in the number of symbols, so table construction never grows with the table size; a hostile stream of tiny dynamic blocks still costs more per input byte than ordinary data — about ten times, as measured in review — but that cost is linear in the input and bounded by `maxOutputBytes` on the input side.
 
 A code set is refused when over-subscribed, and when incomplete unless it is the single one-bit code RFC 1951 allows; a distance code with no lengths is accepted until a block uses a distance. A literal code without end-of-block is refused. A stored block first discards the bits to the byte boundary, then gives back the whole bytes the bit buffer read ahead, because they are the first bytes of its data.
 

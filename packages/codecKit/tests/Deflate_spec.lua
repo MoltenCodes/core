@@ -148,6 +148,40 @@ describe("CodecKit DEFLATE", function()
         assert.are.equal("malformedDeflate", reason)
     end)
 
+    it("writes a short input as one literal or stored block", function()
+        local ok, compressed = CodecKit:Compress(string.rep("\255", 63))
+        assert.is_true(ok)
+        assert.are.equal(1, compressed:byte(1)) -- final stored block: cheaper than 63 nine-bit codes
+        assert.are.equal(63 + 5, #compressed)
+        assert.are.equal(string.rep("\255", 63), select(2, CodecKit:Decompress(compressed)))
+        ok, compressed = CodecKit:Compress(string.rep("\255", 64))
+        assert.is_true(ok)
+        assert.is_true(#compressed < 10) -- from 64 bytes the matcher runs
+        roundTrip(string.rep("ab", 31), 6)
+    end)
+
+    it("keeps level 9 within a few times level 6 on low-entropy input", function()
+        math.randomseed(9)
+        local symbols = {}
+        for index = 1, 40000 do
+            symbols[index] = math.random(2) == 1 and "a" or "b"
+        end
+        local input = table.concat(symbols)
+        local function seconds(level)
+            local started = os.clock()
+            roundTrip(input, level)
+            return os.clock() - started
+        end
+        seconds(6)
+        local level6 = seconds(6)
+        local level9 = seconds(9)
+        -- Measured about 2.7 times; before the chain cap it was 27 times.
+        assert.is_true(
+            level9 < 4.5 * level6 + 0.01,
+            "level 9 took " .. level9 / level6 .. " times level 6"
+        )
+    end)
+
     it("stops inflating at maxOutputBytes", function()
         local _, compressed = CodecKit:Compress(string.rep("a", 5000))
         CodecKit:SetLimits({ maxOutputBytes = 4096 })

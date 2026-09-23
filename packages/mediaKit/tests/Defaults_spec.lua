@@ -56,6 +56,41 @@ describe("MediaKit:Defaults", function()
         assert.are.equal("Friz Quadrata TT", defaults:Get("font"))
     end)
 
+    it("falls back to the first usable listed font on a client no built-in font covers", function()
+        TestEnv.SetClientLocale("zhCN")
+        local defaults = MediaKit:Defaults("MyAddon")
+        -- Nothing usable yet: no built-in font renders Simplified Chinese.
+        assert.is_nil(defaults:Get("font"))
+
+        MediaKit:Register(
+            "font",
+            "Pack Zhong",
+            "Fonts\\Zhong.ttf",
+            { scripts = { "cjkSimplified" } }
+        )
+        MediaKit:Register(
+            "font",
+            "Pack Alpha",
+            "Fonts\\Alpha.ttf",
+            { scripts = { "cjkSimplified" } }
+        )
+        assert.are.equal("Pack Alpha", defaults:Get("font"))
+        assert.are.equal("Fonts\\Alpha.ttf", MediaKit:Fetch("font", defaults:Get("font")))
+
+        -- The consumer's usable choice still comes first.
+        defaults:Set("font", "Pack Zhong")
+        assert.are.equal("Pack Zhong", defaults:Get("font"))
+    end)
+
+    it("includes adopted LibSharedMedia fonts in that fallback", function()
+        TestEnv.SetClientLocale("koKR")
+        TestEnv.InstallLibSharedMedia({
+            media = { font = { ["Client Hangul"] = "Fonts\\2002.TTF" } },
+        })
+        MediaKit:AdoptLibSharedMedia()
+        assert.are.equal("Client Hangul", MediaKit:Defaults("MyAddon"):Get("font"))
+    end)
+
     it("clears a choice with nil", function()
         MediaKit:Register("sound", "Ding", 554003)
         local defaults = MediaKit:Defaults("MyAddon")

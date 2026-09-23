@@ -11,13 +11,16 @@
 ---   `ChatEdit_CustomTabPressed`    the client's empty extension point, here
 ---                                  counting its calls and returning `false`;
 ---   `ChatEdit_GetActiveWindow`     returns the edit box `SetActiveEditBox` set;
+---   `ChatTypeInfo`                 two chat types, `SAY` (`/s`, `/say`) and
+---                                  `GUILD` (`/g`, `/guild`), as `SLASH_<TYPE><n>`;
+---   `EMOTE<n>_CMD<m>`              two emotes, `/dance` and `/wave` (`/greet`);
 ---   `RunSlash(text)`               what the client does with a typed line:
 ---                                  find the key whose `SLASH_<key><n>` matches
 ---                                  and call `SlashCmdList[key](rest, editBox)`.
 ---
 --- These globals are installed by `NewPackage` and removed again by `Reset`,
 --- because they are not among the globals the shared fixture owns, together
---- with every `SLASH_*` global a spec's registrations wrote.
+--- with every `SLASH_*` and `EMOTE*_CMD*` global.
 ---
 --- OptionsKit, LocaleKit and ClientKit are optional dependencies of
 --- CommandKit, declared under `optionalDependencies`, so the test runner puts
@@ -37,6 +40,8 @@ local CHAT_GLOBALS = {
     "DEFAULT_CHAT_FRAME",
     "ChatEdit_CustomTabPressed",
     "ChatEdit_GetActiveWindow",
+    "ChatTypeInfo",
+    "MAXEMOTEINDEX",
 }
 
 --- Every module a variant of `NewPackage` may load, cleared by `Reset`.
@@ -82,6 +87,14 @@ function CommandKitTestEnv.InstallChatApi()
     setGlobal("ChatEdit_GetActiveWindow", function()
         return activeEditBox
     end)
+    setGlobal("ChatTypeInfo", { SAY = {}, GUILD = {} })
+    setGlobal("SLASH_SAY1", "/s")
+    setGlobal("SLASH_SAY2", "/say")
+    setGlobal("SLASH_GUILD1", "/g")
+    setGlobal("SLASH_GUILD2", "/guild")
+    setGlobal("EMOTE1_CMD1", "/dance")
+    setGlobal("EMOTE2_CMD1", "/wave")
+    setGlobal("EMOTE2_CMD2", "/greet")
 end
 
 local sharedReset = CommandKitTestEnv.Reset
@@ -99,7 +112,7 @@ function CommandKitTestEnv.Reset()
     local slashNames = {}
     -- selene: allow(global_usage)
     for name in pairs(_G) do
-        if type(name) == "string" and name:find("^SLASH_") then
+        if type(name) == "string" and (name:find("^SLASH_") or name:find("^EMOTE%d+_CMD%d+$")) then
             slashNames[#slashNames + 1] = name
         end
     end

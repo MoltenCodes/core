@@ -63,6 +63,21 @@ describe("CodecKit allocation", function()
         assert.is_true(allocated / ITERATIONS < 0.5, "round trip allocated " .. allocated .. " KiB")
     end)
 
+    it("keeps compressing a short message almost garbage-free", function()
+        local message = string.rep("sync:42;", 4) -- 32 bytes
+        local allocated = measure(function()
+            CodecKit:Compress(message)
+        end)
+        assert.is_true(
+            allocated / ITERATIONS < 2,
+            "Compress allocated " .. allocated / ITERATIONS .. " KiB per call"
+        )
+        assert.is_true(
+            allocated < THRESHOLD_KILOBYTES,
+            "Compress allocated " .. allocated .. " KiB"
+        )
+    end)
+
     it("returns every leased table and retains a bounded number", function()
         local pool = CodecKit._state.pool
         local big = {}

@@ -68,7 +68,7 @@ Test context, passed to every test body and hook:
 
 | Method | Purpose |
 |---|---|
-| `Replace(table, key, value)` | Replace `table[key]` until the test ends; returns the previous value. |
+| `Replace(table, key, value)` | Replace `table[key]` until the test ends; returns the previous value, or `nil, "full"` past 256 replacements in one test. |
 | `Yield()` | Suspend the test until the runner job's next resume. |
 | `WaitFor(eventName, timeoutSeconds)` | `true, ...payload` when the event fires, or `false, "timeout"`. |
 | `WaitUntil(predicate, timeoutSeconds)` | `true` once `predicate()` is truthy (polled once per frame), or `false, "timeout"`. |
@@ -109,7 +109,7 @@ Unknown option fields are refused; with several, the message names the alphabeti
 
 Suites live in TestKit's shared state for the session. A name already registered is refused with `nil, "taken"`, and a 65th suite with `nil, "full"`; prefix suite names with your addon's name. Nothing is ever unregistered: `/reload` starts over.
 
-A suite whose `addonName` never loads waits for ever, and so does the run; `Reset` abandons it.
+A suite whose `addonName` never loads waits for ever, and so does the run; `Reset` abandons it. A suite whose addon halts or shuts down while it waits does not: it is recorded as skipped and the run goes on (see `Run`).
 
 ## Tests and hooks
 
@@ -145,6 +145,8 @@ Writes `value` to `table[key]` and records what was there. The read and the writ
 Every replacement is undone when the test ends — after the After hooks, whatever the outcome, also after a timeout and when `Reset` abandons the test — **newest first**, so replacing the same key twice restores the original. `nil` is a value like any other: replacing a missing key with something removes it again, and replacing a present key with `nil` puts it back.
 
 `table` must be a table and `key` must not be `nil` or NaN. A secret `value` or `key` is refused. Replacing a global is `ctx:Replace(_G, "Name", value)`.
+
+A test holds at most **256** replacements. Past that nothing is written and `Replace` returns `nil, "full"`; since a previous value may itself be `nil`, check the second value.
 
 ### `ctx:Yield()`
 
@@ -213,7 +215,7 @@ A comparison that a secret makes impossible — `ToBe` or `ToEqual` with a secre
 
 Returns the number of suites it queued. A suite that is already waiting, queued or running is left as it is (with the filter it was queued with) and not counted, so `Run()` during a run adds only what is not already in it. A filter naming a suite or test that does not exist returns `nil, "unknown"` and starts nothing. `"/x"`, `"x/"` and non-strings raise at the caller.
 
-For each selected suite, `Run` subscribes to its phase with `LifecycleKit:ForAddon(addonName):OnLoaded` or `:OnReady`. A phase already reached queues the suite at once (LifecycleKit replays); otherwise it is queued when the phase arrives. A phase that can no longer be reached — the addon halted, or shut down before reaching it — records the selected tests as `"skipped"` with `the ready phase of "MyAddon" can no longer be reached`.
+For each selected suite, `Run` subscribes to its phase with `LifecycleKit:ForAddon(addonName):OnLoaded` or `:OnReady`. A phase already reached queues the suite at once (LifecycleKit replays); otherwise it is queued when the phase arrives. A phase that can no longer be reached records the selected tests as `"skipped"` with `the ready phase of "MyAddon" can no longer be reached (halted)` or `(shutdown)`. That is decided when `Run` subscribes (the addon already halted or shut down) and again while the suite waits: LifecycleKit disconnects a pending phase subscription without calling it when the addon halts or shuts down, so a waiting suite also watches the instance's `OnHalted` and `OnShutdown`, and the run goes on. The watches are released once the phase arrives.
 
 Tests never run inside `Run`. One SchedulerKit job at a time (`name = "TestKit runner"`, in a Kit-owned scope) takes suites off the queue in the order their phases arrived and runs their tests one at a time. Between tests it yields when `ShouldYield()` says the frame budget is spent.
 
@@ -280,10 +282,10 @@ Several development addons may embed TestKit; Registry selects the newest compat
 
 Against the package plan in `docs/ROADMAP.md` ("Package D planned Kits — the nine points", testKit):
 
-1. **Excluded from release bundles by a manifest flag, not only by `.pkgmeta`.** Point 1 says "excluded from release bundles by `.pkgmeta`". A `.pkgmeta` ignore line keeps TestKit out of what the packager uploads, but `python3 -m tooling.package.build --all` would still put it in the locally built bundle and its `manifest.json`, so the two artifacts would disagree. The recommended mechanism is a manifest field `"distribution": "development"` that the builder skips, together with the `.pkgmeta` line. The manifest validator rejects unknown fields today, so this package does not declare the field yet; the tooling change belongs to the repository, not to this package.
+1. **Excluded from release bundles by the manifest and by `.pkgmeta`.** Point 1 says "excluded from release bundles by `.pkgmeta`". A `.pkgmeta` line alone would keep TestKit out of what the packager uploads while `python3 -m tooling.package.build --all` still bundled it, so the two artifacts would disagree. The manifest therefore declares `"distribution": "development"` (see `docs/PACKAGE_MANIFEST.md`, "Distribution"): the builder skips the package in `--all` builds and lists it under `skipped`, refuses it with `--package`, the validator refuses a release package that depends on it, and repository validation requires the `- packages/testKit` line under `.pkgmeta` `ignore:`, which is present. TestKit is still tested and linted like any package.
 2. **The fixture-fidelity suite lives in `fidelity/`, not `tests/`.** Point 4 says the suite is "shipped in `tests/`". `tests/` is Busted's directory: every file there is loaded as a spec or a spec helper, is linted with Busted's globals, and is never copied into a bundle. The fidelity suite is an addon file that runs in the client, so it has its own directory beside `src/`; its Busted counterpart is `tests/FixtureFidelity_spec.lua`.
 3. **Suite options `addonName` and `timeoutSeconds`.** Point 4 names `{ phase }` only. A phase belongs to one addon, so the suite has to name it (defaulting to the suite name keeps the plan's one-option form working), and the `"timeout"` status needs a limit to measure against.
 4. **`ToBeSecure(table, key)` ignores the value given to `Expect`.** `issecurevariable` asks about a variable, not a value; `ctx:Expect(nil):ToBeSecure(nil, "CreateFrame")` keeps the one matcher vocabulary.
-5. **Bounds the plan does not name**: 16 Before and 16 After hooks per suite, 64 log lines per test, 16 `OnFinished` callbacks, `nil, "taken"` for a duplicate suite name. Every retention structure is bounded by the design constitution.
+5. **Bounds the plan does not name**: 16 Before and 16 After hooks per suite, 256 replacements and 64 log lines per test, 16 `OnFinished` callbacks, `nil, "taken"` for a duplicate suite name. Every retention structure is bounded by the design constitution.
 6. **EventKit and TimerKit are found, not declared.** Point 3 lists Registry, LifecycleKit and SchedulerKit. `WaitFor` and the timeouts need EventKit and TimerKit, which are in those packages' closures; they are found with `Registry:Find` when first needed rather than added as edges.
 7. **`Reset` abandons a run in progress** instead of refusing, so a suite waiting for a phase that never comes can always be cleared.

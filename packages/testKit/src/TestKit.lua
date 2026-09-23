@@ -67,6 +67,7 @@ local MAX_HOOKS = 16
 local MAX_LOG_LINES = 64
 local MAX_FINISHED_CALLBACKS = 16
 local MAX_EQUAL_DEPTH = 16
+local MAX_REPLACEMENTS = 256
 
 -- A failure message quotes at most this many bytes of any string value, so a
 -- report never carries a long string a test happened to compare.
@@ -159,7 +160,7 @@ local MATCHER_METHODS = { "ToBe", "ToEqual", "ToBeTruthy", "ToBeNil", "ToRaise",
 
 ---What a test, and its hooks, receive.
 ---@class TestKit.Context
----@field Replace fun(self: TestKit.Context, target: table, key: any, value: any): any
+---@field Replace fun(self: TestKit.Context, target: table, key: any, value: any): any, string?
 ---@field Yield fun(self: TestKit.Context)
 ---@field WaitFor fun(self: TestKit.Context, eventName: string, timeoutSeconds: number): boolean, ...
 ---@field WaitUntil fun(self: TestKit.Context, predicate: fun(): any, timeoutSeconds: number): boolean, string?
@@ -1064,12 +1065,15 @@ end
 ---The write is raw, and so is the read of the previous value, so a key that
 ---was only reachable through `__index` comes back as it was. Replacements are
 ---undone after the test's After hooks, in reverse order, whatever the outcome.
----A secret value is refused. Returns the previous value.
+---A secret value is refused. Returns the previous value. A test holds at most
+---256 replacements: past that nothing is written and the call returns
+---`nil, "full"`, so a caller that cares checks the second value.
 ---@param self TestKit.Context
 ---@param target table
 ---@param key any
 ---@param value any
 ---@return any previous
+---@return string? reason `"full"` when the test already holds 256 replacements
 local function contextReplace(self, target, key, value)
     local record = validateContext(self, "TestKit.Context:Replace", 3)
     if type(target) ~= "table" then
@@ -1086,6 +1090,10 @@ local function contextReplace(self, target, key, value)
     end
     if isSecret(value) then
         error("TestKit.Context:Replace value must not be a secret value", 2)
+    end
+
+    if record.replacementCount >= MAX_REPLACEMENTS then
+        return nil, REASON_FULL
     end
 
     local previous = rawget(target, key)
@@ -1827,6 +1835,20 @@ local function removeWaiting(entry)
     end
 end
 
+---Disconnect the halt and shutdown watches of an entry, if it has any. An
+---entry queued by an older revision has none.
+---@param entry table
+local function releaseLostWatches(entry)
+    local watches = entry.lostWatches
+    if type(watches) ~= "table" then
+        return
+    end
+    entry.lostWatches = false
+    for index = 1, #watches do
+        watches[index]:Disconnect()
+    end
+end
+
 ---An entry's LifecycleKit phase was reached: queue it and start the runner.
 ---@param entry table
 local function phaseReached(entry)
@@ -1834,9 +1856,51 @@ local function phaseReached(entry)
         return
     end
     removeWaiting(entry)
+    releaseLostWatches(entry)
     entry.status = ENTRY_QUEUED
     queue[#queue + 1] = entry
     scheduleRunner(false)
+end
+
+---Build the message a skipped entry records when its phase became
+---unreachable.
+---@param suite table
+---@param cause string `"halted"` or `"shutdown"`
+---@return string
+local function unreachableMessage(suite, cause)
+    return "the "
+        .. rawget(suite, "_phase")
+        .. " phase of "
+        .. quoteString(rawget(suite, "_addonName"))
+        .. " can no longer be reached ("
+        .. cause
+        .. ")"
+end
+
+---A waiting entry's addon halted or shut down: LifecycleKit disconnects the
+---phase subscription without calling it, so the entry is skipped here and the
+---runner woken to finish the run.
+---@param entry table
+---@param cause string `"halted"` or `"shutdown"`
+local function phaseLost(entry, cause)
+    if entry.status ~= ENTRY_WAITING then
+        return
+    end
+    removeWaiting(entry)
+    releaseLostWatches(entry)
+    skipEntry(entry, unreachableMessage(entry.suite, cause))
+    scheduleRunner(false)
+end
+
+---Build the halt or shutdown watch callback of one entry.
+---@param entry table
+---@param cause string
+---@return fun()
+local function newLostCallback(entry, cause)
+    return function()
+        local lost = rawget(dispatch, "phaseLost")
+        lost(entry, cause)
+    end
 end
 
 ---Build the phase subscription callback of one entry.
@@ -1850,8 +1914,10 @@ local function newPhaseCallback(entry)
 end
 
 ---Queue one run of `suite` behind its phase. A phase already reached queues
----it at once (LifecycleKit replays); a phase that can no longer be reached
----(the addon halted or shut down) records its tests as skipped.
+---it at once (LifecycleKit replays). A phase that can no longer be reached —
+---the addon halted or shut down, now or later while the entry waits — records
+---its tests as skipped: LifecycleKit disconnects a pending phase subscription
+---without calling it, so the entry also watches `OnHalted` and `OnShutdown`.
 ---@param suite table
 ---@param testName string|false
 local function startEntry(suite, testName)
@@ -1861,6 +1927,7 @@ local function startEntry(suite, testName)
         status = ENTRY_WAITING,
         nextIndex = 1,
         subscription = false,
+        lostWatches = false,
     }
     rawset(suite, "_entry", entry)
     rawset(state, "runActive", true)
@@ -1875,17 +1942,19 @@ local function startEntry(suite, testName)
     end
     entry.subscription = subscription
 
-    if entry.status == ENTRY_WAITING and not subscription:IsConnected() then
-        removeWaiting(entry)
-        skipEntry(
-            entry,
-            "the "
-                .. rawget(suite, "_phase")
-                .. " phase of "
-                .. quoteString(rawget(suite, "_addonName"))
-                .. " can no longer be reached"
-        )
+    if entry.status ~= ENTRY_WAITING then
+        return
     end
+    if not subscription:IsConnected() then
+        local cause = instance:GetState() == "halted" and "halted" or "shutdown"
+        removeWaiting(entry)
+        skipEntry(entry, unreachableMessage(suite, cause))
+        return
+    end
+    entry.lostWatches = {
+        instance:OnHalted(newLostCallback(entry, "halted")),
+        instance:OnShutdown(newLostCallback(entry, "shutdown")),
+    }
 end
 
 ---Abandon the run in progress: disconnect waiting entries, empty the queue,
@@ -1900,6 +1969,7 @@ local function abortRun()
         if entry.subscription ~= false then
             entry.subscription:Disconnect()
         end
+        releaseLostWatches(entry)
     end
     for index = #queue, 1, -1 do
         local entry = queue[index]
@@ -2082,6 +2152,7 @@ rawset(TestKit, "Reset", packageReset)
 
 rawset(dispatch, "runnerBody", runnerBody)
 rawset(dispatch, "phaseReached", phaseReached)
+rawset(dispatch, "phaseLost", phaseLost)
 rawset(dispatch, "deadlineReached", deadlineReached)
 rawset(dispatch, "eventArrived", eventArrived)
 rawset(dispatch, "waitTimedOut", waitTimedOut)

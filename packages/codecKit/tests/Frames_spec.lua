@@ -150,6 +150,15 @@ describe("CodecKit frames", function()
         assert.is_true(TestEnv.Same(sample, value))
     end)
 
+    it("accepts a print frame that starts with any whitespace %s strips", function()
+        local _, text = CodecKit:Encode({ 1, 2 }, { channel = "print" })
+        for _, prefix in ipairs({ " ", "\t", "\n", "\v", "\f", "\r" }) do
+            local ok, value = CodecKit:Decode(prefix .. text)
+            assert.is_true(ok, tostring(value))
+            assert.are.same({ 1, 2 }, value)
+        end
+    end)
+
     it("keeps nil in the middle and at the end of an argument list", function()
         for _, channel in ipairs({ "none", "addon", "print" }) do
             local ok, text = CodecKit:EncodeMany({ channel = channel }, 1, nil, "three", nil, nil)

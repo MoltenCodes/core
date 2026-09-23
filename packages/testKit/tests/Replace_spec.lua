@@ -127,6 +127,22 @@ describe("TestKit ctx:Replace", function()
         assert.is_truthy(messages[3]:find("target must be a table", 1, true))
     end)
 
+    it("holds at most 256 replacements per test and refuses more with full", function()
+        local target = {}
+        local outcome = nil
+        local suite = TestKit:Suite("MyAddon")
+        suite:Test("replaces a lot", function(ctx)
+            for index = 1, 256 do
+                ctx:Replace(target, index, true)
+            end
+            outcome = { ctx:Replace(target, "one too many", true) }
+        end)
+
+        TestEnv.RunToEnd(TestKit)
+        assert.are.same({ nil, "full" }, outcome)
+        assert.is_nil(next(target))
+    end)
+
     it("refuses a context used after its test finished", function()
         local kept = nil
         local suite = TestKit:Suite("MyAddon")

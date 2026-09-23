@@ -84,6 +84,12 @@ local MAX_NESTING = 4
 -- client itself stops at the first gap; the bound only stops a pathological one.
 local MAX_SLASH_ALIASES = 16
 
+-- The emote indexes and the commands per emote the emote check reads:
+-- `EMOTE<index>_CMD<n>` for index 1..MAX_EMOTES (or the host's
+-- `MAXEMOTEINDEX`, when it is a smaller number) and n up to the first gap.
+local MAX_EMOTES = 1024
+local MAX_EMOTE_COMMANDS = 8
+
 -- The most candidates one completion offers, and the most lines a capture sink
 -- keeps (the oldest are dropped).
 local MAX_COMPLETIONS = 32
@@ -206,11 +212,11 @@ local BYTE_TEXTURE = 84 -- "T": starts a texture
 
 ---The owner of a set of slash commands, released together by `Close`.
 ---@class CommandKit.Scope
----@field Register fun(self: CommandKit.Scope, name: string, spec: CommandKit.CommandSpec): true|nil, "taken"|"full"|nil
+---@field Register fun(self: CommandKit.Scope, name: string, spec: CommandKit.CommandSpec): true|nil, "taken"|"emote"|"full"|nil
 ---@field Unregister fun(self: CommandKit.Scope, name: string): boolean
 ---@field IsRegistered fun(self: CommandKit.Scope, name: string): boolean
 ---@field SetSink fun(self: CommandKit.Scope, sink: CommandKit.Sink?)
----@field BindOptions fun(self: CommandKit.Scope, tree: table, commandName: string, options: CommandKit.BindOptions?): true|nil, "taken"|"full"|nil
+---@field BindOptions fun(self: CommandKit.Scope, tree: table, commandName: string, options: CommandKit.BindOptions?): true|nil, "taken"|"emote"|"full"|nil
 ---@field EnableCompletion fun(self: CommandKit.Scope): boolean
 ---@field DisableCompletion fun(self: CommandKit.Scope): boolean
 ---@field Close fun(self: CommandKit.Scope): boolean
@@ -608,8 +614,10 @@ end
 -- Parser ---------------------------------------------------------------------
 --
 -- One pass over the text, byte by byte, with no state outside the call. A
--- token is a run of non-whitespace bytes, a quoted string, or either of those
--- containing escape sequences that the client displays as one unit:
+-- token is one or more adjacent segments, joined: a quoted segment
+-- (`"double"`, or `'single'` when it closes before a boundary) or a bare run of
+-- non-whitespace bytes. Inside a bare run, escape sequences the client
+-- displays as one unit are kept whole even when they contain spaces:
 --
 --   `|H<data>|h<text>|h`   a hyperlink; its text is usually `[Name With Spaces]`
 --   `|c<colour><text>|r`   colour-wrapped text, often around a hyperlink
@@ -625,13 +633,22 @@ local function isSpace(byte)
     return byte == BYTE_SPACE or byte == BYTE_TAB or byte == BYTE_NEWLINE or byte == BYTE_RETURN
 end
 
+---Whether `byte` is a quote character.
+---@param byte integer|nil
+---@return boolean
+local function isQuote(byte)
+    return byte == BYTE_DOUBLE_QUOTE or byte == BYTE_SINGLE_QUOTE
+end
+
 ---Skip one escape sequence that starts with the pipe at `position`, and return
 ---the position after it. A hyperlink without both of its `|h` markers is
----refused; a colour code or texture without its terminator is ordinary text.
+---refused. A colour code groups its text only when its `|r` comes before the
+---next `|c`, so an unclosed colour never swallows text up to another colour's
+---`|r`; an unclosed colour code or texture is ordinary text.
 ---@param text string
 ---@param position integer the position of a `|`
 ---@param length integer `#text`
----@param inQuotes boolean whether the sequence is inside a quoted string
+---@param inQuotes boolean whether the sequence is inside a quoted segment
 ---@return integer|nil nextPosition
 ---@return string|nil reason
 local function skipEscape(text, position, length, inQuotes)
@@ -653,14 +670,17 @@ local function skipEscape(text, position, length, inQuotes)
         end
         return textEnd + 2
     end
-    -- Inside quotes only the closing quote ends the token, so a colour code or
-    -- texture needs no grouping there; a hyperlink still does, because its
+    -- Inside quotes only the closing quote ends the segment, so a colour code
+    -- or texture needs no grouping there; a hyperlink still does, because its
     -- text may contain a quote.
     if not inQuotes then
         if marker == BYTE_COLOUR then
             local close = text:find("|r", position + 2, true)
             if close ~= nil then
-                return close + 2
+                local nextColour = text:find("|c", position + 2, true)
+                if nextColour == nil or nextColour > close then
+                    return close + 2
+                end
             end
         elseif marker == BYTE_TEXTURE then
             local close = text:find("|t", position + 2, true)
@@ -672,31 +692,30 @@ local function skipEscape(text, position, length, inQuotes)
     return position + 2
 end
 
----Read a quoted token whose opening quote is at `position`.
+---Find the closing quote of a quoted segment opened at `position`. A
+---backslash before the quote character or before another backslash escapes
+---it.
 ---@param text string
----@param position integer
+---@param position integer the position of the opening quote
 ---@param length integer
 ---@param quote integer the quote byte
----@return string|nil token
----@return integer|string nextPositionOrReason
-local function readQuoted(text, position, length, quote)
+---@return integer|nil close the position of the closing quote
+---@return boolean|string escapedOrReason whether an escape was seen, or why there is no close
+local function findClosingQuote(text, position, length, quote)
     local cursor = position + 1
     local escaped = false
     while cursor <= length do
         local byte = text:byte(cursor)
-        if byte == BYTE_BACKSLASH and text:byte(cursor + 1) == quote then
-            escaped = true
-            cursor = cursor + 2
-        elseif byte == quote then
-            local token = text:sub(position + 1, cursor - 1)
-            if escaped then
-                if quote == BYTE_DOUBLE_QUOTE then
-                    token = (token:gsub('\\"', '"'))
-                else
-                    token = (token:gsub("\\'", "'"))
-                end
+        if byte == BYTE_BACKSLASH then
+            local nextByte = text:byte(cursor + 1)
+            if nextByte == quote or nextByte == BYTE_BACKSLASH then
+                escaped = true
+                cursor = cursor + 2
+            else
+                cursor = cursor + 1
             end
-            return token, cursor + 1
+        elseif byte == quote then
+            return cursor, escaped
         elseif byte == BYTE_PIPE then
             local nextPosition, reason = skipEscape(text, cursor, length, true)
             if nextPosition == nil then
@@ -710,11 +729,22 @@ local function readQuoted(text, position, length, quote)
     return nil, "unterminated quote"
 end
 
----Read an unquoted token starting at `position`.
+---Remove the escapes from a quoted segment's text.
+---@param segment string
+---@param quote integer the quote byte
+---@return string
+local function unescape(segment, quote)
+    if quote == BYTE_DOUBLE_QUOTE then
+        return (segment:gsub('\\([\\"])', "%1"))
+    end
+    return (segment:gsub("\\([\\'])", "%1"))
+end
+
+---Read a bare run starting at `position`, up to whitespace or the end.
 ---@param text string
 ---@param position integer
 ---@param length integer
----@return string|nil token
+---@return string|nil segment
 ---@return integer|string nextPositionOrReason
 local function readBare(text, position, length)
     local cursor = position
@@ -739,6 +769,69 @@ local function readBare(text, position, length)
     return text:sub(position, cursor - 1), cursor
 end
 
+---Read one token starting at `position`: adjacent segments, joined.
+---
+---A quote opens a quoted segment at the start of a token or right after a
+---quoted segment closed. A double quote always does, and an unclosed one is
+---refused. A single quote does only when its closing quote is followed by
+---whitespace, the end of the text or another quote; otherwise it is an
+---apostrophe (`'twas`, `it's`) and the rest of the token is a bare run.
+---@param text string
+---@param position integer
+---@param length integer
+---@return string|nil token
+---@return integer|string nextPositionOrReason
+local function readToken(text, position, length)
+    local token = nil
+    local cursor = position
+    local quoteMayOpen = true
+    while cursor <= length do
+        local byte = text:byte(cursor)
+        if isSpace(byte) then
+            break
+        end
+        local segment
+        ---@type integer|nil
+        local close = nil
+        ---@type boolean|string
+        local escapedOrReason = false
+        if quoteMayOpen and isQuote(byte) then
+            close, escapedOrReason = findClosingQuote(text, cursor, length, byte)
+            if close == nil and byte == BYTE_DOUBLE_QUOTE then
+                return nil, escapedOrReason --[[@as string]]
+            end
+            if close ~= nil and byte == BYTE_SINGLE_QUOTE then
+                local after = text:byte(close + 1)
+                if after ~= nil and not isSpace(after) and not isQuote(after) then
+                    close = nil
+                end
+            end
+        end
+        if close ~= nil then
+            segment = text:sub(cursor + 1, close - 1)
+            if escapedOrReason == true then
+                segment = unescape(segment, byte)
+            end
+            cursor = close + 1
+            quoteMayOpen = true
+        else
+            local nextPosition
+            segment, nextPosition = readBare(text, cursor, length)
+            if segment == nil then
+                return nil, nextPosition
+            end
+            cursor = nextPosition --[[@as integer]]
+            quoteMayOpen = false
+        end
+        if token == nil then
+            token = segment
+        else
+            token = token .. segment
+        end
+    end
+    return token, cursor
+end
+
 ---Tokenise `text` into `array[1..count]` and clear every slot after `count`.
 ---On a refusal the array is left empty.
 ---
@@ -755,16 +848,10 @@ local function tokenize(text, array)
     local position = 1
     local failure = nil
     while position <= length do
-        local byte = text:byte(position)
-        if isSpace(byte) then
+        if isSpace(text:byte(position)) then
             position = position + 1
         else
-            local token, nextPosition
-            if byte == BYTE_DOUBLE_QUOTE or byte == BYTE_SINGLE_QUOTE then
-                token, nextPosition = readQuoted(text, position, length, byte)
-            else
-                token, nextPosition = readBare(text, position, length)
-            end
+            local token, nextPosition = readToken(text, position, length)
             if token == nil then
                 failure = nextPosition
                 break
@@ -1297,6 +1384,59 @@ local function hasForeignSlash(tableName, upperSlash)
     return false
 end
 
+---Whether a chat type claims `upperSlash`. The client resolves chat types
+---(`/s`, `/g`, `/w`, …) before slash commands, so a slash command with such a
+---name would never run. Reads the keys of `ChatTypeInfo` and each key's
+---`SLASH_<TYPE>1..n` globals up to the first gap.
+---@param upperSlash string
+---@return boolean
+local function isChatTypeSlash(upperSlash)
+    local chatTypes = readGlobal("ChatTypeInfo")
+    if type(chatTypes) ~= "table" then
+        return false
+    end
+    for chatType in next, chatTypes do
+        if type(chatType) == "string" then
+            for index = 1, MAX_SLASH_ALIASES do
+                local value = readGlobal("SLASH_" .. chatType .. index)
+                if type(value) ~= "string" then
+                    break
+                end
+                if value:upper() == upperSlash then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+---Whether an emote claims `upperSlash`. The client resolves slash commands
+---before emotes, so a command with an emote's name would silently shadow it.
+---Reads `EMOTE<index>_CMD<n>` by constructed name, never by scanning the
+---global table.
+---@param upperSlash string
+---@return boolean
+local function isEmoteSlash(upperSlash)
+    local count = MAX_EMOTES
+    local hostCount = readGlobal("MAXEMOTEINDEX")
+    if type(hostCount) == "number" and hostCount >= 0 and hostCount < count then
+        count = hostCount
+    end
+    for index = 1, count do
+        for command = 1, MAX_EMOTE_COMMANDS do
+            local value = readGlobal("EMOTE" .. index .. "_CMD" .. command)
+            if type(value) ~= "string" then
+                break
+            end
+            if value:upper() == upperSlash then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 ---The permanent dispatcher written under `key`.
 ---@param key string
 ---@return function
@@ -1313,7 +1453,7 @@ end
 ---@param methodName string qualified public method name, used in the argument errors
 ---@param level integer stack level the failures are reported at
 ---@return true|nil registered
----@return "taken"|"full"|nil reason
+---@return "taken"|"emote"|"full"|nil reason
 local function registerCommand(scope, name, spec, methodName, level)
     validateScope(scope, methodName, level + 1)
     ensureOpen(scope, methodName, level + 1)
@@ -1350,9 +1490,14 @@ local function registerCommand(scope, name, spec, methodName, level)
     end
     local upperSlash = "/" .. lowerName:upper()
     if
-        hasForeignSlash("SlashCmdList", upperSlash) or hasForeignSlash("SecureCmdList", upperSlash)
+        hasForeignSlash("SlashCmdList", upperSlash)
+        or hasForeignSlash("SecureCmdList", upperSlash)
+        or isChatTypeSlash(upperSlash)
     then
         return nil, "taken"
+    end
+    if isEmoteSlash(upperSlash) then
+        return nil, "emote"
     end
 
     local handler = slashHandlers[key]
@@ -2460,13 +2605,14 @@ end
 
 -- Scope methods --------------------------------------------------------------
 
----Register `/name`. Returns `true`, `nil, "taken"` when another owner uses
----the slash name, or `nil, "full"` when the scope holds `MAX_COMMANDS`.
+---Register `/name`. Returns `true`, `nil, "taken"` when another owner or a
+---chat type uses the slash name, `nil, "emote"` when an emote does, or
+---`nil, "full"` when the scope holds `MAX_COMMANDS`.
 ---@param self CommandKit.Scope
 ---@param name string the slash name without the slash
 ---@param spec CommandKit.CommandSpec
 ---@return true|nil registered
----@return "taken"|"full"|nil reason
+---@return "taken"|"emote"|"full"|nil reason
 local function scopeRegister(self, name, spec)
     -- Not a tail call: a tail call would hide this frame from `error` levels.
     local registered, reason = registerCommand(self, name, spec, "CommandKit.Scope:Register", 3)
@@ -2522,7 +2668,7 @@ end
 ---@param commandName string
 ---@param options CommandKit.BindOptions?
 ---@return true|nil registered
----@return "taken"|"full"|nil reason
+---@return "taken"|"emote"|"full"|nil reason
 local function scopeBindOptions(self, tree, commandName, options)
     local methodName = "CommandKit.Scope:BindOptions"
     validateScope(self, methodName, 3)

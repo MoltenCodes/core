@@ -74,32 +74,40 @@ A frame is `{ tokens = {}, arguments = {}, context = <context> }`. `acquireFrame
 `tokenize(text, array)` is one loop over byte positions with no state outside the call. Bytes are compared as numbers (`string.byte`), and the terminators of an escape sequence are found with plain `string.find`, so nothing but the token strings is allocated.
 
 ```text
-            ┌──────────── whitespace: advance ────────────┐
-            ▼                                             │
-        ┌────────┐  " or '   ┌──────────┐ closing quote   │
- start ─▶ BETWEEN ├─────────▶│  QUOTED  ├─────────────────┤ emit (unescaped)
-        └───┬────┘           └──┬───┬───┘                 │
-            │ other byte        │   │ \ + quote: skip two │
-            ▼                   │   │ |H: skip link  ─────┼─▶ no |h|h: "unterminated link"
-        ┌────────┐              │   │ ||: skip two        │
-        │  BARE  │              │   └ end of text ────────┼─▶ "unterminated quote"
-        └─┬──┬───┘              │                         │
-          │  │ whitespace or end of text ─────────────────┘ emit
-          │  │
-          │  └ | : ESCAPE
-          │        ||      → skip two bytes
-          │        |H      → find "|h", then the next "|h"; skip past it
-          │                  (either missing: "unterminated link")
-          │        |c      → find "|r"; skip past it (missing: skip two bytes)
-          │        |T      → find "|t"; skip past it (missing: skip two bytes)
-          │        other   → skip two bytes
-          └ other byte: advance
+BETWEEN     whitespace: advance; anything else: start a token in SEGMENT
+
+SEGMENT     (a quote may open here: token start, or right after a closing quote)
+  "         find the closing " → QUOTED segment, then SEGMENT again
+            none: "unterminated quote" (or "unterminated link" from inside)
+  '         find the closing ' → if it is followed by whitespace, the end or
+            a quote: QUOTED segment, then SEGMENT again; otherwise BARE
+            (the ' is an apostrophe)
+  other     BARE
+  whitespace or end: emit the joined segments, back to BETWEEN
+
+QUOTED      scanning for the closing quote
+  \ + quote or \ + \   skip two bytes, remember an escape
+  |H                    skip the link (missing |h: "unterminated link")
+  ||                    skip two bytes
+  other                 advance
+
+BARE        up to whitespace or the end; quotes are ordinary bytes here
+  |                     ESCAPE
+  other                 advance
+
+ESCAPE
+  ||      skip two bytes
+  |H      find "|h", then the next "|h"; skip past it (missing: "unterminated link")
+  |c      find "|r"; skip past it when it comes before the next "|c",
+          otherwise skip two bytes
+  |T      find "|t"; skip past it (missing: skip two bytes)
+  other   skip two bytes
 ```
 
-- A quote opens a quoted token only in `BETWEEN`; inside a bare token it is an ordinary byte.
-- A quoted token ends at its closing quote even when a non-space byte follows (`"a"b` is `a`, then `b`).
+- Adjacent segments join (`"a"b` is `ab`); a token of one segment is one `string.sub`, so joining allocates only when segments really are joined.
 - Inside quotes only `||` and hyperlinks are skipped as units: a link's text may contain a quote, while colour codes and textures cannot hide the closing quote.
-- Escapes are removed with one `gsub` only when the token had one.
+- Escapes are removed with one `gsub` only when the segment had one.
+- A single quote that does not close before a boundary is read as an apostrophe, so `'twas` and `don't` never fail; only an unclosed double quote is refused.
 - On a refusal every slot of the array is cleared, so a caller never sees half a parse.
 
 ## Completion

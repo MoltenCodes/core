@@ -29,6 +29,7 @@ CURSEFORGE
 FRIZQT
 langmask
 libstub
+MAXEMOTEINDEX
 MOLTENCODES
 myaddon
 Pandaria

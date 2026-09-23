@@ -67,7 +67,37 @@ describe("CommandKit parsing", function()
         local array, reason = CommandKit:Parse([[set "two words]])
         assert.is_nil(array)
         assert.are.equal("unterminated quote", reason)
-        assert.are.same({ nil, "unterminated quote" }, { CommandKit:Parse("'open") })
+        assert.are.same({ nil, "unterminated quote" }, { CommandKit:Parse('x "open') })
+    end)
+
+    it("reads a single quote without a closing quote before a boundary as an apostrophe", function()
+        assert.are.same(
+            { "'twas", "the", "night's", "end" },
+            CommandKit:Parse("'twas the night's end")
+        )
+        assert.are.same({ "'open" }, CommandKit:Parse("'open"))
+        assert.are.same({ "don't", "stop" }, CommandKit:Parse("don't stop"))
+        assert.are.same({ "a b" }, CommandKit:Parse("'a b'"))
+    end)
+
+    it("joins adjacent quoted and bare segments into one token", function()
+        assert.are.same({ "foobar", "x" }, CommandKit:Parse('"foo"bar x'))
+        assert.are.same({ "its" }, CommandKit:Parse("'it''s'"))
+        assert.are.same({ "two wordsand 'more'" }, CommandKit:Parse([["two words"'and '"'more'"]]))
+        -- A quote inside a bare run stays literal.
+        assert.are.same({ 'say"hi"' }, CommandKit:Parse('say"hi"'))
+    end)
+
+    it("unescapes a backslash escaped with a backslash", function()
+        assert.are.same({ [[C:\]], "next" }, CommandKit:Parse([["C:\\" next]]))
+        assert.are.same({ [[a\b]] }, CommandKit:Parse([['a\\b']]))
+    end)
+
+    it("does not let an unclosed colour swallow text up to another colour's |r", function()
+        assert.are.same(
+            { "|cffff0000red", "and", "|cff00ff00green text|r" },
+            CommandKit:Parse("|cffff0000red and |cff00ff00green text|r")
+        )
     end)
 
     it("refuses an unterminated hyperlink", function()

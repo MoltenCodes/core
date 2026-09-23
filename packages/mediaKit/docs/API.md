@@ -77,7 +77,7 @@ The type is kept as given: `Fetch` returns the string or the number, and `MediaK
 
 ## Scripts
 
-A font declares the writing scripts it renders with `options.scripts`, an array of names from this fixed set. Without the option a font renders every script.
+A font declares the writing scripts it renders with `options.scripts`, an array of names from this fixed set. **Without the option a font is taken to render `latin` only**, as LibSharedMedia assumes; declare the scripts explicitly for any font that renders more.
 
 | Script | Client locales that write it |
 |---|---|
@@ -111,7 +111,7 @@ MediaKit:Register("font", "MyPack Sans", [[Interface\AddOns\MyPack\Sans.ttf]], {
 
 | Result | When |
 |---|---|
-| `true` | The entry was added, **or** the name already holds the same data (and, for a font, the same set of scripts). The second case changes nothing and fires nothing. |
+| `true` | The entry was added, **or** the name already holds the same data (and, for a font, the same set of scripts; an undeclared font's set is `{ "latin" }`). The second case changes nothing and fires nothing. |
 | `nil, "taken"` | The name already holds different data or scripts, whoever registered it: another addon, the built-ins, or LibSharedMedia through adoption. The first registration stays. |
 | `nil, "full"` | The type already holds `MAX_ENTRIES_PER_TYPE` (1024) entries, counting built-ins and adopted ones. |
 
@@ -119,7 +119,7 @@ A path and a FileDataID are never "the same data", even for the same file. Scrip
 
 | Option | Default | Meaning |
 |---|---|---|
-| `scripts` | every script | Fonts only; a non-empty array of script names. Refused for other types. |
+| `scripts` | `{ "latin" }` | Fonts only; a non-empty array of script names. Refused for other types. |
 
 Raised at the caller: an unknown type; a name that is not a non-empty string; data that is neither a non-empty string nor a FileDataID; a secret type, name or data; an option table that is not a table or has an unknown field; `scripts` on a non-font, empty, not a table, or naming an unknown script.
 
@@ -171,9 +171,9 @@ Returns the defaults object of `consumerName`, the same object on every call. Th
 | Method | Meaning |
 |---|---|
 | `defaults:Set(type, name)` | Choose `name` for `type`, or clear the choice with `nil`. The name need not be registered yet. |
-| `defaults:Get(type)` | The chosen name when `Has(type, name)` is true on this client, otherwise the type's built-in fallback below. |
+| `defaults:Get(type)` | The first name this client can use (`Has(type, name)` is true) of, in order: the consumer's choice, the type's built-in fallback below, the first name of `List(type)` (for fonts, filtered to the client's script, adopted LibSharedMedia fonts included). `nil` only when the type holds nothing this client can use. |
 
-Because `Get` checks at every call, a choice from a pack that loads later is answered as soon as the pack registers it, and a font the client cannot render yields the fallback instead. At most 1024 consumers are created; the next new name raises at the caller.
+Because `Get` checks at every call, a choice from a pack that loads later is answered as soon as the pack registers it, and a font the client cannot render yields the next step instead. Only fonts reach the third step, on a client whose script no built-in font renders. `Get` allocates nothing while the list is cached. At most 1024 consumers are created; the next new name raises at the caller.
 
 ### Built-in media
 
@@ -197,7 +197,7 @@ These are **the client's own files**, shipped with the game on every flavour; Me
 | `statusbar` | `Solid` | `Interface\Buttons\WHITE8X8` | |
 | `texture` | `Solid` | `Interface\Buttons\WHITE8X8` | yes |
 
-The built-in fonts render `latin` on every client, and `latin` and `cyrillic` on a `ruRU` client, which ships the Cyrillic files above. No built-in font renders a CJK or Korean script, because those clients' font files differ by locale and are not part of this contract; on such a client `List("font")` holds only pack fonts, and `defaults:Get("font")` answers `"Friz Quadrata TT"`, which `Fetch` then refuses without `anyScript`. LibSharedMedia registers those clients' own fonts, so `AdoptLibSharedMedia` makes them available.
+The built-in fonts render `latin` on every client, and `latin` and `cyrillic` on a `ruRU` client, which ships the Cyrillic files above. No built-in font renders a CJK or Korean script, because those clients' font files differ by locale and are not part of this contract; on such a client `List("font")` holds only pack fonts that declare the script, and `defaults:Get("font")` answers the first of them (or `nil` when there is none). LibSharedMedia registers those clients' own fonts, so `AdoptLibSharedMedia` makes them available.
 
 ## LibSharedMedia-3.0
 
@@ -222,7 +222,7 @@ local found, mirrored = MediaKit:MirrorToLibSharedMedia()
 ```
 
 - Calls `LibSharedMedia:Register(type, name, data, langmask)` for every MediaKit entry of the shared types that was **not** adopted from it and whose name LibSharedMedia does not hold yet, in sorted name order. Built-ins LibSharedMedia already has are skipped by the same rule.
-- For a font, `langmask` is the sum of LibSharedMedia's `LOCALE_BIT_*` values for the scripts it declares (`latin` → `LOCALE_BIT_western`, `cyrillic` → `LOCALE_BIT_ruRU`, `cjkSimplified` → `LOCALE_BIT_zhCN`, `cjkTraditional` → `LOCALE_BIT_zhTW`, `korean` → `LOCALE_BIT_koKR`; `greek` and `japanese` add nothing), read from the library and defaulting to its long-standing values `128`, `2`, `4`, `8`, `1`. LibSharedMedia may refuse a font its mask excludes on this client; that is its rule.
+- For a font, `langmask` is the sum of LibSharedMedia's `LOCALE_BIT_*` values for the scripts it declares, so an undeclared font is `LOCALE_BIT_western` only (`latin` → `LOCALE_BIT_western`, `cyrillic` → `LOCALE_BIT_ruRU`, `cjkSimplified` → `LOCALE_BIT_zhCN`, `cjkTraditional` → `LOCALE_BIT_zhTW`, `korean` → `LOCALE_BIT_koKR`; `greek` and `japanese` add nothing), read from the library and defaulting to its long-standing values `128`, `2`, `4`, `8`, `1`. LibSharedMedia may refuse a font its mask excludes on this client; that is its rule.
 - From then on, every successful `Register` of a shared type is mirrored the same way before `OnRegistered` fires.
 - Returns `true` and the number of entries LibSharedMedia accepted in this call, or `false, "absent"`. A second call registers only what is new.
 
@@ -251,7 +251,7 @@ Argument failures report the line that called the public method, never a line in
 | `List` unchanged | Argument checks and a version comparison. No allocation. |
 | `List` after a registration | O(n log n) for n entries; one new array. |
 | `Register` | One entry table; the signal's dispatch; a LibSharedMedia `Register` when mirroring. |
-| `defaults:Get` | As `Has`. No allocation. |
+| `defaults:Get` | At most two `Has` checks and a cached `List`. No allocation while the list is cached. |
 | `AdoptLibSharedMedia` | O(n log n) per type for n LibSharedMedia entries; one temporary name array per type. |
 | `MirrorToLibSharedMedia` | O(n) per type after the list is built. |
 
@@ -270,4 +270,5 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`Defaults(consumerName)`** is the surface for point 2's "per-consumer defaults", with `Set` and `Get`; `Get` falls back to the **built-in media**, which MediaKit registers at load. These are the client's own files, so the non-goal "shipping media" holds.
 - **Additions:** `options.anyScript` on `Fetch`, `Has` and `List`; the `nil, "full"` result; `true` for an identical re-registration; `MAX_ENTRIES_PER_TYPE`; the count returned by the two LibSharedMedia methods; a 1024-consumer bound on `Defaults`.
 - **Listener errors propagate** to the registering caller, as SignalKit's `Fire` does, after the entry is stored; they are not isolated.
-- **No built-in CJK or Korean font**; see [Built-in media](#built-in-media).
+- **No built-in CJK or Korean font**; see [Built-in media](#built-in-media). `defaults:Get` falls back to the first usable listed font instead.
+- **An undeclared font renders `latin` only**, matching LibSharedMedia's default, so a Latin font is never offered to a CJK or Korean client by omission.

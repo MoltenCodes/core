@@ -27,7 +27,7 @@ CommandKit does not rely on `require()` at runtime.
 | Facility | Used by | Without it |
 |---|---|---|
 | `SlashCmdList` | `Register`, `BindOptions` | Both raise at the caller. |
-| `SLASH_<key><n>`, `SecureCmdList` | the taken check | Nothing is found taken. |
+| `SLASH_<key><n>`, `SecureCmdList`, `ChatTypeInfo`, `EMOTE<n>_CMD<m>`, `MAXEMOTEINDEX` | the taken and emote checks | Nothing is found taken. |
 | `DEFAULT_CHAT_FRAME` | the default sink | Output goes to `print`. |
 | `ChatEdit_CustomTabPressed` | `EnableCompletion` | `EnableCompletion` returns `false`; nothing is installed. |
 | `ChatEdit_GetActiveWindow` | completion, when the client passes no edit box | That Tab press is not completed. |
@@ -58,7 +58,7 @@ Scope:
 
 | Method | Purpose |
 |---|---|
-| `Register(name, spec)` | Register `/name`. `true`, or `nil, "taken"` / `nil, "full"`. |
+| `Register(name, spec)` | Register `/name`. `true`, or `nil, "taken"` / `nil, "emote"` / `nil, "full"`. |
 | `Unregister(name)` | Unregister one command. `false` when this scope has no such command. |
 | `IsRegistered(name)` | Whether this scope registered `name`. |
 | `SetSink(sink)` | Send this scope's output to `sink`; `nil` restores the chat frame. |
@@ -151,7 +151,8 @@ local registered, reason = commands:Register("myaddon", {
     },
 })
 if not registered then
-    -- "taken": another addon owns /myaddon; "full": 64 commands already.
+    -- "taken": another addon or a chat type owns /myaddon; "emote": an emote
+    -- does; "full": 64 commands already.
     print("MyAddon could not register its command: " .. reason)
 end
 
@@ -200,16 +201,23 @@ The key is `MOLTENCODES_<ADDON>_<NAME>` for a `ForAddon` scope and `MOLTENCODES_
 | Result | When |
 |---|---|
 | `true` | Registered. |
-| `nil, "taken"` | Another scope has registered the name, or another addon uses it. |
+| `nil, "taken"` | Another scope has registered the name, another addon uses it, or a chat type does (`/s`, `/g`, `/w`, …). |
+| `nil, "emote"` | An emote uses it (`/dance`). |
 | `nil, "full"` | The scope holds `MAX_COMMANDS` commands. |
 
 The spec is checked in full first; every problem with it raises at your line (below). Registering one name twice in one scope raises (`Unregister` it first); registering it from a second scope returns `nil, "taken"`.
 
-**The taken check is best effort.** CommandKit reads the keys of `SlashCmdList` and `SecureCmdList` and, for every key it did not write, the `SLASH_<key>1`, `SLASH_<key>2`, … globals up to the first gap, comparing each with `/NAME` without case. That is how the client itself resolves slash names, so it finds every command registered the documented way. A command another addon registers *after* yours is outside CommandKit's reach: it is that addon's registration that overwrites. Nothing scans the whole global table.
+**The taken check is best effort.** The client resolves a typed `/name` in this order: chat types, then slash commands, then emotes. A command named like a chat type would never run, and one named like an emote would hide it, so CommandKit refuses both. It compares `/NAME` without case with:
+
+- for every key of `SlashCmdList` and `SecureCmdList` it did not write, the `SLASH_<key>1`, `SLASH_<key>2`, … globals up to the first gap (`nil, "taken"`);
+- for every key of `ChatTypeInfo`, the `SLASH_<TYPE>1`, … globals the same way (`nil, "taken"`);
+- `EMOTE<n>_CMD<m>` for `n` from 1 to `MAXEMOTEINDEX` when the host has it, else 1024, and `m` up to the first gap, at most 8 (`nil, "emote"`).
+
+Every global is read by its constructed name with `rawget`; nothing scans the whole global table. A registration made some other way, such as a command table another library keeps, is not seen, and a command another addon registers *after* yours is outside CommandKit's reach: that addon's registration is what overwrites.
 
 ### Inert globals and re-registration
 
-The client caches the function behind a slash name the first time it is typed, and the cache cannot be cleared by an addon. CommandKit therefore never removes what it wrote. `Unregister`, `Close` and `CloseAddonScopes` remove the command from CommandKit's own tables, and the dispatcher under the key finds nothing and does nothing — no output, no error — when the name is typed.
+The client caches the function behind a slash name the first time it is typed, and the cache cannot be cleared by an addon. CommandKit therefore never removes what it wrote. `Unregister`, `Close` and `CloseAddonScopes` remove the command from CommandKit's own tables, and the dispatcher under the key finds nothing and does nothing — no output, no error — when the name is typed. The cache also means that when another addon later registers the same slash name under its own key, the client may keep calling CommandKit's inert dispatcher, and the other command never runs. To take the name back, register it through CommandKit again: the new owner is reached through the function the client cached.
 
 A slash name keeps the key of its first registration for the session. When any scope registers the name again, CommandKit writes the same key and the same dispatcher, so the command works again whatever the client cached. The key may then carry the first addon's name; it is only a table key.
 
@@ -292,8 +300,10 @@ A handler, and a `complete` function, receive a context. **It is valid only whil
 
 | Input | Token |
 |---|---|
-| `"two words"`, `'two words'` | `two words`. A quote starts a quoted token only at the start of a token. |
-| `"say \"hi\""`, `'it\'s'` | `say "hi"`, `it's`: a backslash before the quote that opened the token escapes it. Every other backslash is kept (`"Interface\Icons\X"`). |
+| `"two words"`, `'two words'` | `two words`. |
+| `"say \"hi\""`, `'it\'s'`, `"C:\\"` | `say "hi"`, `it's`, `C:\`: inside quotes, a backslash before the opening quote character or before another backslash escapes it. Every other backslash is kept (`"Interface\Icons\X"`). |
+| `'twas`, `don't`, `'open` | unchanged: a single quote is a quote only when its closing quote is followed by whitespace, the end of the text or another quote. Otherwise it is an apostrophe. |
+| `"foo"bar`, `'it''s'` | `foobar`, `its`: adjacent segments join into one token, as in a shell. A quote opens a segment at the start of a token or right after a closing quote; inside a bare run (`say"hi"`) it is ordinary text. |
 | `""` | the empty string. |
 | `|H<link data>|h[Some Long Item]|h` | the whole hyperlink, spaces included, in or out of quotes. |
 | `|cffa335ee|H…|h[Some Long Item]|h|r` | the whole colour-wrapped text, which is how the client inserts a shift-clicked link. |
@@ -302,10 +312,10 @@ A handler, and a `complete` function, receive a context. **It is valid only whil
 
 Refusals, returned as `nil, reason`:
 
-- `"unterminated quote"` — a quote without its closing quote;
+- `"unterminated quote"` — a double quote without its closing quote;
 - `"unterminated link"` — a `|H` without its two `|h` markers.
 
-A `|c` without a closing `|r`, or a `|T` without `|t`, is ordinary text, as the client displays it.
+A `|c` groups its text only when its `|r` comes before the next `|c`. An unclosed colour code, one whose next `|r` belongs to a later colour, or a `|T` without `|t` is ordinary text, as the client displays it, and ends at whitespace.
 
 `Parse` allocates a new array on every call. `ParseInto` writes `array[1..count]`, sets every slot after `count` to `nil` (it stops at the first slot that already is), and returns `count`; on a refusal it leaves `array` empty. Neither keeps any state between calls. Both allocate only the token strings, and a token equal to a string that already exists is that string, so parsing text seen before allocates nothing.
 
@@ -421,7 +431,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 - **`complete(context, text, position)`** instead of `complete(text)`: a completion function needs the sink and the command path for output, and the argument position to know what to offer.
 - **Registration keys are kept per slash name for the session.** The plan derives the key from the addon and command names; the first registration does, and a re-registration of the same name by another owner reuses that key so the client's cached function keeps working.
-- **The taken check reads `SlashCmdList` and `SecureCmdList`** and their `SLASH_<key><n>` globals, best effort as documented, rather than every `SLASH_*` global: scanning the global table would be unbounded.
+- **The taken check reads `SlashCmdList`, `SecureCmdList` and `ChatTypeInfo`** and their `SLASH_<key><n>` globals, and the `EMOTE<n>_CMD<m>` globals, best effort as documented, rather than every `SLASH_*` global: scanning the global table would be unbounded. An emote's name is refused with `nil, "emote"`, an addition to the planned results.
 - **`BindOptions` adds `exec`** beside `get`, `set`, `reset` and `list`, honours `confirm` with an explicit word, and parses values per option kind before OptionsKit's schema and `validate` check them; it calls `Describe` once per run.
 - **Completion is opt-in per scope** (`EnableCompletion`), because it replaces a client global; the plan made it optional without naming the switch.
 - **Additions:** `scope:IsRegistered`, `scope:DisableCompletion`, `scope:GetAddonName`, `CommandKit.MAX_COMMANDS`, `CommandKit.MAX_DEPTH` and the `CommandKit.Context` prototype; argument tokens are converted for number and boolean schemas; textures are single tokens; `Print` writes no prefix.

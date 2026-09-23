@@ -139,9 +139,9 @@ describe("CommandKit dispatch", function()
     end)
 
     it("reports an unterminated quote with the usage", function()
-        scope:Register("say", { handler = function() end, usage = "<text>" })
-        TestEnv.RunSlash('/say "open')
-        assert.are.same({ "/say: unterminated quote", "Usage: /say <text>" }, sink:Messages())
+        scope:Register("speak", { handler = function() end, usage = "<text>" })
+        TestEnv.RunSlash('/speak "open')
+        assert.are.same({ "/speak: unterminated quote", "Usage: /speak <text>" }, sink:Messages())
     end)
 
     it("isolates a handler error and reports it to the sink and the host", function()
@@ -234,12 +234,12 @@ describe("CommandKit dispatch", function()
         local localeScope = LocaleKitCommandKit:CreateScope()
         local capture = LocaleKitCommandKit:CaptureSink()
         localeScope:SetSink(capture)
-        localeScope:Register("greet", {
+        localeScope:Register("hello", {
             handler = function(context)
                 context:Printf("%2$s, %1$s!", "Alice", "Hello")
             end,
         })
-        TestEnv.RunSlash("/greet")
+        TestEnv.RunSlash("/hello")
         assert.are.same({ "Hello, Alice!" }, capture:Messages())
     end)
 end)

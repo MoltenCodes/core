@@ -20,7 +20,17 @@ local function registerPackFonts(MediaKit)
             { scripts = { "korean" } }
         )
     )
-    assert.is_true(MediaKit:Register("font", "Pack Everything", "Fonts\\PackEverything.ttf"))
+    assert.is_true(MediaKit:Register("font", "Pack Everything", "Fonts\\PackEverything.ttf", {
+        scripts = {
+            "latin",
+            "cyrillic",
+            "greek",
+            "cjkSimplified",
+            "cjkTraditional",
+            "korean",
+            "japanese",
+        },
+    }))
 end
 
 describe("MediaKit font scripts", function()
@@ -103,6 +113,25 @@ describe("MediaKit font scripts", function()
         assert.is_true(MediaKit:Has("font", "Pack Hangul", { anyScript = true }))
         assert.are.equal(9, #MediaKit:List("font", { anyScript = true }))
         assert.are.equal(2, #MediaKit:List("font"))
+    end)
+
+    it("treats a font registered without scripts as Latin only", function()
+        local MediaKit = TestEnv.NewPackage("zhCN")
+        assert.is_true(MediaKit:Register("font", "Undeclared", "Fonts\\Undeclared.ttf"))
+        assert.is_false(MediaKit:Has("font", "Undeclared"))
+        assert.are.same({}, MediaKit:List("font"))
+        assert.is_true(MediaKit:Has("font", "Undeclared", { anyScript = true }))
+        -- The same font with `{ "latin" }` spelled out is the same entry.
+        assert.is_true(
+            MediaKit:Register(
+                "font",
+                "Undeclared",
+                "Fonts\\Undeclared.ttf",
+                { scripts = { "latin" } }
+            )
+        )
+        TestEnv.SetClientLocale("enUS")
+        assert.is_true(MediaKit:Has("font", "Undeclared"))
     end)
 
     it("never filters other media types by script", function()

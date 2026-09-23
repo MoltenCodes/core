@@ -126,7 +126,9 @@ local LIMIT_CEILINGS = {
     maxDepth = 128,
     maxValues = 16777216,
     maxStringLength = 1073741824,
-    maxOutputBytes = 1073741824,
+    -- 64 MiB. Inflating keeps one array slot (16 bytes) per output byte, so a
+    -- higher ceiling would let one frame demand more than a gigabyte.
+    maxOutputBytes = 67108864,
 }
 
 -- The largest magnitude every integer up to which is exactly representable in
@@ -184,7 +186,7 @@ local FACADE_METHODS = {
 -- Public types ---------------------------------------------------------------
 
 ---Why a call returned `false`. See `docs/API.md` for each reason.
----@alias CodecKit.Reason "cycle"|"unsupportedType"|"maxDepth"|"maxValues"|"maxStringLength"|"maxOutputBytes"|"truncated"|"trailingData"|"unsupportedVersion"|"malformedHeader"|"channelMismatch"|"forbiddenByte"|"malformedEscape"|"malformedPrint"|"malformedDeflate"|"unknownType"|"malformedNumber"|"invalidKey"|"duplicateKey"|"nilValue"|"multipleValues"
+---@alias CodecKit.Reason "cycle"|"unsupportedType"|"maxDepth"|"maxValues"|"maxStringLength"|"maxOutputBytes"|"truncated"|"trailingData"|"unsupportedVersion"|"malformedHeader"|"channelMismatch"|"forbiddenByte"|"malformedEscape"|"malformedPrint"|"malformedDeflate"|"unknownType"|"malformedNumber"|"invalidKey"|"duplicateKey"|"nilValue"|"multipleValues"|"secret"
 
 ---Options accepted by `Encode`, `EncodeMany` and `EncodeAsync`.
 ---@class CodecKit.EncodeOptions
@@ -700,12 +702,14 @@ local function writeTable(work, sink, value, depth)
 
     local border = #value
     local arrayLength = 0
-    while arrayLength < border and rawget(value, arrayLength + 1) ~= nil do
+    -- `type` rather than `~= nil`: an element may be a secret, and comparing a
+    -- secret raises. Elements are asked about secrecy only in `writeValue`.
+    while arrayLength < border and type(rawget(value, arrayLength + 1)) ~= "nil" do
         arrayLength = arrayLength + 1
     end
     local mapCount = 0
     local key = next(value)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         if not isArrayKey(key, arrayLength) then
             mapCount = mapCount + 1
         end
@@ -736,7 +740,7 @@ local function writeTable(work, sink, value, depth)
             putVarint(sink, mapCount)
         end
         key = next(value)
-        while key ~= nil do
+        while type(key) ~= "nil" do
             if not isArrayKey(key, arrayLength) then
                 ok, reason = writeValue(work, sink, key, depth)
                 if not ok then
@@ -1233,6 +1237,12 @@ do
     -- by one byte to look for a longer one (`lazy`, with `lazyLimit` the match
     -- length above which no deferred search runs). Greedy levels insert the
     -- positions inside a match into the hash only up to `lazyLimit` bytes.
+    --
+    -- Levels 8 and 9 cap the chain at 192 and 256 candidates, where zlib uses
+    -- 1024 and 4096: on low-entropy input (two random symbols, say) every
+    -- chain is full of short matches, and the longer chains made level 9
+    -- twenty-seven times slower than level 6 in pure Lua for well under 5%
+    -- smaller output. The caps keep level 9 within about three times level 6.
     local LEVELS = {
         { lazy = false, good = 4, lazyLimit = 4, nice = 8, chain = 4 },
         { lazy = false, good = 4, lazyLimit = 5, nice = 16, chain = 8 },
@@ -1241,8 +1251,8 @@ do
         { lazy = true, good = 8, lazyLimit = 16, nice = 32, chain = 32 },
         { lazy = true, good = 8, lazyLimit = 16, nice = 128, chain = 128 },
         { lazy = true, good = 8, lazyLimit = 32, nice = 128, chain = 256 },
-        { lazy = true, good = 32, lazyLimit = 128, nice = 258, chain = 1024 },
-        { lazy = true, good = 32, lazyLimit = 258, nice = 258, chain = 4096 },
+        { lazy = true, good = 32, lazyLimit = 128, nice = 258, chain = 192 },
+        { lazy = true, good = 32, lazyLimit = 258, nice = 258, chain = 256 },
     }
 
     -- Huffman codes --------------------------------------------------------------
@@ -1953,6 +1963,51 @@ do
         end
     end
 
+    -- Below this many input bytes the compressor skips matching and writes
+    -- one fixed-Huffman block of literals (or a stored block, when smaller).
+    -- Short addon messages rarely repeat anything, and the full path would
+    -- allocate several kilobytes of hash, token and code tables per call.
+    local TINY_INPUT_BYTES = 64
+
+    ---Compress a short input as one literal-only fixed block, or one stored
+    ---block when that is smaller, without the matcher's working tables.
+    ---@param work table
+    ---@param sink table
+    ---@param input string
+    ---@param length integer
+    local function compressTiny(work, sink, input, length)
+        local fixedBits = 3 + FIXED_LITERAL_LENGTHS[END_OF_BLOCK]
+        for index = 1, length do
+            fixedBits = fixedBits + FIXED_LITERAL_LENGTHS[byte(input, index)]
+        end
+        local storedBits = 3 + 5 + 32 + 8 * length
+
+        local writer = leaseTable(work.pooled)
+        writer.sink = sink
+        writer.bitBuffer = 0
+        writer.bitCount = 0
+        if storedBits < fixedBits then
+            writeBits(writer, 1, 3)
+            alignToByte(writer)
+            writeBits(writer, length, 16)
+            writeBits(writer, 65535 - length, 16)
+            putString(sink, input)
+        else
+            writeBits(writer, 3, 3)
+            for index = 1, length do
+                local value = byte(input, index)
+                writeBits(writer, FIXED_LITERAL_CODES[value], FIXED_LITERAL_LENGTHS[value])
+            end
+            writeBits(
+                writer,
+                FIXED_LITERAL_CODES[END_OF_BLOCK],
+                FIXED_LITERAL_LENGTHS[END_OF_BLOCK]
+            )
+            alignToByte(writer)
+        end
+        returnTable(work.pooled, writer)
+    end
+
     ---Compress `input` as raw DEFLATE into `sink`.
     ---@param work table
     ---@param sink table
@@ -1961,6 +2016,10 @@ do
     function compressInto(work, sink, input, level)
         local settings = LEVELS[level]
         local length = #input
+        if length < TINY_INPUT_BYTES then
+            compressTiny(work, sink, input, length)
+            return
+        end
         local data = {}
         for index = 1, length, 8 do
             local a, b, c, d, e, f, g, h = byte(input, index, index + 7)
@@ -2492,7 +2551,9 @@ do
 end
 local PRINT_ALPHABET = char(unpack(PRINT_CODES, 0, PRINT_BASE - 1))
 local PRINT_MAX_GROUP = 4294967295
-local WHITESPACE = { [9] = true, [10] = true, [13] = true, [32] = true }
+-- Exactly the characters `%s` strips on decode, so a print frame may start
+-- with any of them.
+local WHITESPACE = { [9] = true, [10] = true, [11] = true, [12] = true, [13] = true, [32] = true }
 
 ---Write the first `count` base-85 digits of `value`, most significant first.
 ---@param sink table
@@ -2604,6 +2665,10 @@ end
 ---@return boolean ok
 ---@return string bytesOrReason
 local function decodeForPrint(work, text)
+    -- The raw input, whitespace included, is bounded before any work on it.
+    if #text > work.maxOutputBytes then
+        return false, REASON.maxOutputBytes
+    end
     local compact = gsub(text, "%s+", "")
     local length = #compact
     local groups = floor(length / 5)
@@ -2814,7 +2879,7 @@ local function containsSecret(work, value, depth)
         return false
     end
     local key = next(value)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         work.valueCount = work.valueCount + 2
         if work.valueCount > work.maxValues then
             return false

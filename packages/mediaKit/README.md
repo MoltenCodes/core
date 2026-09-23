@@ -45,10 +45,10 @@ end)
 What each piece promises:
 
 - **`Register`** takes one of seven fixed types, a name and a path or FileDataID. A name holding different data is refused with `nil, "taken"`; the same name with the same data again returns `true` and changes nothing; past 1024 entries of a type it returns `nil, "full"`.
-- **`Fetch`** and **`Has`** are one table read and allocate nothing. A font that does not render the client's script is `nil` unless `anyScript` is asked for.
+- **`Fetch`** and **`Has`** are one table read and allocate nothing. A font that does not render the client's script is `nil` unless `anyScript` is asked for. A font registered without `scripts` renders Latin only; declare the scripts of anything wider.
 - **`List`** returns a cached sorted array, shared by every caller and read-only, rebuilt only after a registration of its type.
 - **`OnRegistered`** returns a SignalKit connection fired with `(type, name, data)` for every new entry, whatever its origin.
-- **`Defaults`** gives each consumer its own choices; `Get` falls back to the client's built-in media, registered at load.
+- **`Defaults`** gives each consumer its own choices; `Get` falls back to the client's built-in media, registered at load, and then to the first usable listed entry, so a CJK client still gets a font it can render.
 - **`AdoptLibSharedMedia`** and **`MirrorToLibSharedMedia`** connect the two registries without echo loops, and return `false, "absent"` when LibStub or LibSharedMedia-3.0 is not loaded.
 
 Non-goals: shipping media files and global user overrides (a consumer's saved variables hold the player's choice).

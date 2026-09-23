@@ -46,6 +46,27 @@ describe("CommandKit registration", function()
         )
     end)
 
+    it("refuses a chat type's slash name, which the client resolves first", function()
+        local scope = CommandKit:CreateScope()
+        assert.are.same({ nil, "taken" }, { scope:Register("s", { handler = noop }) })
+        assert.are.same({ nil, "taken" }, { scope:Register("Guild", { handler = noop }) })
+        assert.is_true(scope:Register("guilds", { handler = noop }))
+    end)
+
+    it("refuses an emote's slash name with nil, emote", function()
+        local scope = CommandKit:CreateScope()
+        assert.are.same({ nil, "emote" }, { scope:Register("dance", { handler = noop }) })
+        assert.are.same({ nil, "emote" }, { scope:Register("greet", { handler = noop }) })
+        assert.is_nil(TestEnv.GetGlobal("SLASH_MOLTENCODES_DANCE1"))
+    end)
+
+    it("reads emotes only up to the host's MAXEMOTEINDEX", function()
+        TestEnv.SetGlobal("MAXEMOTEINDEX", 1)
+        local scope = CommandKit:CreateScope()
+        assert.are.same({ nil, "emote" }, { scope:Register("dance", { handler = noop }) })
+        assert.is_true(scope:Register("wave", { handler = noop }))
+    end)
+
     it("refuses a slash name another scope registered", function()
         CommandKit:ForAddon("First"):Register("shared", { handler = noop })
         assert.are.same(

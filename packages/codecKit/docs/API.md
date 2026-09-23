@@ -99,7 +99,7 @@ The reasons form a fixed vocabulary:
 
 ## Wire format
 
-Everything below is normative: a frame that departs from it is refused, and an implementation that writes something else is not version 1.
+Everything below is normative. **The writer is canonical**: it produces exactly the encodings described here, and an implementation that writes anything else is not version 1. **The reader is lenient**: it accepts any *well-formed* frame, including encodings this writer never produces, and refuses everything else with a reason. See [Well-formed input](#well-formed-input).
 
 ### Frames
 
@@ -157,13 +157,25 @@ Every value is one type byte followed by its payload:
 
 **Varint.** Seven bits per byte, least significant group first; the high bit is set on every byte but the last. At most eight bytes, at most 2^53, and never overlong (a last byte of zero after the first byte is refused). `300` is `AC 02`.
 
-**Numbers.** An integral number from −2^53 to 2^53 other than −0 is written as `0x04`/`0x05` and a varint. Everything else — fractions, integers beyond 2^53, both infinities, NaN, −0 and subnormal numbers — is the exact binary64 bit pattern, computed with `math.frexp`, so it round-trips bit for bit (NaN is written as the quiet NaN `7F F8 00 00 00 00 00 00` whatever its payload). Examples: `1.5` is `06 3F F8 00 00 00 00 00 00`; `-0` is `06 80 00 00 00 00 00 00 00`; `2^-1074` is `06 00 00 00 00 00 00 00 01`. There is one spelling of each value and of infinity.
+**Numbers.** An integral number from −2^53 to 2^53 other than −0 is written as `0x04`/`0x05` and a varint. Everything else — fractions, integers beyond 2^53, both infinities, NaN, −0 and subnormal numbers — is the exact binary64 bit pattern, computed with `math.frexp`, so it round-trips bit for bit (NaN is written as the quiet NaN `7F F8 00 00 00 00 00 00` whatever its payload). Examples: `1.5` is `06 3F F8 00 00 00 00 00 00`; `-0` is `06 80 00 00 00 00 00 00 00`; `2^-1074` is `06 00 00 00 00 00 00 00 01`. The writer uses one spelling for each value and for infinity; the reader also accepts the others (see below).
 
 **Strings** are raw bytes: every byte value, including the escape byte and `|`, is carried as is, because escaping belongs to the channel stage.
 
 **Tables.** The array part is `1..n` where `n` is the first index below `#t` whose successor is `nil` (so holes end it, whatever `#` reports); every other key is in the map part. The layout byte says which parts are present; the empty table is `08 00`. `{ 1, x = 2 }` is `0A 01 04 01 01 07 01 78 04 02`. Map pairs follow `next` order, so two equal tables may serialise to different bytes; they always decode to equal tables. Raw contents are read (`rawget`, `next`): metatables are neither consulted nor preserved.
 
-**Decoding rules.** An array element or map value may not be `nil`; a key may not be `nil` or NaN, and may not repeat; nothing may follow the top-level value.
+### Well-formed input
+
+A reader accepts a frame when it is **well-formed**:
+
+- the header is `0x01` and a valid flags byte, and the body decodes through every stage the flags name;
+- every stage's input and output stays within the limits;
+- every type byte is assigned (`0x0B` only at the top), every varint is at most eight bytes, at most 2^53 and not overlong, and a negative integer's magnitude is not 0;
+- every count fits in the bytes that remain, and nothing follows the top-level value;
+- an array element or map value is never `nil`; a key is never `nil` or NaN and never repeats within one table.
+
+Nothing else is checked. In particular the reader accepts, and decodes to the value it describes, input the writer never produces: an integral number written as a `0x06` double, a NaN with any payload, a map part holding the keys `1..n`, a mixed layout with an empty array or map part, and DEFLATE streams made by any encoder with any block choice. Re-encoding such a value gives the canonical bytes, which may differ from the input.
+
+**Encoded bytes are not a content hash.** Map pairs follow `next` order, so two equal tables can encode differently, and the reader accepts several spellings of one value. To compare or hash values (commKit's `SyncSet`, say), hash a canonical walk of the value — keys sorted by type and value — not the output of `Encode`.
 
 ### Type matrix
 
@@ -181,7 +193,7 @@ Every value is one type byte followed by its payload:
 
 ### Compression
 
-Raw DEFLATE (RFC 1951): no zlib or gzip wrapper, no checksum. The encoder writes stored, fixed-Huffman and dynamic-Huffman blocks, choosing per block whichever is smallest; the decoder inflates all three from any conforming encoder. `level` trades time for size: levels 1 to 3 take matches greedily, 4 to 9 defer each match by one byte when the next is longer, and the chain length grows from 4 candidates at level 1 to 4096 at level 9. [`INTERNALS.md`](INTERNALS.md#compressor) has the table.
+Raw DEFLATE (RFC 1951): no zlib or gzip wrapper, no checksum. The encoder writes stored, fixed-Huffman and dynamic-Huffman blocks, choosing per block whichever is smallest; the decoder inflates all three from any conforming encoder. `level` trades time for size: levels 1 to 3 take matches greedily, 4 to 9 defer each match by one byte when the next is longer, and the chain length grows from 4 candidates at level 1 to 256 at level 9. Inputs under 64 bytes are written as one literal or stored block without matching. [`INTERNALS.md`](INTERNALS.md#compressor) has the table, and [Cost](#cost) the time per KiB at each level.
 
 ### Addon channel
 
@@ -218,7 +230,7 @@ Removed, and why:
 
 Every four bytes, read as a big-endian 32-bit number, become five base-85 digits, most significant first. A final group of `k` bytes (1 to 3) is padded with zero bytes and only its first `k + 1` digits are written. The output is always `5 * floor(n / 4)` characters plus `k + 1` for a final partial group: 25% larger than the input. `00 00 00 00` is `!!!!!`.
 
-The decoder ignores whitespace anywhere, so a string wrapped or indented by a chat window, an edit box or a forum still decodes. It pads a final group of `k + 1` digits with digit 84 and keeps `k` bytes. It refuses a character outside the alphabet, a final group of one character, and a group whose value exceeds 2^32 − 1 (`"malformedPrint"`).
+The decoder ignores whitespace anywhere (space, tab, line feed, vertical tab, form feed and carriage return, which is also what may precede a print frame), so a string wrapped or indented by a chat window, an edit box or a forum still decodes. It pads a final group of `k + 1` digits with digit 84 and keeps `k` bytes. It refuses a character outside the alphabet, a final group of one character, and a group whose value exceeds 2^32 − 1 (`"malformedPrint"`).
 
 ## Limits
 
@@ -227,7 +239,7 @@ The decoder ignores whitespace anywhere, so a string wrapped or indented by a ch
 | `maxDepth` | 16 | 128 | Table nesting; a top-level table is depth 1. |
 | `maxValues` | 65536 | 16777216 | Values in one payload: keys, values and list entries. |
 | `maxStringLength` | 65536 | 2^30 | One string, value or key. |
-| `maxOutputBytes` | 1048576 | 2^30 | The output of every stage: the serialised bytes, the compressed bytes, the escaped or printed text, and the final frame. Decoding refuses an input stage larger than it and stops inflating when the output would pass it, so a DEFLATE bomb costs at most this much. |
+| `maxOutputBytes` | 1048576 | 2^26 (64 MiB) | The output of every stage: the serialised bytes, the compressed bytes, the escaped or printed text, and the final frame. Decoding refuses an input stage larger than it and stops inflating when the output would pass it, so a DEFLATE bomb costs at most this much. |
 
 ```lua
 CodecKit:SetLimits({ maxDepth = 8, maxOutputBytes = 65536 })
@@ -279,19 +291,30 @@ See [`schemaKit/docs/API.md`](../../schemaKit/docs/API.md). Never run a decoded 
 
 ## Cost
 
-Measured with Lua 5.1.5 on a desktop, for a 10 KiB English Markdown sample:
+Measured with Lua 5.1.5 on a desktop. For a 10 KiB English Markdown sample:
 
 | Level | Output | Ratio | Compress | Inflate |
 |---|---|---|---|---|
-| 1 | 4414 bytes | 2.32x | 2.8 ms | 1.3 ms |
-| 6 | 4073 bytes | 2.51x | 3.9 ms | 1.3 ms |
-| 9 | 4074 bytes | 2.51x | 3.8 ms | 1.2 ms |
+| 1 | 4320 bytes | 2.37x | 3.1 ms | 1.4 ms |
+| 6 | 4005 bytes | 2.56x | 4.4 ms | 1.2 ms |
+| 9 | 4006 bytes | 2.56x | 4.1 ms | 1.2 ms |
 
-About 0.3 to 0.4 ms per KiB to compress text at the default level and 0.13 ms per KiB to inflate; highly repetitive input at level 9 can take several times longer, which is what the asynchronous form is for. Print-encoding costs about 0.07 ms per KiB.
+Compression time depends on the input as much as on the level. Per KiB of input, for ordinary prose and for the worst case measured (random text over two symbols, where every hash chain is full of short matches):
+
+| Level | Prose | Worst case |
+|---|---|---|
+| 1 | 0.11 ms | 0.19 ms |
+| 4 | 0.15 ms | 0.28 ms |
+| 6 (default) | 0.30 ms | 0.91 ms |
+| 7 | 0.49 ms | 1.52 ms |
+| 8 | 0.58 ms | 1.96 ms |
+| 9 | 0.71 ms | 2.46 ms |
+
+Inflating costs about 0.12 ms per KiB of output at any level, and print-encoding about 0.08 ms per KiB. **Synchronous callers should stay at level 6 or below**; for large exports at level 7 to 9, or any compression that might pass a few dozen KiB, use `EncodeAsync`, which spreads the work over frames. The default level is 6.
 
 - **Serialising** allocates the output string and nothing else: its fragment arrays and work record are leased from a PoolKit table pool and returned on every path. Encoding the same small value again allocates nothing.
 - **Decoding a serialised body** allocates the tables it returns and the strings in them.
-- **Compressing** allocates working arrays proportional to the input (a few tens of bytes per input byte: the byte array, the hash chains and the tokens) plus about 40 KiB of code tables per call; all of it is garbage after the call. **Inflating** allocates an output array of about 16 bytes per output byte.
+- **Compressing** an input under 64 bytes writes one literal or stored block and allocates nothing beyond its output (0.001 KiB per call measured for 32 bytes). From 64 bytes the matcher allocates working arrays proportional to the input (a few tens of bytes per input byte: the byte array, the hash chains and the tokens) plus about 35 to 40 KiB of code tables **per block** (a block covers at most 32 KiB of input); all of it is garbage after the call. **Inflating** allocates an output array of about 16 bytes per output byte.
 - One `table.concat` per stage output, per 1024 fragments.
 
 ## Deviations from the planned contract
@@ -305,7 +328,9 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`Decode` raises for a non-string argument.** The non-raising contract covers every string, not programming errors.
 - **Metatables are ignored**, not refused: raw contents are serialised.
 - **One `table.concat` per stage output** rather than per encode, and compression allocates its working arrays per call; only fragment arrays and work records are leased. The asynchronous variants lease nothing, because a cancelled job never returns what it holds.
-- **`Compress` and every decoding stage refuse input larger than `maxOutputBytes`**, so the limit bounds each stage's input as well as its output.
+- **`Compress` and every decoding stage refuse input larger than `maxOutputBytes`** (print text is measured before whitespace is stripped), so the limit bounds each stage's input as well as its output.
+- **Levels 8 and 9 cap their hash chains at 192 and 256 candidates** instead of zlib's 1024 and 4096, which keeps level 9 within about three times level 6 in pure Lua (2.7 times measured on the worst case above, down from 27 times).
+- **Inputs under 64 bytes skip matching** and are written as one fixed-Huffman literal block or one stored block.
 - **Additions:** `EncodeMany` and `DecodeMany` for argument lists, `PRINT_ALPHABET`, and the `"channelMismatch"` assertion.
 
 ## Upgrades

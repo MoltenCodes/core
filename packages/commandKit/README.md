@@ -36,8 +36,8 @@ Typing `/myaddon` prints the generated usage; `/myaddon scale 3` prints `/myaddo
 
 What each piece promises:
 
-- **Collision-safe registration.** CommandKit writes `SlashCmdList[<key>]` and `SLASH_<key>1` with a key built from the addon and command names, and returns `nil, "taken"` when another owner already uses the slash name, instead of silently overwriting it.
-- **A parser that understands WoW text.** `"double"` and `'single'` quotes with `\"` escapes, `|H…|h[…]|h` hyperlinks, `|c…|r` colour-wrapped text and `|T…|t` textures are single tokens; an unterminated quote or link is refused with a reason. `CommandKit:ParseInto` fills a caller-owned array and allocates nothing for text it has seen.
+- **Collision-safe registration.** CommandKit writes `SlashCmdList[<key>]` and `SLASH_<key>1` with a key built from the addon and command names, and returns `nil, "taken"` when another owner or a chat type already uses the slash name, or `nil, "emote"` when an emote does, instead of silently overwriting or shadowing it.
+- **A parser that understands WoW text.** `"double"` and `'single'` quotes with `\"` escapes (an unclosed `'` is an apostrophe), `|H…|h[…]|h` hyperlinks, `|c…|r` colour-wrapped text and `|T…|t` textures are single tokens; an unterminated double quote or link is refused with a reason. `CommandKit:ParseInto` fills a caller-owned array and allocates nothing for text it has seen.
 - **Declarative sub-commands.** Up to three levels deep, with usage lines generated from the argument schemas (`<number 0.5..2>`, `[TOP|CENTER]`) and descriptions.
 - **Two kinds of failure, two channels.** A bad spec raises at your line when you register it; a bad thing the user typed is printed to the sink with the usage. A handler that raises is reported to the sink and to the host error handler.
 - **Cheap dispatch.** A slash command allocates nothing when its text has been seen before; the parser has no state outside the call; everything is bounded (64 commands per scope, 3 sub-command levels, 4 nested dispatches).

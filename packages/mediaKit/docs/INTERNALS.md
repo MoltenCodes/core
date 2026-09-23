@@ -35,7 +35,7 @@ An entry's `origin` is `"builtin"`, `"registered"` or `"libSharedMedia"` (adopte
 
 ## Scripts as a bit mask
 
-A font's scripts are stored as an integer: `latin` 1, `cyrillic` 2, `greek` 4, `cjkSimplified` 8, `cjkTraditional` 16, `korean` 32, `japanese` 64, so "every script" is 127. Two script sets are equal when their masks are, whatever order or repeats `options.scripts` had, and "covers script s" is `floor(mask / bit) % 2 == 1`. Lua 5.1 has no bit library outside the client, and this needs none. Non-font entries carry 127 and are never tested.
+A font's scripts are stored as an integer: `latin` 1, `cyrillic` 2, `greek` 4, `cjkSimplified` 8, `cjkTraditional` 16, `korean` 32, `japanese` 64, so "every script" is 127. Two script sets are equal when their masks are, whatever order or repeats `options.scripts` had, and "covers script s" is `floor(mask / bit) % 2 == 1`. Lua 5.1 has no bit library outside the client, and this needs none. A font registered without `scripts` carries 1 (`latin`); non-font entries carry 127 and are never tested.
 
 ## One registration path
 

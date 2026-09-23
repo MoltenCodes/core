@@ -9,7 +9,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | Field | Meaning |
 |---|---|
 | `schema` | The state layout version, `1`. |
-| `dispatch` | `runnerBody`, `phaseReached`, `deadlineReached`, `eventArrived`, `waitTimedOut`; every closure TestKit hands out calls through it. |
+| `dispatch` | `runnerBody`, `phaseReached`, `phaseLost`, `deadlineReached`, `eventArrived`, `waitTimedOut`; every closure TestKit hands out calls through it. |
 | `runtimeRevision` | The revision that last committed its functions. |
 | `suitePrototype`, `contextPrototype`, `matcherPrototype` | The method tables suites, contexts and matchers index. |
 | `suiteMetatable`, `contextMetatable`, `matcherMetatable` | Their metatables; `__index` is the matching prototype. |
@@ -41,14 +41,15 @@ A suite is one table whose private fields all exist from `Suite` on:
 
 ## The runner state machine
 
-A **run entry** is one queued run of one suite: `{ suite, testName, status, nextIndex, subscription }`. Its status moves:
+A **run entry** is one queued run of one suite: `{ suite, testName, status, nextIndex, subscription, lostWatches }`. Its status moves:
 
 ```text
             Run                phase reached (replayed or dispatched)
   (none) ───────▶ waiting ─────────────────────────────▶ queued
                      │                                      │ advance() takes it
-                     │ subscription already disconnected    ▼
-                     └──────────────▶ done ◀────────────── running
+                     │ subscription already disconnected,   ▼
+                     │ or OnHalted / OnShutdown fired       running
+                     └──────────────▶ done ◀──────────────── │
                          (tests recorded "skipped")   last test finished
 ```
 
@@ -85,7 +86,7 @@ The **runner** is one SchedulerKit job at a time. Its body loops:
 | `waiting` | Whether the step is suspended in `WaitFor` or `WaitUntil` with no job running. |
 | `timedOut`, `deadline` | Whether the current window ran out, and the TimerKit timer measuring it. |
 | `startedAt` | `GetTimePreciseSec` in milliseconds, or `false`. |
-| `replacements`, `replacementCount` | `Replace` records as flat triples `(table, key, previous)`, so a `nil` previous value needs no sentinel. |
+| `replacements`, `replacementCount` | `Replace` records as flat triples `(table, key, previous)`, so a `nil` previous value needs no sentinel; at most 256 per test. |
 
 `stepTest` resumes the current step once:
 
@@ -110,7 +111,9 @@ A test body must be protected (a failure is a result, not a crash) and must be a
 
 ## Phase gating
 
-`startEntry` subscribes the entry to `LifecycleKit:ForAddon(addonName):OnLoaded` or `:OnReady` with a closure that calls `dispatch.phaseReached(entry)`. LifecycleKit replays a phase already reached synchronously, so the entry may be queued before `startEntry` returns. When it is still waiting and the returned subscription is already disconnected, LifecycleKit has declared the phase impossible (halt or shutdown), and the entry's tests are recorded as skipped.
+`startEntry` subscribes the entry to `LifecycleKit:ForAddon(addonName):OnLoaded` or `:OnReady` with a closure that calls `dispatch.phaseReached(entry)`. LifecycleKit replays a phase already reached synchronously, so the entry may be queued before `startEntry` returns. When it is still waiting and the returned subscription is already disconnected, LifecycleKit has declared the phase impossible, and the entry's tests are recorded as skipped with the cause `GetState()` names.
+
+A halt or shutdown *later* disconnects the pending phase subscription without calling it, so a waiting entry also holds `lostWatches`: an `OnHalted` and an `OnShutdown` subscription whose closures call `dispatch.phaseLost(entry, cause)`. `phaseLost` skips the entry and schedules the runner, which finds nothing to run and finishes the run. `phaseReached`, `phaseLost` and `abortRun` release the watches. An entry queued by an older revision has no `lostWatches` field and is treated as having none.
 
 ## Secret values
 
@@ -118,7 +121,7 @@ A test body must be protected (a failure is a result, not a crash) and must be a
 
 ## Closures and upgrades
 
-TestKit hands out five kinds of closure: `state.runnerCallback` (one for the package), `state.deadlineCallback` (one for the package), one phase callback per run entry, and one event and one timeout callback per wait. Each calls through `dispatch` at call time, so a newer revision's functions run behind closures an older one created. Suites, contexts and matchers keep the metatables stored in state, and the prototypes are rewritten in place.
+TestKit hands out six kinds of closure: `state.runnerCallback` (one for the package), `state.deadlineCallback` (one for the package), one phase callback and two halt/shutdown watch callbacks per run entry, and one event and one timeout callback per wait. Each calls through `dispatch` at call time, so a newer revision's functions run behind closures an older one created. Suites, contexts and matchers keep the metatables stored in state, and the prototypes are rewritten in place.
 
 A runner job that is suspended in `schedulerContext:Yield()` during an upgrade finishes its current loop on the older code, because Lua cannot swap a running function; the next job runs the new `runnerBody`. A suspended test step is a coroutine of consumer code and is unaffected.
 

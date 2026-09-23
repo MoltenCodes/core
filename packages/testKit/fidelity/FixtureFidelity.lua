@@ -32,8 +32,15 @@ end
 -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
 -- selene: allow(global_usage)
 local namespace = rawget(_G, "MoltenCodes")
-local Registry = type(namespace) == "table" and rawget(namespace, "Registry") or nil
-if type(Registry) ~= "table" then
+local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
+
+-- Ask for Registry by generation, as EMBEDDING.md advises, and fall back to
+-- the alias: a future Registry API generation takes the alias over.
+local Registry = type(generations) == "table" and rawget(generations, 2) or nil
+if Registry == nil and type(namespace) == "table" then
+    Registry = rawget(namespace, "Registry")
+end
+if type(Registry) ~= "table" or rawget(Registry, "API") ~= 2 then
     error("FixtureFidelity.lua requires Registry API 2 and TestKit API 1 to be loaded first", 2)
 end
 local TestKit = Registry:Get("testKit", 1)

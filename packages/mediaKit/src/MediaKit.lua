@@ -86,6 +86,9 @@ local SCRIPT_BITS = {
 }
 local ALL_SCRIPTS = 127
 
+-- The scripts of a font registered without `options.scripts`: Latin only.
+local DEFAULT_FONT_SCRIPTS = 1
+
 -- The script each client locale writes. `greek` and `japanese` have no client
 -- locale today; a font may still declare them for text it renders itself.
 -- A locale not listed here, or a client without `GetLocale`, writes Latin.
@@ -217,7 +220,7 @@ local tableSort = table.sort
 
 ---Options accepted by `MediaKit:Register`.
 ---@class MediaKit.RegisterOptions
----@field scripts MediaKit.Script[]? Fonts only: the scripts the font renders. Defaults to every script.
+---@field scripts MediaKit.Script[]? Fonts only: the scripts the font renders. Defaults to `{ "latin" }`.
 
 ---Options accepted by `Fetch`, `Has` and `List`.
 ---@class MediaKit.LookupOptions
@@ -229,7 +232,7 @@ local tableSort = table.sort
 ---One consumer's defaults, returned by `MediaKit:Defaults`.
 ---@class MediaKit.Defaults
 ---@field Set fun(self: MediaKit.Defaults, mediaType: MediaKit.MediaType, name: string?)
----@field Get fun(self: MediaKit.Defaults, mediaType: MediaKit.MediaType): string
+---@field Get fun(self: MediaKit.Defaults, mediaType: MediaKit.MediaType): string?
 
 ---The subset of LibSharedMedia-3.0 MediaKit calls. Private.
 ---@class MediaKit.LibSharedMedia
@@ -658,13 +661,18 @@ end
 ---@param level integer
 ---@return integer scriptMask
 local function readRegisterOptions(mediaType, options, level)
+    -- A font that declares nothing is taken to render Latin only, as
+    -- LibSharedMedia assumes: offering an undeclared font to a CJK client
+    -- would show missing glyphs, while hiding a wider font only costs the
+    -- author one `scripts` line. Other types are never filtered.
+    local undeclared = mediaType == "font" and DEFAULT_FONT_SCRIPTS or ALL_SCRIPTS
     if options == nil then
-        return ALL_SCRIPTS
+        return undeclared
     end
     validateOptionKeys(options, REGISTER_OPTION_KEYS, "MediaKit:Register", level + 1)
     local scripts = rawget(options, "scripts")
     if scripts == nil then
-        return ALL_SCRIPTS
+        return undeclared
     end
     if mediaType ~= "font" then
         error("MediaKit:Register scripts applies to fonts only", level)
@@ -969,11 +977,13 @@ local function defaultsSet(self, mediaType, name)
     rawget(self, "_names")[mediaType] = name
 end
 
----This consumer's default name for `mediaType`: its choice when this client
----can use it, otherwise the built-in fallback.
+---This consumer's default name for `mediaType`, the first this client can
+---use of: its choice, the built-in fallback, the first name of `List(type)`.
+---`nil` only when the type holds nothing this client can use. Allocates
+---nothing while the list is cached.
 ---@param self MediaKit.Defaults
 ---@param mediaType MediaKit.MediaType
----@return string name
+---@return string? name
 local function defaultsGet(self, mediaType)
     validateDefaults(self, "MediaKit.Defaults:Get", 3)
     validateMediaType(mediaType, "MediaKit.Defaults:Get", 3)
@@ -981,7 +991,16 @@ local function defaultsGet(self, mediaType)
     if name ~= nil and findUsableEntry(mediaType, name, false) ~= nil then
         return name
     end
-    return BUILTIN_FALLBACKS[mediaType]
+    local fallback = BUILTIN_FALLBACKS[mediaType]
+    if findUsableEntry(mediaType, fallback, false) ~= nil then
+        return fallback
+    end
+    -- Only a font can reach this point: a CJK client, whose script no
+    -- built-in font renders. The client's list holds what it can render,
+    -- adopted LibSharedMedia fonts included.
+    local record = types[mediaType]
+    local usable = mediaType == "font" and currentClientList(record) or currentAllList(record)
+    return usable[1]
 end
 
 -- Package public API ---------------------------------------------------------

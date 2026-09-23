@@ -202,7 +202,7 @@ describe("CodecKit error levels", function()
             },
             {
                 { maxOutputBytes = 0.5 },
-                "CodecKit:SetLimits limits.maxOutputBytes must be an integer from 1 to 1073741824",
+                "CodecKit:SetLimits limits.maxOutputBytes must be an integer from 1 to 67108864",
             },
         }
         for index = 1, #cases do

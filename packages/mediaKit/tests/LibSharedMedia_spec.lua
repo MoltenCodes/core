@@ -176,12 +176,17 @@ describe("MediaKit and LibSharedMedia", function()
                 "Fonts\\Wide.ttf",
                 { scripts = { "latin", "cyrillic", "greek" } }
             )
-            MediaKit:Register("font", "Every", "Fonts\\Every.ttf")
+            MediaKit:Register("font", "Every", "Fonts\\Every.ttf", {
+                scripts = { "latin", "cyrillic", "cjkSimplified", "cjkTraditional", "korean" },
+            })
+            MediaKit:Register("font", "Undeclared", "Fonts\\Undeclared.ttf")
             MediaKit:Register("font", "Kana", "Fonts\\Kana.ttf", { scripts = { "japanese" } })
             MediaKit:MirrorToLibSharedMedia()
             assert.are.equal(128, library.langmasks.font.Latin)
             assert.are.equal(130, library.langmasks.font.Wide)
             assert.are.equal(143, library.langmasks.font.Every)
+            -- A font that declared no scripts is Latin only, so western only.
+            assert.are.equal(128, library.langmasks.font.Undeclared)
             assert.are.equal(0, library.langmasks.font.Kana)
             assert.are.equal(128, library.langmasks.font["Friz Quadrata TT"])
             assert.is_nil(library.langmasks.statusbar.Blizzard)
