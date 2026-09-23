@@ -912,7 +912,7 @@ LibEditModeOverride: item W14).
 
 #### Package F — independence and escape hatches
 
-Decided 2026-09-23 after Yankı asked whether every Kit still stands alone and
+Decided 2026-09-23 after the project owner asked whether every Kit still stands alone and
 whether strict defaults can be opened. Two principles are added to the design
 constitution (4a bounded by default, opened on purpose; 4b minimal footprint)
 and the tree is brought to them. Registry and SignalKit are the accepted core
