@@ -788,6 +788,76 @@ and W9) and the WeakAuras media pack (LibSharedMedia).
 - [ ] Update `docs/EMBEDDING.md`, the example addon and the package bundle for
       every new Kit; final acceptance review.
 
+#### Package E planned Kit — the nine points
+
+Recorded 2026-09-23, before implementation. Sources: the Ace3 study (AceGUI,
+AceConfigDialog: candidate C10) and the WowAce directory (LibWindow,
+LibEditModeOverride: item W14).
+
+**widgetKit** — facade `WidgetKit`
+
+1. Package `widgetKit`, facade `WidgetKit`, API generation 1. A core
+   package; widget sets beyond the base set become their own packages later
+   so that independent publication holds.
+2. Purpose: a versioned registry of pooled, acquire-and-release widget types
+   with a small base contract, named callbacks, registered layout functions,
+   a normalised anchor value type with position persistence, and an
+   options renderer that consumes `optionsKit`'s `Describe`. Non-goals: a
+   theming system, animation, wrapping every client template, replacing
+   plain frames where they are simpler.
+3. Dependencies: registry API 2, poolKit API 1 (pools for objects that
+   cannot be freed, with generation stamps), signalKit API 1 (callbacks);
+   optionsKit API 1, settingsKit API 1, schedulerKit API 1 and mediaKit
+   API 1 optional through `Registry:Find` (the renderer, position
+   persistence with a debounced save, media pickers).
+4. Surface: `WidgetKit:RegisterType(name, constructor, version)`,
+   `GetTypeVersion(name)`, `Create(name)` → widget, `Release(widget)`,
+   `RegisterLayout(name, layoutFunction)` / `GetLayout(name)`,
+   `SetFocus(widget)` / `ClearFocus()`, `GetStatistics()`; widget base:
+   `OnAcquire` / `OnRelease` hooks, `SetCallback(name, callback)` /
+   `Fire(name, ...)`, `SetUserData` / `GetUserData`, size, anchor and
+   visibility passthroughs, `IsReleasing()`; container base: `AddChild`,
+   `AddChildren`, `ReleaseChildren`, `SetLayout`, `PauseLayout`,
+   `ResumeLayout`, `PerformLayout`, the upward `LayoutFinished` size report;
+   layouts in generation 1: `List`, `Fill`, `Flow`; base widgets in
+   generation 1: `Frame` (window with title and close), `Group`,
+   `ScrollFrame`, `Label`, `Button`, `CheckBox`, `Slider`, `EditBox`,
+   `Dropdown`, `ColorPicker`, `Heading`, `Spacer`; anchors:
+   `WidgetKit.Anchor.FromRect(rect, parentRect)` (pure, elects the nearest
+   point), `Normalize(frame, ...)`, `Apply(frame, anchor)`, `Read(frame)`,
+   `WidgetKit:BindPosition(frame, storageTable, options)` → binding with
+   `OnMoved(callback)` and `Release()`; renderer:
+   `WidgetKit:RenderOptions(optionsTree, container)` → a released-together
+   set of widgets driving `Get` / `Set` / `Execute`, honouring `disabled`,
+   `hidden`, `order` and `validate` refusals shown inline.
+5. Ownership: one bounded pool per widget type; a widget built by an older
+   registered version is discarded rather than reused; `Release` fires
+   `OnRelease`, releases children first, clears user data, callbacks and
+   anchors, hides and reparents, then returns to the pool; the number of
+   frames ever created per type is capped with a named refusal;
+   `IsReleasing` is ancestor-aware.
+6. Performance: bounded pools with `Trim` reachable through PoolKit; LIFO
+   acquire; layout is an explicit operation, never a reaction to
+   `OnSizeChanged`; layout scratch tables from a pool; a documented cap on
+   children per container (256); callback errors isolated and reported;
+   position saves debounced through SchedulerKit when present.
+7. Tests: type versioning incl. a lower version ignored, acquire and
+   release round-trip, pooled reuse, stale-generation discard after a type
+   upgrade, double release refused, foreign widget refused, container add
+   and release incl. nested order, `IsReleasing` through an ancestor chain,
+   each layout against the frame fixture with recorded anchor calls (the
+   shared fixture gains sizes and anchors), layout recursion refusal, frame
+   cap, anchor election table cases, position binding save and restore,
+   renderer against a real optionsKit tree for every option kind,
+   allocation guard on acquire and release cycles, upgrade, manifest, error
+   levels.
+8. Docs: README, API.md with the widget author contract stated as
+   requirements, the release contract, the layout contract, the versioning
+   rule, the frame cap, the anchor model and a worked custom widget and
+   layout; INTERNALS.md for the layout algorithms and the renderer;
+   CHANGELOG; EMBEDDING.md host row and a UI section.
+9. Status: planned (package E).
+
 ### Standing obligations
 
 These apply to every phase rather than being completed once.
