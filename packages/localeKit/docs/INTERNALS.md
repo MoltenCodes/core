@@ -16,7 +16,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | `localeOverride` | The translator's override, or `false`. |
 | `runtimeRevision`, `schema` | Bookkeeping shared with every Kit. |
 
-The four metatables are created once and kept. Every loading revision writes its own functions into their `__index` and `__newindex` fields, so proxies and read tables created by an older copy run the newer behaviour without being replaced.
+The four metatables are created once and kept, and carry `__metatable` so callers can neither read nor replace them. Every loading revision writes its own functions into their `__index` and `__newindex` fields, so proxies and read tables created by an older copy run the newer behaviour without being replaced.
 
 ## Addon records
 
@@ -48,13 +48,15 @@ A proxy is an empty table per call. Nothing is ever stored in it, so `__newindex
 
 `GetLocale` sets `reportMetatable` or `silentMetatable` on `strings` when it fixes the mode (`"raw"` sets none). Their `__index` is `readMissing`: it `rawset`s the key as its own value, adds it to `missing`, and reports it in `"report"` mode. The `rawset` is what makes the report happen once and later reads plain table reads. A write that defines a missing key removes it from `missing`.
 
+A key `issecretvalue` reports as secret is returned before any of this, because storing it or concatenating it into the report would raise.
+
 Past `MAX_MISSING_KEYS` (1024) `readMissing` returns the key without storing it, so `__index` runs on every read of such a key; that costs a call but no allocation, and it bounds the table's growth.
 
 ## Format
 
-`Format` stages its arguments in the file-level array `formatArguments`, sets `formatArgumentCount` and `formatNextSequential`, and runs one `string.gsub` with the file-level `replaceSpecifier`. Nothing captures the arguments, so no closure or table is created per call; the specifier strings built inside (`"%" .. flags .. conversion`) are short strings Lua interns, so a repeated template allocates nothing new after the first call. The staged slots are cleared after every call, successful or not, so the array retains nothing.
+`Format` stages its arguments in the file-level array `formatArguments`, sets `formatArgumentCount` and `formatNextSequential`, and runs one `string.gsub` with the file-level `replaceSpecifier`. Nothing captures the arguments, so no closure or table is created per call; the specifier strings built inside (`"%" .. flags .. conversion`) are short strings Lua interns, so a repeated template allocates nothing new after the first call. Each call still makes strings (every formatted piece and the result), never a table. The staged slots are cleared after every call, successful or not, so the array retains nothing.
 
-`replaceSpecifier` only passes strings and numbers to `string.format`, which runs no metamethod, so `Format` cannot be re-entered while its arguments are staged.
+`replaceSpecifier` calls `string.format` under `pcall`, because the pattern admits shapes it refuses (a width over 99, a repeated flag); a refusal goes through `failFormat` like every other template error, so the staged arguments are always cleared. It only passes strings and numbers, which runs no metamethod, so `Format` cannot be re-entered while its arguments are staged.
 
 The pattern `%%(%d*)(%$?)([-+ #0]*%d*%.?%d*)(.?)` splits a specifier into digits, an optional `$`, flags/width/precision and the conversion. Digits followed by `$` are an index; otherwise they are the start of the width and are put back into the specifier.
 

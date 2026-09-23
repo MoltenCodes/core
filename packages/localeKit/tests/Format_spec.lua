@@ -125,4 +125,46 @@ describe("LocaleKit:Format", function()
             LocaleKit:Format(nil)
         end)
     end)
+
+    it("reports a width or precision string.format refuses, and clears the arguments", function()
+        TestEnv.expectErrorContaining(
+            'LocaleKit:Format template has an invalid specifier "%100s"',
+            function()
+                LocaleKit:Format("%100s", "x")
+            end
+        )
+        TestEnv.expectErrorContaining(
+            'LocaleKit:Format template has an invalid specifier "%1$.100f"',
+            function()
+                LocaleKit:Format("%1$.100f", 1)
+            end
+        )
+    end)
+
+    it("reports repeated flags, and clears the arguments", function()
+        TestEnv.expectErrorContaining(
+            'LocaleKit:Format template has an invalid specifier "%------5s"',
+            function()
+                LocaleKit:Format("%------5s", "x")
+            end
+        )
+    end)
+
+    it("retains no argument after string.format refuses a specifier", function()
+        local tracker = setmetatable({}, { __mode = "k" })
+        ---Stage an unused table argument behind a refused specifier.
+        ---@param template string
+        local function formatWithUnusedTable(template)
+            local unused = {}
+            tracker[unused] = true
+            local ok = pcall(LocaleKit.Format, LocaleKit, template, "x", unused)
+            assert.is_false(ok)
+        end
+        formatWithUnusedTable("%100s")
+        formatWithUnusedTable("%------5s")
+        collectgarbage()
+        collectgarbage()
+        assert.is_nil(next(tracker))
+        assert.are.equal("ok", LocaleKit:Format("%s", "ok"))
+    end)
 end)

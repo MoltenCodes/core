@@ -4,7 +4,7 @@ This document describes the private layout behind SchemaKit API generation 1. No
 
 ## Package state
 
-`SchemaKit._state` holds everything shared by every embedded copy:
+`SchemaKit._state` holds everything shared by every embedded copy. It is private by convention only, like every Kit's `_state`: addons share one Lua state, so a consumer that reaches in can change a compiled node and with it every schema that uses it. API.md lists what a consumer must not do.
 
 | Field | Purpose |
 |---|---|

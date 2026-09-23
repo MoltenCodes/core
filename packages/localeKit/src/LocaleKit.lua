@@ -280,7 +280,8 @@ local function validateOptionKeys(options, allowedKeys, methodName, level)
     local firstUnknown = nil
     for key in next, options do
         if allowedKeys[key] ~= true then
-            local text = tostring(key)
+            -- `tostring` could run a caller's `__tostring`; name other keys by type.
+            local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
             if firstUnknown == nil or text < firstUnknown then
                 firstUnknown = text
             end
@@ -399,6 +400,13 @@ end
 -- so `__newindex` sees every assignment. Two shared metatables encode the two
 -- write rules; `proxyRecords` maps a proxy to its addon.
 
+-- A table carrying a proxy metatable that `NewLocale` did not hand out. The
+-- metatables are protected by `__metatable`, so only the debug library can
+-- build one; it is still refused at the assignment line rather than failing
+-- inside LocaleKit.
+local FOREIGN_PROXY_MESSAGE =
+    "LocaleKit translation target is not a proxy returned by LocaleKit:NewLocale"
+
 ---Refuse an assignment that is not `L["non-empty string"] = "text" | true`
 ---and return the text to store. Level 3 is the assignment line: this
 ---function, the `__newindex` metamethod, then the line that assigned.
@@ -424,8 +432,11 @@ end
 ---@param key any
 ---@param value any
 local function writeTranslated(proxy, key, value)
-    local text = translationText(key, value)
     local record = proxyRecords[proxy]
+    if record == nil then
+        error(FOREIGN_PROXY_MESSAGE, 2)
+    end
+    local text = translationText(key, value)
     rawset(record.strings, key, text)
     clearMissing(record, key)
 end
@@ -437,8 +448,11 @@ end
 ---@param key any
 ---@param value any
 local function writeDefault(proxy, key, value)
-    local text = translationText(key, value)
     local record = proxyRecords[proxy]
+    if record == nil then
+        error(FOREIGN_PROXY_MESSAGE, 2)
+    end
+    local text = translationText(key, value)
     local strings = record.strings
     if rawget(strings, key) == nil or record.missing[key] == true then
         rawset(strings, key, text)
@@ -469,6 +483,16 @@ end
 ---@param reports boolean
 ---@return string|nil
 local function readMissing(strings, key, reports)
+    -- A secret (Retail 12.x) raises when used as a table key or concatenated
+    -- into the report, so it is handed back untouched: not stored, recorded
+    -- or reported. The probe is looked up at call time; without it nothing
+    -- is secret.
+    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local isSecretValue = rawget(_G, "issecretvalue")
+    if type(isSecretValue) == "function" and isSecretValue(key) then
+        return key
+    end
     if type(key) ~= "string" then
         return nil
     end
@@ -603,7 +627,16 @@ local function replaceSpecifier(digits, dollar, flags, conversion)
     elseif valueType ~= "number" then
         failFormat("argument " .. index .. " must be a number, got " .. valueType)
     end
-    return stringFormat(specifier, value)
+    -- The pattern admits shapes `string.format` refuses, such as a width over
+    -- 99 or a repeated flag. Run it protected so those fail like every other
+    -- template error: named, at the caller, with the arguments cleared.
+    local formatted, text = pcall(stringFormat, specifier, value)
+    if not formatted then
+        failFormat(
+            'template has an invalid specifier "%' .. digits .. dollar .. flags .. conversion .. '"'
+        )
+    end
+    return text
 end
 
 -- Package public API ---------------------------------------------------------
@@ -757,7 +790,7 @@ end
 ---Unindexed specifiers take the arguments in order, independently of indexed
 ---ones. `%s` takes a string or a number, `%d` and `%f` a number. A specifier
 ---past the last argument, an unsupported specifier, a wrong argument type or a
----secret value raises at the caller. Allocates the result string only.
+---secret value raises at the caller. Allocates only strings, no tables.
 ---@param _ LocaleKit
 ---@param template string
 ---@param ... any
@@ -808,6 +841,13 @@ end
 
 -- Commit ---------------------------------------------------------------------
 
+-- `__metatable` hides the shared metatables from `getmetatable` and makes
+-- `setmetatable` refuse to replace them, so a caller can neither forge a proxy
+-- nor detach a read table from its missing-key behaviour.
+rawset(TRANSLATED_PROXY_METATABLE, "__metatable", "LocaleKit.WriteProxy")
+rawset(DEFAULT_PROXY_METATABLE, "__metatable", "LocaleKit.WriteProxy")
+rawset(REPORT_METATABLE, "__metatable", "LocaleKit.Strings")
+rawset(SILENT_METATABLE, "__metatable", "LocaleKit.Strings")
 rawset(TRANSLATED_PROXY_METATABLE, "__newindex", writeTranslated)
 rawset(TRANSLATED_PROXY_METATABLE, "__index", readThroughProxy)
 rawset(DEFAULT_PROXY_METATABLE, "__newindex", writeDefault)

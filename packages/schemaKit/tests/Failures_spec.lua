@@ -93,7 +93,7 @@ describe("SchemaKit failures", function()
         assert.are.equal('["' .. string.rep("k", 32) .. '..."]', long.path)
 
         local _, newline = schema:Check({ ["a\nb"] = "x" })
-        assert.are.equal('["a\\nb"]', newline.path)
+        assert.are.equal('["a\\010b"]', newline.path)
 
         local _, boolean = schema:Check({ [true] = "x" })
         assert.are.equal("[true]", boolean.path)
@@ -103,6 +103,33 @@ describe("SchemaKit failures", function()
 
         local _, tableKey = schema:Check({ [{}] = "x" })
         assert.are.equal("[table]", tableKey.path)
+    end)
+
+    it("makes World of Warcraft escape codes and control bytes in keys visible", function()
+        local schema = S:Seal(S.map({ keys = S.any(), values = S.number(), max = 4 }))
+
+        local _, texture = schema:Check({ ["|Tx:999|t\27"] = "x" })
+        assert.are.equal('["||Tx:999||t\\027"]', texture.path)
+
+        local _, controls = schema:Check({ ['a\0b\rc\127d\\e"f'] = "x" })
+        assert.are.equal('["a\\000b\\013c\\127d\\\\e\\"f"]', controls.path)
+
+        -- No raw pipe or control byte survives anywhere in the path.
+        assert.is_nil(texture.path:find("%c"))
+        assert.is_nil(texture.path:gsub("||", ""):find("|", 1, true))
+    end)
+
+    it("never cuts a long key inside a UTF-8 sequence", function()
+        local schema = S:Seal(S.map({ keys = S.any(), values = S.number(), max = 4 }))
+        -- 31 ASCII bytes, then "é" (0xC3 0xA9) straddling the 32-byte limit.
+        local key = string.rep("a", 31) .. "\195\169" .. "tail"
+        local _, failure = schema:Check({ [key] = "x" })
+        assert.are.equal('["' .. string.rep("a", 31) .. '..."]', failure.path)
+
+        -- A sequence that ends exactly at the limit is kept whole.
+        local whole = string.rep("a", 30) .. "\195\169" .. "tail"
+        local _, kept = schema:Check({ [whole] = "x" })
+        assert.are.equal('["' .. string.rep("a", 30) .. '\195\169..."]', kept.path)
     end)
 
     it("names a failing map key as a key", function()

@@ -136,6 +136,7 @@ local SCHEMA_METHODS = { "Check", "Assert", "Apply", "Describe" }
 
 local find = string.find
 local format = string.format
+local byte = string.byte
 local gsub = string.gsub
 local sub = string.sub
 local floor = math.floor
@@ -446,12 +447,34 @@ local function formatNumber(value)
     return format("%.14g", value)
 end
 
----Render a string for a message: quoted, and without raw newlines.
+---Return the visible form of one byte `quote` escapes.
+---@param character string
+---@return string
+local function escapeCharacter(character)
+    if character == "|" then
+        return "||"
+    elseif character == "\\" then
+        return "\\\\"
+    elseif character == '"' then
+        return '\\"'
+    end
+    return format("\\%03d", byte(character))
+end
+
+---Render a string for a message: quoted, with every byte that could change
+---how the message displays made visible.
+---
+---`%q` is not enough in Lua 5.1: it leaves control bytes other than newline,
+---carriage return and NUL as they are, and nothing escapes `|`, which starts
+---a World of Warcraft escape sequence (`|T...|t` textures, `|H...|h` links,
+---`|c` colours) in any text the client renders. `|` is doubled, which the
+---client displays as one literal `|`; `\` and `"` are escaped as in Lua; and
+---every other control byte (0 to 31, and 127) becomes `\ddd`.
 ---@param text string
 ---@return string
 local function quote(text)
-    local quoted = gsub(format("%q", text), "\\\n", "\\n")
-    return quoted
+    local escaped = gsub(text, '[%c\127\\"|]', escapeCharacter)
+    return '"' .. escaped .. '"'
 end
 
 ---Render one enum value, which the builder restricts to strings, numbers and
@@ -483,7 +506,16 @@ local function formatSegment(key, isFirst)
         end
         local shown = key
         if #shown > PATH_KEY_LIMIT then
-            shown = sub(shown, 1, PATH_KEY_LIMIT) .. "..."
+            -- Never cut inside a UTF-8 sequence: while the first byte left
+            -- out is a continuation byte (0x80 to 0xBF), leave out one more,
+            -- so the cut falls before the sequence's lead byte.
+            local cut = PATH_KEY_LIMIT
+            local nextByte = byte(key, cut + 1)
+            while cut > 0 and nextByte >= 0x80 and nextByte <= 0xBF do
+                cut = cut - 1
+                nextByte = byte(key, cut + 1)
+            end
+            shown = sub(key, 1, cut) .. "..."
         end
         return "[" .. quote(shown) .. "]"
     elseif keyType == "number" then
@@ -1795,11 +1827,16 @@ end
 ---Nodes are already immutable; sealing gives the compiled node its own
 ---failure record and options. Sealing a sealed schema returns a new schema
 ---sharing the same compiled checker.
----@param _ SchemaKit
+---@param facade SchemaKit
 ---@param node SchemaKit.Node|SchemaKit.Schema
 ---@param options SchemaKit.SealOptions?
 ---@return SchemaKit.Schema schema
-local function packageSeal(_, node, options)
+local function packageSeal(facade, node, options)
+    -- `SchemaKit.Seal(node)` hands the node in as `facade` and leaves `node`
+    -- nil; name that mistake instead of calling the node invalid.
+    if not rawequal(facade, SchemaKit) then
+        error("SchemaKit:Seal is called with a colon, not a dot", 2)
+    end
     local root = resolveChild(node, "SchemaKit:Seal node", 3)
     local freshFailures = false
     if options ~= nil then

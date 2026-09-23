@@ -124,6 +124,18 @@ describe("SchemaKit error levels", function()
             value
         )
 
+        local dotLine
+        local dotOk, dotValue = pcall(function()
+            dotLine = currentLine() + 1
+            S.Seal(S.any())
+        end)
+        assertReportedAt(
+            dotLine,
+            "SchemaKit:Seal is called with a colon, not a dot",
+            dotOk,
+            dotValue
+        )
+
         local optionsLine
         local optionsOk, optionsValue = pcall(function()
             optionsLine = currentLine() + 1

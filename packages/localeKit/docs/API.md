@@ -92,6 +92,8 @@ The two kinds of proxy differ only in what happens when the key already holds te
 
 When the default locale is also the client locale, its proxy is still a default proxy.
 
+The proxy and read-table metatables are protected with `__metatable`: `getmetatable` returns a name instead of the metatable, and `setmetatable` refuses to replace them. A table that carries a proxy metatable without being a proxy `NewLocale` returned (only the debug library can build one) is refused at the assignment line: `LocaleKit translation target is not a proxy returned by LocaleKit:NewLocale`.
+
 Reading through a proxy (`L["key"]`) returns the text stored so far, from any file, or `nil`; it never raises and never reports.
 
 ## `LocaleKit:GetLocale(addonName, options?)`
@@ -116,6 +118,8 @@ Raises when the addon registered nothing yet (`LocaleKit:GetLocale found no loca
 | `"report"` | Returns the key, stores it as its own value, records it for `MissingKeys`, and reports `LocaleKit: missing translation "key" for MyAddon (deDE)` through `geterrorhandler()` (or `print`). |
 | `"silent"` | The same without the report. |
 | `"raw"` | Returns `nil`. The table has no metatable and records nothing. |
+
+A **secret key** (Retail 12.x; a unit name read in combat, say) cannot be stored as a table key or put into a report, so it is returned unchanged and neither stored, recorded nor reported. `issecretvalue` is looked up at every such read; without it nothing is secret. Check `issecretvalue` before indexing the table with runtime data if you need the translation.
 
 Because the key is stored on the first read, each key is reported once per session and costs a plain table read afterwards. A key that is not a string reads as `nil` and is not recorded. When a translation or default file defines a key after it was read as missing, the new text replaces the stored key and the key leaves `MissingKeys`.
 
@@ -159,10 +163,11 @@ Raised at the caller's line:
 - `LocaleKit:Format template needs argument 3 but 2 were given`, for an index or a sequential specifier past the last argument;
 - `LocaleKit:Format template argument indexes start at 1`;
 - `LocaleKit:Format template has an unsupported specifier "%x"`, including a `%` at the end of the template;
+- `LocaleKit:Format template has an invalid specifier "%100s"`, for a shape `string.format` refuses: a width or precision over two digits, or a repeated flag;
 - `LocaleKit:Format argument 1 must be a number, got string` (and `must be a string or a number` for `%s`);
 - `LocaleKit:Format argument 2 must not be a secret value`, see below.
 
-`Format` runs one `string.gsub` per call and allocates its result string only: no table and no closure.
+`Format` runs one `string.gsub` per call and allocates only strings (the formatted piece of each specifier and the result), no table and no closure.
 
 ### Secret values
 
@@ -179,7 +184,7 @@ Makes every addon registered from now on use `locale` as its client locale; `enG
 
 ## Error behaviour
 
-Argument failures report the line that called the public method, and write-proxy failures report the assignment line, never a line inside LocaleKit. Messages name the method (`LocaleKit:NewLocale`, `LocaleKit:GetLocale`, `LocaleKit:Format`) or `LocaleKit translation` for a proxy write. Option tables refuse unknown fields and name the alphabetically first one.
+Argument failures report the line that called the public method, and write-proxy failures report the assignment line, never a line inside LocaleKit. Messages name the method (`LocaleKit:NewLocale`, `LocaleKit:GetLocale`, `LocaleKit:Format`) or `LocaleKit translation` for a proxy write. Option tables refuse unknown fields and name the alphabetically first one; a key that is not a string is named by its type (`<number key>`), so no `__tostring` runs.
 
 ## Performance
 
@@ -190,7 +195,7 @@ Argument failures report the line that called the public method, and write-proxy
 | `NewLocale` for an unneeded locale | Argument checks only; nothing allocated or retained. |
 | `NewLocale` for a needed locale | One proxy table; the addon's record on its first call. |
 | Proxy write | One `rawset`. |
-| `Format` | One `string.gsub`; allocates the result string only. |
+| `Format` | One `string.gsub`; allocates only strings, no tables. |
 | `MissingKeys` | O(k log k) for k missing keys; allocates the result array. |
 
 ## Embedded copies and upgrades

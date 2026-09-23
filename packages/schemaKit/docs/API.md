@@ -51,7 +51,7 @@ Package facade:
 | `DEFAULT_ARRAY_MAX` | `1024`: the element bound of an array without `max`. |
 | `Schema` | The shared prototype of sealed schemas. |
 
-Builders are plain functions and are called with a dot: `SchemaKit.string{ max = 32 }`. Calling one with a colon raises `SchemaKit.string is called with a dot, not a colon`. `Seal` is a method and is called with a colon. Code that uses many builders usually aliases the facade: `local S = SchemaKit`.
+Builders are plain functions and are called with a dot: `SchemaKit.string{ max = 32 }`. Calling one with a colon raises `SchemaKit.string is called with a dot, not a colon`. `Seal` is a method and is called with a colon; calling it with a dot raises `SchemaKit:Seal is called with a colon, not a dot`. Code that uses many builders usually aliases the facade: `local S = SchemaKit`.
 
 Sealed schemas:
 
@@ -80,9 +80,15 @@ Sealing a sealed schema returns a new schema that shares the compiled checker an
 
 ### What "sealed" means in Lua 5.1
 
-Nodes and schemas are empty proxy tables. Their metatables refuse writes (`SchemaKit schemas are sealed and cannot be modified`, `SchemaKit schema nodes are immutable`, raised at the writing line) and set `__metatable`, so `setmetatable` refuses to replace them and `getmetatable` returns the name `"SchemaKit.Schema"` or `"SchemaKit.Node"`. The compiled checker lives in SchemaKit's private state, which no consumer can reach.
+Nodes and schemas are empty proxy tables. Their metatables refuse writes (`SchemaKit schemas are sealed and cannot be modified`, `SchemaKit schema nodes are immutable`, raised at the writing line) and set `__metatable`, so `setmetatable` refuses to replace them and `getmetatable` returns the name `"SchemaKit.Schema"` or `"SchemaKit.Node"`.
 
-Lua 5.1 cannot close two doors: `rawset` still writes a field onto the proxy, and `debug.setmetatable` still replaces the metatable. Neither can change the compiled checker; a `rawset` of a method name shadows that method on that one proxy only. SchemaKit recognises its own nodes and schemas by identity in private weak tables, never by `getmetatable`, so a forged table is refused as a receiver or a child.
+What the seal does not do is hide the compiled checker. It lives in `SchemaKit._state`, which is private **by convention**, like every Kit's `_state`: Lua 5.1 has no way to make a table reachable from shared package state yet unreachable to the addons that share it. Other doors stay open as well: `rawset` still writes a field onto a proxy (shadowing a method on that one proxy), `debug.setmetatable` still replaces a metatable, and the shared `SchemaKit.Schema` prototype is an ordinary table whose methods any addon could replace for everyone. A consumer must not:
+
+- read or write `SchemaKit._state` or anything reachable from it, such as the compiled node behind a proxy (changing its `max` would make every schema using it accept values it refuses);
+- write to `SchemaKit.Schema`, the facade, or any proxy with `rawset`;
+- replace a proxy's metatable with `debug.setmetatable`.
+
+The seal is a guard against mistakes, not a security boundary between addons, which share one Lua state. SchemaKit recognises its own nodes and schemas by identity in private weak tables, never by `getmetatable`, so an ordinary table shaped like a schema is refused as a receiver or a child.
 
 ## Builders
 
@@ -147,7 +153,7 @@ Returns `true`, or `false` and a failure:
 
 | Field | Meaning |
 |---|---|
-| `path` | Where the failure is: `frames[3].point`, `byName["two words"]`, or `""` for the value itself. Names that are identifiers are joined with dots; numbers, booleans and other strings are bracketed; table keys appear as `[table]`. Keys longer than 32 characters are cut and marked with `...`. |
+| `path` | Where the failure is: `frames[3].point`, `byName["two words"]`, or `""` for the value itself. Names that are identifiers are joined with dots; numbers, booleans and other strings are bracketed; table keys appear as `[table]`. Quoted keys are escaped for display: `|` is doubled (so no World of Warcraft `|T`, `|H` or `|c` escape sequence survives), `\` and `"` are backslash-escaped, and every other control byte appears as `\ddd`. Keys longer than 32 bytes are cut, never inside a UTF-8 sequence, and marked with `...`. |
 | `rule` | The rule that failed (below). |
 | `expected` | What the schema accepts there, from the schema's own constants. |
 | `found` | A type name or a fixed description such as `larger number`, `string of length 40` or `secret value`. **Never the value.** |

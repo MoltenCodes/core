@@ -425,8 +425,8 @@ the WowAce directory item W6 (a shared validation core).
 5. Ownership: locale tables are package state keyed by addon name; nothing
    to tear down; upgrades keep them.
 6. Performance: a translation lookup is one table read; a missing key is
-   `rawset` on first use so it costs the report once; `Format` allocates its
-   result string only.
+   `rawset` on first use so it costs the report once; `Format` allocates only
+   strings (each formatted piece and the result), no tables.
 7. Tests: proxy for the running locale versus `nil`, default proxy not
    overwriting, missing-key modes, report once, MissingKeys sorted,
    indexed format including reordering and repeated arguments, override,
@@ -598,7 +598,7 @@ the WowAce directory item W6 (a shared validation core).
    capture, BindOptions get/set/reset/list against a real optionsKit tree,
    completion with a stubbed ChatEdit, Close leaves an inert global,
    upgrade, manifest, error levels.
-8. Docs: README, API.md with a full `/myaddon` example, CHANGELOG;
+8. Docs: README, API.md with a full slash-command example, CHANGELOG;
    EMBEDDING.md host row (`SlashCmdList`, `SLASH_*`, `DEFAULT_CHAT_FRAME`,
    `ChatEdit_CustomTabPressed`).
 9. Status: planned (package C3).

@@ -154,4 +154,57 @@ describe("LocaleKit:NewLocale", function()
             LocaleKit:NewLocale("MyAddon", "deDE", true)
         end)
     end)
+
+    it("hides the shared metatables and refuses to replace them", function()
+        local proxy = LocaleKit:NewLocale("MyAddon", "deDE")
+        local default = LocaleKit:NewLocale("MyAddon", "enUS", { isDefault = true })
+        assert.are.equal("LocaleKit.WriteProxy", getmetatable(proxy))
+        assert.are.equal("LocaleKit.WriteProxy", getmetatable(default))
+        local L = LocaleKit:GetLocale("MyAddon")
+        assert.are.equal("LocaleKit.Strings", getmetatable(L))
+        assert.is_false(pcall(setmetatable, L, nil))
+        assert.is_false(pcall(setmetatable, proxy, {}))
+    end)
+
+    it("refuses a forged proxy at the assignment line", function()
+        local source = debug.getinfo(1, "S").short_src
+        for _, options in ipairs({ {}, { isDefault = true } }) do
+            local locale = options.isDefault and "enUS" or "deDE"
+            local proxy = LocaleKit:NewLocale("MyAddon", locale, options)
+            local forged = {}
+            -- Only the debug library can bypass `__metatable`.
+            debug.setmetatable(forged, debug.getmetatable(proxy))
+            local line
+            local ok, failure = pcall(function()
+                line = debug.getinfo(1, "l").currentline + 1
+                forged["Key"] = "text"
+            end)
+            assert.is_false(ok)
+            assert.are.equal(
+                source
+                    .. ":"
+                    .. line
+                    .. ": LocaleKit translation target is not a proxy returned by LocaleKit:NewLocale",
+                failure
+            )
+            assert.is_nil(forged["Key"])
+        end
+    end)
+
+    it("names an unknown option key that is not a string by its type, without tostring", function()
+        local called = false
+        local key = setmetatable({}, {
+            __tostring = function()
+                called = true
+                return "custom"
+            end,
+        })
+        TestEnv.expectErrorContaining('options contains unknown field "<number key>"', function()
+            LocaleKit:NewLocale("MyAddon", "deDE", { [1] = true })
+        end)
+        TestEnv.expectErrorContaining('options contains unknown field "<table key>"', function()
+            LocaleKit:GetLocale("MyAddon", { [key] = true })
+        end)
+        assert.is_false(called)
+    end)
 end)

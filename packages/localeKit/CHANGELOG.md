@@ -10,4 +10,8 @@
 - Added `LocaleKit:Format(template, ...)` with `%s`, `%d`, `%f` (flags, width, precision), indexed `%1$s` specifiers with reordering and repetition, and `%%`: one `string.gsub` per call, no table or closure allocated. A missing argument, a wrong argument type, an unsupported specifier and a secret argument (through `issecretvalue`, looked up at call time) raise at the caller.
 - Added `LocaleKit:SetLocaleOverride(locale)` for translators; `nil` clears it. `enGB` clients and overrides are folded to `enUS`, and a client without `GetLocale` is treated as `enUS`.
 - Proxies and read tables use metatables kept in package state and rewritten by each loading revision, so an in-place upgrade keeps every table, mode, missing key, proxy and the override.
-- 79 specs, including interleaved registration by two addons, an in-place upgrade spec, allocation guards on translated and missing lookups and on `Format`, and error levels pinned for every argument, write-proxy and template failure.
+- `Format` reports a specifier `string.format` refuses (a width or precision over 99, a repeated flag) as `LocaleKit:Format template has an invalid specifier "..."` at the caller and clears its staged arguments on every failure.
+- A read table returns a secret key (through `issecretvalue`, looked up at call time) unchanged, without storing, recording or reporting it.
+- The proxy and read-table metatables are protected with `__metatable`, and a table carrying a proxy metatable that `NewLocale` did not return is refused at the assignment line.
+- An unknown option key that is not a string is named by its type, so no `__tostring` runs.
+- 86 specs, including interleaved registration by two addons, an in-place upgrade spec, allocation guards on translated and missing lookups and on `Format`, and error levels pinned for every argument, write-proxy and template failure.
