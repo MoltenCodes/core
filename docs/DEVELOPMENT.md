@@ -226,6 +226,59 @@ needs a secret installs its own stand-in and removes it in `finally`, and code
 under test must treat a missing `issecretvalue` as "never secret", which is what
 every client without secret values looks like.
 
+## Measuring a change with ProfileKit
+
+[`profileKit`](../packages/profileKit/README.md) is how a Kit change that claims
+to be faster, or that touches a hot path, gets a number. In the package suites
+the shared fixture's `debugprofilestop` is the `ClockStub`, which moves only
+when a spec advances it: a ProfileKit spec there proves the wiring, not the
+speed. To time real work, write a throwaway spec that puts real CPU time in the
+clock's place after the chain is loaded and before ProfileKit binds it:
+
+```lua
+local Env = require("SignalKitTestEnv") -- the suite of the Kit being changed
+
+it("measures SignalKit Fire", function()
+    local SignalKit = Env.NewPackage() -- resets the stubs, so override after it
+    rawset(_G, "debugprofilestop", function()
+        return os.clock() * 1000 -- CPU milliseconds, like the client clock
+    end)
+    local ProfileKit = require("ProfileKit") -- binds the clock now
+    ProfileKit:Enable()
+
+    local signal = SignalKit:New()
+    signal:Connect(function() end)
+    local fire = ProfileKit:Section("SignalKit.Fire")
+    for _ = 1, 100000 do
+        fire:Begin()
+        signal:Fire("player", 42)
+        fire:End()
+    end
+
+    local row = ProfileKit:Report()[1]
+    print(row.name, row.count, row.total, row.max)
+    package.loaded.ProfileKit = nil
+end)
+```
+
+`python3 -m tooling.test.run` puts only a package's own dependency closure on
+the Lua path, so run the file with Busted directly and name the source and
+support directories it needs:
+
+```bash
+LUA_PATH="packages/registry/src/?.lua;packages/signalKit/src/?.lua;packages/profileKit/src/?.lua;packages/signalKit/tests/support/?.lua;tests/support/?.lua;;" \
+  busted path/to/FireCost_spec.lua
+```
+
+Run it against the code before and after the change on the same machine, and
+quote `count`, `total` and `max` from both runs in the change description. The
+clock reads are inside the span, so compare the two totals rather than reading
+either as an absolute cost. Do not commit the spec: the numbers depend on the
+machine, and a timing threshold fails on a busy CI runner. What does get
+committed is an allocation guard (`collectgarbage("count")` around the hot path
+with the collector stopped) and the specs that pin behaviour. In the client,
+the same sections, enabled from a debug build, measure the real frame.
+
 ## Building a release bundle
 
 Build a distributable bundle:
