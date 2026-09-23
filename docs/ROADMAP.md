@@ -203,6 +203,98 @@ namespaces follow in v2; event coalescing and scheduler lanes are one design.
       "run when out of combat" queue) and a halted state announced to
       dependents.
 
+#### Package B planned Kits — the nine points
+
+Recorded 2026-09-23, before implementation, as the planned package policy
+requires. Sources: the phase 4 reference notes on LibRangeCheck-3.0,
+LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
+
+**clientKit** — facade `ClientKit`
+
+1. Package `clientKit`, facade `ClientKit`, API generation 1.
+2. Purpose: one place that answers "which client is this and what can it
+   do", and normalised shims for the few host calls whose name or shape
+   differs between flavours. Non-goals: gameplay data, range or spell logic,
+   anything a domain library should own; no polyfill of missing features.
+3. Dependencies: registry API 2 only.
+4. Surface: `GetFlavor()` (`"mainline" | "mists" | "tbc" | "classic"`),
+   `GetBuild()` and `GetInterfaceNumber()`, `IsAtLeast(interfaceNumber)`,
+   `Has(capability)` over a fixed, documented capability table
+   (`C_AddOns`, `C_Spell`, `C_Item`, `C_Timer`, `secretValues`,
+   `restrictedFrames`, `spellbookApi`, ...), `IsSecret(value)`,
+   `CanAccessFrame(frame)`, `IsEventValid(eventName)`, and shims
+   `GetAddOnMetadata`, `IsAddOnLoaded`, `GetSpellInfo`, `GetItemInfo`
+   returning one shape on every flavour. Every flag reads `false` when the
+   host does not expose the feature; an absent `WOW_PROJECT_ID` yields the
+   most conservative flavour, never "everything true".
+5. Ownership: stateless facade; the capability table is computed once at
+   bootstrap and re-read on upgrade. Nothing to tear down.
+6. Performance: each probe is a table read after bootstrap; shims add one
+   call. No allocation after bootstrap.
+7. Tests: one fixture profile per supported flavour (four), the
+   `WOW_PROJECT_ID` absent case, the secret-value and forbidden-frame stubs,
+   `IsEventValid` for a known, an unknown and an invalid name, upgrade.
+8. Docs: README, API.md with the capability table and the shim shapes,
+   EMBEDDING.md host-requirements row, CHANGELOG.
+9. Status: planned (package B1).
+
+**cacheKit** — facade `CacheKit`
+
+1. Package `cacheKit`, facade `CacheKit`, API generation 1.
+2. Purpose: bounded caches for consumers so "bounded by default" is a
+   structure they reach for instead of a rule they remember: LRU by count,
+   TTL by age, memoisation, snapshots with diffs, and clearing on a host
+   event. Non-goals: persistence (settingsKit), cross-addon sharing.
+3. Dependencies: registry API 2; eventKit API 1 optional (clear-on-event
+   resolved through `Registry:Find`); a clock through the same fallback as
+   timerKit (absent clock disables TTL, documented).
+4. Surface: `CacheKit:NewLru{ maxEntries }`, `CacheKit:NewTtl{ maxEntries,
+   ttlSeconds }` with `Get`, `Set`, `Peek`, `Delete`, `Clear`, `GetCount`,
+   `GetStats()` (hits, misses, evictions); `CacheKit:Memoize(fn, options)`
+   for one string-or-number key; `CacheKit:NewSnapshot(read)` with
+   `Refresh()` returning added, removed and changed keys without
+   allocating per unchanged key; `cache:ClearOn(eventName)` when eventKit
+   is present.
+5. Ownership: caches are owned by their creator and closed with `Close()`;
+   clear-on-event connections are released on `Close`. An upgrade keeps
+   entries.
+6. Performance: LRU is an intrusive doubly linked list over a hash; `Get`
+   and `Set` are O(1) and allocate only for a new entry; eviction reuses
+   entry tables from a bounded free list. `maxEntries` is required, so no
+   cache is unbounded.
+7. Tests: eviction order, TTL expiry with the clock stub, memoise hit and
+   miss, snapshot diff, clear-on-event, `Close`, allocation guard, upgrade.
+8. Docs: README, API.md, INTERNALS.md (list and free-list layout),
+   CHANGELOG.
+9. Status: planned (package B1).
+
+**profileKit** — facade `ProfileKit`
+
+1. Package `profileKit`, facade `ProfileKit`, API generation 1.
+2. Purpose: measure the framework and its consumers inside the client:
+   named sections with call count, total time, worst spike and last time;
+   a report; zero cost when off. Non-goals: memory profiling, per-frame
+   graphs, anything shipped enabled.
+3. Dependencies: registry API 2; `debugprofilestop` for CPU time (the
+   measurement is disabled, not failing, when absent).
+4. Surface: `ProfileKit:Enable()` / `Disable()` / `IsEnabled()`,
+   `ProfileKit:Section(name)` returning a section with `Begin()` and
+   `End()`; `ProfileKit:Measure(name, fn, ...)` returning fn's results;
+   `ProfileKit:Report()` returning a sorted array of `{ name, count,
+   total, max, last }`; `ProfileKit:Reset()`. When disabled, `Begin`,
+   `End` and `Measure` are no-ops bound at enable time so callers pay a
+   table read and a call.
+5. Ownership: package-level state, bounded by `maxSections` (default 256,
+   further sections refused with a reason).
+6. Performance: `Begin` and `End` allocate nothing; `Report` allocates by
+   design and says so. Enabled overhead is two clock reads per section.
+7. Tests: disabled path is a no-op, enable and measure with the clock stub,
+   nested sections, spike and last, `Measure` passing results and errors
+   through, cap refusal, `Reset`, upgrade.
+8. Docs: README, API.md, CHANGELOG; a DEVELOPMENT.md paragraph on
+   measuring a Kit change.
+9. Status: planned (package B1).
+
 #### Package C — the consumer story
 
 - [ ] `schemaKit` — sealed schemas with structured failures, shared by
