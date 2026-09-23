@@ -25,3 +25,7 @@ reports/
 
 *.swp
 *.swo
+
+# Lua bytecode written by luac when counting locals or checking syntax
+luac.out
+*.luac
