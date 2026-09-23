@@ -21,6 +21,7 @@ below explains why that example looks the way it does.
 - [Taint](#taint)
 - [The combat log](#the-combat-log)
 - [`/reload` and saved variables](#reload-and-saved-variables)
+- [User interface](#user-interface)
 - [Performance guidance](#performance-guidance)
 - [Troubleshooting](#troubleshooting)
 
@@ -140,7 +141,8 @@ registry
 ├──→ hookKit
 ├──→ interopKit
 ├──→ poolKit
-│       └──→ codecKit
+│       ├──→ codecKit
+│       └──→ widgetKit   (also needs signalKit)
 └──→ signalKit
        ├──→ mediaKit
        ↓
@@ -152,6 +154,7 @@ registry
     │       ├──→ readinessKit
     │       ↓
     └──→ schedulerKit
+            ├──→ commKit   (also signalKit, eventKit, lifecycleKit, poolKit)
             └──→ testKit   (also lifecycleKit; development only, never bundled)
 ```
 
@@ -164,22 +167,24 @@ cacheKit/CacheKit.lua
 clientKit/ClientKit.lua
 poolKit/PoolKit.lua
 codecKit/CodecKit.lua
-schemaKit/SchemaKit.lua
-commandKit/CommandKit.lua
 signalKit/SignalKit.lua
 eventKit/EventKit.lua
+lifecycleKit/LifecycleKit.lua
+timerKit/TimerKit.lua
+schedulerKit/SchedulerKit.lua
+commKit/CommKit.lua
+schemaKit/SchemaKit.lua
+commandKit/CommandKit.lua
 hookKit/HookKit.lua
 interopKit/InteropKit.lua
-lifecycleKit/LifecycleKit.lua
 localeKit/LocaleKit.lua
 mediaKit/MediaKit.lua
 moduleKit/ModuleKit.lua
 optionsKit/OptionsKit.lua
 profileKit/ProfileKit.lua
-timerKit/TimerKit.lua
 readinessKit/ReadinessKit.lua
-schedulerKit/SchedulerKit.lua
 settingsKit/SettingsKit.lua
+widgetKit/WidgetKit.lua
 ```
 
 You can list the files directly in your `.toc`:
@@ -484,6 +489,8 @@ actually touch, which is deliberately small:
 | `interopKit` | nothing but Lua 5.1 | `LibStub` (every call returns `"absent"`), `issecretvalue` (nothing treated as secret) |
 | `mediaKit` | SignalKit's surface | `GetLocale` (the client writes Latin), `issecretvalue` (nothing is secret), `LibStub` and LibSharedMedia-3.0 (`AdoptLibSharedMedia` and `MirrorToLibSharedMedia` return `false, "absent"`) |
 | `testKit` (development only) | LifecycleKit's and SchedulerKit's surfaces | `issecretvalue` (nothing treated as secret), `issecurevariable` (`ToBeSecure` fails), `GetTimePreciseSec` (`durationMs` 0), `geterrorhandler` (`print`), EventKit and TimerKit API 1 through `Registry:Find` |
+| `commKit` | SignalKit's, EventKit's, LifecycleKit's, SchedulerKit's and PoolKit's surfaces; `GetTimePreciseSec`; `C_ChatInfo.SendAddonMessage` (legacy global fallback; else `Send` refuses `"unavailable"`) | `C_ChatInfo.RegisterAddonMessagePrefix` and `IsAddonMessagePrefixRegistered` (legacy globals, then nothing registered), `C_ChatInfo.SendAddonMessageLogged` (logged sends refused), the events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE`, `PLAYER_ENTERING_WORLD`, `GetFramerate` (no low-frame-rate mode), `UnitInParty` and `UnitInRaid` (no roster eviction; streams still expire), `Enum` (12.x values assumed), `securecallfunction` (`pcall`), `issecretvalue`, `geterrorhandler` (`print`), CodecKit API 1 (`SyncSet` raises), HookKit API 1 (outside traffic uncharged), SchemaKit API 1 (`schema` raises) |
+| `widgetKit` | PoolKit's and SignalKit's surfaces; `CreateFrame` | `UIParent` (released frames rest on a hidden holder), `issecretvalue` (nothing secret), `geterrorhandler` (`print`), `ColorPickerFrame:SetupColorPickerAndShow` (a click fires the current colour), `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` (no modifiers), OptionsKit API 1 through `Registry:Find` (`RenderOptions` raises at the caller), SchedulerKit API 1 (saves are immediate), MediaKit API 1 (`CreateMediaPicker` raises; the renderer uses the option's `values`) |
 | `hookKit` | nothing but Lua 5.1 | `hooksecurefunc` (`SecureHook` raises at the caller), `issecurevariable` (nothing treated as secure), `Frame:HookScript` / `Frame:GetScript` / `Frame:SetScript` (the matching script hooks raise at the caller), `Frame:IsProtected` (frame not protected), `InCombatLockdown` (never in combat), ClientKit API 1 (`issecretvalue`) |
 | `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript` | `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`) |
 | `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat), HookKit and CommandKit API 1 through `Registry:Find` (their addon scopes are closed at logout when present, then the SignalKit addon bus) |
@@ -798,6 +805,37 @@ when EventKit is present. The layout of the saved table is specified in
 No other Kit reads or writes a saved variable, and none will add one of its own:
 a shared library that wrote to a global saved-variables table would make every
 embedding addon's state depend on which copy won.
+
+## User interface
+
+`WidgetKit` (package `widgetKit`) builds insecure frames of its own with
+`CreateFrame`. That has four consequences worth knowing before you use it.
+
+- **Widgets are insecure frames.** Creating, moving and showing them in combat
+  is fine; using them for protected actions (casting, targeting, secure
+  attribute buttons) is not, and a secure frame must never be parented into a
+  widget, because the parent's taint reaches it.
+- **WidgetKit never touches frames it did not create.** It sets no scripts and
+  writes no fields on client frames. The one client frame it uses,
+  `ColorPickerFrame`, is opened only after `IsForbidden` and
+  `CanBeAccessedInContext` allow it, and a click fires the current colour when
+  they do not.
+- **Text setters refuse a secret.** `Label:SetText` and `EditBox:SetText`
+  refuse a secret value unless the caller passes `allowSecret`, and every
+  pooled widget clears its text on release, so a recycled region never shows
+  a value from its previous life (taint rule 6).
+- **Positions persist through SettingsKit.** `WidgetKit:BindPosition(frame,
+  db.profile.window)` saves a plain anchor table `{ point, relativeTo,
+  relativePoint, x, y, scale }` into a record you declare in your schema,
+  debounced through SchedulerKit when it is present, and restores it on bind.
+
+Rendering an options tree is one call: `WidgetKit:RenderOptions(tree,
+container)` walks `tree:Describe()`, creates one widget per option, writes
+through `tree:Validate` then `tree:Set`, shows a refusal inline, and refreshes
+on `tree:OnChange`. Call `rendering:Refresh()` from `db:OnProfileChanged` so a
+profile switch redraws the values. The widget author contract, the release
+contract and the layout contract are in
+[`widgetKit/docs/API.md`](../packages/widgetKit/docs/API.md).
 
 ## Performance guidance
 

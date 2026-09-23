@@ -52,6 +52,8 @@ Current package entry points:
 - [`CodecKit`](../packages/codecKit/README.md) — serialise, compress and channel-encode values into addon-channel or printable strings; decoding never raises.
 - [`InteropKit`](../packages/interopKit/README.md) — the LibStub bridge.
 - [`MediaKit`](../packages/mediaKit/README.md) — typed media registry with font scripts, per-consumer defaults and LibSharedMedia mirroring.
+- [`CommKit`](../packages/commKit/README.md) — addon messaging with bounded reassembly, refusing queues, a session bandwidth budget and sync sets.
+- [`WidgetKit`](../packages/widgetKit/README.md) — pooled, versioned widgets, explicit layouts, anchors and an options renderer.
 - [`TestKit`](../packages/testKit/README.md) — development-only in-client test suites with structured results.
 
 Each package keeps its complete public contract under its own `docs/API.md`.

@@ -29,6 +29,8 @@ This repository is a monorepo. Every publishable runtime package lives under `pa
 | [`codecKit`](packages/codecKit/) | Implemented | Serialise, compress (pure-Lua DEFLATE) and channel-encode values behind a self-describing header; decoding never raises. |
 | [`interopKit`](packages/interopKit/) | Implemented | The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries as read-only foreign entries. |
 | [`mediaKit`](packages/mediaKit/) | Implemented | Typed media registry (fonts with scripts, bars, borders, backgrounds, sounds, textures, icons), sorted cached lists, per-consumer defaults, LibSharedMedia adoption and mirroring. |
+| [`commKit`](packages/commKit/) | Implemented | Addon messaging of any length: prefixes, a chunk protocol with bounded reassembly, priority queues that refuse rather than grow, a session-wide bandwidth budget, content-hash sync sets. |
+| [`widgetKit`](packages/widgetKit/) | Implemented | Pooled, versioned widgets with explicit layouts, saveable anchors with position persistence, and an OptionsKit renderer. |
 | [`testKit`](packages/testKit/) | Implemented (development only) | In-client test suites against LifecycleKit phases in SchedulerKit jobs: save-and-restore mocking, secret-safe expectations, structured results; never in a release bundle. |
 
 ## Using the framework in an addon
@@ -123,7 +125,9 @@ python3 -m tooling.spell
 │   ├── codecKit/
 │   ├── interopKit/
 │   ├── mediaKit/
-│   └── testKit/
+│   ├── testKit/
+│   ├── commKit/
+│   └── widgetKit/
 ├── pyproject.toml           # Python tooling metadata and the supported floor
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua

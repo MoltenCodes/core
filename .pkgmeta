@@ -79,3 +79,5 @@ move-folders:
   MoltenCodes/packages/codecKit/src: MoltenCodes/codecKit
   MoltenCodes/packages/interopKit/src: MoltenCodes/interopKit
   MoltenCodes/packages/mediaKit/src: MoltenCodes/mediaKit
+  MoltenCodes/packages/commKit/src: MoltenCodes/commKit
+  MoltenCodes/packages/widgetKit/src: MoltenCodes/widgetKit

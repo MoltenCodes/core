@@ -43,6 +43,8 @@ those defaults when they are documented and observable.
 - [x] `interopKit`
 - [x] `mediaKit`
 - [x] `testKit` (development only)
+- [x] `commKit`
+- [x] `widgetKit`
 
 These entries describe packages present in this repository snapshot. A checked
 item means its implementation is part of the repository; it does not mean the
@@ -618,7 +620,7 @@ the WowAce directory item W6 (a shared validation core).
 - [x] `codecKit` — serialise, compress and channel-encode as three stages
       behind a one-byte header; asynchronous variants under the scheduler
       budget.
-- [ ] `commKit` — addon messaging: prefixes, chunking, bounded reassembly,
+- [x] `commKit` — addon messaging: prefixes, chunking, bounded reassembly,
       priority queues that reject rather than grow, content-hash sync sets.
 - [x] `mediaKit` — a typed media registry mirroring LibSharedMedia when it is
       present.
@@ -734,7 +736,8 @@ and W9) and the WeakAuras media pack (LibSharedMedia).
    bounds and their defaults, the priority model, the shared-bandwidth
    statement and the security note that received data is untrusted;
    INTERNALS.md; CHANGELOG; EMBEDDING.md host row (`C_ChatInfo`).
-9. Status: planned (package D, after codecKit).
+9. Status: implemented (package D, 0.1.0); deviations recorded in
+   `packages/commKit/docs/API.md`.
 
 **interopKit** — facade `InteropKit`
 
@@ -829,7 +832,7 @@ and W9) and the WeakAuras media pack (LibSharedMedia).
 
 #### Package E — the last and largest
 
-- [ ] `widgetKit` — pooled, versioned widgets and layout, consumed by
+- [x] `widgetKit` — pooled, versioned widgets and layout, consumed by
       `optionsKit`.
 - [ ] Update `docs/EMBEDDING.md`, the example addon and the package bundle for
       every new Kit; final acceptance review.
@@ -902,7 +905,8 @@ LibEditModeOverride: item W14).
    rule, the frame cap, the anchor model and a worked custom widget and
    layout; INTERNALS.md for the layout algorithms and the renderer;
    CHANGELOG; EMBEDDING.md host row and a UI section.
-9. Status: planned (package E).
+9. Status: implemented (package E, 0.1.0); deviations recorded in
+   `packages/widgetKit/docs/API.md`.
 
 ### Standing obligations
 
@@ -965,4 +969,5 @@ duplicating those specifications.
 ---
 
 Last roadmap baseline update: 2026-09-23 (phases 0 through 3 complete; phase 4
-packages A to D complete except commKit; package E is next).
+packages A to E implemented; the closing review and the example addon
+update remain).

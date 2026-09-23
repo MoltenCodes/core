@@ -26,6 +26,8 @@ packages/
 ├── interopKit/
 ├── mediaKit/
 ├── testKit/
+├── commKit/
+├── widgetKit/
 ├── <future-package>/
 └── ...
 ```
@@ -34,7 +36,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -83,7 +85,8 @@ registry
 ├──→ hookKit
 ├──→ interopKit
 ├──→ poolKit
-│       └──→ codecKit
+│       ├──→ codecKit
+│       └──→ widgetKit   (also needs signalKit)
 └──→ signalKit
        ├──→ mediaKit
        ↓
@@ -95,6 +98,7 @@ registry
             ├──→ readinessKit
             ↓
        schedulerKit
+            ├──→ commKit   (also signalKit, eventKit, lifecycleKit, poolKit)
             └──→ testKit   (also lifecycleKit; development only)
 ```
 
@@ -233,3 +237,7 @@ The first dependency layer above Registry is `signalKit`. SignalKit uses Registr
 `mediaKit` depends on Registry API 2 and SignalKit API 1. It keeps one registry of seven fixed media types; entries are a path or a FileDataID, fonts carry a script mask checked against `GetLocale`, `List` returns a cached sorted array rebuilt only after a registration, defaults are per consumer over the client's built-in media, and LibSharedMedia-3.0 is reached through `rawget(_G, "LibStub")` at call time for read-only adoption and explicit mirroring without echo.
 
 `testKit` depends on Registry API 2, LifecycleKit API 1 and SchedulerKit API 1 and is development-only, never bundled (`"distribution": "development"` in its manifest, ignored by `.pkgmeta`). Suites wait for a LifecycleKit phase; tests run one at a time in a SchedulerKit job, one coroutine per step; EventKit and TimerKit are found through `Registry:Find`, adding no load-order edge.
+
+`commKit` depends on Registry API 2 and on SignalKit, EventKit, LifecycleKit, SchedulerKit and PoolKit API 1. It owns addon messaging: a control-byte chunk protocol, reassembly bounded in streams, bytes per sender and time, three bounded priority queues with per-destination round-robin, one token bucket shared by the session and charged for outside traffic through HookKit when present, and content-hash sync sets. The send driver is a SchedulerKit job that exists only while something is queued. TimerKit is found through `Registry:Find`; CodecKit, HookKit and SchemaKit are optional.
+
+`widgetKit` depends on Registry API 2, PoolKit API 1 and SignalKit API 1. It owns a versioned registry of widget types, each drawn from one capped, generation-stamped PoolKit pool; containers laid out by registered layout functions only when asked, never from `OnSizeChanged`; a plain anchor value type with position bindings; and a renderer for OptionsKit trees. OptionsKit, SchedulerKit and MediaKit are found at call time through `Registry:Find`, adding no load-order edge.
