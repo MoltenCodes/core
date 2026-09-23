@@ -13,5 +13,10 @@
     "timerKit": {
       "api": 1
     }
+  },
+  "optionalDependencies": {
+    "eventKit": {
+      "api": 1
+    }
   }
 }

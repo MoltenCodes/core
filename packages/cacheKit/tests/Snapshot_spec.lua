@@ -164,7 +164,57 @@ describe("CacheKit snapshot", function()
         assert.are.same({ "a" }, removed)
     end)
 
-    it("keeps changed values and removes nothing when the reader raises", function()
+    it("reports a change made during a failed refresh on the next success", function()
+        local value = 1
+        local failing = false
+        local snapshot = CacheKit:NewSnapshot(function(fill)
+            fill("a", value)
+            if failing then
+                error("read failed", 0)
+            end
+        end)
+        snapshot:Refresh()
+
+        value = 2
+        failing = true
+        assert.is_false(pcall(snapshot.Refresh, snapshot))
+        assert.are.equal(1, snapshot:Get("a"))
+
+        failing = false
+        local added, removed, changed = snapshot:Refresh()
+        assert.are.same({}, added)
+        assert.are.same({}, removed)
+        assert.are.same({ "a" }, changed)
+        assert.are.equal(2, snapshot:Get("a"))
+    end)
+
+    it("leaves no stale keys in the result arrays after a failed refresh", function()
+        local source = { a = 1 }
+        local failing = false
+        local snapshot = CacheKit:NewSnapshot(function(fill)
+            for key, value in pairs(source) do
+                fill(key, value)
+            end
+            if failing then
+                error("read failed", 0)
+            end
+        end)
+        snapshot:Refresh()
+        snapshot:Refresh()
+
+        source.a, source.b = 2, 1
+        failing = true
+        assert.is_false(pcall(snapshot.Refresh, snapshot))
+
+        source.a, source.b = 1, nil
+        failing = false
+        local added, removed, changed = snapshot:Refresh()
+        assert.are.equal(0, #added)
+        assert.are.equal(0, #removed)
+        assert.are.equal(0, #changed)
+    end)
+
+    it("restores changed values and removes nothing when the reader raises", function()
         local failing = false
         local snapshot = CacheKit:NewSnapshot(function(fill)
             fill("a", failing and 10 or 1)
@@ -179,7 +229,7 @@ describe("CacheKit snapshot", function()
         local ok, message = pcall(snapshot.Refresh, snapshot)
         assert.is_false(ok)
         assert.are.equal("read failed", message)
-        assert.are.equal(10, snapshot:Get("a"))
+        assert.are.equal(1, snapshot:Get("a"))
         assert.are.equal(2, snapshot:Get("b"))
         assert.are.equal(2, snapshot:GetCount())
 
@@ -187,7 +237,7 @@ describe("CacheKit snapshot", function()
         local added, removed, changed = snapshot:Refresh()
         assert.are.same({}, added)
         assert.are.same({}, removed)
-        assert.are.same({ "a" }, changed)
+        assert.are.same({}, changed)
     end)
 
     it("refuses a key filled twice in one refresh", function()

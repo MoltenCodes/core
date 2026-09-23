@@ -7,8 +7,10 @@
 - Added `ReadinessKit:Get(name)` and `ReadinessKit:WhenAll(gates, callback)`.
 - Added gate methods `IsReady`, `Await`, `Probe`, `Invalidate`, `ReprobeOn`, `Close` and `IsClosed`, and waiter handles with `Cancel` and `IsPending`.
 - A gate probes once when it is defined and polls on one TimerKit repeating timer, in a TimerKit scope ReadinessKit owns, only while it is pending. A timeout calls every waiter with `false, "timeout"` once and stops polling until `Probe`, `Invalidate` or a re-probe event. `Probe` remembers a negative answer for one interval.
-- A probe that raises, and a queued callback that raises, are reported to the host error handler; polling and the rest of the batch continue.
+- A probe that raises, and a queued callback that raises, are reported to the host error handler; polling and the rest of the batch continue. Only the first probe failure of each polling round is reported; `gate:GetProbeErrorCount()` counts them all, so a probe that always raises cannot flood the handler, even with `timeoutSeconds = false`.
+- A probe that closes its own gate leaves it closed: the gate never becomes ready, times out or polls again after that probe returns.
+- The manifest lists EventKit API 1 under `optionalDependencies`.
 - Waiters live in two arrays per gate that are reused across rounds, bounded by `maxWaiters`. A poll tick on a gate that is not ready allocates nothing.
 - `gate:ReprobeOn(eventName)` through EventKit API 1, an optional dependency found with `Registry:Find` when it is called. `Close` releases the subscriptions.
 - The poll callback, re-probe callbacks and `WhenAll` callbacks call through a shared dispatch table, and gates and waiters keep their metatables across upgrades, so an in-place upgrade keeps every gate, waiter, timer and subscription.
-- 73 specs, including an allocation guard on the poll tick and an in-place upgrade spec.
+- 81 specs, including an allocation guard on the poll tick and an in-place upgrade spec.

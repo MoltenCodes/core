@@ -34,6 +34,7 @@ A gate is one table with a fixed set of private fields, all created by `newGate`
 | `_timer` | The gate's TimerKit timer, or `false` before the first poll and after `Close`. |
 | `_waitStartedAt`, `_polls` | Start of the current polling round (`false` without a clock) and the polls in it. |
 | `_negativeAt` | Clock reading of the last negative answer, or `false`. |
+| `_probeErrorCount`, `_probeErrorReported` | Probe failures since the gate was defined, and whether this polling round has reported one. |
 | `_eventScope`, `_reprobeEvents`, `_reprobeCallback` | Re-probe state, `false` until the first `ReprobeOn`. |
 
 ## Polling
@@ -49,6 +50,12 @@ The status transitions own the timer: `becomeReady` and `timeOut` cancel it, `st
 `startPolling` stamps `_waitStartedAt` and zeroes `_polls`. `hasTimedOut` compares the clock against the stamp; without a clock it compares `_polls × _intervalSeconds` with the timeout, with a tolerance of `1e-9` so that a timeout that is an exact multiple of the interval is not missed by rounding.
 
 `runProbe` stamps `_negativeAt` on every negative answer and on a probe that raised. `isNegativeCached` is true while the clock is less than `_intervalSeconds` past that stamp; without a clock it is always false. Only `Probe()` consults the cache: a tick is already an interval apart, and a re-probe event is fresh information.
+
+## Probe failures and self-closing probes
+
+`recordProbeError` counts every failure and hands only the first of a round to `reportError`. `startPolling` clears `_probeErrorReported` when it leaves the ready or timed-out state, which is what makes a round; the first round of a new gate inherits the flag from the defining probe, so a gate whose probe raises from the start reports once.
+
+The probe is consumer code and may close its own gate. Every caller of `runProbe` (`packageGate`, `pollTick`, `gateProbe`, `reprobe`) checks `closedDuringProbe` before acting on the answer, because `becomeReady`, `timeOut` and `startPolling` all overwrite `_status` and would otherwise revive a closed gate that `Get` no longer returns.
 
 ## The waiter arrays
 

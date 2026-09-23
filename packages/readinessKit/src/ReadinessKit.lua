@@ -86,7 +86,16 @@ local REASON_FULL = "full"
 -- The published surface, listed once so the public-surface predicate reads as
 -- a checklist instead of a long boolean expression.
 local FACADE_METHODS = { "Gate", "Get", "WhenAll" }
-local GATE_METHODS = { "IsReady", "Await", "Probe", "Invalidate", "ReprobeOn", "Close", "IsClosed" }
+local GATE_METHODS = {
+    "IsReady",
+    "Await",
+    "Probe",
+    "Invalidate",
+    "ReprobeOn",
+    "Close",
+    "IsClosed",
+    "GetProbeErrorCount",
+}
 local WAITER_METHODS = { "Cancel", "IsPending" }
 
 -- Public types ---------------------------------------------------------------
@@ -117,6 +126,7 @@ local WAITER_METHODS = { "Cancel", "IsPending" }
 ---@field ReprobeOn fun(self: ReadinessKit.Gate, eventName: string): boolean
 ---@field Close fun(self: ReadinessKit.Gate): boolean
 ---@field IsClosed fun(self: ReadinessKit.Gate): boolean
+---@field GetProbeErrorCount fun(self: ReadinessKit.Gate): integer
 
 ---The handle `Await` and `WhenAll` return.
 ---@class ReadinessKit.Waiter
@@ -581,15 +591,40 @@ end
 
 -- Probing --------------------------------------------------------------------
 
----Run the consumer's probe. A probe that raises is reported to the host error
----handler and counts as "not ready". A negative answer is timestamped for the
----negative cache.
+---Whether the probe that just ran closed its own gate (directly, or through
+---something it called). Every caller of `runProbe` checks this before acting
+---on the answer, so a gate closed from inside its probe stays closed.
+---@param gate table
+---@return boolean
+local function closedDuringProbe(gate)
+    return rawget(gate, "_status") == STATUS_CLOSED
+end
+
+---Record a probe that raised. Only the first failure of a polling round
+---reaches the host error handler; every failure is counted in
+---`_probeErrorCount`, which `GetProbeErrorCount` exposes. Without the limit a
+---probe that always raises would be reported on every poll, forever when
+---`timeoutSeconds` is `false`.
+---@param gate table
+---@param message any
+local function recordProbeError(gate, message)
+    rawset(gate, "_probeErrorCount", rawget(gate, "_probeErrorCount") + 1)
+    if rawget(gate, "_probeErrorReported") then
+        return
+    end
+    rawset(gate, "_probeErrorReported", true)
+    reportError(message)
+end
+
+---Run the consumer's probe. A probe that raises is recorded (see
+---`recordProbeError`) and counts as "not ready". A negative answer is
+---timestamped for the negative cache.
 ---@param gate table
 ---@return boolean ready
 local function runProbe(gate)
     local ok, result = pcall(rawget(gate, "_probe"))
     if not ok then
-        reportError(result)
+        recordProbeError(gate, result)
     elseif result then
         return true
     end
@@ -710,9 +745,14 @@ local function timeOut(gate)
 end
 
 ---Begin a new polling round: status pending, a fresh timeout window, and the
----poll timer running.
+---poll timer running. A round that follows a ready or timed-out state reports
+---its first probe error again; the first round of a new gate continues the one
+---its defining probe began.
 ---@param gate table
 local function startPolling(gate)
+    if rawget(gate, "_status") ~= STATUS_PENDING then
+        rawset(gate, "_probeErrorReported", false)
+    end
     rawset(gate, "_status", STATUS_PENDING)
     rawset(gate, "_waitStartedAt", now())
     rawset(gate, "_polls", 0)
@@ -740,7 +780,11 @@ local function pollTick(timer)
     end
 
     rawset(gate, "_polls", rawget(gate, "_polls") + 1)
-    if runProbe(gate) then
+    local ready = runProbe(gate)
+    if closedDuringProbe(gate) then
+        return
+    end
+    if ready then
         becomeReady(gate)
     elseif hasTimedOut(gate) then
         timeOut(gate)
@@ -797,7 +841,11 @@ local function reprobe(gate)
         return
     end
 
-    if runProbe(gate) then
+    local ready = runProbe(gate)
+    if closedDuringProbe(gate) then
+        return
+    end
+    if ready then
         becomeReady(gate)
     elseif status == STATUS_TIMED_OUT then
         startPolling(gate)
@@ -884,9 +932,15 @@ local function gateProbe(self)
         return true
     end
 
-    if not isNegativeCached(self) and runProbe(self) then
-        becomeReady(self)
-        return true
+    if not isNegativeCached(self) then
+        local ready = runProbe(self)
+        if closedDuringProbe(self) then
+            return false
+        end
+        if ready then
+            becomeReady(self)
+            return true
+        end
     end
     if status == STATUS_TIMED_OUT then
         startPolling(self)
@@ -1007,6 +1061,16 @@ local function gateIsClosed(self)
     return rawget(self, "_status") == STATUS_CLOSED
 end
 
+---Return how many times the probe has raised since the gate was defined.
+---Only the first failure of each polling round reaches the host error
+---handler; this count includes the ones that did not.
+---@param self ReadinessKit.Gate
+---@return integer
+local function gateGetProbeErrorCount(self)
+    validateGate(self, "ReadinessKit.Gate:GetProbeErrorCount", 3)
+    return rawget(self, "_probeErrorCount")
+end
+
 -- Waiter methods -------------------------------------------------------------
 
 ---Stop waiting. Returns `false` when the callback already ran or the waiter
@@ -1071,6 +1135,8 @@ local function newGate(name, probe, intervalSeconds, timeoutSeconds, maxWaiters)
         _waitStartedAt = false,
         _polls = 0,
         _negativeAt = false,
+        _probeErrorCount = 0,
+        _probeErrorReported = false,
         _eventScope = false,
         _reprobeEvents = false,
         _reprobeCallback = false,
@@ -1103,7 +1169,13 @@ local function packageGate(_, name, probe, options)
     -- up finds it instead of defining a second one.
     gates[name] = gate
 
-    if runProbe(gate) then
+    local ready = runProbe(gate)
+    if closedDuringProbe(gate) then
+        -- The defining probe closed its own gate; hand back the closed gate
+        -- rather than reviving it.
+        return gate
+    end
+    if ready then
         rawset(gate, "_status", STATUS_READY)
         rawset(gate, "_negativeAt", false)
         return gate
@@ -1232,6 +1304,7 @@ rawset(Gate, "Invalidate", gateInvalidate)
 rawset(Gate, "ReprobeOn", gateReprobeOn)
 rawset(Gate, "Close", gateClose)
 rawset(Gate, "IsClosed", gateIsClosed)
+rawset(Gate, "GetProbeErrorCount", gateGetProbeErrorCount)
 
 rawset(Waiter, "Cancel", waiterCancel)
 rawset(Waiter, "IsPending", waiterIsPending)

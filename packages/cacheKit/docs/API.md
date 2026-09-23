@@ -224,12 +224,12 @@ The three arrays belong to the snapshot and are **overwritten by the next refres
 
 When `read` raises (including through one of those refusals):
 
-- the keys it **added** in that refresh are rolled back, so the snapshot keeps the keys of its last successful refresh and never holds more than `maxEntries`, however many reads fail in a row;
-- keys it **changed** keep their new values, the most recent the reader reported;
+- the keys it **added** in that refresh are removed again, so the snapshot never holds more than `maxEntries`, however many reads fail in a row;
+- the keys it **changed** get back the values they had before, so the next successful refresh still reports them as changed;
 - nothing is removed, because a failed read says nothing about the keys it did not reach;
 - the error propagates out of `Refresh` unchanged: the same error value, re-raised with `error(failure, 0)`, so it gains no position and the traceback ends at `Refresh` rather than inside `read`. Wrap the body of `read` in `xpcall` if you need the original traceback.
 
-The next refresh reports against that state, so rolled-back keys are reported as added once a read succeeds.
+The snapshot is then exactly what the last successful refresh recorded, and the next successful refresh reports every addition and change the failed one made.
 
 `Refresh` and `Close` refuse to run from inside the snapshot's own `read`. After `Close`, `Refresh` raises, `Get` returns `nil`, `GetCount` returns `0` and `Pairs` iterates nothing. Do not refresh a snapshot while iterating `Pairs()`.
 

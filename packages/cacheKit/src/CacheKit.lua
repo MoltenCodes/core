@@ -1064,6 +1064,9 @@ local function snapshotFill(snapshot, key, value)
     elseif not rawequal(previous, value) then
         values[key] = value
         appendResult(snapshot, "_changed", "_changedCount", key)
+        -- Kept beside the key at the same index, so a failed read can put the
+        -- value of the last successful refresh back.
+        rawget(snapshot, "_changedPrevious")[rawget(snapshot, "_changedCount")] = previous
     end
 end
 
@@ -1095,20 +1098,33 @@ local function removeUnfilled(snapshot)
     end
 end
 
----Undo the additions of a refresh whose reader raised: remove every key it
----added and empty the added array. Changed values keep their new value, which
----is still the most recent the reader reported for an existing key.
+---Undo a refresh whose reader raised: remove every key it added, put back the
+---value every key it changed held before, and empty both result arrays (the
+---slots are cleared here, because the counts the caller truncates by are
+---reset to zero). The
+---snapshot is then exactly the last successful refresh, so the next successful
+---refresh reports those additions and changes itself.
 ---@param snapshot table
-local function rollBackAdded(snapshot)
+local function rollBackRefresh(snapshot)
     local values = rawget(snapshot, "_values")
     local seen = rawget(snapshot, "_seen")
+
     local added = rawget(snapshot, "_added")
     for index = 1, rawget(snapshot, "_addedCount") do
         local key = added[index]
         values[key] = nil
         seen[key] = nil
+        added[index] = nil
     end
     rawset(snapshot, "_addedCount", 0)
+
+    local changed = rawget(snapshot, "_changed")
+    local changedPrevious = rawget(snapshot, "_changedPrevious")
+    for index = 1, rawget(snapshot, "_changedCount") do
+        values[changed[index]] = changedPrevious[index]
+        changed[index] = nil
+    end
+    rawset(snapshot, "_changedCount", 0)
 end
 
 ---Build an open, empty snapshot.
@@ -1129,6 +1145,9 @@ local function newSnapshot(read, maxEntries)
         _added = {},
         _removed = {},
         _changed = {},
+        -- Parallel to `_changed`: the value each changed key held before this
+        -- refresh. Cleared when the refresh ends, so it retains nothing.
+        _changedPrevious = {},
         _addedCount = 0,
         _removedCount = 0,
         _changedCount = 0,
@@ -1148,8 +1167,8 @@ end
 ---overwritten by the next refresh; copy what you need to keep. A refresh in
 ---which nothing changed allocates nothing.
 ---
----When the reader raises, the keys it added are rolled back, keys it changed
----keep their new values, nothing is removed, and the error is re-raised
+---When the reader raises, the keys it added are removed again, the keys it
+---changed get their previous values back, nothing is removed, and the error is re-raised
 ---unchanged with `error(failure, 0)` (so the traceback ends at `Refresh`);
 ---the next refresh reports against that state.
 ---@param self CacheKit.Snapshot
@@ -1182,16 +1201,19 @@ local function snapshotRefresh(self)
     local removed = rawget(self, "_removed")
     local changed = rawget(self, "_changed")
 
+    local changedThisRefresh = rawget(self, "_changedCount")
     if ok then
         removeUnfilled(self)
         rawset(self, "_count", rawget(self, "_filledCount"))
     else
         -- A failed read proves nothing about the keys it did not reach, so
-        -- none is removed; the keys it added are rolled back, so the stored
-        -- keys stay those of the last successful refresh and never exceed
-        -- `maxEntries`, however many reads fail in a row.
-        rollBackAdded(self)
+        -- none is removed; what it added and changed is rolled back, so the
+        -- snapshot stays the last successful refresh, never exceeds
+        -- `maxEntries` however many reads fail in a row, and the next
+        -- successful refresh still reports every change.
+        rollBackRefresh(self)
     end
+    truncateResult(rawget(self, "_changedPrevious"), 0, changedThisRefresh)
 
     truncateResult(added, rawget(self, "_addedCount"), previousAdded)
     truncateResult(removed, rawget(self, "_removedCount"), previousRemoved)

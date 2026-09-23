@@ -323,7 +323,10 @@ describe("LifecycleKit WhenOutOfCombat", function()
         assert.is_false(LifecycleKit:IsInCombat())
     end)
 
-    it("keeps the rest queued when a deferred call starts combat again", function()
+    it("keeps the rest queued if a host ever re-enters combat mid-drain", function()
+        -- The client cannot deliver PLAYER_REGEN_DISABLED inside a handler;
+        -- the nested EnterCombat below models a host that did, to pin the
+        -- defensive guard: protected work does not run in combat.
         local life = LifecycleKit:ForAddon("MyAddon")
         TestEnv.EnterCombat()
         local order = {}
@@ -343,6 +346,25 @@ describe("LifecycleKit WhenOutOfCombat", function()
 
         TestEnv.LeaveCombat()
         assert.are.same({ "a", "b" }, order)
+    end)
+
+    it("runs a call made inside a drain at once, ahead of the rest", function()
+        local life = LifecycleKit:ForAddon("MyAddon")
+        TestEnv.EnterCombat()
+        local order = {}
+        life:WhenOutOfCombat(function(instance)
+            order[#order + 1] = "a"
+            instance:WhenOutOfCombat(function()
+                order[#order + 1] = "nested"
+            end)
+        end)
+        life:WhenOutOfCombat(function()
+            order[#order + 1] = "b"
+        end)
+
+        TestEnv.LeaveCombat()
+
+        assert.are.same({ "a", "nested", "b" }, order)
     end)
 
     it("calls pending callbacks with false and 'shutdown' at logout", function()
@@ -460,6 +482,28 @@ describe("LifecycleKit combat notices", function()
         TestEnv.LoadAddon("MyAddon")
         TestEnv.EnterCombat()
         assert.are.equal(1, starts)
+    end)
+
+    it("gives an addon loaded mid-combat OnCombatEnd without OnCombatStart", function()
+        local life = LifecycleKit:ForAddon("OnDemandAddon")
+        local seen = {}
+        life:OnCombatStart(function()
+            seen[#seen + 1] = "start"
+        end)
+        life:OnCombatEnd(function()
+            seen[#seen + 1] = "end"
+        end)
+        local inCombatAtLoad
+        life:OnLoaded(function()
+            inCombatAtLoad = LifecycleKit:IsInCombat()
+        end)
+
+        TestEnv.EnterCombat()
+        TestEnv.LoadAddon("OnDemandAddon")
+        TestEnv.LeaveCombat()
+
+        assert.is_true(inCombatAtLoad)
+        assert.are.same({ "end" }, seen)
     end)
 
     it("does not repeat a notice for a redundant host event", function()

@@ -32,7 +32,7 @@ ReadinessKit does not rely on `require()` at runtime. Loading it without Registr
 | `GetTimePreciseSec` | negative caching, the timeout window | ReadinessKit loads normally. `Probe()` always runs the probe (no negative cache), and a timeout is counted in polls: the gate times out on the poll at which polls × `intervalSeconds` reaches `timeoutSeconds`. |
 | EventKit API 1 | `gate:ReprobeOn` | `ReprobeOn` raises at the caller: `ReadinessKit.Gate:ReprobeOn requires EventKit API 1, which is not loaded (absent)`. Everything else works. |
 
-EventKit is looked up with `Registry:Find("eventKit", 1)` when `ReprobeOn` is called, not at load, and the package manifest does not name it. TimerKit's own dependency chain already embeds EventKit, so the lookup fails only when the EventKit registered is retired or of another generation; the reason `Registry:Find` gives (`absent`, `generation_mismatch` or `retired`) is part of the message.
+EventKit is looked up with `Registry:Find("eventKit", 1)` when `ReprobeOn` is called, not at load. The package manifest lists it under `optionalDependencies`, which load order and bundles ignore. TimerKit's own dependency chain already embeds EventKit, so the lookup fails only when the EventKit registered is retired or of another generation; the reason `Registry:Find` gives (`absent`, `generation_mismatch` or `retired`) is part of the message.
 
 ## Public surface
 
@@ -55,6 +55,7 @@ Gate handles:
 | `ReprobeOn(eventName)` | Re-run the probe whenever the host event fires; needs EventKit. |
 | `Close()` | Stop polling, release subscriptions, free the name, tell waiters `"closed"`. |
 | `IsClosed()` | Whether the gate is closed. |
+| `GetProbeErrorCount()` | How many times the probe has raised since the gate was defined. |
 
 Waiter handles, returned by `Await` and `WhenAll`:
 
@@ -180,7 +181,13 @@ A gate listed twice counts twice. The group is bounded by the gates' own caps: w
 
 ## Probes that raise
 
-A probe that raises is reported to the host error handler (`geterrorhandler()`, or `print` without one) and counts as "not ready": the gate keeps polling, the failure restarts the negative-cache window, and `Probe()` returns `false`. The error never reaches `Gate`, `Probe` or a TimerKit tick. A probe that raises on every call is reported on every poll until the gate times out, which is the bound on that noise.
+A probe that raises counts as "not ready": the gate keeps polling, the failure restarts the negative-cache window, and `Probe()` returns `false`. The error never reaches `Gate`, `Probe` or a TimerKit tick.
+
+Only the **first** failure of each polling round is handed to the host error handler (`geterrorhandler()`, or `print` without one); every failure is counted, and `gate:GetProbeErrorCount()` returns the total since the gate was defined. A new round (after `Invalidate`, or when `Probe` or a re-probe event restarts a timed-out gate) reports its first failure again. So a probe that always raises is reported once, not twice a second, even with `timeoutSeconds = false`.
+
+## A probe that closes its own gate
+
+A probe, or something it calls, may close its own gate. The gate stays closed whatever the probe answers: it does not become ready, time out or poll again, and its name stays free. `Gate` returns the closed gate, and `Probe` returns `false`.
 
 ## Error behaviour
 

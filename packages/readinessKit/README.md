@@ -36,7 +36,7 @@ What each piece promises:
 - **Timeouts.** After `timeoutSeconds` (30 by default, `false` for none) of polling, every waiter is called once with `false, "timeout"` and polling stops until `Probe()`, `Invalidate()` or a re-probe event starts a new round.
 - **Negative caching.** `Probe()` re-runs the probe now, unless its last "not yet" is younger than `intervalSeconds`; a burst of callers costs one probe.
 - **Bounded waiting.** `Await` runs the callback at once when the gate already has an outcome, and otherwise queues it, in order, up to `maxWaiters` (64 by default). Beyond that it returns `nil, "full"`. Every handle has `Cancel()`.
-- **Failures stay visible.** A probe that raises is reported to the host error handler and counts as "not ready"; polling continues. A queued callback that raises is reported the same way and the rest of the batch still runs.
+- **Failures stay visible without flooding.** A probe that raises counts as "not ready" and polling continues; the first failure of each polling round is reported to the host error handler and every failure is counted in `gate:GetProbeErrorCount()`. A queued callback that raises is reported the same way and the rest of the batch still runs.
 - **`gate:ReprobeOn(eventName)`** re-runs the probe whenever a host event fires. It uses EventKit, which ReadinessKit finds through `Registry:Find` when you call it. `Close()` releases the subscriptions.
 - **Readiness is sticky.** Once ready, a gate stays ready until you call `Invalidate()`; it never probes a ready gate.
 

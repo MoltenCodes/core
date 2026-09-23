@@ -337,8 +337,10 @@ if previousRevision == nil then
         schema = STATE_SCHEMA,
         -- addonName -> instance, for lookup by name.
         addons = {},
-        -- Every instance in creation order: the allocation-free iteration
-        -- order of the combat announcements, which run on every combat.
+        -- Every instance, in creation order for instances this revision
+        -- created (an upgrade appends inherited ones in name order): the
+        -- allocation-free iteration order of the combat announcements, which
+        -- run on every combat.
         instances = {},
         globalWatchers = {},
         loginSeen = false,
@@ -765,10 +767,13 @@ end
 ---Deliver every pending deferred call of `instance`, oldest first.
 ---
 ---Each call runs protected; the first failure is returned once the rest have
----run, which is the phase machinery's first-error policy. With
----`stopWhenInCombat`, a drain that combat interrupts (a deferred call can
----itself trigger the host into combat) leaves the remaining calls queued for
----the next combat end.
+---run, which is the phase machinery's first-error policy.
+---
+---`stopWhenInCombat` is a defensive guard. The client never delivers
+---`PLAYER_REGEN_DISABLED` synchronously inside another handler, so a real
+---drain is never interrupted. Should a host ever do so, the remaining calls
+---stay queued for the next combat end rather than running protected work in
+---combat.
 ---@param instance LifecycleKit.Instance
 ---@param ran boolean `true` for an out-of-combat run, `false` for a closed queue
 ---@param reason "shutdown"|"halted"|nil why a closed queue did not run the calls
@@ -987,18 +992,22 @@ end
 
 ---Whether `instance` receives `OnCombatStart` / `OnCombatEnd` notifications.
 ---
----Only an addon that has reached `loaded` is told: before its `ADDON_LOADED`
----its saved variables do not exist and it owns no frames, so a combat notice
----would invite work against state that is not there yet. Its subscriptions
----stay connected and start receiving once it has loaded. Terminal addons have
----no combat subscriptions left.
+---Only an addon that has reached `loaded` is told. This costs nothing: an
+---addon's files run and its `ADDON_LOADED` follows in one synchronous load, so
+---no `PLAYER_REGEN_*` event can arrive in between, and the rule only keeps
+---notices away from lifecycle instances created for addons that have not
+---loaded yet. Their subscriptions stay connected and start receiving once the
+---addon has loaded. A load-on-demand addon loaded mid-combat therefore sees
+---`OnCombatEnd` without a matching `OnCombatStart`; it should read
+---`IsInCombat()` in `OnLoaded`. Terminal addons have no combat subscriptions
+---left.
 ---@param instance LifecycleKit.Instance
 ---@return boolean
 local function receivesCombatNotices(instance)
     return rawget(instance, "_loaded") == true and not isTerminal(instance)
 end
 
----Deliver `OnCombatStart` to every eligible addon, in creation order.
+---Deliver `OnCombatStart` to every eligible addon, in `state.instances` order.
 ---@return LifecycleKit.ErrorRecord|nil
 local function announceCombatStart()
     local instances = rawget(state, "instances")
@@ -1020,10 +1029,8 @@ end
 
 ---Drain every addon's combat queue and, after a real flip, announce the end.
 ---
----Per addon, in creation order: the queued calls run first, then its
----`OnCombatEnd` subscribers. If combat starts again while this runs, the loop
----stops: the remaining calls stay queued and the remaining addons are, by the
----new state, in combat again.
+---Per addon, in `state.instances` order: the queued calls run first, then its
+---`OnCombatEnd` subscribers.
 ---@param announce boolean whether the shared state flipped and `OnCombatEnd` is due
 ---@return LifecycleKit.ErrorRecord|nil
 local function finishCombat(announce)
@@ -1032,10 +1039,6 @@ local function finishCombat(announce)
     local firstError = nil
 
     for index = 1, count do
-        if rawget(state, "inCombat") == true then
-            break
-        end
-
         local instance = rawget(instances, index)
         if not isTerminal(instance) then
             local queueError = drainCombatQueue(instance, true, nil, true)
