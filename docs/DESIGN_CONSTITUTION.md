@@ -45,7 +45,7 @@ decision, recorded in their code.
 
 A Kit requires only what it cannot work without. Registry is the one shared
 dependency of every Kit, and SignalKit is the accepted second one for Kits
-whose contract includes callbacks or signals, because reimplementing dispatch
+whose contract includes callbacks or signals, because writing dispatch again
 in each Kit would violate modularity. Everything else a Kit can use is optional:
 declared under `optionalDependencies`, found at call time through
 `Registry:Find`, and absent without breaking the Kit. A Kit that owns per-addon
