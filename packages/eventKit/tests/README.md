@@ -13,7 +13,15 @@ It also covers:
 - disconnect-during-dispatch from another connection and from another channel;
 - the stack level of argument errors versus host-environment errors;
 - in-place upgrade from implementation revision 1;
-- per-event allocation, guarded with `collectgarbage("count")` deltas.
+- per-event allocation, guarded with `collectgarbage("count")` deltas;
+- `Coalesce`: the payload set, `byEvent` and `nil`-payload keying, unit events, `maxKeys`, `Flush`, scope release (also mid-dispatch), refusal without SchedulerKit, caller-line errors, and an allocation guard;
+- `Derive`: recompute, debounce, `delaySeconds`, `OnChange`, `equals`, `Invalidate`, raising compute and listeners, `Close` and scope release, and the synchronous path without SchedulerKit;
+- in-place upgrade from implementation revision 6.
+
+`EventKitTestEnv.Scheduled` is a second environment that also loads
+LifecycleKit, TimerKit and SchedulerKit, whose sources it adds to
+`package.path` because the runner's path follows manifest dependencies and
+SchedulerKit is only an optional partner.
 
 `EventKitTestEnv.lua` supplies a narrow fake WoW Frame boundary. Production APIs are not added solely for tests.
 

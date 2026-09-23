@@ -5,9 +5,9 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.4.1`
+- Version: `0.5.0`
 - API generation: `1`
-- Implementation revision: `6`
+- Implementation revision: `7`
 - Runtime dependencies: Registry API 2, SignalKit API 1
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW
@@ -61,6 +61,23 @@ EventKit sits below LifecycleKit, so it cannot close addon scopes on shutdown by
 itself; the two-step above is documented in [`docs/API.md`](docs/API.md).
 Closing a scope never cuts short the event being dispatched: a scoped
 `PLAYER_LOGOUT` listener still runs even when shutdown closes its scope first.
+
+Bursts of events coalesce into one callback, and derived values recompute once
+per burst, when SchedulerKit is loaded (found at call time; EventKit does not
+depend on it):
+
+```lua
+events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, 0.1, function(units)
+    for unit in pairs(units) do
+        updateHealthBar(unit)
+    end
+end)
+
+local freeSlots = events:Derive("BAG_UPDATE_DELAYED", countFreeSlots)
+```
+
+Without SchedulerKit, `Coalesce` is refused and `Derive` recomputes on every
+event. See [Coalescing events](docs/API.md#coalescing-events).
 
 See [`docs/API.md`](docs/API.md) for the full public contract and edge-case
 semantics, including the combat-log event's empty payload, the taint

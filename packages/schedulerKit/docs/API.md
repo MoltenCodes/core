@@ -26,6 +26,10 @@ The package intentionally separates **when work becomes eligible** from **how mu
 | `SetMaxResumesPerFrame(count)` | Set the hard resume-count safety ceiling per frame. |
 | `GetMaxResumesPerFrame()` | Return the resume-count ceiling. |
 | `GetActiveCount()` | Return the number of non-terminal jobs across all scopes. |
+| `Debounce(callback, delaySeconds[, options])` | Return a callable handle that runs `callback` once a burst of calls goes quiet. See [Coalescing and lanes](#coalescing-and-lanes). |
+| `Coalesce(callback, intervalSeconds[, options])` | Return a callable handle that collects keys and delivers them at most once per interval. |
+| `Watch(predicate, intervalSeconds, callback[, options])` | Poll `predicate` on a ticker shared by every watch of that interval. |
+| `Lane(name[, options])` | Return the shared lane called `name`, which rations one scarce resource. |
 
 ### Job handles
 
@@ -55,6 +59,9 @@ The package intentionally separates **when work becomes eligible** from **how mu
 | `IsClosed()` | Return whether the scope is terminally closed. |
 | `GetAddonName()` | Return the owning addon name, or `nil` for a manual scope. |
 | `GetActiveCount()` | Return the number of non-terminal jobs owned by the scope. |
+| `Debounce(callback, delaySeconds[, options])` | `SchedulerKit:Debounce`, owned by this scope. |
+| `Coalesce(callback, intervalSeconds[, options])` | `SchedulerKit:Coalesce`, owned by this scope. |
+| `Watch(predicate, intervalSeconds, callback[, options])` | `SchedulerKit:Watch`, owned by this scope. |
 
 ### Execution context
 
@@ -428,6 +435,260 @@ SchedulerKit changes **when** Lua runs; it does not manufacture or preserve a Wo
 
 Consumers should perform protected actions only through the appropriate WoW-secure interaction path and use SchedulerKit for ordinary addon computation/state work.
 
+## Coalescing and lanes
+
+`Debounce`, `Coalesce`, `Watch` and lanes are one family, designed together
+with EventKit's `Coalesce` and `Derive` (see EventKit's
+[`docs/API.md`](../../eventKit/docs/API.md#coalescing-events)). They answer two
+questions that every addon otherwise answers by hand:
+
+- **When is a burst over?** `Debounce` waits for quiet; `Coalesce` collects
+  everything one interval brings; `Watch` samples on a fixed beat.
+- **How much of a scarce resource may run at once?** A lane rations it:
+  in-flight cap, minimum interval between starts, retry with backoff, and a
+  bounded queue.
+
+The two halves meet through `options.lane`: a `Debounce` or `Coalesce` given a
+lane hands every fire to that lane as a job instead of running it
+synchronously, so the whole family shares one throttling vocabulary.
+
+A *lane* here is a named ration of a resource. It is unrelated to the
+*priority lanes* (`HIGH`, `NORMAL`, `LOW`, `IDLE`) described under
+[Priorities](#priorities); lane jobs are ordinary jobs with an ordinary
+priority.
+
+### One clock
+
+Every due time in the family is computed on `GetTimePreciseSec()`, the
+monotonic wall clock TimerKit's own deadlines use. Timers are TimerKit timers:
+a `Debounce` or `Coalesce` arms at most one timer at a time in its scope's
+TimerKit scope, and `Watch` tickers and lane interval timers live in one
+package-internal TimerKit scope. A timer that wakes within one millisecond of
+its due time counts as due. Nothing in the family keeps an `OnUpdate` handler
+alive while it waits.
+
+### `Debounce(callback, delaySeconds[, options])`
+
+Returns a callable handle. Each call records its arguments and restarts the
+quiet period; once `delaySeconds` pass without a call, `callback` runs **once**
+with the arguments of the **last** call.
+
+```lua
+local refresh = SchedulerKit:ForAddon("MyAddon"):Debounce(function(reason)
+    rebuildBagIndex(reason)
+end, 0.2)
+
+refresh("BAG_UPDATE")  -- returns true; call it as often as you like
+```
+
+| Option | Meaning |
+|---|---|
+| `leading` | Also run on the first call of a burst. A burst of one call then runs once, not twice. |
+| `maxWaitSeconds` | Run at most this long after the first call of a burst, even if calls keep coming. At least `delaySeconds`. |
+| `lane` | Hand every fire to this lane as a job; see *Firing into a lane*. |
+
+- A call inside an open window records its arguments and a clock reading; it
+  does not re-arm the timer. The timer re-arms once, for the remainder, when it
+  wakes before the burst is quiet.
+- Arguments are kept in a reused slot of **eight** values. A ninth argument
+  raises at the caller: `SchedulerKit debounce handle accepts at most 8
+  arguments; received 9`. Pass a table if you need more.
+- `delaySeconds = 0` means the next frame, as `NextFrame` does.
+- Calling the handle returns `true`, or `false` once it is closed.
+
+| Method | Purpose |
+|---|---|
+| `Cancel()` | Drop the owed fire; returns whether one was owed. The handle stays usable. |
+| `Flush()` | Run the owed fire now; returns `false` when nothing was owed. |
+| `IsPending()` | Whether a fire is owed and has not been handed off yet. |
+| `Close()` | Drop what is owed, cancel a delivery waiting in a lane, and leave the scope. Terminal. |
+| `IsClosed()` | Whether the handle is closed. |
+
+### `Coalesce(callback, intervalSeconds[, options])`
+
+Returns a callable handle that collects **keys**. `handle(key[, value])`
+records `set[key] = value` (`true` when `value` is omitted). The first key of a
+burst starts the interval; at its end `callback(set)` runs once with everything
+collected, and the handle is idle again until the next key. This is AceBucket's
+"first event starts the interval, callback at its end with everything
+collected".
+
+```lua
+local changed = SchedulerKit:Coalesce(function(units)
+    for unit in pairs(units) do
+        updateFrame(unit)
+    end
+end, 0.1)
+
+changed("player")
+changed("target")
+changed("player") -- one set { player = true, target = true } in 0.1 s
+```
+
+**The set is reused.** It is one of two tables the handle swaps at every
+delivery and it is emptied as soon as `callback` returns. `callback` must not
+keep a reference to it; copy what you need. Keys recorded while `callback`
+runs go into the other table and arrive with the next interval.
+
+| Option | Meaning |
+|---|---|
+| `maxKeys` | Distinct keys one interval may hold; default **256**. |
+| `lane` | Hand every delivery to this lane as a job; see *Firing into a lane*. |
+
+Past `maxKeys` a **new** key is refused: the call returns `false` and the
+refusal is counted. A key already in the set is still updated. Refusing was
+chosen over evicting an older key because a set that silently loses a key
+it already accepted is harder to reason about than one that says no. A `nil`
+or NaN key raises at the caller.
+
+| Method | Purpose |
+|---|---|
+| `Cancel()` | Drop the collected keys; returns whether there were any. The handle stays usable. |
+| `Flush()` | Deliver now; returns `false` when nothing was collected. |
+| `IsPending()` | Whether keys are waiting for delivery. |
+| `GetStats()` | `{ keys, refused, delivered, deferred, dropped }`, in a table reused by every call. |
+| `Close()` | Drop the keys, cancel a delivery waiting in a lane, and leave the scope. Terminal. |
+| `IsClosed()` | Whether the handle is closed. |
+
+`Flush()` called from inside the handle's own callback returns `false`: the
+delivery in progress is not re-entered. The same holds for a `Debounce`
+handle.
+
+### `Watch(predicate, intervalSeconds, callback[, options])`
+
+Polls `predicate()` every `intervalSeconds` and calls `callback(value,
+previous)`:
+
+- on the **first** tick, with the first result and `previous = nil`;
+- afterwards only when the result differs (`~=`) from the previous tick's;
+- or on every tick with `options.everyTick = true`.
+
+Every watch with the same interval shares **one** TimerKit ticker, created with
+the first watch and cancelled with the last; a tick samples its watches in
+creation order. Watches added during a tick start with the next one.
+
+| Bound | Value |
+|---|---|
+| Watches per interval | **128**; one more raises at the caller. |
+| Distinct intervals | **32**; one more raises at the caller. |
+
+Both bounds are package-wide, because the tickers are shared by every addon in
+the session. They are constants rather than options for the same reason: one
+addon raising them would spend everybody's frame.
+
+A predicate that raises is reported once through the host error handler and
+its watch is **cancelled**: it would raise again on every tick. A callback that
+raises is reported and the watch keeps polling. Predicates run inside the
+ticker's callback, so keep them cheap; put heavy work in a job.
+
+| Method | Purpose |
+|---|---|
+| `Cancel()` | Stop polling. Terminal. |
+| `IsActive()` | Whether the watch is still polling. |
+
+### Lanes: `Lane(name[, options])`
+
+A lane is shared by **name** across every addon in the session, which is the
+point: two addons querying the same server resource should queue in one line.
+The first call creates it; later calls with no options, or the same options,
+return the same lane, and a call with different options raises.
+
+```lua
+local inspect = SchedulerKit:Lane("inspect", {
+    maxInFlight = 1,
+    minIntervalSeconds = 1.5,
+    retry = { attempts = 2, backoffSeconds = 2, multiplier = 2, maxBackoffSeconds = 10 },
+    maxQueued = 64,
+})
+
+local job, reason = inspect:Submit(function(context)
+    NotifyInspect(unit)
+    while not inspectReady(unit) do
+        context:Yield() -- the lane's slot stays taken until this returns
+    end
+end, { scope = work, name = "inspect " .. unit })
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `maxInFlight` | `1` | Submissions admitted and not yet finished, at most. |
+| `minIntervalSeconds` | `0` | Minimum time between two admissions. |
+| `retry.attempts` | `0` | Retries after the first attempt. |
+| `retry.backoffSeconds` | `0` | Delay before the first retry. |
+| `retry.multiplier` | `2` | Growth of each later delay; at least `1`. |
+| `retry.maxBackoffSeconds` | none | Ceiling on one delay. |
+| `maxQueued` | `64` | Submissions waiting for admission, at most. |
+
+At most **32** lanes are open at once; one more raises at the caller.
+
+`lane:Submit(callback[, options])` uses the scheduler's own job contract: the
+callback receives a `Context`, may `Yield()`, **succeeds by returning** and
+**fails by raising**. It returns the `Job`, or `nil, "full"` when `maxQueued`
+submissions already wait, or `nil, "closed"` after `Close()`. A refusal
+allocates nothing and never grows the queue. `options` takes `priority` and
+`name` as for `Schedule`, and `scope`, the owning SchedulerKit scope (the
+package-level scope by default).
+
+A submission waits in the `delayed` state until the lane admits it; admission
+queues it exactly as an expiring delay would. A submission that raises and has
+attempts left is re-armed: the *n*-th retry waits
+`backoffSeconds × multiplier^(n − 1)`, capped at `maxBackoffSeconds`. It keeps
+its in-flight slot while it waits, which is what backing off a resource means. A retried attempt is **not** reported; the attempt that
+exhausts the policy fails the job and is reported with its traceback, like any
+job failure.
+
+| Method | Purpose |
+|---|---|
+| `Submit(callback[, options])` | Queue a job under the lane's limits. |
+| `GetStats()` | `{ queued, inFlight, completed, failed, retried, cancelled, refused }`, in a table reused by every call. |
+| `GetName()` | The shared name. |
+| `Close()` | Refuse new submissions, cancel every waiting one, let admitted ones finish; frees the name. |
+| `IsClosed()` | Whether the lane is closed. |
+
+`Close()` **drains** what is in flight rather than cancelling it: an admitted
+job may already have spent the resource, and cancelling it would lose the
+answer. Cancel the job itself, or close its scope, to stop it. A lane is not
+owned by a scope; each submission's job is.
+
+### Firing into a lane
+
+With `options.lane`, a `Debounce` fire or a `Coalesce` delivery becomes one job
+in the lane, so the lane's in-flight cap, interval and retry apply to the
+callback, and a raising callback is retried.
+
+- A handle has at most **one** delivery in the lane at a time. A `Debounce`
+  fire that finds its previous delivery still waiting updates that delivery's
+  arguments instead (the last call wins); one that arrives after the delivery
+  started runs once more when it finishes.
+- A `Coalesce` delivery that finds its previous set still in the lane keeps
+  collecting into the current set and tries again one interval later
+  (`deferred` in `GetStats()`).
+- A lane that is **full** defers the fire by one delay or interval; it is never
+  dropped. A lane that is **closed** drops it, counts it (`dropped`) and
+  reports it through the host error handler.
+
+### Scopes and release
+
+`Debounce`, `Coalesce` and `Watch` handles are owned by the scope that created
+them, exactly like jobs, so an addon scope or ModuleKit's `module.scope.Jobs`
+releases them without any teardown code:
+
+| Scope call | Debounce / Coalesce | Watch | Lane jobs of the scope |
+|---|---|---|---|
+| `CancelAll()` | Pending fire dropped; handle stays usable. | Cancelled. | Cancelled, waiting or admitted. |
+| `Close()` | Closed. | Cancelled. | Cancelled, waiting or admitted. |
+
+The package-level methods use the package-level scope, as `Schedule` does.
+`GetActiveCount()` still counts jobs only; a handle is not a job.
+
+### Cost
+
+Recording a `Debounce` call inside an open window, recording a `Coalesce` key
+already seen, and a `Watch` tick whose values did not change allocate nothing;
+specs guard each with `collectgarbage("count")`. A fire without a lane is one
+protected call. What does allocate is bounded and per burst, not per call: one
+TimerKit timer per quiet window or interval, and one job per lane submission.
+
 ## Embedded copies and live compatible revisions
 
 SchedulerKit is registered as `schedulerKit`, API generation `1`, through Registry API 2.
@@ -437,3 +698,10 @@ The facade, Job/Scope/Context prototypes, metatables, ready queues, scopes, acti
 The installed OnUpdate trampoline does not permanently close over one implementation revision. It resolves the current shared dispatch function on every scheduler frame. TimerKit delay callbacks use the same dispatch indirection.
 
 A future compatible SchedulerKit revision can therefore update execution behavior while preserving existing facade, Job, Scope, Context, queue, and addon-scope identity.
+
+Revision 7 adds the coalescing family to shared state: the lane registry, the
+watch groups, the package-internal TimerKit scope, and one metatable and method
+table per handle kind. A revision-7 copy loading over revision 6 adds them in
+place, and scopes the older copy created gain `Debounce`, `Coalesce` and
+`Watch`. Handle timers and lane jobs resolve their behaviour through the shared
+dispatch table, so a later compatible revision upgrades live handles too.

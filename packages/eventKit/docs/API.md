@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **6**.
+Implementation revision: **7**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -107,7 +107,9 @@ scope:Close()         -- terminal; later connections are refused
 | `Close()` | Terminally close after best-effort disconnection; `false` if already closed. |
 | `IsClosed()` | Whether the scope is closed. |
 | `GetAddonName()` | The owning addon name, or `nil` for a manual scope. |
-| `GetActiveCount()` | The number of live connections the scope owns. |
+| `GetActiveCount()` | The number of live connections the scope owns; a `Coalesce` or `Derive` handle counts as one. |
+| `Coalesce(events, intervalSeconds, callback[, options])` | `EventKit:Coalesce`, owned by this scope. See [Coalescing events](#coalescing-events). |
+| `Derive(events, compute[, options])` | `EventKit:Derive`, owned by this scope. |
 
 A connection made through a scope is an ordinary connection handle. It can
 still be disconnected on its own, and it leaves its scope the moment it
@@ -201,6 +203,119 @@ Joining a scope and leaving it are a handful of field writes on an intrusive
 doubly linked list: nothing is allocated, and a disconnect unlinks in constant
 time. Dispatch is unchanged; a scoped listener costs exactly what a
 package-level one does, and a spec guards that it allocates nothing per event.
+
+## Coalescing events
+
+`Coalesce` and `Derive` are the event half of the framework's coalescing
+family. The timing half — `Debounce`, `Coalesce`, `Watch` and lanes — lives in
+SchedulerKit, and the family is documented once, in SchedulerKit's
+[`docs/API.md`](../../schedulerKit/docs/API.md#coalescing-and-lanes). EventKit
+supplies the subscriptions; SchedulerKit supplies when things run.
+
+### SchedulerKit is optional
+
+EventKit does not depend on SchedulerKit: SchedulerKit depends on LifecycleKit,
+which depends on EventKit, so the reverse would be a cycle. Both methods find
+SchedulerKit API 1 through `Registry:Find` **when they are called**, so it may
+load after EventKit.
+
+| | With SchedulerKit | Without it |
+|---|---|---|
+| `Coalesce` | One callback per interval. | Refused at the caller: `EventKit:Coalesce requires SchedulerKit API 1, which is not available (absent)`. Nothing is registered. |
+| `Derive` | Recompute debounced, by default to the next frame. | Recompute synchronously on every event. It still works; it just does not coalesce. |
+
+### `EventKit:Coalesce(events, intervalSeconds, callback[, options])`
+
+Registers every event in `events` (a name or an array of names, at most 32
+distinct) and collects their payloads into a **set**, keyed by the first
+payload argument. The first event starts the interval; at its end
+`callback(set)` runs once with everything collected. This is AceBucket's
+interval semantics: *first event starts the interval, callback at its end with
+everything collected*.
+
+```lua
+local events = EventKit:ForAddon("MyAddon")
+events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, 0.1, function(units)
+    for unit in pairs(units) do
+        updateHealthBar(unit)
+    end
+end, { units = { "player", "target" } })
+```
+
+| Option | Meaning |
+|---|---|
+| `byEvent` | Key the set by event name instead of the first payload argument. |
+| `units` | One or two unit tokens: the events are registered with `ConnectUnit` semantics, including its two-token limit. |
+| `maxKeys` | Distinct keys one interval may hold; SchedulerKit's default is 256. Past it, new keys are refused and counted. |
+| `lane` | A SchedulerKit lane every delivery goes through. |
+
+- Every value in the set is `true`. An event whose first argument is `nil`
+  (or NaN) is keyed by its event name, so `BAG_UPDATE_DELAYED` still counts.
+- **The set is reused and emptied as soon as the callback returns.** Do not
+  keep it; copy what you need.
+- A raising callback is reported through the host error handler, as any
+  listener is.
+
+The handle:
+
+| Method | Purpose |
+|---|---|
+| `Flush()` | Deliver now; `false` when nothing was collected. |
+| `IsPending()` | Whether payloads wait for delivery. |
+| `GetStats()` | SchedulerKit's `{ keys, refused, delivered, deferred, dropped }`, in a reused table. |
+| `Close()` | Unregister the events, drop what was collected, leave the scope. Terminal; `false` if already closed. |
+| `IsClosed()` | Whether the handle is closed. |
+
+### `EventKit:Derive(events, compute[, options])`
+
+A value that `compute()` produces, cached, and recomputed when any of `events`
+fires. `compute` runs once at creation, before anything is registered; if it
+raises, the error reaches the caller and nothing is left behind.
+
+```lua
+local freeSlots = EventKit:ForAddon("MyAddon"):Derive("BAG_UPDATE_DELAYED", countFreeSlots)
+freeSlots:OnChange(function(now, before)
+    print("free slots", before, "->", now)
+end)
+print(freeSlots:Get())
+```
+
+| Option | Meaning |
+|---|---|
+| `delaySeconds` | Quiet period before recomputing; `0`, the default, is the next frame. Uses SchedulerKit's `Debounce`. |
+| `equals` | `fun(previous, current): boolean` deciding whether a new value is the same; `==` when omitted. |
+| `units` | One or two unit tokens, as for `Coalesce`. |
+
+| Method | Purpose |
+|---|---|
+| `Get()` | The cached value. It is not recomputed by reading it. |
+| `OnChange(callback)` | `callback(value, previous)` whenever a recompute changes the value; returns a SignalKit connection. Listeners are isolated like event listeners. |
+| `Invalidate()` | Mark the value stale, exactly as one of its events would. |
+| `Close()` | Unregister the events, drop a pending recompute. Terminal; `Get()` keeps returning the last value. |
+| `IsClosed()` | Whether the handle is closed. |
+
+A `compute` that raises during a recompute is reported and the previous value
+is kept; so is an `equals` that raises, which then counts as a change.
+
+### Ownership
+
+`scope:Coalesce` and `scope:Derive` put the handle into the scope. The handle
+counts as **one** member in `GetActiveCount()`; `DisconnectAll()` and `Close()`
+release it with everything it owns — its event registrations and the
+SchedulerKit scope holding its timing handle — and closing a scope during a
+dispatch defers that, as for any connection. The handle's own event
+connections are internal and belong to no scope.
+
+Each handle creates its own SchedulerKit scope, so closing the package-level
+SchedulerKit scope from elsewhere cannot silently stop it; a `Derive` whose
+timing handle is closed anyway falls back to recomputing synchronously.
+
+### Cost
+
+The per-event path is one isolated listener call and one table write into a
+reused set: a spec guards that steady-state events allocate nothing. Creating a
+handle allocates its tables, one closure, one SchedulerKit scope and the event
+connections.
 
 ## Connection API
 
@@ -326,6 +441,12 @@ one would.
 ## Embedded copies and upgrades
 
 Registry owns one stable EventKit table for `(events, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table, and existing Frame handlers resolve dispatch functions through the stable EventKit facade.
+
+Revision 7 moved `_state` from schema 4 to schema 5, adding the dispatch table
+that `Coalesce` and `Derive` listeners resolve through and the metatables their
+handles are validated by. A revision-7 copy loading over revision 6 adds them
+in place; scopes revision 6 created gain `Coalesce` and `Derive`, and its
+connections keep working.
 
 Revision 6 moved `_state` from schema 3 to schema 4, adding the dispatch depth
 and the list of scopes closed during a dispatch. A revision-6 copy loading over

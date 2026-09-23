@@ -47,7 +47,7 @@ describe("SchedulerKit bootstrap", function()
             return require("SchedulerKit")
         end)
         assert.is_true(ok)
-        assert.are.equal(6, SchedulerKit.REVISION)
+        assert.are.equal(7, SchedulerKit.REVISION)
 
         local scope = SchedulerKit:CreateScope()
         assert.is_false(scope:IsClosed())
@@ -151,7 +151,7 @@ describe("SchedulerKit bootstrap", function()
 
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(6, upgraded.REVISION)
+        assert.are.equal(7, upgraded.REVISION)
 
         -- Revision 4's lane bookkeeping is derived from the inherited queues
         -- rather than assumed empty, so work an older copy had already queued
@@ -164,6 +164,106 @@ describe("SchedulerKit bootstrap", function()
         TestEnv.Tick()
         assert.is_true(ran)
         assert.are.equal("completed", legacyJob:GetState())
+    end)
+
+    it("adds the coalescing family to state left behind by a revision-6 copy", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        local Registry = require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        require("LifecycleKit")
+        require("TimerKit")
+
+        -- Revision 6 state: every field up to the monotonic frame reading, and
+        -- none of the lanes, watch groups or handle metatables revision 7 adds.
+        local old = Registry:Register("schedulerKit", 1, 6)
+        local scopePrototype = {}
+        local scopeMetatable = { __index = scopePrototype }
+        rawset(old, "API", 1)
+        rawset(old, "REVISION", 6)
+        rawset(old, "Job", {})
+        rawset(old, "Scope", scopePrototype)
+        rawset(old, "Context", {})
+        rawset(old, "Priority", { HIGH = 1, NORMAL = 2, LOW = 3, IDLE = 4 })
+        rawset(old, "_state", {
+            schema = 1,
+            addonScopes = {},
+            defaultScope = false,
+            dispatch = {},
+            queues = {
+                { items = {}, head = 1, tail = 0 },
+                { items = {}, head = 1, tail = 0 },
+                { items = {}, head = 1, tail = 0 },
+                { items = {}, head = 1, tail = 0 },
+            },
+            config = { frameBudgetMs = 2, runawayThresholdMs = 8, maxResumesPerFrame = 1000 },
+            jobMetatable = {},
+            scopeMetatable = scopeMetatable,
+            contextMetatable = {},
+            yieldToken = {},
+            priorityCursor = 1,
+            activeCount = 0,
+            laneOccupied = { false, false, false, false },
+            occupiedLaneCount = 0,
+            idleGuard = 0,
+            frame = false,
+            driverEnabled = false,
+            driverTrampoline = false,
+            currentJob = false,
+            frameDeadline = false,
+            frameReading = false,
+        })
+        -- A scope revision 6 created carries no member links.
+        local legacyScope = setmetatable({
+            _addonName = nil,
+            _closed = false,
+            _activeCount = 0,
+            _head = false,
+            _tail = false,
+            _timerScope = false,
+            _shutdownSubscription = false,
+        }, scopeMetatable)
+
+        local upgraded = require("SchedulerKit")
+        assert.are.equal(old, upgraded)
+        assert.are.equal(7, upgraded.REVISION)
+        local state = rawget(upgraded, "_state")
+        assert.are.same({}, rawget(state, "lanes"))
+        assert.are.equal(0, rawget(state, "laneCount"))
+        assert.are.equal(0, rawget(state, "watchGroupCount"))
+        assert.is_false(rawget(state, "familyTimerScope"))
+
+        local calls = 0
+        local debounced = legacyScope:Debounce(function()
+            calls = calls + 1
+        end, 0)
+        local watcher = legacyScope:Watch(function() end, 1, function() end)
+        debounced()
+        -- Native timer 1 is the watch ticker; the debounce armed the second.
+        TestEnv.FireNative(2)
+        assert.are.equal(1, calls)
+
+        assert.is_true(legacyScope:Close())
+        assert.is_true(debounced:IsClosed())
+        assert.is_false(watcher:IsActive())
+    end)
+
+    it("keeps live family handles working across a compatible reload", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local received = nil
+        local debounced = SchedulerKit:Debounce(function(value)
+            received = value
+        end, 1)
+        local lane = SchedulerKit:Lane("reload")
+        debounced("before reload")
+
+        local reloaded = TestEnv.ReloadPackage()
+        assert.are.equal(SchedulerKit, reloaded)
+        assert.are.equal(lane, reloaded:Lane("reload"))
+        TestEnv.AdvanceMs(1000)
+        TestEnv.FireNative(1)
+        assert.are.equal("before reload", received)
     end)
 
     it("releases terminal execution-only references", function()

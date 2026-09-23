@@ -23,7 +23,11 @@ SchedulerKit facade
     ├── defaultScope
     ├── Job / Scope / Context metatables
     ├── Frame driver + trampoline
-    └── configuration
+    ├── configuration
+    ├── lanes[name] + laneCount
+    ├── watchGroups[interval] + watchGroupCount
+    ├── familyTimerScope
+    └── familyMetatables / familyPrototypes (debounce, coalesce, watch, lane)
 ```
 
 Existing Jobs, Scopes, Contexts, queues, and the installed Frame trampoline therefore survive a compatible revision upgrade.
@@ -182,6 +186,75 @@ The traceback is captured by `debug.traceback(thread, message)` **before** the j
 
 Internal/native failures that occur in direct API operations may still be re-raised to the direct caller after logical cleanup has been committed. Such a failure is recorded on the job but **not** reported to the error handler, because the direct caller already has it; the same operation reached from the driver, where no caller can observe a raise, reports instead. One failure therefore produces exactly one signal.
 
+## Coalescing family
+
+`Debounce`, `Coalesce`, `Watch` and lanes live in one installer function,
+`installCoalescingFamily`, rather than at the top level of the chunk: Lua 5.1
+allows 200 locals per function and the main chunk is close to that. The
+installer commits its own methods; only four hooks forward-declared above the
+job machinery (`laneJobFinished`, `retryLaneJob`, `cancelFamilyMembers`,
+`closeFamilyMembers`) escape it.
+
+### Scope members
+
+A scope keeps a second intrusive list beside its jobs: `_familyHead` /
+`_familyTail`, with `_familyPrev` / `_familyNext` / `_linked` on each
+`Debounce`, `Coalesce` and `Watch` handle. `CancelAll` walks it with the next
+pointer captured first (a cancelled watch unlinks itself); `Close` re-reads the
+head after each member, because every member close unlinks before anything
+that can raise. Scopes from revision 6 have no such fields; `nil` reads as an
+empty list.
+
+### Timers and dispatch
+
+One shared TimerKit callback, `familyWakeCallback`, serves every `Debounce`,
+`Coalesce` and lane timer. The owner rides on the TimerKit handle as public
+user data, and the owner's `_timer` field is the staleness token, exactly as
+for delayed jobs. The callback resolves `_state.dispatch.familyWake`, and each
+lane-delivery job resolves `_state.dispatch.runDelivery`, so live handles
+follow a compatible upgrade. A wake never raises into TimerKit: failures are
+reported.
+
+`Debounce` does not re-arm per call. A call records its arguments and a clock
+reading; the timer, armed once per quiet window, re-arms for the remainder when
+it wakes early. `maxWaitSeconds` only shortens the due time while a trailing
+fire is owed.
+
+`Coalesce` keeps two set tables and swaps them at each delivery, so the
+callback can record keys without touching the table it is iterating, and
+`wipe` empties the delivered table in place so its hash part is reused.
+
+A fire without a lane runs through one `xpcall` trampoline with the callback and
+up to eight arguments staged in upvalues, the same technique EventKit uses for
+listener isolation: no closure and no argument table per fire.
+
+### Lanes
+
+A lane submission is a job with four extra fields: `_lane`, `_laneAdmitted`,
+`_attempt` and `_laneOwner`. It is created `delayed` and parked in the lane's
+FIFO (`_items`, `_head`, `_tail`); `pumpLane` admits it by setting it `pending`
+and pushing it onto its priority queue. `finishJob` calls `laneJobFinished` for
+every lane job exactly once, which decrements `_queued` or `_inFlight`, counts
+the outcome, tells a `Debounce`/`Coalesce` owner its delivery ended, and pumps
+the lane again.
+
+A waiting submission cancelled in place leaves a stale FIFO entry, like a
+cancelled job in a ready queue. When the backing array reaches `maxQueued`
+entries while fewer are live, `compactLaneQueue` rewrites it, so the array
+never exceeds `maxQueued` whatever the churn.
+
+`resumeJob`'s error path asks `retryLaneJob` first. A retry increments the
+job's generation, drops its coroutine and re-arms it through the ordinary
+`armDelay`; the job keeps `_laneAdmitted`, so it keeps its slot.
+
+### Watch groups
+
+`watchGroups[interval]` holds the watchers of one interval in an array plus a
+live count, and one TimerKit ticker in the package-internal timer scope. A
+cancel during a tick marks the group dirty; the array is compacted after the
+tick, keeping creation order, and the group and its ticker are released when
+the live count reaches zero.
+
 ## Allocation policy
 
 The normal resume hot path avoids container copies and queue-table replacement.
@@ -197,5 +270,12 @@ Expected allocations include:
 Terminal jobs clear execution-only references such as their callback, Context, coroutine, and delay handle. A retained Job handle therefore does not unnecessarily retain the callback closure after completion/cancellation/failure.
 
 Scope ownership is two-stage lazy. Loading SchedulerKit allocates neither its package-level convenience scope nor a TimerKit delay scope. Creating a SchedulerKit scope also does not allocate TimerKit ownership state; that happens only when the scope first schedules `NextFrame`, `After`, or `Every` work. Immediate-only scheduling therefore stays independent of TimerKit scope allocation after dependency bootstrap.
+
+The coalescing family adds: one handle table (plus two set tables for
+`Coalesce`, one or two eight-slot argument tables for `Debounce`, and one
+delivery closure when a lane is given) per handle; one TimerKit timer per quiet
+window, interval or lane interval; one job per lane submission; one group table
+and ticker per distinct watch interval. Recording calls, recording known keys
+and steady ticks allocate nothing.
 
 SchedulerKit deliberately does not pool Job objects in API generation 1 because stable user-visible handles and accidental handle reuse are a more serious correctness risk than the potential allocation saving. A future PoolKit may be used for private, non-escaping scheduler internals where identity reuse is safe.

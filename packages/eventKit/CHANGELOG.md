@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — 2026-09-23
+
+- Added `EventKit:Coalesce(events, intervalSeconds, callback, options)` and `scope:Coalesce`: the listed events (a name or an array, unit events through `options.units` with `ConnectUnit` semantics) are collected into a set keyed by the first payload argument, or by event name with `byEvent` or when that argument is `nil`, and `callback(set)` runs at most once per interval. AceBucket's interval semantics: the first event starts the interval, the callback runs at its end with everything collected. The handle has `Flush`, `IsPending`, `GetStats`, `Close` and `IsClosed`; `maxKeys` and `lane` pass through to SchedulerKit.
+- Added `EventKit:Derive(events, compute, options)` and `scope:Derive`: a cached value recomputed when any listed event fires, debounced by `delaySeconds` (default `0`, the next frame), with `Get`, `OnChange` (a SignalKit connection; listeners isolated), `Invalidate`, `Close` and `IsClosed`, and `options.equals` to decide what counts as a change.
+- Both are built on SchedulerKit's `Coalesce` and `Debounce`, found through `Registry:Find("schedulerKit", 1)` at call time; EventKit does not depend on SchedulerKit, which depends on LifecycleKit, which depends on EventKit. Without SchedulerKit, `Coalesce` is refused at the caller and `Derive` recomputes synchronously on every event. The family is documented once, in SchedulerKit's `docs/API.md` under *Coalescing and lanes*, which the new *Coalescing events* section links to.
+- A `Coalesce` or `Derive` handle joins its EventKit scope as one member; the scope sweep releases its event registrations and its SchedulerKit scope, deferred like any connection when the scope closes during a dispatch. The steady-state per-event path allocates nothing.
+- Implementation revision 7; `_state` schema 5. A copy loading over revision 6 adds the composite dispatch table and handle metatables in place. 22 new specs: Coalesce (10), Derive (11) and the revision-6 upgrade; the test environment gains a SchedulerKit-backed variant that puts the sibling sources on the path.
+- `EventKit` API generation 1 is unchanged; the additions are compatible.
+
 ## 0.4.1 — 2026-09-23
 
 - Fixed a scoped `PLAYER_LOGOUT` listener being silently dropped. LifecycleKit's logout watcher runs before listeners connected after it and closes the addon's scope; the close disconnected them mid-dispatch, so an addon's `EventKit:ForAddon(name):Connect("PLAYER_LOGOUT", save)` never ran. `Close()` and `CloseAddonScopes` called during a dispatch now close the scope at once — new connections are refused — and sweep its connections when the outermost dispatch returns. The documented rule: `Close` prevents future deliveries, never the one in flight. A failure during that sweep goes to the host error handler.

@@ -7,10 +7,10 @@ local function expectErrorContaining(expected, callback)
 end
 
 local function installFutureEventsFacade(Registry)
-    local EventKit = Registry:Register("eventKit", 1, 7)
+    local EventKit = Registry:Register("eventKit", 1, 8)
     local function stub() end
     EventKit.API = 1
-    EventKit.REVISION = 7
+    EventKit.REVISION = 8
     EventKit.Connection = { Disconnect = stub, IsConnected = stub }
     EventKit.Scope = {
         Connect = stub,
@@ -22,12 +22,16 @@ local function installFutureEventsFacade(Registry)
         IsClosed = stub,
         GetAddonName = stub,
         GetActiveCount = stub,
+        Coalesce = stub,
+        Derive = stub,
     }
     EventKit.Connect = stub
     EventKit.Once = stub
     EventKit.ConnectUnit = stub
     EventKit.OnceUnit = stub
     EventKit.CreateScope = stub
+    EventKit.Coalesce = stub
+    EventKit.Derive = stub
     EventKit.ForAddon = stub
     EventKit.CloseAddonScopes = stub
     return EventKit
@@ -64,13 +68,13 @@ describe("EventKit package bootstrap", function()
         end)
     end)
 
-    it("registers EventKit API 1 revision 6", function()
+    it("registers EventKit API 1 revision 7", function()
         local EventKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("eventKit", 1)
         assert.are.equal(EventKit, selected)
-        assert.are.equal(6, revision)
+        assert.are.equal(7, revision)
         assert.are.equal(1, EventKit.API)
-        assert.are.equal(6, EventKit.REVISION)
+        assert.are.equal(7, EventKit.REVISION)
     end)
 
     it("reuses the package facade across duplicate embedding", function()
@@ -143,9 +147,9 @@ describe("EventKit package bootstrap", function()
         local state = EventKit._state
 
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(6, EventKit.REVISION)
+        assert.are.equal(7, EventKit.REVISION)
         assert.are.equal(legacyConnectionMethods, EventKit.Connection)
-        assert.are.equal(4, state.schema)
+        assert.are.equal(5, state.schema)
         assert.are.equal(legacyGroup, state.unitGroups["6:player"])
         assert.are.equal("6:player", legacyGroup.key)
         assert.are.equal(1, state.unitFrameCount)
@@ -190,9 +194,9 @@ describe("EventKit package bootstrap", function()
         local state = EventKit._state
 
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(6, EventKit.REVISION)
+        assert.are.equal(7, EventKit.REVISION)
         assert.are.equal(legacyConnectionMethods, EventKit.Connection)
-        assert.are.equal(4, state.schema)
+        assert.are.equal(5, state.schema)
         assert.are.equal("table", type(state.addonScopes))
         assert.are.equal("table", type(EventKit.Scope))
 
@@ -241,9 +245,9 @@ describe("EventKit package bootstrap", function()
         local EventKit = require("EventKit")
         local state = EventKit._state
 
-        assert.are.equal(6, EventKit.REVISION)
+        assert.are.equal(7, EventKit.REVISION)
         assert.are.equal(legacyScopePrototype, EventKit.Scope)
-        assert.are.equal(4, state.schema)
+        assert.are.equal(5, state.schema)
         assert.are.equal(0, state.dispatchDepth)
         assert.are.equal(0, state.pendingScopeCount)
 
@@ -260,6 +264,63 @@ describe("EventKit package bootstrap", function()
         TestEnv.Emit("PLAYER_LOGOUT")
         assert.are.equal(1, calls)
         assert.are.equal(0, legacyAddonScope:GetActiveCount())
+    end)
+
+    it("upgrades revision-6 package state in place", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        local Registry = require("Registry")
+        require("SignalKit")
+
+        -- Revision 6 left schema-4 state behind: no Coalesce or Derive
+        -- dispatch, and no handle metatables for them.
+        local function stub() end
+        local legacyScopePrototype = {}
+        local legacyScope = setmetatable({
+            _addonName = "MyAddon",
+            _head = false,
+            _tail = false,
+            _activeCount = 0,
+            _closed = false,
+        }, { __index = legacyScopePrototype })
+        local legacy = Registry:Register("eventKit", 1, 6)
+        legacy.API = 1
+        legacy.REVISION = 6
+        legacy.Connection = { Disconnect = stub, IsConnected = stub }
+        legacy.Scope = legacyScopePrototype
+        legacy._state = {
+            schema = 4,
+            regularFrame = nil,
+            regularChannels = {},
+            unitGroups = {},
+            unitFrames = {},
+            unitFrameCount = 0,
+            dispatchRegular = stub,
+            dispatchUnit = stub,
+            isolate = stub,
+            addonScopes = { MyAddon = legacyScope },
+            scopeMetatable = getmetatable(legacyScope),
+            dispatchDepth = 0,
+            pendingScopes = {},
+            pendingScopeCount = 0,
+        }
+
+        local EventKit = require("EventKit")
+        local state = EventKit._state
+        assert.are.equal(7, EventKit.REVISION)
+        assert.are.equal(5, state.schema)
+        assert.is_function(state.composites.onEvent)
+        assert.is_table(state.compositeMetatables.coalesce)
+        assert.is_table(state.compositeMetatables.derive)
+
+        -- The scope revision 6 created can own a Derive and sweep it.
+        local derived = legacyScope:Derive("CUSTOM_EVENT", function()
+            return 1
+        end)
+        assert.are.equal(1, legacyScope:GetActiveCount())
+        EventKit:CloseAddonScopes("MyAddon")
+        assert.is_true(derived:IsClosed())
+        assert.are.equal(0, legacyScope:GetActiveCount())
     end)
 
     it("disconnects a handle shaped by a revision before scopes existed", function()
@@ -308,6 +369,6 @@ describe("EventKit package bootstrap", function()
         local selected, revision = Registry:Get("eventKit", 1)
         assert.are.equal(future, loaded)
         assert.are.equal(future, selected)
-        assert.are.equal(7, revision)
+        assert.are.equal(8, revision)
     end)
 end)

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 — 2026-09-23
+
+- Added the coalescing family, designed as one thing with EventKit's `Coalesce` and `Derive` and documented together in `docs/API.md` under *Coalescing and lanes*:
+  - `Debounce(callback, delaySeconds, options)` returns a callable handle that runs `callback` once a burst of calls goes quiet, with the last call's arguments kept in a reused eight-value slot. Options `leading`, `maxWaitSeconds` and `lane`; methods `Cancel`, `Flush`, `IsPending`, `Close`, `IsClosed`. A call inside an open window only records a clock reading; the timer re-arms once, for the remainder, when it wakes early.
+  - `Coalesce(callback, intervalSeconds, options)` returns a callable handle that collects keys: the first key starts the interval and `callback(set)` runs once at its end with everything collected. The set is one of two reused tables, emptied as soon as the callback returns. `maxKeys` (default 256) refuses new keys past the bound and counts them in `GetStats()`.
+  - `Watch(predicate, intervalSeconds, callback, options)` polls on one TimerKit ticker per interval shared by every watch of that interval; the callback runs on the first tick and on every change, or on every tick with `everyTick`. At most 128 watches per interval and 32 distinct intervals. A raising predicate is reported once and its watch cancelled.
+  - `Lane(name, options)` returns a lane shared by name across the session (at most 32 open): `maxInFlight`, `minIntervalSeconds`, `retry = { attempts, backoffSeconds, multiplier, maxBackoffSeconds }` and `maxQueued` (default 64). `lane:Submit(callback, options)` runs `callback` as an ordinary job under those limits and returns the job, or `nil, "full"` / `nil, "closed"` without allocating. A raising submission with attempts left is retried after an exponential backoff and keeps its slot; only the final failure is reported. `GetStats()`, `GetName()`, `Close()` (cancels waiting submissions, drains admitted ones), `IsClosed()`.
+  - `options.lane` on `Debounce` and `Coalesce` hands every fire to the lane as a job, so the family shares one throttling vocabulary. A full lane defers a fire; a closed lane drops it, counts it and reports it.
+- `scope:Debounce`, `scope:Coalesce` and `scope:Watch` mirror `scope:Schedule`. `CancelAll()` drops pending fires (handles stay usable) and cancels watches and the scope's lane jobs; `Close()` closes everything, so ModuleKit's `module.scope.Jobs` releases the family on disable.
+- Every due time uses `GetTimePreciseSec`, the clock TimerKit's deadlines use; every timer is a TimerKit timer. Recording calls and known keys, and steady watch ticks, allocate nothing; specs guard each.
+- Implementation revision 7. Shared state gains the lane registry, the watch groups, a package-internal TimerKit scope and one metatable and method table per handle kind; a copy loading over revision 6 adds them in place, and older scopes gain the new methods. The family lives in one installer function because the main chunk was near Lua 5.1's 200-local limit.
+- 52 new specs: Debounce (14), Coalesce (9), Watch (12), lanes and lane delivery (15), and the revision-6 upgrade and live-reload cases (2).
+- `SchedulerKit` API generation 1 is unchanged; the additions are compatible.
+
 ## 0.4.0 — 2026-09-22
 
 - The frame budget is no longer defeated by a resettable clock. `debugprofilestop` reports one process-wide timer that any addon can zero with `debugprofilestart()`, and the budget was a single absolute deadline computed at the start of the pass. After a restart every later reading fell below that deadline, the budget check never fired, and the pass ran to the resume-count ceiling instead: a thousand resumes against a 2 ms budget, in one frame.

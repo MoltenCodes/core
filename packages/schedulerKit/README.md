@@ -18,6 +18,7 @@ SchedulerKit is **not** a preemptive thread scheduler. A Lua callback must eithe
 - manual and addon-owned cancellation scopes;
 - automatic LifecycleKit shutdown cleanup;
 - callback-error isolation, captured tracebacks, and per-job diagnostics;
+- the coalescing family: `Debounce` (quiet-period calls with `leading` and `maxWaitSeconds`), `Coalesce` (keys collected once per interval), `Watch` (shared-ticker polling), and named **lanes** that ration a scarce resource with an in-flight cap, a minimum interval, retry with backoff and a bounded queue;
 - stale delayed-callback protection;
 - compatible embedded-copy identity through Registry.
 
@@ -40,7 +41,19 @@ end, {
 })
 ```
 
-For the complete public contract, see [`docs/API.md`](docs/API.md). Maintainers can also read [`docs/INTERNALS.md`](docs/INTERNALS.md) for queue, driver, shared-state, and allocation invariants.
+Bursts and scarce resources use the coalescing family, released with the scope
+like any job:
+
+```lua
+local rebuild = work:Debounce(rebuildBagIndex, 0.2, { maxWaitSeconds = 1 })
+rebuild() -- as often as events arrive; runs once the burst goes quiet
+
+local inspect = SchedulerKit:Lane("inspect", { maxInFlight = 1, minIntervalSeconds = 1.5 })
+inspect:Submit(queryNextUnit, { scope = work })
+```
+
+For the complete public contract, see [`docs/API.md`](docs/API.md), including
+[Coalescing and lanes](docs/API.md#coalescing-and-lanes). Maintainers can also read [`docs/INTERNALS.md`](docs/INTERNALS.md) for queue, driver, shared-state, and allocation invariants.
 
 ## Embedding
 

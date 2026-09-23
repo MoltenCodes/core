@@ -16,6 +16,11 @@ The suite covers:
 - delayed wakeups carried on TimerKit's public user-data seam;
 - scopes closed from inside a running job, including during an `Every` callback;
 - bootstrap/reload identity and in-place revision upgrade;
-- randomized active-state invariants.
+- randomized active-state invariants;
+- `Debounce`: restart, last arguments, the eight-argument slot, `leading`, `maxWaitSeconds`, `Cancel`, `Flush`, re-entrant calls, scope release, caller-line errors, and an allocation guard;
+- `Coalesce`: set accumulation, the interval, `maxKeys` refusal and stats, reuse of the two set tables, keys recorded by the callback, `Flush`, scope release, and an allocation guard;
+- `Watch`: edge trigger, `everyTick`, one shared ticker per interval, both caps, a raising predicate or callback, cancellation during a tick, scope release, and an allocation guard;
+- lanes: sharing by name, `maxInFlight`, `minIntervalSeconds`, retry with capped backoff, `maxQueued` refusal, queue compaction, `Close`, scope release, and `Debounce`/`Coalesce` delivering through a lane;
+- the revision-6 upgrade of shared state and older scopes.
 
 Tests intentionally avoid production-only test hooks. The fake host lives under `tests/support/` and is never part of the published runtime API.

@@ -31,16 +31,25 @@
 --   Connections ........... connection lifecycle and handle methods
 --   Dispatch .............. OnEvent to channel fan-out
 --   Subscription .......... shared validation and connect path
+--   Coalescing ............ Coalesce and Derive over SchedulerKit, when present
 --   Public API ............ package-level subscriptions and scopes
 --   Scope methods ......... the handle a scope owner receives
 --   Commit ................ prototype/facade assignment and self-check
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
-local STATE_SCHEMA = 4
+local STATE_SCHEMA = 5
+
+-- Coalesce and Derive find SchedulerKit through `Registry:Find` when they are
+-- called. EventKit never depends on SchedulerKit: SchedulerKit depends on
+-- LifecycleKit, which depends on EventKit.
+local OPTIONAL_SCHEDULER_API = 1
+
+-- One Coalesce or Derive listens to at most this many distinct events.
+local MAXIMUM_COMPOSITE_EVENTS = 32
 
 -- `Frame:RegisterUnitEvent(event, unit1, unit2)` has exactly two filter slots.
 local MAXIMUM_UNIT_TOKENS = 2
@@ -125,6 +134,8 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "ForAddon")) ~= "function"
         or type(rawget(implementation, "CloseAddonScopes")) ~= "function"
         or type(rawget(implementation, "Scope")) ~= "table"
+        or type(rawget(implementation, "Coalesce")) ~= "function"
+        or type(rawget(implementation, "Derive")) ~= "function"
     then
         return false
     end
@@ -142,6 +153,8 @@ local function validatePublicSurface(implementation)
         and type(rawget(scope, "IsClosed")) == "function"
         and type(rawget(scope, "GetAddonName")) == "function"
         and type(rawget(scope, "GetActiveCount")) == "function"
+        and type(rawget(scope, "Coalesce")) == "function"
+        and type(rawget(scope, "Derive")) == "function"
 end
 
 ---Whether `implementation` carries package state of this revision's schema.
@@ -163,6 +176,9 @@ local function validateCurrentState(implementation)
         and type(rawget(currentState, "pendingScopeCount")) == "number"
         and type(rawget(currentState, "addonScopes")) == "table"
         and type(rawget(currentState, "scopeMetatable")) == "table"
+        and type(rawget(currentState, "composites")) == "table"
+        and type(rawget(currentState, "compositeMetatables")) == "table"
+        and type(rawget(currentState, "compositePrototypes")) == "table"
 end
 
 -- Bootstrap -----------------------------------------------------------------
@@ -213,6 +229,37 @@ end
 ---@field IsClosed fun(self: EventKit.Scope): boolean
 ---@field GetAddonName fun(self: EventKit.Scope): string?
 ---@field GetActiveCount fun(self: EventKit.Scope): integer
+---@field Coalesce fun(self: EventKit.Scope, events: string|string[], intervalSeconds: number, callback: fun(set: table<any, any>), options: EventKit.CoalesceOptions?): EventKit.CoalesceHandle
+---@field Derive fun(self: EventKit.Scope, events: string|string[], compute: fun(): any, options: EventKit.DeriveOptions?): EventKit.DeriveHandle
+
+---Options accepted by `Coalesce`.
+---@class EventKit.CoalesceOptions
+---@field byEvent boolean? Key the set by event name instead of the first payload argument.
+---@field units string[]? One or two unit tokens; the events are then unit events, as with `ConnectUnit`.
+---@field maxKeys integer? Distinct keys one interval may collect; SchedulerKit's default is 256.
+---@field lane table? A SchedulerKit lane (`SchedulerKit:Lane`) to deliver through.
+
+---Options accepted by `Derive`.
+---@class EventKit.DeriveOptions
+---@field delaySeconds number? Debounce before recomputing; `0`, the default, is the next frame.
+---@field equals (fun(previous: any, current: any): boolean)? Decides whether a new value is a change; `==` when omitted.
+---@field units string[]? One or two unit tokens; the events are then unit events, as with `ConnectUnit`.
+
+---Events coalesced into one callback per interval.
+---@class EventKit.CoalesceHandle
+---@field Flush fun(self: EventKit.CoalesceHandle): boolean
+---@field IsPending fun(self: EventKit.CoalesceHandle): boolean
+---@field GetStats fun(self: EventKit.CoalesceHandle): table<string, integer>
+---@field Close fun(self: EventKit.CoalesceHandle): boolean
+---@field IsClosed fun(self: EventKit.CoalesceHandle): boolean
+
+---A value recomputed when any of its events fires.
+---@class EventKit.DeriveHandle
+---@field Get fun(self: EventKit.DeriveHandle): any
+---@field OnChange fun(self: EventKit.DeriveHandle, callback: fun(value: any, previous: any)): SignalKit.Connection
+---@field Invalidate fun(self: EventKit.DeriveHandle)
+---@field Close fun(self: EventKit.DeriveHandle): boolean
+---@field IsClosed fun(self: EventKit.DeriveHandle): boolean
 
 ---One event name's fan-out: a host registration plus the signal behind it.
 ---@class EventKit.Channel
@@ -243,6 +290,8 @@ end
 ---@field CreateScope fun(self: EventKit): EventKit.Scope
 ---@field ForAddon fun(self: EventKit, addonName: string): EventKit.Scope
 ---@field CloseAddonScopes fun(self: EventKit, addonName: string): boolean
+---@field Coalesce fun(self: EventKit, events: string|string[], intervalSeconds: number, callback: fun(set: table<any, any>), options: EventKit.CoalesceOptions?): EventKit.CoalesceHandle
+---@field Derive fun(self: EventKit, events: string|string[], compute: fun(): any, options: EventKit.DeriveOptions?): EventKit.DeriveHandle
 
 local Connection = rawget(EventKit, "Connection")
 local Scope = rawget(EventKit, "Scope")
@@ -272,6 +321,11 @@ if previousRevision == nil then
         dispatchDepth = 0,
         pendingScopes = {},
         pendingScopeCount = 0,
+        -- Coalesce and Derive handles: the dispatch their listener closures
+        -- resolve through, and one metatable plus method table per kind.
+        composites = {},
+        compositeMetatables = {},
+        compositePrototypes = {},
     }
 
     rawset(EventKit, "Connection", Connection)
@@ -319,6 +373,16 @@ else
         rawset(state, "dispatchDepth", 0)
         rawset(state, "pendingScopes", {})
         rawset(state, "pendingScopeCount", 0)
+        rawset(state, "schema", 4)
+        schema = 4
+    end
+
+    if schema == 4 then
+        -- Revision 6 had no Coalesce or Derive. Its scopes hold only plain
+        -- connections, which the revision-7 sweep still recognises.
+        rawset(state, "composites", {})
+        rawset(state, "compositeMetatables", {})
+        rawset(state, "compositePrototypes", {})
         rawset(state, "schema", STATE_SCHEMA)
         schema = STATE_SCHEMA
     end
@@ -336,6 +400,22 @@ else
 end
 
 local CONNECTION_METATABLE = { __index = Connection }
+
+-- Coalesce and Derive handles are validated by metatable identity, so their
+-- metatables live in shared state beside the scope metatable.
+local COMPOSITE_METATABLES = rawget(state, "compositeMetatables")
+local COMPOSITE_PROTOTYPES = rawget(state, "compositePrototypes")
+for _, kind in ipairs({ "coalesce", "derive" }) do
+    if type(rawget(COMPOSITE_METATABLES, kind)) ~= "table" then
+        rawset(COMPOSITE_METATABLES, kind, {})
+    end
+    if type(rawget(COMPOSITE_PROTOTYPES, kind)) ~= "table" then
+        rawset(COMPOSITE_PROTOTYPES, kind, {})
+    end
+    rawset(rawget(COMPOSITE_METATABLES, kind), "__index", rawget(COMPOSITE_PROTOTYPES, kind))
+end
+local COALESCE_METATABLE = rawget(COMPOSITE_METATABLES, "coalesce")
+local DERIVE_METATABLE = rawget(COMPOSITE_METATABLES, "derive")
 
 -- Unlike the connection metatable, the scope metatable lives in shared state:
 -- scope receivers are validated by metatable identity, which therefore has to
@@ -1086,6 +1166,17 @@ local function subscribeUnit(scope, label, level, eventName, callback, once, ...
     return connection
 end
 
+---Release one member of a scope: a connection, or a Coalesce or Derive
+---handle, which carries a `_kind` and releases everything it owns.
+---@param member table
+---@return boolean released `true` only for the call that transitioned it.
+local function disconnectScopeMember(member)
+    if rawget(member, "_kind") ~= nil then
+        return rawget(rawget(state, "composites"), "close")(member)
+    end
+    return disconnectEventConnection(member)
+end
+
 ---Disconnect every live connection of `scope` in creation order.
 ---
 ---Best effort: a failure does not stop the sweep, and the first error object is
@@ -1099,7 +1190,7 @@ local function disconnectAllInScope(scope)
     local connection = rawget(scope, "_head")
 
     while connection ~= false do
-        local ok, result = pcall(disconnectEventConnection, connection)
+        local ok, result = pcall(disconnectScopeMember, connection)
         if not ok then
             if firstError == nil then
                 firstError = { value = result }
@@ -1185,6 +1276,593 @@ local function newScope(addonName)
     }, SCOPE_METATABLE)
 end
 
+-- Coalescing ------------------------------------------------------------------
+--
+-- `Coalesce` and `Derive` are the event half of the coalescing family whose
+-- scheduler half is SchedulerKit's `Coalesce`, `Debounce` and lanes; the
+-- family is documented once, in SchedulerKit's docs/API.md under "Coalescing
+-- and lanes". EventKit supplies the subscriptions and SchedulerKit the timing.
+--
+-- SchedulerKit is optional. It is found through `Registry:Find` when a handle
+-- is created. `Coalesce` without it is refused at the caller; `Derive` without
+-- it recomputes synchronously on every event, which still works.
+--
+-- Each handle owns its event connections (not scope-linked themselves) and,
+-- with SchedulerKit, one SchedulerKit scope holding its timing handle. The
+-- handle itself joins the EventKit scope it was created through, so the scope
+-- sweep releases everything in one step. Listener closures resolve behaviour
+-- through `state.composites`, so a later compatible revision upgrades them.
+
+---Silent optional lookup of a SchedulerKit revision that has coalescing.
+---@return table|nil SchedulerKit
+---@return string|nil reason why it is unavailable
+local function findSchedulerKit()
+    local find = rawget(Registry, "Find")
+    if type(find) ~= "function" then
+        return nil, "Registry:Find is unavailable"
+    end
+    local SchedulerKit, reason = find(Registry, "schedulerKit", OPTIONAL_SCHEDULER_API)
+    if type(SchedulerKit) ~= "table" then
+        return nil, tostring(reason)
+    end
+    local prototype = rawget(SchedulerKit, "Scope")
+    if
+        type(rawget(SchedulerKit, "CreateScope")) ~= "function"
+        or type(prototype) ~= "table"
+        or type(rawget(prototype, "Coalesce")) ~= "function"
+        or type(rawget(prototype, "Debounce")) ~= "function"
+    then
+        return nil, "the loaded SchedulerKit predates coalescing (revision 7)"
+    end
+    return SchedulerKit, nil
+end
+
+---Drop a Lua error position prefix, so a SchedulerKit refusal can be raised
+---again at EventKit's caller without naming a line inside either package.
+---@param message any
+---@return string
+local function withoutPosition(message)
+    local text = tostring(message)
+    local stripped = string.gsub(text, "^[^:\n]+:%d+: ", "", 1)
+    return stripped
+end
+
+---Validate `events` into a fresh array of distinct event names.
+---@param events any a string or an array of strings
+---@param label string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return string[]
+local function readEventList(events, label, level)
+    if type(events) == "string" then
+        validateEventName(events, label, level + 1)
+        return { events }
+    end
+    if type(events) ~= "table" or events[1] == nil then
+        error(label .. " events must be an event name or a non-empty array of them", level)
+    end
+
+    local list, seen = {}, {}
+    for index = 1, #events do
+        local eventName = events[index]
+        if type(eventName) ~= "string" or eventName == "" then
+            error(label .. " events must contain only non-empty strings", level)
+        end
+        if not seen[eventName] then
+            seen[eventName] = true
+            list[#list + 1] = eventName
+        end
+    end
+    if #list > MAXIMUM_COMPOSITE_EVENTS then
+        error(label .. " accepts at most " .. MAXIMUM_COMPOSITE_EVENTS .. " distinct events", level)
+    end
+    return list
+end
+
+---Reject an options value that is not a table or names an unknown field.
+---@param options any
+---@param allowed table<string, boolean>
+---@param label string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+local function validateOptionTable(options, allowed, label, level)
+    if options == nil then
+        return
+    end
+    if type(options) ~= "table" then
+        error(label .. " options must be a table", level)
+    end
+    local unknown = nil
+    for key in pairs(options) do
+        if allowed[key] ~= true then
+            local display = tostring(key)
+            if unknown == nil or display < unknown then
+                unknown = display
+            end
+        end
+    end
+    if unknown ~= nil then
+        error(label .. ' options contains unknown field "' .. unknown .. '"', level)
+    end
+end
+
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateDelay(value, label, level)
+    if type(value) ~= "number" or value ~= value or value == math.huge or value < 0 then
+        error(label .. " must be a finite number greater than or equal to zero", level)
+    end
+end
+
+---Read the optional `units` option into the normalized unit set.
+---@param units any
+---@param label string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return string[]|nil units
+---@return string|nil key
+local function readUnits(units, label, level)
+    if units == nil then
+        return nil, nil
+    end
+    if type(units) ~= "table" then
+        error(label .. " units must be an array of one or two unit tokens", level)
+    end
+    return normalizeUnits(label, level + 1, unpackValues(units, 1, #units))
+end
+
+---Connect `listener` to every event of `list`, owned by `handle`.
+---
+---Called under `pcall` so a refused registration can release what was
+---already connected; `level` already counts the protected call.
+---@param handle table
+---@param list string[]
+---@param units string[]|nil
+---@param key string|nil
+---@param listener EventKit.Listener
+---@param label string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+local function connectHandleEvents(handle, list, units, key, listener, label, level)
+    local connections = rawget(handle, "_connections")
+    for index = 1, #list do
+        local channel
+        if units ~= nil then
+            -- `readUnits` returns a key whenever it returns units.
+            local unitKey = key --[[@as string]]
+            channel = createUnitChannel(list[index], units, unitKey, label, level + 1)
+        else
+            channel = createRegularChannel(list[index], label, level + 1)
+        end
+        connections[#connections + 1] = connectToChannel(channel, listener, false, false)
+    end
+end
+
+---Release everything a Coalesce or Derive handle owns. Terminal, idempotent,
+---and best effort: the first failure is raised once everything was tried.
+---@param handle table
+---@return boolean closed `false` when it was already closed.
+local function closeCompositeHandle(handle)
+    if rawget(handle, "_closed") == true then
+        return false
+    end
+    rawset(handle, "_closed", true)
+    unlinkFromScope(handle)
+
+    local firstError = nil
+    local connections = rawget(handle, "_connections")
+    for index = 1, #connections do
+        local ok, value = pcall(disconnectEventConnection, connections[index])
+        if not ok and firstError == nil then
+            firstError = { value = value }
+        end
+        connections[index] = nil
+    end
+
+    -- Closing the SchedulerKit scope closes the timing handle in it. The
+    -- closed timing handle is kept, so a closed Coalesce handle still answers
+    -- `IsPending` and `GetStats`.
+    local schedulerScope = rawget(handle, "_schedulerScope")
+    rawset(handle, "_schedulerScope", false)
+    if schedulerScope ~= false then
+        local ok, value = pcall(schedulerScope.Close, schedulerScope)
+        if not ok and firstError == nil then
+            firstError = { value = value }
+        end
+    end
+    rawset(handle, "_signal", false)
+
+    if firstError ~= nil then
+        error(firstError.value, 0)
+    end
+    return true
+end
+
+---Build the one listener a handle connects to each of its events.
+---@param handle table
+---@return EventKit.Listener
+local function newCompositeListener(handle)
+    return function(eventName, first)
+        return rawget(rawget(state, "composites"), "onEvent")(handle, eventName, first)
+    end
+end
+
+---Finish building a handle: connect its events, then join `scope`. Releases
+---the handle and raises when a registration is refused.
+---@param handle table
+---@param scope EventKit.Scope|false
+---@param list string[]
+---@param units string[]|nil
+---@param key string|nil
+---@param label string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+local function attachCompositeHandle(handle, scope, list, units, key, label, level)
+    local listener = newCompositeListener(handle)
+    -- Levels inside the protected call: connectHandleEvents, pcall, this
+    -- function, and then `level` more to the caller.
+    local ok, failure =
+        pcall(connectHandleEvents, handle, list, units, key, listener, label, level + 2)
+    if not ok then
+        pcall(closeCompositeHandle, handle)
+        error(failure, 0)
+    end
+    if scope ~= false then
+        linkToScope(scope, handle)
+    end
+end
+
+---Record one event on a Coalesce handle.
+---@param handle EventKit.CoalesceHandle
+---@param eventName string
+---@param first any the event's first payload argument
+local function recordCoalescedEvent(handle, eventName, first)
+    local key = first
+    if rawget(handle, "_byEvent") == true or key == nil or key ~= key then
+        key = eventName
+    end
+    rawget(handle, "_timing")(key)
+end
+
+---Recompute a Derive handle's value and announce a change.
+---@param handle EventKit.DeriveHandle
+local function recomputeDerived(handle)
+    if rawget(handle, "_closed") == true then
+        return
+    end
+    local ok, value = pcall(rawget(handle, "_compute"))
+    if not ok then
+        reportListenerError(value)
+        return
+    end
+
+    local previous = rawget(handle, "_value")
+    local changed
+    local equals = rawget(handle, "_equals")
+    if equals ~= false then
+        local equalsOk, same = pcall(equals, previous, value)
+        if not equalsOk then
+            reportListenerError(same)
+            changed = true
+        else
+            changed = not same
+        end
+    else
+        changed = previous ~= value
+    end
+    if not changed then
+        return
+    end
+
+    rawset(handle, "_value", value)
+    local signal = rawget(handle, "_signal")
+    if signal ~= false then
+        signal:Fire(value, previous)
+    end
+end
+
+---Mark a Derive handle's value stale: debounced through SchedulerKit when it
+---was present at creation, otherwise recomputed at once.
+---@param handle EventKit.DeriveHandle
+local function invalidateDerived(handle)
+    if rawget(handle, "_closed") == true then
+        return
+    end
+    local timing = rawget(handle, "_timing")
+    -- A timing handle whose SchedulerKit scope was closed from outside
+    -- refuses the call; fall back to recomputing now rather than going stale.
+    if timing ~= false and timing() == true then
+        return
+    end
+    recomputeDerived(handle)
+end
+
+---Route an event to the handle kind that listens for it.
+---@param handle table
+---@param eventName string
+---@param first any
+local function onCompositeEvent(handle, eventName, first)
+    if rawget(handle, "_closed") == true then
+        return
+    end
+    if rawget(handle, "_kind") == "coalesce" then
+        recordCoalescedEvent(handle, eventName, first)
+        return
+    end
+    invalidateDerived(handle)
+end
+
+---Build a Coalesce handle.
+---@param scope EventKit.Scope|false owning scope, or `false` for none
+---@param label string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return EventKit.CoalesceHandle
+local function createCoalesceHandle(scope, label, level, events, interval, callback, options)
+    local list = readEventList(events, label, level + 1)
+    validateDelay(interval, label .. " intervalSeconds", level + 1)
+    validateCallback(callback, label, level + 1)
+    validateOptionTable(
+        options,
+        { byEvent = true, units = true, maxKeys = true, lane = true },
+        label,
+        level + 1
+    )
+
+    local byEvent, units, key, timingOptions = false, nil, nil, nil
+    if options ~= nil then
+        local byEventOption = rawget(options, "byEvent")
+        if byEventOption ~= nil and type(byEventOption) ~= "boolean" then
+            error(label .. " byEvent must be a boolean", level)
+        end
+        byEvent = byEventOption == true
+        units, key = readUnits(rawget(options, "units"), label, level + 1)
+        timingOptions = { maxKeys = rawget(options, "maxKeys"), lane = rawget(options, "lane") }
+    end
+
+    local SchedulerKit, reason = findSchedulerKit()
+    if SchedulerKit == nil then
+        error(
+            label .. " requires SchedulerKit API 1, which is not available (" .. reason .. ")",
+            level
+        )
+    end
+
+    local schedulerScope = SchedulerKit:CreateScope()
+    local ok, timing =
+        pcall(schedulerScope.Coalesce, schedulerScope, callback, interval, timingOptions)
+    if not ok then
+        pcall(schedulerScope.Close, schedulerScope)
+        error(label .. ": " .. withoutPosition(timing), level)
+    end
+
+    local handle = setmetatable({
+        _kind = "coalesce",
+        _closed = false,
+        _byEvent = byEvent,
+        _connections = {},
+        _schedulerScope = schedulerScope,
+        _timing = timing,
+        _signal = false,
+        _scope = false,
+        _scopePrevious = false,
+        _scopeNext = false,
+    }, COALESCE_METATABLE)
+    attachCompositeHandle(handle, scope, list, units, key, label, level + 1)
+    return handle
+end
+
+---Build a Derive handle.
+---@param scope EventKit.Scope|false owning scope, or `false` for none
+---@param label string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@return EventKit.DeriveHandle
+local function createDeriveHandle(scope, label, level, events, compute, options)
+    local list = readEventList(events, label, level + 1)
+    if type(compute) ~= "function" then
+        error(label .. " compute must be a function", level)
+    end
+    validateOptionTable(
+        options,
+        { delaySeconds = true, equals = true, units = true },
+        label,
+        level + 1
+    )
+
+    local delay, equals, units, key = 0, false, nil, nil
+    if options ~= nil then
+        if rawget(options, "delaySeconds") ~= nil then
+            delay = rawget(options, "delaySeconds")
+            validateDelay(delay, label .. " delaySeconds", level + 1)
+        end
+        if rawget(options, "equals") ~= nil then
+            equals = rawget(options, "equals")
+            if type(equals) ~= "function" then
+                error(label .. " equals must be a function", level)
+            end
+        end
+        units, key = readUnits(rawget(options, "units"), label, level + 1)
+    end
+
+    -- The first value is computed before anything is registered, so a
+    -- compute that raises leaves nothing behind.
+    local initial = compute()
+
+    local handle = setmetatable({
+        _kind = "derive",
+        _closed = false,
+        _compute = compute,
+        _equals = equals,
+        _value = initial,
+        _connections = {},
+        _schedulerScope = false,
+        _timing = false,
+        _signal = false,
+        _scope = false,
+        _scopePrevious = false,
+        _scopeNext = false,
+    }, DERIVE_METATABLE)
+
+    local SchedulerKit = findSchedulerKit()
+    if SchedulerKit ~= nil then
+        local schedulerScope = SchedulerKit:CreateScope()
+        rawset(handle, "_schedulerScope", schedulerScope)
+        rawset(
+            handle,
+            "_timing",
+            schedulerScope:Debounce(function()
+                return rawget(rawget(state, "composites"), "recompute")(handle)
+            end, delay)
+        )
+    end
+
+    attachCompositeHandle(handle, scope, list, units, key, label, level + 1)
+    return handle
+end
+
+---@param handle any receiver the public method was called on
+---@param metatable table
+---@param label string qualified public method name, used in the argument error
+---@param noun string what the receiver should have been
+local function validateCompositeReceiver(handle, metatable, label, noun)
+    if type(handle) ~= "table" or getmetatable(handle) ~= metatable then
+        error(label .. " must be called on an EventKit " .. noun, 3)
+    end
+end
+
+---Deliver what the handle collected now instead of at the end of the interval.
+---@param self EventKit.CoalesceHandle
+---@return boolean delivered `false` when nothing was collected or it is closed.
+local function coalesceFlush(self)
+    validateCompositeReceiver(
+        self,
+        COALESCE_METATABLE,
+        "EventKit.CoalesceHandle:Flush",
+        "coalesce handle"
+    )
+    return rawget(self, "_timing"):Flush()
+end
+
+---Whether events were collected and wait for delivery.
+---@param self EventKit.CoalesceHandle
+---@return boolean pending
+local function coalesceIsPending(self)
+    validateCompositeReceiver(
+        self,
+        COALESCE_METATABLE,
+        "EventKit.CoalesceHandle:IsPending",
+        "coalesce handle"
+    )
+    return rawget(self, "_timing"):IsPending()
+end
+
+---Return SchedulerKit's counters for this handle, in a reused table.
+---@param self EventKit.CoalesceHandle
+---@return table<string, integer> stats
+local function coalesceGetStats(self)
+    validateCompositeReceiver(
+        self,
+        COALESCE_METATABLE,
+        "EventKit.CoalesceHandle:GetStats",
+        "coalesce handle"
+    )
+    return rawget(self, "_timing"):GetStats()
+end
+
+---Release the handle: its events, its pending delivery, its scope membership.
+---@param self EventKit.CoalesceHandle
+---@return boolean closed `false` when it was already closed.
+local function coalesceClose(self)
+    validateCompositeReceiver(
+        self,
+        COALESCE_METATABLE,
+        "EventKit.CoalesceHandle:Close",
+        "coalesce handle"
+    )
+    return closeCompositeHandle(self)
+end
+
+---Whether the handle is closed.
+---@param self EventKit.CoalesceHandle
+---@return boolean closed
+local function coalesceIsClosed(self)
+    validateCompositeReceiver(
+        self,
+        COALESCE_METATABLE,
+        "EventKit.CoalesceHandle:IsClosed",
+        "coalesce handle"
+    )
+    return rawget(self, "_closed") == true
+end
+
+---Return the cached value.
+---@param self EventKit.DeriveHandle
+---@return any value
+local function deriveGet(self)
+    validateCompositeReceiver(self, DERIVE_METATABLE, "EventKit.DeriveHandle:Get", "derived value")
+    return rawget(self, "_value")
+end
+
+---Subscribe to changes of the value. Listeners are isolated like event
+---listeners: one that raises is reported and the rest still run.
+---@param self EventKit.DeriveHandle
+---@param callback fun(value: any, previous: any)
+---@return SignalKit.Connection connection
+local function deriveOnChange(self, callback)
+    validateCompositeReceiver(
+        self,
+        DERIVE_METATABLE,
+        "EventKit.DeriveHandle:OnChange",
+        "derived value"
+    )
+    validateCallback(callback, "EventKit.DeriveHandle:OnChange", 3)
+    if rawget(self, "_closed") == true then
+        error("EventKit.DeriveHandle:OnChange cannot subscribe to a closed derived value", 2)
+    end
+    local signal = rawget(self, "_signal")
+    if signal == false then
+        signal = SignalKit:New()
+        rawset(self, "_signal", signal)
+    end
+    local connection = signal:Connect(function(...)
+        return rawget(state, "isolate")(callback, ...)
+    end)
+    return connection
+end
+
+---Mark the value stale, exactly as one of its events would.
+---@param self EventKit.DeriveHandle
+local function deriveInvalidate(self)
+    validateCompositeReceiver(
+        self,
+        DERIVE_METATABLE,
+        "EventKit.DeriveHandle:Invalidate",
+        "derived value"
+    )
+    invalidateDerived(self)
+end
+
+---Release the handle: its events, its pending recompute, its listeners.
+---@param self EventKit.DeriveHandle
+---@return boolean closed `false` when it was already closed.
+local function deriveClose(self)
+    validateCompositeReceiver(
+        self,
+        DERIVE_METATABLE,
+        "EventKit.DeriveHandle:Close",
+        "derived value"
+    )
+    return closeCompositeHandle(self)
+end
+
+---Whether the handle is closed.
+---@param self EventKit.DeriveHandle
+---@return boolean closed
+local function deriveIsClosed(self)
+    validateCompositeReceiver(
+        self,
+        DERIVE_METATABLE,
+        "EventKit.DeriveHandle:IsClosed",
+        "derived value"
+    )
+    return rawget(self, "_closed") == true
+end
+
 -- Public API ----------------------------------------------------------------
 
 ---Subscribe to every future occurrence of `eventName`.
@@ -1228,6 +1906,38 @@ end
 local function onceUnitEvent(_, eventName, callback, ...)
     local connection = subscribeUnit(false, "EventKit:OnceUnit", 3, eventName, callback, true, ...)
     return connection
+end
+
+---Coalesce `events` into at most one `callback(set)` per interval. Requires
+---SchedulerKit; see docs/API.md, "Coalescing events".
+---@param _ EventKit
+---@param events string|string[]
+---@param intervalSeconds number Finite seconds greater than or equal to zero.
+---@param callback fun(set: table<any, any>)
+---@param options EventKit.CoalesceOptions?
+---@return EventKit.CoalesceHandle handle
+local function coalesceEvents(_, events, intervalSeconds, callback, options)
+    local handle = createCoalesceHandle(
+        false,
+        "EventKit:Coalesce",
+        3,
+        events,
+        intervalSeconds,
+        callback,
+        options
+    )
+    return handle
+end
+
+---Derive a value from `compute`, recomputed when any of `events` fires.
+---@param _ EventKit
+---@param events string|string[]
+---@param compute fun(): any
+---@param options EventKit.DeriveOptions?
+---@return EventKit.DeriveHandle handle
+local function deriveValue(_, events, compute, options)
+    local handle = createDeriveHandle(false, "EventKit:Derive", 3, events, compute, options)
+    return handle
 end
 
 ---Create a manually owned connection scope, closed only by its owner.
@@ -1333,6 +2043,41 @@ local function scopeOnceUnit(self, eventName, callback, ...)
     return connection
 end
 
+---Coalesce `events` inside this scope.
+---@param self EventKit.Scope
+---@param events string|string[]
+---@param intervalSeconds number Finite seconds greater than or equal to zero.
+---@param callback fun(set: table<any, any>)
+---@param options EventKit.CoalesceOptions?
+---@return EventKit.CoalesceHandle handle
+local function scopeCoalesce(self, events, intervalSeconds, callback, options)
+    validateScope(self, "EventKit.Scope:Coalesce", 3)
+    ensureScopeOpen(self, "EventKit.Scope:Coalesce", 3)
+    local handle = createCoalesceHandle(
+        self,
+        "EventKit.Scope:Coalesce",
+        3,
+        events,
+        intervalSeconds,
+        callback,
+        options
+    )
+    return handle
+end
+
+---Derive a value inside this scope.
+---@param self EventKit.Scope
+---@param events string|string[]
+---@param compute fun(): any
+---@param options EventKit.DeriveOptions?
+---@return EventKit.DeriveHandle handle
+local function scopeDerive(self, events, compute, options)
+    validateScope(self, "EventKit.Scope:Derive", 3)
+    ensureScopeOpen(self, "EventKit.Scope:Derive", 3)
+    local handle = createDeriveHandle(self, "EventKit.Scope:Derive", 3, events, compute, options)
+    return handle
+end
+
 ---Disconnect every live connection while keeping the scope reusable.
 ---@param self EventKit.Scope
 ---@return integer disconnected
@@ -1391,6 +2136,22 @@ rawset(Scope, "Close", scopeClose)
 rawset(Scope, "IsClosed", scopeIsClosed)
 rawset(Scope, "GetAddonName", scopeGetAddonName)
 rawset(Scope, "GetActiveCount", scopeGetActiveCount)
+rawset(Scope, "Coalesce", scopeCoalesce)
+rawset(Scope, "Derive", scopeDerive)
+
+local COALESCE_PROTOTYPE = rawget(COMPOSITE_PROTOTYPES, "coalesce")
+rawset(COALESCE_PROTOTYPE, "Flush", coalesceFlush)
+rawset(COALESCE_PROTOTYPE, "IsPending", coalesceIsPending)
+rawset(COALESCE_PROTOTYPE, "GetStats", coalesceGetStats)
+rawset(COALESCE_PROTOTYPE, "Close", coalesceClose)
+rawset(COALESCE_PROTOTYPE, "IsClosed", coalesceIsClosed)
+
+local DERIVE_PROTOTYPE = rawget(COMPOSITE_PROTOTYPES, "derive")
+rawset(DERIVE_PROTOTYPE, "Get", deriveGet)
+rawset(DERIVE_PROTOTYPE, "OnChange", deriveOnChange)
+rawset(DERIVE_PROTOTYPE, "Invalidate", deriveInvalidate)
+rawset(DERIVE_PROTOTYPE, "Close", deriveClose)
+rawset(DERIVE_PROTOTYPE, "IsClosed", deriveIsClosed)
 
 rawset(EventKit, "API", API_GENERATION)
 rawset(EventKit, "REVISION", IMPLEMENTATION_REVISION)
@@ -1401,10 +2162,17 @@ rawset(EventKit, "OnceUnit", onceUnitEvent)
 rawset(EventKit, "CreateScope", createScope)
 rawset(EventKit, "ForAddon", forAddon)
 rawset(EventKit, "CloseAddonScopes", closeAddonScopes)
+rawset(EventKit, "Coalesce", coalesceEvents)
+rawset(EventKit, "Derive", deriveValue)
 
 rawset(state, "dispatchRegular", dispatchRegular)
 rawset(state, "dispatchUnit", dispatchUnit)
 rawset(state, "isolate", isolate)
+
+local composites = rawget(state, "composites")
+rawset(composites, "onEvent", onCompositeEvent)
+rawset(composites, "close", closeCompositeHandle)
+rawset(composites, "recompute", recomputeDerived)
 
 -- Frames created by implementation revision 1 resolve dispatch through these
 -- reserved facade fields. Keep them pointing at the current dispatchers so an
