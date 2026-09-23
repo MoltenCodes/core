@@ -123,7 +123,11 @@ def select_test_packages(
 
 
 def dependency_closure(package_name: str, manifests: ManifestMap) -> list[str]:
-    """Return transitive runtime dependencies in dependency-first order, then the package."""
+    """Return transitive runtime dependencies in dependency-first order, then the package.
+
+    Only required ``dependencies`` are followed; `suite_source_packages` adds
+    the optional ones a suite needs.
+    """
     resolved: list[str] = []
     seen: set[str] = set()
 
@@ -140,6 +144,38 @@ def dependency_closure(package_name: str, manifests: ManifestMap) -> list[str]:
 
     visit(package_name)
     return resolved
+
+
+def suite_source_packages(package_name: str, manifests: ManifestMap) -> list[str]:
+    """Return every package whose source a package's suite needs on ``LUA_PATH``.
+
+    The order is: the package under test, then its required dependency closure,
+    then each optional dependency's own required closure (the optional package
+    last within it), without repeats. Optional dependencies are resolved at call
+    time through ``Registry:Find`` and are absent from the load order, but a
+    suite that exercises the "present" path has to be able to ``require`` them,
+    so the runner puts them on the path instead of each test environment adding
+    source directories by hand. A suite that exercises the "absent" path simply
+    does not load them.
+    """
+    ordered = [package_name]
+    ordered.extend(
+        name for name in dependency_closure(package_name, manifests) if name != package_name
+    )
+
+    optional = manifests[package_name].get("optionalDependencies", {})
+    if isinstance(optional, dict):
+        for dependency in sorted(optional):
+            if dependency in manifests:
+                ordered.extend(dependency_closure(dependency, manifests))
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for name in ordered:
+        if name not in seen:
+            seen.add(name)
+            unique.append(name)
+    return unique
 
 
 def build_lua_path(
@@ -223,11 +259,11 @@ def run_package_suite(
         print(f"error: {target_error}", file=sys.stderr)
         return PackageOutcome(package_name, 2, None, None, None, None)
 
-    closure = dependency_closure(package_name, manifests)
-    # Put the package under test first, then its dependencies. This makes
-    # accidental module-name collisions deterministic in favor of the
-    # package being tested while each package still runs in its own process.
-    source_packages = [package_name, *(name for name in closure if name != package_name)]
+    # Put the package under test first, then its required dependencies, then
+    # its optional ones. This makes accidental module-name collisions
+    # deterministic in favor of the package being tested while each package
+    # still runs in its own process.
+    source_packages = suite_source_packages(package_name, manifests)
 
     env = os.environ.copy()
     env["LUA_PATH"] = build_lua_path(

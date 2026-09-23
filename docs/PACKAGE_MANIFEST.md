@@ -27,6 +27,12 @@ If the framework ever ships a package under another licence, that is a
 deliberate repository-level decision and both this rule and the builder change
 with it.
 
+## Optional fields
+
+| Field | Type | Description |
+|---|---|---|
+| `optionalDependencies` | object | Packages this package uses when they are present, found at call time. Same shape as `dependencies`. See [Optional dependencies](#optional-dependencies). |
+
 ## Runtime API fields
 
 Packages exposing a formal runtime API define both fields together:
@@ -89,6 +95,66 @@ A dependency names the exact API generation required by the consumer:
 The dependency package must exist, expose an API generation, and expose the same API generation requested by the consumer.
 
 Runtime package dependency cycles are invalid.
+
+## Optional dependencies
+
+A package that can use another one *when an addon happens to embed it*, and
+works without it, declares it under `optionalDependencies`. The shape is the
+same as `dependencies`:
+
+```json
+{
+  "name": "cacheKit",
+  "displayName": "CacheKit",
+  "description": "Bounded LRU and TTL caches, memoisation, diffed snapshots and clear-on-event for World of Warcraft addons.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "api": 1,
+  "revision": 1,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    }
+  },
+  "optionalDependencies": {
+    "eventKit": {
+      "api": 1
+    }
+  }
+}
+```
+
+What the field means, and what it deliberately does not:
+
+- **At runtime** the package finds an optional dependency at call time through
+  `Registry:Find(packageId, api)` and degrades when it is absent. It never
+  resolves one at file scope, because nothing guarantees it has loaded.
+- **Load order and the bundle ignore it.** `manifest.json`'s `loadOrder`, a
+  `--package` build's dependency closure and a package's `src/.luarc.json` are
+  derived from `dependencies` only. A bundle never ships a package merely
+  because something optionally uses it. The release `manifest.json` records the
+  field under `optionalDependencies` for each package, for information only.
+- **Tests see it.** `python3 -m tooling.test.run` puts each optional dependency,
+  and its own required closure, on the package suite's `LUA_PATH`, so a spec can
+  load it to exercise the "present" path without its test environment adding
+  source directories by hand. See [`TESTING.md`](TESTING.md).
+
+Validation rules:
+
+- every optional dependency must exist, expose an API generation, and expose
+  the generation requested, exactly as for `dependencies`;
+- a package may not list the same package in both `dependencies` and
+  `optionalDependencies`;
+- a package may not optionally depend on itself;
+- the combined graph of required and optional dependencies must have no
+  cycles. An optional edge still means "this package calls into that one";
+- `optionalDependencies` must come **after** the top-level `api` field in the
+  file. Every `tests/Manifest_spec.lua` reads the package's API generation with
+  the first `"api"` in the file, so an optional-dependency object written above
+  it would hand those specs the wrong number. Writing the field last, after
+  `dependencies`, satisfies the rule.
+
+Omit the field when there is nothing to declare; an empty object is accepted.
 
 ## Naming
 

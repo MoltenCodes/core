@@ -59,6 +59,22 @@ The canonical commands are documented in [`DEVELOPMENT.md`](DEVELOPMENT.md).
 - Tooling reports the whole picture before it fails. The test runner executes every selected target and prints one summary table rather than stopping at the first failing one, and the linter runs both of its scopes before reporting.
 - Tooling runs on the Python floor `pyproject.toml` declares. New tooling must not use syntax or standard-library APIs newer than that.
 
+## Required and optional dependencies
+
+A manifest's `dependencies` and `optionalDependencies` have the same shape and
+are read by the same code, but the tools use them differently:
+
+| Tool | `dependencies` | `optionalDependencies` |
+|---|---|---|
+| `validation/validate_manifests.py` | shape, existence, API generation, no self-edge | the same, plus "not also a required dependency" |
+| cycle detection | combined graph | combined graph |
+| `test/run.py` | closure on the suite's `LUA_PATH` | each one and its required closure on the suite's `LUA_PATH`, after the required closure |
+| `package/build.py` | load order, `--package` closure | ignored; recorded under `optionalDependencies` in `manifest.json` for information |
+| `validate_repository.py` (`src/.luarc.json`) | closure listed | ignored |
+
+The semantics are defined in
+[`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md#optional-dependencies).
+
 ## Lint policy: deliberate `_G` access
 
 Selene's `global_usage` lint is deliberately left at its default severity in

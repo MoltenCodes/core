@@ -64,7 +64,12 @@ class BuildError(Exception):
 
 
 def dependency_closure(package_name: str, manifests: dict[str, dict[str, Any]]) -> list[str]:
-    """Return ``package_name`` and its transitive dependencies, dependency-first."""
+    """Return ``package_name`` and its transitive dependencies, dependency-first.
+
+    Only ``dependencies`` are followed. ``optionalDependencies`` are resolved at
+    call time through ``Registry:Find``, so they never enter the load order and
+    a bundle never ships a package merely because something optionally uses it.
+    """
     resolved: list[str] = []
     seen: set[str] = set()
 
@@ -160,6 +165,11 @@ def build_manifest(
             "version": manifest["version"],
             "license": manifest["license"],
             "dependencies": manifest.get("dependencies", {}),
+            # Informational only: an optional dependency is found at call time
+            # through `Registry:Find`, so it is neither in `loadOrder` nor
+            # shipped because of this entry. A consumer reads it to learn what
+            # else a package can use when the addon embeds it.
+            "optionalDependencies": manifest.get("optionalDependencies", {}),
             "files": published_files[name],
         }
         if "api" in manifest:

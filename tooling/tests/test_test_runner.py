@@ -58,7 +58,7 @@ class PackageFixture(unittest.TestCase):
         self.examples_tests.mkdir(parents=True, exist_ok=True)
         (self.examples_tests / "Example_spec.lua").write_text("", encoding="utf-8")
 
-    def create_package(self, name: str, *, dependencies=None) -> None:
+    def create_package(self, name: str, *, dependencies=None, optional_dependencies=None) -> None:
         package = self.packages / name
         (package / "src").mkdir(parents=True)
         (package / "tests" / "support").mkdir(parents=True)
@@ -73,6 +73,8 @@ class PackageFixture(unittest.TestCase):
             "revision": 1,
             "dependencies": dependencies or {},
         }
+        if optional_dependencies is not None:
+            manifest["optionalDependencies"] = optional_dependencies
         (package / "package.manifest.json").write_text(
             json.dumps(manifest), encoding="utf-8"
         )
@@ -370,3 +372,68 @@ class AggregateRunTests(PackageFixture):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OptionalDependencyPathTests(PackageFixture):
+    """Optional dependencies, and their own closure, reach the suite's LUA_PATH."""
+
+    def create_graph(self) -> None:
+        self.create_package("registry")
+        self.create_package("signalKit", dependencies={"registry": {"api": 1}})
+        self.create_package(
+            "eventKit", dependencies={"registry": {"api": 1}, "signalKit": {"api": 1}}
+        )
+        self.create_package(
+            "cacheKit",
+            dependencies={"registry": {"api": 1}},
+            optional_dependencies={"eventKit": {"api": 1}},
+        )
+
+    def test_suite_sources_add_the_optional_closure_after_the_required_one(self):
+        self.create_graph()
+        manifests, errors = module.load_valid_manifests()
+
+        self.assertEqual([], errors)
+        self.assertEqual(
+            ["cacheKit", "registry", "signalKit", "eventKit"],
+            module.suite_source_packages("cacheKit", manifests),
+        )
+
+    def test_required_closure_alone_does_not_follow_optional_edges(self):
+        self.create_graph()
+        manifests, _ = module.load_valid_manifests()
+
+        self.assertEqual(["registry", "cacheKit"], module.dependency_closure("cacheKit", manifests))
+
+    def test_package_without_optional_dependencies_is_unchanged(self):
+        self.create_graph()
+        manifests, _ = module.load_valid_manifests()
+
+        self.assertEqual(
+            ["eventKit", "registry", "signalKit"],
+            module.suite_source_packages("eventKit", manifests),
+        )
+
+    def test_run_puts_optional_sources_on_the_suite_path(self):
+        self.create_graph()
+        manifests, _ = module.load_valid_manifests()
+
+        with (
+            mock.patch.object(
+                module.subprocess,
+                "run",
+                return_value=fake_process(0, "1 success / 0 failures / 0 errors / 0 pending"),
+            ) as run_process,
+            mock.patch("sys.stdout", io.StringIO()),
+        ):
+            module.run_package_suite("cacheKit", manifests, "/fake/busted", [], None)
+
+        lua_path = run_process.call_args.kwargs["env"]["LUA_PATH"]
+        for name in ("cacheKit", "registry", "signalKit", "eventKit"):
+            self.assertIn(str(self.packages / name / "src" / "?.lua"), lua_path)
+        self.assertLess(
+            lua_path.index(str(self.packages / "registry" / "src" / "?.lua")),
+            lua_path.index(str(self.packages / "eventKit" / "src" / "?.lua")),
+        )
+        # Only the package under test contributes its own test support.
+        self.assertNotIn(str(self.packages / "eventKit" / "tests" / "support"), lua_path)

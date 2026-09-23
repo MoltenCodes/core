@@ -27,8 +27,15 @@ SEMVER_RE = re.compile(
 )
 
 REQUIRED = {"name", "displayName", "description", "version", "license", "dependencies"}
-OPTIONAL = {"api", "revision"}
+OPTIONAL = {"api", "revision", "optionalDependencies"}
 ALLOWED = REQUIRED | OPTIONAL
+
+#: The two dependency maps a manifest can carry. Both have the same shape,
+#: ``{"<packageId>": {"api": <n>}}``. A required dependency is loaded before the
+#: package and resolved at file scope; an optional one is found at call time
+#: through ``Registry:Find`` and is never part of the load order or the bundle.
+#: See docs/PACKAGE_MANIFEST.md.
+DEPENDENCY_FIELDS = ("dependencies", "optionalDependencies")
 
 #: The repository ships under one licence, so a package declaring a different
 #: one would contradict the LICENSE file that is packaged beside it.
@@ -165,67 +172,149 @@ def load_manifests() -> tuple[dict[str, dict[str, Any]], list[str]]:
         if revision_present and not positive_integer(data.get("revision")):
             errors.append(error(path, '"revision" must be a positive integer'))
 
-        dependencies = data.get("dependencies")
-        if not isinstance(dependencies, dict):
-            errors.append(error(path, '"dependencies" must be an object'))
-            continue
+        errors.extend(validate_optional_dependency_position(path, data))
 
-        for dep, contract in sorted(dependencies.items()):
-            if not isinstance(dep, str) or not NAME_RE.fullmatch(dep):
-                errors.append(error(path, f'invalid dependency name "{dep}"'))
+        for field in DEPENDENCY_FIELDS:
+            if field == "optionalDependencies" and field not in data:
                 continue
-            if not isinstance(contract, dict) or set(contract) != {"api"}:
-                errors.append(error(path, f'dependency "{dep}" must contain exactly "api"'))
-                continue
-            if not positive_integer(contract.get("api")):
-                errors.append(error(path, f"dependencies.{dep}.api must be positive"))
+            errors.extend(validate_dependency_map(path, field, data.get(field)))
 
     return manifests, errors
 
 
+def validate_dependency_map(path: Path, field: str, value: Any) -> list[str]:
+    """Validate the shape of one dependency map (`dependencies` or `optionalDependencies`).
+
+    Both fields map a package ID to a contract of exactly ``{"api": <n>}``.
+    Whether the named packages exist, and whether the graph they form is
+    acyclic, is `validate_graph`'s job.
+    """
+    if not isinstance(value, dict):
+        return [error(path, f'"{field}" must be an object')]
+
+    label = dependency_label(field)
+    errors: list[str] = []
+    for dep, contract in sorted(value.items()):
+        if not isinstance(dep, str) or not NAME_RE.fullmatch(dep):
+            errors.append(error(path, f'invalid {label} name "{dep}"'))
+            continue
+        if not isinstance(contract, dict) or set(contract) != {"api"}:
+            errors.append(error(path, f'{label} "{dep}" must contain exactly "api"'))
+            continue
+        if not positive_integer(contract.get("api")):
+            errors.append(error(path, f"{field}.{dep}.api must be positive"))
+    return errors
+
+
+def dependency_label(field: str) -> str:
+    """How error messages name one entry of a dependency map."""
+    return "dependency" if field == "dependencies" else "optional dependency"
+
+
+def validate_optional_dependency_position(path: Path, data: dict[str, Any]) -> list[str]:
+    """Require `optionalDependencies` to come after the top-level `api` field.
+
+    Every package's `tests/Manifest_spec.lua` reads its own API generation with
+    the Lua pattern ``"api"%s*:%s*(%d+)``, which takes the *first* `"api"` in
+    the file. An `optionalDependencies` object written above the top-level field
+    would hand those specs a dependency's generation instead, so the order is a
+    contract here rather than a style preference.
+    """
+    keys = list(data)
+    if "optionalDependencies" in keys and "api" in keys:
+        if keys.index("optionalDependencies") < keys.index("api"):
+            return [
+                error(
+                    path,
+                    '"optionalDependencies" must come after the top-level "api" field '
+                    "(Manifest specs read the first \"api\" in the file)",
+                )
+            ]
+    return []
+
+
+def dependency_names(data: dict[str, Any], field: str) -> list[str]:
+    """Return the well-formed package IDs one dependency map names, sorted.
+
+    Malformed names and contracts are skipped: `load_manifests` has already
+    reported them, and graph code must never crash on malformed input.
+    """
+    value = data.get(field, {})
+    if not isinstance(value, dict):
+        return []
+    return sorted(
+        dep
+        for dep, contract in value.items()
+        if isinstance(dep, str) and NAME_RE.fullmatch(dep) and valid_dependency_contract(contract)
+    )
+
+
 def validate_graph(manifests: dict[str, dict[str, Any]]) -> list[str]:
-    """Validate dependency existence, API contracts, self-edges, and cycles."""
+    """Validate dependency existence, API contracts, self-edges, and cycles.
+
+    Required and optional dependencies are checked the same way: each must name
+    an existing package that exposes the requested API generation, and neither
+    may name the package itself. A package may not list the same dependency in
+    both maps. Cycles are searched for in the combined graph, because an
+    optional edge still means "this package calls into that one", and a cycle
+    through it makes the two impossible to reason about or test in isolation.
+    """
     errors: list[str] = []
 
     for name, data in manifests.items():
-        deps = data.get("dependencies", {})
-        if not isinstance(deps, dict):
-            continue
+        path = PACKAGES / name / "package.manifest.json"
+        required = set(dependency_names(data, "dependencies"))
 
-        for dep, contract in deps.items():
-            path = PACKAGES / name / "package.manifest.json"
+        for field in DEPENDENCY_FIELDS:
+            label = dependency_label(field)
+            contracts = data.get(field, {})
+            for dep in dependency_names(data, field):
+                if dep == name:
+                    errors.append(error(path, f'package "{name}" must not {_depend_verb(field)} itself'))
+                    continue
 
-            # Shape/value errors are already reported by load_manifests(). Skip
-            # them here so graph validation never crashes on malformed input.
-            if not isinstance(dep, str) or not NAME_RE.fullmatch(dep):
-                continue
-            if not valid_dependency_contract(contract):
-                continue
-
-            if dep == name:
-                errors.append(error(path, f'package "{name}" must not depend on itself'))
-                continue
-
-            dependency = manifests.get(dep)
-            if dependency is None:
-                errors.append(error(path, f'dependency "{dep}" does not exist'))
-                continue
-
-            required_api = contract["api"]
-            exposed_api = dependency.get("api")
-            if not positive_integer(exposed_api):
-                errors.append(error(path, f'dependency "{dep}" does not expose an API generation'))
-                continue
-
-            if required_api != exposed_api:
-                errors.append(
-                    error(
-                        path,
-                        f'dependency "{dep}" requires API {required_api}, '
-                        f"but exposes API {exposed_api}",
+                if field == "optionalDependencies" and dep in required:
+                    errors.append(
+                        error(
+                            path,
+                            f'"{dep}" is listed in both "dependencies" and '
+                            '"optionalDependencies"; keep only one',
+                        )
                     )
-                )
+                    continue
 
+                dependency = manifests.get(dep)
+                if dependency is None:
+                    errors.append(error(path, f'{label} "{dep}" does not exist'))
+                    continue
+
+                required_api = contracts[dep]["api"]
+                exposed_api = dependency.get("api")
+                if not positive_integer(exposed_api):
+                    errors.append(error(path, f'{label} "{dep}" does not expose an API generation'))
+                    continue
+
+                if required_api != exposed_api:
+                    errors.append(
+                        error(
+                            path,
+                            f'{label} "{dep}" requires API {required_api}, '
+                            f"but exposes API {exposed_api}",
+                        )
+                    )
+
+    errors.extend(_find_cycles(manifests))
+    return errors
+
+
+def _depend_verb(field: str) -> str:
+    """The verb a self-dependency error uses for one dependency map."""
+    return "depend on" if field == "dependencies" else "optionally depend on"
+
+
+def _find_cycles(manifests: dict[str, dict[str, Any]]) -> list[str]:
+    """Report every cycle in the graph of required and optional dependencies."""
+    errors: list[str] = []
     visiting: set[str] = set()
     visited: set[str] = set()
     stack: list[str] = []
@@ -246,11 +335,12 @@ def validate_graph(manifests: dict[str, dict[str, Any]]) -> list[str]:
 
         visiting.add(name)
         stack.append(name)
-        deps = manifests[name].get("dependencies", {})
-        if isinstance(deps, dict):
-            for dep, contract in sorted(deps.items()):
-                if dep != name and dep in manifests and valid_dependency_contract(contract):
-                    visit(dep)
+        edges = sorted(
+            {dep for field in DEPENDENCY_FIELDS for dep in dependency_names(manifests[name], field)}
+        )
+        for dep in edges:
+            if dep != name and dep in manifests:
+                visit(dep)
         stack.pop()
         visiting.remove(name)
         visited.add(name)

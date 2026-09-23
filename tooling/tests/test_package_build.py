@@ -77,6 +77,7 @@ class TemporaryRepositoryTests(unittest.TestCase):
         *,
         facade: str,
         dependencies=None,
+        optional_dependencies=None,
         license_name: str | None = "MIT",
         with_api_doc: bool = True,
     ) -> Path:
@@ -103,6 +104,8 @@ class TemporaryRepositoryTests(unittest.TestCase):
         }
         if license_name is not None:
             manifest["license"] = license_name
+        if optional_dependencies is not None:
+            manifest["optionalDependencies"] = optional_dependencies
         (package_dir / "package.manifest.json").write_text(
             json.dumps(manifest), encoding="utf-8"
         )
@@ -170,6 +173,49 @@ class BuildTests(TemporaryRepositoryTests):
         self.assertEqual(1, entry["api"])
         self.assertEqual(4, entry["revision"])
         self.assertEqual("MIT", entry["license"])
+
+    def write_repository_with_an_optional_dependency(self):
+        self.write_minimal_repository()
+        self.write_package(
+            "cacheKit",
+            facade="CacheKit",
+            dependencies={"registry": {"api": 1}},
+            optional_dependencies={"signalKit": {"api": 1}},
+        )
+
+    def test_single_package_build_does_not_ship_optional_dependencies(self):
+        self.write_repository_with_an_optional_dependency()
+
+        manifest = module.build(self.output, package_name="cacheKit")
+
+        bundle = self.output / "MoltenCodes-cacheKit"
+        self.assertFalse((bundle / "signalKit").exists())
+        self.assertEqual(["cacheKit", "registry"], sorted(manifest["packages"]))
+        self.assertEqual(
+            ["registry/Registry.lua", "cacheKit/CacheKit.lua"], manifest["loadOrder"]
+        )
+
+    def test_load_order_ignores_optional_dependencies(self):
+        manifests = {
+            "registry": {"dependencies": {}},
+            "cacheKit": {
+                "dependencies": {"registry": {"api": 1}},
+                "optionalDependencies": {"zetaKit": {"api": 1}},
+            },
+            "zetaKit": {"dependencies": {"registry": {"api": 1}}},
+        }
+
+        self.assertEqual(["registry", "cacheKit"], module.load_order(["cacheKit"], manifests))
+
+    def test_manifest_records_optional_dependencies_for_information(self):
+        self.write_repository_with_an_optional_dependency()
+
+        manifest = module.build(self.output)
+
+        self.assertEqual(
+            {"signalKit": {"api": 1}}, manifest["packages"]["cacheKit"]["optionalDependencies"]
+        )
+        self.assertEqual({}, manifest["packages"]["registry"]["optionalDependencies"])
 
     def test_checksums_cover_every_artifact_file(self):
         self.write_minimal_repository()

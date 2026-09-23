@@ -54,6 +54,7 @@ class ManifestRepositoryTests(unittest.TestCase):
         api: int | None = 1,
         revision: int | None = 1,
         dependencies=None,
+        optional_dependencies=None,
         license_name: str | None = "MIT",
     ) -> None:
         package_dir = self.packages / name
@@ -71,6 +72,8 @@ class ManifestRepositoryTests(unittest.TestCase):
             data["api"] = api
         if revision is not None:
             data["revision"] = revision
+        if optional_dependencies is not None:
+            data["optionalDependencies"] = optional_dependencies
         (package_dir / "package.manifest.json").write_text(
             json.dumps(data), encoding="utf-8"
         )
@@ -174,6 +177,123 @@ class ManifestRepositoryTests(unittest.TestCase):
         self.assertEqual(1, len([error for error in errors if "depend on itself" in error]))
         self.assertFalse(any("dependency cycle detected" in error for error in errors))
 
+
+
+class OptionalDependencyTests(ManifestRepositoryTests):
+    """`optionalDependencies`: same shape as `dependencies`, checked in one graph."""
+
+    def test_optional_dependency_is_accepted(self):
+        self.write_manifest("baseKit")
+        self.write_manifest("eventKit", dependencies={"baseKit": {"api": 1}})
+        self.write_manifest(
+            "cacheKit",
+            dependencies={"baseKit": {"api": 1}},
+            optional_dependencies={"eventKit": {"api": 1}},
+        )
+
+        self.assertEqual([], self.validate())
+
+    def test_empty_optional_dependencies_is_accepted(self):
+        self.write_manifest("baseKit", optional_dependencies={})
+
+        self.assertEqual([], self.validate())
+
+    def test_missing_optional_package_is_reported(self):
+        self.write_manifest("baseKit", optional_dependencies={"ghostKit": {"api": 1}})
+
+        errors = self.validate()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('optional dependency "ghostKit" does not exist', errors[0])
+
+    def test_package_in_both_fields_is_reported(self):
+        self.write_manifest("baseKit")
+        self.write_manifest(
+            "cacheKit",
+            dependencies={"baseKit": {"api": 1}},
+            optional_dependencies={"baseKit": {"api": 1}},
+        )
+
+        errors = self.validate()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("listed in both", errors[0])
+
+    def test_optional_self_dependency_is_reported(self):
+        self.write_manifest("baseKit", optional_dependencies={"baseKit": {"api": 1}})
+
+        errors = self.validate()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('must not optionally depend on itself', errors[0])
+
+    def test_cycle_through_an_optional_edge_is_reported(self):
+        self.write_manifest("baseKit", optional_dependencies={"cacheKit": {"api": 1}})
+        self.write_manifest("cacheKit", dependencies={"baseKit": {"api": 1}})
+
+        errors = self.validate()
+
+        self.assertTrue(any("dependency cycle detected" in error for error in errors))
+
+    def test_cycle_of_optional_edges_only_is_reported(self):
+        self.write_manifest("baseKit", optional_dependencies={"cacheKit": {"api": 1}})
+        self.write_manifest("cacheKit", optional_dependencies={"baseKit": {"api": 1}})
+
+        errors = self.validate()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("baseKit -> cacheKit -> baseKit", errors[0])
+
+    def test_optional_api_mismatch_is_reported(self):
+        self.write_manifest("baseKit", api=2, revision=1)
+        self.write_manifest("cacheKit", optional_dependencies={"baseKit": {"api": 1}})
+
+        errors = self.validate()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('optional dependency "baseKit" requires API 1', errors[0])
+
+    def test_malformed_optional_contract_is_reported(self):
+        self.write_manifest("baseKit")
+        self.write_manifest("cacheKit", optional_dependencies={"baseKit": {"api": 1, "x": 2}})
+
+        errors = self.validate()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('optional dependency "baseKit" must contain exactly "api"', errors[0])
+
+    def test_optional_dependencies_must_be_an_object(self):
+        self.write_manifest("baseKit", optional_dependencies=["eventKit"])
+
+        errors = self.validate()
+
+        self.assertTrue(any('"optionalDependencies" must be an object' in e for e in errors))
+
+    def test_optional_dependencies_above_the_api_field_are_reported(self):
+        """Manifest specs read the first `"api"`; a nested one above it would win."""
+        package_dir = self.packages / "cacheKit"
+        package_dir.mkdir()
+        (package_dir / "package.manifest.json").write_text(
+            json.dumps(
+                {
+                    "name": "cacheKit",
+                    "displayName": "CacheKit",
+                    "description": "cache",
+                    "version": "1.0.0",
+                    "license": "MIT",
+                    "optionalDependencies": {},
+                    "api": 1,
+                    "revision": 1,
+                    "dependencies": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        errors = self.validate()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('must come after the top-level "api"', errors[0])
 
 if __name__ == "__main__":
     unittest.main()
