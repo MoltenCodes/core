@@ -6,7 +6,7 @@
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
@@ -439,6 +439,30 @@ local function markLoaded(instance)
     return firstError
 end
 
+---Close the addon's canonical EventKit scope once its shutdown phase has run.
+---
+---EventKit cannot observe addon shutdown itself because it sits below
+---LifecycleKit in the dependency order, so this is the other half of the
+---two-step `EventKit:ForAddon` documents. Shutdown callbacks run first: they may
+---still need their event connections. An EventKit revision older than the one
+---that introduced scopes has no `CloseAddonScopes`, and then there is nothing
+---to close. A failure while disconnecting is reported like a phase error so the
+---shutdown still completes for every other addon.
+---@param instance LifecycleKit.Instance
+---@return LifecycleKit.ErrorRecord|nil
+local function closeAddonEventScope(instance)
+    local closeAddonScopes = rawget(EventKit, "CloseAddonScopes")
+    if type(closeAddonScopes) ~= "function" then
+        return nil
+    end
+
+    local ok, closeError = pcall(closeAddonScopes, EventKit, rawget(instance, "_addonName"))
+    if not ok then
+        return newErrorRecord(closeError)
+    end
+    return nil
+end
+
 ---Enter the terminal `shutdown` phase and release unreachable subscriptions.
 ---@param instance LifecycleKit.Instance
 ---@return LifecycleKit.ErrorRecord|nil
@@ -460,7 +484,9 @@ local function markShutdown(instance)
         rawget(SignalKit, "DisconnectAll")(rawget(signals, "ready"))
     end
 
-    return firePhase(instance, "shutdown")
+    local phaseError = firePhase(instance, "shutdown")
+    local scopeError = closeAddonEventScope(instance)
+    return phaseError or scopeError
 end
 
 ---Re-raise a captured phase error unchanged, or return when there was none.

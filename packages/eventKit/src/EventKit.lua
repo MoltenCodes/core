@@ -8,13 +8,39 @@
 -- EventKit is multi-tenant: one shared instance serves every addon in a WoW
 -- session. Listeners are therefore isolated from each other at dispatch, so one
 -- addon's failing handler cannot stop delivery to the rest.
+--
+-- Owner scopes group connections so one call tears down everything an owner
+-- subscribed to. They mirror TimerKit's scope model: `CreateScope` for manual
+-- ownership, `ForAddon` for the canonical per-addon scope. EventKit sits below
+-- LifecycleKit, so addon scopes are closed through `CloseAddonScopes` by
+-- whoever observes the addon's shutdown rather than by EventKit itself.
+--
+-- Contents
+-- --------
+--   Constants ............. package identity, host limits, staging sizes
+--   Dependencies .......... Registry, SignalKit
+--   Public-surface validation  facade shape accepted from other copies
+--   Bootstrap ............. Registry registration
+--   Shared state .......... LuaCATS types, state creation and migration
+--   Validation ............ receiver and argument checks
+--   WoW Frame boundary .... CreateFrame and Frame method access
+--   Unit-group Frames ..... bounded, reused unit-filter Frames
+--   Channels .............. per-event host registration and fan-out
+--   Listener isolation .... allocation-free protected dispatch
+--   Scope ownership ....... intrusive scope links and bulk teardown
+--   Connections ........... connection lifecycle and handle methods
+--   Dispatch .............. OnEvent to channel fan-out
+--   Subscription .......... shared validation and connect path
+--   Public API ............ package-level subscriptions and scopes
+--   Scope methods ......... the handle a scope owner receives
+--   Commit ................ prototype/facade assignment and self-check
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
-local STATE_SCHEMA = 2
+local STATE_SCHEMA = 3
 
 -- `Frame:RegisterUnitEvent(event, unit1, unit2)` has exactly two filter slots.
 local MAXIMUM_UNIT_TOKENS = 2
@@ -95,13 +121,27 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "Once")) ~= "function"
         or type(rawget(implementation, "ConnectUnit")) ~= "function"
         or type(rawget(implementation, "OnceUnit")) ~= "function"
+        or type(rawget(implementation, "CreateScope")) ~= "function"
+        or type(rawget(implementation, "ForAddon")) ~= "function"
+        or type(rawget(implementation, "CloseAddonScopes")) ~= "function"
+        or type(rawget(implementation, "Scope")) ~= "table"
     then
         return false
     end
 
     local connection = rawget(implementation, "Connection")
+    local scope = rawget(implementation, "Scope")
     return type(rawget(connection, "Disconnect")) == "function"
         and type(rawget(connection, "IsConnected")) == "function"
+        and type(rawget(scope, "Connect")) == "function"
+        and type(rawget(scope, "Once")) == "function"
+        and type(rawget(scope, "ConnectUnit")) == "function"
+        and type(rawget(scope, "OnceUnit")) == "function"
+        and type(rawget(scope, "DisconnectAll")) == "function"
+        and type(rawget(scope, "Close")) == "function"
+        and type(rawget(scope, "IsClosed")) == "function"
+        and type(rawget(scope, "GetAddonName")) == "function"
+        and type(rawget(scope, "GetActiveCount")) == "function"
 end
 
 ---Whether `implementation` carries package state of this revision's schema.
@@ -118,7 +158,11 @@ local function validateCurrentState(implementation)
         and type(rawget(currentState, "dispatchRegular")) == "function"
         and type(rawget(currentState, "dispatchUnit")) == "function"
         and type(rawget(currentState, "isolate")) == "function"
+        and type(rawget(currentState, "addonScopes")) == "table"
+        and type(rawget(currentState, "scopeMetatable")) == "table"
 end
+
+-- Bootstrap -----------------------------------------------------------------
 
 -- `Registry:Bootstrap` owns the reconciliation every embedded package repeats:
 -- look the package up, refuse to reinterpret state owned by a newer revision,
@@ -154,6 +198,19 @@ end
 ---@field Disconnect fun(self: EventKit.Connection): boolean
 ---@field IsConnected fun(self: EventKit.Connection): boolean
 
+---An ownership scope for connections, closed by its owner or, for an addon
+---scope, through `EventKit:CloseAddonScopes`.
+---@class EventKit.Scope
+---@field Connect fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener): EventKit.Connection
+---@field Once fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener): EventKit.Connection
+---@field ConnectUnit fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
+---@field OnceUnit fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
+---@field DisconnectAll fun(self: EventKit.Scope): integer
+---@field Close fun(self: EventKit.Scope): boolean
+---@field IsClosed fun(self: EventKit.Scope): boolean
+---@field GetAddonName fun(self: EventKit.Scope): string?
+---@field GetActiveCount fun(self: EventKit.Scope): integer
+
 ---One event name's fan-out: a host registration plus the signal behind it.
 ---@class EventKit.Channel
 ---@field eventName string
@@ -175,20 +232,26 @@ end
 ---@field API integer EventKit API generation.
 ---@field REVISION integer EventKit implementation revision.
 ---@field Connection EventKit.Connection Shared method prototype for connection handles.
+---@field Scope EventKit.Scope Shared method prototype for scopes.
 ---@field Connect fun(self: EventKit, eventName: string, callback: EventKit.Listener): EventKit.Connection
 ---@field Once fun(self: EventKit, eventName: string, callback: EventKit.Listener): EventKit.Connection
 ---@field ConnectUnit fun(self: EventKit, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
 ---@field OnceUnit fun(self: EventKit, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
+---@field CreateScope fun(self: EventKit): EventKit.Scope
+---@field ForAddon fun(self: EventKit, addonName: string): EventKit.Scope
+---@field CloseAddonScopes fun(self: EventKit, addonName: string): boolean
 
 local Connection = rawget(EventKit, "Connection")
+local Scope = rawget(EventKit, "Scope")
 local state = rawget(EventKit, "_state")
 
 if previousRevision == nil then
-    if Connection ~= nil or state ~= nil then
+    if Connection ~= nil or Scope ~= nil or state ~= nil then
         error("MoltenCodes EventKit package state is corrupted or incomplete", 2)
     end
 
     Connection = {}
+    Scope = {}
     state = {
         schema = STATE_SCHEMA,
         regularFrame = nil,
@@ -199,9 +262,12 @@ if previousRevision == nil then
         dispatchRegular = nil,
         dispatchUnit = nil,
         isolate = nil,
+        addonScopes = {},
+        scopeMetatable = {},
     }
 
     rawset(EventKit, "Connection", Connection)
+    rawset(EventKit, "Scope", Scope)
     rawset(EventKit, "_state", state)
 elseif
     type(Connection) ~= "table"
@@ -227,13 +293,38 @@ else
 
         rawset(state, "unitFrames", {})
         rawset(state, "unitFrameCount", liveGroups)
+        rawset(state, "schema", 2)
+        schema = 2
+    end
+
+    if schema == 2 then
+        -- Revisions 2 to 4 had no scopes. Their connections carry no scope
+        -- link, which every scope path reads as "not owned by a scope".
+        rawset(state, "addonScopes", {})
+        rawset(state, "scopeMetatable", {})
         rawset(state, "schema", STATE_SCHEMA)
-    elseif schema ~= STATE_SCHEMA then
+        schema = STATE_SCHEMA
+    end
+
+    if schema ~= STATE_SCHEMA then
+        error("MoltenCodes EventKit package state is corrupted or incomplete", 2)
+    end
+
+    if Scope == nil then
+        Scope = {}
+        rawset(EventKit, "Scope", Scope)
+    elseif type(Scope) ~= "table" then
         error("MoltenCodes EventKit package state is corrupted or incomplete", 2)
     end
 end
 
 local CONNECTION_METATABLE = { __index = Connection }
+
+-- Unlike the connection metatable, the scope metatable lives in shared state:
+-- scope receivers are validated by metatable identity, which therefore has to
+-- survive an in-place upgrade.
+local SCOPE_METATABLE = rawget(state, "scopeMetatable")
+rawset(SCOPE_METATABLE, "__index", Scope)
 
 -- Validation ----------------------------------------------------------------
 
@@ -263,19 +354,53 @@ local function isConnectionHandle(self)
     return type(self) == "table" and type(rawget(self, "_connected")) == "boolean"
 end
 
+-- Argument validation raises with an explicit stack level so the reported
+-- position is the line that called the public method, never a line inside
+-- EventKit. `level` is always the value `error` needs *inside the function that
+-- receives it*, so every further hop towards `error` adds exactly one.
+
 ---@param eventName any
----@param methodName string public method name, used in the argument error
-local function validateEventName(eventName, methodName)
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateEventName(eventName, label, level)
     if type(eventName) ~= "string" or eventName == "" then
-        error("EventKit:" .. methodName .. " eventName must be a non-empty string", 3)
+        error(label .. " eventName must be a non-empty string", level)
     end
 end
 
 ---@param callback any
----@param methodName string public method name, used in the argument error
-local function validateCallback(callback, methodName)
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateCallback(callback, label, level)
     if type(callback) ~= "function" then
-        error("EventKit:" .. methodName .. " callback must be a function", 3)
+        error(label .. " callback must be a function", level)
+    end
+end
+
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateNonEmptyString(value, label, level)
+    if type(value) ~= "string" or value == "" then
+        error(label .. " must be a non-empty string", level)
+    end
+end
+
+---@param scope any receiver the public method was called on
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateScope(scope, label, level)
+    if type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE then
+        error(label .. " must be called on an EventKit scope", level)
+    end
+end
+
+---@param scope EventKit.Scope
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function ensureScopeOpen(scope, label, level)
+    if rawget(scope, "_closed") == true then
+        error(label .. " cannot connect in a closed scope", level)
     end
 end
 
@@ -283,14 +408,15 @@ end
 ---
 ---The key is order-independent, so `"player", "target"` and `"target", "player"`
 ---share one group and therefore one Frame.
----@param methodName string public method name, used in the argument errors
+---@param label string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
 ---@param ... string one or two unit tokens
 ---@return string[] units sorted, de-duplicated tokens
 ---@return string key normalized group key
-local function normalizeUnits(methodName, ...)
+local function normalizeUnits(label, level, ...)
     local count = select("#", ...)
     if count == 0 then
-        error("EventKit:" .. methodName .. " requires at least one unit token", 3)
+        error(label .. " requires at least one unit token", level)
     end
 
     local units = {}
@@ -299,7 +425,7 @@ local function normalizeUnits(methodName, ...)
     for index = 1, count do
         local unit = select(index, ...)
         if type(unit) ~= "string" or unit == "" then
-            error("EventKit:" .. methodName .. " unit tokens must be non-empty strings", 3)
+            error(label .. " unit tokens must be non-empty strings", level)
         end
 
         if not seen[unit] then
@@ -313,15 +439,14 @@ local function normalizeUnits(methodName, ...)
     -- key, so the caller silently received a filter they never asked for.
     if #units > MAXIMUM_UNIT_TOKENS then
         error(
-            "EventKit:"
-                .. methodName
+            label
                 .. " accepts at most "
                 .. MAXIMUM_UNIT_TOKENS
                 .. " distinct unit tokens because Frame:RegisterUnitEvent has "
                 .. MAXIMUM_UNIT_TOKENS
                 .. " filter slots; received "
                 .. #units,
-            3
+            level
         )
     end
 
@@ -485,9 +610,10 @@ end
 
 ---Return the unfiltered channel for `eventName`, registering it on demand.
 ---@param eventName string
----@param methodName string public method name, used in the argument error
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
 ---@return EventKit.Channel
-local function createRegularChannel(eventName, methodName)
+local function createRegularChannel(eventName, label, level)
     local channels = rawget(state, "regularChannels")
     local existingChannel = rawget(channels, eventName)
     if existingChannel ~= nil then
@@ -499,7 +625,7 @@ local function createRegularChannel(eventName, methodName)
     local registerEvent = requireFrameMethod(frame, "RegisterEvent")
     local registered = registerEvent(frame, eventName)
     if registered == false then
-        error("EventKit:" .. methodName .. " could not register event " .. eventName, 3)
+        error(label .. " could not register event " .. eventName, level)
     end
 
     local channel = {
@@ -518,9 +644,10 @@ end
 ---@param eventName string
 ---@param units string[]
 ---@param key string normalized group key produced by `normalizeUnits`
----@param methodName string public method name, used in the argument error
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
 ---@return EventKit.Channel
-local function createUnitChannel(eventName, units, key, methodName)
+local function createUnitChannel(eventName, units, key, label, level)
     local group = ensureUnitGroup(units, key)
     local channels = rawget(group, "channels")
     local existingChannel = rawget(channels, eventName)
@@ -537,7 +664,7 @@ local function createUnitChannel(eventName, units, key, methodName)
             -- The group exists only because this registration was attempted.
             releaseUnitGroup(group)
         end
-        error("EventKit:" .. methodName .. " could not register event " .. eventName, 3)
+        error(label .. " could not register event " .. eventName, level)
     end
 
     local channel = {
@@ -702,6 +829,59 @@ if type(secureCallFunction) == "function" then
     isolate = secureCallFunction
 end
 
+-- Scope ownership -----------------------------------------------------------
+--
+-- A scope keeps its live connections on an intrusive doubly linked list: the
+-- links are fields on the connection itself, so joining or leaving a scope
+-- allocates nothing and a disconnected handle is unlinked in O(1) the moment
+-- it disconnects. `false` marks an empty link so the fields exist from the
+-- connection's creation and never rehash it. Connections made by a revision
+-- before scopes existed carry no `_scope` field at all, which reads the same.
+
+---Append `connection` to `scope`'s live list, keeping creation order.
+---@param scope EventKit.Scope
+---@param connection EventKit.Connection
+local function linkToScope(scope, connection)
+    local tail = rawget(scope, "_tail")
+    rawset(connection, "_scope", scope)
+    rawset(connection, "_scopePrevious", tail)
+    rawset(connection, "_scopeNext", false)
+    if tail == false then
+        rawset(scope, "_head", connection)
+    else
+        rawset(tail, "_scopeNext", connection)
+    end
+    rawset(scope, "_tail", connection)
+    rawset(scope, "_activeCount", rawget(scope, "_activeCount") + 1)
+end
+
+---Remove `connection` from the scope that owns it, if any. Never raises.
+---@param connection EventKit.Connection
+local function unlinkFromScope(connection)
+    local scope = rawget(connection, "_scope")
+    if type(scope) ~= "table" then
+        return
+    end
+
+    local previous = rawget(connection, "_scopePrevious")
+    local following = rawget(connection, "_scopeNext")
+    if previous == false then
+        rawset(scope, "_head", following)
+    else
+        rawset(previous, "_scopeNext", following)
+    end
+    if following == false then
+        rawset(scope, "_tail", previous)
+    else
+        rawset(following, "_scopePrevious", previous)
+    end
+
+    rawset(connection, "_scope", false)
+    rawset(connection, "_scopePrevious", false)
+    rawset(connection, "_scopeNext", false)
+    rawset(scope, "_activeCount", rawget(scope, "_activeCount") - 1)
+end
+
 -- Connections ---------------------------------------------------------------
 
 ---@param connection EventKit.Connection
@@ -718,6 +898,11 @@ local function disconnectEventConnection(connection)
     rawset(connection, "_inner", nil)
     rawset(connection, "_channel", nil)
 
+    -- Leave the scope before touching SignalKit or the host, both of which can
+    -- raise. Bulk teardown relies on every attempted connection leaving the
+    -- list, whatever happens after this line.
+    unlinkFromScope(connection)
+
     inner:Disconnect()
     releaseChannel(channel)
     return true
@@ -727,12 +912,16 @@ end
 ---@param channel EventKit.Channel
 ---@param callback EventKit.Listener
 ---@param once boolean whether the connection disconnects before its first call
+---@param scope EventKit.Scope|false owning scope, or `false` for none
 ---@return EventKit.Connection
-local function connectToChannel(channel, callback, once)
+local function connectToChannel(channel, callback, once, scope)
     local connection = setmetatable({
         _connected = true,
         _inner = nil,
         _channel = channel,
+        _scope = false,
+        _scopePrevious = false,
+        _scopeNext = false,
     }, CONNECTION_METATABLE)
 
     local signal = rawget(channel, "signal")
@@ -754,6 +943,9 @@ local function connectToChannel(channel, callback, once)
 
     rawset(connection, "_inner", inner)
     rawset(channel, "count", rawget(channel, "count") + 1)
+    if scope ~= false then
+        linkToScope(scope, connection)
+    end
     return connection
 end
 
@@ -806,6 +998,112 @@ local function dispatchUnit(_, group, eventName, ...)
     end
 end
 
+-- Subscription --------------------------------------------------------------
+--
+-- Package-level and scope-level entry points share these two paths, so both sit
+-- at the same distance from the validators and report at their caller's line.
+-- Callers keep the result in a local before returning it: a Lua tail call would
+-- remove the public frame the stack level is counted against.
+
+---Validate and attach one unfiltered subscription.
+---@param scope EventKit.Scope|false owning scope, or `false` for none
+---@param label string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@param eventName any
+---@param callback any
+---@param once boolean
+---@return EventKit.Connection
+local function subscribeRegular(scope, label, level, eventName, callback, once)
+    validateEventName(eventName, label, level + 1)
+    validateCallback(callback, label, level + 1)
+    local channel = createRegularChannel(eventName, label, level + 1)
+    local connection = connectToChannel(channel, callback, once, scope)
+    return connection
+end
+
+---Validate and attach one unit-filtered subscription.
+---@param scope EventKit.Scope|false owning scope, or `false` for none
+---@param label string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@param eventName any
+---@param callback any
+---@param once boolean
+---@param ... string one or two unit tokens
+---@return EventKit.Connection
+local function subscribeUnit(scope, label, level, eventName, callback, once, ...)
+    validateEventName(eventName, label, level + 1)
+    validateCallback(callback, label, level + 1)
+    local units, key = normalizeUnits(label, level + 1, ...)
+    local channel = createUnitChannel(eventName, units, key, label, level + 1)
+    local connection = connectToChannel(channel, callback, once, scope)
+    return connection
+end
+
+---Disconnect every live connection of `scope` in creation order.
+---
+---Best effort: a failure does not stop the sweep, and the first error object is
+---re-raised unchanged once every connection has been attempted. The caller
+---owns validation, so addon-scope closing does not have to fake a call site.
+---@param scope EventKit.Scope
+---@return integer disconnected
+local function disconnectAllInScope(scope)
+    local disconnected = 0
+    local firstError = nil
+    local connection = rawget(scope, "_head")
+
+    while connection ~= false do
+        local ok, result = pcall(disconnectEventConnection, connection)
+        if not ok then
+            if firstError == nil then
+                firstError = { value = result }
+            end
+        elseif result == true then
+            disconnected = disconnected + 1
+        end
+
+        -- `disconnectEventConnection` unlinks before anything that can raise.
+        -- A handle that was somehow linked while already disconnected is
+        -- unlinked here, so the sweep always terminates.
+        if rawget(connection, "_scope") == scope then
+            unlinkFromScope(connection)
+        end
+        connection = rawget(scope, "_head")
+    end
+
+    if firstError ~= nil then
+        error(firstError.value, 0)
+    end
+    return disconnected
+end
+
+---Terminally close `scope` after best-effort disconnection.
+---@param scope EventKit.Scope
+---@return boolean closed `false` when the scope was already closed.
+local function closeScope(scope)
+    if rawget(scope, "_closed") == true then
+        return false
+    end
+
+    -- Terminal before cleanup begins, so nothing reached during the sweep can
+    -- add a replacement connection.
+    rawset(scope, "_closed", true)
+    disconnectAllInScope(scope)
+    return true
+end
+
+---Build one open scope. `addonName` is `nil` for a manually owned scope.
+---@param addonName string|nil
+---@return EventKit.Scope
+local function newScope(addonName)
+    return setmetatable({
+        _addonName = addonName,
+        _head = false,
+        _tail = false,
+        _activeCount = 0,
+        _closed = false,
+    }, SCOPE_METATABLE)
+end
+
 -- Public API ----------------------------------------------------------------
 
 ---Subscribe to every future occurrence of `eventName`.
@@ -814,9 +1112,8 @@ end
 ---@param callback EventKit.Listener
 ---@return EventKit.Connection connection
 local function connectEvent(_, eventName, callback)
-    validateEventName(eventName, "Connect")
-    validateCallback(callback, "Connect")
-    return connectToChannel(createRegularChannel(eventName, "Connect"), callback, false)
+    local connection = subscribeRegular(false, "EventKit:Connect", 3, eventName, callback, false)
+    return connection
 end
 
 ---Subscribe to at most one future occurrence of `eventName`.
@@ -825,9 +1122,8 @@ end
 ---@param callback EventKit.Listener
 ---@return EventKit.Connection connection
 local function onceEvent(_, eventName, callback)
-    validateEventName(eventName, "Once")
-    validateCallback(callback, "Once")
-    return connectToChannel(createRegularChannel(eventName, "Once"), callback, true)
+    local connection = subscribeRegular(false, "EventKit:Once", 3, eventName, callback, true)
+    return connection
 end
 
 ---Subscribe to `eventName` filtered to one or two unit tokens.
@@ -837,14 +1133,9 @@ end
 ---@param ... string one or two unit tokens; `Frame:RegisterUnitEvent` has two slots
 ---@return EventKit.Connection connection
 local function connectUnitEvent(_, eventName, callback, ...)
-    validateEventName(eventName, "ConnectUnit")
-    validateCallback(callback, "ConnectUnit")
-    local units, key = normalizeUnits("ConnectUnit", ...)
-    return connectToChannel(
-        createUnitChannel(eventName, units, key, "ConnectUnit"),
-        callback,
-        false
-    )
+    local connection =
+        subscribeUnit(false, "EventKit:ConnectUnit", 3, eventName, callback, false, ...)
+    return connection
 end
 
 ---Subscribe once to `eventName` filtered to one or two unit tokens.
@@ -854,10 +1145,151 @@ end
 ---@param ... string one or two unit tokens; `Frame:RegisterUnitEvent` has two slots
 ---@return EventKit.Connection connection
 local function onceUnitEvent(_, eventName, callback, ...)
-    validateEventName(eventName, "OnceUnit")
-    validateCallback(callback, "OnceUnit")
-    local units, key = normalizeUnits("OnceUnit", ...)
-    return connectToChannel(createUnitChannel(eventName, units, key, "OnceUnit"), callback, true)
+    local connection = subscribeUnit(false, "EventKit:OnceUnit", 3, eventName, callback, true, ...)
+    return connection
+end
+
+---Create a manually owned connection scope, closed only by its owner.
+---@return EventKit.Scope scope
+local function createScope()
+    return newScope(nil)
+end
+
+---Return the canonical connection scope for an addon, creating it on demand.
+---
+---EventKit does not observe addon shutdown itself; LifecycleKit depends on
+---EventKit, not the other way round. Whoever observes the shutdown closes this
+---scope through `EventKit:CloseAddonScopes(addonName)`.
+---@param _ EventKit
+---@param addonName string addon folder name
+---@return EventKit.Scope scope
+local function forAddon(_, addonName)
+    validateNonEmptyString(addonName, "EventKit:ForAddon addonName", 3)
+
+    local addonScopes = rawget(state, "addonScopes")
+    local scope = rawget(addonScopes, addonName)
+    if scope == nil then
+        scope = newScope(addonName)
+        rawset(addonScopes, addonName, scope)
+    end
+    return scope
+end
+
+---Close the canonical scope of an addon, disconnecting everything it owns.
+---
+---Closing is terminal, exactly like addon shutdown: the closed scope stays the
+---canonical scope, so a later `ForAddon(addonName)` returns it and refuses new
+---connections. An addon that never asked for a scope is recorded as closed.
+---@param _ EventKit
+---@param addonName string addon folder name
+---@return boolean closed `false` when the addon's scope was already closed.
+local function closeAddonScopes(_, addonName)
+    validateNonEmptyString(addonName, "EventKit:CloseAddonScopes addonName", 3)
+
+    local addonScopes = rawget(state, "addonScopes")
+    local scope = rawget(addonScopes, addonName)
+    if scope == nil then
+        scope = newScope(addonName)
+        rawset(scope, "_closed", true)
+        rawset(addonScopes, addonName, scope)
+        return true
+    end
+    return closeScope(scope)
+end
+
+-- Scope methods -------------------------------------------------------------
+
+---Subscribe to every future occurrence of `eventName` inside this scope.
+---@param self EventKit.Scope
+---@param eventName string
+---@param callback EventKit.Listener
+---@return EventKit.Connection connection
+local function scopeConnect(self, eventName, callback)
+    validateScope(self, "EventKit.Scope:Connect", 3)
+    ensureScopeOpen(self, "EventKit.Scope:Connect", 3)
+    local connection =
+        subscribeRegular(self, "EventKit.Scope:Connect", 3, eventName, callback, false)
+    return connection
+end
+
+---Subscribe to at most one future occurrence of `eventName` inside this scope.
+---@param self EventKit.Scope
+---@param eventName string
+---@param callback EventKit.Listener
+---@return EventKit.Connection connection
+local function scopeOnce(self, eventName, callback)
+    validateScope(self, "EventKit.Scope:Once", 3)
+    ensureScopeOpen(self, "EventKit.Scope:Once", 3)
+    local connection = subscribeRegular(self, "EventKit.Scope:Once", 3, eventName, callback, true)
+    return connection
+end
+
+---Subscribe to a unit-filtered event inside this scope.
+---@param self EventKit.Scope
+---@param eventName string
+---@param callback EventKit.Listener
+---@param ... string one or two unit tokens; `Frame:RegisterUnitEvent` has two slots
+---@return EventKit.Connection connection
+local function scopeConnectUnit(self, eventName, callback, ...)
+    validateScope(self, "EventKit.Scope:ConnectUnit", 3)
+    ensureScopeOpen(self, "EventKit.Scope:ConnectUnit", 3)
+    local connection =
+        subscribeUnit(self, "EventKit.Scope:ConnectUnit", 3, eventName, callback, false, ...)
+    return connection
+end
+
+---Subscribe once to a unit-filtered event inside this scope.
+---@param self EventKit.Scope
+---@param eventName string
+---@param callback EventKit.Listener
+---@param ... string one or two unit tokens; `Frame:RegisterUnitEvent` has two slots
+---@return EventKit.Connection connection
+local function scopeOnceUnit(self, eventName, callback, ...)
+    validateScope(self, "EventKit.Scope:OnceUnit", 3)
+    ensureScopeOpen(self, "EventKit.Scope:OnceUnit", 3)
+    local connection =
+        subscribeUnit(self, "EventKit.Scope:OnceUnit", 3, eventName, callback, true, ...)
+    return connection
+end
+
+---Disconnect every live connection while keeping the scope reusable.
+---@param self EventKit.Scope
+---@return integer disconnected
+local function scopeDisconnectAll(self)
+    validateScope(self, "EventKit.Scope:DisconnectAll", 3)
+    return disconnectAllInScope(self)
+end
+
+---Terminally close the scope after best-effort disconnection.
+---@param self EventKit.Scope
+---@return boolean closed `false` when the scope was already closed.
+local function scopeClose(self)
+    validateScope(self, "EventKit.Scope:Close", 3)
+    return closeScope(self)
+end
+
+---Return whether the scope is terminally closed.
+---@param self EventKit.Scope
+---@return boolean closed
+local function scopeIsClosed(self)
+    validateScope(self, "EventKit.Scope:IsClosed", 3)
+    return rawget(self, "_closed") == true
+end
+
+---Return the owning addon name, or `nil` for a manual scope.
+---@param self EventKit.Scope
+---@return string? addonName
+local function scopeGetAddonName(self)
+    validateScope(self, "EventKit.Scope:GetAddonName", 3)
+    return rawget(self, "_addonName")
+end
+
+---Return the number of live connections owned by this scope.
+---@param self EventKit.Scope
+---@return integer activeCount
+local function scopeGetActiveCount(self)
+    validateScope(self, "EventKit.Scope:GetActiveCount", 3)
+    return rawget(self, "_activeCount")
 end
 
 -- Commit --------------------------------------------------------------------
@@ -869,12 +1301,25 @@ end
 rawset(Connection, "Disconnect", disconnect)
 rawset(Connection, "IsConnected", isConnected)
 
+rawset(Scope, "Connect", scopeConnect)
+rawset(Scope, "Once", scopeOnce)
+rawset(Scope, "ConnectUnit", scopeConnectUnit)
+rawset(Scope, "OnceUnit", scopeOnceUnit)
+rawset(Scope, "DisconnectAll", scopeDisconnectAll)
+rawset(Scope, "Close", scopeClose)
+rawset(Scope, "IsClosed", scopeIsClosed)
+rawset(Scope, "GetAddonName", scopeGetAddonName)
+rawset(Scope, "GetActiveCount", scopeGetActiveCount)
+
 rawset(EventKit, "API", API_GENERATION)
 rawset(EventKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(EventKit, "Connect", connectEvent)
 rawset(EventKit, "Once", onceEvent)
 rawset(EventKit, "ConnectUnit", connectUnitEvent)
 rawset(EventKit, "OnceUnit", onceUnitEvent)
+rawset(EventKit, "CreateScope", createScope)
+rawset(EventKit, "ForAddon", forAddon)
+rawset(EventKit, "CloseAddonScopes", closeAddonScopes)
 
 rawset(state, "dispatchRegular", dispatchRegular)
 rawset(state, "dispatchUnit", dispatchUnit)

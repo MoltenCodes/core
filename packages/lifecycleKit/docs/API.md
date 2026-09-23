@@ -82,6 +82,8 @@ The two paths differ only in *where* the error surfaces, which follows from when
 
 What happens to a dispatched error after it leaves LifecycleKit is EventKit's contract: EventKit isolates listeners at the event-bus boundary and reports the error through the host error handler, so one addon's failing lifecycle callback cannot stop event delivery to another addon.
 
+When an addon reaches `shutdown`, LifecycleKit also closes that addon's canonical EventKit scope (`EventKit:ForAddon(addonName)`) after the shutdown callbacks have run, so event connections made through the scope need no teardown code in the addon. EventKit cannot do this itself: it loads before LifecycleKit and never observes shutdown. With an EventKit revision that has no `CloseAddonScopes`, nothing is closed and shutdown is otherwise unchanged.
+
 If shutdown occurs before `loaded` or `ready` was reached (for example, a lifecycle was created for a load-on-demand addon that never loaded), pending subscriptions for those now-impossible phases are disconnected without invocation. New subscriptions to an earlier phase that is already impossible because shutdown occurred are returned already disconnected.
 
 ## Subscription

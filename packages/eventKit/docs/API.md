@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **3**.
+Implementation revision: **5**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -71,6 +71,104 @@ registration errors are propagated.
 ## `EventKit:OnceUnit(eventName, callback, unit1 [, unit2])`
 
 Unit-filtered one-shot subscription with the same disconnect-before-callback guarantee as `Once`, and the same two-token limit as `ConnectUnit`.
+
+## Owner scopes
+
+A scope groups connections so their owner can tear them all down in one call.
+The model mirrors TimerKit's scopes exactly, so the subscription-owning Kits
+share one vocabulary.
+
+```lua
+local scope = EventKit:CreateScope()
+scope:Connect("PLAYER_REGEN_DISABLED", onCombat)
+scope:ConnectUnit("UNIT_HEALTH", onHealth, "player")
+
+scope:DisconnectAll() -- every connection gone; the scope stays reusable
+scope:Close()         -- terminal; later connections are refused
+```
+
+### Package methods
+
+| Method | Purpose |
+|---|---|
+| `EventKit:CreateScope()` | Create a manually owned scope. |
+| `EventKit:ForAddon(addonName)` | Return the canonical scope of an addon, creating it on demand. |
+| `EventKit:CloseAddonScopes(addonName)` | Close that addon's scope; returns `false` when it was already closed. |
+
+### Scope methods
+
+| Method | Purpose |
+|---|---|
+| `Connect(eventName, callback)` | `EventKit:Connect`, owned by this scope. |
+| `Once(eventName, callback)` | `EventKit:Once`, owned by this scope. |
+| `ConnectUnit(eventName, callback, unit1 [, unit2])` | `EventKit:ConnectUnit`, owned by this scope. |
+| `OnceUnit(eventName, callback, unit1 [, unit2])` | `EventKit:OnceUnit`, owned by this scope. |
+| `DisconnectAll()` | Disconnect every live connection; return how many; keep the scope usable. |
+| `Close()` | Terminally close after best-effort disconnection; `false` if already closed. |
+| `IsClosed()` | Whether the scope is closed. |
+| `GetAddonName()` | The owning addon name, or `nil` for a manual scope. |
+| `GetActiveCount()` | The number of live connections the scope owns. |
+
+A connection made through a scope is an ordinary connection handle. It can
+still be disconnected on its own, and it leaves its scope the moment it
+disconnects — explicitly, as a one-shot that fired, or through bulk teardown —
+so a scope never holds dead handles and `GetActiveCount()` counts only live
+ones.
+
+`DisconnectAll()` and `Close()` process connections in creation order. A host
+failure while releasing one connection does not stop the sweep: every
+connection is attempted and leaves the scope, and the first error object is
+re-raised unchanged afterwards. This is the contract
+`TimerKit.Scope:CancelAll()` already documents.
+
+`Close()` marks the scope closed before the sweep begins. From then on
+`Connect`, `Once`, `ConnectUnit` and `OnceUnit` raise at the caller's line:
+
+```text
+MyAddon/Main.lua:42: EventKit.Scope:Connect cannot connect in a closed scope
+```
+
+Argument errors raised through a scope name the scope method
+(`EventKit.Scope:Connect eventName must be a non-empty string`) and point at the
+caller's line, like the package-level methods.
+
+### Addon scopes and shutdown: the two-step
+
+`ForAddon(addonName)` is idempotent: every call with the same name returns the
+same scope. TimerKit closes its addon scopes itself because it depends on
+LifecycleKit. EventKit cannot: LifecycleKit depends on EventKit, so the reverse
+dependency would be a cycle. Closing an addon scope is therefore a separate,
+public step taken by whoever observes the addon's shutdown:
+
+1. The addon's code subscribes through `EventKit:ForAddon("MyAddon")`.
+2. On that addon's shutdown, the observer calls
+   `EventKit:CloseAddonScopes("MyAddon")`.
+
+LifecycleKit is the intended observer. Until it makes that call, or in a
+consumer that does not use LifecycleKit, the consumer wires it directly:
+
+```lua
+EventKit:Once("PLAYER_LOGOUT", function()
+    EventKit:CloseAddonScopes("MyAddon")
+end)
+```
+
+Closing is terminal, as shutdown is. The closed scope stays the addon's
+canonical scope, so a later `ForAddon("MyAddon")` returns it and refuses new
+connections rather than silently creating subscriptions that outlive the
+shutdown. Calling `CloseAddonScopes` for an addon that never asked for a scope
+records one that is already closed. Each addon keeps at most one scope table,
+so the addon-scope map is bounded by the number of addon names used.
+
+Manual scopes are never closed by `CloseAddonScopes`.
+
+### Cost
+
+Each connection carries three link fields, created with the connection.
+Joining a scope and leaving it are a handful of field writes on an intrusive
+doubly linked list: nothing is allocated, and a disconnect unlinks in constant
+time. Dispatch is unchanged; a scoped listener costs exactly what a
+package-level one does, and a spec guards that it allocates nothing per event.
 
 ## Connection API
 
@@ -196,6 +294,13 @@ one would.
 ## Embedded copies and upgrades
 
 Registry owns one stable EventKit table for `(events, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table, and existing Frame handlers resolve dispatch functions through the stable EventKit facade.
+
+Revision 5 added scopes and moved `_state` from schema 2 to schema 3. A
+revision-5 copy loading over revision 2 to 4 adds the shared `Scope` prototype,
+the addon-scope map and the shared scope metatable; scope receivers are
+validated by that metatable's identity, so it lives in shared state rather than
+in the loading file. Connections made by the older revision carry no scope link
+and keep working: they are simply owned by no scope.
 
 Revision 2 changed the shape of `_state` (schema 1 to schema 2). A revision-2
 copy loading over live revision-1 state adopts that state in place: it keys the

@@ -5,9 +5,9 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.2.1`
+- Version: `0.4.0`
 - API generation: `1`
-- Implementation revision: `2`
+- Implementation revision: `5`
 - Runtime dependencies: Registry API 2, SignalKit API 1
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW
@@ -43,6 +43,22 @@ local health = EventKit:ConnectUnit("UNIT_HEALTH", function(eventName, unit)
     print(eventName, "for", unit)
 end, "player")
 ```
+
+Owner scopes tear down everything an owner subscribed to in one call. They
+mirror TimerKit's scopes:
+
+```lua
+local events = EventKit:ForAddon("MyAddon")
+events:Connect("PLAYER_REGEN_DISABLED", onCombat)
+events:ConnectUnit("UNIT_HEALTH", onHealth, "player")
+
+-- On the addon's shutdown, whoever observes it (LifecycleKit, or the addon):
+EventKit:CloseAddonScopes("MyAddon")
+```
+
+`EventKit:CreateScope()` returns a manually owned scope with the same methods.
+EventKit sits below LifecycleKit, so it cannot close addon scopes on shutdown by
+itself; the two-step above is documented in [`docs/API.md`](docs/API.md).
 
 See [`docs/API.md`](docs/API.md) for the full public contract and edge-case
 semantics, including the combat-log event's empty payload, the taint

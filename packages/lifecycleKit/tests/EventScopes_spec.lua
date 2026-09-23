@@ -1,0 +1,93 @@
+local TestEnv = require("LifecycleKitTestEnv")
+
+-- Shutdown closes the addon's canonical EventKit scope. EventKit loads before
+-- LifecycleKit and never sees PLAYER_LOGOUT, so LifecycleKit performs the second
+-- half of the two-step that `EventKit:ForAddon` documents.
+describe("LifecycleKit event scopes", function()
+    local LifecycleKit, EventKit
+    before_each(function()
+        LifecycleKit, _, _, EventKit = TestEnv.NewPackage()
+    end)
+    after_each(TestEnv.Reset)
+
+    it("closes the addon's EventKit scope when the addon reaches shutdown", function()
+        local life = LifecycleKit:ForAddon("MyAddon")
+        local scope = EventKit:ForAddon("MyAddon")
+        local calls = 0
+        scope:Connect("CHAT_MSG_SAY", function()
+            calls = calls + 1
+        end)
+        TestEnv.LoadAddon("MyAddon")
+        TestEnv.Login()
+        TestEnv.Emit("CHAT_MSG_SAY")
+        assert.are.equal(1, calls)
+
+        TestEnv.Logout()
+
+        assert.is_true(life:IsShutdown())
+        assert.is_true(scope:IsClosed())
+        assert.are.equal(0, scope:GetActiveCount())
+        TestEnv.Emit("CHAT_MSG_SAY")
+        assert.are.equal(1, calls)
+    end)
+
+    it("runs shutdown callbacks before the scope is closed", function()
+        local life = LifecycleKit:ForAddon("MyAddon")
+        local scope = EventKit:ForAddon("MyAddon")
+        scope:Connect("CHAT_MSG_SAY", function() end)
+        local activeDuringShutdown
+        life:OnShutdown(function()
+            activeDuringShutdown = scope:GetActiveCount()
+        end)
+
+        TestEnv.Logout()
+
+        assert.are.equal(1, activeDuringShutdown)
+        assert.are.equal(0, scope:GetActiveCount())
+    end)
+
+    it("leaves an addon that never asked for a scope with a closed one", function()
+        LifecycleKit:ForAddon("MyAddon")
+        TestEnv.Logout()
+
+        local scope = EventKit:ForAddon("MyAddon")
+        assert.is_true(scope:IsClosed())
+        TestEnv.expectErrorContaining("cannot connect in a closed scope", function()
+            scope:Connect("CHAT_MSG_SAY", function() end)
+        end)
+    end)
+
+    it("shuts down unchanged against an EventKit without CloseAddonScopes", function()
+        local life = LifecycleKit:ForAddon("MyAddon")
+        local original = rawget(EventKit, "CloseAddonScopes")
+        rawset(EventKit, "CloseAddonScopes", nil)
+
+        TestEnv.Logout()
+
+        rawset(EventKit, "CloseAddonScopes", original)
+        assert.is_true(life:IsShutdown())
+        assert.is_false(EventKit:ForAddon("MyAddon"):IsClosed())
+    end)
+
+    it("reports a scope-closing failure after every lifecycle has advanced", function()
+        local first = LifecycleKit:ForAddon("FirstAddon")
+        local second = LifecycleKit:ForAddon("SecondAddon")
+        local original = rawget(EventKit, "CloseAddonScopes")
+        rawset(EventKit, "CloseAddonScopes", function(_, addonName)
+            if addonName == "FirstAddon" then
+                error("scope teardown failed", 0)
+            end
+            return original(EventKit, addonName)
+        end)
+
+        TestEnv.Logout()
+
+        rawset(EventKit, "CloseAddonScopes", original)
+        local reported = TestEnv.TakeReportedErrors()
+        assert.are.equal(1, #reported)
+        assert.are.equal("scope teardown failed", reported[1].value)
+        assert.is_true(first:IsShutdown())
+        assert.is_true(second:IsShutdown())
+        assert.is_true(EventKit:ForAddon("SecondAddon"):IsClosed())
+    end)
+end)

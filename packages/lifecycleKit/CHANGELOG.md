@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 — 2026-09-23
+
+- Shutdown now closes the addon's canonical EventKit scope (`EventKit:ForAddon(addonName)`) after the addon's shutdown callbacks have run, through `EventKit:CloseAddonScopes`. EventKit cannot observe shutdown itself because it sits below LifecycleKit in the load order; this is the second half of the two-step its documentation describes, and an addon that connects events through its scope no longer writes any teardown for them.
+- An EventKit revision that predates scopes has no `CloseAddonScopes`; shutdown then behaves exactly as before. A failure while disconnecting is captured and re-raised like a shutdown callback error, after every addon's lifecycle has advanced.
+- Implementation revision 6. The executed shutdown path changed; the bootstrap specs cover the in-place upgrade.
+- No public API change. `LifecycleKit` API generation 1 is unchanged.
+
 ## 0.3.0 — 2026-09-22
 
 - Moved the bootstrap handshake onto `Registry:Bootstrap`. The package lookup, the refusal to reinterpret a newer revision's private state, the registration and the inherited-revision reporting now live in Registry; what stays here is the dependency check, the public-surface predicate, the state predicate and the migration itself.

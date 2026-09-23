@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — 2026-09-23
+
+- Added owner scopes, mirroring TimerKit's scope model in naming and semantics: `EventKit:CreateScope()` and `EventKit:ForAddon(addonName)` return a scope with `Connect`, `Once`, `ConnectUnit`, `OnceUnit`, `DisconnectAll`, `Close`, `IsClosed`, `GetAddonName` and `GetActiveCount`. One call now tears down every subscription an owner made.
+- A scoped connection is an ordinary handle: it can still be disconnected on its own and leaves its scope the moment it disconnects, including a one-shot that fired. Scopes keep their connections on an intrusive doubly linked list whose links are fields on the connection, so joining and leaving allocate nothing, a disconnect unlinks in constant time, and no dead handle is ever retained. Dispatch is unchanged.
+- `DisconnectAll()` and `Close()` run in creation order, continue past a host failure and re-raise the first error object unchanged. `Close()` is terminal: later connections through the scope raise `EventKit.Scope:<Method> cannot connect in a closed scope` at the caller's line.
+- Added `EventKit:CloseAddonScopes(addonName)`. EventKit cannot depend on LifecycleKit, which depends on it, so an addon scope is closed by whoever observes that addon's shutdown. The two-step is documented in `docs/API.md`, with the wiring a consumer uses without LifecycleKit. Closing is terminal and the closed scope stays canonical.
+- Argument errors are now built from the qualified method name, so errors raised through a scope name the scope method. Package-level messages are unchanged.
+- Implementation revision 5; `_state` schema 3. A copy loading over revision 2 to 4 adds the scope prototype, the addon-scope map and the shared scope metatable in place; connections made by the older revision keep working and belong to no scope. Eighteen new specs cover scope bookkeeping, one-shots, unit subscriptions, bulk teardown order and failure handling, closing, caller-line errors, receiver validation, per-event allocation, addon scopes, the two-step shutdown wiring and both upgrade paths.
+- Added a table-of-contents header to `src/EventKit.lua`, and corrected the stale version and revision in the README.
+- `EventKit` API generation 1 is unchanged; the additions are compatible.
+
 ## 0.3.1 — 2026-09-22
 
 - `connection:Disconnect()` and `connection:IsConnected()` now validate their receiver. Reached through the shared `EventKit.Connection` prototype with no receiver — `EventKit.Connection.Disconnect()`, or a dot where a colon was meant — they used to raise `bad argument #1 to 'rawget'` from a line inside `src/EventKit.lua`, which named neither the package nor the mistake. They now raise `EventKit:Disconnect must be called on a connection handle; use connection:Disconnect()` at the caller's line, matching SignalKit's existing guard.

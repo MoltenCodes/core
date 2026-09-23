@@ -7,14 +7,29 @@ local function expectErrorContaining(expected, callback)
 end
 
 local function installFutureEventsFacade(Registry)
-    local EventKit = Registry:Register("eventKit", 1, 5)
+    local EventKit = Registry:Register("eventKit", 1, 6)
+    local function stub() end
     EventKit.API = 1
-    EventKit.REVISION = 5
-    EventKit.Connection = { Disconnect = function() end, IsConnected = function() end }
-    EventKit.Connect = function() end
-    EventKit.Once = function() end
-    EventKit.ConnectUnit = function() end
-    EventKit.OnceUnit = function() end
+    EventKit.REVISION = 6
+    EventKit.Connection = { Disconnect = stub, IsConnected = stub }
+    EventKit.Scope = {
+        Connect = stub,
+        Once = stub,
+        ConnectUnit = stub,
+        OnceUnit = stub,
+        DisconnectAll = stub,
+        Close = stub,
+        IsClosed = stub,
+        GetAddonName = stub,
+        GetActiveCount = stub,
+    }
+    EventKit.Connect = stub
+    EventKit.Once = stub
+    EventKit.ConnectUnit = stub
+    EventKit.OnceUnit = stub
+    EventKit.CreateScope = stub
+    EventKit.ForAddon = stub
+    EventKit.CloseAddonScopes = stub
     return EventKit
 end
 
@@ -49,13 +64,13 @@ describe("EventKit package bootstrap", function()
         end)
     end)
 
-    it("registers EventKit API 1 revision 4", function()
+    it("registers EventKit API 1 revision 5", function()
         local EventKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("eventKit", 1)
         assert.are.equal(EventKit, selected)
-        assert.are.equal(4, revision)
+        assert.are.equal(5, revision)
         assert.are.equal(1, EventKit.API)
-        assert.are.equal(4, EventKit.REVISION)
+        assert.are.equal(5, EventKit.REVISION)
     end)
 
     it("reuses the package facade across duplicate embedding", function()
@@ -128,15 +143,79 @@ describe("EventKit package bootstrap", function()
         local state = EventKit._state
 
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(4, EventKit.REVISION)
+        assert.are.equal(5, EventKit.REVISION)
         assert.are.equal(legacyConnectionMethods, EventKit.Connection)
-        assert.are.equal(2, state.schema)
+        assert.are.equal(3, state.schema)
         assert.are.equal(legacyGroup, state.unitGroups["6:player"])
         assert.are.equal("6:player", legacyGroup.key)
         assert.are.equal(1, state.unitFrameCount)
         assert.are.equal(0, #state.unitFrames)
         assert.are.equal("function", type(state.dispatchRegular))
         assert.are.equal("function", type(state.isolate))
+        assert.are.equal("table", type(state.addonScopes))
+        assert.are.equal("table", type(EventKit.Scope))
+    end)
+
+    it("upgrades revision-4 package state in place", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        local Registry = require("Registry")
+        require("SignalKit")
+
+        -- Revision 4 left schema-2 state behind: no scope prototype, no addon
+        -- scopes and no shared scope metatable.
+        local function stub() end
+        local legacy = Registry:Register("eventKit", 1, 4)
+        legacy.API = 1
+        legacy.REVISION = 4
+        legacy.Connection = { Disconnect = stub, IsConnected = stub }
+        legacy.Connect = stub
+        legacy.Once = stub
+        legacy.ConnectUnit = stub
+        legacy.OnceUnit = stub
+        legacy._state = {
+            schema = 2,
+            regularFrame = nil,
+            regularChannels = {},
+            unitGroups = {},
+            unitFrames = {},
+            unitFrameCount = 0,
+            dispatchRegular = stub,
+            dispatchUnit = stub,
+            isolate = stub,
+        }
+        local legacyConnectionMethods = legacy.Connection
+
+        local EventKit = require("EventKit")
+        local state = EventKit._state
+
+        assert.are.equal(legacy, EventKit)
+        assert.are.equal(5, EventKit.REVISION)
+        assert.are.equal(legacyConnectionMethods, EventKit.Connection)
+        assert.are.equal(3, state.schema)
+        assert.are.equal("table", type(state.addonScopes))
+        assert.are.equal("table", type(EventKit.Scope))
+
+        local scope = EventKit:CreateScope()
+        scope:Connect("PLAYER_LOGIN", stub)
+        assert.are.equal(1, scope:GetActiveCount())
+    end)
+
+    it("disconnects a handle shaped by a revision before scopes existed", function()
+        local EventKit = TestEnv.NewPackage()
+        local calls = 0
+        local connection = EventKit:Connect("PLAYER_LOGIN", function()
+            calls = calls + 1
+        end)
+
+        -- A revision-4 handle carries no scope link fields at all.
+        rawset(connection, "_scope", nil)
+        rawset(connection, "_scopePrevious", nil)
+        rawset(connection, "_scopeNext", nil)
+
+        assert.is_true(connection:Disconnect())
+        TestEnv.Emit("PLAYER_LOGIN")
+        assert.are.equal(0, calls)
     end)
 
     it("keeps serving revision-1 Frames after an in-place upgrade", function()
@@ -168,6 +247,6 @@ describe("EventKit package bootstrap", function()
         local selected, revision = Registry:Get("eventKit", 1)
         assert.are.equal(future, loaded)
         assert.are.equal(future, selected)
-        assert.are.equal(5, revision)
+        assert.are.equal(6, revision)
     end)
 end)
