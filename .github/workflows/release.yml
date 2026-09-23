@@ -1,0 +1,309 @@
+name: Release
+
+# Builds, checks and (when allowed) publishes a bundle release.
+#
+# Trigger: pushing a `v<major>.<minor>.<patch>` tag, or running the workflow by
+# hand. Nothing here pushes, tags, or publishes a GitHub release: the GitHub
+# release is always created as a DRAFT and a maintainer publishes it by hand.
+# See docs/RELEASES.md for the whole procedure.
+#
+# Upload to the addon sites is a dry run (`-d`) unless every one of these holds:
+#   - the run was not started by hand with `dry_run` left on;
+#   - the repository variables CURSEFORGE_PROJECT_ID, WAGO_ID and WOWI_ID are set.
+# The secrets CF_API_KEY, WAGO_API_TOKEN and WOWI_API_TOKEN are read only by the
+# packager step, and only matter once the dry run is off.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and package, but upload nothing to the addon sites."
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never cancel a release half-way; queue a second run for the same ref instead.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Kept in step with ci.yml, which is where these pins are reviewed.
+  SELENE_VERSION: "0.31.0"
+  SELENE_SHA256: "0580eed94b56e8b4bad3b1d6f5a4f9e1a9f5d88ae5bc511290c3cd33cc5e0360"
+  LUALS_VERSION: "3.19.0"
+  LUALS_SHA256: "624ae8dd3bfbd5c2ee3ccf2f3547d33aeefa209971cce8c11d48f69fc1ec065a"
+
+jobs:
+  verify:
+    name: Verify the tagged tree
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: true
+      matrix:
+        # The same two Pythons every CI job that runs repository tooling uses.
+        python-version: ["3.10", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # First, because it is the cheapest check and the one a tag most often
+      # fails: the notes in docs/RELEASES.md must match the manifests.
+      - name: Check the tag against docs/RELEASES.md
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python3 -m tooling.release.check_tag "${TAG}"
+
+      - name: Validate repository
+        run: python3 -m tooling.validation.validate_repository
+
+      - name: Run tooling unit tests
+        run: python3 -m unittest discover -s tooling/tests -p "test_*.py"
+
+      - name: Set up Lua
+        uses: leafo/gh-actions-lua@6919171ccf181b826f44b9bca76307b577217377 # v13.0.0
+        with:
+          luaVersion: "5.1.5"
+
+      - name: Set up LuaRocks
+        uses: leafo/gh-actions-luarocks@35d062def313a7699a0d513e996bcf4352f05389 # v6.1.0
+        with:
+          luaRocksVersion: "3.13.0"
+
+      - name: Install Busted
+        run: luarocks install busted 2.3.0-1
+
+      - name: Run package and example tests
+        run: python3 -m tooling.test.run
+
+      - name: Install Selene
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --output selene.zip \
+            "https://github.com/Kampfkarren/selene/releases/download/${SELENE_VERSION}/selene-light-${SELENE_VERSION}-linux.zip"
+          echo "${SELENE_SHA256}  selene.zip" | sha256sum --check --strict -
+          mkdir -p "${RUNNER_TEMP}/selene"
+          unzip -o -q selene.zip -d "${RUNNER_TEMP}/selene"
+          chmod +x "${RUNNER_TEMP}/selene/selene"
+          echo "${RUNNER_TEMP}/selene" >> "${GITHUB_PATH}"
+
+      - name: Lint runtime and test Lua
+        run: python3 -m tooling.lint
+
+      - name: Check formatting
+        uses: JohnnyMorganz/stylua-action@76fd70c03e6340ceaf673366712db9b20560b402 # v5.0.0
+        with:
+          version: "2.5.2"
+          args: --check .
+
+      - name: Install lua-language-server
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            --output lua-language-server.tar.gz \
+            "https://github.com/LuaLS/lua-language-server/releases/download/${LUALS_VERSION}/lua-language-server-${LUALS_VERSION}-linux-x64.tar.gz"
+          echo "${LUALS_SHA256}  lua-language-server.tar.gz" | sha256sum --check --strict -
+          mkdir -p "${RUNNER_TEMP}/luals"
+          tar -xzf lua-language-server.tar.gz -C "${RUNNER_TEMP}/luals"
+          echo "${RUNNER_TEMP}/luals/bin" >> "${GITHUB_PATH}"
+
+      - name: Type-check every source directory
+        run: |
+          set -euo pipefail
+          status=0
+          for directory in packages/*/src examples; do
+            echo "==> ${directory}"
+            lua-language-server --check "${directory}" --checklevel=Warning || status=1
+          done
+          exit "${status}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: Spell-check the documentation
+        run: python3 -m tooling.spell --require
+
+  build:
+    name: Build the bundles
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      # The whole framework, as one bundle, with its checksums verified twice:
+      # by the builder and by the tool a downloader uses.
+      - name: Build the framework bundle
+        run: |
+          set -euo pipefail
+          python3 -m tooling.package.build --all --out dist/framework --zip --verify
+          (cd dist/framework && sha256sum --check --strict CHECKSUMS.txt)
+
+      # Kits are independently publishable, so each one also gets a bundle of
+      # its own (with its dependency closure). The package list is discovered
+      # from the manifests, never written here.
+      - name: Build one bundle per package
+        run: |
+          set -euo pipefail
+          for manifest in packages/*/package.manifest.json; do
+            package_id="$(basename "$(dirname "${manifest}")")"
+            python3 -m tooling.package.build --package "${package_id}" \
+              --out "dist/packages/${package_id}" --zip --verify
+            (cd "dist/packages/${package_id}" && sha256sum --check --strict CHECKSUMS.txt)
+          done
+
+      - name: Upload the framework bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: framework-bundle
+          path: dist/framework
+          if-no-files-found: error
+
+      - name: Upload the per-package bundles
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-bundles
+          path: dist/packages
+          if-no-files-found: error
+
+  publish:
+    name: Package, upload and draft the release
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      # Only to create or update the DRAFT GitHub release below.
+      contents: write
+
+    steps:
+      # Full history, because the packager derives the version and the
+      # changelog from git.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      # Decide, in one place, whether this run may upload. A missing variable
+      # or a hand-started run with `dry_run` on means `-d`: package, upload
+      # nothing.
+      - name: Decide between dry run and upload
+        id: mode
+        env:
+          DRY_RUN_INPUT: ${{ inputs.dry_run }}
+          CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          WAGO_ID: ${{ vars.WAGO_ID }}
+          WOWI_ID: ${{ vars.WOWI_ID }}
+        run: |
+          set -euo pipefail
+          if [[ "${DRY_RUN_INPUT}" == "true" ]]; then
+            reason="dry_run input is on"
+          elif [[ -z "${CURSEFORGE_PROJECT_ID}" || -z "${WAGO_ID}" || -z "${WOWI_ID}" ]]; then
+            reason="CURSEFORGE_PROJECT_ID, WAGO_ID or WOWI_ID is not set"
+          else
+            reason=""
+          fi
+          if [[ -n "${reason}" ]]; then
+            echo "Dry run: ${reason}."
+            echo "args=-d" >> "${GITHUB_OUTPUT}"
+          else
+            echo "Uploading to CurseForge, Wago and WoWInterface."
+            echo "args=-p ${CURSEFORGE_PROJECT_ID} -a ${WAGO_ID} -w ${WOWI_ID}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      # The framework has no .toc of its own; the packager cannot run without
+      # one. This writes a packaging-only MoltenCodes.toc that lists no files
+      # into this checkout. It is never committed.
+      - name: Write the packaging-only .toc
+        run: python3 -m tooling.release.library_toc > MoltenCodes.toc
+
+      # GITHUB_OAUTH is deliberately not passed: with it the packager would
+      # create a published GitHub release of its own.
+      - name: Package with the BigWigs packager
+        uses: BigWigsMods/packager@e50a250f8705041e40f2fa1ddcb280a686d65aa0 # v2.6.1
+        with:
+          args: ${{ steps.mode.outputs.args }}
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+          WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
+
+      - name: Download the bundles
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: artifacts
+
+      - name: Collect the release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find artifacts -name '*.zip' -exec cp {} release-assets/ \;
+          (cd release-assets && sha256sum -- *.zip > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      # Notes come from the tag's section of docs/RELEASES.md, or from the
+      # annotated tag's own message when there is no section.
+      # The tag message is read through the API rather than git: the checkout
+      # keeps no credentials (the packager is third-party code in this job),
+      # and actions/checkout replaces an annotated tag with a lightweight one.
+      - name: Write the release notes
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! python3 -m tooling.release.notes "${TAG}" > release-notes.md; then
+            object="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq .object.sha)"
+            gh api "repos/${GITHUB_REPOSITORY}/git/tags/${object}" --jq .message > release-notes.md \
+              || echo "Release ${TAG}." > release-notes.md
+          fi
+          cat release-notes.md
+
+      # Always a draft: a maintainer reviews it and publishes it by hand. An
+      # existing draft is updated in place; an already published release is
+      # never touched.
+      - name: Create or update the draft GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if is_draft="$(gh release view "${TAG}" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [[ "${is_draft}" != "true" ]]; then
+              echo "::error::Release ${TAG} is already published; refusing to modify it."
+              exit 1
+            fi
+            gh release edit "${TAG}" --draft --notes-file release-notes.md
+            gh release upload "${TAG}" release-assets/* --clobber
+          else
+            gh release create "${TAG}" --draft --verify-tag --title "${TAG}" \
+              --notes-file release-notes.md release-assets/*
+          fi

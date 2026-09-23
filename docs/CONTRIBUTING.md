@@ -109,6 +109,13 @@ runtime Lua, check it against this list:
 - [ ] A frame found by enumeration is touched only after `IsForbidden` and
       `CanBeAccessedInContext` allow it.
 
+## Releases
+
+Releases are cut by a maintainer following the procedure in
+[`RELEASES.md`](RELEASES.md#release-procedure). A contribution bumps the
+`version` of the packages it changes and updates their changelogs; it does not
+add a release section or a tag.
+
 ## Commit scope
 
 Prefer commits that represent one coherent change.

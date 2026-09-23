@@ -11,6 +11,11 @@ tooling/
 ├── spell-words.txt                 # the project dictionary cspell reads
 ├── package/
 │   └── build.py                   # assembles a checksummed distributable bundle
+├── release/
+│   ├── check_tag.py               # checks a v<SemVer> tag against RELEASES.md and the manifests
+│   ├── history.py                 # reads the release history in docs/RELEASES.md
+│   ├── library_toc.py             # prints the packaging-only MoltenCodes.toc
+│   └── notes.py                   # prints one release's notes
 ├── test/
 │   └── run.py                     # package-aware Busted orchestration
 ├── tests/                         # Python unit tests for repository tooling
@@ -240,6 +245,28 @@ standard tool.
 artifact layout, and the relationship to [`../.pkgmeta`](../.pkgmeta), which is
 what the addon-site packagers build from.
 
+## Release tooling: tags and notes
+
+`tooling/release/` supports the release workflow
+([`.github/workflows/release.yml`](../.github/workflows/release.yml)); the
+procedure is in [`RELEASES.md`](RELEASES.md#release-procedure).
+
+- `python3 -m tooling.release.check_tag v1.2.0` fails unless the tag is
+  `v<SemVer>`, `docs/RELEASES.md` has a `### v1.2.0` section under
+  `## Release history`, and every "`<packageId>` <version>" line in it names an
+  existing package, once, at exactly its manifest version. Errors carry the line
+  number in `RELEASES.md`.
+- `python3 -m tooling.release.notes v1.2.0` prints that section, which becomes
+  the draft GitHub release's text; it exits 1 when there is none, and the
+  workflow falls back to the annotated tag's message.
+- `python3 -m tooling.release.library_toc` prints the packaging-only
+  `MoltenCodes.toc` the BigWigs packager needs. It lists no files and takes its
+  `## Interface` line from the supported-client table.
+
+The release notes live in `RELEASES.md` rather than in a generated release
+manifest because the package manifests already are the machine-readable record
+of every version; a second file would be a second list to keep in step.
+
 ## Future tooling
 
 Tooling is added only when implemented. Empty placeholder directories are intentionally avoided because they imply capabilities that do not yet exist.
@@ -248,4 +275,4 @@ Likely future responsibilities include:
 
 - dependency-aware build ordering;
 - affected-package test selection;
-- release validation and publication.
+- per-package release tags wired to the release workflow.

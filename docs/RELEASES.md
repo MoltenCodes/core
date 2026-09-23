@@ -28,8 +28,21 @@ signalKit-v0.2.0
 ```
 
 A tag names the package whose `version` changed. Tagging several packages in one
-commit means several tags on that commit; there is no combined framework tag,
-because there is no combined framework version.
+commit means several tags on that commit.
+
+### Bundle release tags
+
+The framework bundle the addon sites carry is released under a second kind of
+tag:
+
+```text
+v<major>.<minor>.<patch>
+```
+
+for example `v0.1.0`. A bundle tag is a release of the *bundle*, not a version
+of any package: its section in [Release history](#release-history) lists the
+package versions it ships, and those stay the versions consumers depend on.
+Pushing a bundle tag starts the release workflow; a package tag does not.
 
 ## Before tagging: the supported clients
 
@@ -179,6 +192,101 @@ python3 -m tooling.spell
 stylua --check .
 ```
 
+## Release procedure
+
+Every step up to pushing the tag is done by a maintainer on their machine; the
+workflow takes over from there and stops at a draft.
+
+1. **Bump the package versions** that changed, in each
+   `packages/<name>/package.manifest.json`, with their changelogs. Bump `api`
+   or `revision` only under the rules in
+   [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md).
+2. **Check the supported clients** as described
+   [above](#before-tagging-the-supported-clients).
+3. **Write the release section.** Add `### v<version>` under
+   [Release history](#release-history), newest first, listing every package
+   version the bundle ships as "`<packageId>` <version>" lines, followed by the
+   notes. This section becomes the text of the GitHub release.
+4. **Check the tag before creating it:**
+
+   ```bash
+   python3 -m tooling.release.check_tag v<version>
+   ```
+
+   It fails when the section is missing, lists nothing, names a package that
+   does not exist or records a version the manifest does not have.
+5. **Run the gates** listed under [Failing closed](#failing-closed), commit, and
+   create a signed, annotated tag on that commit:
+
+   ```bash
+   git tag -s v<version> -m "v<version>"
+   ```
+
+6. **Push the tag** (`git push origin v<version>`). This is the step that starts
+   the release workflow, so it is taken only when the maintainer decides to
+   release.
+7. **The workflow** re-runs every gate on the tagged tree, builds the framework
+   bundle and one bundle per package, runs the packager (a dry run unless the
+   rules below allow an upload), and creates or updates a **draft** GitHub
+   release with the zips, a `SHA256SUMS.txt` over them, and the notes from
+   step 3.
+8. **Publish by hand.** Review the draft on GitHub and publish it. The workflow
+   never publishes a release, never pushes and never creates a tag.
+
+## The release workflow
+
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on a
+pushed `v*.*.*` tag, or by hand from the Actions tab with a `dry_run` input
+that defaults to on. It has three jobs:
+
+| Job | What it does |
+|---|---|
+| `verify` | `check_tag` for the tag, then every CI gate: repository validation, tooling unit tests, Lua tests, Selene, StyLua, lua-language-server and the spell check, on both supported Pythons. |
+| `build` | `tooling.package.build --all --zip --verify` for the framework, and `--package <id> --zip --verify` for every package the manifests list; each checked again with `sha256sum --check --strict` and uploaded as workflow artifacts. |
+| `publish` | Needs both. Writes the packaging-only `.toc`, runs the BigWigs packager, then attaches the zips and `SHA256SUMS.txt` to a draft GitHub release (tag runs only). |
+
+### Dry run
+
+The packager runs with `-d` — it packages but uploads nothing — whenever
+**either** of these is true:
+
+- the run was started by hand with `dry_run` on (the default);
+- any of the repository variables `CURSEFORGE_PROJECT_ID`, `WAGO_ID`,
+  `WOWI_ID` is unset.
+
+So until the site projects exist and their IDs are entered as variables,
+every run is a dry run, including tag pushes. A hand-started run from a branch
+packages and builds but never creates a GitHub release.
+
+### Variables and secrets
+
+None of these exist yet. They are created in the repository settings, under
+*Secrets and variables → Actions*, when the addon-site projects exist.
+
+| Name | Kind | Holds | Used by |
+|---|---|---|---|
+| `CURSEFORGE_PROJECT_ID` | variable | the CurseForge project ID | packager `-p` |
+| `WAGO_ID` | variable | the Wago Addons project ID | packager `-a` |
+| `WOWI_ID` | variable | the WoWInterface addon ID | packager `-w` |
+| `CF_API_KEY` | secret | a CurseForge API token | packager upload |
+| `WAGO_API_TOKEN` | secret | a Wago Addons API token | packager upload |
+| `WOWI_API_TOKEN` | secret | a WoWInterface API token | packager upload |
+
+The draft GitHub release uses the workflow's own `GITHUB_TOKEN`; no personal
+token is needed. `GITHUB_OAUTH` is deliberately not given to the packager,
+because with it the packager would create a published GitHub release of its
+own.
+
+### The packaging-only `.toc`
+
+The framework has no `.toc` in the repository, and the packager cannot run
+without one named after `package-as`. The `publish` job therefore writes
+`MoltenCodes.toc` into its own checkout with
+`python3 -m tooling.release.library_toc` just before packaging. It carries the
+supported `## Interface` line from the supported-client table, a title and
+`## Version: @project-version@`, and lists **no files**: an installed copy
+loads nothing. It is never committed.
+
 ## Publishing to CurseForge, Wago and WoWInterface
 
 [`.pkgmeta`](../.pkgmeta) at the repository root is the metadata the BigWigs
@@ -188,7 +296,8 @@ moved to `MoltenCodes/<packageId>/`.
 
 The framework is packaged as a library bundle, not as an addon: it has no `.toc`
 of its own, so TOC generation and "nolib" variants are both disabled. A consumer
-lists the framework's files in *their* addon's `.toc`.
+lists the framework's files in *their* addon's `.toc`. The release workflow
+supplies the packaging-only `.toc` described above.
 
 `tooling/tests/test_package_build.py` checks that `.pkgmeta` moves every package
 discovered from the manifests, so adding a package and forgetting the packager
@@ -196,6 +305,16 @@ metadata fails the tooling tests.
 
 ## What is not automated
 
-There is no publication step. Tagging, uploading and release notes are manual.
-Generated artifacts are never committed back into the repository; `dist/` and
-`build/` are ignored.
+Bumping versions, writing the release section, creating and pushing the tag,
+and publishing the draft GitHub release are manual, by design: the workflow
+prepares a release and never makes one public. Generated artifacts are never
+committed back into the repository; `dist/` and `build/` are ignored.
+
+## Release history
+
+Bundle releases, newest first, in the format
+[step 3](#release-procedure) describes. `python3 -m tooling.release.check_tag`
+reads this section; `python3 -m tooling.release.notes` prints one entry as the
+release notes.
+
+No bundle release has been tagged yet.

@@ -21,12 +21,15 @@ issecretvalue
 issecurevariable
 securecallfunction
 
-# World of Warcraft terms, and fragments of event names (`PLAYER_REGEN_ENABLED`).
+# World of Warcraft terms, and fragments of event and variable names
+# (`PLAYER_REGEN_ENABLED`, `CURSEFORGE_PROJECT_ID`, `WOWI_ID`).
 CLEU
+CURSEFORGE
 Pandaria
 REGEN
 spellbook
 Wago
+WOWI
 
 # Lua 5.1 standard library and language terms.
 collectgarbage
