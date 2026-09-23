@@ -962,16 +962,16 @@ and ships as one; (2) the packager's required TOC becomes a real standalone
 "MoltenCodes" addon that loads every release Kit, so an addon author may embed
 the Kits or depend on the installed addon, and Registry lets both coexist.
 
-- [ ] **tooling / workflow** — `release.yml` triggers on `v*.*.*` and on
+- [x] **tooling / workflow** — `release.yml` triggers on `v*.*.*` and on
       `<kit>-v*.*.*`; `check_tag` validates both forms (a package tag against
       that package's manifest and a `### <kit>-v<version>` section); a package
       tag builds and publishes that Kit alone.
-- [ ] **tooling** — `library_toc` produces the standalone addon's TOC (title,
+- [x] **tooling** — `library_toc` produces the standalone addon's TOC (title,
       notes, version placeholder, the site fields, `## Interface` from the
       supported-client table, every release Kit in load order); the builder
       writes it into the bundle root so the GitHub artifact installs as an
       addon too; the packager job uses the same generator.
-- [ ] **docs** — RELEASES.md states the two tag kinds and the standalone
+- [x] **docs** — RELEASES.md states the two tag kinds and the standalone
       addon; EMBEDDING.md gains "Embed or depend": `## OptionalDeps:
       MoltenCodes`, how Registry picks the newest copy, and what to do when an
       addon embeds Kits while the standalone addon is also installed; the root

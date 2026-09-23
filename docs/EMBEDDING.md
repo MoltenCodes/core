@@ -15,6 +15,7 @@ below explains why that example looks the way it does.
 - [Load order](#load-order)
 - [A complete example addon](#a-complete-example-addon)
 - [TOC fields and packaging](#toc-fields-and-packaging)
+- [Embed or depend](#embed-or-depend)
 - [Several addons, several copies](#several-addons-several-copies)
 - [Supported client versions](#supported-client-versions)
 - [Coexisting with LibStub](#coexisting-with-libstub)
@@ -34,9 +35,10 @@ on. The complete list is in the [root README](../README.md).
 
 Three properties matter to a consumer:
 
-- **A Kit is embedded, not installed.** You copy its Lua file into your addon
-  and list it in your `.toc`. There is no shared addon your users must download
-  and no dependency for them to get wrong.
+- **A Kit embeds, and the framework also installs.** You copy a Kit's Lua file
+  into your addon and list it in your `.toc`, so your users download nothing
+  else; or your addon depends on the installed `MoltenCodes` addon, which
+  loads every Kit. Both can be true at once (see [Embed or depend](#embed-or-depend)).
 - **A Kit is shared at runtime.** Ten addons can each ship their own copy of
   `SignalKit.lua`. Exactly one of those copies ends up executing, and all ten
   addons use it. That reconciliation is what `Registry` exists for.
@@ -410,20 +412,19 @@ uploads to somebody else's project or fails the build.
 
 ### `## Dependencies` and `## OptionalDeps` with embedded Kits
 
-**Never list MoltenCodes in `## Dependencies` (or its synonym
-`## RequiredDeps`).** Those fields name other *addons* that must be installed and
-enabled. The framework is not an addon: it has no `.toc`, nothing called
-`MoltenCodes` appears in the addon list, and an addon that declares it as a
-dependency never loads.
-
-**`## OptionalDeps` is not needed for the Kits either.** It only asks the client
-to load the named addons before yours when they are installed. Whether your copy
-of a Kit loads before or after another addon's copy makes no difference to
+**An addon that embeds its Kits needs neither field for them.** Whether your
+copy of a Kit loads before or after another addon's copy makes no difference to
 correctness: Registry selects the highest revision whichever order the copies
 arrive in, and every addon ends up with the same shared table (see
-[Several addons, several copies](#several-addons-several-copies)). Use
-`## OptionalDeps` for the standalone addons you integrate with, exactly as you
-would without the framework.
+[Several addons, several copies](#several-addons-several-copies)).
+
+**An addon that relies on the installed `MoltenCodes` addon declares
+`## OptionalDeps: MoltenCodes`**, so the client loads it first when it is
+present and still loads your addon when it is not. `## Dependencies:
+MoltenCodes` (or `## RequiredDeps`) is for an addon that ships no embedded copy
+and must not run without the framework; the client then disables the addon when
+`MoltenCodes` is missing, which is a worse experience than embedding a copy. The
+whole choice is laid out in [Embed or depend](#embed-or-depend).
 
 ### Pulling the Kits in with the packager (`externals`)
 
@@ -467,6 +468,46 @@ Three things to keep in mind:
   in [Troubleshooting](#troubleshooting).
 - **The load order is still yours.** `externals` puts the files on disk; your
   `.toc` or `embeds.xml` still lists them, Registry first.
+
+## Embed or depend
+
+There are two ways to give your addon the framework, and Registry lets them
+coexist in one session.
+
+**Embed.** Copy the Kits you use into `Libs/MoltenCodes/` and list them in your
+`.toc` in load order, as the rest of this document describes. Your addon works
+with nothing else installed, and you control which revision you ship.
+
+**Depend.** The release artifact also installs as a standalone addon named
+`MoltenCodes`, which loads every release Kit in order (a single-Kit release
+installs as `MoltenCodes-<Facade>`, for example `MoltenCodes-TimerKit`, and
+loads that Kit with its dependencies). An addon that relies on it declares:
+
+```toc
+## OptionalDeps: MoltenCodes
+```
+
+`OptionalDeps` makes the client load `MoltenCodes` before your addon when it is
+installed and load your addon anyway when it is not. Use `## Dependencies` only
+if your addon must refuse to load without the framework, because the client
+then disables your addon outright when `MoltenCodes` is missing; a friendlier
+addon embeds a copy as well and lists both.
+
+**Both at once.** An addon that embeds Kits while the standalone addon is also
+installed is the normal case the design was built for: the copies bootstrap
+through one Registry, the highest revision of each Kit wins in place, and every
+consumer keeps the table it already holds (see
+[Several addons, several copies](#several-addons-several-copies)). Two things
+follow for you as an author: never cache individual methods off a Kit, only the
+Kit table, and never assume your embedded copy is the one running, because a
+newer standalone install may have upgraded it. That is also why an embedded
+Kit reads its own revision through the Registry rather than a constant.
+
+**Which to choose.** Embed when you ship to users who install one addon and
+expect it to work; depend when you write for a community that already installs
+`MoltenCodes`, or when several of your addons would otherwise carry the same
+Kits. Libraries you publish for other authors should embed, so they impose no
+install step.
 
 ## Several addons, several copies
 

@@ -35,9 +35,10 @@ This repository is a monorepo. Every publishable runtime package lives under `pa
 
 ## Using the framework in an addon
 
-The framework is embedded, not installed: you copy the Kits you need into your
-addon and list them in your `.toc`. There is nothing for your users to download
-separately, and several addons shipping different copies of the same Kit
+The framework embeds or installs: you copy the Kits you need into your addon
+and list them in your `.toc`, or your addon depends on the installed
+`MoltenCodes` addon that loads every Kit. Embedded copies leave nothing for
+your users to download separately, and several addons shipping different copies of the same Kit
 reconcile to one shared instance at runtime.
 
 - [`docs/EMBEDDING.md`](docs/EMBEDDING.md) is the guide: directory layout, load
@@ -55,11 +56,14 @@ Build the artifact you embed:
 python3 -m tooling.package.build --all --out dist
 ```
 
-This writes `dist/MoltenCodes/` in the layout an addon embeds, a `manifest.json`
+This writes `dist/MoltenCodes/` in the layout an addon embeds, with a
+`MoltenCodes.toc` so the same folder also installs as a standalone addon that
+addons may depend on (`## OptionalDeps: MoltenCodes`), a `manifest.json`
 recording every package's version, API generation, revision and the load order,
 and SHA-256 checksums in `dist/CHECKSUMS.txt`. Published artifacts come from the
 same layout through [`.pkgmeta`](.pkgmeta); see
-[`docs/RELEASES.md`](docs/RELEASES.md).
+[`docs/RELEASES.md`](docs/RELEASES.md) and the "Embed or depend" section of
+[`docs/EMBEDDING.md`](docs/EMBEDDING.md).
 
 ## Quick start
 
