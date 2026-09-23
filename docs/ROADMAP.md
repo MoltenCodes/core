@@ -617,6 +617,166 @@ the WowAce directory item W6 (a shared validation core).
 - [ ] A publish workflow on tags through the packager to the addon sites, in
       dry-run until the site projects exist.
 
+#### Package D planned Kits — the nine points
+
+Recorded 2026-09-23, before implementation. Sources: the phase 4 reference
+notes on Ace3 (AceSerializer C8, AceComm and ChatThrottleLib C9), the WowAce
+directory (LibDeflate, LibSerialize, LibCompress, LibMSP, WoWUnit: items W7
+and W9) and the WeakAuras media pack (LibSharedMedia).
+
+**codecKit** — facade `CodecKit`
+
+1. Package `codecKit`, facade `CodecKit`, API generation 1.
+2. Purpose: turn Lua values into transport-safe strings and back in three
+   composable stages behind one self-describing header byte: serialise
+   (strings, numbers including floats that do not survive `tostring`,
+   booleans, nil, acyclic tables), compress (a DEFLATE-class codec written
+   in pure Lua, yielding in blocks when run under a scheduler), and
+   channel-encode (escape for the addon channel, or printable 7-bit for
+   chat and export strings). Decoding never raises on malformed input.
+   Non-goals: functions, userdata, metatables, shared-reference
+   preservation (cycles are detected and refused), encryption,
+   cross-language formats.
+3. Dependencies: registry API 2; poolKit API 1 (leased fragment buffers);
+   schedulerKit API 1 optional through `Registry:Find` (asynchronous
+   variants).
+4. Surface: `CodecKit:Encode(value, options)` → `true, string` or `false,
+   reason` with `options.compress` (`"none" | "deflate"`), `options.channel`
+   (`"addon" | "print"`); `CodecKit:Decode(string, options)` → `true, value`
+   or `false, reason` (the header says which stages to reverse; an unknown
+   header version is refused with a clear reason); the stages alone:
+   `Serialize` / `Deserialize`, `Compress` / `Decompress`, `EncodeForAddon`
+   / `EncodeForPrint` and their inverses; `CodecKit:EncodeAsync(value,
+   options, scope, callback)` and `DecodeAsync` running in blocks on a
+   schedulerKit scope under the frame budget; `CodecKit:SetLimits{ maxDepth,
+   maxValues, maxStringLength, maxOutputBytes }` / `GetLimits()`, all bounded
+   by default and documented as shared by every consumer;
+   `CodecKit.FORMAT_VERSION`.
+5. Ownership: stateless apart from limits; buffers are leased from a poolKit
+   table pool per call and returned, so calls are re-entrant.
+6. Performance: one `table.concat` per encode; single-pass decode; every
+   limit named in the refusal; compression cost documented per kilobyte
+   and yielding in the asynchronous form so a large export never freezes a
+   frame.
+7. Tests: round-trip of every type and edge (control bytes, the escape
+   byte, empty and long strings, integers past 2^53, `math.huge`, NaN,
+   denormals), nested and mixed tables, nil in the middle of an argument
+   list, cycle refusal, every limit, malformed input of every shape never
+   raising, a fuzz pass over random bytes, compression round-trips against
+   known vectors, asynchronous encode under a budget with the scheduler
+   stub, allocation guard, upgrade, manifest, error levels.
+8. Docs: README, API.md specifying the wire format byte by byte with the
+   header and extension rules, the type matrix and the security note that
+   decoded data is untrusted; INTERNALS.md (compressor design); CHANGELOG.
+9. Status: planned (package D).
+
+**commKit** — facade `CommKit`
+
+1. Package `commKit`, facade `CommKit`, API generation 1.
+2. Purpose: addon messaging of arbitrary length with prefix registration,
+   chunking and reassembly, priority queues that refuse rather than grow, a
+   bandwidth budget shared with everything else in the session (including
+   traffic sent outside the Kit, measured through a secure hook), bounded
+   per-sender reassembly with expiry, payload-driven channel selection, and
+   a content-hash `SyncSet` for versioned fields with delta replies.
+   Non-goals: serialisation (codecKit), encryption, guaranteed delivery or
+   ordering across priorities, exceeding the client's rate limits.
+3. Dependencies: registry API 2, signalKit API 1, eventKit API 1
+   (`CHAT_MSG_ADDON`), schedulerKit API 1 (the despool driver is a lane that
+   exists only while something is queued), poolKit API 1 (message and chunk
+   records); codecKit API 1 and hookKit API 1 optional through
+   `Registry:Find` (hashing for SyncSet, the outside-traffic hook);
+   lifecycleKit API 1 for addon scopes.
+4. Surface: `CommKit:ForAddon(addonName)` / `CreateScope()`;
+   `scope:Register(prefix, callback)` → connection (callback receives
+   `prefix, text, distribution, sender` and never a partial message);
+   `scope:Send{ prefix, text, distribution, target, priority, constraints,
+   onProgress, onComplete }` → send handle or `nil, reason` when a bound
+   would be exceeded (`"queueFull"`, `"tooLarge"`, `"closed"`); handle
+   `Cancel()`, `GetState()`, `GetBytesSent()`, `GetBytesTotal()`;
+   `CommKit.Priority.ALERT | NORMAL | BULK`; `scope:SyncSet(prefix, {
+   fields, schema })` → `Set(field, value)`, `Request(target)`,
+   `OnChanged(callback)`; package `GetQueueDepth(priority)`, `GetBudget()`,
+   `SetLimits{ maxQueuedBytes, maxQueuedMessages, maxReassemblyStreams,
+   maxReassemblyBytesPerSender, maxInFlightPerSender, reassemblyTimeout }`,
+   `GetStatistics()`.
+5. Ownership: a registration belongs to a scope, released on close and at
+   shutdown; reassembly streams keyed by prefix, distribution and sender,
+   bounded in count, bytes and time, evicted on peer departure; an evicted
+   stream is reported once per stream.
+6. Performance: every queue bounded in messages and bytes with a named
+   refusal; the single-chunk receive path allocates no table; per-destination
+   round-robin inside a priority; no per-frame handler while idle; frame
+   rate sampled on a timer, never on the hot path; adaptive degradation of
+   the budget below 20 frames per second and for five seconds after login or
+   zoning.
+7. Tests: chunking at every boundary, reassembly in and out of order, a
+   missing chunk, interleaved streams from one sender, a stream that never
+   completes and expires, a hostile chunk header refused at quota, every
+   bound reached with the refusal surfaced, priority fairness and
+   round-robin, the throttled result putting a pipe aside, budget accounting
+   with a simulated outside sender, cancel while queued and mid-send, scope
+   close and shutdown mid-send, SyncSet delta and ack, statistics, all
+   against the stubbed client and clock; upgrade; manifest; error levels.
+8. Docs: README, API.md specifying the chunk protocol byte by byte, the
+   bounds and their defaults, the priority model, the shared-bandwidth
+   statement and the security note that received data is untrusted;
+   INTERNALS.md; CHANGELOG; EMBEDDING.md host row (`C_ChatInfo`).
+9. Status: planned (package D, after codecKit).
+
+**mediaKit** — facade `MediaKit`
+
+1. Package `mediaKit`, facade `MediaKit`, API generation 1.
+2. Purpose: a typed registry of named media (font, statusbar, border,
+   background, sound, texture, icon), each entry a path or a FileDataID,
+   fonts carrying the scripts they cover, with deterministic sorted listing,
+   per-consumer defaults and change signals; mirrors registrations into
+   LibSharedMedia when it is present and adopts its entries read-only so
+   existing packs stay visible. Non-goals: shipping media, global user
+   overrides (a consumer's saved variables do that).
+3. Dependencies: registry API 2, signalKit API 1; LibStub and
+   LibSharedMedia-3.0 optional at runtime through the LibStub bridge.
+4. Surface: `MediaKit:Register(type, name, data, options)` (`options.scripts`
+   for fonts, refused for a duplicate name with `nil, "taken"`),
+   `Fetch(type, name)`, `Has(type, name)`, `List(type)` (cached sorted
+   array rebuilt after a registration, documented as shared and read-only),
+   `OnRegistered(type, callback)`, `AdoptLibSharedMedia()`, `IsFileDataID(data)`.
+5. Ownership: one session-wide registry in package state; connections belong
+   to their creator; upgrades keep entries.
+6. Performance: registration at load time; `Fetch` one table read; `List`
+   rebuilt only after a registration; entries bounded per type
+   (`maxEntriesPerType` 1024).
+7. Tests: sorted listing determinism, script filtering by client locale,
+   FileDataID and path both typed, duplicate refusal, mirror both ways with
+   a LibSharedMedia stub, no allocation on `Fetch`, upgrade, manifest,
+   error levels.
+8. Docs: README, API.md, CHANGELOG; EMBEDDING.md host row.
+9. Status: planned (package D).
+
+**testKit** — facade `TestKit`
+
+1. Package `testKit`, facade `TestKit`, API generation 1. A development-only
+   package, excluded from release bundles by `.pkgmeta`.
+2. Purpose: run suites inside the client against LifecycleKit phases, which
+   is the only way to test real event order and payload shapes, combat
+   lockdown, taint (asserting `issecurevariable` after our code runs) and
+   the fidelity of the shared test fixture. Non-goals: replacing Busted.
+3. Dependencies: registry API 2, lifecycleKit API 1, schedulerKit API 1.
+4. Surface: `TestKit:Suite(name, { phase })` → suite with `Test(name, fn)`
+   whose context offers `Replace(table, key, value)` (restored after each
+   test, also on failure), `Yield()`, `WaitFor(event, timeoutSeconds)`,
+   `Expect(...)` assertions that never print secret values; `TestKit:Run(filter)`,
+   `TestKit:Report()` → structured results a slash command can dump for
+   comparison with the Busted run; a fixture-fidelity suite shipped in
+   `tests/` that runs the same assertions in both environments.
+5. Ownership: every replacement restored per test; suites bounded
+   (`maxSuites` 64, `maxTests` 256 per suite).
+6. Performance: zero cost unless loaded; never in a release bundle.
+7. Tests: Busted specs for the harness itself (restore on error, tallying,
+   async timeouts, filter), plus the fixture-fidelity suite.
+8. Docs: README, API.md, CHANGELOG; a TESTING.md layer "in-client suites".
+9. Status: planned (package D).
+
 #### Package E — the last and largest
 
 - [ ] `widgetKit` — pooled, versioned widgets and layout, consumed by
