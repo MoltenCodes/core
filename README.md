@@ -9,7 +9,7 @@ This repository is a monorepo. Every publishable runtime package lives under `pa
 | Package | Status | Purpose |
 |---|---|---|
 | [`registry`](packages/registry/) | Implemented | Zero-dependency shared package registration, discovery, and in-place revision upgrades. |
-| [`signalKit`](packages/signalKit/) | Implemented | Deterministic, re-entrant pure-Lua callback dispatch with explicit connection lifetimes. |
+| [`signalKit`](packages/signalKit/) | Implemented | Deterministic, re-entrant pure-Lua callback dispatch with explicit connection lifetimes, and named message buses with a declared topic policy. |
 | [`eventKit`](packages/eventKit/) | Implemented | Lazy World of Warcraft event subscriptions backed by SignalKit, including unit-event filtering. |
 | [`lifecycleKit`](packages/lifecycleKit/) | Implemented | Replay-aware per-addon loading, readiness, and shutdown coordination, a shared combat gate with a bounded out-of-combat queue, and a halted state announced to dependents. |
 | [`moduleKit`](packages/moduleKit/) | Implemented | Addon-scoped module lifecycle, dependency graphs, dependency injection, and automatic/strict dependency policies. |
@@ -20,6 +20,9 @@ This repository is a monorepo. Every publishable runtime package lives under `pa
 | [`cacheKit`](packages/cacheKit/) | Implemented | Bounded LRU and TTL caches, memoisation, snapshots with diffs and clear-on-event. |
 | [`profileKit`](packages/profileKit/) | Implemented | Zero-cost-when-off performance sections with count, total, spike and a sorted report. |
 | [`readinessKit`](packages/readinessKit/) | Implemented | Named readiness gates for host data that arrives after load: polling, timeouts, negative caching and bounded waiters. |
+| [`schemaKit`](packages/schemaKit/) | Implemented | Sealed value schemas with structured, secret-safe failures: one validation core for arguments, saved variables, options and received messages. |
+| [`localeKit`](packages/localeKit/) | Implemented | Per-addon translations at the cost of one table, missing-key reporting and coverage, indexed format specifiers. |
+| [`hookKit`](packages/hookKit/) | Implemented | Reversible, secure-first hooking of functions, methods and frame scripts in three named semantics. |
 
 ## Using the framework in an addon
 
@@ -103,7 +106,10 @@ python3 -m tooling.spell
 │   ├── clientKit/
 │   ├── cacheKit/
 │   ├── profileKit/
-│   └── readinessKit/
+│   ├── readinessKit/
+│   ├── schemaKit/
+│   ├── localeKit/
+│   └── hookKit/
 ├── pyproject.toml           # Python tooling metadata and the supported floor
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua

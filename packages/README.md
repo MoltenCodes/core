@@ -20,3 +20,6 @@ Current packages:
 - [`cacheKit`](cacheKit/) — bounded LRU and TTL caches, memoisation, snapshots with diffs, clear-on-event.
 - [`profileKit`](profileKit/) — zero-cost-when-off performance sections with count, total, spike and a report.
 - [`readinessKit`](readinessKit/) — named readiness gates for late host data: polling, timeouts, negative caching, bounded waiters.
+- [`schemaKit`](schemaKit/) — sealed value schemas with structured, secret-safe failures; the validation core for arguments, saved variables, options and messages.
+- [`localeKit`](localeKit/) — per-addon translations, missing-key reporting and coverage, indexed format specifiers.
+- [`hookKit`](hookKit/) — reversible, secure-first hooking of functions, methods and frame scripts.

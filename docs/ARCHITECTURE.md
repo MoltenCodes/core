@@ -16,6 +16,9 @@ packages/
 ├── cacheKit/
 ├── profileKit/
 ├── readinessKit/
+├── schemaKit/
+├── localeKit/
+├── hookKit/
 ├── <future-package>/
 └── ...
 ```
@@ -24,7 +27,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -65,6 +68,9 @@ registry
 ├──→ clientKit
 ├──→ cacheKit
 ├──→ profileKit
+├──→ schemaKit
+├──→ localeKit
+├──→ hookKit
 ├──→ poolKit
 └──→ signalKit
        ↓
@@ -191,3 +197,11 @@ The first dependency layer above Registry is `signalKit`. SignalKit uses Registr
 `profileKit` depends only on Registry API 2. It measures named sections with count, total, spike and last time from `debugprofilestop`, costs a table read and a call while disabled, and refuses sections beyond a fixed cap instead of growing.
 
 `readinessKit` depends directly on Registry API 2 and TimerKit API 1. It owns named gates for host data that arrives after load: one probe per gate, polling on one TimerKit repeating timer per pending gate in a Kit-owned scope, timeouts, negative caching and bounded FIFO waiters. It sits above TimerKit because a timeout needs a timer, and LifecycleKit's phases stay one-shot. Re-probing on a host event resolves EventKit at call time through `Registry:Find("eventKit", 1)`, so it adds no edge to the load order.
+
+`schemaKit` depends only on Registry API 2. It is the shared validation core for values from outside a Kit (arguments, saved variables, options, received messages): immutable builder nodes compile into a flat checker, sealed schemas report `{ path, rule, expected, found }` failures that never contain the value, a valid check allocates nothing, depth (16) and collection sizes are bounded, and secret values are refused before any comparison through `issecretvalue` looked up per check.
+
+`localeKit` depends only on Registry API 2. It keeps one read table per addon. Translation files write through per-call proxies: the client-locale proxy overwrites, the default proxy does not. Files for locales the client does not need get `nil` and allocate nothing. Missing keys are stored as themselves and reported once through the host error handler, and `Format` supports indexed specifiers so translators can reorder arguments.
+
+`hookKit` depends only on Registry API 2. It owns reversible hooks in three named semantics (secure post-hook over `hooksecurefunc` / `HookScript`, safe pre-hook, raw replacement), refuses non-secure hooks of secure targets and of protected scripts, and keeps records per scope in weak-keyed tables. ClientKit is found at call time through `Registry:Find` for `IsSecret`, so it adds no edge to the load order.
+
+`signalKit` also carries the named message bus: a bus is a name-to-signal map with a declared topic policy, so two modules or two addons that share no reference can talk while dispatch, ordering and re-entrancy stay SignalKit's own; listener errors on a bus are isolated and reported because a bus is a cross-addon boundary.

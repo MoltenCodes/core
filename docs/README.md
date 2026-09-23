@@ -43,6 +43,9 @@ Current package entry points:
 - [`CacheKit`](../packages/cacheKit/README.md) — bounded LRU and TTL caches, memoisation, snapshots with diffs.
 - [`ProfileKit`](../packages/profileKit/README.md) — zero-cost-when-off performance sections and a sorted report.
 - [`ReadinessKit`](../packages/readinessKit/README.md) — named readiness gates for late host data: polling, timeouts, negative caching, bounded waiters.
+- [`SchemaKit`](../packages/schemaKit/README.md) — sealed value schemas with structured, secret-safe failures, defaults and descriptions.
+- [`LocaleKit`](../packages/localeKit/README.md) — per-addon translations, missing-key reporting and coverage, indexed format specifiers.
+- [`HookKit`](../packages/hookKit/README.md) — reversible, secure-first hooking in three named semantics.
 
 Each package keeps its complete public contract under its own `docs/API.md`.
 

@@ -30,6 +30,7 @@ Wago
 
 # Lua 5.1 standard library and language terms.
 collectgarbage
+getmetatable
 gsub
 luac
 metamethod

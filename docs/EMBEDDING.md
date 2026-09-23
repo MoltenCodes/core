@@ -127,6 +127,9 @@ registry
 ├──→ clientKit
 ├──→ cacheKit
 ├──→ profileKit
+├──→ schemaKit
+├──→ localeKit
+├──→ hookKit
 ├──→ poolKit
 └──→ signalKit
        ↓
@@ -149,13 +152,16 @@ cacheKit/CacheKit.lua
 clientKit/ClientKit.lua
 signalKit/SignalKit.lua
 eventKit/EventKit.lua
+hookKit/HookKit.lua
 lifecycleKit/LifecycleKit.lua
+localeKit/LocaleKit.lua
 moduleKit/ModuleKit.lua
 poolKit/PoolKit.lua
 profileKit/ProfileKit.lua
 timerKit/TimerKit.lua
 readinessKit/ReadinessKit.lua
 schedulerKit/SchedulerKit.lua
+schemaKit/SchemaKit.lua
 ```
 
 You can list the files directly in your `.toc`:
@@ -448,7 +454,11 @@ actually touch, which is deliberately small:
 
 | Kit | Requires | Degrades gracefully without |
 |---|---|---|
-| `registry`, `signalKit`, `poolKit`, `moduleKit` | nothing but Lua 5.1 | — |
+| `registry`, `poolKit`, `moduleKit` | nothing but Lua 5.1 | — |
+| `signalKit` | nothing but Lua 5.1 | `securecallfunction` (bus deliveries fall back to `xpcall`), `geterrorhandler` (falls back to `print`), `issecretvalue` (only guards a validator's refusal reason) |
+| `schemaKit` | nothing but Lua 5.1 | `issecretvalue` (looked up at every check; absent: nothing is treated as secret) |
+| `localeKit` | nothing but Lua 5.1 | `GetLocale` (client locale `enUS`), `geterrorhandler` (missing-key reports fall back to `print`), `issecretvalue` (`Format` treats nothing as secret) |
+| `hookKit` | nothing but Lua 5.1 | `hooksecurefunc` (`SecureHook` raises at the caller), `issecurevariable` (nothing treated as secure), `Frame:HookScript` / `Frame:GetScript` / `Frame:SetScript` (the matching script hooks raise at the caller), `Frame:IsProtected` (frame not protected), `InCombatLockdown` (never in combat), ClientKit API 1 (`issecretvalue`) |
 | `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript` | `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`) |
 | `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat) |
 | `readinessKit` | TimerKit's surface | `GetTimePreciseSec` (negative cache disabled, timeouts counted in polls), EventKit API 1 through `Registry:Find` (`gate:ReprobeOn` raises at the caller) |
@@ -642,6 +652,10 @@ a defect:
 
 1. **Post-hook, never replace.** Use `hooksecurefunc` (or a post-hook on a
    script) and never assign over a Blizzard global, method or script handler.
+   `HookKit` (package `hookKit`) implements this rule: `SecureHook` and
+   `SecureHookScript` are reversible post-hooks, and a non-secure hook of a
+   secure target is refused without `options.forceSecure`; see
+   [`hookKit/docs/API.md`](../packages/hookKit/docs/API.md).
 2. **Never attach your own tables or fields to a frame Blizzard code indexes.**
    Keep your per-frame state in a table of your own, keyed by the frame.
 3. **Delete, do not overwrite, a key you tainted by mistake.** Another value

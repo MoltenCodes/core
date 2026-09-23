@@ -69,3 +69,6 @@ move-folders:
   MoltenCodes/packages/cacheKit/src: MoltenCodes/cacheKit
   MoltenCodes/packages/profileKit/src: MoltenCodes/profileKit
   MoltenCodes/packages/readinessKit/src: MoltenCodes/readinessKit
+  MoltenCodes/packages/schemaKit/src: MoltenCodes/schemaKit
+  MoltenCodes/packages/localeKit/src: MoltenCodes/localeKit
+  MoltenCodes/packages/hookKit/src: MoltenCodes/hookKit
