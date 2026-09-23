@@ -335,9 +335,20 @@ Two rules from the project constraints apply:
   as "undocumented" for tooling, but no wrapper is generated for them until
   a documented source exists.
 
-Whether Blizzard's documentation prose (the `Documentation` strings in the
-tables) is carried into the LuaCATS hover text and the reference is an open
-decision for the project owner; see the roadmap entry.
+Blizzard's documentation prose (the `Documentation` strings in the tables)
+is carried into the LuaCATS hover text and the reference, with provenance
+recorded beside it (decided 2026-09-23). The same text is republished by the
+community references addon authors already use; the wrapper gives it a typed,
+flavour-correct home rather than a second wording.
+
+### 12.1 Versioning a metadata refresh
+
+A refresh of one or more flavours to a newer build is at least a **minor**
+version of `apiKit`, with the generated change report summarised in the
+changelog. An entry Blizzard removed is noted in the changelog as breaking
+for that flavour. The API generation stays at 1 as long as the facade contract
+in `docs/API.md` does not move: the generated surface is data, not the
+contract (decided 2026-09-23).
 
 ## 13. Outputs
 
@@ -348,7 +359,7 @@ From one metadata capture per flavour the tooling produces:
 | Normalised metadata (source of truth) | `packages/apiKit/metadata/<flavour>/*.json` | yes |
 | Runtime bindings | `packages/apiKit/src/flavours/<Flavour>.lua` | yes |
 | LuaCATS definitions | `packages/apiKit/types/<flavour>/*.lua` | yes |
-| Markdown reference | `packages/apiKit/docs/reference/<flavour>/` | yes (revisited if size becomes a problem) |
+| Markdown reference | `packages/apiKit/docs/reference/<flavour>/` | yes, provisionally; decided with the owner after the Retail capture (H4) shows its size |
 | Search index | `packages/apiKit/metadata/<flavour>/search.json` | yes |
 | Build-to-build change report | `packages/apiKit/docs/changes/<flavour>/<from>-<to>.md` | yes |
 

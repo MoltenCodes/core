@@ -1108,14 +1108,14 @@ begins; H4 to H6 may overlap where they do not share files.
       versioned) updated; performance review written; acceptance review;
       `API_KIT_DESIGN.md` checked against what shipped.
 
-Open for the project owner before H1: whether Blizzard's documentation prose
-is carried into hover text and the reference (recommendation: yes, with
-provenance, since the same text is republished by the community references
-addon authors already use); how a metadata refresh is versioned
-(recommendation: a minor version per refresh with the change report in the
-changelog, a removal noted as breaking for that flavour, the API generation
-unchanged because the facade contract does not move); whether the generated
-Markdown reference stays committed once its size is known.
+Settled with the project owner on 2026-09-23, before H1: Blizzard's
+documentation prose is carried into hover text and the reference with
+provenance; a metadata refresh is a minor version with the change report in
+the changelog, a removal noted as breaking for that flavour, the API
+generation unchanged because the facade contract does not move (design
+document, section 12.1). Still open: whether the generated Markdown reference
+stays committed, decided in H4 once the Retail capture shows its size.
+Implementation starts only on the owner's explicit go.
 
 ### Standing obligations
 
