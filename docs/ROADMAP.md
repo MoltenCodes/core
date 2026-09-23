@@ -137,11 +137,108 @@ Repository mechanics that keep the above honest as the framework grows.
 - [x] Write `packages/moduleKit/docs/INTERNALS.md` describing the dependency
       graph and resolution order.
 
-### Phase 4 — New Kits
+### Phase 4 — Growing the framework from what the ecosystem taught
 
-- [ ] Record the nine points from "Planned package policy" below for a Kit
-      **before** implementing it.
-- [ ] Implement accepted Kits one at a time, each meeting the definition of done.
+Decided 2026-09-23 after a study of seven references (Ace3 and LibStub,
+LibRangeCheck-3.0, LibSpellRange-1.0, WeakAuras_SharedMedia, LibGetFrame-1.0,
+and the 309-entry WowAce library directory). Ideas and designs were taken,
+never code. The work is sequenced in five packages, A to E; each package ends
+with an acceptance review before the next begins. A new Kit is recorded here
+with the nine points of the "Planned package policy" before its code is
+written; capabilities added to an existing Kit are checkboxes under that Kit.
+
+Decisions taken for the sequence: one `clientKit` holds both client detection
+and compatibility shims; the combat gate lives in `lifecycleKit`; `codecKit`
+is three stages (serialise, compress, channel-encode) rather than a bare
+serialiser; `schemaKit` is the shared validation core written before the Kits
+that use it; `settingsKit` v1 ships profiles, spec-aware profiles and
+namespaces follow in v2; event coalescing and scheduler lanes are one design.
+
+#### Package A — the gaps the references exposed in existing Kits
+
+- [ ] **eventKit** — owner scopes: `CreateScope`, `scope:Connect/Once/ConnectUnit`,
+      `scope:DisconnectAll`, `scope:Close`, mirroring timerKit; bulk teardown
+      of an addon's subscriptions in one call.
+- [ ] **timerKit** — `timer:GetRemaining()` and `timer:GetDeadline()` from the
+      monotonic clock, `nil` (never `0`) when the timer is not running.
+- [ ] **poolKit** — generation stamping: objects built by a superseded factory
+      are recognised after an in-place upgrade and retired rather than reused.
+- [ ] **poolKit** — pools for objects that can never be freed (frames): a
+      creation cap, a live limit with a bounded waiting queue, cascading
+      release of children, and release deferred until an animation ends.
+- [ ] **moduleKit** — automatic teardown: what a module registered through the
+      framework while enabled (events, timers, scheduler jobs) is released
+      when it is disabled, without the module writing an `OnDisable`.
+- [ ] **moduleKit** — intent versus fact: "wanted enabled" recorded separately
+      from "is enabled", so a module blocked by a failed dependency is
+      enabled again when the dependency recovers.
+- [ ] **registry** — `Find(package, api)` (silent lookup for optional
+      dependencies) and `Packages()` (sorted enumeration for diagnostics).
+- [ ] **registry** — retirement and migration: the outgoing copy hands its
+      state over and disables its own entry points; the incoming copy runs
+      per-revision migrations in order.
+- [ ] **registry** — sealed facades: an option on `Bootstrap` that refuses
+      writes to a published facade from outside its package.
+- [ ] **docs / meta / tooling** — secret values (`issecretvalue`) and
+      restricted frame access (`IsForbidden`, `CanBeAccessedInContext`) in
+      the taint section and in `meta/wow`; one validated table of supported
+      `## Interface` numbers used by every document, the example and the
+      packager; the TOC fields the addon sites read; the `externals` form for
+      consumers; a spell-check gate.
+
+#### Package B — foundations every later Kit needs
+
+- [ ] `clientKit` — client flavour, build floor, capability flags, normalised
+      shims, `IsSecret`, `CanAccessFrame`, event validity probes.
+- [ ] `cacheKit` — bounded LRU and TTL caches, `Memoize`, diffed `Snapshot`,
+      clear-on-event.
+- [ ] `profileKit` — zero-cost-when-off performance sections with count, total
+      and spike, and a report.
+- [ ] **schedulerKit** — `Debounce`, `Coalesce`, `Watch`, and lanes that
+      ration a shared resource (in flight, interval, retry, backoff), designed
+      with **eventKit** coalescing and `Derive` as one family.
+- [ ] `readinessKit` — gates for host data that arrives after load, with
+      timeouts and negative caching.
+- [ ] **lifecycleKit** — the combat gate (one lockdown state, a bounded
+      "run when out of combat" queue) and a halted state announced to
+      dependents.
+
+#### Package C — the consumer story
+
+- [ ] `schemaKit` — sealed schemas with structured failures, shared by
+      settings, options and messaging.
+- [ ] `settingsKit` — saved variables with scopes, wildcard defaults,
+      profiles and versioned migrations (v1: profiles; v2: spec-aware profiles
+      and namespaces).
+- [ ] `localeKit` — translations per locale, missing-key reporting, indexed
+      format specifiers.
+- [ ] `hookKit` — secure-first, reversible hooking, released with the module.
+- [ ] **signalKit** — a named message bus with a validated topic policy.
+- [ ] `optionsKit` — typed, validated, introspectable options schema with no
+      renderer.
+- [ ] `commandKit` — slash commands, hyperlink-aware argument parsing,
+      output sinks, schema binding, tab completion.
+
+#### Package D — interoperability and distribution
+
+- [ ] `codecKit` — serialise, compress and channel-encode as three stages
+      behind a one-byte header; asynchronous variants under the scheduler
+      budget.
+- [ ] `commKit` — addon messaging: prefixes, chunking, bounded reassembly,
+      priority queues that reject rather than grow, content-hash sync sets.
+- [ ] `mediaKit` — a typed media registry mirroring LibSharedMedia when it is
+      present.
+- [ ] **registry** — the LibStub bridge (expose to LibStub, adopt from it).
+- [ ] `testKit` — test suites that run inside the client.
+- [ ] A publish workflow on tags through the packager to the addon sites, in
+      dry-run until the site projects exist.
+
+#### Package E — the last and largest
+
+- [ ] `widgetKit` — pooled, versioned widgets and layout, consumed by
+      `optionsKit`.
+- [ ] Update `docs/EMBEDDING.md`, the example addon and the package bundle for
+      every new Kit; final acceptance review.
 
 ### Standing obligations
 
