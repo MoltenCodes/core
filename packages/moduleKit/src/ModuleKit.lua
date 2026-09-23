@@ -11,26 +11,36 @@
 --   Validation helpers ... Argument checks and definition-mutability rules.
 --   Graph ................ Edge construction, cycle reporting, topological order.
 --   Dependency injection . Provider registration, scoped resolution, cycles.
---   Module scopes ........ Per-module timer, event and job scopes released on
---                          disable, resolved through `Registry:Find`.
+--   Module scopes ........ Per-module timer, event, job, hook and message
+--                          scopes released on disable, resolved through
+--                          `Registry:Find`.
 --   Lifecycle operations . Single-module transitions, dependency policies,
 --                          intent versus fact, recovery of blocked dependents,
---                          whole-container passes and deferred catch-up.
+--                          halted addons, whole-container passes and deferred
+--                          catch-up.
 --   Module public API ..... Methods installed on the shared Module prototype.
 --   Addon public API ...... Methods installed on the shared Addon prototype.
---   Addon creation ........ Container identity and LifecycleKit subscriptions.
+--   Addon creation ........ Container identity and LifecycleKit subscriptions,
+--                           including the halted notices.
 --   Commit ................ Publishing the public surface and runtime dispatch.
 --
 -- `docs/INTERNALS.md` explains the graph algorithm, the failure model, the
 -- lifecycle replay hazard that the dispatched-phase set guards against, module
--- scopes, and the intent-versus-fact enable state.
+-- scopes, the intent-versus-fact enable state, and halted addons.
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
+
+-- The most addons one module may name in `requiresAddons`. It matches the
+-- number of dependencies LifecycleKit lets one addon declare with `DependsOn`.
+local MAX_REQUIRED_ADDONS = 16
+
+-- The `blockedBy` value of every wanted module once its own addon has halted.
+local OWN_ADDON_HALTED = "halted"
 
 -- Public types --------------------------------------------------------------
 --
@@ -57,6 +67,7 @@ local STATE_SCHEMA = 1
 ---@field before string[]? modules this one must precede
 ---@field after string[]? modules this one must follow
 ---@field inject table<string, string>? alias-to-provider/module-name map
+---@field requiresAddons string[]? other addons this module cannot work without, at most 16
 ---@field onInitialize fun(self: ModuleKit.Module, injections: table<string, any>)?
 ---@field onEnable fun(self: ModuleKit.Module)?
 ---@field onDisable fun(self: ModuleKit.Module)?
@@ -118,12 +129,14 @@ local STATE_SCHEMA = 1
 ---@field Timers table? a TimerKit scope (`TimerKit:CreateScope()`)
 ---@field Events table? an EventKit scope (`EventKit:CreateScope()`)
 ---@field Jobs table? a SchedulerKit scope (`SchedulerKit:CreateScope()`)
+---@field Hooks table? a HookKit scope (`HookKit:CreateScope()`)
+---@field Messages table? a scope over the addon's SignalKit bus (`SignalKit:ForAddon(addonName):CreateScope()`); also `nil` when the bus cannot be had
 
 ---Intent and fact of one module's enable state, as `GetEnableState` reports it.
 ---@class ModuleKit.EnableState
 ---@field wanted boolean whether the module is meant to be enabled
 ---@field actual boolean whether the module is enabled right now
----@field blockedBy string|nil the hard dependency whose failure keeps it off
+---@field blockedBy string|nil what keeps a wanted module off: a hard dependency, a required addon that halted, or `"halted"` when its own addon halted
 
 ---An error object wrapped so that `nil` and `false` stay representable.
 ---@class ModuleKit.ErrorRecord
@@ -255,6 +268,8 @@ local function validateCurrentState(implementation)
         and type(rawget(dispatch, "initializeAll")) == "function"
         and type(rawget(dispatch, "enableAll")) == "function"
         and type(rawget(dispatch, "shutdown")) == "function"
+        and type(rawget(dispatch, "halted")) == "function"
+        and type(rawget(dispatch, "dependencyHalted")) == "function"
 end
 
 ---Resume a copy that already registered this revision.
@@ -350,6 +365,10 @@ local SCOPE_METATABLE = rawget(state, "scopeMetatable")
 
 local ADDON_METATABLE = { __index = Addon }
 local MODULE_METATABLE = { __index = Module }
+
+-- The `_requiredAddons` of every module that declares none. It is never
+-- written: declaring a first required addon gives the module its own array.
+local NO_REQUIRED_ADDONS = {}
 
 -- Validation helpers --------------------------------------------------------
 
@@ -1020,20 +1039,27 @@ end
 
 -- Module scopes -------------------------------------------------------------
 --
--- A module registers timers, events and scheduler jobs through `module.scope`
--- and ModuleKit releases all of them when the module is disabled, so a module
--- needs no `OnDisable` just to clean up. ModuleKit has no hard dependency on
--- the Kits behind the scope: each is resolved through `Registry:Find` on first
--- use, and a field whose Kit is not loaded reads as `nil`.
+-- A module registers timers, events, scheduler jobs, hooks and bus
+-- subscriptions through `module.scope` and ModuleKit releases all of them when
+-- the module is disabled, so a module needs no `OnDisable` just to clean up.
+-- ModuleKit has no hard dependency on the Kits behind the scope: each is
+-- resolved through `Registry:Find` on first use, and a field whose Kit is not
+-- loaded reads as `nil`.
 
----The Kit behind each scope field, and the order scopes are closed in.
-local SCOPE_FIELDS = { "Events", "Jobs", "Timers" }
+---The order scope fields are closed in. It is alphabetical, which is all it
+---needs to be: the fields are independent of each other.
+local SCOPE_FIELDS = { "Events", "Hooks", "Jobs", "Messages", "Timers" }
+
+---The Kit behind each scope field.
 local SCOPE_PACKAGES = {
     Events = "eventKit",
+    Hooks = "hookKit",
     Jobs = "schedulerKit",
+    Messages = "signalKit",
     Timers = "timerKit",
 }
--- eventKit, schedulerKit and timerKit are all API generation 1.
+-- eventKit, hookKit, schedulerKit, signalKit and timerKit are all API
+-- generation 1.
 local SCOPE_PACKAGE_API = 1
 
 ---Silent optional-dependency lookup.
@@ -1054,6 +1080,50 @@ local function findOptionalPackage(packageName, api)
         return nil
     end
     return implementation
+end
+
+---Create an owner scope through the Kit's own `CreateScope()`.
+---
+---Used by every field but `Messages`.
+---@param kit table the Kit's facade
+---@return table|nil scope `nil` for a Kit revision without owner scopes
+local function createKitScope(kit)
+    local createScope = rawget(kit, "CreateScope")
+    if type(createScope) ~= "function" then
+        return nil
+    end
+    return createScope(kit)
+end
+
+---Create a scope over the SignalKit bus of the module's addon.
+---
+---A SignalKit revision older than the one that introduced buses has neither
+---`Bus` nor `ForAddon` and yields `nil`. So does a bus that cannot be had:
+---`ForAddon` answers `nil, "full"` when the session already holds its bound
+---of buses, and a bus that was closed refuses new scopes. The field then reads
+---as `nil`, exactly as it does when the Kit is absent.
+---@param kit table the SignalKit facade
+---@param module ModuleKit.Module
+---@return table|nil scope
+local function createMessagesScope(kit, module)
+    local forAddon = rawget(kit, "ForAddon")
+    if type(rawget(kit, "Bus")) ~= "function" or type(forAddon) ~= "function" then
+        return nil
+    end
+
+    local addonName = rawget(rawget(module, "_addon"), "_name")
+    local bus = forAddon(kit, addonName)
+    if type(bus) ~= "table" then
+        return nil
+    end
+
+    -- A closed bus raises from `CreateScope`, and it offers no public query to
+    -- ask first; the refusal is the answer.
+    local ok, scope = pcall(bus.CreateScope, bus)
+    if not ok then
+        return nil
+    end
+    return scope
 end
 
 ---Create the scope field `key` on first read.
@@ -1082,13 +1152,22 @@ local function scopeIndex(scope, key)
     end
 
     local kit = findOptionalPackage(packageName, SCOPE_PACKAGE_API)
-    local createScope = kit ~= nil and rawget(kit, "CreateScope") or nil
-    if type(createScope) ~= "function" then
-        -- The Kit is not loaded, or is a revision without owner scopes.
+    if kit == nil then
         return nil
     end
 
-    local created = createScope(kit)
+    local created
+    if key == "Messages" then
+        created = createMessagesScope(kit, module)
+    else
+        created = createKitScope(kit)
+    end
+    if created == nil then
+        -- A Kit revision without owner scopes, or a bus that cannot be had.
+        -- Nothing is stored, so a later read tries again.
+        return nil
+    end
+
     rawset(scope, key, created)
     return created
 end
@@ -1216,6 +1295,92 @@ local function initializeOne(module)
     rawset(module, "_state", "initialized")
     clearFailure(module)
     return module
+end
+
+-- Halted addons -------------------------------------------------------------
+--
+-- LifecycleKit lets an addon declare itself non-functional for the rest of the
+-- session (`Halt`), and tells the addons that declared it with `DependsOn`.
+-- ModuleKit maps both onto the enable state: the module keeps its intent, is
+-- taken down, and records what blocks it. Halted is terminal, so nothing ever
+-- recovers such a module; every enable path refuses it instead.
+
+---Whether the addon that owns `addon` has halted.
+---
+---A LifecycleKit revision older than the halted state has no `IsHalted`; its
+---addons never halt.
+---@param addon ModuleKit.Addon
+---@return boolean
+local function isContainerHalted(addon)
+    local lifecycle = rawget(addon, "_lifecycle")
+    local isHalted = type(lifecycle) == "table" and lifecycle.IsHalted or nil
+    return type(isHalted) == "function" and isHalted(lifecycle) == true
+end
+
+---Whether the addon named `addonName` has halted.
+---@param addonName string
+---@return boolean
+local function isOtherAddonHalted(addonName)
+    local instance = LifecycleKit:ForAddon(addonName)
+    local getHaltReason = instance.GetHaltReason
+    return type(getHaltReason) == "function" and getHaltReason(instance) ~= nil
+end
+
+---Whether `module` names `addonName` in `requiresAddons`.
+---@param module ModuleKit.Module
+---@param addonName string
+---@return boolean
+local function requiresAddon(module, addonName)
+    local required = rawget(module, "_requiredAddons")
+    for index = 1, #required do
+        if required[index] == addonName then
+            return true
+        end
+    end
+    return false
+end
+
+---Return what a halt blocks `module` on, if anything.
+---@param module ModuleKit.Module
+---@return string|nil blocker `"halted"` when its own addon halted, the first halted addon of `requiresAddons`, or `nil`
+local function haltBlocker(module)
+    if isContainerHalted(rawget(module, "_addon")) then
+        return OWN_ADDON_HALTED
+    end
+
+    local required = rawget(module, "_requiredAddons")
+    for index = 1, #required do
+        local addonName = required[index]
+        if isOtherAddonHalted(addonName) then
+            return addonName
+        end
+    end
+    return nil
+end
+
+---Record that an enable of `module` was refused because of a halt.
+---@param module ModuleKit.Module
+---@param blocker string what `haltBlocker` returned
+local function recordHaltRefusal(module, blocker)
+    recordFailure(module, nil, blocker, false)
+    if rawget(module, "_wantedEnabled") == true then
+        rawset(module, "_enableBlockedBy", blocker)
+    end
+end
+
+---The message a refused targeted enable raises.
+---@param module ModuleKit.Module
+---@param blocker string what `haltBlocker` returned
+---@return string
+local function haltRefusalMessage(module, blocker)
+    local prefix = 'ModuleKit module "' .. rawget(module, "_name") .. '" cannot be enabled because '
+    if blocker == OWN_ADDON_HALTED then
+        return prefix
+            .. 'its addon "'
+            .. rawget(rawget(module, "_addon"), "_name")
+            .. '" has halted'
+    end
+    return prefix .. 'required addon "' .. blocker .. '" has halted'
 end
 
 ---Enable exactly `module`, initializing it first when it is still `created`.
@@ -1349,6 +1514,15 @@ local function enableWithPolicy(module, visiting)
     local addon = rawget(module, "_addon")
     ensureNotShutdown(addon, "Enable")
 
+    -- A halt is terminal, so no dependency policy can satisfy it.
+    if rawget(module, "_state") ~= "enabled" then
+        local blocker = haltBlocker(module)
+        if blocker ~= nil then
+            recordHaltRefusal(module, blocker)
+            error(haltRefusalMessage(module, blocker), 3)
+        end
+    end
+
     local dependencies = hardDependencies(module)
     local policy = rawget(addon, "_dependencyPolicy")
 
@@ -1446,6 +1620,10 @@ local function recoverBlockedDependents(addon)
     if rawget(addon, "_shutdown") == true or rawget(addon, "_passDepth") > 0 then
         return nil
     end
+    if isContainerHalted(addon) then
+        -- Halted is terminal: nothing in this container can recover.
+        return nil
+    end
 
     -- Every targeted `Enable` ends here, and almost always nothing is blocked:
     -- a linear scan is enough to skip building the graph.
@@ -1482,7 +1660,11 @@ local function recoverBlockedDependents(addon)
                     break
                 end
             end
-            if ready then
+            -- A required addon that halted keeps the module blocked on it.
+            local blocker = ready and haltBlocker(module) or nil
+            if blocker ~= nil then
+                rawset(module, "_enableBlockedBy", blocker)
+            elseif ready then
                 -- From here a failure is the module's own, not its
                 -- dependency's, so it is not retried by the next recovery.
                 rawset(module, "_enableBlockedBy", nil)
@@ -1505,7 +1687,14 @@ local function catchUpModule(addon, module)
         initializeWithPolicy(module)
     end
     if lifecycle:IsReady() then
-        enableWithPolicy(module)
+        -- Catch-up is implicit, so a halt blocks it quietly instead of
+        -- raising out of `CreateModule`; an explicit `Enable` still raises.
+        local blocker = rawget(module, "_state") ~= "enabled" and haltBlocker(module) or nil
+        if blocker ~= nil then
+            recordHaltRefusal(module, blocker)
+        else
+            enableWithPolicy(module)
+        end
     end
 end
 
@@ -1665,13 +1854,20 @@ local function runEnableAllPass(order, lifecycleDriven)
             or rawget(module, "_wantedEnabled") ~= false
             or rawget(module, "_state") == "enabled"
         if wanted then
+            -- A halt blocks the module like a failed dependency, and so blocks
+            -- its dependents behind it.
             local blockedBy
+            if rawget(module, "_state") ~= "enabled" then
+                blockedBy = haltBlocker(module)
+            end
             local dependencies = hardDependencies(module)
             for depIndex = 1, #dependencies do
+                if blockedBy ~= nil then
+                    break
+                end
                 local dependency = dependencies[depIndex]
                 if failed[dependency] or rawget(dependency, "_state") ~= "enabled" then
                     blockedBy = rawget(dependency, "_name")
-                    break
                 end
             end
 
@@ -1787,6 +1983,93 @@ local function disableAllInternal(addon, shutdown)
     end
 
     return runContainerPass(addon, runDisableAllPass, order, shutdown, seedError)
+end
+
+-- Halt passes ---------------------------------------------------------------
+
+---Take every module down after the container's own addon halted.
+---
+---LifecycleKit never delivers `shutdown` to a halted addon, so this is the
+---container's terminal cleanup: it disables every enabled module in reverse
+---graph order, best effort, exactly like shutdown (a module whose `OnDisable`
+---fails still has its scopes closed). Unlike shutdown it keeps intent and
+---leaves the container usable for inspection: every wanted module records
+---`"halted"` as what blocks it.
+---@param addon ModuleKit.Addon
+---@return ModuleKit.Addon addon
+local function haltAllInternal(addon)
+    if rawget(addon, "_shutdown") == true then
+        return addon
+    end
+
+    local order
+    local seedError
+    local graphOk, graphResult = pcall(buildGraph, addon)
+    if graphOk then
+        order = graphResult
+    else
+        -- As at shutdown, an invalid inactive definition must not keep the
+        -- enabled modules from releasing what they hold.
+        seedError = { value = graphResult }
+        order = buildEnabledHardOrder(addon)
+    end
+
+    local modules = rawget(addon, "_moduleOrder")
+    for index = 1, #modules do
+        local module = modules[index]
+        if rawget(module, "_wantedEnabled") == true then
+            rawset(module, "_enableBlockedBy", OWN_ADDON_HALTED)
+        end
+    end
+
+    return runContainerPass(addon, runDisableAllPass, order, true, seedError)
+end
+
+---Disable `module` because `blockedBy` halted, taking its enabled hard
+---dependents down first.
+---
+---The cascade ignores the dependency policy, as shutdown does: a halted addon
+---cannot be waited for. Dependents keep their intent and are blocked by
+---`module`, which is itself blocked for good.
+---@param module ModuleKit.Module
+---@param blockedBy string
+local function blockForHaltedAddon(module, blockedBy)
+    local dependents = enabledHardDependents(module)
+    for index = 1, #dependents do
+        blockForHaltedAddon(dependents[index], rawget(module, "_name"))
+    end
+
+    if rawget(module, "_wantedEnabled") == true then
+        rawset(module, "_enableBlockedBy", blockedBy)
+    end
+    disableOne(module)
+end
+
+---Take down the modules that name a halted addon in `requiresAddons`.
+---
+---Modules are visited newest first; each one is independent, so a failing
+---`OnDisable` leaves that module enabled and the rest are still visited. The
+---first failure is re-raised afterwards.
+---@param addon ModuleKit.Addon
+---@param haltedAddonName string
+---@return ModuleKit.Addon addon
+local function dependencyHaltedInternal(addon, haltedAddonName)
+    if rawget(addon, "_shutdown") == true then
+        return addon
+    end
+
+    local modules = rawget(addon, "_moduleOrder")
+    local firstError
+    for index = #modules, 1, -1 do
+        local module = modules[index]
+        if requiresAddon(module, haltedAddonName) then
+            local ok, value = pcall(blockForHaltedAddon, module, haltedAddonName)
+            firstError = captureFirstError(firstError, ok, value)
+        end
+    end
+
+    raiseCaptured(firstError)
+    return addon
 end
 
 -- Module public API ---------------------------------------------------------
@@ -2035,6 +2318,7 @@ local DEFINITION_FIELDS = {
     optionalDependencies = true,
     before = true,
     after = true,
+    requiresAddons = true,
     inject = true,
     onInitialize = true,
     onEnable = true,
@@ -2044,7 +2328,7 @@ local DEFINITION_FIELDS = {
 ---Apply one dense-array definition field by calling `method` per entry.
 ---@param module ModuleKit.Module
 ---@param definition ModuleKit.Definition
----@param key "dependsOn"|"optionalDependencies"|"before"|"after"
+---@param key "dependsOn"|"optionalDependencies"|"before"|"after"|"requiresAddons"
 ---@param method fun(module: ModuleKit.Module, targetName: string): ModuleKit.Module
 local function applyDefinitionList(module, definition, key, method)
     local values = rawget(definition, key)
@@ -2073,6 +2357,47 @@ local function applyDefinitionList(module, definition, key, method)
     for index = 1, count do
         method(module, rawget(values, index))
     end
+end
+
+---Record one `requiresAddons` entry on `module`.
+---
+---Raised errors use level 5, the caller of `CreateModule`: this function is
+---called by `applyDefinitionList`, which `applyDefinition` calls from
+---`CreateModule`.
+---@param module ModuleKit.Module
+---@param addonName any
+---@return ModuleKit.Module module
+local function addRequiredAddon(module, addonName)
+    if type(addonName) ~= "string" or addonName == "" then
+        error("ModuleKit module definition requiresAddons entries must be non-empty strings", 5)
+    end
+    if addonName == rawget(rawget(module, "_addon"), "_name") then
+        error(
+            'ModuleKit module definition requiresAddons must name other addons, not "'
+                .. addonName
+                .. '" itself',
+            5
+        )
+    end
+    if requiresAddon(module, addonName) then
+        return module
+    end
+
+    local required = rawget(module, "_requiredAddons")
+    if #required >= MAX_REQUIRED_ADDONS then
+        error(
+            "ModuleKit module definition requiresAddons must list at most "
+                .. MAX_REQUIRED_ADDONS
+                .. " addons",
+            5
+        )
+    end
+    if required == NO_REQUIRED_ADDONS then
+        required = {}
+        rawset(module, "_requiredAddons", required)
+    end
+    required[#required + 1] = addonName
+    return module
 end
 
 ---Copy one definition hook onto the module under its public field name.
@@ -2119,6 +2444,7 @@ local function applyDefinition(module, definition)
     applyDefinitionList(module, definition, "optionalDependencies", moduleOptionalDependency)
     applyDefinitionList(module, definition, "before", moduleBefore)
     applyDefinitionList(module, definition, "after", moduleAfter)
+    applyDefinitionList(module, definition, "requiresAddons", addRequiredAddon)
 
     local inject = rawget(definition, "inject")
     if inject ~= nil then
@@ -2128,6 +2454,48 @@ local function applyDefinition(module, definition)
     applyDefinitionCallback(module, definition, "onInitialize", "OnInitialize")
     applyDefinitionCallback(module, definition, "onEnable", "OnEnable")
     applyDefinitionCallback(module, definition, "onDisable", "OnDisable")
+end
+
+---Declare every addon `module` requires as a LifecycleKit dependency of its
+---container's addon, so the addon hears when one of them halts.
+---
+---Runs before the module is published, so a refusal leaves the container
+---without it. LifecycleKit keeps an addon's declarations for the session:
+---entries declared before a refusal stay declared, which only means their
+---halts are also announced. A LifecycleKit revision without `DependsOn`
+---announces nothing; enabling still checks each required addon directly.
+---@param addon ModuleKit.Addon
+---@param module ModuleKit.Module
+local function declareRequiredAddons(addon, module)
+    local required = rawget(module, "_requiredAddons")
+    if #required == 0 then
+        return
+    end
+
+    local lifecycle = rawget(addon, "_lifecycle")
+    local dependsOn = lifecycle.DependsOn
+    if type(dependsOn) ~= "function" then
+        return
+    end
+
+    for index = 1, #required do
+        local recorded, reason = dependsOn(lifecycle, required[index])
+        -- `"halted"` needs nothing here: the container's own halt already
+        -- blocks every module. `"shutdown"` cannot occur, because a shut-down
+        -- container refuses `CreateModule` before this point.
+        if recorded == nil and reason == "full" then
+            error(
+                'ModuleKit.Addon:CreateModule module "'
+                    .. rawget(module, "_name")
+                    .. '" requires addon "'
+                    .. required[index]
+                    .. '", but addon "'
+                    .. rawget(addon, "_name")
+                    .. '" already declares the most addon dependencies LifecycleKit accepts',
+                3
+            )
+        end
+    end
 end
 
 ---Create a uniquely named module in this container.
@@ -2154,6 +2522,7 @@ local function addonCreateModule(self, name, definition)
         _optionalDependencies = {},
         _before = {},
         _after = {},
+        _requiredAddons = NO_REQUIRED_ADDONS,
         _injectSpec = {},
         _injections = nil,
         _lastError = nil,
@@ -2171,9 +2540,18 @@ local function addonCreateModule(self, name, definition)
 
     applyDefinition(module, definition)
     validateLateModuleOrdering(self, module)
+    declareRequiredAddons(self, module)
 
     rawset(modules, name, module)
     order[#order + 1] = module
+
+    -- A required addon may have halted before this module existed, or the
+    -- container's own addon may have: record the block now, so the enable
+    -- state shows it before anything tries to enable the module.
+    local blocker = haltBlocker(module)
+    if blocker ~= nil and rawget(module, "_wantedEnabled") == true then
+        rawset(module, "_enableBlockedBy", blocker)
+    end
 
     -- A fully specified late-created module can catch up immediately. For the
     -- common mutable-object style, omit the definition and call :Activate()
@@ -2376,20 +2754,26 @@ local PHASE_DISPATCH = {
     shutdown = "shutdown",
 }
 
+---The LifecycleKit notices a container subscribes to beside the phases:
+---its own addon halting, and a declared addon dependency halting. Both are
+---keys of `_subscriptions`.
+local HALT_NOTICES = { "halted", "dependencyHalted" }
+
 ---Call one whole-container pass through shared runtime dispatch.
 ---
 ---Going through shared state rather than a captured local is what lets a newer
 ---compatible revision upgrade containers an older copy created.
----@param name "initializeAll"|"enableAll"|"shutdown"
+---@param name "initializeAll"|"enableAll"|"shutdown"|"halted"|"dependencyHalted"
 ---@param addon ModuleKit.Addon
+---@param argument any passed on after `addon`: the halted addon's name for `dependencyHalted`
 ---@return ModuleKit.Addon addon
-local function invokeDispatch(name, addon)
+local function invokeDispatch(name, addon, argument)
     local dispatch = rawget(state, "dispatch")
     local callback = type(dispatch) == "table" and rawget(dispatch, name) or nil
     if type(callback) ~= "function" then
         error("MoltenCodes ModuleKit runtime dispatch is corrupted or incomplete", 2)
     end
-    return callback(addon)
+    return callback(addon, argument)
 end
 
 ---Report whether LifecycleKit has already reached `phase` for `lifecycle`.
@@ -2416,6 +2800,10 @@ local function ensureModuleRuntimeFields(module)
     end
     if type(rawget(module, "_scopeOpen")) ~= "boolean" then
         rawset(module, "_scopeOpen", moduleState == "enabled")
+    end
+    if type(rawget(module, "_requiredAddons")) ~= "table" then
+        -- Revision 8 added `requiresAddons`; an older module declared none.
+        rawset(module, "_requiredAddons", NO_REQUIRED_ADDONS)
     end
     if type(rawget(module, "_scope")) ~= "table" then
         local scope = newModuleScope(module)
@@ -2489,7 +2877,65 @@ local function disconnectAddonSubscriptions(addon)
             disconnectSubscriptionHandle(subscription)
         end
     end
+    for index = 1, #HALT_NOTICES do
+        local subscription = rawget(subscriptions, HALT_NOTICES[index])
+        if subscription ~= nil then
+            disconnectSubscriptionHandle(subscription)
+        end
+    end
     rawset(addon, "_subscriptions", {})
+end
+
+---Subscribe the container to its addon's halted notices.
+---
+---A LifecycleKit revision older than the halted state offers neither notice,
+---and its addons never halt, so nothing is subscribed.
+---
+---Both subscriptions replay synchronously, like the phases, and the replay
+---hazard applies to them too:
+---
+---- `OnHalted` replays for an addon that has already halted. A new container
+---  holds no modules yet, so the replay only records the halt. During an
+---  upgrade the halt is recorded as dispatched without running, so no module
+---  hook can run out of package bootstrap; enabling still refuses every
+---  module, because each enable path asks LifecycleKit directly.
+---- `OnDependencyHalted` replays every declared dependency that has already
+---  halted. The replay is ignored: a module that requires a halted addon is
+---  blocked when it is created (see `addonCreateModule`), and an upgrade must
+---  not disable modules from package bootstrap.
+---@param addon ModuleKit.Addon
+---@param lifecycle LifecycleKit.Instance
+---@param duringUpgrade boolean|nil `true` while migrating a carried-over container
+local function installHaltSubscriptions(addon, lifecycle, duringUpgrade)
+    local onHalted = lifecycle.OnHalted
+    local onDependencyHalted = lifecycle.OnDependencyHalted
+    if type(onHalted) ~= "function" or type(onDependencyHalted) ~= "function" then
+        return
+    end
+
+    local dispatched = rawget(addon, "_dispatched")
+    if rawget(dispatched, "halted") ~= true then
+        if duringUpgrade and isContainerHalted(addon) then
+            rawset(dispatched, "halted", true)
+        else
+            local handle = onHalted(lifecycle, function()
+                -- Recorded first, like a phase: the halt has happened even if
+                -- taking the modules down raises.
+                rawset(rawget(addon, "_dispatched"), "halted", true)
+                invokeDispatch("halted", addon)
+            end)
+            rawget(addon, "_subscriptions").halted = handle
+        end
+    end
+
+    local replaying = true
+    local handle = onDependencyHalted(lifecycle, function(_, haltedAddonName)
+        if not replaying then
+            invokeDispatch("dependencyHalted", addon, haltedAddonName)
+        end
+    end)
+    replaying = false
+    rawget(addon, "_subscriptions").dependencyHalted = handle
 end
 
 ---Subscribe the container to the LifecycleKit phases it has not received yet.
@@ -2570,6 +3016,8 @@ local function installAddonSubscriptions(addon, duringUpgrade)
             end
         end
     end
+
+    installHaltSubscriptions(addon, lifecycle, duringUpgrade)
 end
 
 ---Create the container for `addonName` and bind it to its lifecycle.
@@ -2706,6 +3154,8 @@ end)
 rawset(dispatch, "shutdown", function(addon)
     return disableAllInternal(addon, true)
 end)
+rawset(dispatch, "halted", haltAllInternal)
+rawset(dispatch, "dependencyHalted", dependencyHaltedInternal)
 
 if rawget(state, "runtimeRevision") ~= IMPLEMENTATION_REVISION then
     migrateAddonSubscriptions()

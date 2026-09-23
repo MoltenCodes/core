@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 — 2026-09-23
+
+- Added `module.scope.Hooks`, a HookKit scope (`HookKit:CreateScope()`) created on first read, and `module.scope.Messages`, a scope over the addon's SignalKit bus (`SignalKit:ForAddon(addonName):CreateScope()`). Both are closed with the other scope fields on disable, on a failed `OnEnable`, at shutdown and when the addon halts, and are fresh on the next enable. Fields now close in the fixed order events, hooks, jobs, messages, timers.
+- HookKit is declared under `optionalDependencies`; without it `Hooks` reads as `nil`. SignalKit is found through `Registry:Find("signalKit", 1)`; a revision without `Bus` and `ForAddon`, a session that holds no room for another bus (`ForAddon` answers `nil, "full"`) and a closed bus all leave `Messages` as `nil`, under the existing "the field is `nil` when it cannot be had" contract, and nothing is cached, so a later read tries again.
+- Added the halted addon to the enable state. When the addon's LifecycleKit instance halts, every enabled module is disabled as best-effort terminal cleanup (LifecycleKit never delivers `shutdown` to a halted addon), with intent kept and `blockedBy = "halted"`.
+- Added the `requiresAddons` definition field: up to 16 other addons a module cannot work without. `CreateModule` declares each one with `DependsOn` on the owning addon's lifecycle and raises, without creating the module, when LifecycleKit refuses one as `"full"`. When a required addon halts, the modules that name it, and first their enabled hard dependents, are disabled whatever the dependency policy; they keep their intent and report the addon (or, for dependents, the module) in `blockedBy`. Modules that do not name it are untouched.
+- Halted is terminal, so nothing recovers: targeted `Enable` and `Activate` raise at the caller's line, `EnableAll` and the `ready` phase record the module as blocked and block its dependents, definition catch-up blocks without raising, and recovery of blocked dependents skips it.
+- The container subscribes to `OnHalted` and `OnDependencyHalted` when the LifecycleKit revision offers them. An in-place upgrade never runs a module hook for a halt that happened before it: the own halt is recorded as dispatched, and dependency replays are ignored. Modules an older revision created receive an empty `requiresAddons`.
+- 23 new specs in `Scope_spec.lua` (against the real HookKit and SignalKit) and `Halted_spec.lua`.
+- Implementation revision 8. `ModuleKit` API generation 1 is unchanged; every addition is additive.
+
 ## 0.5.1 — 2026-09-23
 
 - Fixed an explicit `Disable()` before `ready` being overridden. The LifecycleKit `ready` phase ran the same pass as the addon's `EnableAll()`, which set every module's intent to wanted, so a module that called `self:Disable()` in `OnInitialize` was enabled at login. The lifecycle-driven pass now states no intent and skips modules that are not wanted, recording their hard dependents as blocked by them; only an `EnableAll()` the addon calls itself re-enables them.

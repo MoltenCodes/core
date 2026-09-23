@@ -88,7 +88,17 @@ What happens to a dispatched error after it leaves LifecycleKit is EventKit's co
 
 When an addon reaches `shutdown`, LifecycleKit also closes that addon's canonical EventKit scope (`EventKit:ForAddon(addonName)`) after the shutdown callbacks have run, so event connections made through the scope need no teardown code in the addon. EventKit cannot do this itself: it loads before LifecycleKit and never observes shutdown. With an EventKit revision that has no `CloseAddonScopes`, nothing is closed and shutdown is otherwise unchanged. Closing the scope never takes the logout away from the scope's own listeners: LifecycleKit's watcher runs inside EventKit's `PLAYER_LOGOUT` dispatch, and EventKit defers the disconnects until that dispatch returns, so a scoped `PLAYER_LOGOUT` listener still runs once.
 
-Shutdown runs three steps per addon, in this order: the addon's combat queue is closed (each pending deferred call receives `(instance, false, "shutdown")`), the shutdown callbacks run, and the EventKit scope is closed. Errors follow a first-error-wins policy in that order: a deferred-call error is re-raised before a shutdown callback error, which is re-raised before a scope-closing failure. Either way every addon's lifecycle has advanced first.
+The same two-step applies to the addon's HookKit scope and its SignalKit bus. After the EventKit scope, LifecycleKit closes the addon's canonical HookKit scope (`HookKit:CloseAddonScopes(addonName)`), which undoes every hook made through `HookKit:ForAddon(addonName)`, and then its bus (`SignalKit:CloseAddonBus(addonName)`), which disconnects every subscription on the bus named after the addon, including those made through its scopes. HookKit is optional: it is found through `Registry:Find("hookKit", 1)` at shutdown, and without it, or with a revision that has no `CloseAddonScopes`, that step does nothing. A SignalKit revision without `CloseAddonBus` skips the last step the same way, and an addon that never asked for a bus has nothing to close (`CloseAddonBus` answers `false`, which is not a failure).
+
+The three are closed in this order for a reason:
+
+1. **EventKit scope first**, so no host event fires into hooks or bus subscribers that are being torn down.
+2. **HookKit scope next**, so the addon's hooks stop running.
+3. **SignalKit bus last**, because other addons' shutdown paths may still publish on it. Publishing on a closed bus delivers nothing and does not raise, so closing it last only keeps it useful for as long as possible.
+
+Shutdown callbacks run before any of the three is closed, so an `OnShutdown` callback can still rely on its event connections and hooks and can still publish on its bus.
+
+Shutdown therefore runs these steps per addon, in this order: the addon's combat queue is closed (each pending deferred call receives `(instance, false, "shutdown")`), the shutdown callbacks run, then the EventKit scope, the HookKit scope and the SignalKit bus are closed. Every step runs even when an earlier one failed. Errors follow a first-error-wins policy in that order: a deferred-call error is re-raised before a shutdown callback error, which is re-raised before an EventKit, then a HookKit, then a SignalKit closing failure. Either way every addon's lifecycle has advanced first.
 
 If shutdown occurs before `loaded` or `ready` was reached (for example, a lifecycle was created for a load-on-demand addon that never loaded), pending subscriptions for those now-impossible phases are disconnected without invocation. New subscriptions to an earlier phase that is already impossible because shutdown occurred are returned already disconnected. Shutdown also disconnects the addon's `OnHalted`, `OnDependencyHalted`, `OnCombatStart` and `OnCombatEnd` subscriptions.
 
@@ -112,9 +122,9 @@ Halting, in order:
 
 Every subscriber is given its delivery even when some fail, then the first error is re-raised from `Halt` with its original Lua error object, after the state is committed.
 
-**Halted is terminal for the session.** API 1 offers no `Resume`: an addon that halted because something was broken cannot prove the breakage is gone, and a resumable state would need every dependent to handle a second transition. Reloading the UI starts a fresh session. Later host events do not move a halted addon: `ADDON_LOADED`, `PLAYER_LOGIN` and `PLAYER_LOGOUT` leave `IsLoaded()`, `IsReady()` and `IsShutdown()` as they were at the halt. The one exception is the addon's EventKit scope, which is still closed at logout, like every other addon's.
+**Halted is terminal for the session.** API 1 offers no `Resume`: an addon that halted because something was broken cannot prove the breakage is gone, and a resumable state would need every dependent to handle a second transition. Reloading the UI starts a fresh session. Later host events do not move a halted addon: `ADDON_LOADED`, `PLAYER_LOGIN` and `PLAYER_LOGOUT` leave `IsLoaded()`, `IsReady()` and `IsShutdown()` as they were at the halt. The one exception is what the addon owns through the lower Kits — its EventKit scope, its HookKit scope and its SignalKit bus — which are still closed at logout, in the shutdown order, like every other addon's.
 
-A halted addon does not close its EventKit scope at the halt. Event connections it made stay live until logout, so it can still, for example, report its failure once the player logs in.
+A halted addon does not close any of them at the halt. Event connections, hooks and bus subscriptions it made stay live until logout, so it can still, for example, report its failure once the player logs in.
 
 Phase subscriptions after a halt follow the shutdown rule: a phase reached before the halt still replays, and every other phase returns an already-disconnected subscription. `OnHalted` replays for a halted addon, synchronously, with the reason, like the phase subscriptions. For an addon that has shut down, `OnHalted` returns an already-disconnected subscription.
 
@@ -211,6 +221,8 @@ LifecycleKit API 1 requires:
 - SignalKit API 1
 - EventKit API 1
 
+It optionally uses HookKit API 1, found through `Registry:Find` (Registry revision 7; an older Registry's `Get` is the equivalent fallback) when an addon shuts down. Without HookKit nothing changes except that there are no hooks to undo.
+
 LifecycleKit does not create WoW Frames directly. All frame/event registration remains inside EventKit.
 
 Host API read directly: `C_AddOns.IsAddOnLoaded` (falling back to the legacy `IsAddOnLoaded`), `IsLoggedIn`, and `InCombatLockdown`. Every one is optional; without it LifecycleKit assumes not loaded, not logged in, and not in combat respectively. Host events observed through EventKit: `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED`.
@@ -218,5 +230,7 @@ Host API read directly: `C_AddOns.IsAddOnLoaded` (falling back to the legacy `Is
 ## Embedded bootstrap recovery
 
 Compatible embedded copies share one LifecycleKit facade and state through Registry. Pending phase subscriptions created by the previous compatible implementation revision remain valid across an in-place upgrade; the upgrade releases per-instance state that the newer revision no longer owns.
+
+Revision 8 keeps schema 3. Upgrading from revision 7 replaces its shared host watchers, which would otherwise keep calling revision 7's logout handler, which closes no HookKit scope and no bus.
 
 Revision 7 changed the package state from schema 2 to schema 3. Upgrading from an older revision adds the shared combat flag (seeded from `InCombatLockdown()`), the instance list (inherited instances in name order) and every instance's combat queue, dependency list and halted flag, and replaces the older revision's shared host watchers with its own, because a watcher keeps calling the handler of the revision that installed it. Pending deferred calls and notice subscriptions are carried across a same-revision reload unchanged. Bootstrap is idempotent for the current implementation revision: if a prior live upgrade accepted the Registry revision but host event registration failed before shared watchers were fully established, a later compatible copy retries the missing watcher setup instead of silently returning an incomplete runtime state. If a one-shot global phase passed while that watcher was absent, bootstrap also reconciles existing instances from the observable host/package state.

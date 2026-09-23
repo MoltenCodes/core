@@ -2,15 +2,20 @@
   "name": "moduleKit",
   "displayName": "ModuleKit",
   "description": "Addon-scoped module lifecycle, dependency graphs, and dependency injection for MoltenCodes addons.",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "license": "MIT",
   "api": 1,
-  "revision": 7,
+  "revision": 8,
   "dependencies": {
     "registry": {
       "api": 2
     },
     "lifecycleKit": {
+      "api": 1
+    }
+  },
+  "optionalDependencies": {
+    "hookKit": {
       "api": 1
     }
   }

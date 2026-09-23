@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1 — 2026-09-23
+
+- Shutdown now also closes the addon's canonical HookKit scope (`HookKit:CloseAddonScopes(addonName)`) and its SignalKit bus (`SignalKit:CloseAddonBus(addonName)`), after the EventKit scope. Hooks made through `HookKit:ForAddon` and subscriptions on the bus named after the addon, including its scopes' subscriptions, need no teardown code. Neither Kit observes shutdown itself; this is the second half of the two-step both document.
+- Order: EventKit scope, HookKit scope, SignalKit bus. Event listeners go first so no host event fires into hooks or subscribers being torn down; the bus goes last because other addons' shutdown paths may still publish on it, and publishing on a closed bus is a silent no-op. Every step runs even when an earlier one failed, and the first failure wins in that order, after the combat queue and the shutdown callbacks. A halted addon has all three closed at logout.
+- HookKit is an optional dependency (`optionalDependencies` in the manifest), found through `Registry:Find("hookKit", 1)` at shutdown. Without it, or with a HookKit that has no `CloseAddonScopes`, shutdown is unchanged. A SignalKit without `CloseAddonBus` is skipped the same way; `false` from `CloseAddonBus` (no bus) is a normal result.
+- An in-place upgrade from revision 7 replaces the shared host watchers it inherited, because they would keep calling revision 7's logout handler. Schema 3 is unchanged.
+- Nine new specs in `OwnedScopes_spec.lua`, against the real HookKit and SignalKit: a scoped hook and a bus subscription are gone after logout, shutdown callbacks still see both, a halted addon's scopes close at logout, an absent HookKit and one without `CloseAddonScopes` leave shutdown unchanged, the failure order, and the upgrade from revision 7.
+- Implementation revision 8. API generation 1 is unchanged; nothing public was added.
+
 ## 0.4.0 — 2026-09-23
 
 - Added the combat gate. `LifecycleKit:IsInCombat()` reads one lockdown state shared by every addon, kept by one package-level pair of watchers on `PLAYER_REGEN_DISABLED` / `PLAYER_REGEN_ENABLED` and seeded from `InCombatLockdown()` when the package loads, when the watchers are installed and at `PLAYER_LOGIN`, because the host may load an addon mid-combat.

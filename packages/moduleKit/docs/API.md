@@ -62,7 +62,7 @@ Each module also carries one field:
 
 | Field | Purpose |
 |---|---|
-| `scope` | Per-module owner of timers, events and scheduler jobs, released automatically on disable. See [Module scopes](#module-scopes). |
+| `scope` | Per-module owner of timers, events, scheduler jobs, hooks and bus subscriptions, released automatically on disable. See [Module scopes](#module-scopes). |
 
 Inspection methods return values/snapshots; mutating a table returned by `GetModules()` or `GetInjections()` does not mutate ModuleKit's owned collection table.
 
@@ -125,6 +125,7 @@ local module = addon:CreateModule("Inventory", {
     dependsOn = { "Database" },
     optionalDependencies = { "Analytics" },
     after = { "Profiles" },
+    requiresAddons = { "OtherAddon" },
     inject = {
         database = "DatabaseService",
     },
@@ -140,12 +141,15 @@ Definition tables accept only these fields:
 - `optionalDependencies`
 - `before`
 - `after`
+- `requiresAddons`
 - `inject`
 - `onInitialize`
 - `onEnable`
 - `onDisable`
 
-The four ordering/dependency list fields must be dense arrays. Unknown fields, mixed-key tables, and sparse arrays are rejected so misspellings do not silently change behavior. Validation is applied in a fixed order for deterministic diagnostics.
+`requiresAddons` names other addons, by folder name exactly as LifecycleKit matches it, that the module cannot work without; see [Halted addons](#halted-addons). It is available only in the definition table.
+
+The four ordering/dependency list fields and `requiresAddons` must be dense arrays. Unknown fields, mixed-key tables, and sparse arrays are rejected so misspellings do not silently change behavior. Validation is applied in a fixed order for deterministic diagnostics.
 
 A definition-table module catches up synchronously to already-reached LifecycleKit phases.
 
@@ -213,8 +217,10 @@ function module:OnEnable()
     self.scope.Events:Connect("BAG_UPDATE", function() self:Refresh() end)
     self.scope.Timers:Every(5, function() self:Poll() end)
     self.scope.Jobs:Schedule(function() self:Rebuild() end)
+    self.scope.Hooks:SecureHook(GameTooltip, "SetUnit", function() self:Decorate() end)
+    self.scope.Messages:Subscribe("ProfileChanged", function(name) self:Reload(name) end)
 end
--- No OnDisable: Disable() closes all three scopes.
+-- No OnDisable: Disable() closes all five scopes.
 ```
 
 | Field | What it is | Released by |
@@ -222,24 +228,37 @@ end
 | `scope.Timers` | a TimerKit scope (`TimerKit:CreateScope()`) | `Close()` |
 | `scope.Events` | an EventKit scope (`EventKit:CreateScope()`) | `Close()` |
 | `scope.Jobs` | a SchedulerKit scope (`SchedulerKit:CreateScope()`) | `Close()` |
+| `scope.Hooks` | a HookKit scope (`HookKit:CreateScope()`) | `Close()`, which undoes every hook |
+| `scope.Messages` | a scope over the addon's SignalKit bus (`SignalKit:ForAddon(addonName):CreateScope()`) | `Close()`, which disconnects every subscription |
 
 The rules:
 
 - **Lazy.** Each field is created on its first read and cached; a module that
   never reads its scope creates nothing and pays nothing beyond the one scope
   table every module carries.
-- **Optional Kits.** ModuleKit has no dependency on TimerKit, EventKit or
-  SchedulerKit. Each is resolved through `Registry:Find` at first read, and a
-  field reads as `nil` when its Kit is not loaded or is a revision without
-  `CreateScope`. Test for `nil` when your addon does not embed the Kit.
+- **Optional Kits.** ModuleKit has no dependency on TimerKit, EventKit,
+  SchedulerKit or HookKit, and uses SignalKit only through LifecycleKit. Each
+  is resolved through `Registry:Find` at first read, and a field reads as `nil`
+  when its Kit is not loaded or is a revision without `CreateScope` (for
+  `Messages`: without `Bus` and `ForAddon`). Test for `nil` when your addon
+  does not embed the Kit.
+- **`Messages` can be `nil` with SignalKit loaded.** It is a scope over the bus
+  named after the module's addon, the one `SignalKit:ForAddon(addonName)`
+  returns. That bus cannot be had when the session already holds SignalKit's
+  bound of buses (`ForAddon` answers `nil, "full"`), or when it was closed
+  (LifecycleKit closes it at logout); `Messages` then reads as `nil`, exactly
+  as for an absent Kit, and nothing is cached, so a later read tries again.
+  Publishing is not a scope operation: publish on
+  `SignalKit:ForAddon(addonName)` directly.
 - **The enable window.** The fields are available from the start of `OnEnable`
   until the module is disabled. Reading one at any other time — in
   `OnInitialize`, or while the module is disabled — raises at the reading line.
-- **Released on every way out.** `Disable()`, `DisableAll()` and terminal
-  shutdown close every scope the module created, after `OnDisable` has run; a
-  failed `OnEnable` closes whatever it created before failing; at shutdown a
-  module whose `OnDisable` fails still has its scopes closed. The next enable
-  starts with fresh scopes.
+- **Released on every way out.** `Disable()`, `DisableAll()`, terminal
+  shutdown and the addon halting close every scope the module created, after
+  `OnDisable` has run, in the fixed order events, hooks, jobs, messages,
+  timers; a failed `OnEnable` closes whatever it created before failing; at
+  shutdown or halt a module whose `OnDisable` fails still has its scopes
+  closed. The next enable starts with fresh scopes.
 - A module that stays enabled because its `OnDisable` failed outside shutdown
   keeps its scopes, like the rest of its state.
 
@@ -251,7 +270,7 @@ A module records what it is *meant* to be separately from what it *is*:
 local state = module:GetEnableState()
 -- state.wanted     boolean: what Enable/Disable last asked for
 -- state.actual     boolean: whether the module is enabled right now
--- state.blockedBy  string|nil: the hard dependency whose failure keeps it off
+-- state.blockedBy  string|nil: what keeps it off (a hard dependency, a halted addon)
 ```
 
 `GetEnableState()` returns a fresh table on every call.
@@ -282,6 +301,70 @@ too, in graph order, so a whole chain recovers at once.
   blocking for every module itself, and never after shutdown.
 - `GetBlockedBy()` keeps its existing meaning — the module named by the last
   refused operation of any kind — and is independent of `blockedBy` here.
+- A module blocked by a halt never recovers; see [Halted addons](#halted-addons).
+
+## Halted addons
+
+LifecycleKit lets an addon declare itself non-functional for the rest of the
+session (`instance:Halt(reason)`), and tells every addon that declared it with
+`DependsOn`. ModuleKit maps both onto intent versus fact.
+
+**The addon itself halts.** Every enabled module is disabled, in reverse graph
+order, as best-effort terminal cleanup: LifecycleKit never delivers `shutdown`
+to a halted addon, so this is the container's last cleanup. It works like
+shutdown — a module whose `OnDisable` fails still has its scopes closed — but
+it keeps intent: every wanted module reports `blockedBy = "halted"`. The
+container stays open to inspection and still accepts new modules, which are blocked
+the same way when they are created.
+
+**A required addon halts.** A module names the addons it cannot work without
+in its definition:
+
+```lua
+addon:CreateModule("Bridge", {
+    requiresAddons = { "OtherAddon" },
+    onEnable = function(self) OtherAddon:Register(self) end,
+})
+```
+
+`CreateModule` declares each of them on the owning addon's LifecycleKit
+instance (`DependsOn`), so the addon hears when one halts. A module lists at
+most **16** addons, LifecycleKit's bound on one addon's declared dependencies;
+that bound is per addon, so when the addon has already declared 16 others,
+`CreateModule` raises and the module is not created. An addon the addon
+already declared costs nothing more. Naming the module's own addon raises.
+
+When a required addon halts, every module that names it is disabled, and so
+are its enabled hard dependents first, whatever the dependency policy (a
+halted addon cannot be waited for). The module keeps its intent and reports
+the addon's name in `blockedBy`; its dependents report the module's name, as a
+cascade always does. A module that does not name the addon is untouched, even
+when the addon declared that dependency itself. A module created after its
+required addon halted is blocked when it is created. A failing `OnDisable`
+leaves that one module enabled; the others are still taken down and the first
+error is re-raised from `Halt`.
+
+**Halted is terminal.** LifecycleKit offers no resume, so no recovery path
+brings such a module back:
+
+- `module:Enable()` and `module:Activate()` raise at the caller's line, for
+  example `ModuleKit module "Bridge" cannot be enabled because required addon
+  "OtherAddon" has halted`, or `... because its addon "MyAddon" has halted`,
+  and record the blocker in `GetBlockedBy()` and `blockedBy`;
+- `EnableAll()`, and the LifecycleKit `ready` phase, record the module as
+  blocked without raising, and block its hard dependents behind it;
+- a definition-table module caught up after a halt is blocked without
+  raising out of `CreateModule`;
+- recovery of blocked dependents skips it, so enabling its other
+  dependencies leaves it off.
+
+`"halted"` is the value for the addon's own halt. A module named `halted`
+would read the same; do not name a module that.
+
+The check asks LifecycleKit each time: `IsHalted()` on the addon's own
+instance and `GetHaltReason()` on `LifecycleKit:ForAddon(requiredAddon)`, which
+creates that addon's lifecycle instance if nothing has yet. A LifecycleKit
+revision older than the halted state never reports a halt.
 
 An in-place upgrade preserves both fields. A module created by a revision older
 than 6 has its intent derived from its state: a `disabled` module is not
@@ -407,6 +490,8 @@ For each addon container:
 - LifecycleKit `loaded` → `InitializeAll()`
 - LifecycleKit `ready` → `EnableAll()`
 - LifecycleKit `shutdown` → terminal reverse-order cleanup
+- LifecycleKit `OnHalted` → the addon's own halt; see [Halted addons](#halted-addons)
+- LifecycleKit `OnDependencyHalted` → a required addon's halt
 
 After shutdown, the container is terminal: new modules, graph/injection definition changes, provider registration, dependency-policy changes, and enable/initialize operations are rejected. Read-only inspection, resolution of already-registered providers, and idempotent disable operations remain available.
 
@@ -425,10 +510,12 @@ ModuleKit API 1 requires:
 
 ModuleKit does not depend directly on EventKit or SignalKit; those are implementation dependencies of LifecycleKit and remain outside ModuleKit's direct contract.
 
-Module scopes use TimerKit API 1, EventKit API 1 and SchedulerKit API 1 when
-they are loaded, found through `Registry:Find` (Registry revision 7; an older
-Registry's `Get` is used as the equivalent fallback). None of the three is a
-dependency: without them the matching scope field reads as `nil`.
+Module scopes use TimerKit API 1, EventKit API 1, SchedulerKit API 1, HookKit
+API 1 and SignalKit API 1 when they are loaded, found through `Registry:Find`
+(Registry revision 7; an older Registry's `Get` is used as the equivalent
+fallback). None of them is a dependency: without them the matching scope field
+reads as `nil`. HookKit is declared under `optionalDependencies` in the
+manifest.
 
 ## Internals
 

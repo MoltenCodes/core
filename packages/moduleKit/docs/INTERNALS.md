@@ -16,10 +16,10 @@ ModuleKit keeps its bootstrap and implementation in `src/ModuleKit.lua`, like ev
 | Graph | Edge construction from the four constraint kinds, cycle reporting, and the topological sort. |
 | Dependency injection | Provider registration, the four provider scopes, cycle-checked resolution, and injection-table assembly. |
 | Module scopes | The per-module scope object, its lazy fields resolved through `Registry:Find`, and closing them. |
-| Lifecycle operations | Single-module transitions, the two dependency policies, intent versus fact and recovery of blocked dependents, whole-container passes, and deferred catch-up. |
+| Lifecycle operations | Single-module transitions, the two dependency policies, intent versus fact and recovery of blocked dependents, halted addons, whole-container passes, deferred catch-up, and the two halt passes. |
 | Module public API | The functions installed on the shared `Module` prototype. |
 | Addon public API | The functions installed on the shared `Addon` prototype. |
-| Addon creation | Container identity, the dispatched-phase set, and LifecycleKit subscriptions. |
+| Addon creation | Container identity, the dispatched-phase set, and LifecycleKit subscriptions, including the halted notices. |
 | Commit | Publishes the public surface, installs shared runtime dispatch, and runs the in-place upgrade. |
 
 ## Shared embedded state
@@ -34,7 +34,7 @@ ModuleKit facade
     ├── schema
     ├── runtimeRevision
     ├── addons[name] -- containers
-    ├── dispatch     -- initializeAll / enableAll / shutdown
+    ├── dispatch     -- initializeAll / enableAll / shutdown / halted / dependencyHalted
     └── scopeMetatable -- shared by every module scope; each revision installs its __index
 ```
 
@@ -49,15 +49,21 @@ copy onto the newer lookup, exactly as the prototypes do for methods.
 
 `__index` runs only for a missing field. It checks `_scopeOpen`, resolves the
 Kit through `Registry:Find` (read from the facade on every call, because an
-embedded Registry upgrade replaces the method), calls `CreateScope()` and stores
-the result with `rawset`, so every later read is a plain table hit. A missing
-Kit, or one without `CreateScope`, yields `nil` and stores nothing, so a Kit
-that loads later is picked up on the next read.
+embedded Registry upgrade replaces the method), creates the scope and stores
+the result with `rawset`, so every later read is a plain table hit. Every field
+but `Messages` calls the Kit's `CreateScope()`. `Messages` calls
+`SignalKit:ForAddon(addonName)` and then the bus's `CreateScope()`: a SignalKit
+without `Bus` and `ForAddon` predates buses, `ForAddon` may answer
+`nil, "full"`, and a closed bus raises from `CreateScope` without offering a
+public query to ask first, so that one call runs under `pcall`. A missing Kit,
+one without `CreateScope`, or a bus that cannot be had yields `nil` and stores
+nothing, so a later read tries again.
 
 `_scopeOpen` is set immediately before `OnEnable` is invoked and cleared by
 `closeModuleScope`, which runs after a successful `OnDisable`, after a failed
-`OnEnable`, and at shutdown whatever `OnDisable` did. Closing walks the fields
-in a fixed order (events, jobs, timers), closes each one even when an earlier
+`OnEnable`, and at shutdown or halt whatever `OnDisable` did. Closing walks the
+fields in a fixed, alphabetical order (events, hooks, jobs, messages, timers;
+they are independent, so any fixed order would do), closes each one even when an earlier
 `Close` raised, and hands back the first failure; `disableOne` re-raises it only
 after the module has become `disabled`, so a scope failure never leaves a module
 half-transitioned.
@@ -92,9 +98,57 @@ is skipped inside a whole-container pass (the pass owns blocking), after
 shutdown, and when the graph is invalid, which targeted operations tolerate but
 a graph-ordered walk cannot.
 
-`ensureModuleRuntimeFields` backfills all four fields on modules an older
-revision created and leaves present ones alone, so an upgrade carries intent and
-blocking across unchanged.
+`ensureModuleRuntimeFields` backfills these fields, and `_requiredAddons`, on
+modules an older revision created and leaves present ones alone, so an upgrade
+carries intent and blocking across unchanged.
+
+## Halted addons
+
+`_requiredAddons` holds a module's `requiresAddons`, deduplicated, in
+declaration order. Modules that declare none share one empty array that is
+never written (`NO_REQUIRED_ADDONS`), so the field costs nothing for them.
+
+`haltBlocker(module)` is the single question every enable path asks: `"halted"`
+when the container's own lifecycle reports `IsHalted()`, else the first
+required addon whose `LifecycleKit:ForAddon(name):GetHaltReason()` is set, else
+`nil`. It is asked, not cached, because halted is terminal and LifecycleKit is
+the authority. Where it is asked:
+
+- `enableWithPolicy`, before the policy logic, for a module that is not
+  enabled: records the refusal and raises at the caller's line;
+- `runEnableAllPass`: the module counts as failed, so its hard dependents are
+  blocked behind it, exactly as for a failed dependency;
+- `catchUpModule`: records the refusal without raising, because definition
+  catch-up is implicit;
+- `recoverBlockedDependents`: returns at once for a halted container, and
+  keeps a module whose required addon halted blocked instead of enabling it;
+- `addonCreateModule`, after publishing: sets `_enableBlockedBy` so the enable
+  state shows the block before anything tries to enable the module.
+
+`addonCreateModule` also calls `DependsOn` on the container's lifecycle for
+every required addon, before publishing, so a `"full"` refusal leaves the
+container without the module.
+
+Two notices drive the transitions, through shared dispatch like the phases:
+
+- `halted` (`OnHalted`) runs `haltAllInternal`: it marks every wanted module
+  `"halted"` and runs `runDisableAllPass` in terminal mode, because
+  LifecycleKit never delivers `shutdown` to a halted addon. It does not set
+  `_shutdown`, so the container stays usable for inspection.
+- `dependencyHalted` (`OnDependencyHalted`) runs `dependencyHaltedInternal`:
+  newest module first, every module that requires the halted addon is taken
+  down by `blockForHaltedAddon`, which disables enabled hard dependents first
+  (recursively, whatever the policy) and marks them blocked by the module.
+
+Both subscriptions replay synchronously, and the replay hazard applies.
+`OnHalted` replays only for an addon that already halted: a new container has
+no modules, so the replay just records it; during an upgrade the halt is
+recorded in `_dispatched.halted` without running, and the enable paths refuse
+every module anyway. `OnDependencyHalted` replays every halted declared
+dependency; its listener ignores deliveries while the subscription call is
+still running, because a new container has no modules and an upgrade must not
+run `OnDisable` from package bootstrap. `disconnectAddonSubscriptions` releases
+both handles with the phase handles.
 
 ## The dependency graph
 
@@ -197,6 +251,6 @@ Injection aliases are resolved in sorted alias order, so factories with side eff
 
 ## Allocation policy
 
-The per-module steady state is one module table, its four constraint sets, its injection specification, its resolved injection table and its scope table. The scope's Kit scopes are created only when read, so a module that never uses them allocates nothing more; `GetEnableState()` allocates its snapshot. Graph operations allocate per call: the adjacency and indegree maps, the ready set, and the result array. That cost is paid by `ValidateGraph`, `GetActivationOrder`, the whole-container passes, and a targeted `Enable` or `Activate` while some module is blocked by a dependency (recovery walks the graph); a targeted `Enable` with nothing blocked pays only a linear scan. All of these are lifecycle-scale operations rather than per-frame work.
+The per-module steady state is one module table, its four constraint sets, its injection specification, its resolved injection table and its scope table, plus a `requiresAddons` array only for a module that declares one. The scope's Kit scopes are created only when read, so a module that never uses them allocates nothing more; `GetEnableState()` allocates its snapshot. Graph operations allocate per call: the adjacency and indegree maps, the ready set, and the result array. That cost is paid by `ValidateGraph`, `GetActivationOrder`, the whole-container passes, and a targeted `Enable` or `Activate` while some module is blocked by a dependency (recovery walks the graph); a targeted `Enable` with nothing blocked pays only a linear scan. All of these are lifecycle-scale operations rather than per-frame work.
 
 `GetModules()` and `GetInjections()` return fresh snapshots, so a consumer mutating the returned table cannot corrupt ModuleKit's own collection.

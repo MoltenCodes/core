@@ -5,6 +5,12 @@
 --- What stays here is this package's own module load order, and the combat
 --- lockdown host surface only the combat gate reads.
 ---
+--- HookKit is an optional dependency: shutdown closes the addon's HookKit
+--- scope when HookKit is loaded, found through `Registry:Find`. The manifest
+--- declares it under `optionalDependencies`, so the test runner puts it on
+--- `LUA_PATH`, and the module chain loads it before LifecycleKit, as an addon
+--- that embeds it would. `NewPackageWithoutHookKit` loads the chain without it.
+---
 --- The shared fixture does not model `InCombatLockdown` yet, so this file adds
 --- it on top of the fixture's own install and reset: `InstallWowApi` installs
 --- the global and `Reset` removes it again, so no spec leaks combat state into
@@ -12,7 +18,7 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local LifecycleKitTestEnv = FrameworkTestEnv.New({
-    modules = { "Registry", "SignalKit", "EventKit", "LifecycleKit" },
+    modules = { "Registry", "SignalKit", "EventKit", "HookKit", "LifecycleKit" },
 })
 
 --- The host's combat lockdown, as `InCombatLockdown()` reports it.
@@ -38,6 +44,21 @@ function LifecycleKitTestEnv.Reset()
     -- The fixture stands in for the World of Warcraft client, whose API only exists in the global table.
     -- selene: allow(global_usage)
     rawset(_G, "InCombatLockdown", nil)
+end
+
+---Load the module chain without HookKit, as an addon that embeds none does.
+---@return table LifecycleKit
+---@return table Registry
+---@return table SignalKit
+---@return table EventKit
+function LifecycleKitTestEnv.NewPackageWithoutHookKit()
+    LifecycleKitTestEnv.Reset()
+    LifecycleKitTestEnv.InstallWowApi()
+    local Registry = require("Registry")
+    local SignalKit = require("SignalKit")
+    local EventKit = require("EventKit")
+    local LifecycleKit = require("LifecycleKit")
+    return LifecycleKit, Registry, SignalKit, EventKit
 end
 
 ---Set what `InCombatLockdown()` answers, without sending any event.

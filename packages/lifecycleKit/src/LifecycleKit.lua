@@ -13,7 +13,7 @@
 -- --------
 --   Constants ............. package identity, state schema, default bounds
 --   Public types .......... LuaCATS classes and aliases for the public surface
---   Dependencies .......... Registry, SignalKit, EventKit
+--   Dependencies .......... Registry, SignalKit, EventKit; HookKit (optional)
 --   Public-surface validation  facade shape accepted from other copies
 --   Bootstrap ............. Registry registration, prototypes, package state,
 --                           the combat-lockdown probe the state is seeded from
@@ -32,10 +32,13 @@
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
+-- HookKit is optional: it is found through `Registry:Find` at shutdown, so an
+-- addon that embeds no HookKit shuts down exactly as before.
+local OPTIONAL_HOOK_KIT_API = 1
 
 -- Schema 3 added the combat state (`inCombat`) and the creation-ordered
 -- instance list (`instances`). Schema 2 state is migrated in place.
@@ -187,6 +190,26 @@ if
     or type(rawget(EventKitConnection, "Disconnect")) ~= "function"
 then
     error("MoltenCodes LifecycleKit requires a valid EventKit API 1 facade", 2)
+end
+
+---Silent lookup of an optional dependency.
+---
+---Registry revision 7 added `Find`; an older Registry's `Get` also returns
+---`nil` for a missing package, so it is a correct fallback. The method is read
+---on every call because an embedded Registry upgrade replaces it in place.
+---@param packageName string
+---@param api integer
+---@return table|nil implementation `nil` when the package is not loaded
+local function findOptionalPackage(packageName, api)
+    local find = rawget(Registry, "Find")
+    if type(find) ~= "function" then
+        find = getPackage
+    end
+    local implementation = find(Registry, packageName, api)
+    if type(implementation) ~= "table" then
+        return nil
+    end
+    return implementation
 end
 
 -- Public-surface validation --------------------------------------------------
@@ -497,6 +520,13 @@ end
 
 ---Bring state an older compatible revision created to this revision's shape.
 ---
+---Every older revision's shared host watchers are replaced, because a watcher
+---keeps calling the handler of the revision that connected it: revision 7's
+---logout handler, for one, closes no HookKit scope and no SignalKit bus. The
+---bootstrap tail installs this revision's watchers again and reconciles any
+---one-shot phase that passed in between. Revision 7 already wrote schema 3,
+---so that is all its state needs.
+---
 ---Schema 2 (revisions 4 to 6) lacks the combat flag, the instance list and
 ---every per-instance field of the combat gate and the halted state. Revision 3
 ---also kept a second, redundant phase-error slot (`_phaseErrors`) beside
@@ -507,6 +537,10 @@ end
 ---shape is unchanged.
 local function migrateState()
     if not upgradesOlderRevision then
+        return
+    end
+    if rawget(state, "schema") == STATE_SCHEMA then
+        disconnectInheritedWatchers()
         return
     end
     if
@@ -886,6 +920,73 @@ local function closeAddonEventScope(instance)
     return nil
 end
 
+---Close the addon's canonical HookKit scope, undoing every hook it holds.
+---
+---HookKit is an optional dependency and has no lifecycle of its own, so this
+---is the second half of the two-step `HookKit:ForAddon` documents. Without
+---HookKit, or with a revision that has no `CloseAddonScopes`, there is nothing
+---to close. A failure is returned as an error record for the first-error
+---policy, like `closeAddonEventScope`.
+---@param instance LifecycleKit.Instance
+---@return LifecycleKit.ErrorRecord|nil
+local function closeAddonHookScopes(instance)
+    local HookKit = findOptionalPackage("hookKit", OPTIONAL_HOOK_KIT_API)
+    local closeAddonScopes = HookKit ~= nil and rawget(HookKit, "CloseAddonScopes") or nil
+    if type(closeAddonScopes) ~= "function" then
+        return nil
+    end
+
+    local ok, closeError = pcall(closeAddonScopes, HookKit, rawget(instance, "_addonName"))
+    if not ok then
+        return newErrorRecord(closeError)
+    end
+    return nil
+end
+
+---Close the addon's SignalKit bus, disconnecting every subscription on it.
+---
+---SignalKit is a required dependency, and Registry keeps its facade identity
+---across compatible upgrades, so the facade captured at load time is asked
+---directly rather than looked up again. A SignalKit revision older than the
+---one that introduced buses has no `CloseAddonBus`; then there is nothing to
+---close. `CloseAddonBus` answers `false` for an addon that never asked for a
+---bus, which is a normal result, not a failure.
+---@param instance LifecycleKit.Instance
+---@return LifecycleKit.ErrorRecord|nil
+local function closeAddonBus(instance)
+    local closeBus = rawget(SignalKit, "CloseAddonBus")
+    if type(closeBus) ~= "function" then
+        return nil
+    end
+
+    local ok, closeError = pcall(closeBus, SignalKit, rawget(instance, "_addonName"))
+    if not ok then
+        return newErrorRecord(closeError)
+    end
+    return nil
+end
+
+---Release everything the addon owns through the lower Kits' addon scopes.
+---
+---The order is deliberate, and it is also the first-error precedence:
+---
+---1. the EventKit scope, so no host event fires into hooks or subscribers
+---   that are being torn down;
+---2. the HookKit scope, so the addon's hooks stop running;
+---3. the SignalKit bus last, because other addons' shutdown paths may still
+---   publish on it. Publishing on a closed bus delivers nothing and does not
+---   raise, so closing it last only keeps it useful for longer.
+---
+---Every step runs even when an earlier one failed.
+---@param instance LifecycleKit.Instance
+---@return LifecycleKit.ErrorRecord|nil firstError
+local function closeAddonOwnedScopes(instance)
+    local eventError = closeAddonEventScope(instance)
+    local hookError = closeAddonHookScopes(instance)
+    local busError = closeAddonBus(instance)
+    return eventError or hookError or busError
+end
+
 ---Drop every pending listener of the signals a terminal state makes unreachable.
 ---
 ---Called on shutdown and on halt. The phases already reached keep nothing
@@ -919,11 +1020,12 @@ end
 ---
 ---Order, and therefore first-error precedence: the combat queue is closed
 ---(each pending call learns it will never run), then the shutdown callbacks
----run, then the addon's EventKit scope is closed.
+---run, then the addon's EventKit scope, HookKit scope and SignalKit bus are
+---closed, in that order (see `closeAddonOwnedScopes`).
 ---
----A halted addon never reaches `shutdown`: halted is terminal. Its EventKit
----scope is still closed at logout so its event connections end with the
----session like everyone else's.
+---A halted addon never reaches `shutdown`: halted is terminal. Its scopes and
+---its bus are still closed at logout so they end with the session like
+---everyone else's.
 ---@param instance LifecycleKit.Instance
 ---@return LifecycleKit.ErrorRecord|nil
 local function markShutdown(instance)
@@ -931,7 +1033,7 @@ local function markShutdown(instance)
         return nil
     end
     if rawget(instance, "_halted") == true then
-        return closeAddonEventScope(instance)
+        return closeAddonOwnedScopes(instance)
     end
 
     rawset(instance, "_shutdown", true)
@@ -943,7 +1045,7 @@ local function markShutdown(instance)
 
     local queueError = closeCombatQueue(instance, "shutdown")
     local phaseError = firePhase(instance, "shutdown")
-    local scopeError = closeAddonEventScope(instance)
+    local scopeError = closeAddonOwnedScopes(instance)
     return queueError or phaseError or scopeError
 end
 

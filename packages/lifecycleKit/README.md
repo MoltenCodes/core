@@ -59,6 +59,8 @@ end)
 
 `WhenOutOfCombat` runs at once out of combat; in combat it queues the call (at most 64 per addon by default, `nil, "full"` beyond) and returns a handle with `Cancel()`. `LifecycleKit:IsInCombat()` answers from the shared state.
 
+At shutdown, after the shutdown callbacks, LifecycleKit closes what the addon owns through the lower Kits: its EventKit scope (`EventKit:ForAddon(name)`), its HookKit scope (`HookKit:ForAddon(name)`, when HookKit is loaded) and its SignalKit bus (`SignalKit:ForAddon(name)`), in that order. Connections, hooks and subscriptions made through them need no teardown code.
+
 `LifecycleKit:ForAddon(name)` is idempotent: every caller in the same runtime receives the same lifecycle instance for that addon name.
 
 The name is matched exactly against the folder name WoW reports in `ADDON_LOADED`, so pass the addon's own name — inside an addon file, `local addonName = ...`.
@@ -80,4 +82,5 @@ Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua
 
 Direct runtime dependencies: EventKit API 1, Registry API 2, SignalKit API 1.
 Every file above is required; omitting one makes this package raise at
-load.
+load. HookKit API 1 is optional: when the addon embeds it (after Registry),
+shutdown also undoes the addon's scoped hooks.

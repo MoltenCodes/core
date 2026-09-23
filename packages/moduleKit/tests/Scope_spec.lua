@@ -217,3 +217,187 @@ describe("ModuleKit module scopes over the real EventKit", function()
         assert.is_nil(rawget(module.scope, "Events"))
     end)
 end)
+
+-- HookKit is an optional dependency declared in the manifest, so the real
+-- `HookKit:CreateScope()` is on this package's test path.
+describe("ModuleKit module scopes over the real HookKit", function()
+    after_each(TestEnv.Reset)
+
+    ---A table whose method the specs hook.
+    local function newTarget()
+        local target = { refreshes = 0 }
+        function target.Refresh()
+            target.refreshes = target.refreshes + 1
+        end
+        return target
+    end
+
+    it("undoes a module's hooks once the module is disabled", function()
+        local ModuleKit = TestEnv.NewPackage()
+        local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Hooker")
+        local target = newTarget()
+        local original = target.Refresh
+        local hooked = 0
+        module.OnEnable = function(self)
+            self.scope.Hooks:Hook(target, "Refresh", function()
+                hooked = hooked + 1
+            end)
+        end
+
+        module:Enable()
+        target.Refresh()
+        module:Disable()
+        target.Refresh()
+
+        assert.are.equal(1, hooked)
+        assert.are.equal(2, target.refreshes)
+        assert.are.equal(original, target.Refresh)
+        assert.is_nil(rawget(module.scope, "Hooks"))
+    end)
+
+    it("hands a re-enabled module a fresh hook scope", function()
+        local ModuleKit = TestEnv.NewPackage()
+        local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Hooker")
+        local target = newTarget()
+        local scopes = {}
+        module.OnEnable = function(self)
+            scopes[#scopes + 1] = self.scope.Hooks
+            self.scope.Hooks:Hook(target, "Refresh", function() end)
+        end
+
+        module:Enable()
+        module:Disable()
+        module:Enable()
+
+        assert.are.equal(2, #scopes)
+        assert.is_true(scopes[1]:IsClosed())
+        assert.is_false(scopes[2]:IsClosed())
+        assert.is_true(scopes[2]:IsHooked(target, "Refresh"))
+    end)
+
+    it("undoes the hooks of a failed OnEnable and at shutdown", function()
+        local ModuleKit = TestEnv.NewPackage()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local broken = addon:CreateModule("Broken")
+        local steady = addon:CreateModule("Steady")
+        local target = newTarget()
+        local original = target.Refresh
+        local brokenScope, steadyScope
+        broken.OnEnable = function(self)
+            brokenScope = self.scope.Hooks
+            brokenScope:Hook(target, "Refresh", function() end)
+            error("enable failed")
+        end
+        steady.OnEnable = function(self)
+            steadyScope = self.scope.Hooks
+            steadyScope:Hook(target, "Refresh", function() end)
+        end
+
+        assert.has_error(function()
+            broken:Enable()
+        end)
+        assert.is_true(brokenScope:IsClosed())
+        assert.are.equal(original, target.Refresh)
+
+        steady:Enable()
+        TestEnv.Logout()
+
+        assert.is_true(steadyScope:IsClosed())
+        assert.are.equal(original, target.Refresh)
+    end)
+
+    it("reads nil when HookKit is not loaded", function()
+        local ModuleKit = TestEnv.NewPackageWithoutHookKit()
+        local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Bare")
+        local observed = {}
+        module.OnEnable = function(self)
+            observed.hooks = self.scope.Hooks
+        end
+
+        module:Enable()
+
+        assert.are.same({}, observed)
+    end)
+end)
+
+-- SignalKit is a dependency of the chain (LifecycleKit requires it), so the
+-- real addon bus is always on this package's test path.
+describe("ModuleKit module scopes over the real SignalKit bus", function()
+    local ModuleKit, SignalKit
+    before_each(function()
+        ModuleKit, _, SignalKit = TestEnv.NewPackage()
+    end)
+    after_each(TestEnv.Reset)
+
+    it("stops delivering a module's messages once the module is disabled", function()
+        local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Listener")
+        local bus = SignalKit:ForAddon("MyAddon")
+        bus:DeclareTopic("Changed", { arguments = 1 })
+        local received = {}
+        module.OnEnable = function(self)
+            self.scope.Messages:Subscribe("Changed", function(value)
+                received[#received + 1] = value
+            end)
+        end
+
+        module:Enable()
+        bus:Publish("Changed", "first")
+        module:Disable()
+        bus:Publish("Changed", "second")
+
+        assert.are.same({ "first" }, received)
+        assert.is_nil(rawget(module.scope, "Messages"))
+    end)
+
+    it("subscribes on the bus named after the module's addon", function()
+        local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Listener")
+        local delivered = 0
+        module.OnEnable = function(self)
+            self.scope.Messages:Subscribe("Ping", function()
+                delivered = delivered + 1
+            end)
+        end
+        module:Enable()
+
+        SignalKit:Bus("OtherAddon", { openTopics = true }):Publish("Ping")
+        assert.are.equal(0, delivered)
+        local bus = SignalKit:ForAddon("MyAddon")
+        bus:DeclareTopic("Ping")
+        bus:Publish("Ping")
+        assert.are.equal(1, delivered)
+    end)
+
+    it("reads nil while the session holds no room for the addon's bus", function()
+        for index = 1, 64 do
+            assert.is_not_nil(SignalKit:Bus("Filler" .. index))
+        end
+        local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Listener")
+        local observed = {}
+        module.OnEnable = function(self)
+            observed.messages = self.scope.Messages
+        end
+
+        module:Enable()
+
+        assert.are.same({}, observed)
+    end)
+
+    it("reads nil for a closed bus and for a SignalKit without buses", function()
+        local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Listener")
+        local observed = {}
+        module.OnEnable = function(self)
+            observed[#observed + 1] = self.scope.Messages or false
+        end
+        SignalKit:ForAddon("MyAddon"):Subscribe("Anything", function() end)
+        SignalKit:CloseAddonBus("MyAddon")
+
+        module:Enable()
+        module:Disable()
+        local bus = rawget(SignalKit, "Bus")
+        rawset(SignalKit, "Bus", nil)
+        module:Enable()
+        rawset(SignalKit, "Bus", bus)
+
+        assert.are.same({ false, false }, observed)
+    end)
+end)
