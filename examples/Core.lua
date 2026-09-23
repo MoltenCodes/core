@@ -1,24 +1,44 @@
--- ExampleAddon
+-- ExampleAddon: Core.lua
 --
--- The smallest addon that embeds the MoltenCodes framework and uses it for
--- something real: a lifecycle-bound module that greets the player once the
--- session is ready, reacts to a World of Warcraft event, and schedules a timer
--- that is cancelled automatically when the addon shuts down.
+-- Shows: resolving the framework by API generation, the per-addon LifecycleKit
+-- and ModuleKit handles, and one module whose `module.scope` owns everything it
+-- registers (events, a coalesced event burst, a timer, a secure hook and two
+-- slash commands), plus a ReadinessKit gate for spell data and a ClientKit
+-- capability check.
 --
--- Every file this addon loads, and the order it loads them in, is in
--- ExampleAddon.toc and embeds.xml. See docs/EMBEDDING.md for the rules behind
--- that order.
+-- This file loads first, right after `embeds.xml`, so it resolves every Kit the
+-- addon uses once and shares them with the other files through the addon's
+-- private table. Nothing here runs addon logic at load time: the module's hooks
+-- run in LifecycleKit phases, by which time every file in the `.toc` has loaded
+-- and registered what the module injects (`Settings.lua`, `Options.lua`,
+-- `Window.lua`, `Commands.lua`).
+--
+-- The rules behind the load order are in docs/EMBEDDING.md.
 
 -- WoW passes every addon file its addon name and a private shared table.
 -- `ADDON_NAME` is the folder name, which is exactly what LifecycleKit,
--- ModuleKit and TimerKit key their per-addon state by.
+-- ModuleKit and LocaleKit key their per-addon state by.
 local ADDON_NAME, ADDON_TABLE = ...
 
 local REGISTRY_API = 2
-local EVENT_KIT_API = 1
-local LIFECYCLE_KIT_API = 1
-local MODULE_KIT_API = 1
-local TIMER_KIT_API = 1
+
+--- Every Kit this addon calls directly, by package ID, with the API generation
+--- it was written against. SignalKit, TimerKit, SchedulerKit, PoolKit and
+--- HookKit are embedded too but reached only through other Kits: ModuleKit's
+--- module scopes, EventKit's `Coalesce`, WidgetKit's pools.
+local REQUIRED_APIS = {
+    clientKit = 1,
+    commandKit = 1,
+    eventKit = 1,
+    lifecycleKit = 1,
+    localeKit = 1,
+    moduleKit = 1,
+    optionsKit = 1,
+    readinessKit = 1,
+    schemaKit = 1,
+    settingsKit = 1,
+    widgetKit = 1,
+}
 
 -- Resolving the framework ---------------------------------------------------
 --
@@ -51,12 +71,12 @@ local Registry = resolveRegistry()
 
 ---Return one package, failing with an actionable message when it is missing.
 ---
----A missing package always means the same thing: its file is absent from the
----`.toc`, or it is listed after the file that asks for it.
+---A missing package always means the same thing: its file is absent from
+---`embeds.xml`, or it is listed after the file that asks for it.
 ---@param packageName string
----@param api integer
 ---@return table
-local function requirePackage(packageName, api)
+local function requirePackage(packageName)
+    local api = REQUIRED_APIS[packageName]
     local implementation = Registry:Get(packageName, api)
     if implementation == nil then
         error(
@@ -65,135 +85,236 @@ local function requirePackage(packageName, api)
                 .. packageName
                 .. " API "
                 .. api
-                .. "; add it to the .toc before Core.lua",
+                .. "; add it to embeds.xml",
             0
         )
     end
     return implementation
 end
 
----@type EventKit
-local EventKit = requirePackage("eventKit", EVENT_KIT_API)
----@type LifecycleKit
-local LifecycleKit = requirePackage("lifecycleKit", LIFECYCLE_KIT_API)
----@type ModuleKit
-local ModuleKit = requirePackage("moduleKit", MODULE_KIT_API)
----@type TimerKit
-local TimerKit = requirePackage("timerKit", TIMER_KIT_API)
+---The Kits the addon's files share, resolved once.
+---@class ExampleAddon.Kits
+---@field ClientKit ClientKit
+---@field CommandKit CommandKit
+---@field EventKit EventKit
+---@field LifecycleKit LifecycleKit
+---@field LocaleKit LocaleKit
+---@field ModuleKit ModuleKit
+---@field OptionsKit OptionsKit
+---@field ReadinessKit ReadinessKit
+---@field SchemaKit SchemaKit
+---@field SettingsKit SettingsKit
+---@field WidgetKit WidgetKit
+local Kits = {
+    ClientKit = requirePackage("clientKit"),
+    CommandKit = requirePackage("commandKit"),
+    EventKit = requirePackage("eventKit"),
+    LifecycleKit = requirePackage("lifecycleKit"),
+    LocaleKit = requirePackage("localeKit"),
+    ModuleKit = requirePackage("moduleKit"),
+    OptionsKit = requirePackage("optionsKit"),
+    ReadinessKit = requirePackage("readinessKit"),
+    SchemaKit = requirePackage("schemaKit"),
+    SettingsKit = requirePackage("settingsKit"),
+    WidgetKit = requirePackage("widgetKit"),
+}
 
 -- Per-addon handles ---------------------------------------------------------
 --
--- All three are keyed by the addon name, are created once, and are shared by
--- every file of this addon that asks for them. ModuleKit binds the container to
--- the same LifecycleKit instance, so modules are initialized on `loaded`,
--- enabled on `ready`, and disabled on `shutdown` without this file arranging it.
+-- Both are keyed by the addon name, created once, and shared by every file of
+-- this addon that asks for them. ModuleKit binds the container to the same
+-- LifecycleKit instance, so modules are initialized on `loaded`, enabled on
+-- `ready`, and disabled on `shutdown` without this file arranging it.
 
-local lifecycle = LifecycleKit:ForAddon(ADDON_NAME)
-local modules = ModuleKit:ForAddon(ADDON_NAME)
-local timers = TimerKit:ForAddon(ADDON_NAME)
+local lifecycle = Kits.LifecycleKit:ForAddon(ADDON_NAME)
+local modules = Kits.ModuleKit:ForAddon(ADDON_NAME)
 
-ADDON_TABLE.Lifecycle = lifecycle
-ADDON_TABLE.Modules = modules
-ADDON_TABLE.Timers = timers
+---The addon's private table, as every file of the addon sees it.
+---@class ExampleAddon.Private
+---@field Kits ExampleAddon.Kits
+---@field Lifecycle LifecycleKit.Instance
+---@field Modules ModuleKit.Addon
+---@field Main ExampleAddon.Main
+local private = ADDON_TABLE
+private.Kits = Kits
+private.Lifecycle = lifecycle
+private.Modules = modules
 
--- Saved variables -----------------------------------------------------------
---
--- SavedVariables belong to the addon, not to the framework: no MoltenCodes Kit
--- persists anything across `/reload`. The table declared in the `.toc` exists
--- from this addon's `ADDON_LOADED` onwards, which is the `loaded` phase.
+-- The main module -----------------------------------------------------------
 
----@class ExampleAddonDatabase
----@field greetings integer how many times the addon has greeted this character
+--- Hearthstone: a spell every character on every supported client knows, so
+--- the example can wait for its data without depending on the class played.
+local SPELL_ID = 8690
 
----@type ExampleAddonDatabase
--- `ExampleAddonDB` is a World of Warcraft saved variable. The client declares
--- it in the `.toc`, restores it as a global before the addon's files run, and
--- persists it by that global name, so it cannot be a local.
--- selene: allow(unscoped_variables)
-ExampleAddonDB = ExampleAddonDB or { greetings = 0 }
+--- How long one burst of health events is collected before it is reported.
+local HEALTH_INTERVAL_SECONDS = 0.5
 
-lifecycle:OnLoaded(function()
-    ExampleAddonDB = ExampleAddonDB or {}
-    if type(ExampleAddonDB.greetings) ~= "number" then
-        ExampleAddonDB.greetings = 0
-    end
-end)
+--- How often the module reminds the player that it is running.
+local REMINDER_INTERVAL_SECONDS = 60
 
--- Modules -------------------------------------------------------------------
---
--- Providers are addon-scoped values or factories. Modules declare what they
--- want by name, and ModuleKit resolves those names when the module initializes.
-
----This addon's own module type.
+---This addon's main module.
 ---
 ---ModuleKit hands each hook the module itself as `self`. Declaring the fields
 ---this addon stores on it is what makes them autocomplete and what lets the
 ---language server catch a typo in one of them.
----@class ExampleAddon.Greeter : ModuleKit.Module
----@field addonName string
----@field database ExampleAddonDatabase
----@field connections EventKit.Connection[]
----@field tick TimerKit.Timer|nil
+---@class ExampleAddon.Main : ModuleKit.Module
+---@field database SettingsKit.Database
+---@field options OptionsKit.Tree
+---@field window ExampleAddon.Window
+---@field registerCommands ExampleAddon.RegisterCommands
+---@field spellGate ReadinessKit.Gate|nil
 
-modules:ProvideValue("AddonName", ADDON_NAME)
-modules:ProvideSingleton("Database", function()
-    return ExampleAddonDB
-end)
+---Print one line of the addon's chat output, formatted through LocaleKit so
+---that a translation may reorder the arguments.
+---@param template string a key of the addon's locale table
+---@param ... string|number
+local function say(template, ...)
+    local L = Kits.LocaleKit:GetLocale(ADDON_NAME)
+    print(Kits.LocaleKit:Format(L[template], ...))
+end
 
-local greeter = modules:CreateModule("Greeter", {
-    inject = { addonName = "AddonName", database = "Database" },
+---Greet the player once the module is enabled, counting greetings across
+---sessions in the database's `global` scope.
+---@param self ExampleAddon.Main
+local function greet(self)
+    self.database.global.greetings = self.database.global.greetings + 1
+    if not self.database.profile.greet then
+        return
+    end
 
-    ---@param self ExampleAddon.Greeter
+    -- ClientKit probes what the running client can do. Test a capability like
+    -- this one rather than a version number: the answer stays right when a
+    -- patch moves a feature between flavours. Secret values exist on Retail
+    -- 12.x only; see docs/EMBEDDING.md.
+    local L = Kits.LocaleKit:GetLocale(ADDON_NAME)
+    local secretValues = Kits.ClientKit:Has("secretValues") and L["yes"] or L["no"]
+    say(
+        "%1$s is ready on the %2$s client (secret values: %3$s); greeting #%4$d.",
+        ADDON_NAME,
+        Kits.ClientKit:GetFlavor(),
+        secretValues,
+        self.database.global.greetings
+    )
+end
+
+---Wait for spell data that the client loads after login.
+---
+---A ReadinessKit gate is shared by name across the session and is not owned by
+---a module scope, so the module closes it itself in `onDisable`.
+---@param self ExampleAddon.Main
+local function waitForSpellData(self)
+    local gate = Kits.ReadinessKit:Gate(ADDON_NAME .. ".spellData", function()
+        return Kits.ClientKit:GetSpellInfo(SPELL_ID) ~= nil
+    end, { intervalSeconds = 1, timeoutSeconds = 30 })
+    self.spellGate = gate
+
+    gate:Await(function(ready, reason)
+        if ready then
+            local spell = Kits.ClientKit:GetSpellInfo(SPELL_ID)
+            say("Spell data is ready: %s.", spell and spell.name or tostring(SPELL_ID))
+        else
+            say("Spell data did not arrive (%s).", reason)
+        end
+    end)
+end
+
+---Connect the module's events, timer, hook and commands through its scope.
+---
+---Everything registered through `self.scope` is released when the module is
+---disabled, including at logout, so none of it needs undoing in `onDisable`.
+---The scope fields are typed optional because each reads `nil` when its Kit is
+---not embedded; this addon embeds all of them, so they are cast.
+---@param self ExampleAddon.Main
+local function connectScope(self)
+    local events = self.scope.Events --[[@as EventKit.Scope]]
+    local timers = self.scope.Timers --[[@as TimerKit.Scope]]
+    local hooks = self.scope.Hooks --[[@as HookKit.Scope]]
+    local commands = self.scope.Commands --[[@as CommandKit.Scope]]
+
+    -- One shared event bus serves every addon in the session. Keep a handler
+    -- short and never call a protected function from it.
+    events:Connect("PLAYER_ENTERING_WORLD", function(_, isInitialLogin, isReloadingUi)
+        say(
+            "Entered the world (login: %s, reload: %s).",
+            tostring(isInitialLogin),
+            tostring(isReloadingUi)
+        )
+    end)
+
+    -- `EventKit:Coalesce`, owned by the scope: a burst of health events becomes
+    -- one callback per interval, with the set of units that changed. It needs
+    -- SchedulerKit embedded. The set is reused: read it, never keep it.
+    events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, HEALTH_INTERVAL_SECONDS, function(units)
+        if not self.database.profile.announceHealth then
+            return
+        end
+        for unit in pairs(units) do
+            say("Health changed: %s.", unit)
+        end
+    end, { units = { "player" } })
+
+    timers:Every(REMINDER_INTERVAL_SECONDS, function()
+        say("%s is still running.", ADDON_NAME)
+    end)
+
+    -- A secure post-hook reacts without tainting the hooked function. Opening
+    -- the game menu closes the settings window.
+    hooks:SecureHook("ToggleGameMenu", function()
+        self.window:Hide()
+    end)
+
+    self.registerCommands(commands, self.options, self.window)
+end
+
+local main = modules:CreateModule("Main", {
+    -- Injection names what the module needs; the files that provide it load
+    -- after this one, which is fine: names are resolved when the module
+    -- initializes, in the `loaded` phase.
+    inject = {
+        database = "Database",
+        options = "Options",
+        window = "Window",
+        registerCommands = "RegisterCommands",
+    },
+
+    ---@param self ExampleAddon.Main
     ---@param injections table<string, any>
     onInitialize = function(self, injections)
-        self.addonName = injections.addonName
         self.database = injections.database
-        self.connections = {}
+        self.options = injections.options
+        self.window = injections.window
+        self.registerCommands = injections.registerCommands
     end,
 
-    ---@param self ExampleAddon.Greeter
+    ---@param self ExampleAddon.Main
     onEnable = function(self)
-        self.database.greetings = self.database.greetings + 1
-        print(self.addonName .. " ready; greeting #" .. self.database.greetings)
-
-        -- One shared event bus serves every addon in the session. Keep the
-        -- handler short, never call a protected function from it, and hold on
-        -- to the connection so it can be disconnected again.
-        self.connections[#self.connections + 1] = EventKit:Connect(
-            "PLAYER_ENTERING_WORLD",
-            function(_, isInitialLogin, isReloadingUi)
-                print(self.addonName .. " entered the world", isInitialLogin, isReloadingUi)
-            end
-        )
-
-        -- Unit-filtered events take at most two unit tokens, because
-        -- Frame:RegisterUnitEvent has exactly two filter slots.
-        self.connections[#self.connections + 1] = EventKit:ConnectUnit(
-            "UNIT_HEALTH",
-            function(_, unit)
-                print(self.addonName .. " saw a health change on", unit)
-            end,
-            "player"
-        )
-
-        -- Addon-owned timers are cancelled by LifecycleKit shutdown, so nothing
-        -- here has to be undone on logout.
-        self.tick = timers:Every(60, function()
-            print(self.addonName .. " is still running")
-        end)
+        greet(self)
+        connectScope(self)
+        waitForSpellData(self)
     end,
 
-    ---@param self ExampleAddon.Greeter
+    ---@param self ExampleAddon.Main
     onDisable = function(self)
-        for index = 1, #self.connections do
-            self.connections[index]:Disconnect()
-            self.connections[index] = nil
-        end
-        if self.tick ~= nil then
-            self.tick:Cancel()
-            self.tick = nil
+        -- Widgets and gates are not scope-owned: release them here.
+        self.window:Hide()
+        if self.spellGate ~= nil then
+            self.spellGate:Close()
+            self.spellGate = nil
         end
     end,
-})
+}) --[[@as ExampleAddon.Main]]
 
-ADDON_TABLE.Greeter = greeter
+private.Main = main
+
+-- LifecycleKit phases -------------------------------------------------------
+--
+-- A module covers what an addon does between `ready` and `shutdown`; the
+-- phases are still there for the addon itself. This callback runs once, after
+-- the module was enabled, because ModuleKit subscribed to `ready` first. Phases
+-- are replay-aware: a subscription made after its phase still runs, at once.
+
+lifecycle:OnReady(function()
+    if main.database.profile.greet then
+        say("Type /exampleaddon list for the settings, /exampleaddonwindow to edit them.")
+    end
+end)

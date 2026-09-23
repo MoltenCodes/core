@@ -1,17 +1,24 @@
 ## Interface: 120100, 50504, 20506, 11509
 ## Title: Example Addon
-## Notes: Minimal addon showing how to embed the MoltenCodes framework.
+## Notes: A small addon showing how to embed and use the MoltenCodes framework.
 ## Author: MoltenCodes
-## Version: 1.0.0
+## Version: 1.1.0
 ## SavedVariables: ExampleAddonDB
 ## IconTexture: Interface\Icons\INV_Misc_Gear_01
 ## X-Category: Development Tools
 ## X-License: MIT
-## X-Embeds: MoltenCodes-Registry, MoltenCodes-SignalKit, MoltenCodes-EventKit, MoltenCodes-LifecycleKit, MoltenCodes-ModuleKit, MoltenCodes-TimerKit
+## X-Embeds: MoltenCodes-Registry, MoltenCodes-CacheKit, MoltenCodes-ClientKit, MoltenCodes-PoolKit, MoltenCodes-CodecKit, MoltenCodes-SignalKit, MoltenCodes-EventKit, MoltenCodes-LifecycleKit, MoltenCodes-TimerKit, MoltenCodes-SchedulerKit, MoltenCodes-CommKit, MoltenCodes-SchemaKit, MoltenCodes-CommandKit, MoltenCodes-HookKit, MoltenCodes-InteropKit, MoltenCodes-LocaleKit, MoltenCodes-MediaKit, MoltenCodes-ModuleKit, MoltenCodes-OptionsKit, MoltenCodes-ProfileKit, MoltenCodes-ReadinessKit, MoltenCodes-SettingsKit, MoltenCodes-WidgetKit
 
 # Embedded framework packages. This file must come first: every package below
 # resolves its dependencies at load time and raises if one is missing.
 embeds.xml
 
-# Addon code.
+# Addon code. Core.lua resolves the framework and must come before the rest;
+# the locale files must come before the files that read translations.
 Core.lua
+Locales\enUS.lua
+Locales\deDE.lua
+Settings.lua
+Options.lua
+Window.lua
+Commands.lua

@@ -56,10 +56,15 @@ def discover_runtime_lua_files() -> list[Path]:
     # A fidelity suite runs inside the game client, not under Busted, so it is
     # runtime code and is held to the runtime standard library.
     discovered.extend(path for path in PACKAGES.glob("*/fidelity/**/*.lua") if path.is_file())
+    # The example addon's own source may be nested (`Locales/enUS.lua`); its
+    # specs under `examples/tests/` are test code and belong to the other scope.
+    example_tests = EXAMPLES / "tests"
     discovered.extend(
         path
-        for path in EXAMPLES.glob("*.lua")
-        if path.is_file() and not path.name.endswith("_spec.lua")
+        for path in EXAMPLES.rglob("*.lua")
+        if path.is_file()
+        and not path.name.endswith("_spec.lua")
+        and not path.is_relative_to(example_tests)
     )
     return sorted(set(discovered))
 

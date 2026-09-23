@@ -54,7 +54,16 @@ class ExampleAddonLayoutTests(unittest.TestCase):
             for line in toc.splitlines()
             if line.strip() and not line.strip().startswith(("#", "##"))
         ]
-        self.assertEqual(["embeds.xml", "Core.lua"], entries)
+        self.assertGreaterEqual(len(entries), 2)
+        self.assertEqual("embeds.xml", entries[0])
+        self.assertEqual("Core.lua", entries[1])
+        # `.toc` paths use the client's backslashes; every one must name a file
+        # that ships with the example.
+        for entry in entries:
+            self.assertTrue(
+                (EXAMPLES / entry.replace("\\", "/")).is_file(),
+                f"ExampleAddon.toc lists {entry}, which does not exist under examples/",
+            )
 
     def test_toc_declares_the_fields_the_documentation_promises(self):
         toc = (EXAMPLES / "ExampleAddon.toc").read_text(encoding="utf-8")

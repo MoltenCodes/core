@@ -52,6 +52,25 @@ class LuaLintDiscoveryTests(unittest.TestCase):
 
         self.assertEqual([top, child], files)
 
+    def test_nested_example_source_is_runtime_lua_but_example_tests_are_not(self):
+        locales = self.examples / "Locales"
+        locales.mkdir()
+        locale = locales / "enUS.lua"
+        locale.write_text("", encoding="utf-8")
+        core = self.examples / "Core.lua"
+        core.write_text("", encoding="utf-8")
+        example_tests = self.examples / "tests" / "support"
+        example_tests.mkdir(parents=True)
+        helper = example_tests / "Helper.lua"
+        helper.write_text("", encoding="utf-8")
+
+        runtime = module.discover_runtime_lua_files()
+
+        self.assertIn(locale, runtime)
+        self.assertIn(core, runtime)
+        self.assertNotIn(helper, runtime)
+        self.assertIn(helper, module.discover_test_lua_files())
+
     def test_fidelity_suites_are_runtime_lua(self):
         """A fidelity suite runs in the game client, so it is judged as runtime code."""
         fidelity = self.packages / "testKit" / "fidelity" / "cases"

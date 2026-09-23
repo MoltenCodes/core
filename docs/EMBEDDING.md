@@ -108,8 +108,11 @@ Interface/AddOns/MyAddon/
 │       ├── eventKit/EventKit.lua
 │       ├── lifecycleKit/LifecycleKit.lua
 │       ├── moduleKit/ModuleKit.lua
-│       └── timerKit/TimerKit.lua
+│       ├── timerKit/TimerKit.lua
+│       └── <one directory per further Kit you embed>
 ├── Core.lua
+├── Locales/
+│   └── enUS.lua
 └── Modules/
     └── ...
 ```
@@ -203,101 +206,146 @@ slashes on some platforms and not on others, so use backslashes everywhere.
 
 ## A complete example addon
 
-The three files below are real: they live in [`../examples/`](../examples/), a
-spec loads them against stubs on every test run, and `lua-language-server`
-type-checks them on every gate run. Copy the directory into
-`Interface/AddOns/ExampleAddon/`, drop the framework files into
-`Libs/MoltenCodes/`, and it runs.
+The files below are real: they live in [`../examples/`](../examples/), a spec
+loads every one of them against stubs on every test run, and
+`lua-language-server` type-checks them on every gate run. Copy the directory
+into `Interface/AddOns/ExampleAddon/`, drop the framework files into
+`Libs/MoltenCodes/`, and it runs. Each file shows one Kit; the map is in
+[`../examples/README.md`](../examples/README.md).
 
 ### `ExampleAddon.toc`
 
 ```toc
 ## Interface: 120100, 50504, 20506, 11509
 ## Title: Example Addon
-## Notes: Minimal addon showing how to embed the MoltenCodes framework.
+## Notes: A small addon showing how to embed and use the MoltenCodes framework.
 ## Author: MoltenCodes
-## Version: 1.0.0
+## Version: 1.1.0
 ## SavedVariables: ExampleAddonDB
 ## IconTexture: Interface\Icons\INV_Misc_Gear_01
 ## X-Category: Development Tools
 ## X-License: MIT
-## X-Embeds: MoltenCodes-Registry, MoltenCodes-SignalKit, MoltenCodes-EventKit, MoltenCodes-LifecycleKit, MoltenCodes-ModuleKit, MoltenCodes-TimerKit
+## X-Embeds: MoltenCodes-Registry, MoltenCodes-CacheKit, MoltenCodes-ClientKit, MoltenCodes-PoolKit, MoltenCodes-CodecKit, MoltenCodes-SignalKit, MoltenCodes-EventKit, MoltenCodes-LifecycleKit, MoltenCodes-TimerKit, MoltenCodes-SchedulerKit, MoltenCodes-CommKit, MoltenCodes-SchemaKit, MoltenCodes-CommandKit, MoltenCodes-HookKit, MoltenCodes-InteropKit, MoltenCodes-LocaleKit, MoltenCodes-MediaKit, MoltenCodes-ModuleKit, MoltenCodes-OptionsKit, MoltenCodes-ProfileKit, MoltenCodes-ReadinessKit, MoltenCodes-SettingsKit, MoltenCodes-WidgetKit
 
 # Embedded framework packages. This file must come first: every package below
 # resolves its dependencies at load time and raises if one is missing.
 embeds.xml
 
-# Addon code.
+# Addon code. Core.lua resolves the framework and must come before the rest;
+# the locale files must come before the files that read translations.
 Core.lua
+Locales\enUS.lua
+Locales\deDE.lua
+Settings.lua
+Options.lua
+Window.lua
+Commands.lua
 ```
 
 A comma-separated `## Interface` line is the modern way to support several
 client flavours from one `.toc`; see
 [Supported client versions](#supported-client-versions). `## X-Embeds` is not
-read by the client — it is a convention that tells a reviewer, and you in six
+read by the client; it is a convention that tells a reviewer, and you in six
 months, which libraries are bundled.
 
 ### `embeds.xml`
 
+The file follows the release artifact's `loadOrder` exactly. An addon keeps
+only what it uses plus dependencies; the Kits marked `optional here` are unused
+by the example and are listed so the file is a complete template.
+
 ```xml
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <!--
+        Embedded MoltenCodes packages, in the release bundle's `loadOrder`.
+
+        Registry has no dependencies and must load first; everything else
+        resolves its dependencies through `MoltenCodes.Registry` while this file
+        is being read, so a package listed above its dependency raises at load.
+
+        In a real addon these files live under Libs/MoltenCodes/ and this file
+        lives beside them. This example lists every release package so that it
+        doubles as the complete list; an addon keeps only the packages it uses,
+        plus everything they depend on. Those marked "optional here" are not
+        used by this example and can be removed from a copy of it.
+    -->
     <Script file="Libs\MoltenCodes\registry\Registry.lua" />
+    <Script file="Libs\MoltenCodes\cacheKit\CacheKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\clientKit\ClientKit.lua" />
+    <Script file="Libs\MoltenCodes\poolKit\PoolKit.lua" /> <!-- WidgetKit needs it -->
+    <Script file="Libs\MoltenCodes\codecKit\CodecKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\signalKit\SignalKit.lua" />
     <Script file="Libs\MoltenCodes\eventKit\EventKit.lua" />
     <Script file="Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua" />
+    <Script file="Libs\MoltenCodes\timerKit\TimerKit.lua" /> <!-- module scope timers; ReadinessKit needs it -->
+    <Script file="Libs\MoltenCodes\schedulerKit\SchedulerKit.lua" /> <!-- EventKit:Coalesce needs it -->
+    <Script file="Libs\MoltenCodes\commKit\CommKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\schemaKit\SchemaKit.lua" />
+    <Script file="Libs\MoltenCodes\commandKit\CommandKit.lua" />
+    <Script file="Libs\MoltenCodes\hookKit\HookKit.lua" /> <!-- module scope hooks -->
+    <Script file="Libs\MoltenCodes\interopKit\InteropKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\localeKit\LocaleKit.lua" />
+    <Script file="Libs\MoltenCodes\mediaKit\MediaKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />
-    <Script file="Libs\MoltenCodes\timerKit\TimerKit.lua" />
+    <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
+    <Script file="Libs\MoltenCodes\profileKit\ProfileKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\readinessKit\ReadinessKit.lua" />
+    <Script file="Libs\MoltenCodes\settingsKit\SettingsKit.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\WidgetKit.lua" />
 </Ui>
 ```
 
 ### `Core.lua`
 
-The full file is [`../examples/Core.lua`](../examples/Core.lua). Its shape is:
+The full file is [`../examples/Core.lua`](../examples/Core.lua); the other
+files each show one Kit. Its shape is:
 
 ```lua
 -- WoW passes every addon file its addon name and a private shared table.
 local ADDON_NAME, ADDON_TABLE = ...
-
-local generations = MoltenCodes and MoltenCodes.Registries
-local Registry = generations and generations[2] or MoltenCodes.Registry
-
-local EventKit = Registry:Get("eventKit", 1)
+local Registry = MoltenCodes.Registries[2]
 local LifecycleKit = Registry:Get("lifecycleKit", 1)
 local ModuleKit = Registry:Get("moduleKit", 1)
-local TimerKit = Registry:Get("timerKit", 1)
 
--- All three are keyed by the addon folder name, which is what `...` gives you.
+-- Both are keyed by the addon folder name, which is what `...` gives you.
 local lifecycle = LifecycleKit:ForAddon(ADDON_NAME)
 local modules = ModuleKit:ForAddon(ADDON_NAME)
-local timers = TimerKit:ForAddon(ADDON_NAME)
 
-modules:ProvideValue("AddonName", ADDON_NAME)
-
-modules:CreateModule("Greeter", {
-    inject = { addonName = "AddonName" },
+modules:CreateModule("Main", {
+    inject = {
+        database = "Database",
+        options = "Options",
+        window = "Window",
+        registerCommands = "RegisterCommands",
+    },
 
     onEnable = function(self)
-        print(self.addonName .. " is ready")
-
-        self.connection = EventKit:Connect("PLAYER_ENTERING_WORLD", function()
-            -- Short, and never a protected call. See Taint, below.
+        -- Everything registered through the scope is released on disable.
+        local scope = self.scope
+        scope.Events:Connect("PLAYER_ENTERING_WORLD", function() end)
+        scope.Events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, 0.5, function(units)
+            -- One callback per burst, with the set of units that changed.
+        end, { units = { "player" } })
+        scope.Timers:Every(60, function() end)
+        scope.Hooks:SecureHook("ToggleGameMenu", function()
+            self.window:Hide()
         end)
-
-        -- Cancelled automatically when the addon shuts down.
-        self.tick = timers:Every(60, function() end)
+        self.registerCommands(scope.Commands, self.options, self.window)
     end,
 
     onDisable = function(self)
-        self.connection:Disconnect()
-        self.tick:Cancel()
+        -- Widgets and readiness gates are not scope-owned; close them here.
+        self.window:Hide()
     end,
 })
+
+lifecycle:OnReady(function() end)
 ```
 
-Three things are worth pointing out:
+Four things are worth pointing out:
 
 - **`...` is the addon name.** `LifecycleKit:ForAddon`, `ModuleKit:ForAddon` and
-  `TimerKit:ForAddon` key their per-addon state by the folder name exactly as
+  `LocaleKit:GetLocale` key their per-addon state by the folder name exactly as
   the client reports it in `ADDON_LOADED`. Passing the `...` vararg means you
   cannot get it wrong, and it survives your addon being renamed.
 - **You do not drive the lifecycle yourself.** ModuleKit binds the container to
@@ -307,6 +355,10 @@ Three things are worth pointing out:
 - **Late is fine.** LifecycleKit phases are replay-aware: a callback registered
   after its phase already happened runs immediately instead of never. You do not
   have to race the client's events.
+- **Scopes clean up.** Anything registered through `module.scope` (events,
+  timers, hooks, commands, messages, comm prefixes, scheduler jobs) is released
+  when the module is disabled, including at logout, so a module writes no
+  teardown for them.
 
 ## TOC fields and packaging
 

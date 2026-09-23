@@ -1,19 +1,38 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
     <!--
-        Embedded MoltenCodes packages, in dependency order.
+        Embedded MoltenCodes packages, in the release bundle's `loadOrder`.
 
         Registry has no dependencies and must load first; everything else
         resolves its dependencies through `MoltenCodes.Registry` while this file
         is being read, so a package listed above its dependency raises at load.
 
         In a real addon these files live under Libs/MoltenCodes/ and this file
-        lives beside them. Keep only the packages the addon actually uses, plus
-        everything they depend on.
+        lives beside them. This example lists every release package so that it
+        doubles as the complete list; an addon keeps only the packages it uses,
+        plus everything they depend on. Those marked "optional here" are not
+        used by this example and can be removed from a copy of it.
     -->
     <Script file="Libs\MoltenCodes\registry\Registry.lua" />
+    <Script file="Libs\MoltenCodes\cacheKit\CacheKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\clientKit\ClientKit.lua" />
+    <Script file="Libs\MoltenCodes\poolKit\PoolKit.lua" /> <!-- WidgetKit needs it -->
+    <Script file="Libs\MoltenCodes\codecKit\CodecKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\signalKit\SignalKit.lua" />
     <Script file="Libs\MoltenCodes\eventKit\EventKit.lua" />
     <Script file="Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua" />
+    <Script file="Libs\MoltenCodes\timerKit\TimerKit.lua" /> <!-- module scope timers; ReadinessKit needs it -->
+    <Script file="Libs\MoltenCodes\schedulerKit\SchedulerKit.lua" /> <!-- EventKit:Coalesce needs it -->
+    <Script file="Libs\MoltenCodes\commKit\CommKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\schemaKit\SchemaKit.lua" />
+    <Script file="Libs\MoltenCodes\commandKit\CommandKit.lua" />
+    <Script file="Libs\MoltenCodes\hookKit\HookKit.lua" /> <!-- module scope hooks -->
+    <Script file="Libs\MoltenCodes\interopKit\InteropKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\localeKit\LocaleKit.lua" />
+    <Script file="Libs\MoltenCodes\mediaKit\MediaKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />
-    <Script file="Libs\MoltenCodes\timerKit\TimerKit.lua" />
+    <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
+    <Script file="Libs\MoltenCodes\profileKit\ProfileKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\readinessKit\ReadinessKit.lua" />
+    <Script file="Libs\MoltenCodes\settingsKit\SettingsKit.lua" />
+    <Script file="Libs\MoltenCodes\widgetKit\WidgetKit.lua" />
 </Ui>
