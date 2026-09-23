@@ -7,13 +7,20 @@ one directory per package, the package's runtime Lua at the top of it, the
 package's own documentation beside it -- plus a ``manifest.json`` that records
 what went in and a ``CHECKSUMS.txt`` that records exactly what came out.
 
+Every bundle is also an installable addon. Its root holds a generated ``.toc``
+named after the bundle (``MoltenCodes/MoltenCodes.toc`` for every release
+package, ``MoltenCodes-<Facade>/MoltenCodes-<Facade>.toc`` for one package and
+its dependencies) that loads the bundle's Lua files in load order. The same
+text is what ``python3 -m tooling.release.library_toc`` hands the packager.
+
 Builds are deterministic: no timestamps are written into the artifact and the
 zip entries use a fixed modification time, so building the same sources twice
 produces byte-identical output and therefore identical checksums.
 
 ``--verify`` reads the produced ``CHECKSUMS.txt`` back and holds it against the
-files on disk, so a release is never published with a checksum file that does
-not describe the artifact beside it.
+files on disk, and holds the bundle's ``.toc`` against the Lua files beside it,
+so a release is never published with a checksum file or a ``.toc`` that does
+not describe the artifact.
 """
 
 from __future__ import annotations
@@ -25,8 +32,10 @@ import shutil
 import sys
 import zipfile
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, NamedTuple, Sequence
 
+from tooling.package import toc
+from tooling.validation.interface_numbers import load_supported_clients
 from tooling.validation.validate_manifests import (
     ROOT,
     is_development,
@@ -35,8 +44,9 @@ from tooling.validation.validate_manifests import (
 )
 
 
-#: Name of the bundle that contains every package.
-FRAMEWORK_BUNDLE_NAME = "MoltenCodes"
+#: Name of the bundle that contains every package. It is also the name of the
+#: standalone addon the bundle installs as, so it comes from `toc`.
+FRAMEWORK_BUNDLE_NAME = toc.FRAMEWORK_ADDON_NAME
 
 #: Schema version of the generated ``manifest.json``.
 MANIFEST_SCHEMA = 1
@@ -62,6 +72,21 @@ ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 class BuildError(Exception):
     """A build could not be produced from the current repository state."""
+
+
+class Selection(NamedTuple):
+    """What one build contains.
+
+    ``bundle_name`` is the bundle directory and addon name, ``subject`` the
+    package a single-package build is about (``None`` for every package),
+    ``ordered`` the packages in load order and ``skipped`` the development
+    packages an every-package build leaves out.
+    """
+
+    bundle_name: str
+    subject: str | None
+    ordered: list[str]
+    skipped: list[str]
 
 
 def dependency_closure(package_name: str, manifests: dict[str, dict[str, Any]]) -> list[str]:
@@ -124,6 +149,85 @@ def facade_file_name(package_name: str) -> str:
         if path.suffix == ".lua" and path.parent.name == "src":
             return path.name
     raise BuildError(f"packages/{package_name}/src: no top-level Lua facade was found")
+
+
+def facade_name(package_name: str) -> str:
+    """Return the package's PascalCase facade (``TimerKit``), from its facade file."""
+    return Path(facade_file_name(package_name)).stem
+
+
+def load_valid_manifests() -> dict[str, dict[str, Any]]:
+    """Load the manifests, or raise ``BuildError`` when the metadata does not hold up.
+
+    Runs the manifest schema and dependency-graph checks and requires every
+    package to declare a ``license``, so nothing is built or described from a
+    tree whose metadata is broken.
+    """
+    manifests, errors = load_manifests()
+    errors.extend(validate_graph(manifests))
+    if errors:
+        raise BuildError("package metadata is invalid:\n  - " + "\n  - ".join(errors))
+
+    for name, manifest in sorted(manifests.items()):
+        if not isinstance(manifest.get("license"), str) or not manifest["license"].strip():
+            raise BuildError(f'packages/{name}: manifest is missing a "license"')
+    return manifests
+
+
+def select_packages(
+    manifests: dict[str, dict[str, Any]], package_name: str | None = None
+) -> Selection:
+    """Decide what a build contains.
+
+    ``None`` selects every release package under the name ``MoltenCodes``;
+    development packages (``"distribution": "development"``) are skipped and
+    reported. A package ID selects that package and its runtime dependency
+    closure under ``MoltenCodes-<Facade>``, the name the bundle installs under
+    as an addon. Naming an unknown or a development package raises
+    ``BuildError``. Validation guarantees no release package depends on a
+    development one, so skipping them never breaks a load order.
+    """
+    skipped = sorted(name for name, data in manifests.items() if is_development(data))
+
+    if package_name is None:
+        selected = sorted(name for name in manifests if name not in skipped)
+        return Selection(FRAMEWORK_BUNDLE_NAME, None, load_order(selected, manifests), skipped)
+
+    if package_name not in manifests:
+        raise BuildError(f'unknown package "{package_name}"')
+    if package_name in skipped:
+        raise BuildError(
+            f'package "{package_name}" has "distribution": "development"; development '
+            "packages are tested but never bundled"
+        )
+    return Selection(
+        toc.addon_name(facade_name(package_name)),
+        package_name,
+        load_order([package_name], manifests),
+        [],
+    )
+
+
+def bundle_toc(selection: Selection) -> str:
+    """Return the ``.toc`` that makes a bundle an installable addon.
+
+    It lists the facade of every package in the bundle, in load order, as paths
+    relative to the bundle folder. The builder writes it into the bundle root,
+    and ``python3 -m tooling.release.library_toc`` prints the same text for the
+    packager.
+    """
+    try:
+        interface_line = load_supported_clients().toc_line()
+    except (OSError, ValueError) as failure:
+        raise BuildError(f"supported_clients.json: {failure}") from failure
+
+    subject_facade = None if selection.subject is None else facade_name(selection.subject)
+    return toc.render_toc(
+        name=selection.bundle_name,
+        notes=toc.addon_notes(subject_facade),
+        interface_line=interface_line,
+        entries=[toc.toc_entry(name, facade_file_name(name)) for name in selection.ordered],
+    )
 
 
 def copy_package(package_name: str, bundle_dir: Path) -> list[str]:
@@ -277,6 +381,49 @@ def verify_checksums(output_dir: Path) -> list[str]:
     return problems
 
 
+def verify_toc(bundle_dir: Path) -> list[str]:
+    """Check that a bundle's ``.toc`` loads exactly its Lua files, in load order.
+
+    The ``.toc`` named by ``manifest.json`` must list the manifest's
+    ``loadOrder`` line for line, and every ``.lua`` file inside the bundle must
+    be listed: a file the ``.toc`` misses is never loaded by an installed copy,
+    and a listed file that is missing stops the addon's load.
+    """
+    manifest_path = bundle_dir / "manifest.json"
+    if not manifest_path.is_file():
+        return [f"{bundle_dir.name}/manifest.json: missing; cannot find the .toc"]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    toc_name = manifest.get("toc")
+    expected_name = f"{bundle_dir.name}.toc"
+    if toc_name != expected_name:
+        return [
+            f'{bundle_dir.name}/manifest.json: "toc" is {toc_name!r}; the client only '
+            f"loads {expected_name}"
+        ]
+    toc_path = bundle_dir / toc_name
+    if not toc_path.is_file():
+        return [f"{bundle_dir.name}/{toc_name}: missing from the bundle"]
+
+    listed = [
+        toc.entry_to_bundle_path(entry)
+        for entry in toc.listed_files(toc_path.read_text(encoding="utf-8"))
+    ]
+    where = f"{bundle_dir.name}/{toc_name}"
+    problems: list[str] = []
+    if listed != manifest.get("loadOrder"):
+        problems.append(
+            f"{where}: lists {listed} but the load order is {manifest.get('loadOrder')}"
+        )
+
+    present = {path.relative_to(bundle_dir).as_posix() for path in bundle_dir.rglob("*.lua")}
+    for relative in sorted(present - set(listed)):
+        problems.append(f"{where}: does not load {relative}, which the bundle contains")
+    for relative in sorted(set(listed) - present):
+        problems.append(f"{where}: loads {relative}, which the bundle does not contain")
+    return problems
+
+
 def write_zip(output_dir: Path, bundle_dir: Path) -> Path:
     """Archive the bundle directory reproducibly."""
     archive = output_dir / f"{bundle_dir.name}.zip"
@@ -300,58 +447,40 @@ def build(
 
     ``package_name`` selects a single package; its runtime dependencies are
     included as well, because a bundle that cannot load is not a release
-    artifact. Omitting it builds every release package in the repository.
+    artifact, and the bundle is named ``MoltenCodes-<Facade>``. Omitting it
+    builds every release package in the repository as ``MoltenCodes``.
 
     Development packages (``"distribution": "development"``) are never bundled:
     an ``--all`` build skips them and lists them under ``skipped`` in the
     bundle's ``manifest.json``, and naming one as ``package_name`` is an error.
-    Validation guarantees no release package depends on one, so skipping them
-    never breaks a load order.
+
+    Every bundle is an installable addon: its root holds ``<bundle>.toc``
+    listing the bundle's Lua files in load order, ``manifest.json`` names it
+    under ``toc``, and ``CHECKSUMS.txt`` covers it like every other file.
     """
-    manifests, errors = load_manifests()
-    errors.extend(validate_graph(manifests))
-    if errors:
-        raise BuildError("package metadata is invalid:\n  - " + "\n  - ".join(errors))
+    manifests = load_valid_manifests()
+    selection = select_packages(manifests, package_name)
 
-    for name, manifest in sorted(manifests.items()):
-        if not isinstance(manifest.get("license"), str) or not manifest["license"].strip():
-            raise BuildError(f'packages/{name}: manifest is missing a "license"')
-
-    skipped = sorted(name for name, data in manifests.items() if is_development(data))
-
-    if package_name is None:
-        subject = None
-        bundle_name = FRAMEWORK_BUNDLE_NAME
-        selected = sorted(name for name in manifests if name not in skipped)
-    else:
-        if package_name not in manifests:
-            raise BuildError(f'unknown package "{package_name}"')
-        if package_name in skipped:
-            raise BuildError(
-                f'package "{package_name}" has "distribution": "development"; development '
-                "packages are tested but never bundled"
-            )
-        skipped = []
-        subject = package_name
-        bundle_name = f"{FRAMEWORK_BUNDLE_NAME}-{package_name}"
-        selected = [package_name]
-
-    ordered = load_order(selected, manifests)
-
-    bundle_dir = output_dir / bundle_name
+    bundle_dir = output_dir / selection.bundle_name
     if bundle_dir.exists():
         shutil.rmtree(bundle_dir)
     bundle_dir.mkdir(parents=True)
 
-    published_files = {name: copy_package(name, bundle_dir) for name in ordered}
+    published_files = {name: copy_package(name, bundle_dir) for name in selection.ordered}
 
     license_source = ROOT / "LICENSE"
     if not license_source.is_file():
         raise BuildError("LICENSE: required repository file is missing")
     shutil.copyfile(license_source, bundle_dir / "LICENSE")
 
-    manifest = build_manifest(bundle_name, subject, ordered, manifests, published_files)
-    manifest["skipped"] = skipped
+    toc_name = f"{selection.bundle_name}.toc"
+    (bundle_dir / toc_name).write_text(bundle_toc(selection), encoding="utf-8")
+
+    manifest = build_manifest(
+        selection.bundle_name, selection.subject, selection.ordered, manifests, published_files
+    )
+    manifest["skipped"] = selection.skipped
+    manifest["toc"] = toc_name
     (bundle_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=False) + "\n", encoding="utf-8"
     )
@@ -387,9 +516,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--verify",
         action="store_true",
-        help="re-read CHECKSUMS.txt afterwards and check it against the build",
+        help="re-read CHECKSUMS.txt and the .toc afterwards and check them against the build",
     )
     return parser.parse_args(argv)
+
+
+def report_problems(label: str, problems: Sequence[str]) -> None:
+    """Print a verification failure and its problems to standard error."""
+    print(f"error: {label} failed with {len(problems)} problem(s):", file=sys.stderr)
+    for problem in problems:
+        print(f"  - {problem}", file=sys.stderr)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -412,6 +548,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"  - {name} {entry['version']}{runtime} ({entry['role']})")
     for name in manifest["skipped"]:
         print(f"  - {name} skipped (development package, never bundled)")
+    print(f"  addon: {manifest['bundle']}/{manifest['toc']}")
     print("  load order:")
     for relative in manifest["loadOrder"]:
         print(f"    {relative}")
@@ -424,16 +561,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
 
         if problems:
-            print(
-                f"error: checksum verification failed with {len(problems)} problem(s):",
-                file=sys.stderr,
-            )
-            for problem in problems:
-                print(f"  - {problem}", file=sys.stderr)
+            report_problems("checksum verification", problems)
+            return 1
+
+        toc_problems = verify_toc(output_dir / manifest["bundle"])
+        if toc_problems:
+            report_problems(".toc verification", toc_problems)
             return 1
 
         verified = len(read_checksums(output_dir / "CHECKSUMS.txt"))
         print(f"  checksums verified: {verified} file(s)")
+        print(f"  .toc verified: {len(manifest['loadOrder'])} file(s) in load order")
 
     return 0
 

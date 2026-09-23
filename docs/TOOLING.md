@@ -10,12 +10,16 @@ tooling/
 ├── spell.py                        # runs the pinned cspell over the documentation
 ├── spell-words.txt                 # the project dictionary cspell reads
 ├── package/
-│   └── build.py                   # assembles a checksummed distributable bundle
+│   ├── build.py                   # assembles a checksummed bundle that installs as an addon
+│   ├── list.py                    # prints package IDs from the manifests
+│   └── toc.py                     # renders and reads the generated addon .toc
 ├── release/
-│   ├── check_tag.py               # checks a v<SemVer> tag against RELEASES.md and the manifests
+│   ├── check_tag.py               # checks a bundle or package tag against RELEASES.md and the manifests
 │   ├── history.py                 # reads the release history in docs/RELEASES.md
-│   ├── library_toc.py             # prints the packaging-only MoltenCodes.toc
-│   └── notes.py                   # prints one release's notes
+│   ├── library_toc.py             # prints the .toc of the MoltenCodes addon (or of one Kit's addon)
+│   ├── notes.py                   # prints one release's notes
+│   ├── pkgmeta.py                 # narrows .pkgmeta to one Kit for a package release
+│   └── publish_mode.py            # decides dry run or upload, and whether to draft a release
 ├── test/
 │   └── run.py                     # package-aware Busted orchestration
 ├── tests/                         # Python unit tests for repository tooling
@@ -237,8 +241,13 @@ entry. A typo is fixed in the document, never added to the dictionary.
 
 `tooling/package/build.py` assembles the distributable bundle: it copies each
 package's runtime sources and package-owned documentation into the layout an
-addon embeds, writes a `manifest.json` describing versions, revisions, licences
-and the load order, and writes SHA-256 checksums into `CHECKSUMS.txt`.
+addon embeds, writes the bundle's own `.toc` so the bundle also installs as an
+addon (`MoltenCodes/MoltenCodes.toc` for `--all`,
+`MoltenCodes-<Facade>/MoltenCodes-<Facade>.toc` for `--package <id>`), writes a
+`manifest.json` describing versions, revisions, licences, the load order and
+the `.toc`, and writes SHA-256 checksums into `CHECKSUMS.txt`.
+`tooling/package/toc.py` holds the `.toc` field conventions and renders the
+text; which packages it lists, and in what order, comes from the builder.
 
 It is deliberately deterministic — no timestamps in the artifact, fixed zip entry
 times — so two builds of the same commit produce identical checksums. It fails
@@ -251,7 +260,9 @@ recorded file whose contents no longer hash to what was written down, and a file
 inside the bundle that nothing records at all, and it exits non-zero if it finds
 any of them. Bundles from earlier builds that the checksum file does not
 describe are left alone, so a single-package bundle sitting beside the full one
-is not mistaken for an unrecorded file.
+is not mistaken for an unrecorded file. It then checks the bundle's `.toc`: its
+file lines must equal `manifest.json`'s `loadOrder`, in order, and every `.lua`
+file in the bundle must be listed.
 
 CI builds the whole framework into a temporary directory on every run and checks
 the result twice: once with `--verify`, and once with `sha256sum --check
@@ -269,17 +280,37 @@ what the addon-site packagers build from.
 ([`.github/workflows/release.yml`](../.github/workflows/release.yml)); the
 procedure is in [`RELEASES.md`](RELEASES.md#release-procedure).
 
-- `python3 -m tooling.release.check_tag v1.2.0` fails unless the tag is
-  `v<SemVer>`, `docs/RELEASES.md` has a `### v1.2.0` section under
-  `## Release history`, and every "`<packageId>` <version>" line in it names an
-  existing package, once, at exactly its manifest version. Errors carry the line
-  number in `RELEASES.md`.
-- `python3 -m tooling.release.notes v1.2.0` prints that section, which becomes
-  the draft GitHub release's text; it exits 1 when there is none, and the
-  workflow falls back to the annotated tag's message.
-- `python3 -m tooling.release.library_toc` prints the packaging-only
-  `MoltenCodes.toc` the BigWigs packager needs. It lists no files and takes its
-  `## Interface` line from the supported-client table.
+- `python3 -m tooling.release.check_tag <tag>` checks one of the two tag kinds.
+  A bundle tag `v1.2.0` needs a `### v1.2.0` section under `## Release history`
+  whose "`<packageId>` <version>" lines name every release package once, at
+  exactly its manifest version, and nothing else. A package tag
+  `timerKit-v0.6.0` needs `timerKit` to be a release package whose manifest
+  version is `0.6.0`, and a `### timerKit-v0.6.0` section. Errors carry the line
+  number in `RELEASES.md`. `--github-output FILE` appends `tag`, `kind`,
+  `package` and `version` to `FILE` on success, which is how the workflow's
+  `resolve` job exports them; `check_tag.parse_tag` is the same split for
+  Python callers.
+- `python3 -m tooling.release.notes <tag>` prints that section, which becomes
+  the draft GitHub release's text; it exits 1 when there is none.
+- `python3 -m tooling.release.library_toc` prints the `.toc` of the standalone
+  addon `MoltenCodes`: the `## Interface` line from the supported-client table,
+  the title, notes, version placeholder and site fields, then every release
+  Kit in load order. `--package <id>` prints the `.toc` of
+  `MoltenCodes-<Facade>` instead, loading that Kit and the Kits it requires;
+  `--write DIR` writes `<addon>.toc` into `DIR` instead of printing it. The text
+  is the one the builder writes into its bundles. There is no `--layout`
+  option, because the builder's bundle and the packager's zip share one
+  layout.
+- `python3 -m tooling.release.pkgmeta --package <id>` prints the repository's
+  `.pkgmeta` narrowed to one Kit: `package-as: MoltenCodes-<Facade>`, only that
+  Kit's closure in `move-folders`, every other package in `ignore`.
+  `--output FILE` writes it and ignores `FILE` in it. The workflow hands the
+  result to the packager with `-m` for a package tag.
+- `python3 -m tooling.release.publish_mode --kind <bundle|package> ...` holds
+  the `publish` job's rules: `-d` when `dry_run` is on, a site variable is
+  missing or the tag is a package tag; a draft GitHub release only when the
+  run's ref is the released tag. `--github-output FILE` appends `args` and
+  `draft`.
 
 The release notes live in `RELEASES.md` rather than in a generated release
 manifest because the package manifests already are the machine-readable record
@@ -292,5 +323,4 @@ Tooling is added only when implemented. Empty placeholder directories are intent
 Likely future responsibilities include:
 
 - dependency-aware build ordering;
-- affected-package test selection;
-- per-package release tags wired to the release workflow.
+- affected-package test selection.

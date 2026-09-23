@@ -55,9 +55,12 @@ python3 -m tooling.package.list --release
 ```
 
 The release workflow also runs the commands in `release/`: `check_tag` checks a
-`v<SemVer>` tag against `docs/RELEASES.md` and the manifests, `notes` prints a
-tag's release notes, and `library_toc` prints the packaging-only `.toc`. See
-[`../docs/RELEASES.md`](../docs/RELEASES.md).
+bundle tag (`v<SemVer>`) or a package tag (`<packageId>-v<SemVer>`) against
+`docs/RELEASES.md` and the manifests, `notes` prints a tag's release notes,
+`library_toc` prints the `.toc` of the standalone `MoltenCodes` addon (or, with
+`--package`, of one Kit's addon), `pkgmeta` narrows `.pkgmeta` to one Kit
+for a package release, and `publish_mode` decides between dry run and upload
+and whether to draft a GitHub release. See [`../docs/RELEASES.md`](../docs/RELEASES.md).
 
 Run tooling unit tests:
 

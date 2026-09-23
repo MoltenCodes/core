@@ -1,7 +1,7 @@
 """Read the release history in `docs/RELEASES.md`.
 
-A bundle release is described by one section under the `## Release history`
-heading:
+Every release is described by one section under the `## Release history`
+heading, named after its tag. A bundle release lists every package it ships:
 
     ### v1.2.0
 
@@ -10,10 +10,16 @@ heading:
 
     Free-form notes for the release.
 
-The heading names the tag. Each list line of the form "`<packageId>` <version>"
-records a package version the release ships; `check_tag` holds those lines
-against the package manifests, and `notes` prints the whole section as the
-release notes of the draft GitHub release.
+A package release names one Kit in its tag and needs no list:
+
+    ### timerKit-v0.6.0
+
+    Free-form notes for the release.
+
+Each list line of the form "`<packageId>` <version>" records a package version
+the release ships; `check_tag` holds those lines against the package manifests,
+and `notes` prints the whole section as the release notes of the draft GitHub
+release.
 """
 
 from __future__ import annotations
@@ -47,6 +53,7 @@ class PackageVersion(NamedTuple):
 
 
 def _is_fence(line: str) -> bool:
+    """Whether `line` opens or closes a fenced code block."""
     return line.lstrip().startswith(("```", "~~~"))
 
 
@@ -79,6 +86,27 @@ def release_sections(text: str) -> dict[str, tuple[int, list[str]]]:
             current.append(line)
 
     return sections
+
+
+def history_heading_line(text: str) -> int | None:
+    """Return the line number of the `## Release history` heading, or `None`.
+
+    Error messages about a missing section point here, the place the section
+    has to be written. Headings inside fenced code blocks are not headings.
+    """
+    in_fence = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        if _is_fence(line):
+            in_fence = not in_fence
+        elif not in_fence and line.rstrip() == HISTORY_HEADING:
+            return number
+    return None
+
+
+def section_heading_line(text: str, tag: str) -> int | None:
+    """Return the line number of the `### <tag>` heading, or `None` without one."""
+    found = release_sections(text).get(tag)
+    return None if found is None else found[0] - 1
 
 
 def release_section(text: str, tag: str) -> tuple[int, str] | None:

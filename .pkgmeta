@@ -1,18 +1,22 @@
 # BigWigs packager metadata.
 #
-# This is the file CurseForge, Wago and WoWInterface build from. It describes
-# the MoltenCodes framework as an embeddable library bundle, not as a standalone
-# addon: the framework has no .toc of its own, registers no slash commands and
-# creates no UI. A consuming addon copies the kits it needs into
-# Libs/MoltenCodes/ and lists them in its own .toc, in the order documented in
-# docs/EMBEDDING.md.
+# This is the file CurseForge, Wago and WoWInterface build from. It packages
+# the MoltenCodes framework as the standalone addon "MoltenCodes": every
+# release Kit, loaded by a MoltenCodes.toc that is generated rather than
+# committed. The release workflow writes that .toc into its checkout with
+# `python3 -m tooling.release.library_toc` just before the packager runs; it
+# lists every release Kit in load order. Installing the addon gives a player
+# every Kit once; addons may still embed Kits instead, and Registry keeps one
+# copy of each whichever way it arrived. See docs/EMBEDDING.md.
 #
 # The packaged layout follows the one `python3 -m tooling.package.build`
 # produces locally, so what a release publishes and what a contributor can
-# build and checksum on their own machine agree on every Lua file:
+# build and checksum on their own machine agree on every Lua file and on the
+# .toc:
 #
 #     MoltenCodes/
 #     ├── LICENSE
+#     ├── MoltenCodes.toc
 #     ├── registry/Registry.lua
 #     ├── registry/docs/API.md
 #     ├── signalKit/SignalKit.lua
@@ -23,12 +27,19 @@
 # only in the builder bundle attached to the GitHub release. Each package's
 # docs/ directory travels with its Lua file.
 #
+# A package tag (`<packageId>-v<version>`) releases one Kit as the addon
+# "MoltenCodes-<Facade>". Its metadata is derived from this file by
+# `python3 -m tooling.release.pkgmeta --package <packageId>`, which narrows
+# `ignore` and `move-folders` to that Kit and the Kits it requires, so this
+# file stays the only one maintained by hand.
+#
 # See docs/RELEASES.md for tags, artifacts and checksums.
 
 package-as: MoltenCodes
 
-# The framework has no .toc, so there is nothing for the packager to generate
-# TOC files from, and no library to strip for a "nolib" variant.
+# The generated .toc carries one comma-separated `## Interface` line for every
+# supported client, so no per-flavour .toc files are generated. There are no
+# `externals`, so there is no library to strip for a "nolib" variant.
 enable-toc-creation: no
 enable-nolib-creation: no
 

@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from tooling.package import build as module
+from tooling.package import toc
 from tooling.validation import validate_manifests
 
 
@@ -160,7 +161,9 @@ class BuildTests(TemporaryRepositoryTests):
 
         manifest = module.build(self.output, package_name="signalKit")
 
-        bundle = self.output / "MoltenCodes-signalKit"
+        bundle = self.output / "MoltenCodes-SignalKit"
+        self.assertEqual("MoltenCodes-SignalKit", manifest["bundle"])
+        self.assertIn("MoltenCodes-SignalKit", [path.name for path in self.output.iterdir()])
         self.assertTrue((bundle / "registry" / "Registry.lua").is_file())
         self.assertEqual("signalKit", manifest["subject"])
         self.assertEqual("subject", manifest["packages"]["signalKit"]["role"])
@@ -191,7 +194,7 @@ class BuildTests(TemporaryRepositoryTests):
 
         manifest = module.build(self.output, package_name="cacheKit")
 
-        bundle = self.output / "MoltenCodes-cacheKit"
+        bundle = self.output / "MoltenCodes-CacheKit"
         self.assertFalse((bundle / "signalKit").exists())
         self.assertEqual(["cacheKit", "registry"], sorted(manifest["packages"]))
         self.assertEqual(
@@ -345,6 +348,195 @@ class BuildTests(TemporaryRepositoryTests):
             module.build(self.output)
 
         self.assertIn("LICENSE", str(failure.exception))
+
+
+class TocModuleTests(unittest.TestCase):
+    """The rendering and reading rules in `tooling.package.toc`."""
+
+    def test_addon_names(self):
+        self.assertEqual("MoltenCodes", toc.addon_name())
+        self.assertEqual("MoltenCodes-TimerKit", toc.addon_name("TimerKit"))
+
+    def test_entries_use_backslashes_and_convert_back(self):
+        entry = toc.toc_entry("timerKit", "TimerKit.lua")
+
+        self.assertEqual("timerKit\\TimerKit.lua", entry)
+        self.assertEqual("timerKit/TimerKit.lua", toc.entry_to_bundle_path(entry))
+
+    def test_notes_name_the_kit_of_a_single_kit_addon(self):
+        self.assertTrue(toc.addon_notes().startswith("The MoltenCodes framework"))
+        self.assertTrue(toc.addon_notes("TimerKit").startswith("TimerKit from the MoltenCodes"))
+
+    def test_render_puts_the_interface_first_and_the_files_last(self):
+        text = toc.render_toc(
+            name="MoltenCodes",
+            notes="Notes.",
+            interface_line="## Interface: 1, 2",
+            entries=["registry\\Registry.lua", "signalKit\\SignalKit.lua"],
+        )
+        lines = text.splitlines()
+
+        self.assertEqual("## Interface: 1, 2", lines[0])
+        self.assertEqual(["registry\\Registry.lua", "signalKit\\SignalKit.lua"], lines[-2:])
+        self.assertTrue(text.endswith("\n"))
+
+    def test_listed_files_skip_fields_comments_and_blank_lines(self):
+        text = "## Title: X\n# comment\n\n  a\\A.lua  \nb\\B.lua\n"
+
+        self.assertEqual(["a\\A.lua", "b\\B.lua"], toc.listed_files(text))
+
+
+class BundleTocTests(TemporaryRepositoryTests):
+    """Every bundle is an installable addon with a generated `.toc`."""
+
+    def test_all_writes_moltencodes_toc_into_the_bundle_root(self):
+        self.write_minimal_repository()
+
+        manifest = module.build(self.output)
+
+        path = self.output / "MoltenCodes" / "MoltenCodes.toc"
+        self.assertTrue(path.is_file())
+        self.assertEqual("MoltenCodes.toc", manifest["toc"])
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("## Title: MoltenCodes", text.splitlines())
+        self.assertEqual(
+            ["registry\\Registry.lua", "signalKit\\SignalKit.lua"], toc.listed_files(text)
+        )
+
+    def test_package_writes_a_toc_named_after_the_facade(self):
+        self.write_minimal_repository()
+
+        manifest = module.build(self.output, package_name="signalKit")
+
+        path = self.output / "MoltenCodes-SignalKit" / "MoltenCodes-SignalKit.toc"
+        self.assertEqual("MoltenCodes-SignalKit.toc", manifest["toc"])
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("## Title: MoltenCodes-SignalKit", text.splitlines())
+        self.assertIn("## Notes: SignalKit from the MoltenCodes framework", text)
+
+    def test_the_toc_leaves_out_development_packages(self):
+        self.write_package("registry", facade="Registry")
+        self.write_package(
+            "testKit",
+            facade="TestKit",
+            dependencies={"registry": {"api": 1}},
+            distribution="development",
+        )
+
+        module.build(self.output)
+
+        text = (self.output / "MoltenCodes" / "MoltenCodes.toc").read_text(encoding="utf-8")
+        self.assertEqual(["registry\\Registry.lua"], toc.listed_files(text))
+
+    def test_the_toc_is_checksummed_and_recorded(self):
+        self.write_minimal_repository()
+
+        module.build(self.output)
+
+        checksums = (self.output / "CHECKSUMS.txt").read_text(encoding="utf-8")
+        self.assertIn("  MoltenCodes/MoltenCodes.toc\n", checksums)
+        written = json.loads((self.output / "MoltenCodes" / "manifest.json").read_text())
+        self.assertEqual("MoltenCodes.toc", written["toc"])
+
+    def test_the_toc_carries_the_supported_interface_line(self):
+        from tooling.validation.interface_numbers import load_supported_clients
+
+        self.write_minimal_repository()
+        module.build(self.output)
+
+        text = (self.output / "MoltenCodes" / "MoltenCodes.toc").read_text(encoding="utf-8")
+        self.assertEqual(load_supported_clients().toc_line(), text.splitlines()[0])
+
+    def test_a_fresh_bundle_verifies(self):
+        self.write_minimal_repository()
+        module.build(self.output)
+
+        self.assertEqual([], module.verify_toc(self.output / "MoltenCodes"))
+
+    def test_verify_reports_a_lua_file_the_toc_does_not_load(self):
+        self.write_minimal_repository()
+        module.build(self.output)
+        (self.output / "MoltenCodes" / "registry" / "Extra.lua").write_text("", encoding="utf-8")
+
+        problems = module.verify_toc(self.output / "MoltenCodes")
+
+        self.assertEqual(1, len(problems))
+        self.assertIn("does not load registry/Extra.lua", problems[0])
+
+    def test_verify_reports_a_listed_file_that_is_missing(self):
+        self.write_minimal_repository()
+        module.build(self.output)
+        (self.output / "MoltenCodes" / "signalKit" / "SignalKit.lua").unlink()
+
+        problems = module.verify_toc(self.output / "MoltenCodes")
+
+        self.assertEqual(1, len(problems))
+        self.assertIn(
+            "loads signalKit/SignalKit.lua, which the bundle does not contain", problems[0]
+        )
+
+    def test_verify_reports_a_toc_out_of_load_order(self):
+        self.write_minimal_repository()
+        module.build(self.output)
+        path = self.output / "MoltenCodes" / "MoltenCodes.toc"
+        lines = path.read_text(encoding="utf-8").splitlines()
+        lines[-2], lines[-1] = lines[-1], lines[-2]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        problems = module.verify_toc(self.output / "MoltenCodes")
+
+        self.assertEqual(1, len(problems))
+        self.assertIn("but the load order is", problems[0])
+
+    def test_verify_reports_a_missing_toc(self):
+        self.write_minimal_repository()
+        module.build(self.output)
+        (self.output / "MoltenCodes" / "MoltenCodes.toc").unlink()
+
+        self.assertIn("missing from the bundle", module.verify_toc(self.output / "MoltenCodes")[0])
+
+    def test_verify_reports_a_toc_named_unlike_the_folder(self):
+        self.write_minimal_repository()
+        module.build(self.output)
+        manifest_path = self.output / "MoltenCodes" / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["toc"] = "Other.toc"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        problems = module.verify_toc(self.output / "MoltenCodes")
+
+        self.assertEqual(1, len(problems))
+        self.assertIn("the client only loads MoltenCodes.toc", problems[0])
+
+    def test_verify_reports_a_missing_manifest(self):
+        self.write_minimal_repository()
+        module.build(self.output)
+        (self.output / "MoltenCodes" / "manifest.json").unlink()
+
+        self.assertIn("cannot find the .toc", module.verify_toc(self.output / "MoltenCodes")[0])
+
+    def test_command_line_verify_fails_on_a_toc_problem(self):
+        self.write_minimal_repository()
+
+        errors = io.StringIO()
+        with mock.patch.object(module, "verify_toc", return_value=["broken toc"]):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(errors):
+                status = module.main(["--all", "--out", str(self.output), "--verify"])
+
+        self.assertEqual(1, status)
+        self.assertIn(".toc verification failed", errors.getvalue())
+        self.assertIn("broken toc", errors.getvalue())
+
+    def test_command_line_verify_reports_the_toc(self):
+        self.write_minimal_repository()
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            status = module.main(["--package", "signalKit", "--out", str(self.output), "--verify"])
+
+        self.assertEqual(0, status)
+        self.assertIn("addon: MoltenCodes-SignalKit/MoltenCodes-SignalKit.toc", output.getvalue())
+        self.assertIn(".toc verified: 2 file(s) in load order", output.getvalue())
 
 
 class ChecksumVerificationTests(TemporaryRepositoryTests):
