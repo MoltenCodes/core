@@ -1,0 +1,14 @@
+{
+  "name": "cacheKit",
+  "displayName": "CacheKit",
+  "description": "Bounded LRU and TTL caches, memoisation, diffed snapshots and clear-on-event for World of Warcraft addons.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "api": 1,
+  "revision": 1,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    }
+  }
+}
