@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 — 2026-09-23
+
+- Added `module.scope.Commands`, a CommandKit scope (`CommandKit:CreateScope()`) created on first read and closed with the other scope fields, so a module's slash commands go inert when it is disabled. Fields now close in the fixed order commands, events, hooks, jobs, messages, timers.
+- CommandKit is declared under `optionalDependencies`; without it `Commands` reads as `nil`.
+- Two new specs in `Scope_spec.lua`, one against the real CommandKit. The test environment models `SlashCmdList` and the `SLASH_*` globals and runs typed slash lines.
+- Implementation revision 9. `ModuleKit` API generation 1 is unchanged.
+
 ## 0.6.0 — 2026-09-23
 
 - Added `module.scope.Hooks`, a HookKit scope (`HookKit:CreateScope()`) created on first read, and `module.scope.Messages`, a scope over the addon's SignalKit bus (`SignalKit:ForAddon(addonName):CreateScope()`). Both are closed with the other scope fields on disable, on a failed `OnEnable`, at shutdown and when the addon halts, and are fresh on the next enable. Fields now close in the fixed order events, hooks, jobs, messages, timers.

@@ -401,3 +401,46 @@ describe("ModuleKit module scopes over the real SignalKit bus", function()
         assert.are.same({ false, false }, observed)
     end)
 end)
+
+-- CommandKit is an optional dependency declared in the manifest, so the real
+-- `CommandKit:CreateScope()` is on this package's test path.
+describe("ModuleKit module scopes over the real CommandKit", function()
+    after_each(TestEnv.Reset)
+
+    it("leaves a module's slash command inert once the module is disabled", function()
+        local ModuleKit = TestEnv.NewPackage()
+        local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Console")
+        local runs = 0
+        local commands
+        module.OnEnable = function(self)
+            commands = self.scope.Commands
+            commands:Register("console", {
+                handler = function()
+                    runs = runs + 1
+                end,
+            })
+        end
+
+        module:Enable()
+        assert.is_true(TestEnv.RunSlash("/console"))
+        module:Disable()
+        assert.is_true(TestEnv.RunSlash("/console"))
+
+        assert.are.equal(1, runs)
+        assert.is_false(commands:IsRegistered("console"))
+        assert.is_nil(rawget(module.scope, "Commands"))
+    end)
+
+    it("reads nil when CommandKit is not loaded", function()
+        local ModuleKit = TestEnv.NewPackageWithoutHookKit()
+        local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Bare")
+        local observed = {}
+        module.OnEnable = function(self)
+            observed.commands = self.scope.Commands
+        end
+
+        module:Enable()
+
+        assert.are.same({}, observed)
+    end)
+end)

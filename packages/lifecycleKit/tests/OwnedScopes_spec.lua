@@ -1,10 +1,11 @@
 local TestEnv = require("LifecycleKitTestEnv")
 
 -- Shutdown closes what the addon owns through the lower Kits' addon scopes:
--- its EventKit scope, its HookKit scope and its SignalKit bus, in that order.
--- None of those Kits observes shutdown itself, so LifecycleKit performs the
--- second half of the two-step each of them documents. HookKit is optional and
--- found through `Registry:Find`; SignalKit is a required dependency.
+-- its EventKit scope, its HookKit scope, its CommandKit scope and its SignalKit
+-- bus, in that order. None of those Kits observes shutdown itself, so
+-- LifecycleKit performs the second half of the two-step each of them
+-- documents. HookKit and CommandKit are optional and found through
+-- `Registry:Find`; SignalKit is a required dependency.
 
 ---A table with one method, hooked by the specs below.
 ---@return table target
@@ -19,9 +20,9 @@ local function newTarget()
 end
 
 describe("LifecycleKit shutdown of addon-owned scopes", function()
-    local LifecycleKit, SignalKit, EventKit, HookKit
+    local LifecycleKit, SignalKit, EventKit, HookKit, CommandKit
     before_each(function()
-        LifecycleKit, _, SignalKit, EventKit, HookKit = TestEnv.NewPackage()
+        LifecycleKit, _, SignalKit, EventKit, HookKit, _, CommandKit = TestEnv.NewPackage()
     end)
     after_each(TestEnv.Reset)
 
@@ -108,6 +109,46 @@ describe("LifecycleKit shutdown of addon-owned scopes", function()
         assert.is_not_nil(SignalKit:ForAddon("MyAddon"):Subscribe("Late", function() end))
     end)
 
+    it("leaves the addon's scoped slash commands inert after logout", function()
+        local life = LifecycleKit:ForAddon("MyAddon")
+        local runs = 0
+        assert.is_true(CommandKit:ForAddon("MyAddon"):Register("mycmd", {
+            handler = function()
+                runs = runs + 1
+            end,
+        }))
+        assert.is_true(TestEnv.RunSlash("/mycmd"))
+        assert.are.equal(1, runs)
+
+        TestEnv.Logout()
+
+        assert.is_true(life:IsShutdown())
+        -- The client keeps the slash name; typing it now does nothing.
+        assert.is_true(TestEnv.RunSlash("/mycmd"))
+        assert.are.equal(1, runs)
+        assert.is_false(CommandKit:ForAddon("MyAddon"):IsRegistered("mycmd"))
+    end)
+
+    it("shuts down unchanged against a CommandKit without CloseAddonScopes", function()
+        local life = LifecycleKit:ForAddon("MyAddon")
+        local runs = 0
+        CommandKit:ForAddon("MyAddon"):Register("mycmd", {
+            handler = function()
+                runs = runs + 1
+            end,
+        })
+        local original = rawget(CommandKit, "CloseAddonScopes")
+        rawset(CommandKit, "CloseAddonScopes", nil)
+
+        TestEnv.Logout()
+
+        rawset(CommandKit, "CloseAddonScopes", original)
+        assert.is_true(life:IsShutdown())
+        TestEnv.RunSlash("/mycmd")
+        assert.are.equal(1, runs)
+        assert.are.same({}, TestEnv.TakeReportedErrors())
+    end)
+
     it("shuts down unchanged against a HookKit without CloseAddonScopes", function()
         local life = LifecycleKit:ForAddon("MyAddon")
         local hooks = HookKit:ForAddon("MyAddon")
@@ -123,49 +164,80 @@ describe("LifecycleKit shutdown of addon-owned scopes", function()
         assert.are.same({}, TestEnv.TakeReportedErrors())
     end)
 
-    it("reports the first failure in event, hook, bus order after every step ran", function()
-        local first = LifecycleKit:ForAddon("FirstAddon")
-        local second = LifecycleKit:ForAddon("SecondAddon")
-        local attempted = {}
-        local closeEvents = rawget(EventKit, "CloseAddonScopes")
-        local closeHooks = rawget(HookKit, "CloseAddonScopes")
+    it(
+        "reports the first failure in event, hook, command, bus order after every step ran",
+        function()
+            local first = LifecycleKit:ForAddon("FirstAddon")
+            local second = LifecycleKit:ForAddon("SecondAddon")
+            local attempted = {}
+            local closeEvents = rawget(EventKit, "CloseAddonScopes")
+            local closeHooks = rawget(HookKit, "CloseAddonScopes")
+            local closeBus = rawget(SignalKit, "CloseAddonBus")
+            local closeCommands = rawget(CommandKit, "CloseAddonScopes")
+            rawset(CommandKit, "CloseAddonScopes", function(_, addonName)
+                attempted[#attempted + 1] = "commands " .. addonName
+                error("command teardown failed", 0)
+            end)
+            rawset(EventKit, "CloseAddonScopes", function(_, addonName)
+                attempted[#attempted + 1] = "events " .. addonName
+                if addonName == "SecondAddon" then
+                    error("event teardown failed", 0)
+                end
+                return closeEvents(EventKit, addonName)
+            end)
+            rawset(HookKit, "CloseAddonScopes", function(_, addonName)
+                attempted[#attempted + 1] = "hooks " .. addonName
+                error("hook teardown failed", 0)
+            end)
+            rawset(SignalKit, "CloseAddonBus", function(_, addonName)
+                attempted[#attempted + 1] = "bus " .. addonName
+                error("bus teardown failed", 0)
+            end)
+
+            TestEnv.Logout()
+
+            rawset(EventKit, "CloseAddonScopes", closeEvents)
+            rawset(HookKit, "CloseAddonScopes", closeHooks)
+            rawset(SignalKit, "CloseAddonBus", closeBus)
+            rawset(CommandKit, "CloseAddonScopes", closeCommands)
+            assert.are.same({
+                "events FirstAddon",
+                "hooks FirstAddon",
+                "commands FirstAddon",
+                "bus FirstAddon",
+                "events SecondAddon",
+                "hooks SecondAddon",
+                "commands SecondAddon",
+                "bus SecondAddon",
+            }, attempted)
+            -- Addons advance by name; FirstAddon's first failure is its hook
+            -- scope, which wins over SecondAddon's event-scope failure.
+            local reported = TestEnv.TakeReportedErrors()
+            assert.are.equal(1, #reported)
+            assert.are.equal("hook teardown failed", reported[1].value)
+            assert.is_true(first:IsShutdown())
+            assert.is_true(second:IsShutdown())
+        end
+    )
+
+    it("prefers a command-scope failure over a bus failure of one addon", function()
+        LifecycleKit:ForAddon("MyAddon")
+        local closeCommands = rawget(CommandKit, "CloseAddonScopes")
         local closeBus = rawget(SignalKit, "CloseAddonBus")
-        rawset(EventKit, "CloseAddonScopes", function(_, addonName)
-            attempted[#attempted + 1] = "events " .. addonName
-            if addonName == "SecondAddon" then
-                error("event teardown failed", 0)
-            end
-            return closeEvents(EventKit, addonName)
+        rawset(CommandKit, "CloseAddonScopes", function()
+            error("command teardown failed", 0)
         end)
-        rawset(HookKit, "CloseAddonScopes", function(_, addonName)
-            attempted[#attempted + 1] = "hooks " .. addonName
-            error("hook teardown failed", 0)
-        end)
-        rawset(SignalKit, "CloseAddonBus", function(_, addonName)
-            attempted[#attempted + 1] = "bus " .. addonName
+        rawset(SignalKit, "CloseAddonBus", function()
             error("bus teardown failed", 0)
         end)
 
         TestEnv.Logout()
 
-        rawset(EventKit, "CloseAddonScopes", closeEvents)
-        rawset(HookKit, "CloseAddonScopes", closeHooks)
+        rawset(CommandKit, "CloseAddonScopes", closeCommands)
         rawset(SignalKit, "CloseAddonBus", closeBus)
-        assert.are.same({
-            "events FirstAddon",
-            "hooks FirstAddon",
-            "bus FirstAddon",
-            "events SecondAddon",
-            "hooks SecondAddon",
-            "bus SecondAddon",
-        }, attempted)
-        -- Addons advance by name; FirstAddon's first failure is its hook
-        -- scope, which wins over SecondAddon's event-scope failure.
         local reported = TestEnv.TakeReportedErrors()
         assert.are.equal(1, #reported)
-        assert.are.equal("hook teardown failed", reported[1].value)
-        assert.is_true(first:IsShutdown())
-        assert.is_true(second:IsShutdown())
+        assert.are.equal("command teardown failed", reported[1].value)
     end)
 
     it("prefers an event-scope failure over the hook and bus failures of one addon", function()
@@ -279,7 +351,7 @@ describe("LifecycleKit upgrade from revision 7", function()
         local subscription = SignalKit:ForAddon("CarriedOver"):Subscribe("Anything", noop)
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(8, upgraded.REVISION)
+        assert.are.equal(9, upgraded.REVISION)
         assert.is_false(oldLogoutWatcher:IsConnected())
 
         TestEnv.Logout()

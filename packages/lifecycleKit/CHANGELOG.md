@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.2 — 2026-09-23
+
+- Shutdown now also closes the addon's canonical CommandKit scope (`CommandKit:CloseAddonScopes(addonName)`), after the HookKit scope and before the SignalKit bus, so slash commands registered through `CommandKit:ForAddon` go inert at logout. The order is now EventKit scope, HookKit scope, CommandKit scope, SignalKit bus, and the first failure wins in that order. A halted addon's CommandKit scope is closed at logout too.
+- CommandKit is an optional dependency (`optionalDependencies`), found through `Registry:Find("commandKit", 1)`. Without it, or with a CommandKit that has no `CloseAddonScopes`, shutdown is unchanged; `false` (the addon never had a scope) is a normal result.
+- An in-place upgrade from revision 8 replaces its shared host watchers, as the upgrade from revision 7 already did.
+- Three new specs in `OwnedScopes_spec.lua` against the real CommandKit (a scoped command is inert after logout; a CommandKit without `CloseAddonScopes` leaves shutdown unchanged; a command-scope failure wins over a bus failure), and the failure-order spec now covers all four steps. The test environment models `SlashCmdList` and the `SLASH_*` globals.
+- Implementation revision 9. API generation 1 is unchanged.
+
 ## 0.4.1 — 2026-09-23
 
 - Shutdown now also closes the addon's canonical HookKit scope (`HookKit:CloseAddonScopes(addonName)`) and its SignalKit bus (`SignalKit:CloseAddonBus(addonName)`), after the EventKit scope. Hooks made through `HookKit:ForAddon` and subscriptions on the bus named after the addon, including its scopes' subscriptions, need no teardown code. Neither Kit observes shutdown itself; this is the second half of the two-step both document.

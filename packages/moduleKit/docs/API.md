@@ -62,7 +62,7 @@ Each module also carries one field:
 
 | Field | Purpose |
 |---|---|
-| `scope` | Per-module owner of timers, events, scheduler jobs, hooks and bus subscriptions, released automatically on disable. See [Module scopes](#module-scopes). |
+| `scope` | Per-module owner of slash commands, timers, events, scheduler jobs, hooks and bus subscriptions, released automatically on disable. See [Module scopes](#module-scopes). |
 
 Inspection methods return values/snapshots; mutating a table returned by `GetModules()` or `GetInjections()` does not mutate ModuleKit's owned collection table.
 
@@ -219,8 +219,9 @@ function module:OnEnable()
     self.scope.Jobs:Schedule(function() self:Rebuild() end)
     self.scope.Hooks:SecureHook(GameTooltip, "SetUnit", function() self:Decorate() end)
     self.scope.Messages:Subscribe("ProfileChanged", function(name) self:Reload(name) end)
+    self.scope.Commands:Register("myaddon", { handler = function(context) self:Report(context) end })
 end
--- No OnDisable: Disable() closes all five scopes.
+-- No OnDisable: Disable() closes all six scopes.
 ```
 
 | Field | What it is | Released by |
@@ -230,6 +231,7 @@ end
 | `scope.Jobs` | a SchedulerKit scope (`SchedulerKit:CreateScope()`) | `Close()` |
 | `scope.Hooks` | a HookKit scope (`HookKit:CreateScope()`) | `Close()`, which undoes every hook |
 | `scope.Messages` | a scope over the addon's SignalKit bus (`SignalKit:ForAddon(addonName):CreateScope()`) | `Close()`, which disconnects every subscription |
+| `scope.Commands` | a CommandKit scope (`CommandKit:CreateScope()`) | `Close()`, which leaves every slash command it registered inert (the client keeps the name; typing it does nothing) |
 
 The rules:
 
@@ -237,7 +239,7 @@ The rules:
   never reads its scope creates nothing and pays nothing beyond the one scope
   table every module carries.
 - **Optional Kits.** ModuleKit has no dependency on TimerKit, EventKit,
-  SchedulerKit or HookKit, and uses SignalKit only through LifecycleKit. Each
+  SchedulerKit, HookKit or CommandKit, and uses SignalKit only through LifecycleKit. Each
   is resolved through `Registry:Find` at first read, and a field reads as `nil`
   when its Kit is not loaded or is a revision without `CreateScope` (for
   `Messages`: without `Bus` and `ForAddon`). Test for `nil` when your addon
@@ -255,8 +257,8 @@ The rules:
   `OnInitialize`, or while the module is disabled — raises at the reading line.
 - **Released on every way out.** `Disable()`, `DisableAll()`, terminal
   shutdown and the addon halting close every scope the module created, after
-  `OnDisable` has run, in the fixed order events, hooks, jobs, messages,
-  timers; a failed `OnEnable` closes whatever it created before failing; at
+  `OnDisable` has run, in the fixed order commands, events, hooks, jobs,
+  messages, timers; a failed `OnEnable` closes whatever it created before failing; at
   shutdown or halt a module whose `OnDisable` fails still has its scopes
   closed. The next enable starts with fresh scopes.
 - A module that stays enabled because its `OnDisable` failed outside shutdown
@@ -511,11 +513,11 @@ ModuleKit API 1 requires:
 ModuleKit does not depend directly on EventKit or SignalKit; those are implementation dependencies of LifecycleKit and remain outside ModuleKit's direct contract.
 
 Module scopes use TimerKit API 1, EventKit API 1, SchedulerKit API 1, HookKit
-API 1 and SignalKit API 1 when they are loaded, found through `Registry:Find`
+API 1, CommandKit API 1 and SignalKit API 1 when they are loaded, found through `Registry:Find`
 (Registry revision 7; an older Registry's `Get` is used as the equivalent
 fallback). None of them is a dependency: without them the matching scope field
-reads as `nil`. HookKit is declared under `optionalDependencies` in the
-manifest.
+reads as `nil`. HookKit and CommandKit are declared under
+`optionalDependencies` in the manifest.
 
 ## Internals
 
