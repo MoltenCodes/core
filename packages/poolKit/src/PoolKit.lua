@@ -36,10 +36,15 @@
 
 local PACKAGE_NAME = "poolKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 2
 local DEFAULT_MAX_RETAINED = 128
+
+-- A pool's generation when its constructor names none, and the generation of
+-- every pool an older revision built. Fixed rather than tied to PoolKit's own
+-- revision, so behaviour never depends on which embedded copy won.
+local DEFAULT_GENERATION = 1
 
 -- The shape every pool carries. Pools built by an older revision have no
 -- `_schema` field and are brought up to this shape the first time a method of
@@ -71,7 +76,7 @@ local REASON_CLOSED = "closed"
 ---@field strict boolean? Keep weak discarded-object history for richer duplicate-release diagnostics; default `true`.
 ---@field prewarm integer? Objects to create up front; default `0`.
 ---@field maxActiveWarning integer? Report once through `geterrorhandler` when this many objects are borrowed at the same time.
----@field generation integer? Positive integer stamped on every object the factory builds; default: the PoolKit revision that created the pool.
+---@field generation integer? Positive integer stamped on every object the factory builds; default `1`.
 
 ---Options accepted by `PoolKit:New`.
 ---@class PoolKit.NewOptions : PoolKit.CommonOptions
@@ -123,6 +128,8 @@ local REASON_CLOSED = "closed"
 ---@field GetWaitingCount fun(self: PoolKit.Pool): integer
 ---@field CancelWaiting fun(self: PoolKit.Pool, callback: PoolKit.WaitCallback): boolean
 ---@field GetParkedCount fun(self: PoolKit.Pool): integer
+---@field GetMaxCreated fun(self: PoolKit.Pool): integer|false
+---@field SetMaxCreated fun(self: PoolKit.Pool, maxCreated: integer): PoolKit.Pool
 ---@field AttachChild fun(self: PoolKit.Pool, parent: table|userdata, child: table|userdata, childPool: PoolKit.Pool): PoolKit.Pool
 ---@field DetachChild fun(self: PoolKit.Pool, child: table|userdata): boolean
 ---@field ReleaseAfter fun(self: PoolKit.Pool, object: table|userdata, animationGroup: PoolKit.AnimationGroup): boolean
@@ -201,6 +208,8 @@ local function validatePublicSurface(implementation)
         and type(rawget(Pool, "GetWaitingCount")) == "function"
         and type(rawget(Pool, "CancelWaiting")) == "function"
         and type(rawget(Pool, "GetParkedCount")) == "function"
+        and type(rawget(Pool, "GetMaxCreated")) == "function"
+        and type(rawget(Pool, "SetMaxCreated")) == "function"
         and type(rawget(Pool, "AttachChild")) == "function"
         and type(rawget(Pool, "DetachChild")) == "function"
         and type(rawget(Pool, "ReleaseAfter")) == "function"
@@ -221,7 +230,6 @@ end
 local function validateState(currentState)
     return validateStateBase(currentState)
         and rawget(currentState, "schema") == STATE_SCHEMA
-        and type(rawget(currentState, "legacyGeneration")) == "number"
         and type(rawget(currentState, "hookedGroups")) == "table"
         and type(rawget(currentState, "deferredPool")) == "table"
         and type(rawget(currentState, "deferredObject")) == "table"
@@ -273,8 +281,6 @@ if previousRevision == nil then
         schema = STATE_SCHEMA,
         poolMetatable = {},
         unbounded = {},
-        -- Only read for pools an older revision built; none exist yet.
-        legacyGeneration = IMPLEMENTATION_REVISION,
         -- Animation groups carry one permanent `OnFinished` hook each, so the
         -- set of hooked groups is remembered and never hooked twice.
         hookedGroups = setmetatable({}, { __mode = "k" }),
@@ -292,9 +298,9 @@ elseif type(Pool) ~= "table" or not validateStateBase(state) then
 else
     if rawget(state, "schema") == 1 then
         -- Revisions 1 to 3 kept no generations and no deferred releases. Their
-        -- pools cannot be enumerated from here, so they are upgraded lazily;
-        -- this records the generation those pools implicitly carry.
-        rawset(state, "legacyGeneration", previousRevision)
+        -- pools cannot be enumerated from here, so they are upgraded lazily
+        -- (see `upgradePool`). Revision 4 also recorded a `legacyGeneration`
+        -- here; revision 5 no longer reads it and leaves it where it is.
         rawset(state, "hookedGroups", setmetatable({}, { __mode = "k" }))
         rawset(state, "deferredPool", {})
         rawset(state, "deferredObject", {})
@@ -358,10 +364,10 @@ end
 ---pool method validates its receiver first, and that check upgrades a pool whose
 ---`_schema` is not current: one field comparison per call, nothing allocated
 ---once the pool is current. The defaults reproduce the older behaviour exactly:
----no caps, no queue, no children, and the generation the pool implicitly had.
+---no caps, no queue, no children, and the default generation.
 ---@param pool table
 local function upgradePool(pool)
-    local generation = rawget(state, "legacyGeneration")
+    local generation = DEFAULT_GENERATION
     rawset(pool, "_generation", generation)
     rawset(pool, "_baseGeneration", generation)
     rawset(pool, "_stamps", false)
@@ -547,7 +553,7 @@ local function parseCommonOptions(options, allowed, methodName, level, defaultMa
 
     local generation = rawget(options, "generation")
     if generation == nil then
-        generation = IMPLEMENTATION_REVISION
+        generation = DEFAULT_GENERATION
     else
         validatePositiveInteger(generation, methodName .. " generation", level + 1)
     end
@@ -1241,7 +1247,10 @@ function releaseActive(pool, object)
             local ok, value = pcall(invokeLifecycleCallback, pool, "reset", reset, object, pool)
             if not ok then
                 rawset(active, object, ACTIVE)
-                error(value, 0)
+                -- First error wins: a child that failed before this reset ran
+                -- is the error the caller hears about.
+                firstError = captureFirstError(firstError, false, value)
+                raiseCaptured(firstError)
             end
         end
     end
@@ -1765,6 +1774,51 @@ local function poolGetParkedCount(self)
     return rawget(self, "_parkedCount")
 end
 
+---The creation cap, or `false` when the pool has none.
+---@param self PoolKit.Pool
+---@return integer|false maxCreated
+local function poolGetMaxCreated(self)
+    validatePool(self, "PoolKit.Pool:GetMaxCreated", 3)
+    return rawget(self, "_maxCreated")
+end
+
+---Raise the creation cap. Destroyed objects keep counting against the cap, so
+---this is how a pool whose stale objects were retired by `SetGeneration` gets
+---room to build their replacements. A retention bound that equalled the old
+---cap, as it does by default, follows it up. Waiting requests are served from
+---the new room at once.
+---@param self PoolKit.Pool
+---@param maxCreated integer positive integer no lower than the current cap
+---@return PoolKit.Pool self
+local function poolSetMaxCreated(self, maxCreated)
+    validatePool(self, "PoolKit.Pool:SetMaxCreated", 3)
+    ensureMutationAllowed(self, "PoolKit.Pool:SetMaxCreated", 3)
+    validatePositiveInteger(maxCreated, "PoolKit.Pool:SetMaxCreated maxCreated", 3)
+
+    local current = rawget(self, "_maxCreated")
+    if current == false then
+        error("PoolKit.Pool:SetMaxCreated cannot cap a pool that was built without maxCreated", 2)
+    end
+    if maxCreated < current then
+        error(
+            "PoolKit.Pool:SetMaxCreated cannot lower the cap from "
+                .. tostring(current)
+                .. " to "
+                .. tostring(maxCreated),
+            2
+        )
+    end
+
+    rawset(self, "_maxCreated", maxCreated)
+    if rawget(self, "_maxRetained") == current then
+        rawset(self, "_maxRetained", maxCreated)
+    end
+    if rawget(self, "_waitingCount") > 0 and rawget(self, "_closed") ~= true then
+        drainWaiting(self)
+    end
+    return self
+end
+
 ---Attach `child`, borrowed from `childPool`, to `parent`, borrowed from this
 ---pool. Releasing `parent` releases its children first, most recently attached
 ---first, through their own pools; a child released on its own is detached.
@@ -2020,6 +2074,8 @@ rawset(Pool, "SetGeneration", poolSetGeneration)
 rawset(Pool, "GetWaitingCount", poolGetWaitingCount)
 rawset(Pool, "CancelWaiting", poolCancelWaiting)
 rawset(Pool, "GetParkedCount", poolGetParkedCount)
+rawset(Pool, "GetMaxCreated", poolGetMaxCreated)
+rawset(Pool, "SetMaxCreated", poolSetMaxCreated)
 rawset(Pool, "AttachChild", poolAttachChild)
 rawset(Pool, "DetachChild", poolDetachChild)
 rawset(Pool, "ReleaseAfter", poolReleaseAfter)

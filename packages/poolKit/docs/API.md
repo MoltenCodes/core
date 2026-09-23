@@ -37,6 +37,8 @@ Pool handles:
 | `GetWaitingCount()` | Return the number of queued `Acquire(onAvailable)` requests. |
 | `CancelWaiting(callback)` | Withdraw the oldest queued request made with `callback`. |
 | `GetParkedCount()` | Return the number of objects waiting for an animation before release. |
+| `GetMaxCreated()` | Return the creation cap, or `false` when the pool has none. |
+| `SetMaxCreated(n)` | Raise the creation cap; never lowers it. |
 | `AttachChild(parent, child, childPool)` | Release `child` (from `childPool`) whenever `parent` is released. |
 | `DetachChild(child)` | Undo `AttachChild` without releasing anything. |
 | `ReleaseAfter(object, animationGroup)` | Release `object` when `animationGroup` finishes playing. |
@@ -53,7 +55,7 @@ Pool handles:
 - `strictReset` — boolean, default `false`; refuses to construct a pool that has no `reset` (see *Acquire does not clean*);
 - `prewarm` — non-negative integer, default `0`; may not exceed a finite `maxRetained`;
 - `maxActiveWarning` — non-negative integer; report once when this many objects are borrowed simultaneously (see *Active objects are caller-owned*);
-- `generation` — positive integer stamped on the objects the factory builds; default: the PoolKit revision that created the pool (see *Generations*);
+- `generation` — positive integer stamped on the objects the factory builds; default `1` (see *Generations*);
 - `maxCreated` — positive integer; the most objects the factory will ever build (see *Objects the host can never free*);
 - `maxActive` — positive integer; the most objects borrowed or parked at the same time;
 - `maxWaiting` — non-negative integer, default `0`; the size of the bounded waiting queue. Requires `maxCreated` or `maxActive`.
@@ -220,8 +222,9 @@ shape":
 The generation only moves forward. `SetGeneration` with a lower value raises at
 the caller's line; with the same value it does nothing and returns `0`.
 
-The default generation is the PoolKit revision that created the pool, so pools
-that never use generations behave exactly as before. A consumer that versions
+The default generation is `1`, whichever embedded PoolKit copy built the pool,
+so pools that never use generations behave exactly as before and never depend on
+which copy won. A consumer that versions
 its own factory should pass its own `generation` and raise it when it replaces
 `create`, typically from the in-place upgrade of its own embedded copy:
 
@@ -233,10 +236,28 @@ local pool = PoolKit:New({ create = buildRowV1, generation = 1 })
 pool:SetGeneration(2)   -- rows built by buildRowV1 are retired, never reused
 ```
 
+> **Generations and `maxCreated`.** Retiring a stale object destroys it, but a
+> destroyed object still counts against `maxCreated`: the host still holds a
+> Frame PoolKit has let go of. Raising the generation of a capped pool can
+> therefore use up its cap for good, and `Acquire` then answers `"exhausted"`
+> for ever. A consumer that raises the generation of a capped pool raises the cap
+> with it, by the number of objects it retired or by its own budget:
+>
+> ```lua
+> local retired = rows:SetGeneration(2)
+> rows:SetMaxCreated(rows:GetMaxCreated() + retired + rows:GetActiveCount())
+> ```
+>
+> `SetMaxCreated(n)` only raises the cap; a lower value, or a pool built without
+> `maxCreated`, raises at the caller's line. A `maxRetained` that equalled the old
+> cap — the default for a capped pool — follows the cap up, and waiting requests
+> are served from the new room at once.
+
 PoolKit's own in-place upgrades never change a pool's generation: a new PoolKit
 revision does not change the objects a consumer's factory builds. Pools created
-by an older PoolKit revision carry, as their generation, the revision PoolKit
-was upgraded from.
+by a PoolKit revision older than generations take the default generation, `1`.
+(Revision 4 briefly used its own revision as the default; pools it created keep
+the generation they were given.)
 
 Stamps live in a weak-keyed side table owned by the pool. PoolKit never writes a
 field onto the object, and a stamp never keeps an object alive. A pool whose
@@ -364,11 +385,25 @@ deferred.
 - PoolKit hooks the group's `OnFinished` script **once per group, ever**.
   `HookScript` cannot be undone, and a pooled Frame reuses its animation, so
   hooking per release would stack a permanent hook on every reuse.
-- A group that is not playing (`IsPlaying()` returns `false`) would never
-  finish, so the object is released immediately and the call returns `false`.
-- `Stop()` does not fire `OnFinished` in the client. An animation stopped
-  rather than finished leaves the object parked until `Release(object)`
-  completes the release early, or the pool closes.
+- **Play first, then `ReleaseAfter`.** The group's state is read when
+  `ReleaseAfter` is called. A group that is not playing then (`IsPlaying()`
+  returns `false`) would never finish, so the object is released immediately
+  and the call returns `false` — `ReleaseAfter(frame, fadeOut); fadeOut:Play()`
+  releases the Frame before the fade-out starts.
+- Some animations never fire `OnFinished`, and each of them leaves the object
+  parked until `Release(object)` completes the release early or the pool
+  closes:
+  - an animation stopped with `Stop()` rather than finished;
+  - a looping group (`SetLooping("REPEAT")` or `"BOUNCE"`), which never
+    finishes;
+  - a paused group (`Pause()`), until it resumes and finishes.
+- **Do not replace the group's `OnFinished` script afterwards.** PoolKit's hook
+  is installed with `HookScript` once per group. A later
+  `group:SetScript("OnFinished", handler)` replaces the script and PoolKit's
+  hook with it, and PoolKit cannot detect that through the host API, so it does
+  not re-arm: every later `ReleaseAfter` on that group parks its object until
+  `Release` or `Close`. Set the group's own `OnFinished` script before the first
+  `ReleaseAfter`, or use `HookScript` for it as well.
 - One animation group can hold one pending release at a time.
 - A failure while completing a release from the host's `OnFinished` is
   reported through the host error handler.
@@ -385,6 +420,5 @@ Revision 4 moved the shared state from schema 1 to schema 2 and gave every pool
 new fields. Pools are not registered anywhere, so a bootstrap cannot reach them;
 instead every pool method upgrades a pool built by an older revision the first
 time it touches it. The upgraded pool keeps every object and counter, gains no
-caps, no queue and no children, and takes the revision PoolKit was upgraded
-from as its generation. The `OnFinished` hook calls through shared state, so a
+caps, no queue and no children, and takes the default generation, `1`. The `OnFinished` hook calls through shared state, so a
 hook installed by one revision runs the newest accepted revision's code.

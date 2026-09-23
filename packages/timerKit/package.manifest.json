@@ -2,10 +2,10 @@
   "name": "timerKit",
   "displayName": "TimerKit",
   "description": "Cancelable, scope-aware World of Warcraft timers with deterministic lifecycle cleanup.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "license": "MIT",
   "api": 1,
-  "revision": 4,
+  "revision": 5,
   "dependencies": {
     "registry": {
       "api": 2

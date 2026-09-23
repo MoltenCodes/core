@@ -107,6 +107,67 @@ describe("PoolKit pools for objects that can never be freed", function()
         end)
     end)
 
+    describe("raising the creation cap", function()
+        it("recovers a capped pool that a generation raise exhausted", function()
+            local pool = newFramePool(PoolKit, { maxCreated = 2 })
+            local first, second = pool:Acquire(), pool:Acquire()
+            pool:Release(first)
+            pool:Release(second)
+
+            -- Retired stale objects still count: the host still holds them.
+            assert.are.equal(2, pool:SetGeneration(2))
+            assert.are.same({ nil, "exhausted" }, { pool:Acquire() })
+
+            assert.are.equal(pool, pool:SetMaxCreated(4))
+            assert.are.equal(4, pool:GetMaxCreated())
+            assert.are.equal(4, pool:GetMaxRetained())
+            assert.is_table(pool:Acquire())
+            assert.is_table(pool:Acquire())
+            assert.are.same({ nil, "exhausted" }, { pool:Acquire() })
+        end)
+
+        it("serves waiting requests from the new room at once", function()
+            local pool = newFramePool(PoolKit, { maxCreated = 1, maxWaiting = 1 })
+            pool:Acquire()
+            local delivered = nil
+            pool:Acquire(function(object)
+                delivered = object
+            end)
+
+            pool:SetMaxCreated(2)
+
+            assert.is_table(delivered)
+            assert.are.equal(0, pool:GetWaitingCount())
+        end)
+
+        it("keeps an explicit retention bound that differs from the cap", function()
+            local pool = newFramePool(PoolKit, { maxCreated = 2, maxRetained = 1 })
+            pool:SetMaxCreated(5)
+
+            assert.are.equal(1, pool:GetMaxRetained())
+        end)
+
+        it("only raises the cap, at the caller's line otherwise", function()
+            local capped = newFramePool(PoolKit, { maxCreated = 3 })
+            local uncapped = newFramePool(PoolKit, {})
+
+            expectErrorAtThisSpec("cannot lower the cap from 3 to 2", function()
+                capped:SetMaxCreated(2)
+            end)
+            expectErrorAtThisSpec("cannot cap a pool that was built without maxCreated", function()
+                uncapped:SetMaxCreated(10)
+            end)
+            expectErrorAtThisSpec(
+                "PoolKit.Pool:SetMaxCreated maxCreated must be a positive integer",
+                function()
+                    capped:SetMaxCreated(0)
+                end
+            )
+            assert.is_false(uncapped:GetMaxCreated())
+            assert.are.equal(capped, capped:SetMaxCreated(3))
+        end)
+    end)
+
     describe("live limit", function()
         it("limits how many objects are borrowed at once", function()
             local pool = newFramePool(PoolKit, { maxActive = 1 })

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1 — 2026-09-23
+
+- The default pool generation is now a fixed `1`, and pools built by a revision older than generations take `1` as well. 0.4.0 defaulted to PoolKit's own revision, so behaviour depended on which embedded copy won. Pools created by 0.4.0 keep the generation they were given; the shared state's unused `legacyGeneration` field is left in place.
+- Added `Pool:GetMaxCreated()` and `Pool:SetMaxCreated(n)`. Retired stale objects still count against `maxCreated`, so raising the generation of a capped pool could exhaust it permanently; the cap can now be raised (never lowered), a `maxRetained` that equalled the old cap follows it, and waiting requests are served at once. `docs/API.md` states the interaction next to `generation`.
+- Fixed the error a release re-raises when a child's release and the parent's `reset` both fail: the first error, the child's, now wins, as `docs/API.md` promised; the parent is still rolled back to borrowed.
+- Documented the `ReleaseAfter` caveats: play the animation before calling it; looping, paused and stopped groups never fire `OnFinished`; and a later `SetScript("OnFinished", …)` replaces PoolKit's hook undetectably, so set the group's own script before the first `ReleaseAfter`.
+- Implementation revision 5. Five new specs cover `SetMaxCreated` (recovery after a generation raise, waiting requests, an explicit retention bound, refusals) and the first-error rule; the default-generation and upgrade specs now expect `1`.
+
 ## 0.4.0 — 2026-09-23
 
 - Added generations. Every pool has one — `generation` on `New` and `NewTablePool`, defaulting to the PoolKit revision that created the pool — and `Pool:GetGeneration()` / `Pool:SetGeneration(n)`. Raising it destroys retained objects of older generations at once and destroys, instead of retaining, borrowed ones when they come back, so an object built by a superseded factory is never handed out again after an in-place upgrade. Lowering it is refused. Stamps live in a weak-keyed side table and never touch the object; a pool that never raises its generation writes none.

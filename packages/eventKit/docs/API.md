@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **5**.
+Implementation revision: **6**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -128,6 +128,29 @@ re-raised unchanged afterwards. This is the contract
 MyAddon/Main.lua:42: EventKit.Scope:Connect cannot connect in a closed scope
 ```
 
+### Closing during a dispatch
+
+`Close()` prevents future deliveries; it never cuts short the one in flight.
+When a scope is closed from inside a listener — directly, or through
+`CloseAddonScopes` from LifecycleKit's `PLAYER_LOGOUT` handling — the scope is
+closed at once and refuses new connections, but its connections stay connected
+until the outermost dispatch returns. Every listener still due to receive the
+event being dispatched receives it, including the scope's own listeners of that
+event; after the dispatch returns, the connections are swept and nothing else
+is delivered to them. Until the sweep, `GetActiveCount()` still counts them.
+
+A dispatch that a listener starts synchronously (a nested event) is part of the
+delivery in flight. A failure while sweeping after the dispatch has nobody to be
+raised to, so it goes to the host error handler.
+
+This is what lets an addon connect `PLAYER_LOGOUT` through its own scope to save
+its state, even though LifecycleKit's logout handling closes that scope and runs
+first. EventKit counts dispatches with two field writes per event, so the
+per-event path still allocates nothing.
+
+`DisconnectAll()` and `connection:Disconnect()` are not deferred: they are
+explicit requests to stop now.
+
 Argument errors raised through a scope name the scope method
 (`EventKit.Scope:Connect eventName must be a non-empty string`) and point at the
 caller's line, like the package-level methods.
@@ -144,14 +167,23 @@ public step taken by whoever observes the addon's shutdown:
 2. On that addon's shutdown, the observer calls
    `EventKit:CloseAddonScopes("MyAddon")`.
 
-LifecycleKit is the intended observer. Until it makes that call, or in a
-consumer that does not use LifecycleKit, the consumer wires it directly:
+LifecycleKit makes that call: when an addon reaches `shutdown`, after its
+shutdown callbacks have run, LifecycleKit calls
+`EventKit:CloseAddonScopes(addonName)`. An addon using LifecycleKit writes no
+teardown for its scoped events.
+
+A consumer that does not use LifecycleKit wires the second step itself:
 
 ```lua
 EventKit:Once("PLAYER_LOGOUT", function()
     EventKit:CloseAddonScopes("MyAddon")
 end)
 ```
+
+That handler runs inside the `PLAYER_LOGOUT` dispatch, so it closes the scope
+without taking the logout away from the scope's own listeners: see *Closing
+during a dispatch*. Before revision 6 this wiring, like LifecycleKit's, silently
+dropped a scoped `PLAYER_LOGOUT` listener connected after it.
 
 Closing is terminal, as shutdown is. The closed scope stays the addon's
 canonical scope, so a later `ForAddon("MyAddon")` returns it and refuses new
@@ -294,6 +326,11 @@ one would.
 ## Embedded copies and upgrades
 
 Registry owns one stable EventKit table for `(events, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table, and existing Frame handlers resolve dispatch functions through the stable EventKit facade.
+
+Revision 6 moved `_state` from schema 3 to schema 4, adding the dispatch depth
+and the list of scopes closed during a dispatch. A revision-6 copy loading over
+revision 5 adds them in place; scopes revision 5 created keep working and gain
+the deferred close.
 
 Revision 5 added scopes and moved `_state` from schema 2 to schema 3. A
 revision-5 copy loading over revision 2 to 4 adds the shared `Scope` prototype,

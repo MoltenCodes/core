@@ -57,7 +57,7 @@ Note for maintainers: with the current public surface, same-pool nesting is not 
 
 ## Lazy pool upgrade
 
-Pools are not registered anywhere, so a bootstrap cannot migrate them. Every pool carries `_schema`, and `validatePool` — which every pool method calls first — runs `upgradePool` when it is not `POOL_SCHEMA`. The upgrade writes the defaults that reproduce the older revision's behaviour and takes `state.legacyGeneration` (the revision the shared state was migrated from) as the pool's generation. In steady state this is one field comparison per call and allocates nothing. `AttachChild` upgrades its `childPool` argument the same way, since that pool is not the receiver.
+Pools are not registered anywhere, so a bootstrap cannot migrate them. Every pool carries `_schema`, and `validatePool` — which every pool method calls first — runs `upgradePool` when it is not `POOL_SCHEMA`. The upgrade writes the defaults that reproduce the older revision's behaviour, with the fixed default generation `1`. In steady state this is one field comparison per call and allocates nothing. `AttachChild` upgrades its `childPool` argument the same way, since that pool is not the receiver.
 
 ## Generations
 

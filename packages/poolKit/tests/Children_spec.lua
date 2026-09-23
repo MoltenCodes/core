@@ -122,6 +122,36 @@ describe("PoolKit cascading release", function()
         assert.is_true(textures:IsActive(texture))
     end)
 
+    it("re-raises the first child error even when the parent's reset also fails", function()
+        local childFailure = { reason = "child reset failed" }
+        local parentFailure = { reason = "parent reset failed" }
+        local frames = PoolKit:New({
+            create = function()
+                return {}
+            end,
+            reset = function()
+                error(parentFailure, 0)
+            end,
+        })
+        local textures = PoolKit:New({
+            create = function()
+                return {}
+            end,
+            reset = function()
+                error(childFailure, 0)
+            end,
+        })
+        local frame, texture = frames:Acquire(), textures:Acquire()
+        frames:AttachChild(frame, texture, textures)
+
+        local ok, raised = pcall(frames.Release, frames, frame)
+
+        assert.is_false(ok)
+        assert.are.equal(childFailure, raised)
+        -- The parent's failed reset still rolls it back to borrowed.
+        assert.is_true(frames:IsActive(frame))
+    end)
+
     it("rejects invalid attachments at the caller's line", function()
         local pool = newLoggingPool(PoolKit, "object", {})
         local other = newLoggingPool(PoolKit, "other", {})

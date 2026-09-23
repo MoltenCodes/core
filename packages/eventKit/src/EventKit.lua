@@ -37,10 +37,10 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
-local STATE_SCHEMA = 3
+local STATE_SCHEMA = 4
 
 -- `Frame:RegisterUnitEvent(event, unit1, unit2)` has exactly two filter slots.
 local MAXIMUM_UNIT_TOKENS = 2
@@ -158,6 +158,9 @@ local function validateCurrentState(implementation)
         and type(rawget(currentState, "dispatchRegular")) == "function"
         and type(rawget(currentState, "dispatchUnit")) == "function"
         and type(rawget(currentState, "isolate")) == "function"
+        and type(rawget(currentState, "dispatchDepth")) == "number"
+        and type(rawget(currentState, "pendingScopes")) == "table"
+        and type(rawget(currentState, "pendingScopeCount")) == "number"
         and type(rawget(currentState, "addonScopes")) == "table"
         and type(rawget(currentState, "scopeMetatable")) == "table"
 end
@@ -264,6 +267,11 @@ if previousRevision == nil then
         isolate = nil,
         addonScopes = {},
         scopeMetatable = {},
+        -- How many dispatches are on the stack, and the scopes closed during
+        -- them whose connections are swept once the outermost one returns.
+        dispatchDepth = 0,
+        pendingScopes = {},
+        pendingScopeCount = 0,
     }
 
     rawset(EventKit, "Connection", Connection)
@@ -302,6 +310,15 @@ else
         -- link, which every scope path reads as "not owned by a scope".
         rawset(state, "addonScopes", {})
         rawset(state, "scopeMetatable", {})
+        rawset(state, "schema", 3)
+        schema = 3
+    end
+
+    if schema == 3 then
+        -- Revision 5 closed scopes immediately, even mid-dispatch.
+        rawset(state, "dispatchDepth", 0)
+        rawset(state, "pendingScopes", {})
+        rawset(state, "pendingScopeCount", 0)
         rawset(state, "schema", STATE_SCHEMA)
         schema = STATE_SCHEMA
     end
@@ -972,6 +989,36 @@ local function isConnected(self)
 end
 
 -- Dispatch ------------------------------------------------------------------
+--
+-- EventKit counts the dispatches on the stack so that closing a scope from
+-- inside a listener never cuts short the delivery already in flight: the
+-- scope refuses new connections at once, and its connections are swept when
+-- the outermost dispatch returns. The count is two field writes per event and
+-- the sweep check one comparison, so the per-event path stays allocation-free.
+
+-- Assigned in the subscription section, once bulk disconnection exists.
+local sweepPendingScopes
+
+---Fire `channel`'s signal with the dispatch depth raised around it.
+---@param channel EventKit.Channel
+---@param eventName string
+---@param ... any client payload
+local function fireChannel(channel, eventName, ...)
+    local signal = rawget(channel, "signal")
+    rawset(state, "dispatchDepth", rawget(state, "dispatchDepth") + 1)
+    -- Listeners are isolated and never raise; SignalKit itself could only
+    -- raise on a bug. `pcall` still guarantees the depth is restored, because a
+    -- stuck depth would defer every later scope close for the whole session.
+    local ok, failure = pcall(signal.Fire, signal, eventName, ...)
+    local depth = rawget(state, "dispatchDepth") - 1
+    rawset(state, "dispatchDepth", depth)
+    if depth <= 0 and rawget(state, "pendingScopeCount") > 0 then
+        sweepPendingScopes()
+    end
+    if not ok then
+        error(failure, 0)
+    end
+end
 
 ---Fan one unfiltered event out to its channel.
 ---@param _ EventKit
@@ -981,7 +1028,7 @@ local function dispatchRegular(_, eventName, ...)
     local channels = rawget(state, "regularChannels")
     local channel = rawget(channels, eventName)
     if channel ~= nil then
-        rawget(channel, "signal"):Fire(eventName, ...)
+        fireChannel(channel, eventName, ...)
     end
 end
 
@@ -994,7 +1041,7 @@ local function dispatchUnit(_, group, eventName, ...)
     local channels = rawget(group, "channels")
     local channel = rawget(channels, eventName)
     if channel ~= nil then
-        rawget(channel, "signal"):Fire(eventName, ...)
+        fireChannel(channel, eventName, ...)
     end
 end
 
@@ -1076,7 +1123,31 @@ local function disconnectAllInScope(scope)
     return disconnected
 end
 
----Terminally close `scope` after best-effort disconnection.
+---Disconnect every scope closed during the dispatch that just returned.
+---
+---Nobody is left to raise a failure to, so it goes to the host error handler.
+function sweepPendingScopes()
+    local pending = rawget(state, "pendingScopes")
+    local index = 1
+    -- Disconnecting never dispatches, so the count cannot grow while sweeping;
+    -- it is re-read anyway so the loop stays correct if that ever changes.
+    while index <= rawget(state, "pendingScopeCount") do
+        local scope = rawget(pending, index)
+        rawset(pending, index, false)
+        local ok, failure = pcall(disconnectAllInScope, scope)
+        if not ok then
+            reportListenerError(failure)
+        end
+        index = index + 1
+    end
+    rawset(state, "pendingScopeCount", 0)
+end
+
+---Terminally close `scope`, disconnecting everything it owns.
+---
+---Inside a dispatch the scope is closed at once but its connections are swept
+---when the outermost dispatch returns: `Close` prevents future deliveries and
+---never the one in flight.
 ---@param scope EventKit.Scope
 ---@return boolean closed `false` when the scope was already closed.
 local function closeScope(scope)
@@ -1087,6 +1158,16 @@ local function closeScope(scope)
     -- Terminal before cleanup begins, so nothing reached during the sweep can
     -- add a replacement connection.
     rawset(scope, "_closed", true)
+
+    if rawget(state, "dispatchDepth") > 0 then
+        if rawget(scope, "_head") ~= false then
+            local count = rawget(state, "pendingScopeCount") + 1
+            rawset(rawget(state, "pendingScopes"), count, scope)
+            rawset(state, "pendingScopeCount", count)
+        end
+        return true
+    end
+
     disconnectAllInScope(scope)
     return true
 end

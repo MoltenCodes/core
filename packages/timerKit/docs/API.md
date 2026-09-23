@@ -151,7 +151,14 @@ running after an in-place upgrade, but TimerKit cannot know when it will fire,
 so `GetRemaining()` and `GetDeadline()` return `nil` for it until its next
 `Start()`/`Restart()` or, for a repeating timer, its next tick.
 
-TimerKit requires `GetTimePreciseSec` at load, as SchedulerKit already does.
+### Without `GetTimePreciseSec`
+
+The clock is optional. On a host that does not publish `GetTimePreciseSec`,
+TimerKit loads and every timer works exactly as before, but no deadline is
+recorded: `GetRemaining()` and `GetDeadline()` return `nil` even for a running
+timer. Requiring the clock would have added a host facility inside API
+generation 1, which the compatibility rules reserve for a new generation.
+Every supported client publishes it.
 
 ## Same-instant ordering
 
@@ -266,7 +273,7 @@ TimerKit relies only on:
 C_Timer.NewTimer
 C_Timer.NewTicker
 nativeHandle:Cancel()
-GetTimePreciseSec()   -- deadlines only; never used to schedule
+GetTimePreciseSec()   -- optional; deadlines only, never used to schedule
 ```
 
 It does not inspect native timer userdata or depend on undocumented implementation fields. This is important because modern WoW timer handles are native FunctionContainer userdata.

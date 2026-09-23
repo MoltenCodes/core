@@ -7,10 +7,10 @@ local function expectErrorContaining(expected, callback)
 end
 
 local function installFutureEventsFacade(Registry)
-    local EventKit = Registry:Register("eventKit", 1, 6)
+    local EventKit = Registry:Register("eventKit", 1, 7)
     local function stub() end
     EventKit.API = 1
-    EventKit.REVISION = 6
+    EventKit.REVISION = 7
     EventKit.Connection = { Disconnect = stub, IsConnected = stub }
     EventKit.Scope = {
         Connect = stub,
@@ -64,13 +64,13 @@ describe("EventKit package bootstrap", function()
         end)
     end)
 
-    it("registers EventKit API 1 revision 5", function()
+    it("registers EventKit API 1 revision 6", function()
         local EventKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("eventKit", 1)
         assert.are.equal(EventKit, selected)
-        assert.are.equal(5, revision)
+        assert.are.equal(6, revision)
         assert.are.equal(1, EventKit.API)
-        assert.are.equal(5, EventKit.REVISION)
+        assert.are.equal(6, EventKit.REVISION)
     end)
 
     it("reuses the package facade across duplicate embedding", function()
@@ -143,9 +143,9 @@ describe("EventKit package bootstrap", function()
         local state = EventKit._state
 
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(5, EventKit.REVISION)
+        assert.are.equal(6, EventKit.REVISION)
         assert.are.equal(legacyConnectionMethods, EventKit.Connection)
-        assert.are.equal(3, state.schema)
+        assert.are.equal(4, state.schema)
         assert.are.equal(legacyGroup, state.unitGroups["6:player"])
         assert.are.equal("6:player", legacyGroup.key)
         assert.are.equal(1, state.unitFrameCount)
@@ -190,15 +190,76 @@ describe("EventKit package bootstrap", function()
         local state = EventKit._state
 
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(5, EventKit.REVISION)
+        assert.are.equal(6, EventKit.REVISION)
         assert.are.equal(legacyConnectionMethods, EventKit.Connection)
-        assert.are.equal(3, state.schema)
+        assert.are.equal(4, state.schema)
         assert.are.equal("table", type(state.addonScopes))
         assert.are.equal("table", type(EventKit.Scope))
 
         local scope = EventKit:CreateScope()
         scope:Connect("PLAYER_LOGIN", stub)
         assert.are.equal(1, scope:GetActiveCount())
+    end)
+
+    it("upgrades revision-5 package state in place", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        local Registry = require("Registry")
+        require("SignalKit")
+
+        -- Revision 5 left schema-3 state behind: scopes, but no dispatch
+        -- accounting, so a scope closed mid-dispatch was swept at once.
+        local function stub() end
+        local legacyScopePrototype = {}
+        local legacyAddonScope = setmetatable({
+            _addonName = "MyAddon",
+            _head = false,
+            _tail = false,
+            _activeCount = 0,
+            _closed = false,
+        }, { __index = legacyScopePrototype })
+        local legacyScopeMetatable = getmetatable(legacyAddonScope)
+        local legacy = Registry:Register("eventKit", 1, 5)
+        legacy.API = 1
+        legacy.REVISION = 5
+        legacy.Connection = { Disconnect = stub, IsConnected = stub }
+        legacy.Scope = legacyScopePrototype
+        legacy._state = {
+            schema = 3,
+            regularFrame = nil,
+            regularChannels = {},
+            unitGroups = {},
+            unitFrames = {},
+            unitFrameCount = 0,
+            dispatchRegular = stub,
+            dispatchUnit = stub,
+            isolate = stub,
+            addonScopes = { MyAddon = legacyAddonScope },
+            scopeMetatable = legacyScopeMetatable,
+        }
+
+        local EventKit = require("EventKit")
+        local state = EventKit._state
+
+        assert.are.equal(6, EventKit.REVISION)
+        assert.are.equal(legacyScopePrototype, EventKit.Scope)
+        assert.are.equal(4, state.schema)
+        assert.are.equal(0, state.dispatchDepth)
+        assert.are.equal(0, state.pendingScopeCount)
+
+        -- The scope revision 5 created keeps working, now with deferred close.
+        assert.are.equal(legacyAddonScope, EventKit:ForAddon("MyAddon"))
+        -- The closing listener runs first, as LifecycleKit's watcher does.
+        EventKit:Once("PLAYER_LOGOUT", function()
+            EventKit:CloseAddonScopes("MyAddon")
+        end)
+        local calls = 0
+        legacyAddonScope:Connect("PLAYER_LOGOUT", function()
+            calls = calls + 1
+        end)
+        TestEnv.Emit("PLAYER_LOGOUT")
+        assert.are.equal(1, calls)
+        assert.are.equal(0, legacyAddonScope:GetActiveCount())
     end)
 
     it("disconnects a handle shaped by a revision before scopes existed", function()
@@ -247,6 +308,6 @@ describe("EventKit package bootstrap", function()
         local selected, revision = Registry:Get("eventKit", 1)
         assert.are.equal(future, loaded)
         assert.are.equal(future, selected)
-        assert.are.equal(6, revision)
+        assert.are.equal(7, revision)
     end)
 end)

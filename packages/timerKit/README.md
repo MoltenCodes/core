@@ -16,7 +16,7 @@ end)
 -- Addon-owned scopes close automatically on LifecycleKit shutdown.
 ```
 
-`timer:GetRemaining()` and `timer:GetDeadline()` answer "how long until this fires?" for a running timer and return `nil` otherwise.
+`timer:GetRemaining()` and `timer:GetDeadline()` answer "how long until this fires?" for a running timer and return `nil` otherwise. They read `GetTimePreciseSec`, which is optional: on a host without it TimerKit still loads, and both methods return `nil`.
 
 TimerKit adds a logical timer state machine, restart/cancel generation guards, deterministic scope cleanup, and addon lifecycle ownership without exposing native FunctionContainer details to consumers.
 

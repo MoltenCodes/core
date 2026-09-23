@@ -31,6 +31,25 @@ describe("LifecycleKit event scopes", function()
         assert.are.equal(1, calls)
     end)
 
+    it("still delivers PLAYER_LOGOUT to a scope listener connected after LifecycleKit", function()
+        -- LifecycleKit's logout watcher is connected by the first ForAddon, so
+        -- it runs before this listener and closes the scope mid-dispatch. The
+        -- listener must still receive the logout it is waiting for.
+        local life = LifecycleKit:ForAddon("MyAddon")
+        local scope = EventKit:ForAddon("MyAddon")
+        local saves = 0
+        scope:Connect("PLAYER_LOGOUT", function()
+            saves = saves + 1
+        end)
+
+        TestEnv.Logout()
+
+        assert.are.equal(1, saves)
+        assert.is_true(life:IsShutdown())
+        assert.is_true(scope:IsClosed())
+        assert.are.equal(0, scope:GetActiveCount())
+    end)
+
     it("runs shutdown callbacks before the scope is closed", function()
         local life = LifecycleKit:ForAddon("MyAddon")
         local scope = EventKit:ForAddon("MyAddon")

@@ -77,7 +77,7 @@ describe("TimerKit bootstrap", function()
 
         local upgraded = require("TimerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(4, upgraded.REVISION)
+        assert.are.equal(5, upgraded.REVISION)
         assert.are.equal(timerPrototype, upgraded.Timer)
 
         -- A timer object created by revision 1 gains the revision-2 user-data
@@ -117,7 +117,7 @@ describe("TimerKit bootstrap", function()
         assert.are.equal(2, ticker:GetDeadline())
     end)
 
-    it("requires GetTimePreciseSec", function()
+    it("loads without GetTimePreciseSec and reports no remaining time", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         require("Registry")
@@ -128,9 +128,20 @@ describe("TimerKit bootstrap", function()
         -- selene: allow(global_usage)
         rawset(_G, "GetTimePreciseSec", nil)
 
-        local ok, value = pcall(require, "TimerKit")
-        assert.is_false(ok)
-        assert.is_true(tostring(value):find("GetTimePreciseSec", 1, true) ~= nil)
+        local TimerKit = require("TimerKit")
+        local fired = 0
+        local timer = TimerKit:After(2, function()
+            fired = fired + 1
+        end)
+        local ticker = TimerKit:Every(1, function() end)
+
+        assert.is_true(timer:IsPending())
+        assert.is_nil(timer:GetRemaining())
+        assert.is_nil(timer:GetDeadline())
+        TestEnv.FireNative(2)
+        assert.is_nil(ticker:GetRemaining())
+        TestEnv.FireNative(1)
+        assert.are.equal(1, fired)
     end)
 
     it("requires LifecycleKit", function()

@@ -22,7 +22,7 @@
 
 local PACKAGE_NAME = "timerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -148,12 +148,14 @@ end
 -- Deadlines are read from the same monotonic wall clock SchedulerKit falls back
 -- to. `C_Timer` fires on wall time, so the CPU clock (`debugprofilestop`) would
 -- be the wrong reference, and `GetTime()` is frame-quantised. The value is only
--- ever used for introspection; TimerKit never schedules from it.
+-- ever used for introspection; TimerKit never schedules from it, so it is
+-- optional: a host without it loads TimerKit normally and records no deadlines.
+-- Requiring it would add a host facility inside API generation 1.
 -- GetTimePreciseSec is a World of Warcraft client API reachable only through the global table.
 -- selene: allow(global_usage)
 local nativeGetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 if type(nativeGetTimePreciseSec) ~= "function" then
-    error("MoltenCodes TimerKit requires GetTimePreciseSec", 2)
+    nativeGetTimePreciseSec = nil
 end
 
 -- Validation ----------------------------------------------------------------
@@ -403,9 +405,20 @@ end
 -- Timer internals -----------------------------------------------------------
 
 ---Current monotonic wall-clock seconds, the reference every deadline uses.
+---Only called once a deadline exists, which implies the clock does.
 ---@return number seconds
 local function now()
     return nativeGetTimePreciseSec()
+end
+
+---The deadline for a fire `delay` seconds from now, or `false` without a clock.
+---@param delay number
+---@return number|false deadline
+local function deadlineAfter(delay)
+    if nativeGetTimePreciseSec == nil then
+        return false
+    end
+    return nativeGetTimePreciseSec() + delay
 end
 
 ---Return the host handle's `Cancel` method, or `nil` when it has none.
@@ -498,7 +511,7 @@ local function fireTimer(timer, generation)
     if repeating then
         -- The host re-arms a ticker relative to the tick it just delivered, so
         -- the next deadline is one interval from now, not from the first start.
-        rawset(timer, "_deadline", now() + rawget(timer, "_delay"))
+        rawset(timer, "_deadline", deadlineAfter(rawget(timer, "_delay")))
     else
         rawset(timer, "_native", nil)
         rawset(timer, "_state", "completed")
@@ -565,7 +578,7 @@ local function startTimer(timer, methodName, level)
     end
 
     rawset(timer, "_native", native)
-    rawset(timer, "_deadline", now() + rawget(timer, "_delay"))
+    rawset(timer, "_deadline", deadlineAfter(rawget(timer, "_delay")))
     return true
 end
 

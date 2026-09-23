@@ -26,11 +26,13 @@ end
 describe("PoolKit generations", function()
     after_each(Env.Reset)
 
-    it("defaults a pool's generation to the PoolKit revision that created it", function()
+    it("defaults a pool's generation to 1, whichever PoolKit revision built it", function()
         local PoolKit = Env.NewPackage()
-        local pool = PoolKit:NewTablePool()
+        local tables = PoolKit:NewTablePool()
+        local generic = newRecordingPool(PoolKit, {})
 
-        assert.are.equal(PoolKit.REVISION, pool:GetGeneration())
+        assert.are.equal(1, tables:GetGeneration())
+        assert.are.equal(1, generic:GetGeneration())
     end)
 
     it("accepts an explicit generation on both constructors", function()

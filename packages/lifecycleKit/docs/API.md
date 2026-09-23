@@ -82,7 +82,9 @@ The two paths differ only in *where* the error surfaces, which follows from when
 
 What happens to a dispatched error after it leaves LifecycleKit is EventKit's contract: EventKit isolates listeners at the event-bus boundary and reports the error through the host error handler, so one addon's failing lifecycle callback cannot stop event delivery to another addon.
 
-When an addon reaches `shutdown`, LifecycleKit also closes that addon's canonical EventKit scope (`EventKit:ForAddon(addonName)`) after the shutdown callbacks have run, so event connections made through the scope need no teardown code in the addon. EventKit cannot do this itself: it loads before LifecycleKit and never observes shutdown. With an EventKit revision that has no `CloseAddonScopes`, nothing is closed and shutdown is otherwise unchanged.
+When an addon reaches `shutdown`, LifecycleKit also closes that addon's canonical EventKit scope (`EventKit:ForAddon(addonName)`) after the shutdown callbacks have run, so event connections made through the scope need no teardown code in the addon. EventKit cannot do this itself: it loads before LifecycleKit and never observes shutdown. With an EventKit revision that has no `CloseAddonScopes`, nothing is closed and shutdown is otherwise unchanged. Closing the scope never takes the logout away from the scope's own listeners: LifecycleKit's watcher runs inside EventKit's `PLAYER_LOGOUT` dispatch, and EventKit defers the disconnects until that dispatch returns, so a scoped `PLAYER_LOGOUT` listener still runs once.
+
+Errors follow a first-error-wins policy. If an addon's shutdown callback raises, that error is the one re-raised; a failure while closing the scope is re-raised only when no shutdown callback failed. Either way every addon's lifecycle has advanced first.
 
 If shutdown occurs before `loaded` or `ready` was reached (for example, a lifecycle was created for a load-on-demand addon that never loaded), pending subscriptions for those now-impossible phases are disconnected without invocation. New subscriptions to an earlier phase that is already impossible because shutdown occurred are returned already disconnected.
 

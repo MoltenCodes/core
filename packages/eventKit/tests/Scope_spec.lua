@@ -211,6 +211,76 @@ describe("EventKit scopes", function()
         assert.are.equal(0, scope:GetActiveCount())
     end)
 
+    it("lets the dispatch in flight finish when a scope closes during it", function()
+        local scope = EventKit:CreateScope()
+        local order = {}
+        -- Connected first, so it runs before the scope's own listeners.
+        EventKit:Once("PLAYER_LOGOUT", function()
+            order[#order + 1] = "closer"
+            assert.is_true(scope:Close())
+            assert.is_true(scope:IsClosed())
+        end)
+        scope:Connect("PLAYER_LOGOUT", function()
+            order[#order + 1] = "save"
+        end)
+        scope:Once("PLAYER_LOGOUT", function()
+            order[#order + 1] = "once"
+        end)
+        local otherEvents = 0
+        scope:Connect("CHAT_MSG_SAY", function()
+            otherEvents = otherEvents + 1
+        end)
+
+        TestEnv.Emit("PLAYER_LOGOUT")
+
+        -- Close prevents future deliveries, never the one in flight.
+        assert.are.same({ "closer", "save", "once" }, order)
+        assert.are.equal(0, scope:GetActiveCount())
+        TestEnv.Emit("PLAYER_LOGOUT")
+        TestEnv.Emit("CHAT_MSG_SAY")
+        assert.are.equal(3, #order)
+        assert.are.equal(0, otherEvents)
+        assert.is_nil(TestEnv.Frames()[1].registrations.CHAT_MSG_SAY)
+    end)
+
+    it("refuses new connections at once when a scope closes during a dispatch", function()
+        local scope = EventKit:CreateScope()
+        scope:Connect("CUSTOM_EVENT", function() end)
+        local refused = nil
+        EventKit:Connect("CUSTOM_EVENT", function()
+            scope:Close()
+            refused = not pcall(scope.Connect, scope, "OTHER_EVENT", function() end)
+        end)
+
+        TestEnv.Emit("CUSTOM_EVENT")
+
+        assert.is_true(refused)
+        assert.are.equal(0, scope:GetActiveCount())
+    end)
+
+    it("reports a failure of the deferred sweep through the host error handler", function()
+        local scope = EventKit:CreateScope()
+        scope:Connect("FAILING_EVENT", function() end)
+        EventKit:Connect("CUSTOM_EVENT", function()
+            scope:Close()
+        end)
+        local frame = TestEnv.Frames()[1]
+        local unregister = frame.UnregisterEvent
+        function frame:UnregisterEvent(eventName)
+            if eventName == "FAILING_EVENT" then
+                error("host refused", 0)
+            end
+            return unregister(self, eventName)
+        end
+
+        TestEnv.Emit("CUSTOM_EVENT")
+
+        local reported = TestEnv.ReportedErrors()
+        assert.are.equal(1, #reported)
+        assert.are.equal("host refused", reported[1])
+        assert.are.equal(0, scope:GetActiveCount())
+    end)
+
     it("names the misuse when a scope method is called without a scope", function()
         local calls = {
             { "EventKit.Scope:Connect", EventKit.Scope.Connect },

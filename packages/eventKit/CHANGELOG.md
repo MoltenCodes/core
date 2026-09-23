@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 — 2026-09-23
+
+- Fixed a scoped `PLAYER_LOGOUT` listener being silently dropped. LifecycleKit's logout watcher runs before listeners connected after it and closes the addon's scope; the close disconnected them mid-dispatch, so an addon's `EventKit:ForAddon(name):Connect("PLAYER_LOGOUT", save)` never ran. `Close()` and `CloseAddonScopes` called during a dispatch now close the scope at once — new connections are refused — and sweep its connections when the outermost dispatch returns. The documented rule: `Close` prevents future deliveries, never the one in flight. A failure during that sweep goes to the host error handler.
+- EventKit counts dispatches on the stack with two field writes per event; the per-event path still allocates nothing, and the existing allocation specs still hold.
+- `docs/API.md` no longer says LifecycleKit has yet to make the `CloseAddonScopes` call, and explains why the documented `PLAYER_LOGOUT` wiring is now safe.
+- Implementation revision 6; `_state` schema 4. A copy loading over revision 5 adds the dispatch accounting in place. Four new specs cover the in-flight close, the refusal of new connections mid-dispatch, the reported sweep failure and the revision-5 upgrade; LifecycleKit gains the end-to-end spec.
+
 ## 0.4.0 — 2026-09-23
 
 - Added owner scopes, mirroring TimerKit's scope model in naming and semantics: `EventKit:CreateScope()` and `EventKit:ForAddon(addonName)` return a scope with `Connect`, `Once`, `ConnectUnit`, `OnceUnit`, `DisconnectAll`, `Close`, `IsClosed`, `GetAddonName` and `GetActiveCount`. One call now tears down every subscription an owner made.

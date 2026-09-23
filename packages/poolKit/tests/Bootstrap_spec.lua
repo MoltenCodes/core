@@ -76,15 +76,15 @@ describe("PoolKit bootstrap", function()
         local PoolKit = Env.ReloadPackage()
 
         assert.are.equal(legacy, PoolKit)
-        assert.are.equal(4, PoolKit.REVISION)
+        assert.are.equal(5, PoolKit.REVISION)
         assert.are.equal(prototype, PoolKit.Pool)
         assert.are.equal(2, PoolKit._state.schema)
 
-        -- The legacy pool implicitly carries the generation it was built by.
-        assert.are.equal(3, legacyPool:GetGeneration())
+        -- A legacy pool takes the fixed default generation.
+        assert.are.equal(1, legacyPool:GetGeneration())
         assert.are.equal(0, legacyPool:GetWaitingCount())
 
-        assert.are.equal(1, legacyPool:SetGeneration(4))
+        assert.are.equal(1, legacyPool:SetGeneration(2))
         assert.are.same({ retainedObject }, destroyed)
 
         legacyPool:Release(borrowedObject)
