@@ -87,22 +87,21 @@ registry
 ├──→ poolKit
 │       ├──→ codecKit
 │       └──→ widgetKit   (also needs signalKit)
+├──→ timerKit
+│       ├──→ readinessKit
+│       └──→ schedulerKit
+│               ├──→ commKit   (also signalKit, eventKit, lifecycleKit, poolKit)
+│               └──→ testKit   (also lifecycleKit; development only, never bundled)
 └──→ signalKit
        ├──→ mediaKit
        ↓
      eventKit
        ↓
    lifecycleKit
-    ├──→ moduleKit
-    └──→ timerKit
-            ├──→ readinessKit
-            ↓
-       schedulerKit
-            ├──→ commKit   (also signalKit, eventKit, lifecycleKit, poolKit)
-            └──→ testKit   (also lifecycleKit; development only)
+    └──→ moduleKit
 ```
 
-`moduleKit` and `timerKit` are sibling capabilities above LifecycleKit. `schedulerKit` builds on TimerKit for delayed eligibility while remaining independent from ModuleKit.
+`timerKit` sits on Registry alone and `schedulerKit` on TimerKit; neither knows LifecycleKit. LifecycleKit calls `CloseAddonScopes` on both at an addon's shutdown when they are present, the same two-step it uses for EventKit. `moduleKit` is the one capability that depends on LifecycleKit by design, because modules follow addon phases.
 
 Runtime packages depend only on other runtime packages declared in their manifests.
 
@@ -201,9 +200,9 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 
 `moduleKit` depends directly on Registry API 2 and LifecycleKit API 1. It owns addon-local module lifecycle, topological dependency graphs, explicit `automatic`/`strict` dependency policies, and addon-scoped dependency injection. Hard `DependsOn` edges define activation requirements, while optional/`Before`/`After` edges remain ordering constraints for whole-container graph operations. Each module owns `module.scope` with `Timers`, `Events`, `Jobs`, `Hooks`, `Messages`, `Commands` and `Comm`, created on first use through `Registry:Find` and closed when the module is disabled, so a module writes no teardown; a module may declare `requiresAddons`, and a halted addon among them blocks the module until the session ends. Compatible ModuleKit revisions preserve existing addon/container identity and route lifecycle subscriptions through shared runtime dispatch so embedded upgrades can move live containers onto the newest accepted implementation. It deliberately does not depend directly on EventKit or SignalKit; those remain transitive implementation concerns of LifecycleKit.
 
-`timerKit` depends directly on Registry API 2 and LifecycleKit API 1. It wraps only the stable `C_Timer.NewTimer` / `C_Timer.NewTicker` boundary, provides deterministic logical timer state and ownership scopes, and closes addon-owned scopes through LifecycleKit shutdown. Running native callbacks dispatch through shared package state so future compatible revisions can update logical behavior without replacing Timer/Scope identity. TimerKit does not depend on ModuleKit; module code may opt into addon-owned or manually owned timer scopes without creating a package cycle.
+`timerKit` depends only on Registry API 2; LifecycleKit, when present, closes its addon scopes at shutdown through `TimerKit:CloseAddonScopes`. It wraps only the stable `C_Timer.NewTimer` / `C_Timer.NewTicker` boundary, provides deterministic logical timer state and ownership scopes, and closes addon-owned scopes through LifecycleKit shutdown. Running native callbacks dispatch through shared package state so future compatible revisions can update logical behavior without replacing Timer/Scope identity. TimerKit does not depend on ModuleKit; module code may opt into addon-owned or manually owned timer scopes without creating a package cycle.
 
-`schedulerKit` depends directly on Registry API 2, LifecycleKit API 1, and TimerKit API 1. It owns cooperative coroutine execution, weighted priority queues, frame-budget observation, delayed/repeating scheduled work, and cancellation scopes. SchedulerKit installs an OnUpdate driver only while ready work exists and uses TimerKit for delay waiting, so delayed-only workloads do not keep a per-frame handler active. It does not depend on ModuleKit; modules may opt into addon-owned SchedulerKit scopes without coupling the two packages.
+`schedulerKit` depends on Registry API 2 and TimerKit API 1; LifecycleKit, when present, closes its addon scopes at shutdown through `SchedulerKit:CloseAddonScopes`. It owns cooperative coroutine execution, weighted priority queues, frame-budget observation, delayed/repeating scheduled work, and cancellation scopes. SchedulerKit installs an OnUpdate driver only while ready work exists and uses TimerKit for delay waiting, so delayed-only workloads do not keep a per-frame handler active. It does not depend on ModuleKit; modules may opt into addon-owned SchedulerKit scopes without coupling the two packages.
 
 
 `poolKit` depends only on Registry API 2. Its pooling algorithm is pure Lua and intentionally sits outside the lifecycle/event/scheduling branch: consumers can reuse objects without pulling in Frames, timers, coroutines, or addon lifecycle state. Retention is bounded by default, with `PoolKit.UNBOUNDED` as an explicit caller-owned escape hatch.

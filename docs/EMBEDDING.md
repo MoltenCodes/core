@@ -146,19 +146,18 @@ registry
 ├──→ poolKit
 │       ├──→ codecKit
 │       └──→ widgetKit   (also needs signalKit)
+├──→ timerKit
+│       ├──→ readinessKit
+│       └──→ schedulerKit
+│               ├──→ commKit   (also signalKit, eventKit, lifecycleKit, poolKit)
+│               └──→ testKit   (also lifecycleKit; development only, never bundled)
 └──→ signalKit
        ├──→ mediaKit
        ↓
      eventKit
        ↓
    lifecycleKit
-    ├──→ moduleKit
-    ├──→ timerKit
-    │       ├──→ readinessKit
-    │       ↓
-    └──→ schedulerKit
-            ├──→ commKit   (also signalKit, eventKit, lifecycleKit, poolKit)
-            └──→ testKit   (also lifecycleKit; development only, never bundled)
+    └──→ moduleKit
 ```
 
 Any order consistent with that graph works. This one is consistent with it and
@@ -203,6 +202,30 @@ addon does. Both are equivalent to the client; pick one.
 
 `.xml` paths use backslashes, like `.toc` paths. The client accepts forward
 slashes on some platforms and not on others, so use backslashes everywhere.
+
+
+## Minimum footprint per Kit
+
+Registry is the one file every Kit needs, and SignalKit is the accepted second
+one for Kits whose contract includes callbacks. Everything else a Kit can use is
+optional and found at call time, so embedding one Kit costs this many files:
+
+| Files | Kit | Alongside `registry/Registry.lua` |
+|---|---|---|
+| 2 | `clientKit`, `cacheKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `poolKit`, `signalKit`, `timerKit` | nothing |
+| 3 | `codecKit` | `poolKit` |
+| 3 | `commandKit` | `schemaKit` |
+| 3 | `eventKit`, `mediaKit` | `signalKit` |
+| 3 | `readinessKit`, `schedulerKit` | `timerKit` |
+| 4 | `lifecycleKit` | `signalKit`, `eventKit` |
+| 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
+| 4 | `widgetKit` | `poolKit`, `signalKit` |
+| 5 | `moduleKit` | `signalKit`, `eventKit`, `lifecycleKit` |
+| 7 | `testKit` (development only) | `signalKit`, `eventKit`, `lifecycleKit`, `timerKit`, `schedulerKit` |
+| 8 | `commKit` | `signalKit`, `eventKit`, `lifecycleKit`, `timerKit`, `schedulerKit`, `poolKit` |
+
+The release artifact's `manifest.json` records the same closures, and
+`python3 -m tooling.package.build --package <id>` ships exactly that set.
 
 ## A complete example addon
 
@@ -545,13 +568,13 @@ actually touch, which is deliberately small:
 | `widgetKit` | PoolKit's and SignalKit's surfaces; `CreateFrame` | `UIParent` (released frames rest on a hidden holder), `issecretvalue` (nothing secret), `geterrorhandler` (`print`), `ColorPickerFrame:SetupColorPickerAndShow` (a click fires the current colour), `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` (no modifiers), OptionsKit API 1 through `Registry:Find` (`RenderOptions` raises at the caller), SchedulerKit API 1 (saves are immediate), MediaKit API 1 (`CreateMediaPicker` raises; the renderer uses the option's `values`) |
 | `hookKit` | nothing but Lua 5.1 | `hooksecurefunc` (`SecureHook` raises at the caller), `issecurevariable` (nothing treated as secure), `Frame:HookScript` / `Frame:GetScript` / `Frame:SetScript` (the matching script hooks raise at the caller), `Frame:IsProtected` (frame not protected), `InCombatLockdown` (never in combat), ClientKit API 1 (`issecretvalue`) |
 | `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript` | `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`), SchedulerKit API 1 through `Registry:Find` (`Coalesce` refused, `Derive` recomputes synchronously) |
-| `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat), HookKit, CommandKit and CommKit API 1 through `Registry:Find` (their addon scopes are closed at logout when present, then the SignalKit addon bus) |
+| `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat), TimerKit, SchedulerKit, HookKit, CommandKit and CommKit API 1 through `Registry:Find` (their addon scopes are closed at logout in that order, then the EventKit scope and the SignalKit addon bus) |
 | `readinessKit` | TimerKit's surface | `GetTimePreciseSec` (negative cache disabled, timeouts counted in polls), EventKit API 1 through `Registry:Find` (`gate:ReprobeOn` raises at the caller), `geterrorhandler` (probe and waiter failures fall back to `print`) |
-| `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | `GetTimePreciseSec` (`GetRemaining` and `GetDeadline` then return `nil`) |
+| `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | `GetTimePreciseSec` (`GetRemaining` and `GetDeadline` then return `nil`); LifecycleKit is not needed: it calls `TimerKit:CloseAddonScopes` at logout when both are present, otherwise call it yourself on `PLAYER_LOGOUT` |
 | `clientKit` | nothing but Lua 5.1 | `WOW_PROJECT_ID` (flavour `"classic"`), `GetBuildInfo` (interface `0`), `issecretvalue` (`IsSecret` false), `C_EventUtils.IsEventValid` (`IsEventValid` nil), `IsForbidden` / `CanBeAccessedInContext` (`CanAccessFrame` true), `C_AddOns` / `C_Spell` / `C_Item` (legacy globals, then nil or false); any other probed facility (`Has` answers `false`) |
 | `cacheKit` | nothing but Lua 5.1 | `GetTimePreciseSec` (age limits disabled: TTL caches never expire), EventKit API 1 (`cache:ClearOn` raises at the caller), `issecretvalue` (snapshot `fill` treats nothing as secret) |
 | `profileKit` | nothing but Lua 5.1 | `debugprofilestop` (`Enable` returns `false, "unavailable"`) |
-| `schedulerKit` | `CreateFrame`, `GetTimePreciseSec` | `debugprofilestop` (falls back to the wall clock), `debug.traceback` (failures then report the error value only) |
+| `schedulerKit` | TimerKit's surface, `CreateFrame`, `GetTimePreciseSec` | `debugprofilestop` (falls back to the wall clock), `debug.traceback` (failures then report the error value only); LifecycleKit is not needed: it calls `SchedulerKit:CloseAddonScopes` at logout when both are present |
 
 Runtime code stays Lua 5.1-compatible because that is what every client runs.
 A Kit that needed a newer client facility would need a new API generation, not a
@@ -936,6 +959,18 @@ only if you use the parts that exist rather than rebuilding them.
   measurement straddling your call is lost, for you and for everybody else. Use
   `GetTimePreciseSec()` for your own timings, and if you must profile CPU, keep
   the restart off any per-frame path.
+- **Every Kit is bounded by default and opened on purpose.** A cap on an
+  object you create is a constructor option (`SignalKit:Bus(name, { maxTopics,
+  maxListeners })`, `HookKit:CreateScope{ maxHooks }`, `CommandKit:CreateScope{
+  maxCommands }`, `CacheKit:NewLru{ maxEntries }`, `LocaleKit:GetLocale(name, {
+  maxMissingKeys })`) and accepts the Kit's `UNBOUNDED` sentinel where the
+  retained memory is your own registrations. A package-wide cap goes through
+  `Kit:SetLimits{}` and is read back with `Kit:GetLimits()`; those are shared by
+  every addon in the session, so a library keeps the defaults. `UNBOUNDED` is
+  refused where the client never frees the resource (frames, shared buses,
+  LibSharedMedia entries) or where a wire format or the stack sets a ceiling;
+  each API.md has a "Limits" table naming the default, the ceiling and the
+  reason.
 - **Pools are bounded by default.** PoolKit retains 128 objects per pool unless
   you say otherwise, and `PoolKit.UNBOUNDED` is an explicit, documented opt-in
   that makes retention your problem. `maxRetained` bounds what the pool keeps,
@@ -988,14 +1023,11 @@ level down.
 
 `LifecycleKit.lua` is missing or listed after `ModuleKit.lua`.
 
-### `MoltenCodes TimerKit requires a valid LifecycleKit API 1 facade`
+### `MoltenCodes SchedulerKit requires a valid TimerKit API 1 facade`
 
-Same cause, different wording: `LifecycleKit.lua` is missing or listed after
-`TimerKit.lua`. TimerKit checks the facade's shape in one step, so a missing
-dependency and a corrupted one produce the same message.
-`MoltenCodes SchedulerKit requires a valid TimerKit API 1 facade` and
-`MoltenCodes SchedulerKit requires a valid LifecycleKit API 1 facade` are the
-same problem for SchedulerKit.
+`TimerKit.lua` is missing or listed after `SchedulerKit.lua`. SchedulerKit
+checks the facade's shape in one step, so a missing dependency and a corrupted
+one produce the same message. TimerKit itself needs only Registry.
 
 ### `MoltenCodes TimerKit requires C_Timer.NewTimer and C_Timer.NewTicker`
 

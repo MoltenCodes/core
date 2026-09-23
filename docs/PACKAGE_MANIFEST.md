@@ -173,9 +173,8 @@ Validation rules:
 - the graph of **required** dependencies must have no cycles. A cycle that
   passes through at least one optional edge is allowed: the optional edge is
   resolved at call time, after every file has loaded, which is what
-  `Registry:Find` is for. EventKit, for example, can optionally use
-  SchedulerKit even though SchedulerKit requires TimerKit, which requires
-  LifecycleKit, which requires EventKit;
+  `Registry:Find` is for. LifecycleKit, for example, optionally calls into
+  CommKit at shutdown even though CommKit requires LifecycleKit;
 - `optionalDependencies` must come **after** the top-level `api` field in the
   file. Every `tests/Manifest_spec.lua` reads the package's API generation with
   the first `"api"` in the file, so an optional-dependency object written above

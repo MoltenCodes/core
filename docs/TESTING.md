@@ -171,7 +171,7 @@ package under test is the last entry:
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local TimerKitTestEnv = FrameworkTestEnv.New({
-    modules = { "Registry", "SignalKit", "EventKit", "LifecycleKit", "TimerKit" },
+    modules = { "Registry", "TimerKit" },
 })
 ```
 

@@ -302,9 +302,9 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
    total, max, last }`; `ProfileKit:Reset()`. When disabled, `Begin`,
    `End` and `Measure` are no-ops bound at enable time so callers pay a
    table read and a call.
-5. Ownership: package-level state, bounded by `DEFAULT_MAX_SECTIONS` (256,
-   a facade constant without a setter in 0.1.0;
-   further sections refused with a reason).
+5. Ownership: package-level state, bounded by the `maxSections` limit
+   (default `DEFAULT_MAX_SECTIONS`, 256; opened with `ProfileKit:SetLimits`
+   or `ProfileKit.UNBOUNDED`; further sections refused with a reason).
 6. Performance: `Begin` and `End` allocate nothing; `Report` allocates by
    design and says so. Enabled overhead is two clock reads per section.
 7. Tests: disabled path is a no-op, enable and measure with the clock stub,
@@ -663,8 +663,10 @@ and W9) and the WeakAuras media pack (LibSharedMedia).
    / `EncodeForPrint` and their inverses; `CodecKit:EncodeAsync(value,
    options, scope, callback)` and `DecodeAsync` running in blocks on a
    schedulerKit scope under the frame budget; `CodecKit:SetLimits{ maxDepth,
-   maxValues, maxStringLength, maxOutputBytes }` / `GetLimits()`, all bounded
-   by default and documented as shared by every consumer;
+   maxValues, maxStringLength, maxOutputBytes, maxListValues }` /
+   `GetLimits()`, all bounded by default and documented as shared by every
+   consumer, with `UNBOUNDED` accepted for `maxValues` and `maxStringLength`
+   (still bounded by `maxOutputBytes`);
    `CodecKit.FORMAT_VERSION`.
 5. Ownership: stateless apart from limits; buffers are leased from a poolKit
    table pool per call and returned, so calls are re-entrant.
@@ -919,16 +921,16 @@ and the tree is brought to them. Registry and SignalKit are the accepted core
 pair; nothing else is a required dependency unless the Kit cannot work
 without it.
 
-- [ ] **timerKit** — LifecycleKit becomes optional: the addon scope is closed
+- [x] **timerKit** — LifecycleKit becomes optional: the addon scope is closed
       by LifecycleKit calling `TimerKit:CloseAddonScopes` (the two-step
       EventKit already uses); timerKit embeds as two files.
-- [ ] **schedulerKit** — LifecycleKit becomes optional the same way; the
-      chain shrinks to registry, signalKit, timerKit.
-- [ ] **readinessKit**, **testKit** — chains follow (testKit keeps
+- [x] **schedulerKit** — LifecycleKit becomes optional the same way; the
+      chain shrinks to registry and timerKit.
+- [x] **readinessKit**, **testKit** — chains follow (testKit keeps
       LifecycleKit, it gates on phases by purpose).
-- [ ] **lifecycleKit** — calls `TimerKit:CloseAddonScopes` and
+- [x] **lifecycleKit** — calls `TimerKit:CloseAddonScopes` and
       `SchedulerKit:CloseAddonScopes` at shutdown when those Kits are present.
-- [ ] Every fixed limit becomes an option, a `SetLimits` entry or accepts
+- [x] Every fixed limit becomes an option, a `SetLimits` entry or accepts
       `Kit.UNBOUNDED`, per principle 4a: signalKit (bus, topic and listener
       caps), eventKit (unit-filter frames), hookKit, commandKit, localeKit,
       mediaKit, profileKit, cacheKit (`UNBOUNDED`), schemaKit (depth and
@@ -937,7 +939,7 @@ without it.
       (`UNBOUNDED` where safe), moduleKit and lifecycleKit (dependency and
       queue caps), readinessKit, schedulerKit (lanes, watchers, debounce
       arguments), testKit.
-- [ ] Every package README states its minimum footprint; EMBEDDING.md gains a
+- [x] Every package README states its minimum footprint; EMBEDDING.md gains a
       footprint table and the dependency graph is redrawn.
 
 ### Standing obligations

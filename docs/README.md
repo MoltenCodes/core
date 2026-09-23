@@ -37,7 +37,7 @@ Current package entry points:
 - [`EventKit`](../packages/eventKit/README.md) — lazy WoW Frame-event subscriptions and unit-event filtering built on SignalKit.
 - [`LifecycleKit`](../packages/lifecycleKit/README.md) — per-addon loading, readiness, and shutdown coordination, the combat gate, and the halted state.
 - [`ModuleKit`](../packages/moduleKit/README.md) — addon-scoped module lifecycle, dependency graphs, and dependency injection.
-- [`TimerKit`](../packages/timerKit/README.md) — cancelable, scope-aware timers with LifecycleKit shutdown cleanup.
+- [`TimerKit`](../packages/timerKit/README.md) — cancelable, scope-aware timers; two files to embed, closed at logout by LifecycleKit when it is present.
 - [`SchedulerKit`](../packages/schedulerKit/README.md) — cooperative, frame-budgeted priority scheduling with TimerKit delays.
 - [`PoolKit`](../packages/poolKit/README.md) — allocation-conscious bounded object pooling with deterministic ownership and cleanup.
 - [`ClientKit`](../packages/clientKit/README.md) — client flavour, capability flags, secret-value and frame-access probes, shims.

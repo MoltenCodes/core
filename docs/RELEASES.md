@@ -88,7 +88,7 @@ Other options:
 
 A single-package build includes that package's runtime dependency closure. A
 bundle that cannot load is not a release artifact, so `--package schedulerKit`
-also ships Registry, SignalKit, EventKit, LifecycleKit and TimerKit. The
+also ships Registry and TimerKit. The
 `manifest.json` records which package the build is *about* and which are only
 there to make it load.
 
