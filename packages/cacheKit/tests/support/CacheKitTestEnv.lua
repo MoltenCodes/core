@@ -2,36 +2,14 @@
 ---
 --- The World of Warcraft stubs, the `package.loaded` bookkeeping and the error
 --- capture live in the shared `FrameworkTestEnv` fixture at `tests/support/`.
---- What stays here is this package's own module load order, and the one path
---- entry that order needs.
+--- What stays here is this package's own module load order.
 ---
 --- EventKit is an optional dependency of CacheKit: only `cache:ClearOn` uses
---- it, found through `Registry:Find` at call time. The manifest schema has no
---- field for an optional dependency, so the test runner, which builds
---- `LUA_PATH` from the manifest dependency closure, does not put EventKit (or
---- the SignalKit it needs) on the path. This file adds their source
---- directories, located relative to this file rather than to the working
---- directory, so the clear-on-event specs run against the real EventKit.
+--- it, found through `Registry:Find` at call time. The manifest declares it
+--- under `optionalDependencies`, so the test runner puts EventKit and the
+--- SignalKit it needs on `LUA_PATH` for this suite while the release load
+--- order ignores them.
 local FrameworkTestEnv = require("FrameworkTestEnv")
-
----Append the `src` directory of each named sibling package to `package.path`.
----@param packageNames string[]
-local function addSiblingSources(packageNames)
-    local source = debug.getinfo(1, "S").source
-    local packagesDirectory = source:match("^@(.*)[/\\]cacheKit[/\\]tests[/\\]support[/\\][^/\\]+$")
-    if packagesDirectory == nil then
-        packagesDirectory = "packages"
-    end
-
-    for index = 1, #packageNames do
-        local entry = packagesDirectory .. "/" .. packageNames[index] .. "/src/?.lua"
-        if not package.path:find(entry, 1, true) then
-            package.path = package.path .. ";" .. entry
-        end
-    end
-end
-
-addSiblingSources({ "signalKit", "eventKit" })
 
 local CacheKitTestEnv = FrameworkTestEnv.New({
     modules = { "Registry", "SignalKit", "EventKit", "CacheKit" },

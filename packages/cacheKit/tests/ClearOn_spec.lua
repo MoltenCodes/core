@@ -80,6 +80,24 @@ describe("CacheKit clear-on-event", function()
         assert.are.same({}, TestEnv.ReportedErrors())
     end)
 
+    it("reports a refused host registration and can connect again later", function()
+        local CacheKit = TestEnv.NewPackage()
+        local cache = CacheKit:NewLru({ maxEntries = 4 })
+
+        TestEnv.FailNextRegisterEvent()
+        TestEnv.expectErrorContaining(
+            "CacheKit.Cache:ClearOn could not connect SPELLS_CHANGED: ",
+            function()
+                cache:ClearOn("SPELLS_CHANGED")
+            end
+        )
+
+        assert.is_true(cache:ClearOn("SPELLS_CHANGED"))
+        cache:Set("a", 1)
+        TestEnv.Emit("SPELLS_CHANGED")
+        assert.are.equal(0, cache:GetCount())
+    end)
+
     it("refuses to subscribe a closed cache", function()
         local CacheKit = TestEnv.NewPackage()
         local cache = CacheKit:NewLru({ maxEntries = 4 })

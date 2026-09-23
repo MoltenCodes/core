@@ -52,6 +52,24 @@ The runner discovers packages from manifests, generates `LUA_PATH` entries for
 package source, package test support and the shared fixture, then invokes Busted
 for every discovered package.
 
+### Which package sources a suite can `require`
+
+A package's suite runs with these source directories on `LUA_PATH`, in this
+order:
+
+1. the package under test;
+2. its required dependency closure, from `dependencies`;
+3. each package named in `optionalDependencies`, together with that package's
+   own required closure.
+
+The order makes a module-name collision resolve in favour of the package under
+test. Step 3 exists because an optional dependency is found at call time
+through `Registry:Find` and is absent from the load order, yet the specs that
+cover the "present" path need to load it. Declaring it in the manifest is all a
+package does; its test environment does not add source directories by hand. The
+specs that cover the "absent" path simply leave it out of the module chain they
+load. See [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md#optional-dependencies).
+
 The example addon under `examples/` is a target beside the packages, named
 `examples`. It is the documented embedding instructions in executable form, so
 it runs from the same command rather than from a second one CI could forget:
@@ -108,6 +126,7 @@ module-level factory per file under `tests/support/framework/`:
 | `FrameStub.lua` | `CreateFrame`, the Frame registration bookkeeping, and `Emit`/`Tick`/`Frames`/`ActiveOnUpdateCount`. |
 | `TimerStub.lua` | `C_Timer` and the native timer handles, including the three host failures a package must survive. |
 | `ClockStub.lua` | `GetTimePreciseSec` and `debugprofilestop`, kept independent of each other. |
+| (in `LifecycleKitTestEnv.lua`) | `InCombatLockdown` and the `EnterCombat` / `LeaveCombat` helpers, stubbed by the lifecycleKit suite alone; worth promoting into `AddonStub` when a second suite needs them. |
 | `ClientStub.lua` | `WOW_PROJECT_ID`, `GetBuildInfo` and one host profile per supported flavour (`wowProfile`), plus secret values, event validity, spells and addon metadata. |
 | `AddonStub.lua` | `C_AddOns`, `IsLoggedIn`, `CombatLogGetCurrentEventInfo`, and the `LoadAddon`/`Login`/`Logout` helpers. |
 | `ErrorHandlerStub.lua` | `geterrorhandler` and `securecallfunction`, and the two ways a spec reads what reached them. |

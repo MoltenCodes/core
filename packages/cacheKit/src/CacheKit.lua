@@ -185,6 +185,18 @@ if type(nativeGetTimePreciseSec) ~= "function" then
     nativeGetTimePreciseSec = nil
 end
 
+-- Retail 12.x hands tainted code secret values that raise when compared or used
+-- as a table key. A snapshot does both with what its reader reports, so `fill`
+-- asks this probe first and refuses a secret with a message naming CacheKit
+-- instead of a host error inside it. Clients without secret values have no
+-- probe, and nothing there is secret.
+-- issecretvalue is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
+local nativeIsSecretValue = rawget(_G, "issecretvalue")
+if type(nativeIsSecretValue) ~= "function" then
+    nativeIsSecretValue = nil
+end
+
 -- Validation -----------------------------------------------------------------
 
 ---Whether every name in `methodNames` is a function field of `prototype`.
@@ -677,6 +689,16 @@ local function resolveEventKit(methodName, level)
     return EventKit
 end
 
+---Return an error value as text without the `file:line: ` prefix `error` adds,
+---so a re-raised failure carries one position: the caller's.
+---@param failure any
+---@return string
+local function withoutPosition(failure)
+    local text = tostring(failure)
+    local stripped = text:match("^[^\n]-:%d+: (.*)$")
+    return stripped or text
+end
+
 ---Build the one callback a cache connects to every event it clears on. It
 ---calls through the shared dispatch table so an upgrade replaces its behaviour.
 ---@param cache table
@@ -866,7 +888,19 @@ local function cacheClearOn(self, eventName)
         rawset(self, "_clearCallback", callback)
     end
 
-    local connection = scope:Connect(eventName, callback)
+    -- EventKit reports a refused host registration at its own caller, which is
+    -- this line; re-raise it at the line that called `ClearOn` instead, keeping
+    -- the host's reason.
+    local connected, connection = pcall(scope.Connect, scope, eventName, callback)
+    if not connected then
+        error(
+            "CacheKit.Cache:ClearOn could not connect "
+                .. eventName
+                .. ": "
+                .. withoutPosition(connection),
+            2
+        )
+    end
     if events == false then
         events = {}
         rawset(self, "_clearOnEvents", events)
@@ -991,6 +1025,15 @@ local function snapshotFill(snapshot, key, value)
     if rawget(snapshot, "_refreshing") ~= true then
         error("CacheKit.Snapshot fill can only be called while its Refresh is running", 3)
     end
+    -- Before any comparison: comparing a secret is itself the host error.
+    if nativeIsSecretValue ~= nil then
+        if nativeIsSecretValue(key) then
+            error("CacheKit.Snapshot fill key must not be a secret value", 3)
+        end
+        if nativeIsSecretValue(value) then
+            error("CacheKit.Snapshot fill value must not be a secret value", 3)
+        end
+    end
     validateKey(key, "CacheKit.Snapshot fill", 4)
     if value == nil then
         error("CacheKit.Snapshot fill value must not be nil", 3)
@@ -1052,6 +1095,22 @@ local function removeUnfilled(snapshot)
     end
 end
 
+---Undo the additions of a refresh whose reader raised: remove every key it
+---added and empty the added array. Changed values keep their new value, which
+---is still the most recent the reader reported for an existing key.
+---@param snapshot table
+local function rollBackAdded(snapshot)
+    local values = rawget(snapshot, "_values")
+    local seen = rawget(snapshot, "_seen")
+    local added = rawget(snapshot, "_added")
+    for index = 1, rawget(snapshot, "_addedCount") do
+        local key = added[index]
+        values[key] = nil
+        seen[key] = nil
+    end
+    rawset(snapshot, "_addedCount", 0)
+end
+
 ---Build an open, empty snapshot.
 ---@param read CacheKit.Read
 ---@param maxEntries integer
@@ -1089,9 +1148,10 @@ end
 ---overwritten by the next refresh; copy what you need to keep. A refresh in
 ---which nothing changed allocates nothing.
 ---
----When the reader raises, the keys it filled keep their new values, nothing is
----removed, and the error propagates unchanged; the next refresh reports
----against that state.
+---When the reader raises, the keys it added are rolled back, keys it changed
+---keep their new values, nothing is removed, and the error is re-raised
+---unchanged with `error(failure, 0)` (so the traceback ends at `Refresh`);
+---the next refresh reports against that state.
 ---@param self CacheKit.Snapshot
 ---@return any[] added
 ---@return any[] removed
@@ -1126,7 +1186,11 @@ local function snapshotRefresh(self)
         removeUnfilled(self)
         rawset(self, "_count", rawget(self, "_filledCount"))
     else
-        rawset(self, "_count", rawget(self, "_count") + rawget(self, "_addedCount"))
+        -- A failed read proves nothing about the keys it did not reach, so
+        -- none is removed; the keys it added are rolled back, so the stored
+        -- keys stay those of the last successful refresh and never exceed
+        -- `maxEntries`, however many reads fail in a row.
+        rollBackAdded(self)
     end
 
     truncateResult(added, rawget(self, "_addedCount"), previousAdded)

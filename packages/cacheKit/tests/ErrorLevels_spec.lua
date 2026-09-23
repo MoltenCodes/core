@@ -238,6 +238,23 @@ describe("CacheKit error levels", function()
         )
     end)
 
+    it("points a refused ClearOn registration at the caller", function()
+        local cache = CacheKit:NewLru({ maxEntries = 1 })
+        TestEnv.FailNextRegisterEvent()
+        local line
+        local ok, value = pcall(function()
+            line = currentLine() + 1
+            cache:ClearOn("SPELLS_CHANGED")
+        end)
+        assertReportedAt(
+            line,
+            "CacheKit.Cache:ClearOn could not connect SPELLS_CHANGED: "
+                .. "EventKit.Scope:Connect could not register event SPELLS_CHANGED",
+            ok,
+            value
+        )
+    end)
+
     it("points fill errors at the reader line that called fill", function()
         local fillLine
         local snapshot = CacheKit:NewSnapshot(function(fill)

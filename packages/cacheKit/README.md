@@ -3,7 +3,7 @@
 CacheKit provides bounded caches for World of Warcraft addons, so "bounded by default" is a structure you reach for instead of a rule you remember. Every cache has a required `maxEntries`; there is no unbounded mode.
 
 ```lua
-local CacheKit = MoltenCodes.Registry:Get("cacheKit", 1)
+local CacheKit = MoltenCodes.Registries[2]:Get("cacheKit", 1)
 
 -- Least recently used, by count.
 local names = CacheKit:NewLru({ maxEntries = 256 })
@@ -20,11 +20,15 @@ end, { maxEntries = 512 })
 spellNames:ClearOn("SPELLS_CHANGED")
 
 -- A key-to-value map rebuilt on demand, reporting what changed.
+local isSecret = issecretvalue or function()
+    return false
+end
 local roster = CacheKit:NewSnapshot(function(fill)
-    for index = 1, GetNumGroupMembers() do
-        local unit = "raid" .. index
+    for index = 1, math.max(GetNumGroupMembers(), 1) do
+        local unit = IsInRaid() and "raid" .. index
+            or (index == 1 and "player" or "party" .. (index - 1))
         local guid = UnitGUID(unit)
-        if guid then
+        if guid and not isSecret(guid) then
             fill(guid, unit)
         end
     end
@@ -37,7 +41,8 @@ What each piece promises:
 - **LRU and TTL caches.** `Get` and `Set` are O(1). `Get` hits, misses and `Set` of an existing key allocate nothing; a new key allocates one entry table only when no evicted or deleted entry is waiting on the cache's free list. `Peek` reads without marking the entry as used and without counting a hit or a miss. `Set(key, nil)` deletes the key. `nil` and NaN keys are refused at the caller's line.
 - **Age limits** are measured with `GetTimePreciseSec`, the clock TimerKit uses. It is optional: on a host without it CacheKit still loads and every age limit is disabled, so a TTL cache behaves as a plain LRU cache.
 - **`Memoize`** remembers `fn`'s first result per string or number key, bounded by 128 entries unless you say otherwise. A `nil` result is not remembered; return `false` to remember a negative answer. The second return value is the cache behind the function: clear it, read its statistics, or close it through that handle.
-- **Snapshots** hand your reader a `fill(key, value)` function and diff what it reports against the previous refresh. The three result arrays are reused, and a refresh in which nothing changed allocates nothing.
+- **Snapshots** hand your reader a `fill(key, value)` function and diff what it reports against the previous refresh. The three result arrays are reused, and a refresh in which nothing changed allocates nothing. A failed read rolls back the keys it added, so a snapshot never exceeds its `maxEntries`.
+- **Secret values** (Retail 12.x) cannot be compared or used as table keys. Check `ClientKit:IsSecret` or `issecretvalue` before handing client values to a cache; a snapshot's `fill` refuses secrets itself.
 - **`cache:ClearOn(eventName)`** clears a cache whenever a host event fires. It needs EventKit, which CacheKit finds through `Registry:Find` when you call it, and raises a clear error when EventKit is not loaded. `Close()` releases those subscriptions.
 - **Statistics.** `GetStats()` returns `{ hits, misses, evictions }` as the same table on every call.
 

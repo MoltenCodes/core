@@ -79,7 +79,9 @@ The design passes a function to the reader rather than a table for it to fill. A
 
 `maxEntries` counts the keys filled in one refresh, not the keys stored while it runs, so replacing every key of a full snapshot works; during that refresh `_values` briefly holds up to twice `maxEntries` keys.
 
-When the reader raises, the removal pass is skipped: keys filled before the failure keep their new values, nothing is removed, `_count` includes the keys added, and the error is re-raised unchanged. `_refreshing` guards against a reader that refreshes or closes its own snapshot.
+When the reader raises, the removal pass is skipped, because a failed read says nothing about the keys it did not reach. `rollBackAdded` then removes every key listed in `_added` from `_values` and `_seen` and empties the array, so the stored keys are those of the last successful refresh (plus new values for changed keys) and `_count` is unchanged. Without the rollback, each failing read would keep every old key and add up to `maxEntries` new ones, and the snapshot would grow without limit. The error is re-raised with `error(failure, 0)`: the value is unchanged, and the traceback ends at `Refresh`. `_refreshing` guards against a reader that refreshes or closes its own snapshot.
+
+`fill` asks `issecretvalue` (looked up once at load, absent outside Retail 12.x) about the key and the value before its first comparison, because comparing a secret or using it as a key is itself the client error. The cache paths do not probe; see *Secret values* in `API.md`.
 
 ## Closures and upgrades
 
@@ -90,5 +92,8 @@ Caches and snapshots use the metatables stored in `state.cacheMetatable` and `st
 The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to 2 and checks that entries, recency, statistics, memoised functions, subscriptions and snapshots all survive.
 
 ## Error levels
+
+`ClearOn` calls `scope:Connect` through `pcall`: EventKit raises a refused host registration at its own caller, which is a CacheKit line. The failure is re-raised at level 2 under `CacheKit.Cache:ClearOn`, with EventKit's `file:line: ` prefix stripped and its reason kept, and the event is not recorded, so a later `ClearOn` can try again.
+
 
 Every argument validator takes an explicit `level`, which is the value `error` needs *inside the function that receives it*; each further hop towards `error` adds one. Failures raised through a closure count the closure as a level: `memoizedCall` and `snapshotFill` raise at level 3 (themselves, the closure, then the caller of the closure), and `snapshotFill` passes 4 to `validateKey`.

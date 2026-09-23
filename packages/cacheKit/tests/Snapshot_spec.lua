@@ -94,7 +94,77 @@ describe("CacheKit snapshot", function()
         assert.are.same({ a = 1, b = 2 }, seen)
     end)
 
-    it("keeps filled values and removes nothing when the reader raises", function()
+    it("stays within maxEntries however many reads fail after filling fresh keys", function()
+        local failures = 0
+        local snapshot = CacheKit:NewSnapshot(function(fill)
+            for index = 1, 10 do
+                fill("round" .. failures .. "key" .. index, index)
+            end
+            failures = failures + 1
+            error("read failed", 0)
+        end, { maxEntries = 10 })
+
+        for _ = 1, 100 do
+            local ok, message = pcall(snapshot.Refresh, snapshot)
+            assert.is_false(ok)
+            assert.are.equal("read failed", message)
+            assert.is_true(snapshot:GetCount() <= 10)
+        end
+
+        local stored = 0
+        for _ in snapshot:Pairs() do
+            stored = stored + 1
+        end
+        assert.are.equal(0, stored)
+        assert.are.equal(0, snapshot:GetCount())
+    end)
+
+    it("stays within maxEntries when the refusal of an extra key repeats", function()
+        local round = 0
+        local snapshot = CacheKit:NewSnapshot(function(fill)
+            round = round + 1
+            for index = 1, 11 do
+                fill(round * 100 + index, index)
+            end
+        end, { maxEntries = 10 })
+
+        for _ = 1, 100 do
+            assert.is_false(pcall(snapshot.Refresh, snapshot))
+        end
+        local stored = 0
+        for _ in snapshot:Pairs() do
+            stored = stored + 1
+        end
+        assert.are.equal(0, stored)
+    end)
+
+    it("keeps the last good keys when a later read fails", function()
+        local source = { a = 1, b = 2 }
+        local failing = false
+        local snapshot = CacheKit:NewSnapshot(function(fill)
+            for key, value in pairs(source) do
+                fill(key, value)
+            end
+            if failing then
+                error("read failed", 0)
+            end
+        end, { maxEntries = 2 })
+        snapshot:Refresh()
+
+        source.a, source.c = nil, 3
+        failing = true
+        assert.is_false(pcall(snapshot.Refresh, snapshot))
+        assert.are.equal(2, snapshot:GetCount())
+        assert.are.equal(1, snapshot:Get("a"))
+        assert.is_nil(snapshot:Get("c"))
+
+        failing = false
+        local added, removed = snapshot:Refresh()
+        assert.are.same({ "c" }, added)
+        assert.are.same({ "a" }, removed)
+    end)
+
+    it("keeps changed values and removes nothing when the reader raises", function()
         local failing = false
         local snapshot = CacheKit:NewSnapshot(function(fill)
             fill("a", failing and 10 or 1)

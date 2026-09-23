@@ -16,7 +16,7 @@ CacheKit.lua
 Portable WoW code resolves the package through Registry:
 
 ```lua
-local CacheKit = MoltenCodes.Registry:Get("cacheKit", 1)
+local CacheKit = MoltenCodes.Registries[2]:Get("cacheKit", 1)
 ```
 
 CacheKit does not rely on `require()` at runtime.
@@ -135,7 +135,7 @@ Returns a table with three counters:
 
 Clears the cache whenever the host event `eventName` fires, through a private EventKit scope the cache owns. Returns `true` when it connected, `false` when the cache already clears on that event. The subscriptions are bounded by the number of distinct event names.
 
-`eventName` must be a non-empty string. A closed cache refuses: `CacheKit.Cache:ClearOn cannot subscribe a closed cache`. When EventKit is not loaded, or its entry is retired, the error names the `Registry:Find` reason (`absent`, `generation_mismatch` or `retired`).
+`eventName` must be a non-empty string. When the host refuses the registration, the failure is raised at the caller's line with the host reason kept: `CacheKit.Cache:ClearOn could not connect SPELLS_CHANGED: EventKit.Scope:Connect could not register event SPELLS_CHANGED`, and a later `ClearOn` for the same event may try again. A closed cache refuses: `CacheKit.Cache:ClearOn cannot subscribe a closed cache`. When EventKit is not loaded, or its entry is retired, the error names the `Registry:Find` reason (`absent`, `generation_mismatch` or `retired`).
 
 A cache closed from inside a listener of the same event is not cleared again by a delivery EventKit still owes it; see EventKit's *Closing during a dispatch*.
 
@@ -172,11 +172,25 @@ The memoised function takes exactly one argument, a string or a number (not NaN)
 A snapshot is a key-to-value map that `read` rebuilds on every `Refresh`, reporting what changed since the previous one.
 
 ```lua
+local isSecret = issecretvalue or function()
+    return false
+end
+
+-- In a raid every member is "raidN"; in a party the player is "player" and the
+-- others are "party1" to "party4".
+local function groupUnit(index)
+    if IsInRaid() then
+        return "raid" .. index
+    end
+    return index == 1 and "player" or "party" .. (index - 1)
+end
+
 local roster = CacheKit:NewSnapshot(function(fill)
-    for index = 1, GetNumGroupMembers() do
-        local unit = "raid" .. index
+    for index = 1, math.max(GetNumGroupMembers(), 1) do
+        local unit = groupUnit(index)
         local guid = UnitGUID(unit)
-        if guid then
+        -- A GUID can be a secret value on Retail 12.x; fill refuses secrets.
+        if guid and not isSecret(guid) then
             fill(guid, unit)
         end
     end
@@ -203,13 +217,33 @@ The three arrays belong to the snapshot and are **overwritten by the next refres
 `fill` refuses, at the reader's line:
 
 - a `nil` or NaN key, or a `nil` value;
+- a secret key or value (see *Secret values*);
 - the same key twice in one refresh;
 - more than `maxEntries` keys in one refresh (`fill exceeded maxEntries (40)`);
 - being called when its snapshot is not refreshing.
 
-When `read` raises (including through one of those refusals), the keys it filled before the failure keep their new values, nothing is removed, and the error propagates unchanged out of `Refresh`. The next refresh reports against that state.
+When `read` raises (including through one of those refusals):
+
+- the keys it **added** in that refresh are rolled back, so the snapshot keeps the keys of its last successful refresh and never holds more than `maxEntries`, however many reads fail in a row;
+- keys it **changed** keep their new values, the most recent the reader reported;
+- nothing is removed, because a failed read says nothing about the keys it did not reach;
+- the error propagates out of `Refresh` unchanged: the same error value, re-raised with `error(failure, 0)`, so it gains no position and the traceback ends at `Refresh` rather than inside `read`. Wrap the body of `read` in `xpcall` if you need the original traceback.
+
+The next refresh reports against that state, so rolled-back keys are reported as added once a read succeeds.
 
 `Refresh` and `Close` refuse to run from inside the snapshot's own `read`. After `Close`, `Refresh` raises, `Get` returns `nil`, `GetCount` returns `0` and `Pairs` iterates nothing. Do not refresh a snapshot while iterating `Pairs()`.
+
+## Secret values
+
+On Retail 12.x the client hands tainted code **secret values** in combat and instanced content: unit names, GUIDs, health and aura data among them. A secret raises a Lua error when it is compared or used as a table key, and a cache or snapshot does both with every key (a snapshot also compares every value). The rule from [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x) applies: ask `ClientKit:IsSecret(value)`, or `issecretvalue(value)` where it exists, before handing a value from the client to CacheKit, and skip or defer the secret ones.
+
+```lua
+local isSecret = issecretvalue or function()
+    return false
+end
+```
+
+`fill` checks for you when the client has `issecretvalue`: it refuses a secret key or value at the reader's line (`CacheKit.Snapshot fill key must not be a secret value`) before any comparison, and that refusal fails the refresh like any other. Cache methods (`Get`, `Set`, `Peek`, `Delete`) and memoised functions do not probe, to keep their hot paths free of an extra call; a secret key reaching them raises the client's own error.
 
 ## Error behaviour
 

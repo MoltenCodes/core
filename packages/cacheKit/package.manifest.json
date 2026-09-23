@@ -10,5 +10,10 @@
     "registry": {
       "api": 2
     }
+  },
+  "optionalDependencies": {
+    "eventKit": {
+      "api": 1
+    }
   }
 }
