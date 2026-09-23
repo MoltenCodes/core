@@ -53,6 +53,8 @@ Package facade:
 | `Report()` | The structured results of every test that ran since the last `Reset`. Allocates. |
 | `OnFinished(callback)` | Call `callback(report)` when a run has nothing left to do; `true` or `nil, "full"`. |
 | `Reset()` | Abandon a run in progress and clear every result; returns `true`. |
+| `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits. See [Limits](#limits). |
+| `UNBOUNDED` | Sentinel a limit takes to be lifted. |
 
 Suites:
 
@@ -68,20 +70,20 @@ Test context, passed to every test body and hook:
 
 | Method | Purpose |
 |---|---|
-| `Replace(table, key, value)` | Replace `table[key]` until the test ends; returns the previous value, or `nil, "full"` past 256 replacements in one test. |
+| `Replace(table, key, value)` | Replace `table[key]` until the test ends; returns the previous value, or `nil, "full"` past `maxReplacements` (256) in one test. |
 | `Yield()` | Suspend the test until the runner job's next resume. |
 | `WaitFor(eventName, timeoutSeconds)` | `true, ...payload` when the event fires, or `false, "timeout"`. |
 | `WaitUntil(predicate, timeoutSeconds)` | `true` once `predicate()` is truthy (polled once per frame), or `false, "timeout"`. |
 | `Expect(actual)` | A matcher about `actual`. |
 | `Fail(message?)` | Fail the test now. |
-| `Log(message)` | Keep one line with the test's result; `false` once 64 lines are kept. |
+| `Log(message)` | Keep one line with the test's result; `false` once `maxLogLines` (64) lines are kept. |
 
 Matchers, each also on `matcher.Not`:
 
 | Method | Passes when |
 |---|---|
 | `ToBe(expected)` | `actual` is `expected` itself: raw equality, no `__eq` metamethod. |
-| `ToEqual(expected)` | the values are structurally equal, tables compared key by key with raw access, at most 16 levels deep. |
+| `ToEqual(expected)` | the values are structurally equal, tables compared key by key with raw access, at most `maxEqualDepth` (16) levels deep. |
 | `ToBeTruthy()` | `actual` is neither `nil` nor `false`. |
 | `ToBeNil()` | `actual` is `nil`. |
 | `ToRaise(pattern?)` | `actual`, a function, raises when called with no arguments; with `pattern`, raises a string that matches the Lua pattern. |
@@ -107,15 +109,15 @@ local suite = TestKit:Suite("MyAddon.Combat", {
 
 Unknown option fields are refused; with several, the message names the alphabetically first.
 
-Suites live in TestKit's shared state for the session. A name already registered is refused with `nil, "taken"`, and a 65th suite with `nil, "full"`; prefix suite names with your addon's name. Nothing is ever unregistered: `/reload` starts over.
+Suites live in TestKit's shared state for the session. A name already registered is refused with `nil, "taken"`, and a suite past `maxSuites` (64) with `nil, "full"`; prefix suite names with your addon's name. Nothing is ever unregistered: `/reload` starts over.
 
 A suite whose `addonName` never loads waits for ever, and so does the run; `Reset` abandons it. A suite whose addon halts or shuts down while it waits does not: it is recorded as skipped and the run goes on (see `Run`).
 
 ## Tests and hooks
 
-`suite:Test(name, fn)` registers `fn(ctx)`. Test names are non-empty strings, unique within the suite (a duplicate raises at the caller), and may contain `/`. `suite:Skip(name, reason)` registers a test that is reported as `"skipped"` with `reason` (default `"skipped"`) whenever the suite runs. Together they are bounded at 256 per suite.
+`suite:Test(name, fn)` registers `fn(ctx)`. Test names are non-empty strings, unique within the suite (a duplicate raises at the caller), and may contain `/`. `suite:Skip(name, reason)` registers a test that is reported as `"skipped"` with `reason` (default `"skipped"`) whenever the suite runs. Together they are bounded at `maxTests` (256) per suite.
 
-`Before(fn)` and `After(fn)` add hooks, at most 16 of each per suite. For every test the runner executes, in order:
+`Before(fn)` and `After(fn)` add hooks, at most `maxHooks` (16) of each per suite. For every test the runner executes, in order:
 
 1. every Before hook, in registration order;
 2. the test body;
@@ -146,7 +148,7 @@ Every replacement is undone when the test ends — after the After hooks, whatev
 
 `table` must be a table and `key` must not be `nil` or NaN. A secret `value` or `key` is refused. Replacing a global is `ctx:Replace(_G, "Name", value)`.
 
-A test holds at most **256** replacements. Past that nothing is written and `Replace` returns `nil, "full"`; since a previous value may itself be `nil`, check the second value.
+A test holds at most `maxReplacements` (**256** by default) replacements. Past that nothing is written and `Replace` returns `nil, "full"`; since a previous value may itself be `nil`, check the second value.
 
 ### `ctx:Yield()`
 
@@ -175,7 +177,7 @@ Calls `predicate()` at once; when it is truthy, returns `true` without suspendin
 
 ### `ctx:Expect(actual)`, `ctx:Fail(message?)`, `ctx:Log(message)`
 
-`Expect` returns a matcher; see below. `Fail` raises `message` at the test's line (default `"failed"`); a string is cut to 256 bytes and anything else is described safely. `Log` keeps `message` the same way, up to 64 lines per test, and returns `false` without keeping it after that.
+`Expect` returns a matcher; see below. `Fail` raises `message` at the test's line (default `"failed"`); a string is cut to 256 bytes and anything else is described safely. `Log` keeps `message` the same way, up to `maxLogLines` (64) lines per test, and returns `false` without keeping it after that.
 
 ## Matchers
 
@@ -203,7 +205,7 @@ A failure message never prints a secret and never quotes a long string:
 
 A comparison that a secret makes impossible — `ToBe` or `ToEqual` with a secret anywhere, `ToBeTruthy` on a secret boolean, `ToRaise` with a pattern when the function raised a secret — **fails even under `Not`**, with `expected <secret value>: a secret value cannot be compared`: negation must not turn "could not look" into a pass. A secret of another type is truthy and not `nil`, because its type is not secret.
 
-`ToEqual` stops at 16 levels (`tables nested deeper than 16 levels`), which also ends a cyclic structure. `ToRaise` calls the function with no arguments under `pcall`; without a pattern any error passes, including `nil` and `false`. `ToRaise` on something that is not a function fails even under `Not`.
+`ToEqual` stops at `maxEqualDepth` levels, 16 by default (`tables nested deeper than 16 levels`), which also ends a cyclic structure. `ToRaise` calls the function with no arguments under `pcall`; without a pattern any error passes, including `nil` and `false`. `ToRaise` on something that is not a function fails even under `Not`.
 
 ## `TestKit:Run(filter?)`
 
@@ -246,7 +248,7 @@ Every suite with at least one result appears, in registration order; tests appea
 
 ## `TestKit:OnFinished(callback)` and `TestKit:Reset()`
 
-`OnFinished` registers `callback(report)` for every run that finishes, at most 16 callbacks for the session (`nil, "full"` beyond). Each callback runs protected: one that raises is reported through `geterrorhandler()` (or printed) and the others still run.
+`OnFinished` registers `callback(report)` for every run that finishes, at most `maxFinishedCallbacks` (16) callbacks for the session (`nil, "full"` beyond). Each callback runs protected: one that raises is reported through `geterrorhandler()` (or printed) and the others still run.
 
 `Reset` clears every result. When a run is in progress it is **abandoned** first: suites waiting for a phase are unsubscribed, queued suites dropped, the active test's replacements restored and its waits released, the runner job cancelled, and no `OnFinished` callback is called. Suites and `OnFinished` callbacks stay registered. `Reset` raises when called from inside a test or hook (`TestKit:Reset cannot be called from inside a running test`).
 
@@ -268,6 +270,35 @@ Every suite with at least one result appears, in registration order; tests appea
 
 `tests/FixtureFidelity_spec.lua` loads the same file into the fixture and runs the same suite. **The two environments must agree.** The spec lists by name the facts the fixture does not model yet (today `InCombatLockdown` and `C_Timer.After`) and requires them to fail there; every other test must pass. When the fixture learns one of them the spec fails until the entry is removed.
 
+## Limits
+
+Every bound TestKit keeps is a default the consumer can open (design
+constitution, principle 4a). TestKit is development-only and what it retains is
+the consumer's own tests, so every limit but one accepts `TestKit.UNBOUNDED`:
+
+| Limit | Default | `UNBOUNDED` | Guards |
+|---|---|---|---|
+| `maxSuites` | 64 | accepted | suites for the session |
+| `maxTests` | 256 | accepted | tests (`Test` and `Skip`) per suite |
+| `maxHooks` | 16 | accepted | Before hooks, and separately After hooks, per suite |
+| `maxLogLines` | 64 | accepted | `ctx:Log` lines per test |
+| `maxFinishedCallbacks` | 16 | accepted | `OnFinished` callbacks |
+| `maxReplacements` | 256 | accepted | `ctx:Replace` calls per test |
+| `maxEqualDepth` | 16, at most 64 | refused: `ToEqual` recurses once per level | table nesting `ToEqual` compares |
+
+```lua
+TestKit:SetLimits({ maxTests = TestKit.UNBOUNDED, maxEqualDepth = 32 })
+local limits = TestKit:GetLimits()
+```
+
+`SetLimits` changes any subset, validates the whole table at the caller's line
+before applying any of it, and must be called on the facade. `GetLimits`
+returns a fresh table. Lowering a limit removes nothing already registered;
+further registrations answer `nil, "full"` (or `false` from `Log`). `Reset`
+keeps the limits. The limits and the sentinel live in shared state, so every
+embedded copy sees the same values; revision-1 state is seeded with the
+defaults above.
+
 ## Error behaviour
 
 Argument failures report the line that called the public method, never a line inside TestKit; inside a test that line is the test's own, and the error fails the test. Messages name the method (`TestKit:Suite`, `TestKit.Suite:Test`, `TestKit.Context:WaitFor`, `TestKit.Matcher:ToBe`). A method called on the wrong receiver raises `TestKit.Suite:Test must be called on a TestKit suite`; a facade method called with a dot, such as `TestKit.Run("MyAddon")`, raises `TestKit:Run must be called on the TestKit facade` instead of shifting its arguments.
@@ -288,6 +319,6 @@ Against the package plan in `docs/ROADMAP.md` ("Package D planned Kits — the n
 2. **The fixture-fidelity suite lives in `fidelity/`, not `tests/`.** Point 4 says the suite is "shipped in `tests/`". `tests/` is Busted's directory: every file there is loaded as a spec or a spec helper, is linted with Busted's globals, and is never copied into a bundle. The fidelity suite is an addon file that runs in the client, so it has its own directory beside `src/`; its Busted counterpart is `tests/FixtureFidelity_spec.lua`.
 3. **Suite options `addonName` and `timeoutSeconds`.** Point 4 names `{ phase }` only. A phase belongs to one addon, so the suite has to name it (defaulting to the suite name keeps the plan's one-option form working), and the `"timeout"` status needs a limit to measure against.
 4. **`ToBeSecure(table, key)` ignores the value given to `Expect`.** `issecurevariable` asks about a variable, not a value; `ctx:Expect(nil):ToBeSecure(nil, "CreateFrame")` keeps the one matcher vocabulary.
-5. **Bounds the plan does not name**: 16 Before and 16 After hooks per suite, 256 replacements and 64 log lines per test, 16 `OnFinished` callbacks, `nil, "taken"` for a duplicate suite name. Every retention structure is bounded by the design constitution.
+5. **Bounds the plan does not name**: 16 Before and 16 After hooks per suite, 256 replacements and 64 log lines per test, 16 `OnFinished` callbacks, `nil, "taken"` for a duplicate suite name. Every retention structure is bounded by default and can be opened through `SetLimits` (see [Limits](#limits)).
 6. **EventKit and TimerKit are found, not declared.** Point 3 lists Registry, LifecycleKit and SchedulerKit. `WaitFor` and the timeouts need EventKit and TimerKit, which are in those packages' closures; they are found with `Registry:Find` when first needed rather than added as edges.
 7. **`Reset` abandons a run in progress** instead of refusing, so a suite waiting for a phase that never comes can always be cleared.

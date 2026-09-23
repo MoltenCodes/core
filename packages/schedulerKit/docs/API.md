@@ -31,6 +31,8 @@ The package intentionally separates **when work becomes eligible** from **how mu
 | `Coalesce(callback, intervalSeconds[, options])` | Return a callable handle that collects keys and delivers them at most once per interval. |
 | `Watch(predicate, intervalSeconds, callback[, options])` | Poll `predicate` on a ticker shared by every watch of that interval. |
 | `Lane(name[, options])` | Return the shared lane called `name`, which rations one scarce resource. |
+| `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits. See [Limits](#limits). |
+| `UNBOUNDED` | Sentinel a limit takes to be lifted, where that is allowed. |
 
 ### Job handles
 
@@ -517,9 +519,12 @@ refresh("BAG_UPDATE")  -- returns true; call it as often as you like
 - A call inside an open window records its arguments and a clock reading; it
   does not re-arm the timer. The timer re-arms once, for the remainder, when it
   wakes before the burst is quiet.
-- Arguments are kept in a reused slot of **eight** values. A ninth argument
-  raises at the caller: `SchedulerKit debounce handle accepts at most 8
-  arguments; received 9`. Pass a table if you need more.
+- Arguments are kept in a reused slot per handle, **eight** values by
+  default. One more raises at the caller: `SchedulerKit debounce handle
+  accepts at most 8 arguments; received 9`. `SetLimits{ maxDebounceArguments }`
+  raises the limit up to 64 (see [Limits](#limits)); a call of more than eight
+  arguments grows the slot once and allocates one table and one closure per
+  fire, while calls of eight or fewer stay allocation-free.
 - `delaySeconds = 0` means the next frame, as `NextFrame` does.
 - Calling the handle returns `true`, or `false` once it is closed.
 - If TimerKit cannot arm the handle's timer, the failure is reported through
@@ -605,12 +610,12 @@ creation order. Watches added during a tick start with the next one.
 
 | Bound | Value |
 |---|---|
-| Watches per interval | **128**; one more raises at the caller. |
-| Distinct intervals | **32**; one more raises at the caller. |
+| Watches per interval | **128** by default (`maxWatchersPerInterval`); one more raises at the caller. |
+| Distinct intervals | **32** by default (`maxWatchIntervals`, at most 256); one more raises at the caller. |
 
 Both bounds are package-wide, because the tickers are shared by every addon in
-the session. They are constants rather than options for the same reason: one
-addon raising them would spend everybody's frame.
+the session, so they are `SetLimits` entries rather than per-watch options. See
+[Limits](#limits).
 
 A predicate that raises is reported once through the host error handler and
 its watch is **cancelled**: it would raise again on every tick. A callback that
@@ -655,7 +660,7 @@ end, { scope = work, name = "inspect " .. unit })
 | `retry.maxBackoffSeconds` | none | Ceiling on one delay. |
 | `maxQueued` | `64` | Submissions waiting for admission, at most. |
 
-At most **32** lanes are open at once; one more raises at the caller.
+At most **32** lanes are open at once by default (`maxLanes`, see [Limits](#limits)); one more raises at the caller.
 
 `lane:Submit(callback[, options])` uses the scheduler's own job contract: the
 callback receives a `Context`, may `Yield()`, **succeeds by returning** and
@@ -736,6 +741,38 @@ already seen, and a `Watch` tick whose values did not change allocate nothing;
 specs guard each with `collectgarbage("count")`. A fire without a lane is one
 protected call. What does allocate is bounded and per burst, not per call: one
 TimerKit timer per quiet window or interval, and one job per lane submission.
+
+## Limits
+
+Every retained collection SchedulerKit shares across addons is bounded by
+default and opened on purpose (design constitution, principle 4a):
+
+| Limit | Default | Ceiling | `UNBOUNDED` | Guards |
+|---|---|---|---|---|
+| `maxLanes` | 32 | none | accepted: lanes are the consumer's own registrations | open lanes; `Lane` raises past it |
+| `maxWatchIntervals` | 32 | 256 | refused: each interval is one TimerKit ticker | distinct `Watch` intervals |
+| `maxWatchersPerInterval` | 128 | none | accepted: the watchers are the consumer's own | live watches sharing one interval |
+| `maxDebounceArguments` | 8 | 64 | refused: the argument slot is reused per handle | arguments one debounce call may carry |
+
+```lua
+SchedulerKit:SetLimits({ maxLanes = 64, maxDebounceArguments = 12 })
+SchedulerKit:SetLimits({ maxWatchersPerInterval = SchedulerKit.UNBOUNDED })
+local limits = SchedulerKit:GetLimits()
+```
+
+- `SchedulerKit:SetLimits(limits)` changes any subset. The limits are
+  package-wide, shared by every addon in the session. The whole table is
+  validated at the caller's line before anything is applied, so a refused call
+  changes nothing. It must be called on the facade.
+- `SchedulerKit:GetLimits()` returns a fresh table with all four values.
+- `SchedulerKit.UNBOUNDED` is one sentinel table, the same across embedded
+  copies and upgrades.
+- Lowering a limit releases nothing that already exists; further lanes,
+  intervals, watches or wide calls are refused until the count is below it.
+- Per-handle and per-lane options (`maxKeys`, `maxQueued`, `maxInFlight`) stay
+  options on the object they bound.
+- State written before revision 11 is seeded with these defaults, the
+  constants those revisions enforced.
 
 ## Embedded copies and live compatible revisions
 

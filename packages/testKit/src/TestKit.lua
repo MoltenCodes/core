@@ -47,7 +47,7 @@
 
 local PACKAGE_NAME = "testKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLEKIT_API = 1
 local REQUIRED_SCHEDULERKIT_API = 1
@@ -59,15 +59,33 @@ local STATE_SCHEMA = 1
 -- changes the layout can upgrade old suites lazily.
 local SUITE_SCHEMA = 1
 
--- Bounds recorded in the package plan, and the smaller ones this file adds so
--- that nothing a suite registers can grow without limit.
-local MAX_SUITES = 64
-local MAX_TESTS = 256
-local MAX_HOOKS = 16
-local MAX_LOG_LINES = 64
-local MAX_FINISHED_CALLBACKS = 16
-local MAX_EQUAL_DEPTH = 16
-local MAX_REPLACEMENTS = 256
+-- Default bounds, so that nothing a suite registers grows without limit unless
+-- the consumer says so (design constitution, principle 4a). `TestKit:SetLimits`
+-- changes them package-wide and `GetLimits` reads them back. Every one but
+-- `maxEqualDepth` accepts `TestKit.UNBOUNDED`: TestKit is development-only and
+-- what it retains is the consumer's own tests. `maxEqualDepth` bounds
+-- recursion in `ToEqual`, so it has a ceiling and refuses `UNBOUNDED`.
+local DEFAULT_LIMITS = {
+    maxSuites = 64,
+    maxTests = 256,
+    maxHooks = 16,
+    maxLogLines = 64,
+    maxFinishedCallbacks = 16,
+    maxReplacements = 256,
+    maxEqualDepth = 16,
+}
+local MAX_EQUAL_DEPTH_CEILING = 64
+
+-- Names `SetLimits` recognises, in the order `GetLimits` reads them.
+local LIMIT_NAMES = {
+    "maxSuites",
+    "maxTests",
+    "maxHooks",
+    "maxLogLines",
+    "maxFinishedCallbacks",
+    "maxReplacements",
+    "maxEqualDepth",
+}
 
 -- A failure message quotes at most this many bytes of any string value, so a
 -- report never carries a long string a test happened to compare.
@@ -127,7 +145,7 @@ local RUNNER_JOB_OPTIONS = { name = "TestKit runner" }
 
 -- The published surface, listed once so the public-surface predicate reads as
 -- a checklist.
-local FACADE_METHODS = { "Suite", "Run", "Report", "OnFinished", "Reset" }
+local FACADE_METHODS = { "Suite", "Run", "Report", "OnFinished", "Reset", "SetLimits", "GetLimits" }
 local SUITE_METHODS = { "Test", "Before", "After", "Skip", "GetName" }
 local CONTEXT_METHODS = { "Replace", "Yield", "WaitFor", "WaitUntil", "Expect", "Fail", "Log" }
 local MATCHER_METHODS = { "ToBe", "ToEqual", "ToBeTruthy", "ToBeNil", "ToRaise", "ToBeSecure" }
@@ -184,7 +202,7 @@ local MATCHER_METHODS = { "ToBe", "ToEqual", "ToBeTruthy", "ToBeNil", "ToRaise",
 ---@field status "passed"|"failed"|"skipped"|"timeout"
 ---@field message string? Why it did not pass, or the skip reason.
 ---@field durationMs number Wall-clock milliseconds, `0` without `GetTimePreciseSec`.
----@field logs string[] What the test logged, at most 64 lines.
+---@field logs string[] What the test logged, at most `maxLogLines` lines (64 by default).
 
 ---One suite's outcomes.
 ---@class TestKit.SuiteReport
@@ -216,6 +234,21 @@ local MATCHER_METHODS = { "ToBe", "ToEqual", "ToBeTruthy", "ToBeNil", "ToRaise",
 ---@field Report fun(self: TestKit): TestKit.Report
 ---@field OnFinished fun(self: TestKit, callback: TestKit.FinishedCallback): true?, string?
 ---@field Reset fun(self: TestKit): true
+---@field UNBOUNDED table Sentinel a limit takes to be lifted, where that is allowed.
+---@field SetLimits fun(self: TestKit, limits: table)
+---@field GetLimits fun(self: TestKit): TestKit.Limits
+
+---The package-wide limits. `SetLimits` accepts any subset; `GetLimits` returns a
+---fresh copy of all of them. Every limit is a positive integer; all but
+---`maxEqualDepth` also accept `TestKit.UNBOUNDED`.
+---@class TestKit.Limits
+---@field maxSuites integer|table Suites; default `64`.
+---@field maxTests integer|table Tests per suite; default `256`.
+---@field maxHooks integer|table Before or After hooks per suite; default `16`.
+---@field maxLogLines integer|table `ctx:Log` lines per test; default `64`.
+---@field maxFinishedCallbacks integer|table `OnFinished` callbacks; default `16`.
+---@field maxReplacements integer|table `ctx:Replace` calls per test; default `256`.
+---@field maxEqualDepth integer Table nesting `ToEqual` compares; default `16`, at most `64`.
 
 -- Dependencies ---------------------------------------------------------------
 
@@ -346,11 +379,58 @@ local function validatePublicSurface(implementation)
         type(implementation) ~= "table"
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
     then
         return false
     end
 
     return hasMethods(implementation, FACADE_METHODS)
+end
+
+---Whether `value` is a valid value for the limit `name`.
+---@param name string
+---@param value any
+---@param sentinel table|nil `UNBOUNDED`
+---@return boolean
+local function isLimitValue(name, value, sentinel)
+    if value == sentinel and sentinel ~= nil then
+        return name ~= "maxEqualDepth"
+    end
+    return type(value) == "number"
+        and value >= 1
+        and value ~= math.huge
+        and math.floor(value) == value
+        and (name ~= "maxEqualDepth" or value <= MAX_EQUAL_DEPTH_CEILING)
+end
+
+---Whether `currentState` carries the sentinel and a valid set of limits
+---(revision 2).
+---@param currentState table
+---@return boolean
+local function validateLimitState(currentState)
+    local sentinel = rawget(currentState, "unbounded")
+    local limits = rawget(currentState, "limits")
+    if type(sentinel) ~= "table" or type(limits) ~= "table" then
+        return false
+    end
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        if not isLimitValue(name, rawget(limits, name), sentinel) then
+            return false
+        end
+    end
+    return true
+end
+
+---A fresh table holding the default limits.
+---@return table
+local function newDefaultLimits()
+    local limits = {}
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        limits[name] = DEFAULT_LIMITS[name]
+    end
+    return limits
 end
 
 ---Whether `currentState` has the fields every API 1 revision shares.
@@ -384,6 +464,7 @@ end
 local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     return validateStateBase(currentState)
+        and validateLimitState(currentState)
         and hasMethods(rawget(currentState, "suitePrototype"), SUITE_METHODS)
         and hasMethods(rawget(currentState, "contextPrototype"), CONTEXT_METHODS)
         and hasMethods(rawget(currentState, "matcherPrototype"), MATCHER_METHODS)
@@ -469,6 +550,27 @@ if previousRevision == nil then
     rawset(TestKit, "_state", state)
 elseif not validateStateBase(state) then
     error("MoltenCodes TestKit package state is corrupted or incomplete", 2)
+end
+
+-- Revision 2 adds `TestKit.UNBOUNDED` and the package-wide limits. Revision-1
+-- state is seeded with the constants that revision enforced; a newer copy
+-- inherits what a consumer set.
+if type(rawget(state, "unbounded")) ~= "table" then
+    rawset(state, "unbounded", {})
+end
+if type(rawget(state, "limits")) ~= "table" then
+    rawset(state, "limits", newDefaultLimits())
+end
+local UNBOUNDED = rawget(state, "unbounded")
+local sharedLimits = rawget(state, "limits")
+
+---Whether `count` items already reach the limit `name`.
+---@param name string
+---@param count integer
+---@return boolean
+local function atLimit(name, count)
+    local limit = rawget(sharedLimits, name)
+    return limit ~= UNBOUNDED and count >= limit
 end
 
 local Suite = rawget(state, "suitePrototype")
@@ -837,7 +939,7 @@ end
 
 -- Deep equality --------------------------------------------------------------
 
----Compare two values structurally, at most `MAX_EQUAL_DEPTH` tables deep.
+---Compare two values structurally, at most `maxEqualDepth` tables deep.
 ---
 ---Tables are compared key by key with raw access, so metatables play no part.
 ---On a mismatch `trail` is left holding the keys that lead to it.
@@ -859,8 +961,9 @@ local function compareValues(actual, expected, depth, trail)
         return false,
             describeValue(actual) .. " where " .. describeValue(expected) .. " was expected"
     end
-    if depth >= MAX_EQUAL_DEPTH then
-        return false, "tables nested deeper than " .. MAX_EQUAL_DEPTH .. " levels"
+    local maxDepth = rawget(sharedLimits, "maxEqualDepth")
+    if depth >= maxDepth then
+        return false, "tables nested deeper than " .. maxDepth .. " levels"
     end
 
     for key, value in next, actual do
@@ -940,7 +1043,7 @@ local function matcherToBe(self, expected)
 end
 
 ---Expect the value to equal `expected` structurally, tables compared key by
----key at most 16 levels deep.
+---key at most `maxEqualDepth` levels deep (16 by default).
 ---@param self TestKit.Matcher
 ---@param expected any
 ---@return true
@@ -1076,14 +1179,14 @@ end
 ---was only reachable through `__index` comes back as it was. Replacements are
 ---undone after the test's After hooks, in reverse order, whatever the outcome.
 ---A secret value is refused. Returns the previous value. A test holds at most
----256 replacements: past that nothing is written and the call returns
+---`maxReplacements` replacements (256 by default): past that nothing is written and the call returns
 ---`nil, "full"`, so a caller that cares checks the second value.
 ---@param self TestKit.Context
 ---@param target table
 ---@param key any
 ---@param value any
 ---@return any previous
----@return string? reason `"full"` when the test already holds 256 replacements
+---@return string? reason `"full"` when the test already holds `maxReplacements` replacements
 local function contextReplace(self, target, key, value)
     local record = validateContext(self, "TestKit.Context:Replace", 3)
     if type(target) ~= "table" then
@@ -1102,7 +1205,7 @@ local function contextReplace(self, target, key, value)
         error("TestKit.Context:Replace value must not be a secret value", 2)
     end
 
-    if record.replacementCount >= MAX_REPLACEMENTS then
+    if atLimit("maxReplacements", record.replacementCount) then
         return nil, REASON_FULL
     end
 
@@ -1242,14 +1345,14 @@ local function contextFail(self, message)
 end
 
 ---Keep one line with the test's result. Returns `false`, keeping nothing,
----once the test has 64 lines.
+---once the test has `maxLogLines` lines (64 by default).
 ---@param self TestKit.Context
 ---@param message any
 ---@return boolean kept
 local function contextLog(self, message)
     local record = validateContext(self, "TestKit.Context:Log", 3)
     local logs = record.result.logs
-    if #logs >= MAX_LOG_LINES then
+    if atLimit("maxLogLines", #logs) then
         return false
     end
     logs[#logs + 1] = describeMessage(message)
@@ -1278,7 +1381,7 @@ end
 ---@return string?
 local function addTest(suite, name, fn, skipReason)
     local tests = rawget(suite, "_tests")
-    if #tests >= MAX_TESTS then
+    if atLimit("maxTests", #tests) then
         return nil, REASON_FULL
     end
     tests[#tests + 1] = { name = name, fn = fn, skipReason = skipReason }
@@ -1286,7 +1389,7 @@ local function addTest(suite, name, fn, skipReason)
     return true
 end
 
----Register a test. Returns `true`, or `nil, "full"` past 256 tests.
+---Register a test. Returns `true`, or `nil, "full"` past `maxTests` tests (256 by default).
 ---@param self TestKit.Suite
 ---@param name string
 ---@param fn TestKit.TestFunction
@@ -1301,7 +1404,7 @@ local function suiteTest(self, name, fn)
 end
 
 ---Register a test that is reported as skipped with `reason`. Returns `true`,
----or `nil, "full"` past 256 tests.
+---or `nil, "full"` past `maxTests` tests (256 by default).
 ---@param self TestKit.Suite
 ---@param name string
 ---@param reason string?
@@ -1327,7 +1430,7 @@ end
 ---@return string?
 local function addHook(suite, field, fn)
     local hooks = rawget(suite, field)
-    if #hooks >= MAX_HOOKS then
+    if atLimit("maxHooks", #hooks) then
         return nil, REASON_FULL
     end
     hooks[#hooks + 1] = fn
@@ -1335,7 +1438,7 @@ local function addHook(suite, field, fn)
 end
 
 ---Run `fn(ctx)` before every test of the suite. Returns `true`, or
----`nil, "full"` past 16 hooks.
+---`nil, "full"` past `maxHooks` hooks (16 by default).
 ---@param self TestKit.Suite
 ---@param fn TestKit.TestFunction
 ---@return true?
@@ -1347,7 +1450,7 @@ local function suiteBefore(self, fn)
 end
 
 ---Run `fn(ctx)` after every test of the suite, also after a failure or a
----timeout. Returns `true`, or `nil, "full"` past 16 hooks.
+---timeout. Returns `true`, or `nil, "full"` past `maxHooks` hooks (16 by default).
 ---@param self TestKit.Suite
 ---@param fn TestKit.TestFunction
 ---@return true?
@@ -2016,7 +2119,7 @@ end
 -- Package public API ---------------------------------------------------------
 
 ---Register a suite. Returns the suite, `nil, "taken"` when a suite of that
----name exists, or `nil, "full"` past 64 suites.
+---name exists, or `nil, "full"` past `maxSuites` suites (64 by default).
 ---@param name string non-empty, without `/`
 ---@param options TestKit.SuiteOptions?
 ---@return TestKit.Suite?
@@ -2032,7 +2135,7 @@ local function packageSuite(self, name, options)
     if suitesByName[name] ~= nil then
         return nil, REASON_TAKEN
     end
-    if #suites >= MAX_SUITES then
+    if atLimit("maxSuites", #suites) then
         return nil, REASON_FULL
     end
 
@@ -2104,14 +2207,14 @@ local function packageReport(self)
 end
 
 ---Call `callback(report)` whenever a run has nothing left to do. Returns
----`true`, or `nil, "full"` past 16 callbacks.
+---`true`, or `nil, "full"` past `maxFinishedCallbacks` callbacks (16 by default).
 ---@param callback TestKit.FinishedCallback
 ---@return true?
 ---@return string?
 local function packageOnFinished(self, callback)
     validateFacade(self, "TestKit:OnFinished", 3)
     validateFunction(callback, "TestKit:OnFinished callback", 3)
-    if #finishedCallbacks >= MAX_FINISHED_CALLBACKS then
+    if atLimit("maxFinishedCallbacks", #finishedCallbacks) then
         return nil, REASON_FULL
     end
     finishedCallbacks[#finishedCallbacks + 1] = callback
@@ -2159,6 +2262,86 @@ rawset(Matcher, "ToBeNil", matcherToBeNil)
 rawset(Matcher, "ToRaise", matcherToRaise)
 rawset(Matcher, "ToBeSecure", matcherToBeSecure)
 
+---Validate a whole `SetLimits` table before any of it is applied.
+---@param limits any
+---@param level integer stack level the failures are reported at
+local function validateLimitUpdate(limits, level)
+    if type(limits) ~= "table" then
+        error("TestKit:SetLimits limits must be a table", level)
+    end
+    local key = next(limits)
+    while key ~= nil do
+        if DEFAULT_LIMITS[key] == nil then
+            error(
+                "TestKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
+                level
+            )
+        end
+        local value = rawget(limits, key)
+        if key == "maxEqualDepth" then
+            if value == UNBOUNDED then
+                error(
+                    "TestKit:SetLimits limits.maxEqualDepth cannot be TestKit.UNBOUNDED:"
+                        .. " ToEqual compares nested tables recursively",
+                    level
+                )
+            elseif not isLimitValue(key, value, nil) then
+                error(
+                    "TestKit:SetLimits limits.maxEqualDepth must be an integer from 1 to "
+                        .. MAX_EQUAL_DEPTH_CEILING,
+                    level
+                )
+            end
+        elseif not isLimitValue(key, value, UNBOUNDED) then
+            error(
+                "TestKit:SetLimits limits."
+                    .. key
+                    .. " must be a positive integer or TestKit.UNBOUNDED",
+                level
+            )
+        end
+        key = next(limits, key)
+    end
+end
+
+---Change any subset of the package-wide limits. The whole table is validated
+---first, so a refused call changes nothing. Lowering a limit removes nothing
+---already registered; further registrations answer `nil, "full"`. `Reset`
+---keeps the limits.
+---@param self TestKit
+---@param limits table any subset of `TestKit.Limits`
+local function packageSetLimits(self, limits)
+    if self ~= TestKit then
+        error(
+            "TestKit:SetLimits must be called on the TestKit facade; use TestKit:SetLimits(limits)",
+            2
+        )
+    end
+    validateLimitUpdate(limits, 3)
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        local value = rawget(limits, name)
+        if value ~= nil then
+            rawset(sharedLimits, name, value)
+        end
+    end
+end
+
+---Return a fresh copy of the package-wide limits. Allocates one table.
+---@param self TestKit
+---@return TestKit.Limits
+local function packageGetLimits(self)
+    if self ~= TestKit then
+        error("TestKit:GetLimits must be called on the TestKit facade; use TestKit:GetLimits()", 2)
+    end
+    local copy = {}
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        copy[name] = rawget(sharedLimits, name)
+    end
+    return copy
+end
+
 rawset(TestKit, "API", API_GENERATION)
 rawset(TestKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(TestKit, "Suite", packageSuite)
@@ -2166,6 +2349,9 @@ rawset(TestKit, "Run", packageRun)
 rawset(TestKit, "Report", packageReport)
 rawset(TestKit, "OnFinished", packageOnFinished)
 rawset(TestKit, "Reset", packageReset)
+rawset(TestKit, "UNBOUNDED", UNBOUNDED)
+rawset(TestKit, "SetLimits", packageSetLimits)
+rawset(TestKit, "GetLimits", packageGetLimits)
 
 rawset(dispatch, "runnerBody", runnerBody)
 rawset(dispatch, "phaseReached", phaseReached)

@@ -2,7 +2,7 @@
 
 ReadinessKit API generation **1** provides named gates for host data that arrives after load: a gate probes a fact, polls it while it is not yet true, times out, remembers negative answers for one interval, and calls its waiters once with the outcome.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -40,6 +40,7 @@ Package facade:
 | `Gate(name, probe, options?)` | Return the gate called `name`, defining it when there is none. |
 | `Get(name)` | Return the open gate called `name`, or `nil`. |
 | `WhenAll(gates, callback)` | Wait for every gate in the list; returns a waiter. |
+| `UNBOUNDED` | Sentinel `options.maxWaiters` takes to lift one gate's waiter limit. See [Limits](#limits). |
 
 Gate handles:
 
@@ -84,7 +85,7 @@ end, { intervalSeconds = 1, timeoutSeconds = 20 })
 |---|---|---|
 | `intervalSeconds` | `0.5` | Seconds between polls, and how long a negative answer is remembered. A finite number greater than zero. |
 | `timeoutSeconds` | `30` | Seconds of polling before waiters are told `"timeout"`, or `false` for no timeout. |
-| `maxWaiters` | `64` | The most callbacks queued at once. A positive integer. |
+| `maxWaiters` | `64` | The most callbacks queued at once. A positive integer, or `ReadinessKit.UNBOUNDED` for no limit. |
 
 Unknown option fields are refused; with several, the message names the alphabetically first.
 
@@ -189,6 +190,28 @@ Only the **first** failure of each polling round is handed to the host error han
 ## A probe that closes its own gate
 
 A probe, or something it calls, may close its own gate. The gate stays closed whatever the probe answers: it does not become ready, time out or poll again, and its name stays free. `Gate` returns the closed gate, and `Probe` returns `false`.
+
+## Limits
+
+ReadinessKit bounds one retained collection, and opens it on purpose (design
+constitution, principle 4a):
+
+| Limit | Where | Default | `UNBOUNDED` |
+|---|---|---|---|
+| `maxWaiters` | `Gate` option, per gate | 64 | accepted: the queue holds the consumer's own callbacks |
+
+```lua
+local gate = ReadinessKit:Gate("bags", probe, { maxWaiters = ReadinessKit.UNBOUNDED })
+```
+
+`ReadinessKit.UNBOUNDED` is one sentinel table kept in package state, the same
+across embedded copies and upgrades. There is no package-wide `SetLimits`:
+the only limit belongs to the gate that sets it.
+
+`intervalSeconds` and `timeoutSeconds` are not caps. They are timing: how
+often a pending gate polls and when its waiters are told `"timeout"`. They
+bound nothing ReadinessKit retains. The gate table is keyed by name, one gate
+per name for the session, so it grows only with the names the consumer defines.
 
 ## Error behaviour
 

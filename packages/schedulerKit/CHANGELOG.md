@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 — 2026-09-23
+
+- Limits (design constitution, principle 4a). Added `SchedulerKit:SetLimits`, `SchedulerKit:GetLimits()` and the `SchedulerKit.UNBOUNDED` sentinel, modelled on SignalKit. The four former constants become package-wide limits: `maxLanes` (32, `UNBOUNDED` accepted), `maxWatchIntervals` (32, at most 256, `UNBOUNDED` refused: one TimerKit ticker each), `maxWatchersPerInterval` (128, `UNBOUNDED` accepted) and `maxDebounceArguments` (8, at most 64, `UNBOUNDED` refused: the slot is reused per handle). `SetLimits` validates the whole table at the caller's line before applying any of it; `GetLimits` returns a fresh table. The 33rd lane and the ninth debounce argument can now be opened.
+- A debounce call of more than eight arguments is recorded into the handle's reused slot and delivered in full, directly or through a lane; such a fire allocates one table and one closure, while calls of eight or fewer stay allocation-free.
+- Implementation revision 11. The sentinel and the limits live in package state; older state is seeded with the former constants. `UNBOUNDED`, `SetLimits` and `GetLimits` join the public-surface check. Refusal messages now name the limit to raise.
+- New `Limits_spec.lua` and a bootstrap spec for seeding revision-10 state. `docs/API.md` gains a "Limits" section.
+
 ## 0.6.0 — 2026-09-23
 
 - SchedulerKit no longer requires LifecycleKit (design constitution, principle 4b). The manifest lists Registry API 2 and TimerKit API 1 only, the load-time LifecycleKit facade check is gone, and SchedulerKit embeds as three files: Registry, TimerKit and SchedulerKit. It never used SignalKit or EventKit, so neither is in its closure any more.

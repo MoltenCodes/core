@@ -48,7 +48,7 @@ What each piece promises:
 - **Save-and-restore mocking.** `ctx:Replace(table, key, value)` is undone after the test, in reverse order, also after a failure or a timeout, also for `nil` values. A secret value is refused.
 - **Expectations that never print a secret.** `ctx:Expect(value)` offers `ToBe`, `ToEqual` (deep, 16 levels), `ToBeTruthy`, `ToBeNil`, `ToRaise(pattern)`, `ToBeSecure(table, key)` and `Not`. Failures describe values by type and at most 64 quoted bytes, and point at the test's own line.
 - **Structured results.** `TestKit:Report()` returns `{ suites = { { name, tests = { { name, status, message, durationMs, logs } } } }, totals }`, ready for a slash command to dump and compare with a Busted run.
-- **Bounded.** 64 suites, 256 tests per suite, 16 Before and 16 After hooks per suite, 256 replacements and 64 log lines per test, 16 `OnFinished` callbacks; beyond each, `nil, "full"` (or `false` from `Log`).
+- **Bounded by default, opened on purpose.** 64 suites, 256 tests per suite, 16 Before and 16 After hooks per suite, 256 replacements and 64 log lines per test, 16 `OnFinished` callbacks, `ToEqual` 16 levels deep; beyond each, `nil, "full"` (or `false` from `Log`). `TestKit:SetLimits` raises any of them, and every one but the `ToEqual` depth accepts `TestKit.UNBOUNDED`; see [Limits](docs/API.md#limits).
 - **No run hangs on a dead addon.** A suite whose addon halts or shuts down before its phase is reported as skipped and the run finishes.
 
 See [`docs/API.md`](docs/API.md) for the complete contract and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the runner's state machine.

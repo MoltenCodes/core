@@ -32,6 +32,7 @@ Spec files:
 | `Priority_spec.lua` | FIFO within a priority, weighted service, IDLE work and its starvation guard, the fairness cursor |
 | `Cooperative_spec.lua` | yielding, the CPU-time frame budget, the resume ceiling, runaway-slice demotion |
 | `Delayed_spec.lua` | delayed and repeating work through TimerKit, the user-data seam, stale wakeups, scopes closed mid-callback |
+| `Limits_spec.lua` | `SetLimits` / `GetLimits`, `UNBOUNDED`, ceilings, the 33rd lane, wide debounce calls direct and through a lane, atomic validation |
 | `Scope_spec.lua` | lazy TimerKit scopes, cancellation, terminal close, self-closing jobs, addon scopes and `CloseAddonScopes` |
 | `Errors_spec.lua` | error isolation, `nil`/`false` error objects, tracebacks, arming and re-arm failures |
 | `ErrorLevels_spec.lua` | `ShouldYield`, `Yield` and context receiver guards at the caller's line |

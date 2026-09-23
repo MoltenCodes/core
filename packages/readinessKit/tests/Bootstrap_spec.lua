@@ -38,7 +38,16 @@ describe("ReadinessKit bootstrap", function()
     end)
 
     it("upgrades in place and keeps every gate, waiter, timer and subscription", function()
-        local ReadinessKit = TestEnv.NewPackage()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        require("TimerKit")
+        local ReadinessKit = TestEnv.LoadRevision(1)
+        -- Revision 1 kept no UNBOUNDED sentinel.
+        rawset(ReadinessKit._state, "unbounded", nil)
+        rawset(ReadinessKit, "UNBOUNDED", nil)
         local spellsReady, itemsReady = false, false
         local spells = ReadinessKit:Gate("spells", function()
             return spellsReady
@@ -55,9 +64,11 @@ describe("ReadinessKit bootstrap", function()
             results[#results + 1] = { "all", ready }
         end)
 
-        local upgraded = TestEnv.LoadRevision(2)
+        package.loaded["ReadinessKit"] = nil
+        local upgraded = require("ReadinessKit")
         assert.are.equal(ReadinessKit, upgraded)
         assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal("table", type(upgraded.UNBOUNDED))
         assert.are.equal(spells, upgraded:Get("spells"))
         assert.is_true(waiter:IsPending())
 

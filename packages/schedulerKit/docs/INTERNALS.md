@@ -237,7 +237,11 @@ callback can record keys without touching the table it is iterating, and
 
 A fire without a lane runs through one `xpcall` trampoline with the callback and
 up to eight arguments staged in upvalues, the same technique EventKit uses for
-listener isolation: no closure and no argument table per fire.
+listener isolation: no closure and no argument table per fire. A call wider
+than eight (possible once `maxDebounceArguments` is raised) is recorded into
+the slot with a `select` loop, the slot's `width` field remembers the highest
+position written so clearing stays bounded, and its fire copies the values into
+one table and calls through one closure.
 
 ### Lanes
 

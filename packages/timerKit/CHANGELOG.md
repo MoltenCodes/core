@@ -7,6 +7,7 @@
 - Behaviour change for an addon that asks for its scope after its lifecycle already shut down: revision 5 handed back a closed scope, this revision hands back an open one until `CloseAddonScopes` is called.
 - Implementation revision 6. An in-place upgrade from revision 5 or older disconnects the LifecycleKit shutdown subscription each carried addon scope held (best-effort; one that cannot be disconnected only closes an already closed scope at shutdown) and keeps the scopes and their timers working. `CloseAddonScopes` joins the public-surface check.
 - Specs: the module chain is Registry and TimerKit. `Lifecycle_spec.lua` became `AddonScopes_spec.lua` (the two-step by hand, terminal closure, unknown addons, facade receiver, self-close from a callback, cancellation failures); the logout integration specs moved to LifecycleKit's suite, where both Kits load. New bootstrap specs cover loading with Registry alone and the revision-5 upgrade; `ErrorLevels_spec.lua` covers the new method's argument and receiver errors.
+- `docs/API.md` gains a "Limits" section: TimerKit holds no cap to open (design constitution, principle 4a), and names what it retains.
 - `TimerKit` API generation 1 is unchanged; the addition is compatible.
 
 ## 0.4.1 — 2026-09-23

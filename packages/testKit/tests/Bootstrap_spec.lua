@@ -38,6 +38,38 @@ describe("TestKit bootstrap", function()
         assert.are.equal(99, reloaded.REVISION)
     end)
 
+    it("seeds the default limits into revision-1 state and keeps its suites", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        require("LifecycleKit")
+        require("TimerKit")
+        require("SchedulerKit")
+        local old = TestEnv.LoadRevision(1)
+        local suite = old:Suite("Carried")
+        -- Revision 1 kept neither field.
+        rawset(old._state, "limits", nil)
+        rawset(old._state, "unbounded", nil)
+
+        local upgraded = require("TestKit")
+
+        assert.are.equal(old, upgraded)
+        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal("table", type(upgraded.UNBOUNDED))
+        assert.are.same({
+            maxSuites = 64,
+            maxTests = 256,
+            maxHooks = 16,
+            maxLogLines = 64,
+            maxFinishedCallbacks = 16,
+            maxReplacements = 256,
+            maxEqualDepth = 16,
+        }, upgraded:GetLimits())
+        assert.is_true(suite:Test("still works", function() end))
+    end)
+
     it("upgrades in place and keeps suites, results, a waiting test and a queued suite", function()
         local TestKit = TestEnv.NewReadyPackage("MyAddon")
         local reports = {}
@@ -59,9 +91,9 @@ describe("TestKit bootstrap", function()
         TestKit:Run()
         TestEnv.RenderFrames(2)
 
-        local upgraded = TestEnv.LoadRevision(2)
+        local upgraded = TestEnv.LoadRevision(TestKit.REVISION + 1)
         assert.are.equal(TestKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(TestKit.REVISION, upgraded.REVISION)
 
         TestEnv.Emit("UPGRADE_EVENT", "after")
         TestEnv.RenderFrames(2)

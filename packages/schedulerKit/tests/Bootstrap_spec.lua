@@ -71,7 +71,7 @@ describe("SchedulerKit bootstrap", function()
             return require("SchedulerKit")
         end)
         assert.is_true(ok)
-        assert.are.equal(10, SchedulerKit.REVISION)
+        assert.are.equal(11, SchedulerKit.REVISION)
 
         local scope = SchedulerKit:CreateScope()
         assert.is_false(scope:IsClosed())
@@ -172,7 +172,7 @@ describe("SchedulerKit bootstrap", function()
 
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(10, upgraded.REVISION)
+        assert.are.equal(11, upgraded.REVISION)
 
         -- Revision 4's lane bookkeeping is derived from the inherited queues
         -- rather than assumed empty, so work an older copy had already queued
@@ -245,7 +245,7 @@ describe("SchedulerKit bootstrap", function()
 
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(10, upgraded.REVISION)
+        assert.are.equal(11, upgraded.REVISION)
         local state = rawget(upgraded, "_state")
         assert.are.same({}, rawget(state, "lanes"))
         assert.are.equal(0, rawget(state, "laneCount"))
@@ -282,7 +282,7 @@ describe("SchedulerKit bootstrap", function()
         package.loaded["SchedulerKit"] = nil
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(10, upgraded.REVISION)
+        assert.are.equal(11, upgraded.REVISION)
         assert.are.equal(lane, upgraded:Lane("upgraded"))
 
         local job = lane:Submit(function()
@@ -328,7 +328,7 @@ describe("SchedulerKit bootstrap", function()
         local upgraded = require("SchedulerKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(10, upgraded.REVISION)
+        assert.are.equal(11, upgraded.REVISION)
         assert.are.equal(1, disconnects)
         assert.is_nil(rawget(carried, "_shutdownSubscription"))
         assert.is_nil(rawget(failing, "_shutdownSubscription"))
@@ -346,6 +346,29 @@ describe("SchedulerKit bootstrap", function()
         assert.is_true(carried:IsClosed())
         assert.are.equal("cancelled", pending:GetState())
         assert.is_true(upgraded:CloseAddonScopes("Failing"))
+    end)
+
+    it("seeds the default limits into state a revision-10 copy wrote", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("TimerKit")
+
+        local old = loadSchedulerKitAsRevision(10)
+        rawset(old._state, "limits", nil)
+        rawset(old._state, "unbounded", nil)
+
+        package.loaded["SchedulerKit"] = nil
+        local upgraded = require("SchedulerKit")
+
+        assert.are.equal(old, upgraded)
+        assert.are.equal("table", type(upgraded.UNBOUNDED))
+        assert.are.same({
+            maxLanes = 32,
+            maxWatchIntervals = 32,
+            maxWatchersPerInterval = 128,
+            maxDebounceArguments = 8,
+        }, upgraded:GetLimits())
     end)
 
     it("keeps live family handles working across a compatible reload", function()

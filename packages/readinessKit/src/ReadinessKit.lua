@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "readinessKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMERKIT_API = 1
 local OPTIONAL_EVENTKIT_API = 1
@@ -108,7 +108,7 @@ local WAITER_METHODS = { "Cancel", "IsPending" }
 ---@class ReadinessKit.GateOptions
 ---@field intervalSeconds number? Seconds between polls, and how long a negative answer is remembered. Defaults to `0.5`.
 ---@field timeoutSeconds number|false? Seconds of polling before waiters are told `"timeout"`, or `false` for no timeout. Defaults to `30`.
----@field maxWaiters integer? The most callbacks queued at once. Defaults to `64`.
+---@field maxWaiters (integer|table)? The most callbacks queued at once: a positive integer or `ReadinessKit.UNBOUNDED`. Defaults to `64`.
 
 ---The consumer's probe: a truthy result means the data is usable.
 ---@alias ReadinessKit.Probe fun(): any
@@ -140,6 +140,7 @@ local WAITER_METHODS = { "Cancel", "IsPending" }
 ---@field Gate fun(self: ReadinessKit, name: string, probe: ReadinessKit.Probe, options: ReadinessKit.GateOptions?): ReadinessKit.Gate
 ---@field Get fun(self: ReadinessKit, name: string): ReadinessKit.Gate?
 ---@field WhenAll fun(self: ReadinessKit, gates: ReadinessKit.Gate[], callback: ReadinessKit.Callback): ReadinessKit.Waiter?, string?
+---@field UNBOUNDED table Sentinel `options.maxWaiters` takes to lift one gate's waiter limit.
 
 -- Dependencies ---------------------------------------------------------------
 
@@ -253,6 +254,7 @@ local function validatePublicSurface(implementation)
         type(implementation) ~= "table"
         or rawget(implementation, "API") ~= API_GENERATION
         or type(rawget(implementation, "REVISION")) ~= "number"
+        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
     then
         return false
     end
@@ -283,6 +285,7 @@ end
 local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     return validateStateBase(currentState)
+        and type(rawget(currentState, "unbounded")) == "table"
         and hasMethods(rawget(currentState, "gatePrototype"), GATE_METHODS)
         and hasMethods(rawget(currentState, "waiterPrototype"), WAITER_METHODS)
 end
@@ -344,6 +347,14 @@ if previousRevision == nil then
 elseif not validateStateBase(state) then
     error("MoltenCodes ReadinessKit package state is corrupted or incomplete", 2)
 end
+
+-- `ReadinessKit.UNBOUNDED`, the value `options.maxWaiters` takes to lift the
+-- waiter limit of one gate. It lives in the state so every revision publishes
+-- the same table; revision 1 had none, so its state is given one here.
+if type(rawget(state, "unbounded")) ~= "table" then
+    rawset(state, "unbounded", {})
+end
+local UNBOUNDED = rawget(state, "unbounded")
 
 -- The metatables and prototypes are kept across upgrades, so gates and waiters
 -- built by an older copy keep their state and gain this copy's methods without
@@ -432,7 +443,7 @@ end
 ---@param level integer stack level the failures are reported at
 ---@return number intervalSeconds
 ---@return number|false timeoutSeconds
----@return integer maxWaiters
+---@return integer|table maxWaiters a positive integer or `UNBOUNDED`
 local function readGateOptions(options, level)
     if options == nil then
         return DEFAULT_INTERVAL_SECONDS, DEFAULT_TIMEOUT_SECONDS, DEFAULT_MAX_WAITERS
@@ -462,8 +473,14 @@ local function readGateOptions(options, level)
     local maxWaiters = options.maxWaiters
     if maxWaiters == nil then
         maxWaiters = DEFAULT_MAX_WAITERS
-    elseif not isPositiveFiniteNumber(maxWaiters) or math.floor(maxWaiters) ~= maxWaiters then
-        error("ReadinessKit:Gate maxWaiters must be a positive integer", level)
+    elseif
+        maxWaiters ~= UNBOUNDED
+        and (not isPositiveFiniteNumber(maxWaiters) or math.floor(maxWaiters) ~= maxWaiters)
+    then
+        error(
+            "ReadinessKit:Gate maxWaiters must be a positive integer or ReadinessKit.UNBOUNDED",
+            level
+        )
     end
 
     return intervalSeconds, timeoutSeconds, maxWaiters
@@ -892,7 +909,8 @@ local function awaitGate(gate, callback)
     end
 
     local count = rawget(gate, "_waiterCount")
-    if count >= rawget(gate, "_maxWaiters") then
+    local maxWaiters = rawget(gate, "_maxWaiters")
+    if maxWaiters ~= UNBOUNDED and count >= maxWaiters then
         return nil, REASON_FULL
     end
 
@@ -1139,7 +1157,7 @@ end
 ---@param probe ReadinessKit.Probe
 ---@param intervalSeconds number
 ---@param timeoutSeconds number|false
----@param maxWaiters integer
+---@param maxWaiters integer|table a positive integer or `UNBOUNDED`
 ---@return ReadinessKit.Gate
 local function newGate(name, probe, intervalSeconds, timeoutSeconds, maxWaiters)
     return setmetatable({
@@ -1336,6 +1354,7 @@ rawset(ReadinessKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(ReadinessKit, "Gate", packageGate)
 rawset(ReadinessKit, "Get", packageGet)
 rawset(ReadinessKit, "WhenAll", packageWhenAll)
+rawset(ReadinessKit, "UNBOUNDED", UNBOUNDED)
 
 rawset(dispatch, "pollTick", pollTick)
 rawset(dispatch, "reprobe", reprobe)

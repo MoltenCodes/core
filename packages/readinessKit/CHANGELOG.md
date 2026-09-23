@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 — 2026-09-23
+
+- Limits (design constitution, principle 4a). The `maxWaiters` gate option accepts `ReadinessKit.UNBOUNDED`, a new sentinel published on the facade and kept in package state (`_state.unbounded`), so a gate may queue any number of the consumer's own callbacks. `UNBOUNDED` joins the public-surface check. `docs/API.md` gains a "Limits" section, which also states that `intervalSeconds` and `timeoutSeconds` are timing, not caps.
+- Implementation revision 2, because the executed implementation changed. Revision-1 state is given the sentinel during an in-place upgrade; the upgrade spec now loads a real revision-1 copy first.
+- New `Limits_spec.lua`.
+
 ## 0.1.1 — 2026-09-23
 
 - Documentation and tests only: no runtime change, implementation revision 1 is unchanged. TimerKit 0.5.0 no longer requires LifecycleKit, so ReadinessKit's required closure shrinks to Registry and TimerKit. The README and `docs/API.md` state the three-file minimum footprint (Registry, TimerKit, ReadinessKit) and that `ReprobeOn` needs SignalKit and EventKit embedded as well.

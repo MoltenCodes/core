@@ -293,6 +293,21 @@ These methods use an internal manual scope. They are intentionally **not addon-o
 
 If the internal convenience scope is explicitly reached through `timer:GetScope()` and closed, the next package-level timer operation creates a fresh internal scope rather than permanently disabling the facade.
 
+## Limits
+
+TimerKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`
+(design constitution, principle 4a). What it retains is the consumer's own and
+grows only with the consumer's calls:
+
+- a scope holds the timers that are running in it, and releases each one when
+  it completes or is cancelled; idle and completed timers are not retained;
+- the addon-scope map holds one scope per name passed to `ForAddon`, and
+  `CloseAddonScopes` records nothing for a name that never had one;
+- the internal convenience scope behind `TimerKit:After` / `Every` is one scope,
+  replaced only when it is closed.
+
+The host bounds the number of native timers, not TimerKit.
+
 ## Native boundary
 
 TimerKit relies only on:

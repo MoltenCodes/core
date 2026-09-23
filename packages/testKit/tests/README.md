@@ -34,6 +34,7 @@ The TestKit suite covers:
 | `Cost_spec.lua` | no frame, timer or `OnUpdate` from loading, registering or a finished run |
 | `ErrorLevels_spec.lua` | argument errors at the caller's line, dot calls on the facade |
 | `Bootstrap_spec.lua` | publication, dependencies, duplicate loads, upgrades |
+| `Limits_spec.lua` | `SetLimits` / `GetLimits`, `UNBOUNDED`, each limit opened, the `maxEqualDepth` ceiling, atomic validation, limits kept across `Reset` |
 | `Manifest_spec.lua` | manifest and runtime consistency |
 
 `support/TestKitTestEnv.lua` adds what only these specs need on top of the shared fixture. `Frame(ms)` renders one frame the way the runner experiences it: both clocks advance, every native timer that is due fires (the fixture records a timer's delay but not its creation time, so the helper notes the clock the first time it sees each timer), then every `OnUpdate` handler runs once. `RenderFrames`, `FramesUntil`, `RunToEnd` and `RunOne` drive whole runs; `RunToEnd` installs one `OnFinished` callback per facade so repeated runs do not spend the facade's sixteen slots. `SetGlobal` installs host globals the fixture does not own (`issecurevariable`) and `Reset` removes them.

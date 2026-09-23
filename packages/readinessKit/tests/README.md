@@ -35,4 +35,5 @@ The allocation guard calls the native ticker's callback directly rather than thr
 | `Allocation_spec.lua` | allocation guards |
 | `ErrorLevels_spec.lua` | argument and refusal errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, load order, upgrades |
+| `Limits_spec.lua` | `maxWaiters = ReadinessKit.UNBOUNDED`, the sentinel across a reload, numeric limits still refused |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement |

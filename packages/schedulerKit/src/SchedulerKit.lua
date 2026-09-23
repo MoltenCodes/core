@@ -38,7 +38,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 10
+local IMPLEMENTATION_REVISION = 11
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMER_API = 1
 local STATE_SCHEMA = 1
@@ -81,15 +81,41 @@ local SCHEDULING_OPTION_KEYS = {
 -- The coalescing family (Debounce, Coalesce, Watch, lanes). Every bound below
 -- is documented in docs/API.md under "Coalescing and lanes".
 
--- A debounce handle keeps the arguments of its last call in a reused slot of
--- this many values, so recording a call never allocates.
-local MAX_DEBOUNCE_ARGUMENTS = 8
+-- The package-wide limits below are defaults: `SchedulerKit:SetLimits` changes
+-- them (design constitution, principle 4a) and `GetLimits` reads them back.
+--
+-- A debounce handle keeps the arguments of its last call in a reused slot, so
+-- recording a call never allocates. Up to `FAST_DEBOUNCE_ARGUMENTS` values are
+-- staged without a table; a wider limit is allowed up to its ceiling, because
+-- the slot grows once per handle and is then reused. `UNBOUNDED` is refused.
+local DEFAULT_MAX_DEBOUNCE_ARGUMENTS = 8
+local MAX_DEBOUNCE_ARGUMENTS_CEILING = 64
+local FAST_DEBOUNCE_ARGUMENTS = 8
 local DEFAULT_COALESCE_MAX_KEYS = 256
--- Watchers sharing one interval share one ticker; both the watchers per
--- interval and the number of distinct intervals are bounded.
-local MAX_WATCHERS_PER_INTERVAL = 128
-local MAX_WATCH_INTERVALS = 32
-local MAX_LANES = 32
+-- Watchers sharing one interval share one ticker. The number of distinct
+-- intervals is one TimerKit ticker each, so it has a ceiling and refuses
+-- `UNBOUNDED`; the watchers on one interval are the consumer's own and may be
+-- `UNBOUNDED`.
+local DEFAULT_MAX_WATCHERS_PER_INTERVAL = 128
+local DEFAULT_MAX_WATCH_INTERVALS = 32
+local MAX_WATCH_INTERVALS_CEILING = 256
+-- Open lanes are the consumer's own registrations; `UNBOUNDED` is accepted.
+local DEFAULT_MAX_LANES = 32
+
+-- Names `SetLimits` recognises, in the order `GetLimits` reads them, with the
+-- ceiling each accepts (`false`: none) and whether `UNBOUNDED` is accepted.
+local LIMIT_NAMES =
+    { "maxLanes", "maxWatchIntervals", "maxWatchersPerInterval", "maxDebounceArguments" }
+local LIMIT_CEILINGS = {
+    maxLanes = false,
+    maxWatchIntervals = MAX_WATCH_INTERVALS_CEILING,
+    maxWatchersPerInterval = false,
+    maxDebounceArguments = MAX_DEBOUNCE_ARGUMENTS_CEILING,
+}
+local LIMIT_UNBOUNDED_REFUSALS = {
+    maxWatchIntervals = "each interval is one TimerKit ticker",
+    maxDebounceArguments = "the argument slot is reused per handle",
+}
 local DEFAULT_LANE_MAX_IN_FLIGHT = 1
 local DEFAULT_LANE_MAX_QUEUED = 64
 local DEFAULT_RETRY_MULTIPLIER = 2
@@ -305,6 +331,17 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@field Coalesce fun(self: SchedulerKit, callback: SchedulerKit.CoalesceCallback, intervalSeconds: number, options: SchedulerKit.CoalesceOptions?): SchedulerKit.CoalesceHandle
 ---@field Watch fun(self: SchedulerKit, predicate: fun(): any, intervalSeconds: number, callback: SchedulerKit.WatchCallback, options: SchedulerKit.WatchOptions?): SchedulerKit.WatchHandle
 ---@field Lane fun(self: SchedulerKit, name: string, options: SchedulerKit.LaneOptions?): SchedulerKit.Lane
+---@field UNBOUNDED table Sentinel a limit takes to be lifted, where that is allowed.
+---@field SetLimits fun(self: SchedulerKit, limits: table)
+---@field GetLimits fun(self: SchedulerKit): SchedulerKit.Limits
+
+---The package-wide limits. `SetLimits` accepts any subset; `GetLimits` returns
+---a fresh copy of all of them.
+---@class SchedulerKit.Limits
+---@field maxLanes integer|table Open lanes; default `32`; `UNBOUNDED` accepted.
+---@field maxWatchIntervals integer Distinct watch intervals, one ticker each; default `32`, at most `256`.
+---@field maxWatchersPerInterval integer|table Live watchers on one interval; default `128`; `UNBOUNDED` accepted.
+---@field maxDebounceArguments integer Arguments one debounce call may carry; default `8`, at most `64`.
 
 -- Dependencies --------------------------------------------------------------
 
@@ -419,6 +456,9 @@ local function validatePublicSurface(implementation)
         and type(rawget(implementation, "Coalesce")) == "function"
         and type(rawget(implementation, "Watch")) == "function"
         and type(rawget(implementation, "Lane")) == "function"
+        and type(rawget(implementation, "UNBOUNDED")) == "table"
+        and type(rawget(implementation, "SetLimits")) == "function"
+        and type(rawget(implementation, "GetLimits")) == "function"
         and type(rawget(Job, "GetState")) == "function"
         and type(rawget(Job, "GetPriority")) == "function"
         and type(rawget(Job, "GetScope")) == "function"
@@ -487,6 +527,46 @@ local function validateStateBase(currentState)
         and type(rawget(config, "maxResumesPerFrame")) == "number"
 end
 
+---Whether `value` is an integer from 1 to `ceiling` (`false`: no ceiling), or
+---`sentinel` when `acceptsUnbounded`.
+---@param value any
+---@param ceiling integer|false
+---@param sentinel table|nil
+---@param acceptsUnbounded boolean
+---@return boolean
+local function isLimitValue(value, ceiling, sentinel, acceptsUnbounded)
+    if value == sentinel and sentinel ~= nil then
+        return acceptsUnbounded
+    end
+    return type(value) == "number"
+        and value >= 1
+        and value ~= math.huge
+        and math.floor(value) == value
+        and (ceiling == false or value <= ceiling)
+end
+
+---Whether `currentState` carries the `UNBOUNDED` sentinel and a valid set of
+---package-wide limits (revision 11).
+---@param currentState table
+---@return boolean
+local function validateLimitState(currentState)
+    local sentinel = rawget(currentState, "unbounded")
+    local limits = rawget(currentState, "limits")
+    if type(sentinel) ~= "table" or type(limits) ~= "table" then
+        return false
+    end
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        local acceptsUnbounded = LIMIT_UNBOUNDED_REFUSALS[name] == nil
+        if
+            not isLimitValue(rawget(limits, name), LIMIT_CEILINGS[name], sentinel, acceptsUnbounded)
+        then
+            return false
+        end
+    end
+    return true
+end
+
 ---Whether `implementation` carries package state of this revision's schema.
 ---@param implementation table
 ---@return boolean
@@ -517,6 +597,11 @@ local function validateCurrentState(implementation)
         or type(rawget(currentState, "familyMetatables")) ~= "table"
         or type(rawget(currentState, "familyPrototypes")) ~= "table"
     then
+        return false
+    end
+
+    -- Revision 11 limits, checked here for the same reason.
+    if not validateLimitState(currentState) then
         return false
     end
 
@@ -610,6 +695,12 @@ if previousRevision == nil then
         watchGroupCount = 0,
         familyMetatables = {},
         familyPrototypes = {},
+        -- `SchedulerKit.UNBOUNDED`, kept in state so every revision publishes
+        -- the same table.
+        unbounded = {},
+        -- The package-wide limits `SetLimits` writes; a newer copy inherits
+        -- what a consumer set.
+        limits = false,
     }
     rawset(SchedulerKit, "Job", Job)
     rawset(SchedulerKit, "Scope", Scope)
@@ -729,6 +820,23 @@ if previousRevision ~= nil and previousRevision < IMPLEMENTATION_REVISION then
         end
     end
 end
+
+-- Revision 11 adds the `UNBOUNDED` sentinel and the package-wide limits. Older
+-- state is seeded with the constants those revisions enforced, so behaviour
+-- carries over until a consumer calls `SetLimits`.
+if type(rawget(state, "unbounded")) ~= "table" then
+    rawset(state, "unbounded", {})
+end
+if type(rawget(state, "limits")) ~= "table" then
+    rawset(state, "limits", {
+        maxLanes = DEFAULT_MAX_LANES,
+        maxWatchIntervals = DEFAULT_MAX_WATCH_INTERVALS,
+        maxWatchersPerInterval = DEFAULT_MAX_WATCHERS_PER_INTERVAL,
+        maxDebounceArguments = DEFAULT_MAX_DEBOUNCE_ARGUMENTS,
+    })
+end
+local UNBOUNDED = rawget(state, "unbounded")
+local sharedLimits = rawget(state, "limits")
 
 local JOB_METATABLE = rawget(state, "jobMetatable")
 local SCOPE_METATABLE = rawget(state, "scopeMetatable")
@@ -2548,12 +2656,14 @@ local function installCoalescingFamily()
             return existing
         end
 
-        if rawget(state, "laneCount") >= MAX_LANES then
+        local maxLanes = rawget(sharedLimits, "maxLanes")
+        if maxLanes ~= UNBOUNDED and rawget(state, "laneCount") >= maxLanes then
             error(
                 methodName
                     .. " refuses to create more than "
-                    .. MAX_LANES
-                    .. " open lanes; close unused lanes or share one by name",
+                    .. maxLanes
+                    .. " open lanes; close unused lanes, share one by name, or raise"
+                    .. " SchedulerKit:SetLimits{ maxLanes }",
                 3
             )
         end
@@ -2752,18 +2862,43 @@ local function installCoalescingFamily()
         end
     end
 
-    ---Clear the argument slot `args`.
+    ---Clear the argument slot `args`: the eight staged positions, and every
+    ---wider position a call past eight arguments wrote (`width`).
     ---@param args table
     local function clearArguments(args)
-        for index = 1, MAX_DEBOUNCE_ARGUMENTS do
+        local width = rawget(args, "width")
+        if type(width) ~= "number" or width < FAST_DEBOUNCE_ARGUMENTS then
+            width = FAST_DEBOUNCE_ARGUMENTS
+        end
+        for index = 1, width do
             args[index] = nil
         end
+        rawset(args, "width", 0)
     end
 
-    ---Build the reused argument slot, pre-sized so recording never grows it.
+    ---Build the reused argument slot, pre-sized so recording up to eight
+    ---arguments never grows it. A wider call grows it once; `width` records the
+    ---highest position written so clearing stays bounded.
     ---@return table
     local function newArgumentSlot()
-        return { false, false, false, false, false, false, false, false }
+        local slot = { false, false, false, false, false, false, false, false }
+        -- `width` is the one named field: the highest position a wide call
+        -- wrote, read only by `clearArguments`.
+        rawset(slot, "width", 0)
+        return slot
+    end
+
+    ---Record `count` (more than eight) arguments into `args`.
+    ---@param args table
+    ---@param count integer
+    ---@param ... any
+    local function recordWideArguments(args, count, ...)
+        for index = 1, count do
+            args[index] = (select(index, ...))
+        end
+        if count > (rawget(args, "width") or 0) then
+            rawset(args, "width", count)
+        end
     end
 
     ---Fire a debounce handle synchronously with its recorded arguments.
@@ -2771,6 +2906,25 @@ local function installCoalescingFamily()
     local function fireDebounceDirect(member)
         local args = rawget(member, "_args")
         local count = rawget(member, "_argCount")
+        if count > FAST_DEBOUNCE_ARGUMENTS then
+            -- A wide call cannot be staged in upvalues. Its values are copied
+            -- out before the slot is cleared, which allocates one table and one
+            -- closure per fire; calls of eight arguments or fewer never do.
+            local values = { unpack(args, 1, count) }
+            local callback = rawget(member, "_callback")
+            clearArguments(args)
+            rawset(member, "_argCount", 0)
+            rawset(member, "_trailing", false)
+            rawset(member, "_firing", true)
+            local ok, failure = xpcall(function()
+                return callback(unpack(values, 1, count))
+            end, captureFailure)
+            rawset(member, "_firing", false)
+            if not ok then
+                reportError(failure)
+            end
+            return
+        end
         local a1, a2, a3, a4 = args[1], args[2], args[3], args[4]
         local a5, a6, a7, a8 = args[5], args[6], args[7], args[8]
         clearArguments(args)
@@ -2913,17 +3067,18 @@ local function installCoalescingFamily()
 
     ---Record one call on a debounce handle. This is the handle's `__call`.
     ---@param member SchedulerKit.DebounceHandle
-    ---@param ... any at most eight arguments
+    ---@param ... any at most `maxDebounceArguments` arguments (8 by default)
     ---@return boolean accepted `false` once the handle is closed.
     local function debounceCall(member, ...)
         if rawget(member, "_closed") == true then
             return false
         end
         local count = select("#", ...)
-        if count > MAX_DEBOUNCE_ARGUMENTS then
+        local maxArguments = rawget(sharedLimits, "maxDebounceArguments")
+        if count > maxArguments then
             error(
                 "SchedulerKit debounce handle accepts at most "
-                    .. MAX_DEBOUNCE_ARGUMENTS
+                    .. maxArguments
                     .. " arguments; received "
                     .. count,
                 2
@@ -2931,7 +3086,15 @@ local function installCoalescingFamily()
         end
 
         local args = rawget(member, "_args")
-        args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8] = ...
+        if count > FAST_DEBOUNCE_ARGUMENTS then
+            recordWideArguments(args, count, ...)
+        else
+            if (rawget(args, "width") or 0) > FAST_DEBOUNCE_ARGUMENTS then
+                -- A previous wide call left values past eight.
+                clearArguments(args)
+            end
+            args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8] = ...
+        end
         rawset(member, "_argCount", count)
         local reading = nowSeconds()
         rawset(member, "_lastCall", reading)
@@ -2971,6 +3134,9 @@ local function installCoalescingFamily()
         rawset(member, "_deliveryDirty", false)
         local args = rawget(member, "_deliveryArgs")
         local count = rawget(member, "_deliveryCount")
+        if count > FAST_DEBOUNCE_ARGUMENTS then
+            return rawget(member, "_callback")(unpack(args, 1, count))
+        end
         return callWithCount(
             rawget(member, "_callback"),
             count,
@@ -3316,24 +3482,28 @@ local function installCoalescingFamily()
         local groups = rawget(state, "watchGroups")
         local group = rawget(groups, interval)
         if group ~= nil then
-            if rawget(group, "live") >= MAX_WATCHERS_PER_INTERVAL then
+            local maxWatchers = rawget(sharedLimits, "maxWatchersPerInterval")
+            if maxWatchers ~= UNBOUNDED and rawget(group, "live") >= maxWatchers then
                 error(
                     methodName
                         .. " refuses more than "
-                        .. MAX_WATCHERS_PER_INTERVAL
-                        .. " watchers on one interval; cancel unused watchers",
+                        .. maxWatchers
+                        .. " watchers on one interval; cancel unused watchers or raise"
+                        .. " SchedulerKit:SetLimits{ maxWatchersPerInterval }",
                     4
                 )
             end
             return group
         end
 
-        if rawget(state, "watchGroupCount") >= MAX_WATCH_INTERVALS then
+        local maxIntervals = rawget(sharedLimits, "maxWatchIntervals")
+        if rawget(state, "watchGroupCount") >= maxIntervals then
             error(
                 methodName
                     .. " refuses more than "
-                    .. MAX_WATCH_INTERVALS
-                    .. " distinct watch intervals; reuse an interval",
+                    .. maxIntervals
+                    .. " distinct watch intervals; reuse an interval or raise"
+                    .. " SchedulerKit:SetLimits{ maxWatchIntervals }",
                 4
             )
         end
@@ -4482,6 +4652,99 @@ local function getActiveCount()
     return rawget(state, "activeCount")
 end
 
+---Validate a whole `SetLimits` table before any of it is applied, so a refused
+---call changes nothing.
+---@param limits any
+---@param level integer stack level the failures are reported at
+local function validateLimitUpdate(limits, level)
+    if type(limits) ~= "table" then
+        error("SchedulerKit:SetLimits limits must be a table", level)
+    end
+    local key = next(limits)
+    while key ~= nil do
+        if LIMIT_CEILINGS[key] == nil then
+            error(
+                "SchedulerKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
+                level
+            )
+        end
+        local value = rawget(limits, key)
+        local refusal = LIMIT_UNBOUNDED_REFUSALS[key]
+        local ceiling = LIMIT_CEILINGS[key]
+        if value == UNBOUNDED then
+            if refusal ~= nil then
+                error(
+                    "SchedulerKit:SetLimits limits."
+                        .. key
+                        .. " cannot be SchedulerKit.UNBOUNDED: "
+                        .. refusal,
+                    level
+                )
+            end
+        elseif not isLimitValue(value, ceiling, nil, false) then
+            if ceiling ~= false then
+                error(
+                    "SchedulerKit:SetLimits limits."
+                        .. key
+                        .. " must be an integer from 1 to "
+                        .. ceiling,
+                    level
+                )
+            end
+            error(
+                "SchedulerKit:SetLimits limits."
+                    .. key
+                    .. " must be a positive integer or SchedulerKit.UNBOUNDED",
+                level
+            )
+        end
+        key = next(limits, key)
+    end
+end
+
+---Change any subset of the package-wide limits, shared by every addon in the
+---session. The whole table is validated first. Lowering a limit releases
+---nothing that already exists; further lanes, intervals, watchers or wide
+---debounce calls are refused until the count is below it again.
+---@param self SchedulerKit
+---@param limits table any subset of `SchedulerKit.Limits`
+local function setLimits(self, limits)
+    if self ~= SchedulerKit then
+        error(
+            "SchedulerKit:SetLimits must be called on the SchedulerKit facade; "
+                .. "use SchedulerKit:SetLimits(limits)",
+            2
+        )
+    end
+    validateLimitUpdate(limits, 3)
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        local value = rawget(limits, name)
+        if value ~= nil then
+            rawset(sharedLimits, name, value)
+        end
+    end
+end
+
+---Return a fresh copy of the package-wide limits. Allocates one table.
+---@param self SchedulerKit
+---@return SchedulerKit.Limits
+local function getLimits(self)
+    if self ~= SchedulerKit then
+        error(
+            "SchedulerKit:GetLimits must be called on the SchedulerKit facade; "
+                .. "use SchedulerKit:GetLimits()",
+            2
+        )
+    end
+    return {
+        maxLanes = rawget(sharedLimits, "maxLanes"),
+        maxWatchIntervals = rawget(sharedLimits, "maxWatchIntervals"),
+        maxWatchersPerInterval = rawget(sharedLimits, "maxWatchersPerInterval"),
+        maxDebounceArguments = rawget(sharedLimits, "maxDebounceArguments"),
+    }
+end
+
 -- Commit -------------------------------------------------------------------
 
 rawset(Context, "ShouldYield", contextShouldYield)
@@ -4525,6 +4788,9 @@ rawset(SchedulerKit, "GetRunawayThreshold", getRunawayThreshold)
 rawset(SchedulerKit, "SetMaxResumesPerFrame", setMaxResumesPerFrame)
 rawset(SchedulerKit, "GetMaxResumesPerFrame", getMaxResumesPerFrame)
 rawset(SchedulerKit, "GetActiveCount", getActiveCount)
+rawset(SchedulerKit, "UNBOUNDED", UNBOUNDED)
+rawset(SchedulerKit, "SetLimits", setLimits)
+rawset(SchedulerKit, "GetLimits", getLimits)
 
 local defaultScope = rawget(state, "defaultScope")
 if

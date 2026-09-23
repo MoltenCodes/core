@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 — 2026-09-23
+
+- Limits (design constitution, principle 4a). Added `TestKit:SetLimits`, `TestKit:GetLimits()` and the `TestKit.UNBOUNDED` sentinel, modelled on SignalKit. The seven former constants become package-wide limits with unchanged defaults: `maxSuites` 64, `maxTests` 256, `maxHooks` 16, `maxLogLines` 64, `maxFinishedCallbacks` 16 and `maxReplacements` 256 accept `UNBOUNDED` (development-only; the consumer's own tests), and `maxEqualDepth` 16 accepts up to 64 and refuses `UNBOUNDED` because `ToEqual` recurses per level. `SetLimits` validates the whole table at the caller's line first; `GetLimits` returns a fresh table; `Reset` keeps the limits.
+- Implementation revision 2, because the executed implementation changed. Revision-1 state is seeded with the former constants in place; `UNBOUNDED`, `SetLimits` and `GetLimits` join the public-surface check.
+- New `Limits_spec.lua` and a bootstrap spec for the revision-1 upgrade. `docs/API.md` gains a "Limits" section.
+
 ## 0.1.1 — 2026-09-23
 
 - Documentation only: no runtime change, implementation revision 1 is unchanged. The README states the seven-file minimum footprint. TimerKit 0.5.0 and SchedulerKit 0.6.0 no longer require LifecycleKit, so TestKit's required closure is the same seven packages reached by a shorter path (LifecycleKit brings SignalKit and EventKit; SchedulerKit brings TimerKit).

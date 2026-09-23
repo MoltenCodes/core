@@ -99,7 +99,7 @@ describe("ReadinessKit error levels", function()
         end)
         assertReportedAt(
             waitersLine,
-            "ReadinessKit:Gate maxWaiters must be a positive integer",
+            "ReadinessKit:Gate maxWaiters must be a positive integer or ReadinessKit.UNBOUNDED",
             waitersOk,
             waitersValue
         )
