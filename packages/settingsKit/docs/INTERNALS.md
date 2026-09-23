@@ -130,14 +130,20 @@ Views are built recursively down to SchemaKit's `MAX_DEPTH` (16), the deepest va
 `viewIndex` finds the node and dispatches on `kind`:
 
 - **record**: read the key from the resolved saved table. A value is returned as is, except that a table under a record or map field returns the child view. Nothing saved: a record or map field returns its child view when it has a default, a scalar returns its default, and a plain table default is copied into the saved table (`materialise`) and returned.
-- **map**: the same, with the default taken from the section's default entries and then the wildcard default, and entry views built on demand. A secret key is refused before it is used to index anything.
+- **map**: the same, with the default taken from the section's default entries and then the wildcard default, and entry views built on demand. A plain-table default of a missing entry is returned as a fresh copy and never stored, and `materialise` stores nothing when the view sits inside an entry that is not saved yet (`wouldCreateEntry`), so reads never grow a keyed section past its `max` or store a key its key schema refuses.
+
+Both kinds refuse a secret key before using it to index anything.
+
+### Iteration
+
+`db:Pairs(view)` returns the file-local `pairsNext`, the view and `nil`. `pairsNext` is stateless: phase one walks `node.defaults` (a record's field defaults or a keyed section's own default entries), phase two walks the resolved saved table and skips keys that have a default. The previous key tells the phases apart, because a key with a default always belongs to phase one. A phase-one read may store a plain-table default, which only adds a key phase two skips, so the saved table never changes while phase two walks it.
 
 ### A write
 
 `viewNewIndex` → `writeView`:
 
 1. Refuse on a detached root.
-2. Refuse a secret key, then a secret value or a table containing one (`scanForSecrets`, bounded by depth 16 and 65536 entries).
+2. Refuse a secret key, then a secret value, then a table value that contains a secret, is or contains a view (`state.views` lookup), or is or contains a table with a metatable (`scanValue`, bounded by depth 16 and 65536 entries). The scan runs on every client: a view stored in a saved table would be a non-empty proxy, so later writes to its keys would skip `__newindex` and validation, and it would alias the other view's data on disk.
 3. **Probe check.** Each view from the written one up to the root sets its key in its parent's probe to its own probe, the written view sets `key = value` in its probe, and the scope's sealed schema checks the root probe. The probe holds exactly the path to the written value, and every other field of every record on the path is optional (`compilePlan` guarantees it), so the check passes exactly when the value is valid where it is written. The probes are cleared again before any error is raised. A valid check allocates nothing; the reported path is SchemaKit's own, relative to the scope, and the message is built only on failure.
 4. Refuse a write that would add an entry to a keyed section already holding `max` entries (the probe holds one entry, so the bound is counted against the saved table, stopping at `max`).
 5. Store with `rawset` into the resolved (or created) table.

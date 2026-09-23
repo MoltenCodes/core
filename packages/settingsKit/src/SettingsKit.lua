@@ -119,6 +119,7 @@ local DATABASE_METHODS = {
     "OnProfileDeleted",
     "Compact",
     "GetSavedVariable",
+    "Pairs",
 }
 
 local WEAK_KEYS = { __mode = "k" }
@@ -189,6 +190,7 @@ local WEAK_VALUES = { __mode = "v" }
 ---@field OnProfileDeleted fun(self: SettingsKit.Database, callback: SettingsKit.ProfileListener): SignalKit.Connection
 ---@field Compact fun(self: SettingsKit.Database): integer
 ---@field GetSavedVariable fun(self: SettingsKit.Database): string
+---@field Pairs fun(self: SettingsKit.Database, view: table): (fun(view: table, key: any): any, any), table, nil
 
 ---The SettingsKit package facade published through Registry.
 ---@class SettingsKit
@@ -709,27 +711,48 @@ local function countEntries(container, limit)
     return count
 end
 
----Scan a table about to be stored for secret keys and values.
+---Whether a table may be stored in a saved variable: a plain table, never a
+---view and never one with a metatable (the client saves neither).
+---
+---Asked only after the secret check, so it never touches a secret.
 ---@param value table
----@param isSecretValue fun(value: any): boolean
+---@return "view"|"metatable"|nil problem
+local function plainTableProblem(value)
+    if rawget(views, value) ~= nil then
+        return "view"
+    end
+    if getmetatable(value) ~= nil then
+        return "metatable"
+    end
+    return nil
+end
+
+---Scan a table about to be stored: secret keys and values (when the host has
+---secrets), views and tables with a metatable anywhere inside it.
+---@param value table
+---@param isSecretValue (fun(value: any): boolean)|nil
 ---@param depth integer
 ---@param budget integer entries still allowed to be visited
----@return "secret"|"size"|nil problem, integer budget
-local function scanForSecrets(value, isSecretValue, depth, budget)
+---@return "secret"|"view"|"metatable"|"size"|nil problem, integer budget
+local function scanValue(value, isSecretValue, depth, budget)
     if depth > MAX_DEPTH then
         return "size", budget
+    end
+    ---@type "secret"|"view"|"metatable"|"size"|nil
+    local problem = plainTableProblem(value)
+    if problem ~= nil then
+        return problem, budget
     end
     for key, item in next, value do
         budget = budget - 1
         if budget < 0 then
             return "size", budget
         end
-        if isSecretValue(key) or isSecretValue(item) then
+        if isSecretValue ~= nil and (isSecretValue(key) or isSecretValue(item)) then
             return "secret", budget
         end
         if type(item) == "table" then
-            local problem
-            problem, budget = scanForSecrets(item, isSecretValue, depth + 1, budget)
+            problem, budget = scanValue(item, isSecretValue, depth + 1, budget)
             if problem ~= nil then
                 return problem, budget
             end
@@ -737,6 +760,14 @@ local function scanForSecrets(value, isSecretValue, depth, budget)
     end
     return nil, budget
 end
+
+-- What a refused value is told, by the problem `scanValue` found.
+local VALUE_REFUSALS = {
+    secret = " refused a secret value: saved variables never hold secret values",
+    view = " refused a SettingsKit view: assign a plain table, not a table read through db.<scope>",
+    metatable = " refused a table with a metatable: saved variables cannot hold metatables",
+    size = " refused a table too large or too deep to scan",
+}
 
 ---Format a key as a path segment: `.name` for identifiers, `[1]` or
 ---`["two words"]` otherwise. Never called with a secret.
@@ -1078,20 +1109,43 @@ local function entryView(node, key)
     return proxy
 end
 
+---Whether storing anything below `node` would create a keyed-section entry
+---that is not saved yet. Only a validated write may create one, after the key
+---schema and the section's `max` were checked.
+---@param node table
+---@return boolean
+local function wouldCreateEntry(node)
+    local child = node
+    local parent = child.parent
+    while parent ~= false do
+        if parent.kind == KIND_MAP then
+            local container = resolveContainer(parent)
+            if container == nil or rawget(container, child.key) == nil then
+                return true
+            end
+        end
+        child = parent
+        parent = child.parent
+    end
+    return false
+end
+
 ---Store a copy of a table-valued default and return it.
 ---
 ---A view hands out record and keyed-section defaults through child views, but
 ---an array (or `any`, `oneOf`, `custom`) default is a plain table the caller
 ---may edit in place. Handing out the shared default would let that edit change
 ---the default for the session, so the first read stores a copy instead;
----`Compact` removes it again while it still equals the default.
+---`Compact` removes it again while it still equals the default. Inside a
+---keyed-section entry that is not saved yet the copy is returned unstored, so
+---a read never creates an entry.
 ---@param node table
 ---@param key any
 ---@param default table
 ---@return table
 local function materialise(node, key, default)
     local copy = copyPlain(default)
-    if node.root.dead then
+    if node.root.dead or wouldCreateEntry(node) then
         return copy
     end
     local container = resolveForWrite(node)
@@ -1104,6 +1158,17 @@ end
 ---@param key any
 ---@return any
 local function readRecord(node, key)
+    if isSecret(key) then
+        -- readRecord <- viewIndex <- the reading line
+        error(
+            "SettingsKit ("
+                .. node.db._name
+                .. ") "
+                .. node.displayPath
+                .. " cannot be read with a secret key",
+            3
+        )
+    end
     local container = resolveContainer(node)
     local value = nil
     if container ~= nil then
@@ -1187,7 +1252,9 @@ local function readMap(node, key)
         return entryView(node, key)
     end
     if type(default) == "table" then
-        return materialise(node, key, default)
+        -- A missing entry is never stored by a read: the key may be one the
+        -- key schema refuses, and the section may be full.
+        return copyPlain(default)
     end
     return default
 end
@@ -1349,30 +1416,18 @@ local function writeView(node, key, value)
     end
     -- A nil or NaN key never gets here: Lua 5.1 refuses it while looking for
     -- the slot, before it consults `__newindex`.
-    if isSecretValue ~= nil and value ~= nil then
-        local problem = nil
-        if isSecretValue(value) then
-            problem = "secret"
-        elseif type(value) == "table" then
-            problem = scanForSecrets(value, isSecretValue, 1, MAX_SCANNED_ENTRIES)
-        end
-        if problem == "secret" then
-            error(
-                label
-                    .. node.displayPath
-                    .. formatKey(key)
-                    .. " refused a secret value: saved variables never hold secret values",
-                3
-            )
-        elseif problem == "size" then
-            error(
-                label
-                    .. node.displayPath
-                    .. formatKey(key)
-                    .. " refused a table too large or too deep to scan for secret values",
-                3
-            )
-        end
+    -- Every table is scanned, whether or not the host has secret values: a
+    -- view stored in a saved table would alias another view's data and be
+    -- written through without validation, and a metatable never survives a
+    -- save.
+    local problem = nil
+    if isSecretValue ~= nil and isSecretValue(value) then
+        problem = "secret"
+    elseif type(value) == "table" then
+        problem = scanValue(value, isSecretValue, 1, MAX_SCANNED_ENTRIES)
+    end
+    if problem ~= nil then
+        error(label .. node.displayPath .. formatKey(key) .. VALUE_REFUSALS[problem], 3)
     end
 
     local ok, failure = checkWrite(node, key, value)
@@ -1415,6 +1470,52 @@ local function viewNewIndex(proxy, key, value)
         error("SettingsKit views cannot be written once detached", 2)
     end
     writeView(node, key, value)
+end
+
+---The iterator `db:Pairs(view)` returns. Stateless: everything it needs is
+---the view and the previous key, so iterating allocates no closure.
+---
+---Phase one walks the keys that have a default (the record's field defaults,
+---or a keyed section's own default entries; never the unbounded wildcard);
+---phase two walks the saved keys without a default. The previous key tells
+---the phases apart: a key with a default belongs to phase one. Reading a value
+---in phase one may store a plain-table default (`materialise`), which only
+---adds a key phase two skips, so the saved table is never changed while
+---phase two walks it.
+---@param proxy table
+---@param previous any
+---@return any key, any value
+local function pairsNext(proxy, previous)
+    local node = rawget(views, proxy)
+    if node == nil then
+        return nil
+    end
+    local defaults = node.defaults
+    local key = nil
+
+    local inPhaseOne = previous == nil or (defaults and rawget(defaults, previous) ~= nil)
+    if inPhaseOne and defaults then
+        key = next(defaults, previous)
+        if key ~= nil then
+            return key, viewIndex(proxy, key)
+        end
+        previous = nil
+    elseif inPhaseOne then
+        previous = nil
+    end
+
+    local container = resolveContainer(node)
+    if container == nil then
+        return nil
+    end
+    key = next(container, previous)
+    while key ~= nil and defaults and rawget(defaults, key) ~= nil do
+        key = next(container, key)
+    end
+    if key == nil then
+        return nil
+    end
+    return key, viewIndex(proxy, key)
 end
 
 -- Compaction -----------------------------------------------------------------
@@ -2040,6 +2141,24 @@ local function databaseOnProfileDeleted(self, callback)
     )
 end
 
+---Iterate a view: every key with a default, then every saved key without one,
+---each with the value a read of it returns.
+---
+---`for key, value in db:Pairs(db.profile) do ... end`. The iterator is
+---stateless and allocates nothing. As with `pairs`, do not add keys to the
+---view while iterating it.
+---@param self SettingsKit.Database
+---@param view table a view of this database
+---@return function iterator, table view, nil
+local function databasePairs(self, view)
+    validateDatabase(self, "SettingsKit.Database:Pairs", 3)
+    local node = type(view) == "table" and rawget(views, view) or nil
+    if node == nil or node.db ~= self then
+        error("SettingsKit.Database:Pairs view must be a view of this database", 2)
+    end
+    return pairsNext, view, nil
+end
+
 ---Remove every saved value equal to its default, in every character, realm,
 ---class, faction and profile entry of every declared scope.
 ---@param self SettingsKit.Database
@@ -2264,6 +2383,7 @@ rawset(Database, "OnProfileReset", databaseOnProfileReset)
 rawset(Database, "OnProfileDeleted", databaseOnProfileDeleted)
 rawset(Database, "Compact", databaseCompact)
 rawset(Database, "GetSavedVariable", databaseGetSavedVariable)
+rawset(Database, "Pairs", databasePairs)
 
 rawset(VIEW_METATABLE, "__index", viewIndex)
 rawset(VIEW_METATABLE, "__newindex", viewNewIndex)

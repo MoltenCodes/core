@@ -11,6 +11,10 @@
 - Versioned migrations: each `migrations[n]` receives the raw saved table and runs once, in ascending order, from the stored version + 1 to `options.version`, storing the version after each step. A new, empty saved table is stamped without running any.
 - `db:Compact()` removes every saved value equal to its default across every character, realm, class, faction and profile entry, and returns how many it removed. With EventKit API 1 present (found through `Registry:Find`), every database compacts itself on `PLAYER_LOGOUT`; a failure there is reported, not raised.
 - The saved table keeps a `namespaces` section and a `profileKeys` section from v1, so v2 (spec-aware profiles and namespaces) needs no layout change.
+- A view assigned as a value, or a table carrying a metatable, is refused at the writer's line, top level or nested and on every client, so a saved table never aliases a view or skips validation.
+- Reading a missing keyed-section entry never stores anything, so reads cannot grow a section past its `max` or store a key its key schema refuses; only a validated write creates an entry.
+- Added `db:Pairs(view)`: a stateless, allocation-free iterator over a view's keys with defaults, then its saved keys.
+- A record view refuses a secret read key, as a keyed-section view does.
 - The manifest lists EventKit API 1 under `optionalDependencies`.
 - A default read and a validated write of an existing key allocate nothing. Databases, views and their listeners survive an in-place upgrade.
-- 94 specs, including allocation guards, an in-place upgrade spec and pinned error levels.
+- 105 specs, including allocation guards, an in-place upgrade spec and pinned error levels.

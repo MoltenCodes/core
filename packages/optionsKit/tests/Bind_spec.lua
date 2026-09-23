@@ -87,8 +87,29 @@ describe("OptionsKit bind to a SettingsKit database", function()
         assert.are.same({ "scale", 1 }, changes[#changes])
     end)
 
-    it("raises when a bind path no longer leads to a table", function()
+    it("reads nil and writes a nested table when an intermediate record is missing", function()
         db.profile = setmetatable({}, { __index = {} })
+        assert.is_nil(tree:Get("anchor"))
+        -- Clearing a value whose record does not exist changes nothing.
+        assert.is_nil(tree:Reset("anchor"))
+        assert.is_nil(rawget(db.profile, "frame"))
+        assert.is_true(tree:Set("anchor", "CENTER"))
+        assert.are.same({ anchor = "CENTER" }, rawget(db.profile, "frame"))
+        assert.are.equal("CENTER", tree:Get("anchor"))
+    end)
+
+    it("raises when a scope is no longer available", function()
+        db.profile = nil
+        TestEnv.expectErrorContaining(
+            'OptionsKit.Tree:Get bind scope "profile" is not an available scope of the database',
+            function()
+                tree:Get("scale")
+            end
+        )
+    end)
+
+    it("raises when a bind path no longer leads to a table", function()
+        db.profile = { frame = "flat" }
         TestEnv.expectErrorContaining(
             'OptionsKit.Tree:Get bind path "profile.frame.anchor" does not lead to a table',
             function()
@@ -174,7 +195,11 @@ describe("OptionsKit bind to a SettingsKit database", function()
         assertBindRefused("profile.2x", "must be dot-separated identifiers")
         local partial = TestEnv.NewDatabase()
         partial.realm = nil
-        assertBindRefused("realm.value", 'bind scope "realm" is not a table of options.db', partial)
+        assertBindRefused(
+            "realm.value",
+            'bind scope "realm" is not an available scope of options.db',
+            partial
+        )
     end)
 
     it("refuses an options.db that is not a database", function()

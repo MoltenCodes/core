@@ -885,8 +885,13 @@ local function buildValueFields(context, record, spec, label, level)
             error(label .. ".bind needs a SettingsKit database passed as options.db", level)
         end
         local scope, keys = parseBind(spec.bind, label .. ".bind", level + 1)
-        if type(db[scope]) ~= "table" then
-            error(label .. '.bind scope "' .. scope .. '" is not a table of options.db', level)
+        -- `rawget`: SettingsKit raises at its own line when an undeclared or
+        -- unavailable scope is read through the database's metatable.
+        if type(rawget(db, scope)) ~= "table" then
+            error(
+                label .. '.bind scope "' .. scope .. '" is not an available scope of options.db',
+                level
+            )
         end
         rawset(record, "_bind", spec.bind)
         rawset(record, "_bindScope", scope)
@@ -1083,29 +1088,65 @@ end
 
 -- Bound values ---------------------------------------------------------------
 
----Return the table holding a bound option's value, walking the scope table of
----the database at call time so a profile switch is seen at once.
+---Store `value` at `container[key]`. A named function rather than a closure,
+---so the protected call around a database write allocates nothing.
+---@param container table
+---@param key string
+---@param value any
+local function assignField(container, key, value)
+    container[key] = value
+end
+
+---Strip the `file:line: ` position an error message carries, keeping its text.
+---@param message any
+---@return string
+local function withoutPosition(message)
+    local text = tostring(message)
+    return (text:gsub("^[^\n]-:%d+: ", "", 1))
+end
+
+---Walk a bound option's path through the database's views, reading the scope
+---table at call time so a profile switch is seen at once.
+---
+---Returns the deepest table reached and the index of the key to use in it: the
+---last key when every intermediate table exists, otherwise the first key whose
+---table does not exist yet. SettingsKit reads a record without a default and
+---without saved data as `nil`, so a missing intermediate is an unset value,
+---not an error.
 ---@param tree OptionsKit.Tree
 ---@param record table
 ---@param methodName string
 ---@param level integer
 ---@return table container
-local function boundContainer(tree, record, methodName, level)
-    local container = rawget(tree, "_db")[rawget(record, "_bindScope")]
-    local keys = rawget(record, "_bindKeys")
-    for index = 1, rawget(record, "_bindCount") - 1 do
-        if type(container) ~= "table" then
-            break
-        end
-        container = container[keys[index]]
-    end
+---@return integer index
+local function walkBound(tree, record, methodName, level)
+    local scope = rawget(record, "_bindScope")
+    local container = rawget(rawget(tree, "_db"), scope)
     if type(container) ~= "table" then
         error(
-            methodName .. ' bind path "' .. rawget(record, "_bind") .. '" does not lead to a table',
+            methodName .. ' bind scope "' .. scope .. '" is not an available scope of the database',
             level
         )
     end
-    return container
+    local keys = rawget(record, "_bindKeys")
+    local count = rawget(record, "_bindCount")
+    for index = 1, count - 1 do
+        local nested = container[keys[index]]
+        if nested == nil then
+            return container, index
+        end
+        if type(nested) ~= "table" then
+            error(
+                methodName
+                    .. ' bind path "'
+                    .. rawget(record, "_bind")
+                    .. '" does not lead to a table',
+                level
+            )
+        end
+        container = nested
+    end
+    return container, count
 end
 
 ---@param tree OptionsKit.Tree
@@ -1115,10 +1156,49 @@ end
 ---@return any
 local function readValue(tree, record, methodName, level)
     if rawget(record, "_bindScope") then
-        local container = boundContainer(tree, record, methodName, level + 1)
-        return container[rawget(record, "_bindKeys")[rawget(record, "_bindCount")]]
+        local container, index = walkBound(tree, record, methodName, level + 1)
+        local count = rawget(record, "_bindCount")
+        if index < count then
+            return nil
+        end
+        return container[rawget(record, "_bindKeys")[count]]
     end
     return rawget(record, "_get")(rawget(record, "_info"))
+end
+
+---Write a bound value through the database's views. A missing intermediate
+---record is written as a nested table holding the value, which SettingsKit
+---validates like any other write; clearing a value whose record does not
+---exist does nothing. A SettingsKit refusal is raised again at the caller's
+---line with its message kept.
+---@param tree OptionsKit.Tree
+---@param record table
+---@param value any
+---@param methodName string
+---@param level integer
+local function writeBound(tree, record, value, methodName, level)
+    local container, index = walkBound(tree, record, methodName, level + 1)
+    local keys = rawget(record, "_bindKeys")
+    local count = rawget(record, "_bindCount")
+    if index < count then
+        if value == nil then
+            return
+        end
+        for position = count, index + 1, -1 do
+            value = { [keys[position]] = value }
+        end
+    end
+    local written, failure = pcall(assignField, container, keys[index], value)
+    if not written then
+        error(
+            methodName
+                .. " "
+                .. rawget(record, "_path")
+                .. " refused by the database: "
+                .. withoutPosition(failure),
+            level
+        )
+    end
 end
 
 ---@param tree OptionsKit.Tree
@@ -1128,8 +1208,7 @@ end
 ---@param level integer
 local function writeValue(tree, record, value, methodName, level)
     if rawget(record, "_bindScope") then
-        local container = boundContainer(tree, record, methodName, level + 1)
-        container[rawget(record, "_bindKeys")[rawget(record, "_bindCount")]] = value
+        writeBound(tree, record, value, methodName, level + 1)
         return
     end
     rawget(record, "_set")(rawget(record, "_info"), value)

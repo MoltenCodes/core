@@ -65,6 +65,7 @@ Databases:
 | `OnProfileChanged(callback)`, `OnProfileCopied(callback)`, `OnProfileReset(callback)`, `OnProfileDeleted(callback)` | Connect to the profile signals. |
 | `Compact()` | Remove every saved value equal to its default. |
 | `GetSavedVariable()` | The global name the database was opened over. |
+| `Pairs(view)` | Iterate a view: keys with defaults, then saved keys. |
 
 The `On*` methods return SignalKit connections; `connection:Disconnect()` stops the listener.
 
@@ -219,18 +220,20 @@ SettingsKit owns the `version` key of the saved table. Migrations run before the
 | a scalar (string, number, boolean, enum) | the saved value | the default, or `nil` |
 | a `table` (record) | a view of the saved table | a view reading the defaults, when the field has a default; otherwise `nil` |
 | a `map` (keyed section) | a view of the saved table | a view reading the default entries, when the field has a default; otherwise `nil` |
-| an `array`, or `any`, `oneOf`, `custom` holding a table | the saved table itself | **a copy of the default, stored on this first read** |
+| an `array`, or `any`, `oneOf`, `custom` holding a table | the saved table itself | **a copy of the default, stored on this first read** — except inside a keyed-section entry that is not saved yet, where the copy is returned without being stored |
 | undeclared (on an open or closed record) | the saved value | `nil` |
 
 A record view reads each field from the saved table, then from the defaults: a record default filled with its own field defaults, the way `schema:Apply` fills it. A keyed-section view reads a key from the saved table, then from the section's own default entries, then from its **wildcard default** — the default of `optional(...)` on the map's `values` — so `db.profile.auras[118].shown` is `true` for a spell ID nothing was ever saved for. Views of the same record or entry are the same table every time you read them.
 
 Reading a default never writes, with the one exception in the table: an array (or other plain table) default is copied into the saved table on first read, so that editing it in place cannot change the default for the rest of the session. `Compact` removes the copy again while it still equals the default.
 
+**A read never creates a keyed-section entry.** Reading `db.profile.colors[spellId]` for a key nothing was saved for returns the default (a view for a record, a fresh copy for a plain table, not stored) and stores nothing, whatever the key and however many keys are read: the key may be one the key schema refuses, and the section may be full. Only a validated write creates an entry, after the key and the section's `max` were checked. Edits to such a copy are lost; assign the table to store it.
+
 ### Writes
 
 `view[key] = value` runs, in order:
 
-1. **Secret refusal.** A secret key, a secret value or a table containing one anywhere (scanned to 16 levels and at most 65536 entries; a larger table is refused too) raises `SettingsKit (MyAddonDB) profile.name refused a secret value: saved variables never hold secret values`. Nothing is stored.
+1. **Value refusal.** A secret key, a secret value, or a table containing a secret anywhere raises `SettingsKit (MyAddonDB) profile.name refused a secret value: saved variables never hold secret values`. Every table value is scanned (to 16 levels and at most 65536 entries; a larger table is refused too), on every client, and is also refused when it or any table inside it is a **view** (`db.profile.b = db.profile.a` would alias `a` and let writes through `b` bypass validation) or carries a **metatable** (the client saves neither). Nothing is stored.
 2. **Schema check.** The value is checked where it is written, against the scope's schema, and a failure raises with SchemaKit's text: `SettingsKit (MyAddonDB) profile.frame.x: expected number, found string`. An undeclared field of a closed record is refused the same way.
 3. **Bounds.** A write that adds an entry to a keyed section already holding `max` entries raises `SettingsKit (MyAddonDB) profile.auras: expected at most 256 entries`.
 4. **Store.** Missing tables on the way are created. Writing `nil` removes the saved value, so the field reads its default again.
@@ -240,7 +243,7 @@ Every refusal is raised at the writing line and stores nothing. A table you assi
 
 ### What a view cannot do
 
-- `pairs`, `next` and `#` see an empty table: Lua 5.1 has no `__pairs` or `__len` for tables. Iterate the schema's fields, or read the saved variable itself for diagnostics.
+- `pairs`, `next` and `#` see an empty table: Lua 5.1 has no `__pairs` or `__len` for tables. Use `db:Pairs(view)` instead.
 - A view of a deleted profile, or of any profile after `ResetDatabase`, is **detached**: it reads defaults and refuses writes with `... belongs to a profile that was deleted or reset away`.
 - Reading a keyed section with a secret key raises at the reading line.
 
@@ -291,6 +294,10 @@ The signal fires after the value is stored. SignalKit's dispatch rules apply: li
 | `OnProfileReset(callback)` | `callback(db, name)` |
 | `OnProfileDeleted(callback)` | `callback(db, name)` |
 
+## `db:Pairs(view)`
+
+`for key, value in db:Pairs(db.profile) do ... end` iterates a view of this database: first every key that has a default (a record's field defaults, or a keyed section's own default entries — never its wildcard, which covers every possible key), then every saved key without a default, including undeclared ones. Each value is what reading `view[key]` returns, so a record field yields its child view. Order within each phase is `next` order. The iterator is stateless and allocates nothing. As with `pairs`, do not add keys to the view while iterating it. Anything but a view of this database is refused at your line.
+
 ## `db:Compact()`
 
 Walks every declared scope — every stored character, realm, class and faction entry and every profile, not only the current ones — and removes:
@@ -327,7 +334,8 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **Plain table defaults are copied into the saved table on first read.** Arrays and other tables without their own view would otherwise hand out the shared default to be edited in place. Records and keyed sections, the common case, are never written back.
 - **A read resolves the saved table through each nesting level** instead of holding it. That keeps every view valid across `ResetProfile`, `CopyProfile` and `ResetDatabase`, which replace or empty saved tables, at the cost of one lookup per level.
 - **The profile choice is recorded by `SetProfile`**, not at `Open`, so a character that never switches writes nothing.
-- **Additions:** `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` methods; a fifth `path` argument to `OnChange` listeners; `db:GetSavedVariable()`; `Compact` returns a count; `SettingsKit.DEFAULT_PROFILE` and `SettingsKit.MAX_PROFILE_NAME_LENGTH`.
+- **Views are refused as values**, together with any table carrying a metatable. A stored view would alias another view's data and be written through without validation, because Lua 5.1 calls `__newindex` only for absent keys.
+- **Additions:** `db:Pairs(view)`, because Lua 5.1 cannot iterate a proxy with `pairs`; `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` methods; a fifth `path` argument to `OnChange` listeners; `db:GetSavedVariable()`; `Compact` returns a count; `SettingsKit.DEFAULT_PROFILE` and `SettingsKit.MAX_PROFILE_NAME_LENGTH`.
 
 ## Embedded copies and upgrades
 

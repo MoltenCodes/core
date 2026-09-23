@@ -59,7 +59,9 @@ Records are never modified after `Define`, which is what "the tree is sealed at 
 
 `_records` maps every dotted path to its record. It is filled while the tree is built — each record's path is its parent's path, a dot and its key — so a lookup at `Get` or `Set` is one `rawget` and no string is split or built per call. Keys are restricted to identifiers at `Define`, which is what makes the dotted form unambiguous.
 
-The bind path is split once at `Define` into `_bindScope` and `_bindKeys`. A bound read walks `db[_bindScope]` and then `_bindKeys[1 .. _bindCount - 1]` with ordinary indexing — so SettingsKit's metatables supply defaults — and reads or writes the last key. The scope table is looked up on every call rather than cached, because SettingsKit may replace `db.profile` on a profile switch.
+The bind path is split once at `Define` into `_bindScope` and `_bindKeys`. `walkBound` reads the scope view with `rawget(db, _bindScope)` on every call — SettingsKit replaces `db.profile` on a profile switch, and reading an undeclared scope through the database's metatable would raise inside OptionsKit — then walks `_bindKeys[1 .. _bindCount - 1]` with ordinary indexing, so SettingsKit's views supply defaults. It returns the deepest table reached and the index of the key to use there: the last key, or the first key whose record is missing, because SettingsKit reads a record without a default and without saved data as `nil`. `readValue` answers `nil` for a missing record; `writeBound` wraps the value in nested tables for the missing keys (the only allocating `Set`) and does nothing for a `nil` write.
+
+The write itself runs as `pcall(assignField, container, key, value)`. `assignField` is a file-level function, so the protected call allocates nothing on success; a SettingsKit refusal is re-raised at the caller's level with the `file:line:` prefix of SettingsKit's message (which points into OptionsKit) removed and the rest kept.
 
 ## Sorted arrays
 

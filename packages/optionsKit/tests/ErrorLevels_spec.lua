@@ -301,7 +301,7 @@ describe("OptionsKit error levels", function()
                 x = { type = "range", name = "X", min = 0, max = 5, bind = "profile.frame.x" },
             },
         }, { db = db })
-        db.profile = {}
+        db.profile = { frame = 1 }
         assertReportedAtCaller(
             'OptionsKit.Tree:Get bind path "profile.frame.x" does not lead to a table',
             function(mark)

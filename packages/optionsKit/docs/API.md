@@ -81,9 +81,158 @@ What it refuses:
 - a key in `args` that is not an identifier (`[%a_][%w_]*`), so a dotted path is never ambiguous;
 - more than `MAX_OPTIONS` options below the root (groups count), and an option path longer than `MAX_DEPTH` keys — which also turns a cyclic tree into an error;
 - a value option with neither `get` and `set` nor `bind`, or with both; a `bind` without `options.db`;
-- `options.db` when `Registry:Find("settingsKit", 1)` finds nothing, or when it is not a table with an `OnChange` method; a `bind` whose scope is not a table of the database.
+- `options.db` when `Registry:Find("settingsKit", 1)` finds nothing, or when it is not a table with an `OnChange` method; a `bind` whose scope the database did not declare or cannot provide on this client (`OptionsKit:Define tree.args.x.bind scope "realm" is not an available scope of options.db`). The scope is read with `rawget`, so SettingsKit's own error for an undeclared scope never escapes from inside OptionsKit.
 
 The tree is **copied**: labels, values tables and sorting arrays are read once, and later edits to the tables you passed have no effect. Functions (`get`, `set`, `validate`, `disabled`, `hidden`, `values`, `func`) are kept by reference.
+
+## A complete options tree
+
+An addon with saved settings in SettingsKit, one option with its own accessors, and every kind of option. The SettingsKit schema declares what is stored; the options tree declares what is configurable and how it is presented. Bounds that appear in both are kept equal, because `Validate` checks the option's schema only.
+
+```lua
+local Registry = MoltenCodes.Registries[2]
+local SchemaKit = Registry:Get("schemaKit", 1)
+local SettingsKit = Registry:Get("settingsKit", 1)
+local OptionsKit = Registry:Get("optionsKit", 1)
+local S = SchemaKit
+
+local db = SettingsKit:Open("MyAddonDB", {
+    profile = S.table({
+        fields = {
+            enabled = S.optional(S.boolean(), true),
+            frame = S.optional(S.table({
+                fields = {
+                    scale = S.optional(S.number({ min = 0.5, max = 2 }), 1),
+                    anchor = S.optional(S.enum({ "TOP", "CENTER", "BOTTOM" }), "CENTER"),
+                    color = S.optional(S.table({
+                        fields = {
+                            r = S.optional(S.number({ min = 0, max = 1 })),
+                            g = S.optional(S.number({ min = 0, max = 1 })),
+                            b = S.optional(S.number({ min = 0, max = 1 })),
+                        },
+                    })),
+                },
+            }), {}),
+            channels = S.optional(S.map({ keys = S.string(), values = S.boolean(), max = 8 }), {}),
+            label = S.optional(S.string({ max = 24 }), ""),
+            toggleKey = S.optional(S.string(), ""),
+        },
+    }),
+    global = S.table({ fields = { debug = S.optional(S.boolean()) } }),
+})
+
+local options = OptionsKit:Define("MyAddon", {
+    type = "group",
+    name = "My Addon",
+    args = {
+        intro = { type = "description", name = "Settings for My Addon.", fontSize = "medium", order = 0 },
+        enabled = { type = "toggle", name = "Enabled", order = 1, bind = "profile.enabled" },
+        frame = {
+            type = "group",
+            name = "Frame",
+            order = 2,
+            disabled = function(info)
+                return not info.tree:Get("enabled")
+            end,
+            args = {
+                layout = { type = "header", name = "Layout", order = 1 },
+                scale = {
+                    type = "range",
+                    name = "Scale",
+                    desc = "Size of the main frame.",
+                    order = 2,
+                    min = 0.5,
+                    max = 2,
+                    step = 0.05,
+                    bigStep = 0.25,
+                    isPercent = true,
+                    bind = "profile.frame.scale",
+                },
+                anchor = {
+                    type = "select",
+                    name = "Anchor",
+                    order = 3,
+                    values = { TOP = "Top", CENTER = "Centre", BOTTOM = "Bottom" },
+                    sorting = { "TOP", "CENTER", "BOTTOM" },
+                    bind = "profile.frame.anchor",
+                },
+                color = { type = "color", name = "Border colour", order = 4, bind = "profile.frame.color" },
+                resetPosition = {
+                    type = "execute",
+                    name = "Reset position",
+                    order = 5,
+                    confirm = "Move the frame back to the centre?",
+                    func = function()
+                        MyAddon:ResetPosition()
+                    end,
+                },
+            },
+        },
+        chat = {
+            type = "group",
+            name = "Chat",
+            order = 3,
+            inline = true,
+            args = {
+                channels = {
+                    type = "multiselect",
+                    name = "Announce in",
+                    values = function()
+                        return MyAddon:AvailableChannels() -- { SAY = "Say", PARTY = "Party", ... }
+                    end,
+                    bind = "profile.channels",
+                },
+                label = {
+                    type = "input",
+                    name = "Label",
+                    usage = "<letters, digits and spaces>",
+                    pattern = "^[%w ]*$",
+                    bind = "profile.label",
+                    validate = function(_, value)
+                        if #value > 24 then
+                            return false, "at most 24 characters"
+                        end
+                        return true
+                    end,
+                },
+            },
+        },
+        toggleKey = { type = "keybinding", name = "Toggle key", order = 4, bind = "profile.toggleKey" },
+        debug = {
+            type = "toggle",
+            name = "Debug output",
+            order = 5,
+            tristate = true,
+            hidden = function()
+                return not MyAddon.developerMode
+            end,
+            bind = "global.debug",
+        },
+        sessionOnly = {
+            type = "toggle",
+            name = "Show the frame this session",
+            order = 6,
+            get = function()
+                return MyAddon.frame:IsShown()
+            end,
+            set = function(_, shown)
+                MyAddon.frame:SetShown(shown)
+            end,
+        },
+    },
+}, { db = db })
+
+options:OnChange(function(_, path, value)
+    MyAddon:ApplySetting(path, value)
+end)
+
+options:Set("frame.scale", 1.25)          --> true
+options:Set("chat.label", "Raid alerts")   --> true
+options:Set("frame.anchor", "LEFT")        -- raises here: expected one of "BOTTOM", "CENTER", "TOP"
+options:Validate("frame.scale", 3)         --> false, "expected number <= 2, found larger number"
+options:Reset("frame.scale")               --> 1
+options:Execute("frame.resetPosition")     -- runs func; asking `confirm` is the renderer's job
+```
 
 ## Option kinds
 
@@ -157,7 +306,7 @@ In this order:
 1. `value` must not be a secret (`OptionsKit.Tree:Set value must not be a secret value`, raised at your line);
 2. the option's schema is asserted **at your line**: `OptionsKit.Tree:Set general.scale: expected number <= 2, found larger number`;
 3. `validate(info, value)` runs; a refusal returns `false, message` and writes nothing;
-4. `set(info, value)` runs, or the value is written at the bind path;
+4. `set(info, value)` runs, or the value is written at the bind path; a refusal by SettingsKit (its schema is narrower, or the profile view is detached) is raised again **at your line** with SettingsKit's message kept: `OptionsKit.Tree:Set frame.x refused by the database: SettingsKit (MyAddonDB) profile.frame.x: expected number <= 3, found larger number`;
 5. `OnChange` listeners run with `(tree, path, value)`;
 6. `Set` returns `true`.
 
@@ -169,9 +318,11 @@ A table value (`multiselect`, `color`) is handed to `set`, or stored at the bind
 
 Runs steps 1 to 3 without raising for the value and without writing: `true`, or `false` and a message such as `expected number <= 2, found larger number`, `r: expected number <= 1, found larger number`, `secret value`, or `validate`'s own message. Command lines and edit boxes use it to answer the user before calling `Set`.
 
+**For a bound option, `Validate` does not consult the database.** It checks the option's own schema and `validate` only, so it can return `true` for a value SettingsKit then refuses in `Set` — when the SettingsKit schema at the bind path is narrower than the option's (a `range` of `0..10` bound to a field declared `0..3`). SettingsKit API 1 offers no way to check a value at a path without writing it. Declare the option's bounds to match the database's until it does.
+
 ### `tree:Reset(path)`
 
-For a bound option: clears the stored value at the bind path, so SettingsKit's default fallback answers again, fires `OnChange` with the value read back, and returns that value. Neither the schema nor `validate` runs: the default is the database's.
+For a bound option: clears the stored value at the bind path, so SettingsKit's default fallback answers again, fires `OnChange` with the value read back, and returns that value. When a record on the bind path does not exist (below), there is nothing to clear and `Reset` returns `nil`. Neither the schema nor `validate` runs: the default is the database's.
 
 An option with `get`/`set` has no default OptionsKit could know, so `Reset` raises at your line: `OptionsKit.Tree:Reset path "general.label" is not bound to a database and has no default`. Keep defaults in SettingsKit, or reset such options yourself.
 
@@ -185,7 +336,19 @@ The option's own flag or predicate, then each ancestor's, up to the root: `true`
 
 ### Bound options
 
-A bind path is split once, at `Define`. At every `Get`, `Set` and `Reset` the scope table is read from the database afresh (`db.profile`), so a profile switch is seen at once, and the keys are walked with ordinary indexing, so SettingsKit's default fallback answers for anything the user never changed. The last write goes through SettingsKit's own validated write. If the walk meets something that is not a table, the call raises at your line: `OptionsKit.Tree:Get bind path "profile.frame.anchor" does not lead to a table`.
+A bind path is split once, at `Define`. At every `Get`, `Set` and `Reset` the scope view is read from the database afresh (`rawget(db, "profile")`), so a profile switch is seen at once, and the keys are walked through the views SettingsKit returns, so its default fallback answers for anything the user never changed. The last write goes through SettingsKit's own validated write.
+
+SettingsKit reads a record that has no default and no saved data as `nil`. OptionsKit treats such a gap on the bind path as an unset value rather than an error:
+
+| Call | Record on the path missing |
+|---|---|
+| `Get`, `Describe` | `nil` (a default declared on the leaf field inside that record is not reachable until the record exists) |
+| `Set` | writes the missing records as one nested table holding the value (`frame = { x = 1 }`), which SettingsKit validates like any write; this is the only `Set` that allocates |
+| `Reset` | nothing to clear; returns `nil` |
+
+Give the record a default (`S.optional(S.table{...}, {})`) when its leaf defaults should be visible before the first write.
+
+If the walk meets something that is not a table, the call raises at your line: `OptionsKit.Tree:Get bind path "profile.frame.anchor" does not lead to a table`. A scope the database no longer provides raises `OptionsKit.Tree:Get bind scope "profile" is not an available scope of the database`.
 
 OptionsKit does not listen to the database. A value changed by SettingsKit directly — a profile switch, `db:ResetProfile()` — fires SettingsKit's signals, not `OnChange`; a renderer that shows bound options listens to `db:OnChange` and `db:OnProfileChanged` as well.
 
@@ -259,7 +422,7 @@ Every argument failure, schema refusal and bind-path failure reports the line th
 | Operation | Cost |
 |---|---|
 | `Define` | Proportional to the tree; allocates the records, the index, the sorted arrays, one `info` per option and one schema per value option. |
-| `Get`, `Set` of a valid value | One map read, one secret probe, the schema check and your callbacks; no allocation by OptionsKit. A bound option adds one table read per path key. |
+| `Get`, `Set` of a valid value | One map read, one secret probe, the schema check and your callbacks; no allocation by OptionsKit. A bound option adds one table read per path key and one protected call around the write; a `Set` that must create a missing record allocates that nested table. |
 | `Walk` | One pass over a pre-sorted array; no allocation. |
 | `IsDisabled`, `IsHidden` | One check per ancestor; no allocation. |
 | `Describe` | Allocates the whole description. |
@@ -271,6 +434,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`color { hasAlpha }`** rather than `color { alpha }`: the AceConfig name, which addon authors already know.
 - **`Set` returns `false, message` when `validate` refuses** instead of raising. A schema refusal is a caller's mistake and raises at the caller's line as planned; a `validate` refusal is a message for the user, and a renderer should not need `pcall` to show it.
 - **`Reset` clears the stored value** instead of writing a default read from the SettingsKit schema. The SettingsKit database surface does not expose its schema, and a cleared value is exactly what SettingsKit's default fallback answers for — without ever writing the default into the saved variables. `Reset` on an option with `get`/`set` raises, since no default exists for OptionsKit to restore.
+- **`Validate` of a bound option does not ask the database**, so it can accept what SettingsKit refuses in `Set`; see [`tree:Validate`](#treevalidatepath-value). SettingsKit API 1 has no check-without-write.
 - **`options.db` is checked structurally**: `Registry:Find("settingsKit", 1)` must find SettingsKit, and the database must be a table with an `OnChange` method whose bound scopes are tables. SettingsKit API 1 publishes no predicate that recognises its databases.
 - **Additions:** `tree:Validate`, `tree:Execute`, `tree:IsDisabled` and `tree:IsHidden` — a renderer and a command line need to check typed input, run a button and re-evaluate predicates without rebuilding the whole description — and `OptionsKit:Undefine`, `OptionsKit.MAX_OPTIONS` and `OptionsKit.MAX_DEPTH`.
 - **Not carried over from AceConfig:** `order` and `name` as functions (no user code inside a sort), inherited `get`/`set`/`handler` (each value option names its own reader and writer or `bind`), `width`, `arg`, and validation at render time (everything is checked once at `Define`).

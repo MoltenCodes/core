@@ -143,6 +143,7 @@ describe("SettingsKit error levels", function()
             "OnProfileDeleted",
             "Compact",
             "GetSavedVariable",
+            "Pairs",
         }
         for _, method in ipairs(methods) do
             assertReportedAtCaller(
@@ -200,6 +201,12 @@ describe("SettingsKit error levels", function()
                 "SettingsKit.Database:OnChange callback must be a function",
                 function()
                     db:OnChange("profile", nil)
+                end,
+            },
+            {
+                "SettingsKit.Database:Pairs view must be a view of this database",
+                function()
+                    db:Pairs(nil)
                 end,
             },
             {
