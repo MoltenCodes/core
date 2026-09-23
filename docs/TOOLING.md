@@ -166,7 +166,11 @@ and an editor running the cspell extension check the same files.
 
 - **Pinned.** The runner calls `npx --yes cspell@<version>` with the release in
   `CSPELL_VERSION` in `tooling/spell.py`; nothing is installed into the
-  repository. That release needs Node 22.18 or newer.
+  repository. That release needs Node 22.18 or newer. The pin covers cspell
+  itself only: `npx --yes` resolves cspell's own dependencies within the version
+  ranges that release declares, so two runs months apart can use different
+  transitive versions. There is no lockfile, because the repository ships no
+  Node project; if a dependency update ever changes the result, pin it here.
 - **British and American English.** The language is `en,en-GB`, because the
   documentation is written with British spellings ("behaviour", "licence") and
   both are correct English.

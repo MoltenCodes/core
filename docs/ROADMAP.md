@@ -156,30 +156,30 @@ namespaces follow in v2; event coalescing and scheduler lanes are one design.
 
 #### Package A — the gaps the references exposed in existing Kits
 
-- [ ] **eventKit** — owner scopes: `CreateScope`, `scope:Connect/Once/ConnectUnit`,
+- [x] **eventKit** — owner scopes: `CreateScope`, `scope:Connect/Once/ConnectUnit`,
       `scope:DisconnectAll`, `scope:Close`, mirroring timerKit; bulk teardown
       of an addon's subscriptions in one call.
-- [ ] **timerKit** — `timer:GetRemaining()` and `timer:GetDeadline()` from the
+- [x] **timerKit** — `timer:GetRemaining()` and `timer:GetDeadline()` from the
       monotonic clock, `nil` (never `0`) when the timer is not running.
-- [ ] **poolKit** — generation stamping: objects built by a superseded factory
+- [x] **poolKit** — generation stamping: objects built by a superseded factory
       are recognised after an in-place upgrade and retired rather than reused.
-- [ ] **poolKit** — pools for objects that can never be freed (frames): a
+- [x] **poolKit** — pools for objects that can never be freed (frames): a
       creation cap, a live limit with a bounded waiting queue, cascading
       release of children, and release deferred until an animation ends.
-- [ ] **moduleKit** — automatic teardown: what a module registered through the
+- [x] **moduleKit** — automatic teardown: what a module registered through the
       framework while enabled (events, timers, scheduler jobs) is released
       when it is disabled, without the module writing an `OnDisable`.
-- [ ] **moduleKit** — intent versus fact: "wanted enabled" recorded separately
+- [x] **moduleKit** — intent versus fact: "wanted enabled" recorded separately
       from "is enabled", so a module blocked by a failed dependency is
       enabled again when the dependency recovers.
-- [ ] **registry** — `Find(package, api)` (silent lookup for optional
+- [x] **registry** — `Find(package, api)` (silent lookup for optional
       dependencies) and `Packages()` (sorted enumeration for diagnostics).
-- [ ] **registry** — retirement and migration: the outgoing copy hands its
+- [x] **registry** — retirement and migration: the outgoing copy hands its
       state over and disables its own entry points; the incoming copy runs
       per-revision migrations in order.
-- [ ] **registry** — sealed facades: an option on `Bootstrap` that refuses
+- [x] **registry** — sealed facades: an option on `Bootstrap` that refuses
       writes to a published facade from outside its package.
-- [ ] **docs / meta / tooling** — secret values (`issecretvalue`) and
+- [x] **docs / meta / tooling** — secret values (`issecretvalue`) and
       restricted frame access (`IsForbidden`, `CanBeAccessedInContext`) in
       the taint section and in `meta/wow`; one validated table of supported
       `## Interface` numbers used by every document, the example and the

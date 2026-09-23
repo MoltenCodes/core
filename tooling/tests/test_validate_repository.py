@@ -370,9 +370,9 @@ class InterfaceNumberTests(unittest.TestCase):
         self.assertIn("examples/ExampleAddon.toc", errors[0])
         self.assertIn('expected "## Interface: 120100, 11509"', errors[0])
 
-    def test_missing_number_in_a_document_is_reported(self):
+    def test_multi_number_line_with_a_wrong_number_is_reported(self):
         self.write_consistent_repository()
-        self.write("packages/registry/docs/API.md", "## Interface: 120100\n")
+        self.write("packages/registry/docs/API.md", "## Interface: 120100, 50504\n")
 
         errors = module.validate_interface_numbers(self.EXPECTED)
 
@@ -390,6 +390,24 @@ class InterfaceNumberTests(unittest.TestCase):
         self.write("examples/ExampleAddon.toc", "## Interface: 120100, 11509, 11509\n")
 
         self.assertEqual(1, len(module.validate_interface_numbers(self.EXPECTED)))
+
+    def test_single_supported_number_is_accepted_as_a_per_flavour_example(self):
+        self.write_consistent_repository()
+        self.write(
+            "packages/registry/docs/API.md",
+            "```toc\n## Interface: 120100, 11509\n```\n\n```toc\n## Interface: 120100\n```\n",
+        )
+
+        self.assertEqual([], module.validate_interface_numbers(self.EXPECTED))
+
+    def test_single_unsupported_number_is_reported(self):
+        self.write_consistent_repository()
+        self.write("packages/registry/docs/API.md", "```toc\n## Interface: 110207\n```\n")
+
+        errors = module.validate_interface_numbers(self.EXPECTED)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("is not a supported client", errors[0])
 
     def test_malformed_line_is_reported(self):
         self.write_consistent_repository()
@@ -469,6 +487,29 @@ class InterfaceNumberTests(unittest.TestCase):
         self.assertIsNotNone(section)
         self.assertIn("_Vanilla", section)
         self.assertNotIn("40402", section)
+
+    def test_a_tilde_line_does_not_close_a_backtick_fence(self):
+        text = "\n".join(
+            [
+                "## Supported client versions",
+                "",
+                "```text",
+                "~~~",
+                "## Not a heading",
+                "```",
+                "",
+                "inside the section",
+                "",
+                "## Next section",
+                "",
+                "outside",
+            ]
+        )
+
+        section = module.markdown_section(text, module.SUPPORTED_CLIENTS_HEADING)
+
+        self.assertIn("inside the section", section)
+        self.assertNotIn("outside", section)
 
     def test_stale_verification_date_is_reported(self):
         self.write_consistent_repository()

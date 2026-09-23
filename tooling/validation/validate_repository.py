@@ -349,10 +349,13 @@ def validate_interface_lines(
 ) -> list[str]:
     """Check every `## Interface` line in one file against the supported-client table.
 
-    The comparison is by set: the client reads the numbers in any order, and an
-    addon's `.toc` is not wrong for listing them in a different one. A missing,
-    extra or malformed number is an error, and the message carries the line to
-    paste, which is what `python3 -m tooling.validation.interface_numbers`
+    A line listing several numbers claims to support every client, so it must
+    list exactly the table's numbers. The comparison is by set: the client reads
+    them in any order, and an addon's `.toc` is not wrong for listing them in a
+    different one. A line listing a single number is a per-flavour example (a
+    `_Mainline.toc`, say), so that number need only be one of the table's. A
+    missing, extra or malformed number is an error, and the message carries the
+    line to paste, which is what `python3 -m tooling.validation.interface_numbers`
     prints.
     """
     if not path.is_file():
@@ -369,6 +372,16 @@ def validate_interface_lines(
     errors: list[str] = []
     for value in lines:
         numbers = parse_interface_numbers(value)
+        if numbers is not None and len(numbers) == 1:
+            if numbers[0] not in wanted:
+                errors.append(
+                    error(
+                        path,
+                        f'"## Interface: {value}" is not a supported client in '
+                        f"{SUPPORTED_CLIENTS}; supported: {expected.toc_line()[len('## Interface: '):]}",
+                    )
+                )
+            continue
         if numbers is None or set(numbers) != wanted or len(numbers) != len(wanted):
             errors.append(
                 error(
@@ -387,11 +400,17 @@ def markdown_section(text: str, heading: str) -> str | None:
     `## Interface` line of a quoted `.toc` looks exactly like one.
     """
     collected: list[str] | None = None
-    in_fence = False
+    fence: str | None = None
     for line in text.splitlines():
-        if line.lstrip().startswith(("```", "~~~")):
-            in_fence = not in_fence
-        elif not in_fence and line.startswith("## "):
+        stripped = line.lstrip()
+        marker = stripped[:3] if stripped.startswith(("```", "~~~")) else None
+        if marker is not None and fence is None:
+            fence = marker
+        elif marker is not None and marker == fence:
+            # A fence closes only with the character that opened it, so a
+            # `~~~` inside a backtick block is content, not a closing fence.
+            fence = None
+        elif fence is None and line.startswith("## "):
             if collected is not None:
                 break
             if line.rstrip() == heading:

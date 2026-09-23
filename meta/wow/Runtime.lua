@@ -28,12 +28,15 @@ function securecallfunction(callback, ...) end
 
 ---Whether `value` is a secret value.
 ---
----The Retail 12.x client hands insecure code secret values from some unit and
----aura APIs while restrictions apply. Tainted code may store a secret and pass it
----on, but comparing, concatenating, printing it or using it as a table key
----raises. Clients without secret values do not publish this function; probe it
----and treat its absence as "never secret". See docs/EMBEDDING.md, "Secret
----values".
+---Since patch 12.0.0 the Retail client hands tainted code secret values from
+---some unit and aura APIs while restrictions apply. Tainted code may store a
+---secret, pass it to functions, and concatenate or `string.format` it into a
+---result that is itself secret. Comparing it, arithmetic, the length operator,
+---indexing or calling it, a boolean test on a secret boolean, and using it as a
+---table key raise. Clients without secret values do not publish this function;
+---probe it and treat its absence as "never secret". See docs/EMBEDDING.md,
+---"Secret values", and https://warcraft.wiki.gg/wiki/Secret_Values.
+---
 ---@param value any
 ---@return boolean isSecret
 function issecretvalue(value) end

@@ -98,11 +98,14 @@ runtime Lua, check it against this list:
 - [ ] User intent is recorded at once; anything that touches protected frames is
       applied out of combat.
 - [ ] A recycled region is cleared of secret values before it is reused.
-- [ ] An iterator a secure path may call returns `(iterator, state, control)`,
-      not a closure.
-- [ ] No value the Kit did not create is compared, concatenated, formatted,
-      printed or used as a table key without `issecretvalue` first; error
-      messages describe a secret with a fixed placeholder.
+- [ ] No value the Kit did not create is compared, tested as a boolean, used
+      in arithmetic, measured with `#`, indexed, called or used as a table key
+      without `issecretvalue` first (see
+      [Secret Values](https://warcraft.wiki.gg/wiki/Secret_Values)).
+- [ ] New error messages describe a value that may be secret with a fixed
+      placeholder rather than formatting it in, because a message built from a
+      secret is itself secret. Existing Kits adopt this with `clientKit`'s
+      `IsSecret`; see [`EMBEDDING.md`](EMBEDDING.md#rules-for-taint-safe-addon-code).
 - [ ] A frame found by enumeration is touched only after `IsForbidden` and
       `CanBeAccessedInContext` allow it.
 

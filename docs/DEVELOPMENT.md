@@ -210,11 +210,13 @@ are described in [`TESTING.md`](TESTING.md). It does not yet model the Retail
 12.x access rules that [`EMBEDDING.md`](EMBEDDING.md#secret-values-retail-12x)
 documents for consumers:
 
-- `issecretvalue(value)` reports a **secret value**: one that insecure code may
-  store and pass on, but not compare, concatenate, print or use as a table key.
-  Some unit and aura APIs return secrets in combat.
-- `frame:IsForbidden()` and `frame:CanBeAccessedInContext()` say whether a frame
-  found by enumeration may be touched at all.
+- `issecretvalue(value)` reports a **secret value** (patch 12.0.0 and later).
+  Tainted code may store one, pass it to functions, and concatenate or format
+  it into another secret string; comparing it, arithmetic, `#`, indexing,
+  calling it, a boolean test on a secret boolean and using it as a table key
+  raise. Some unit and aura APIs return secrets in combat.
+- `frame:IsForbidden()` and `frame:CanBeAccessedInContext()` (patch 12.1.0)
+  say whether a frame found by enumeration may be touched at all.
 - `issecurevariable` and `securecallfunction` are the taint probes and the
   isolation call; the fixture already stubs `securecallfunction`.
 

@@ -114,6 +114,7 @@ def run(*, require: bool = False, root: Path | None = None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Parse the command line and run the spell check; return the exit status."""
     parser = argparse.ArgumentParser(
         prog="python3 -m tooling.spell",
         description=f"Spell-check the documentation with cspell {CSPELL_VERSION}.",

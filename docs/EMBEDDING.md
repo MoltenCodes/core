@@ -526,22 +526,38 @@ rather than expecting a `pcall` to catch it.
 
 ### Secret values (Retail 12.x)
 
-On the Retail 12.x client, some APIs hand addon code **secret values** instead of
+The rules below follow the warcraft.wiki.gg page
+[Secret Values](https://warcraft.wiki.gg/wiki/Secret_Values), re-read on
+2026-09-23; when the two disagree, the page wins.
+
+Since patch 12.0.0, some Retail APIs hand addon code **secret values** instead of
 ordinary ones while restrictions apply — in combat and in instanced content, and
 most visibly on unit and aura APIs: names, health, aura data, and in some cases
 the unit token an event carries. A secret looks like an ordinary string, number
-or boolean, but insecure code may not look inside it. Each of these raises an
-error at the line that tries it:
+or boolean, but tainted code may not look inside it. Each of these raises an
+immediate Lua error at the line that tries it:
 
-- comparing it with anything (`==`, `~=`, `<`, …), including another secret;
-- concatenating it, formatting it into a string, or doing arithmetic on it;
-- printing it, or otherwise turning it into text;
-- using it as a table key, for reading or for writing.
+- comparing it (`==`, `~=`, `<`, …);
+- a boolean test on a secret *boolean* (`if secret then`);
+- arithmetic on it;
+- the length operator (`#secret`);
+- indexing into it or assigning through it (`secret.foo`, `secret["foo"] = 1`);
+- calling it as a function;
+- storing it as a table *key*.
 
-What stays allowed is holding it: store it in a local or as a table *value*, pass
-it on unchanged, and hand it to the client widget APIs documented to accept
-secrets (a `FontString` or `StatusBar`, for example), which display it without
-revealing it to Lua.
+What stays allowed:
+
+- storing it in a local, an upvalue or as a table *value*, and passing it to
+  Lua functions;
+- concatenating secret strings and numbers, and passing secrets to
+  `string.format`, `string.concat` and `string.join`. The result is itself a
+  secret string, with every restriction above;
+- `type(secret)`, which returns the real type;
+- a boolean test on a secret that is not a boolean: `nil` is false and every
+  other type is true, because the type is not secret.
+
+Which client APIs accept a secret argument is documented per API on the wiki;
+do not assume one does.
 
 `issecretvalue(value)` returns `true` for a secret. Ask it before any of the
 operations above on a value that came from the client during combat. Clients
@@ -556,10 +572,12 @@ end
 
 **What a handler may do with a secret argument.** An EventKit or SignalKit
 listener receives whatever the client or the emitter passed, secrets included,
-and no Kit inspects or unwraps an event's payload. Your handler may store the value, forward
-it, or pass it to a widget; it may not compare it, key a cache by it, log it or
-build a message from it. Filter on something that is never secret first — the
-event name, a frame you own — and check `isSecret(value)` before any test on the
+and no Kit inspects or unwraps an event's payload. Your handler may store the
+value, forward it, and build a string from it — knowing that the string is
+secret too, so it can no more be compared or used as a key than the value
+itself. It may not compare the value, key a cache by it, do arithmetic on it or
+index it. Filter on something that is never secret first — the event name, a
+frame you own — and check `isSecret(value)` before any such operation on the
 value itself.
 
 ### Frames you did not create
@@ -567,12 +585,12 @@ value itself.
 A frame reached by enumeration — `EnumerateFrames`, `GetChildren`,
 `GetRegions`, the nameplate list, the mouse focus — may belong to protected
 Blizzard UI. Calling a method on a **forbidden** frame from insecure code is an
-error, and on 12.x a frame can also refuse access in the current execution
-context. Before touching such a frame, ask both:
+error, and since patch 12.1.0 a frame can also refuse access in the current
+execution context. Before touching such a frame, ask both:
 
 - `frame:IsForbidden()` — `true` when the frame has been explicitly marked
   forbidden, whatever the execution context.
-- `frame:CanBeAccessedInContext()` (12.x) — `false` when the current execution
+- `frame:CanBeAccessedInContext()` (added in patch 12.1.0) — `false` when the current execution
   is tainted and the frame is forbidden or enforces access restrictions.
 
 Both are methods, and older clients lack the second, so test for the method
@@ -624,17 +642,20 @@ a defect:
 6. **Never recycle a region without clearing its secret values.** A pooled
    `FontString` or texture that displayed a secret must be cleared before it is
    reused for something else.
-7. **Return an `(iterator, state, control)` triplet, not a closure,** from an
-   iterator a secure path may call. A closure belongs to the code that created
-   it, and a secure caller that runs it runs your code.
 
-**How a Kit reports errors.** A Kit never formats a value it did not create into
-an error message without asking `issecretvalue` first: a secret is described by
-a fixed placeholder such as `<secret value>`, never printed, concatenated or
-formatted. Argument errors name the parameter and the expected type,
-not the value received. Your own error messages should follow the same rule,
-because an error built from a secret is itself an error, raised at the point
-where you were trying to report the first one.
+**How a Kit reports errors — the rule, and where the Kits stand today.** A
+message built from a secret is itself a secret string, so an error handler, a
+log or a test that compares or searches the message inherits every restriction
+above, and the report that was meant to explain a failure causes another. The
+rule the Kits will meet is: a value the Kit did not create is formatted into an
+error message only after `issecretvalue` says it is not secret; a secret is
+described by a fixed placeholder such as `<secret value>`; argument errors name
+the parameter and the expected type. **Today's Kits do not check yet.** Several
+argument and failure messages in SchedulerKit, TimerKit, PoolKit and Registry
+pass the offending value through `tostring`. The check arrives with the
+`IsSecret` probe of the planned `clientKit` (roadmap package B). Until then,
+do not pass a value that may be secret as an argument a Kit validates. Your own
+error messages should follow the rule from the start.
 
 **A tooltip or nameplate consumer, written safely.**
 
@@ -659,8 +680,8 @@ end)
 
 The same shape applies to a tooltip post-hook
 (`TooltipDataProcessor.AddTooltipPostCall`): check the tooltip frame with `canTouch`, treat every
-field of the tooltip data as possibly secret, and add lines with the widget
-methods rather than by building strings from the values.
+field of the tooltip data as possibly secret, and treat any string built from
+one as secret too.
 
 ## The combat log
 

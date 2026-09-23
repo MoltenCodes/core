@@ -39,6 +39,7 @@ pcall
 rawget
 rawset
 setmetatable
+tostring
 upvalue
 upvalues
 vararg

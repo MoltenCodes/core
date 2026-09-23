@@ -48,7 +48,7 @@ function WowFrame:IsForbidden() end
 ---Whether the current Lua execution context may access this object.
 ---
 ---`false` when execution is tainted and the object is forbidden or enforces
----access restrictions. Added by the Retail 12.x client; older clients lack the
+---access restrictions. Added in patch 12.1.0; older clients lack the
 ---method, so callers test `frame.CanBeAccessedInContext` before calling it.
 ---@return boolean canAccess
 function WowFrame:CanBeAccessedInContext() end
