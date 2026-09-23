@@ -67,8 +67,9 @@ half-transitioned.
 Two per-module fields sit beside `_state`:
 
 - `_wantedEnabled` — intent. Starts `true`. Written only by the public
-  `Enable` / `Disable` on the module itself, by `EnableAll` / `DisableAll`
-  before their pass, and set by every successful `enableOne`, since an enabled
+  `Enable` / `Disable` on the module itself, by the addon's own `EnableAll` /
+  `DisableAll` before their pass (the LifecycleKit-driven `enableAll` dispatch
+  writes nothing and skips modules whose intent is `false`), and set by every successful `enableOne`, since an enabled
   module is by definition wanted. The `automatic` disable cascade never touches
   it.
 - `_enableBlockedBy` — the dependency a wanted module is waiting for. Set where
@@ -81,6 +82,8 @@ Two per-module fields sit beside `_state`:
   one `Disable` comes back, in graph order, when that module is enabled again.
 
 `recoverBlockedDependents` runs after the public `Enable` and `Activate`. It
+first scans `_moduleOrder` for any `_enableBlockedBy` and returns without
+building the graph when there is none, which is the usual case; otherwise it
 walks the full graph order once and enables every wanted, blocked module whose
 hard dependencies are all enabled; because dependencies precede dependents, one
 walk recovers a whole chain. It clears `_enableBlockedBy` before each attempt,
@@ -194,6 +197,6 @@ Injection aliases are resolved in sorted alias order, so factories with side eff
 
 ## Allocation policy
 
-The per-module steady state is one module table, its four constraint sets, its injection specification, its resolved injection table and its scope table. The scope's Kit scopes are created only when read, so a module that never uses them allocates nothing more; `GetEnableState()` allocates its snapshot. Graph operations allocate per call: the adjacency and indegree maps, the ready set, and the result array. That cost is paid by `ValidateGraph`, `GetActivationOrder` and the whole-container passes, which are lifecycle-scale operations rather than per-frame work.
+The per-module steady state is one module table, its four constraint sets, its injection specification, its resolved injection table and its scope table. The scope's Kit scopes are created only when read, so a module that never uses them allocates nothing more; `GetEnableState()` allocates its snapshot. Graph operations allocate per call: the adjacency and indegree maps, the ready set, and the result array. That cost is paid by `ValidateGraph`, `GetActivationOrder`, the whole-container passes, and a targeted `Enable` or `Activate` while some module is blocked by a dependency (recovery walks the graph); a targeted `Enable` with nothing blocked pays only a linear scan. All of these are lifecycle-scale operations rather than per-frame work.
 
 `GetModules()` and `GetInjections()` return fresh snapshots, so a consumer mutating the returned table cannot corrupt ModuleKit's own collection.

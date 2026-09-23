@@ -27,7 +27,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -1447,6 +1447,20 @@ local function recoverBlockedDependents(addon)
         return nil
     end
 
+    -- Every targeted `Enable` ends here, and almost always nothing is blocked:
+    -- a linear scan is enough to skip building the graph.
+    local modules = rawget(addon, "_moduleOrder")
+    local anyBlocked = false
+    for index = 1, #modules do
+        if rawget(modules[index], "_enableBlockedBy") ~= nil then
+            anyBlocked = true
+            break
+        end
+    end
+    if not anyBlocked then
+        return nil
+    end
+
     local graphOk, order = pcall(buildGraph, addon)
     if not graphOk then
         return nil
@@ -1558,9 +1572,9 @@ end
 ---raising, so the depth counter is always restored and the deferred catch-up
 ---queue is always flushed, whichever way the pass ends.
 ---@param addon ModuleKit.Addon
----@param pass fun(order: ModuleKit.Module[], shutdown: boolean|nil): ModuleKit.ErrorRecord|nil
+---@param pass fun(order: ModuleKit.Module[], option: boolean|nil): ModuleKit.ErrorRecord|nil
 ---@param order ModuleKit.Module[] modules in the order the pass must visit them
----@param shutdown boolean|nil terminal-cleanup flag, for the disable pass
+---@param shutdown boolean|nil the pass's second argument: terminal cleanup for the disable pass, lifecycle-driven for the enable pass
 ---@param seedError ModuleKit.ErrorRecord|nil error captured before the pass could start
 ---@return ModuleKit.Addon addon
 local function runContainerPass(addon, pass, order, shutdown, seedError)
@@ -1633,33 +1647,44 @@ local function initializeAllInternal(addon)
 end
 
 ---Enable every module in `order`, initializing the ones still in `created`.
+---
+---A lifecycle-driven pass respects intent: a module an explicit `Disable`
+---switched off stays off, and its hard dependents are recorded as blocked by
+---it, so they recover if it is enabled later.
 ---@param order ModuleKit.Module[]
+---@param lifecycleDriven boolean|nil `true` for the LifecycleKit `ready` phase
 ---@return ModuleKit.ErrorRecord|nil firstError
-local function runEnableAllPass(order)
+local function runEnableAllPass(order, lifecycleDriven)
     local firstError
     local failed = {}
 
     for index = 1, #order do
         local module = order[index]
-        local blockedBy
-        local dependencies = hardDependencies(module)
-        for depIndex = 1, #dependencies do
-            local dependency = dependencies[depIndex]
-            if failed[dependency] or rawget(dependency, "_state") ~= "enabled" then
-                blockedBy = rawget(dependency, "_name")
-                break
+        -- A module that is not wanted is left alone: not failed, not blocked.
+        local wanted = not lifecycleDriven
+            or rawget(module, "_wantedEnabled") ~= false
+            or rawget(module, "_state") == "enabled"
+        if wanted then
+            local blockedBy
+            local dependencies = hardDependencies(module)
+            for depIndex = 1, #dependencies do
+                local dependency = dependencies[depIndex]
+                if failed[dependency] or rawget(dependency, "_state") ~= "enabled" then
+                    blockedBy = rawget(dependency, "_name")
+                    break
+                end
             end
-        end
 
-        if blockedBy ~= nil then
-            failed[module] = true
-            recordFailure(module, nil, blockedBy, false)
-            rawset(module, "_enableBlockedBy", blockedBy)
-        else
-            local ok, value = pcall(enableOne, module)
-            if not ok then
+            if blockedBy ~= nil then
                 failed[module] = true
-                firstError = captureFirstError(firstError, ok, value)
+                recordFailure(module, nil, blockedBy, false)
+                rawset(module, "_enableBlockedBy", blockedBy)
+            else
+                local ok, value = pcall(enableOne, module)
+                if not ok then
+                    failed[module] = true
+                    firstError = captureFirstError(firstError, ok, value)
+                end
             end
         end
     end
@@ -1669,22 +1694,28 @@ end
 
 ---Enable the whole container in deterministic graph order.
 ---
----This is a target state, not a delta: a module that was explicitly disabled
----earlier is enabled again. See `docs/API.md` for why.
+---Called by the addon, this is a target state, not a delta: every module is
+---meant to be enabled, including one that was explicitly disabled earlier.
+---See `docs/API.md` for why. Driven by LifecycleKit's `ready` phase it states
+---no intent of its own, so a module the addon disabled before `ready` stays
+---disabled.
 ---@param addon ModuleKit.Addon
+---@param lifecycleDriven boolean|nil `true` for the LifecycleKit `ready` phase
 ---@return ModuleKit.Addon addon
-local function enableAllInternal(addon)
+local function enableAllInternal(addon, lifecycleDriven)
     ensureNotShutdown(addon, "EnableAll")
     local order = buildGraph(addon)
 
-    -- The whole container is meant to be enabled; the pass records which
-    -- modules a failed dependency blocks.
-    for index = 1, #order do
-        rawset(order[index], "_wantedEnabled", true)
-        rawset(order[index], "_enableBlockedBy", nil)
+    if not lifecycleDriven then
+        -- The whole container is meant to be enabled; the pass records which
+        -- modules a failed dependency blocks.
+        for index = 1, #order do
+            rawset(order[index], "_wantedEnabled", true)
+            rawset(order[index], "_enableBlockedBy", nil)
+        end
     end
 
-    return runContainerPass(addon, runEnableAllPass, order)
+    return runContainerPass(addon, runEnableAllPass, order, lifecycleDriven)
 end
 
 ---Disable every enabled module in `order`, walking it in reverse.
@@ -2218,7 +2249,7 @@ end
 ---@param self ModuleKit.Addon
 ---@return ModuleKit.Addon self
 local function addonEnableAll(self)
-    return enableAllInternal(self)
+    return enableAllInternal(self, false)
 end
 
 ---Disable every enabled module without terminating the container.
@@ -2669,7 +2700,9 @@ rawset(ModuleKit, "ForAddon", forAddon)
 -- without replacing container identity or requiring addon reloads.
 local dispatch = rawget(state, "dispatch")
 rawset(dispatch, "initializeAll", initializeAllInternal)
-rawset(dispatch, "enableAll", enableAllInternal)
+rawset(dispatch, "enableAll", function(addon)
+    return enableAllInternal(addon, true)
+end)
 rawset(dispatch, "shutdown", function(addon)
     return disableAllInternal(addon, true)
 end)

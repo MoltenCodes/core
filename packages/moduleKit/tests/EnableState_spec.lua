@@ -219,6 +219,63 @@ describe("ModuleKit intent versus fact", function()
         assert.are.same({ wanted = true, actual = false }, consumer:GetEnableState())
     end)
 
+    it("keeps a module disabled in OnInitialize off when the addon becomes ready", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local optional = addon:CreateModule("Optional")
+        local dependent = addon:CreateModule("Dependent")
+        dependent:DependsOn("Optional")
+        optional.OnInitialize = function(self)
+            self:Disable()
+        end
+
+        TestEnv.LoadAddon("MyAddon")
+        TestEnv.Login()
+
+        assert.are.same({ wanted = false, actual = false }, optional:GetEnableState())
+        assert.are.same(
+            { wanted = true, actual = false, blockedBy = "Optional" },
+            dependent:GetEnableState()
+        )
+
+        -- An explicit EnableAll from the addon is a new intent and wins.
+        addon:EnableAll()
+
+        assert.is_true(optional:IsEnabled())
+        assert.is_true(dependent:IsEnabled())
+    end)
+
+    it("does not build the graph on Enable when nothing is blocked", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local module = addon:CreateModule("UI")
+        addon:CreateModule("Other"):After("UI")
+
+        -- Count calls to ModuleKit's file-local `buildGraph` through a call
+        -- hook, identified by the line it is defined on.
+        local source = debug.getinfo(ModuleKit.ForAddon, "S").source
+        local definedAt
+        local lineNumber = 0
+        for line in io.lines(string.sub(source, 2)) do
+            lineNumber = lineNumber + 1
+            if string.find(line, "^local function buildGraph%(") then
+                definedAt = lineNumber
+            end
+        end
+        assert.is_number(definedAt)
+
+        local graphBuilds = 0
+        debug.sethook(function()
+            local info = debug.getinfo(2, "S")
+            if info.source == source and info.linedefined == definedAt then
+                graphBuilds = graphBuilds + 1
+            end
+        end, "c")
+        local ok, failure = pcall(module.Enable, module)
+        debug.sethook(nil, "") -- removes the hook
+
+        assert.is_true(ok, tostring(failure))
+        assert.are.equal(0, graphBuilds)
+    end)
+
     it("preserves intent and blocking across an in-place upgrade", function()
         local addon, database, consumer, repair = newFailingDependencyFixture(ModuleKit)
         local optional = addon:CreateModule("Optional")

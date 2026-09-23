@@ -190,6 +190,47 @@ describe("Registry retirement and migration", function()
         assert.are.equal("retired", Registry:Packages()[1].status)
     end)
 
+    it("retries a failed step with the handed-over state instead of skipping it", function()
+        local Registry = TestEnv.NewRegistry()
+        loadCopy(Registry, 1, {
+            retire = function()
+                return { steps = {} }
+            end,
+        })
+        local runs = { [2] = 0, [3] = 0 }
+        local failStepTwo = true
+        local migrations = {
+            [2] = function(state)
+                runs[2] = runs[2] + 1
+                if failStepTwo then
+                    error("layout cannot be converted yet", 0)
+                end
+                state.steps[#state.steps + 1] = 2
+            end,
+            [3] = function(state)
+                runs[3] = runs[3] + 1
+                state.steps[#state.steps + 1] = 3
+            end,
+        }
+
+        assert.has_error(function()
+            loadCopy(Registry, 2, { migrations = migrations })
+        end)
+        assert.are.equal("retired", select(2, Registry:Find("demoKit", 1)))
+
+        failStepTwo = false
+        local implementation, previousRevision, _, state =
+            loadCopy(Registry, 3, { migrations = migrations })
+
+        assert.is_table(implementation)
+        assert.are.equal(2, previousRevision)
+        -- Step 2 ran twice in total: once failing, once succeeding.
+        assert.are.equal(2, runs[2])
+        assert.are.equal(1, runs[3])
+        assert.are.same({ steps = { 2, 3 } }, state)
+        assert.are.equal(3, select(2, Registry:Find("demoKit", 1)))
+    end)
+
     it("does not hand a stale retire hook to a later revision", function()
         local Registry = TestEnv.NewRegistry()
         local calls = 0

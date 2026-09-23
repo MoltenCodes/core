@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1 — 2026-09-23
+
+- Fixed a failed migration step being skipped for good. The next copy started after the revision the failed copy had registered, so the failing step never ran again and later steps received `nil` because the hand-over had been consumed. While a run is unfinished Registry now keeps the state the last completed step produced and where that step left the layout; the next copy (newer revision or same-revision `resume`) resumes from there with that state, without asking the outgoing copy to retire twice. The kept state is released when a run completes.
+- A later sealing revision now installs a fresh seal, so the refusal names the label of the revision that currently owns the facade instead of the first one that sealed it.
+- Documented that a plain `Register` upgrade over a `retired` entry leaves it `retired` until a copy completes the run through `Bootstrap`, and corrected the decision table: a `resume` that re-runs setup also returns the migrated state.
+- Two regression specs: revision 2 fails at step 2 and a revision-3 copy runs steps 2 and 3 once each over the carried state; a second sealing revision's label appears in the refusal.
+- Implementation revision 8.
+
 ## 0.6.0 — 2026-09-23
 
 - Added `Registry:Find(package, api)`: a silent lookup for optional dependencies. It returns the same table and revision `Get` returns, or `nil` and a reason from a fixed vocabulary (`absent`, `generation_mismatch`, `retired`). It never raises for a missing package, raises at the caller for malformed arguments, and allocates nothing.

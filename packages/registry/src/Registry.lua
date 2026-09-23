@@ -37,7 +37,7 @@ local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 
 -- Lua 5.1 numbers are doubles, which represent consecutive integers exactly only
 -- up to 2^53. Past that boundary distinct values start comparing equal, so a
@@ -171,10 +171,11 @@ end
 
 -- Package-state access ----------------------------------------------------
 --
--- An entry is `{ revision, implementation }`. Revision 7 adds four optional
+-- An entry is `{ revision, implementation }`. Revisions 7 and 8 add optional
 -- fields that older entries simply lack: `status`, `retire` (the selected
--- copy's hand-over hook), `migratedThrough` (the last revision whose migration
--- step has run) and `seal` (the sealed-facade metatable Registry installed).
+-- copy's hand-over hook), `migratedThrough` (the revision whose layout the
+-- state is in), `migrating` and `pendingState` (an unfinished migration run and
+-- the state it had reached) and `seal` (the sealed-facade metatable).
 
 ---@param packageName string
 ---@return table|nil
@@ -485,6 +486,12 @@ end
 ---@param label string
 ---@return any handover
 local function retireOutgoing(entry, implementation, incomingRevision, label)
+    if rawget(entry, "migrating") == true then
+        -- The copy that retired already handed over; its state waits in
+        -- `pendingState` for the migration run to be resumed.
+        return nil
+    end
+
     local retire = rawget(entry, "retire")
     rawset(entry, "retire", nil)
     rawset(entry, "status", STATUS_RETIRED)
@@ -526,6 +533,9 @@ end
 ---`migratedThrough` is what makes each step run exactly once: a copy that
 ---resumes over state an earlier copy of the same revision already migrated
 ---starts after the last recorded step, not after the inherited revision.
+---While a run is unfinished (`migrating`), the next copy starts after the last
+---step that completed and receives the state that step produced
+---(`pendingState`), so a failed step is retried rather than skipped.
 ---@param entry table
 ---@param migrations table|nil
 ---@param inheritedRevision integer
@@ -544,11 +554,22 @@ local function runMigrations(
 )
     local fromRevision = inheritedRevision
     local migratedThrough = rawget(entry, "migratedThrough")
-    if isNonNegativeInteger(migratedThrough) and migratedThrough > fromRevision then
+    local migratedState = handover
+    if rawget(entry, "migrating") == true and isNonNegativeInteger(migratedThrough) then
+        -- An earlier copy's run stopped at a failing step. The state is in the
+        -- layout of the last step that completed, whatever revision this copy
+        -- inherited, and carries on from where that run left it.
         fromRevision = migratedThrough
+        migratedState = rawget(entry, "pendingState")
+    else
+        if isNonNegativeInteger(migratedThrough) and migratedThrough > fromRevision then
+            fromRevision = migratedThrough
+        end
+        rawset(entry, "migrating", true)
+        rawset(entry, "migratedThrough", fromRevision)
+        rawset(entry, "pendingState", migratedState)
     end
 
-    local migratedState = handover
     if migrations ~= nil then
         local steps, problem = selectMigrationSteps(migrations, fromRevision, revision)
         if steps == nil then
@@ -565,12 +586,15 @@ local function runMigrations(
                 migratedState = result
             end
             rawset(entry, "migratedThrough", step)
+            rawset(entry, "pendingState", migratedState)
         end
     end
 
     if fromRevision < revision then
         rawset(entry, "migratedThrough", revision)
     end
+    rawset(entry, "migrating", nil)
+    rawset(entry, "pendingState", nil)
     rawset(entry, "status", STATUS_ACTIVE)
     return true, migratedState
 end
@@ -597,24 +621,24 @@ local function applySeal(entry, implementation, wanted, label)
         return true
     end
 
-    if current ~= nil then
-        return current == seal
+    if current ~= nil and current ~= seal then
+        return false
     end
 
-    if seal == nil then
-        seal = {
-            __newindex = function(_, key)
-                error(
-                    label
-                        .. ' facade is sealed; field "'
-                        .. tostring(key)
-                        .. '" cannot be added from outside the package',
-                    2
-                )
-            end,
-        }
-        rawset(entry, "seal", seal)
-    end
+    -- A fresh metatable per sealing revision, so the refusal carries the label
+    -- of the revision that currently owns the facade.
+    seal = {
+        __newindex = function(_, key)
+            error(
+                label
+                    .. ' facade is sealed; field "'
+                    .. tostring(key)
+                    .. '" cannot be added from outside the package',
+                2
+            )
+        end,
+    }
+    rawset(entry, "seal", seal)
     setmetatable(implementation, seal)
     return true
 end

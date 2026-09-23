@@ -98,7 +98,7 @@ This is deliberate. If `EnableAll()` skipped previously disabled modules, the co
 
 Consumers that want a module to stay off should keep that decision in their own configuration and disable the module after the container operation, or use targeted `module:Enable()` / `module:Disable()` instead of the whole-container form.
 
-Note that LifecycleKit's `ready` phase calls `EnableAll()` once. An in-place ModuleKit upgrade never dispatches an already-delivered phase a second time, so an upgrade cannot re-enable a module through this rule.
+Note that LifecycleKit's `ready` phase runs the same whole-container enable once, but it is not a call by the addon and states no intent: a module the addon explicitly disabled before `ready` — for example with `self:Disable()` in `OnInitialize` — stays disabled, and its hard dependents are recorded as blocked by it. Only an `EnableAll()` the addon calls itself re-enables such a module. An in-place ModuleKit upgrade never dispatches an already-delivered phase a second time, so an upgrade cannot re-enable a module either.
 
 ## Creating modules
 
@@ -259,8 +259,9 @@ local state = module:GetEnableState()
 **How intent is set.** Every module starts wanted (`wanted = true`): it is meant
 to be enabled once its addon is ready. `module:Enable()` and `EnableAll()` set
 it; `module:Disable()` and `DisableAll()` clear it, and only for the modules
-they are called on. A successful enable of any kind also sets it. Terminal
-shutdown changes the fact only.
+they are called on. A successful enable of any kind also sets it. The
+LifecycleKit `ready` phase does not set it and skips modules that are not
+wanted. Terminal shutdown changes the fact only.
 
 **Recovery.** A wanted module that could not be enabled because a hard
 dependency failed, or was not enabled under the `strict` policy, records that

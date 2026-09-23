@@ -2,9 +2,9 @@
   "name": "registry",
   "displayName": "Registry",
   "description": "A deterministic runtime registry for modular World of Warcraft libraries.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "license": "MIT",
   "api": 2,
-  "revision": 7,
+  "revision": 8,
   "dependencies": {}
 }

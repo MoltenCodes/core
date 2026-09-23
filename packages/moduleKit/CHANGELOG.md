@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 — 2026-09-23
+
+- Fixed an explicit `Disable()` before `ready` being overridden. The LifecycleKit `ready` phase ran the same pass as the addon's `EnableAll()`, which set every module's intent to wanted, so a module that called `self:Disable()` in `OnInitialize` was enabled at login. The lifecycle-driven pass now states no intent and skips modules that are not wanted, recording their hard dependents as blocked by them; only an `EnableAll()` the addon calls itself re-enables them.
+- Recovery of blocked dependents no longer builds the dependency graph on every targeted `Enable`/`Activate`: a linear scan returns early when no module is blocked.
+- Two regression specs: a module disabled in `OnInitialize` stays off through login and is enabled by a later explicit `EnableAll`; a targeted `Enable` with nothing blocked does not build the graph.
+- Implementation revision 7.
+
 ## 0.5.0 — 2026-09-23
 
 - Added module scopes. Every module carries `module.scope`, whose `Timers`, `Events` and `Jobs` fields are a TimerKit, EventKit and SchedulerKit scope created on first read. `Disable`, `DisableAll` and terminal shutdown close every scope the module created, so a module needs no `OnDisable` to release what it registered; a failed `OnEnable` releases what it registered before failing, and shutdown releases a module's scopes even when its `OnDisable` fails. The fields are readable from the start of `OnEnable` until the module is disabled and raise at the reading line otherwise. A module that never reads its scope creates nothing.

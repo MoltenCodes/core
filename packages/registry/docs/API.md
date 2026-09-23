@@ -1,7 +1,7 @@
 # Registry API
 
 Registry API generation: **2**  
-Implementation revision: **7**
+Implementation revision: **8**
 
 Registry is a zero-dependency runtime resolver for independently embedded framework packages.
 
@@ -296,8 +296,8 @@ In order:
 | Nothing registered | — | none | fresh table, `nil`, `nil`, `nil` |
 | Newer revision registered | — | none | `nil`, `nil`, newer copy |
 | Same revision, complete | — | none | `nil`, `nil`, that copy |
-| Same revision, `resume` returns `n` | — | steps after `max(n, last step run)` | that copy, `n`, that copy, `nil` |
-| Older revision `p` registered | outgoing hook, once | steps in `(max(p, last step run), revision]` | shared table, `p`, older copy, migrated state |
+| Same revision, `resume` returns `n` | — | steps after `max(n, last step run)`, or after the last completed step of an unfinished run | that copy, `n`, that copy, migrated state |
+| Older revision `p` registered | outgoing hook, once (not again while a run is unfinished) | steps in `(max(p, last step run), revision]`, or after the last completed step of an unfinished run | shared table, `p`, older copy, migrated state |
 
 ### The `resume` hook
 
@@ -367,6 +367,22 @@ step runs twice. A step that raises stops the run, is raised at the package's
 `Bootstrap` call as `<label> migration to revision <n> failed: <error>`, and
 leaves the entry `retired` (see `Find`) until a copy completes the run.
 
+**An unfinished run is resumed, not skipped.** While a run is unfinished,
+Registry keeps the state the last completed step produced (the hand-over itself
+when no step completed). The next copy to bootstrap — a newer revision or a
+same-revision `resume` — starts after the last *completed* step rather than
+after the revision it inherits, receives that kept state, and does not ask the
+outgoing copy to retire a second time. So when revision 2 fails at step 2, a
+revision-3 copy runs steps 2 and 3 once each, over the state revision 1 handed
+over. A failing step must therefore leave the state it was given reusable: a
+step that mutates in place and raises halfway hands a half-converted state to
+the retry. The kept state is released when a run completes.
+
+**The raw primitive does not finish a run.** `Registry:Register` knows nothing
+about retirement: an upgrade through it over a `retired` entry changes the
+revision but leaves the entry `retired` — and `Find` refusing it — until a copy
+completes the run through `Bootstrap`. Kits upgrade through `Bootstrap`.
+
 **Retired entry points.** The facade table is shared and never replaced, so once
 the incoming copy has installed its methods, every reference the outgoing copy
 handed out resolves to the new ones. The same holds for instances as long as the
@@ -398,6 +414,8 @@ Limits, stated plainly:
   but cannot stop an addon from overwriting `EventKit.Connect`. Doing that would
   need a proxy table, which would break `rawget` and `pairs` over the facade.
 - It guards against mistakes, not malice: `rawset` and `setmetatable` still work.
+- Each sealing revision installs a fresh seal, so a refusal names the label of
+  the revision that sealed the facade most recently.
 - Registry refuses to seal a facade that already carries a metatable it did not
   install, and a newer revision that does not ask for the seal removes the one
   Registry installed, because the newer revision owns the facade's policy.

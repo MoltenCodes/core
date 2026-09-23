@@ -88,6 +88,25 @@ describe("Registry sealed facades", function()
         assert.is_true(DemoKit.Extra)
     end)
 
+    it("names the revision that sealed the facade most recently", function()
+        local Registry = TestEnv.NewRegistry()
+        local DemoKit = loadCopy(Registry, 1, true)
+        Registry:Bootstrap({
+            package = "demoKit",
+            api = 1,
+            revision = 2,
+            label = "MoltenCodes DemoKit r2",
+            validatePublicSurface = function()
+                return true
+            end,
+            sealFacade = true,
+        })
+
+        TestEnv.expectErrorContaining("MoltenCodes DemoKit r2 facade is sealed", function()
+            DemoKit.Extra = true
+        end)
+    end)
+
     it("is removed by a newer revision that does not ask for it", function()
         local Registry = TestEnv.NewRegistry()
         local DemoKit = loadCopy(Registry, 1, true)
