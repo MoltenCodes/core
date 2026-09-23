@@ -2,10 +2,10 @@
   "name": "poolKit",
   "displayName": "PoolKit",
   "description": "Allocation-conscious bounded object pooling with deterministic ownership, cleanup, and diagnostics.",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "license": "MIT",
   "api": 1,
-  "revision": 5,
+  "revision": 6,
   "dependencies": {
     "registry": {
       "api": 2

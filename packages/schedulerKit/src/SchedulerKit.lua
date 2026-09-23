@@ -192,7 +192,7 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 
 ---Options accepted by `Lane`.
 ---@class SchedulerKit.LaneOptions
----@field maxInFlight integer? Submissions running at once; defaults to `1`.
+---@field maxInFlight integer? Submissions admitted and not yet finished, including those waiting out a retry backoff; defaults to `1`.
 ---@field minIntervalSeconds number? Minimum time between two starts; defaults to `0`.
 ---@field retry SchedulerKit.RetryOptions?
 ---@field maxQueued integer? Submissions waiting at once; defaults to `64`.
@@ -203,8 +203,9 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@field name string? Optional non-empty diagnostic name.
 ---@field scope SchedulerKit.Scope? Owning scope; defaults to the package-level scope.
 
----Receives the keys a coalesce handle collected. The table is reused: it is
----cleared as soon as the callback returns and must not be retained.
+---Receives the keys a coalesce handle collected. The table is reused and must
+---not be retained: it is cleared as soon as the callback returns, or, for a
+---delivery through a lane, once the lane job reaches a terminal state.
 ---@alias SchedulerKit.CoalesceCallback fun(set: table<any, any>)
 
 ---Receives a watched predicate's result and the result of the previous tick.
@@ -215,7 +216,7 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@class SchedulerKit.DebounceHandle
 ---@overload fun(...: any): boolean
 ---@field Cancel fun(self: SchedulerKit.DebounceHandle): boolean
----@field Flush fun(self: SchedulerKit.DebounceHandle): boolean, string?
+---@field Flush fun(self: SchedulerKit.DebounceHandle): boolean, ("deferred"|"dropped")?
 ---@field IsPending fun(self: SchedulerKit.DebounceHandle): boolean
 ---@field Close fun(self: SchedulerKit.DebounceHandle): boolean
 ---@field IsClosed fun(self: SchedulerKit.DebounceHandle): boolean
@@ -233,7 +234,7 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@class SchedulerKit.CoalesceHandle
 ---@overload fun(key: any, value: any?): boolean
 ---@field Cancel fun(self: SchedulerKit.CoalesceHandle): boolean
----@field Flush fun(self: SchedulerKit.CoalesceHandle): boolean, string?
+---@field Flush fun(self: SchedulerKit.CoalesceHandle): boolean, ("deferred"|"dropped")?
 ---@field IsPending fun(self: SchedulerKit.CoalesceHandle): boolean
 ---@field GetStats fun(self: SchedulerKit.CoalesceHandle): SchedulerKit.CoalesceStats
 ---@field Close fun(self: SchedulerKit.CoalesceHandle): boolean

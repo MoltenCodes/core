@@ -269,6 +269,117 @@ describe("ModuleKit when a required addon halts", function()
     end)
 end)
 
+describe("ModuleKit when OnEnable itself halts", function()
+    local ModuleKit, LifecycleKit
+    before_each(function()
+        local packageUnderTest, _, _, _, lifecycleKit = TestEnv.NewPackage()
+        ModuleKit = packageUnderTest
+        LifecycleKit = lifecycleKit
+    end)
+    after_each(TestEnv.Reset)
+
+    it("takes the module down when its OnEnable halts its own addon", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local log = {}
+        local released
+        local loader = createLoggedModule(addon, "Loader", log)
+        loader.OnEnable = function(self)
+            log[#log + 1] = "enable Loader"
+            released = self.scope.Events
+            LifecycleKit:ForAddon("MyAddon"):Halt("saved variables are unreadable")
+        end
+        local later = createLoggedModule(addon, "Later", log)
+
+        TestEnv.LoadAddon("MyAddon")
+        TestEnv.Login()
+
+        assert.are.same({ "enable Loader", "disable Loader" }, log)
+        assert.is_true(released:IsClosed())
+        assert.are.same(
+            { wanted = true, actual = false, blockedBy = "halted" },
+            loader:GetEnableState()
+        )
+        assert.are.same(
+            { wanted = true, actual = false, blockedBy = "halted" },
+            later:GetEnableState()
+        )
+    end)
+
+    it("releases the scope of a module whose OnDisable fails after its OnEnable halted", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local released
+        local loader = addon:CreateModule("Loader")
+        loader.OnEnable = function(self)
+            released = self.scope.Events
+            LifecycleKit:ForAddon("MyAddon"):Halt("broken")
+        end
+        loader.OnDisable = function()
+            error("cannot let go", 0)
+        end
+        addon:InitializeAll()
+
+        local ok, message = pcall(function()
+            loader:Enable()
+        end)
+
+        assert.is_false(ok)
+        assert.are.equal("cannot let go", message)
+        assert.is_true(released:IsClosed())
+        assert.are.equal("halted", loader:GetEnableState().blockedBy)
+    end)
+
+    it("keeps dependents off when a dependency's OnEnable halts a required addon", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local log = {}
+        local bridge = createLoggedModule(addon, "Bridge", log, { requiresAddons = { "Other" } })
+        bridge.OnEnable = function()
+            log[#log + 1] = "enable Bridge"
+            LifecycleKit:ForAddon("Other"):Halt("incompatible")
+        end
+        local panel = createLoggedModule(addon, "Panel", log, { dependsOn = { "Bridge" } })
+        addon:InitializeAll()
+
+        panel:Enable()
+
+        assert.are.same({ "enable Bridge", "disable Bridge" }, log)
+        assert.are.same(
+            { wanted = true, actual = false, blockedBy = "Other" },
+            bridge:GetEnableState()
+        )
+        assert.are.same(
+            { wanted = true, actual = false, blockedBy = "Bridge" },
+            panel:GetEnableState()
+        )
+        assert.are.equal("Bridge", panel:GetBlockedBy())
+    end)
+
+    it("reports a halted dependency deep in an automatic chain at the caller's line", function()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        LifecycleKit:ForAddon("Other"):Halt("broken")
+        addon:CreateModule("Bridge", { requiresAddons = { "Other" } })
+        addon:CreateModule("Middle", { dependsOn = { "Bridge" } })
+        local panel = addon:CreateModule("Panel", { dependsOn = { "Middle" } })
+        addon:InitializeAll()
+
+        local source = debug.getinfo(1, "S").short_src
+        local line
+        local ok, message = pcall(function()
+            line = debug.getinfo(1, "l").currentline + 1
+            panel:Enable()
+        end)
+
+        assert.is_false(ok)
+        assert.are.equal(
+            source
+                .. ":"
+                .. line
+                .. ': ModuleKit module "Bridge" cannot be enabled because required addon "Other" has halted',
+            message
+        )
+        assert.are.equal("Middle", panel:GetEnableState().blockedBy)
+    end)
+end)
+
 describe("ModuleKit requiresAddons definitions", function()
     local ModuleKit, LifecycleKit
     before_each(function()
@@ -378,5 +489,27 @@ describe("ModuleKit halted state across an in-place upgrade", function()
             first:Enable()
         end)
         assert.are.same({}, log)
+    end)
+
+    it("takes down a module whose OnEnable halts after an upgrade", function()
+        local ModuleKit, _, _, _, LifecycleKit = TestEnv.NewPackage()
+        local addon = ModuleKit:ForAddon("MyAddon")
+        local log = {}
+        local loader = createLoggedModule(addon, "Loader", log)
+        TestEnv.LoadAddon("MyAddon")
+        rawset(rawget(ModuleKit, "_state"), "runtimeRevision", ModuleKit.REVISION - 1)
+        TestEnv.ReloadPackage()
+
+        loader.OnEnable = function()
+            log[#log + 1] = "enable Loader"
+            LifecycleKit:ForAddon("MyAddon"):Halt("broken")
+        end
+        TestEnv.Login()
+
+        assert.are.same({ "enable Loader", "disable Loader" }, log)
+        assert.are.same(
+            { wanted = true, actual = false, blockedBy = "halted" },
+            loader:GetEnableState()
+        )
     end)
 end)

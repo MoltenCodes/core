@@ -22,7 +22,7 @@ Pool handles:
 | `Prewarm(count)` | Ensure at least `count` objects are immediately available. |
 | `Trim(retainCount?)` | Discard retained objects until at most `retainCount` remain; default `0`. |
 | `Clear()` | Equivalent to `Trim(0)` without closing the pool. |
-| `Close()` | Terminally reject new acquisition/prewarm and discard all retained objects. |
+| `Close()` | Terminally reject new acquisition/prewarm, fail waiting requests, complete parked releases and discard all retained objects. |
 | `IsClosed()` | Return whether the pool has been closed. |
 | `GetAvailableCount()` | Return retained objects available for acquisition. |
 | `GetActiveCount()` | Return objects currently borrowed from the pool. |
@@ -30,8 +30,8 @@ Pool handles:
 | `GetDiscardedCount()` | Return the cumulative number of discard operations completed by the pool. |
 | `GetMaxRetained()` | Return the numeric retention limit or `PoolKit.UNBOUNDED`. |
 | `SetMaxRetained(limit)` | Change the retention limit; lowering it trims immediately. |
-| `Owns(object)` | Return whether an object is currently active or retained by this pool. |
-| `IsActive(object)` | Return whether an object is currently borrowed/releasing. |
+| `Owns(object)` | Return whether an object is currently borrowed from, parked in or retained by this pool. |
+| `IsActive(object)` | Return whether an object is currently borrowed/releasing; a parked object is not. |
 | `GetGeneration()` | Return the generation stamped on newly built objects. |
 | `SetGeneration(n)` | Raise the generation; destroy retained objects of older generations; return how many. |
 | `GetWaitingCount()` | Return the number of queued `Acquire(onAvailable)` requests. |
@@ -149,7 +149,7 @@ If `reset` raises, release is rolled back to the active state and the original e
 
 If reset succeeds, release is logically committed before optional destruction. Therefore a later destroy error does not make the object active again.
 
-Lifecycle callbacks may inspect the same pool through scalar/query methods, but they may not mutate that pool (`Acquire`, `Release`, `Prewarm`, `Trim`, `Clear`, `Close`, or `SetMaxRetained`) while `create`, `reset`, or `destroy` is executing. PoolKit rejects such same-pool re-entrancy explicitly. Callbacks may freely interact with other pools, and a pool driven from inside another pool's callback does not weaken the outer pool's guard: the guard is released only when the callback that took it returns, including when it returns by raising. This rule keeps callback behavior expressive without making ownership transactions recursively mutable.
+Lifecycle callbacks may inspect the same pool through scalar/query methods, but they may not mutate that pool (`Acquire`, `Release`, `Prewarm`, `Trim`, `Clear`, `Close`, `SetMaxRetained`, `SetGeneration`, `SetMaxCreated`, `CancelWaiting`, `AttachChild`, `DetachChild` or `ReleaseAfter`) while `create`, `reset`, or `destroy` is executing. PoolKit rejects such same-pool re-entrancy explicitly. Callbacks may freely interact with other pools, and a pool driven from inside another pool's callback does not weaken the outer pool's guard: the guard is released only when the callback that took it returns, including when it returns by raising. This rule keeps callback behavior expressive without making ownership transactions recursively mutable.
 
 Callbacks are synchronous lifecycle hooks; they must not yield. PoolKit uses protected calls where rollback or best-effort cleanup requires observing callback failure.
 
@@ -186,7 +186,7 @@ Bulk discard is best-effort: if `destroy` fails for one object, PoolKit continue
 
 ## Closing
 
-`Close()` is terminal for new acquisition and prewarming. It immediately clears all retained objects. Already-borrowed objects may still be released after close; they are reset and then discarded instead of retained. This lets owners perform deterministic shutdown without invalidating handles that are temporarily still checked out.
+`Close()` is terminal for new acquisition and prewarming. It fails every waiting request (see *The waiting queue*), completes every parked release (see *Deferred release*) and then clears all retained objects. Already-borrowed objects may still be released after close; they are reset and then discarded instead of retained. This lets owners perform deterministic shutdown without invalidating handles that are temporarily still checked out.
 
 Repeated `Close()` returns `false`; the first close returns `true` unless a destroy callback error is re-thrown after cleanup.
 
@@ -360,7 +360,13 @@ own pool, and their own children before them — then resets the parent.
 - A cycle of attachments terminates: an object already being released is
   skipped.
 - A child whose release fails does not stop the parent's release. The parent is
-  released, and the first child error is re-raised afterwards.
+  released, and the first child error is re-raised afterwards. A child whose
+  `reset` raised is rolled back to borrowed from its own pool, as a direct
+  `Release` would be, but it is no longer attached: whoever handles the error
+  owns it.
+- A parent whose own `reset` raises is rolled back to borrowed and stays
+  borrowed; its children have already been released and detached by then. When
+  a child failed as well, the child's error is the one re-raised.
 
 The links are an intrusive doubly linked list kept in side tables of the
 parent's pool, created on that pool's first `AttachChild`. Attaching and
@@ -420,5 +426,9 @@ Revision 4 moved the shared state from schema 1 to schema 2 and gave every pool
 new fields. Pools are not registered anywhere, so a bootstrap cannot reach them;
 instead every pool method upgrades a pool built by an older revision the first
 time it touches it. The upgraded pool keeps every object and counter, gains no
-caps, no queue and no children, and takes the default generation, `1`. The `OnFinished` hook calls through shared state, so a
-hook installed by one revision runs the newest accepted revision's code.
+caps, no queue and no children, and takes the default generation, `1`. A pool
+built by revision 1 also gains the re-entrancy counter and the disabled leak
+warning that revision 2 introduced; revisions 4 and 5 left those out, so such a
+pool raised on its first use until revision 6. The `OnFinished` hook calls
+through shared state, so a hook installed by one revision runs the newest
+accepted revision's code.

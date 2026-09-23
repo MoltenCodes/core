@@ -31,4 +31,21 @@ Coverage includes:
   a newer revision's state;
 - runtime API/revision metadata consistency with the package manifest.
 
+Spec files:
+
+| File | Covers |
+|---|---|
+| `SignalKit_spec.lua` | construction, argument forwarding, ordering, signal independence |
+| `Once_spec.lua` | once-listeners, including recursive dispatch |
+| `Mutation_spec.lua` | connect, disconnect and `DisconnectAll` during dispatch |
+| `Reentrancy_spec.lua` | nested `Fire()` |
+| `Errors_spec.lua` | argument and receiver validation at the calling line, listener error propagation |
+| `Connection_spec.lua` | connection lifecycle and idempotent `Disconnect` |
+| `Compaction_spec.lua` | tombstones, compaction, allocation guards, the revision-1 upgrade |
+| `Bus_spec.lua` | buses, topic policy, subscriptions, bus dispatch semantics |
+| `BusIsolation_spec.lua` | listener isolation on both paths, the `Publish` allocation guard |
+| `BusScope_spec.lua` | bus scopes, `ForAddon`, `CloseAddonBus` |
+| `Bootstrap_spec.lua` | Registry bootstrap, duplicate embedding, revision upgrades |
+| `Manifest_spec.lua` | runtime metadata against `package.manifest.json` |
+
 All executable specs use Busted's `*_spec.lua` convention and are discovered through the repository package-aware test runner.

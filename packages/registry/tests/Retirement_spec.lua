@@ -231,6 +231,48 @@ describe("Registry retirement and migration", function()
         assert.are.equal(3, select(2, Registry:Find("demoKit", 1)))
     end)
 
+    it("keeps an unfinished run across an in-place upgrade from Registry revision 8", function()
+        local Registry = TestEnv.NewRegistry()
+        loadCopy(Registry, 1, {
+            retire = function()
+                return { steps = {} }
+            end,
+        })
+        local failStepTwo = true
+        local migrations = {
+            [2] = function(state)
+                if failStepTwo then
+                    error("layout cannot be converted yet", 0)
+                end
+                state.steps[#state.steps + 1] = 2
+            end,
+        }
+        assert.has_error(function()
+            loadCopy(Registry, 2, { migrations = migrations })
+        end)
+
+        -- Make the installed Registry look like revision 8, the previous
+        -- revision, which kept the unfinished run in the same entry fields.
+        local registryState = TestEnv.GetState()
+        local revisionEightGet = function() end
+        rawset(registryState, "registryRevision", 8)
+        rawset(Registry, "REVISION", 8)
+        rawset(Registry, "Get", revisionEightGet)
+
+        local upgraded = TestEnv.Reload()
+        failStepTwo = false
+        local implementation, previousRevision, _, state =
+            loadCopy(upgraded, 3, { migrations = migrations })
+
+        assert.are.equal(Registry, upgraded)
+        assert.are.equal(9, upgraded.REVISION)
+        assert.are_not.equal(revisionEightGet, upgraded.Get)
+        assert.is_table(implementation)
+        assert.are.equal(2, previousRevision)
+        assert.are.same({ steps = { 2 } }, state)
+        assert.are.equal(3, select(2, upgraded:Find("demoKit", 1)))
+    end)
+
     it("does not hand a stale retire hook to a later revision", function()
         local Registry = TestEnv.NewRegistry()
         local calls = 0

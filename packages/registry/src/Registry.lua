@@ -37,7 +37,7 @@ local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 
 -- Lua 5.1 numbers are doubles, which represent consecutive integers exactly only
 -- up to 2^53. Past that boundary distinct values start comparing equal, so a
@@ -176,13 +176,18 @@ end
 -- copy's hand-over hook), `migratedThrough` (the revision whose layout the
 -- state is in), `migrating` and `pendingState` (an unfinished migration run and
 -- the state it had reached) and `seal` (the sealed-facade metatable).
+--
+-- Corrupted state found while serving a public call is raised at that call's
+-- caller, like an argument error. The accessors therefore take the stack level
+-- the public method needs, counted from the accessor itself.
 
 ---@param packageName string
+---@param level integer error level, counted from this function
 ---@return table|nil
-local function getPackageEntries(packageName)
+local function getPackageEntries(packageName, level)
     local packageEntries = rawget(entries, packageName)
     if packageEntries ~= nil and type(packageEntries) ~= "table" then
-        error("Registry: package state is corrupted", 3)
+        error("Registry: package state is corrupted", level)
     end
 
     return packageEntries
@@ -190,8 +195,9 @@ end
 
 ---@param packageEntries table
 ---@param api integer
+---@param level integer error level, counted from this function
 ---@return table|nil
-local function getEntry(packageEntries, api)
+local function getEntry(packageEntries, api, level)
     local entry = rawget(packageEntries, api)
     if entry == nil then
         return nil
@@ -202,22 +208,25 @@ local function getEntry(packageEntries, api)
         or not isPositiveInteger(rawget(entry, "revision"))
         or type(rawget(entry, "implementation")) ~= "table"
     then
-        error("Registry: package state is corrupted", 3)
+        error("Registry: package state is corrupted", level)
     end
 
     return entry
 end
 
 ---The entry for `(packageName, api)`, or `nil`.
+---
+---Called directly by `Get`, `GetInfo` and `OnRetire`, so corruption is raised
+---four levels up: the accessor, this function, the public method, its caller.
 ---@param packageName string
 ---@param api integer
 ---@return table|nil
 local function findEntry(packageName, api)
-    local packageEntries = getPackageEntries(packageName)
+    local packageEntries = getPackageEntries(packageName, 4)
     if packageEntries == nil then
         return nil
     end
-    return getEntry(packageEntries, api)
+    return getEntry(packageEntries, api, 4)
 end
 
 -- Public types ------------------------------------------------------------
@@ -292,13 +301,13 @@ local function register(_, packageName, api, revision, ...)
     validateApi(api, "Register")
     validateRevision(revision)
 
-    local packageEntries = getPackageEntries(packageName)
+    local packageEntries = getPackageEntries(packageName, 3)
     if packageEntries == nil then
         packageEntries = {}
         rawset(entries, packageName, packageEntries)
     end
 
-    local entry = getEntry(packageEntries, api)
+    local entry = getEntry(packageEntries, api, 3)
     if entry == nil then
         local implementation = {}
         rawset(packageEntries, api, {
@@ -376,12 +385,12 @@ local function find(_, packageName, api)
     validatePackageName(packageName, "Find")
     validateApi(api, "Find")
 
-    local packageEntries = getPackageEntries(packageName)
+    local packageEntries = getPackageEntries(packageName, 3)
     if packageEntries == nil or next(packageEntries) == nil then
         return nil, FIND_ABSENT
     end
 
-    local entry = getEntry(packageEntries, api)
+    local entry = getEntry(packageEntries, api, 3)
     if entry == nil then
         return nil, FIND_GENERATION_MISMATCH
     end
@@ -407,22 +416,28 @@ end
 ---Diagnostic enumeration of every registration, sorted by package then API.
 ---
 ---Allocates a fresh array of fresh rows on every call by design; it is meant
----for consoles and options pages, never for a hot path.
+---for consoles and options pages, never for a hot path. Malformed private
+---state raises the same corruption error `Get` raises, at the caller, instead
+---of being listed as data or failing inside `table.sort`.
 ---@return Registry.PackageRow[]
 local function packages()
     local rows = {}
-    for packageName, packageEntries in next, entries do
-        if type(packageName) == "string" and type(packageEntries) == "table" then
-            for api, entry in next, packageEntries do
-                if type(entry) == "table" and isPositiveInteger(rawget(entry, "revision")) then
-                    rows[#rows + 1] = {
-                        package = packageName,
-                        api = api,
-                        revision = rawget(entry, "revision"),
-                        status = rawget(entry, "status") or STATUS_ACTIVE,
-                    }
-                end
+    for packageName in next, entries do
+        if type(packageName) ~= "string" then
+            error("Registry: package state is corrupted", 2)
+        end
+        local packageEntries = getPackageEntries(packageName, 3) --[[@as table]]
+        for api in next, packageEntries do
+            if not isPositiveInteger(api) then
+                error("Registry: package state is corrupted", 2)
             end
+            local entry = getEntry(packageEntries, api, 3) --[[@as table]]
+            rows[#rows + 1] = {
+                package = packageName,
+                api = api,
+                revision = rawget(entry, "revision"),
+                status = rawget(entry, "status") or STATUS_ACTIVE,
+            }
         end
     end
 

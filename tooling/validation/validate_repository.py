@@ -112,6 +112,9 @@ SUPPORTED_CLIENT_ROW_RE = re.compile(r"^\|.*\|[ \t]*`[0-9]+`[ \t]*\|.*\|[ \t]*$"
 #: The packager metadata whose `ignore:` list must hold every development package.
 PKGMETA = Path(".pkgmeta")
 
+#: A YAML comment after a value: a `#` preceded by whitespace, to the line end.
+TRAILING_YAML_COMMENT_RE = re.compile(r"\s+#.*$")
+
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 IGNORED_DIRECTORY_NAMES = {
     ".git",
@@ -495,7 +498,8 @@ def pkgmeta_ignore_entries(text: str) -> list[str]:
     `.pkgmeta` is YAML, but only this one block-list shape is read, so the
     standard library suffices: the `ignore:` key at column 0, followed by
     indented `- entry` lines, ending at the next line that starts at column 0.
-    Comments and blank lines inside the list are skipped.
+    Comments and blank lines inside the list are skipped, and so is a trailing
+    ` # comment` after an entry, as YAML reads it.
     """
     entries: list[str] = []
     in_ignore = False
@@ -507,7 +511,8 @@ def pkgmeta_ignore_entries(text: str) -> list[str]:
             in_ignore = stripped == "ignore:"
             continue
         if in_ignore and stripped.startswith("- "):
-            entries.append(stripped[2:].strip().strip("\"'").rstrip("/"))
+            entry = TRAILING_YAML_COMMENT_RE.sub("", stripped[2:]).strip()
+            entries.append(entry.strip("\"'").rstrip("/"))
     return entries
 
 

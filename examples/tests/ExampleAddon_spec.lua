@@ -177,7 +177,12 @@ local function anyLineContains(lines, text)
 end
 
 ---Advance the clock by `milliseconds`, then fire every native timer that is
----still live, the way the host would once that much time has passed.
+---still live once, in creation order.
+---
+---The timer stub records no due time, so this fires every live timer whatever
+---its interval, the minute-long reminder included. Each spec that calls it
+---asserts only on the output of the timer it waits for, so firing the others
+---early changes nothing it checks.
 ---@param milliseconds number
 local function advanceAndFireTimers(milliseconds)
     TestEnv.AdvanceMs(milliseconds)

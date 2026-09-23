@@ -17,6 +17,7 @@ Interface number is checked against.
 
 from __future__ import annotations
 
+import argparse
 import sys
 from typing import Sequence
 
@@ -47,10 +48,14 @@ def library_toc() -> str:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Write the packaging-only `.toc` to standard output."""
-    del argv
+    parser = argparse.ArgumentParser(
+        prog="python3 -m tooling.release.library_toc",
+        description="Print the packaging-only .toc the release workflow hands the packager.",
+    )
+    parser.parse_args(argv)
     sys.stdout.write(library_toc())
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(main())

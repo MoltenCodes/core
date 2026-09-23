@@ -49,7 +49,7 @@ A `_callbackDepth` counter, paired with a `_callbackPhase` name for the rejectio
 
 The guard is a counter rather than a flag, and the previous phase name is restored rather than cleared, so a nested invocation cannot release a guard it did not take. Both halves are also restored when the callback returns by raising, which is what keeps a failed `reset` from locking its pool permanently.
 
-Note for maintainers: with the current public surface, same-pool nesting is not reachable. Every method that can invoke a lifecycle callback passes through `ensureMutationAllowed` first, so the guard refuses the re-entry before a second invocation can begin. The counter exists so that the invariant does not quietly depend on that: any future path that invokes a callback without the mutation check — or any callback-invoking method added later — would otherwise hand the outer callback a pool that looks unguarded. Specs cover the reachable case (nested lifecycle callbacks across two pools) and guard restoration after a raise.
+Note for maintainers: with the current public surface, same-pool nesting is not reachable. Every method that can invoke a lifecycle callback passes through `ensureMutationAllowed` first, a child released by a cascade is checked against its own pool the same way, and a deferred release completed by the host's `OnFinished` checks `_callbackDepth` and stays parked when it is raised, so the guard refuses the re-entry before a second invocation can begin. The counter exists so that the invariant does not quietly depend on that: any future path that invokes a callback without the mutation check — or any callback-invoking method added later — would otherwise hand the outer callback a pool that looks unguarded. Specs cover the reachable case (nested lifecycle callbacks across two pools) and guard restoration after a raise.
 
 ## Table-pool fast path
 
@@ -57,7 +57,7 @@ Note for maintainers: with the current public surface, same-pool nesting is not 
 
 ## Lazy pool upgrade
 
-Pools are not registered anywhere, so a bootstrap cannot migrate them. Every pool carries `_schema`, and `validatePool` — which every pool method calls first — runs `upgradePool` when it is not `POOL_SCHEMA`. The upgrade writes the defaults that reproduce the older revision's behaviour, with the fixed default generation `1`. In steady state this is one field comparison per call and allocates nothing. `AttachChild` upgrades its `childPool` argument the same way, since that pool is not the receiver.
+Pools are not registered anywhere, so a bootstrap cannot migrate them. Every pool carries `_schema`, and `validatePool` — which every pool method calls first — runs `upgradePool` when it is not `POOL_SCHEMA`. The upgrade writes the defaults that reproduce the older revision's behaviour, with the fixed default generation `1`. A revision-1 pool predates `_callbackDepth`, `_maxActiveWarning` and `_activeWarned` as well, so `upgradePool` fills those three only when they are absent; a revision 2 or 3 pool keeps its own values. In steady state this is one field comparison per call and allocates nothing. `AttachChild` upgrades its `childPool` argument the same way, since that pool is not the receiver.
 
 ## Generations
 

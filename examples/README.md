@@ -54,7 +54,9 @@ file the `.toc` lists, in `.toc` order, the way the client does — with the add
 name and the addon's private table as each file's `...` vararg. The host is the
 shared `FrameworkTestEnv` fixture with the Retail client profile, plus the few
 globals only this addon touches (`SlashCmdList`, `DEFAULT_CHAT_FRAME`,
-`hooksecurefunc`, `ToggleGameMenu`, `GetLocale`). The spec then:
+`hooksecurefunc`, `ToggleGameMenu`, `GetLocale`) and a `UIParent` frame for
+WidgetKit to rest released widgets on. The spec first checks that every package
+`embeds.xml` lists loads, in that order, and then:
 
 - logs in and checks the module is enabled, the database was opened and
   migrated, and the greeting reports the client;

@@ -798,8 +798,14 @@ end
 
 local ButtonMethods = extend(FrameMethods)
 
+---The client draws a button's text with the button's own FontString, so the
+---text is kept on that FontString once a spec has asked for it.
 function ButtonMethods:SetText(text)
     self._text = text
+    local fontString = self.fontString
+    if fontString ~= nil then
+        fontString:SetText(text)
+    end
 end
 
 function ButtonMethods:GetText()
@@ -810,6 +816,7 @@ function ButtonMethods:GetFontString()
     local fontString = self.fontString
     if fontString == nil then
         fontString = self:CreateFontString()
+        fontString:SetText(self._text)
         self.fontString = fontString
     end
     return fontString

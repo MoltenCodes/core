@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.4 — 2026-09-23
+
+- Fixed: the `OnDependencyHalted` replay kept delivering after its own callback ended the subscription. A subscriber that halts its addon in response (the pattern the README shows) was still told about the next already-halted dependency, although a halted addon is documented as hearing nothing more. The replay now stops once the subscription is disconnected, exactly as a dispatch does. New spec in `Halt_spec.lua`.
+- An in-place upgrade from revision 10 replaces its shared host watchers, as the upgrades from revisions 7 to 9 do; the schema-3 upgrade spec now runs for each of the four.
+- Documentation: `docs/API.md` now counts all five owned scopes closed at shutdown (it still said "three" in two places) and lists the CommandKit and CommKit scopes among what a halted addon keeps until logout.
+- Implementation revision 11. Schema 3 and API generation 1 are unchanged.
+
 ## 0.4.3 — 2026-09-23
 
 - Shutdown now also closes the addon's canonical CommKit scope (`CommKit:CloseAddonScopes(addonName)`), after the CommandKit scope and before the SignalKit bus. The order is now EventKit scope, HookKit scope, CommandKit scope, CommKit scope, SignalKit bus; every step runs, and the first failure wins in that order. CommKit already closes that scope from its own `OnShutdown` subscription; this step pins it to its place in the order, and `false` (already closed, or no scope) is a normal result.

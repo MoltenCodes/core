@@ -5,14 +5,15 @@
 --- What stays here is this package's own module load order, and the combat
 --- lockdown host surface only the combat gate reads.
 ---
---- HookKit and CommandKit are optional dependencies: shutdown closes the
---- addon's HookKit and CommandKit scopes when they are loaded, found through
---- `Registry:Find`. The manifest declares both under `optionalDependencies`, so
---- the test runner puts them (and SchemaKit, which CommandKit requires) on
---- `LUA_PATH`, and the module chain loads them before LifecycleKit, as an addon
---- that embeds them would. `NewPackageWithoutHookKit` loads the chain without
---- either, and the slash-command section below models the host surface
---- CommandKit writes to.
+--- HookKit, CommandKit and CommKit are optional dependencies: shutdown closes
+--- the addon's scope in each when it is loaded, found through `Registry:Find`.
+--- The manifest declares all three under `optionalDependencies`, so the test
+--- runner puts them and their required closures on `LUA_PATH`. The module
+--- chain loads HookKit and CommandKit (and SchemaKit, which CommandKit
+--- requires) before LifecycleKit, as an addon that embeds them would;
+--- `NewPackageWithoutHookKit` loads the chain without either. CommKit requires
+--- LifecycleKit, so `LoadCommKit` adds it afterwards. The slash-command section
+--- below models the host surface CommandKit writes to.
 ---
 --- The shared fixture does not model `InCombatLockdown` yet, so this file adds
 --- it on top of the fixture's own install and reset: `InstallWowApi` installs
@@ -136,7 +137,8 @@ function LifecycleKitTestEnv.LoadCommKit()
     return loaded
 end
 
----Install the shared fixture's WoW API plus `InCombatLockdown`.
+---Install the shared fixture's WoW API plus an empty `SlashCmdList` and
+---`InCombatLockdown`.
 function LifecycleKitTestEnv.InstallWowApi()
     installFixtureWowApi()
     setGlobal("SlashCmdList", {})
@@ -147,7 +149,8 @@ function LifecycleKitTestEnv.InstallWowApi()
     end)
 end
 
----Reset the shared fixture and remove the combat lockdown stub.
+---Reset the shared fixture, unload what `LoadCommKit` added, and remove the
+---slash-command globals and the combat lockdown stub.
 function LifecycleKitTestEnv.Reset()
     resetFixture()
     unloadCommKit()

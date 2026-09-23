@@ -33,7 +33,7 @@
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 10
+local IMPLEMENTATION_REVISION = 11
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
@@ -528,9 +528,10 @@ end
 ---keeps calling the handler of the revision that connected it: revision 7's
 ---logout handler, for one, closes no HookKit scope and no SignalKit bus,
 ---revision 8's closes no CommandKit scope and revision 9's no CommKit scope.
----The bootstrap tail installs this revision's watchers again and reconciles
----any one-shot phase that passed in between. Revisions 7 to 9 already wrote
----schema 3, so that is all their state needs.
+---Revision 10's handlers match this revision's, but its watchers are replaced
+---all the same, so the running handlers are always the newest copy's. The
+---bootstrap tail installs this revision's watchers again and reconciles any
+---one-shot phase that passed in between. Revisions 7 to 10 already wrote schema 3, so that is all their state needs.
 ---
 ---Schema 2 (revisions 4 to 6) lacks the combat flag, the instance list and
 ---every per-instance field of the combat gate and the halted state. Revision 3
@@ -1756,6 +1757,12 @@ local function onDependencyHalted(self, callback)
     local dependencies = rawget(self, "_dependencies")
     local firstError = nil
     for index = 1, #dependencies do
+        -- A replayed callback may end its own subscription, typically by
+        -- halting this addon in response, which disconnects it like a
+        -- dispatch would. A disconnected subscription hears nothing more.
+        if not isSubscriptionConnected(subscription) then
+            break
+        end
         local dependencyName = rawget(dependencies, index)
         local dependency = rawget(addons, dependencyName)
         if dependency ~= nil and rawget(dependency, "_halted") == true then
@@ -1809,8 +1816,10 @@ local function whenOutOfCombat(self, callback)
         return nil, "full"
     end
 
-    -- Cancelled slots are only reclaimed here, so the array never grows past
-    -- the limit. A drain in progress owns the indices, so it is left alone.
+    -- Cancelled slots are only reclaimed here, so outside a drain the array
+    -- never grows past the limit. A drain in progress owns the indices, so it
+    -- is left alone; that only happens when a host enters combat inside a
+    -- drain (see `drainCombatQueue`), and the drain compacts when it stops.
     if rawget(self, "_combatQueueLength") >= limit and rawget(self, "_draining") ~= true then
         compactCombatQueue(self)
     end

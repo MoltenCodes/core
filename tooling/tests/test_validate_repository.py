@@ -587,6 +587,11 @@ move-folders:
             module.pkgmeta_ignore_entries(self.PKGMETA),
         )
 
+    def test_ignore_entries_drop_a_trailing_comment(self):
+        text = "ignore:\n  - packages/testKit  # development only\n  - docs\n"
+
+        self.assertEqual(["packages/testKit", "docs"], module.pkgmeta_ignore_entries(text))
+
     def test_ignored_development_packages_are_accepted(self):
         self.write_pkgmeta(self.PKGMETA)
 

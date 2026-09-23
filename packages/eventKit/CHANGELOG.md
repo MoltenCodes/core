@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.2 — 2026-09-23
+
+- `DeriveHandle:Close()` now disconnects the handle's `OnChange` listeners. It used to drop them without disconnecting, so a connection returned by `OnChange` kept answering `IsConnected() == true` for a value that would never change again.
+- `scope:Derive` refuses a scope that its own `compute` closed while the handle was being built, raising `EventKit.Scope:Derive cannot connect in a closed scope` at the caller's line and releasing everything the handle had taken. The handle used to be linked into the closed scope, where no sweep would ever reach it, so its event registrations stayed live for the session.
+- The reason `Coalesce` gives for an old SchedulerKit now reads `the loaded SchedulerKit predates coalescing, added in its revision 7`; it read as though the loaded copy were revision 7.
+- Documentation: `docs/API.md` names the package `eventKit` in the upgrade section (it said `events`), says Frames created since revision 2 resolve dispatch through `_state` rather than the facade, documents `OnChange` on a closed handle and the listener disconnection, and records the revision-8 and revision-9 upgrades; the README states the version it ships and SchedulerKit as an optional partner; `tests/README.md` lists the spec files.
+- Implementation revision 9. `_state` schema 5 is unchanged, so a copy loading over revision 8 (or 7) adopts its state as it is, and handles created by that copy close through the new code, because they resolve it through shared state. Three new specs: the listener disconnection, the compute that closes its scope, and the revision-8 upgrade, which loads a real copy at revision 8 through the new `EventKitTestEnv.LoadSourceAtRevision`.
+- `EventKit` API generation 1 is unchanged.
+
 ## 0.5.1 — 2026-09-23
 
 - `EventKit:CloseAddonScopes(addonName)` for an addon that never asked for a scope now records nothing and returns `false`, as HookKit, CommandKit and CommKit do. It used to record a closed scope and return `true`, so every addon LifecycleKit shut down left an entry behind, and a later `ForAddon` for that name returned a closed scope. A scope that exists is closed exactly as before.

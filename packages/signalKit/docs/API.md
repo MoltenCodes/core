@@ -272,7 +272,7 @@ already knows 256 topics.
 | `arguments` | integer | `Publish` must pass exactly this many arguments, counting explicit `nil`s (`select("#", ...)`). A negative, fractional, infinite or NaN count is refused at the caller. |
 | `arguments` | `fun(...): boolean, string?` | A validator called with the published arguments. `true` accepts; anything else refuses, and the second return value becomes the reason. |
 | `arguments` | omitted | Any arguments are accepted. |
-| `description` | string | What the topic means, for diagnostics and documentation. |
+| `description` | string | What the topic means. It documents the topic at its declaration and is kept with it; no method returns it. |
 
 `bus:Publish` on an undeclared topic raises at the publisher's line unless the
 bus was created with `openTopics = true`. On any bus, arguments that fail a
@@ -288,7 +288,7 @@ and a consumer may both declare a topic. A different policy raises at the
 caller.
 
 **Declared or open.** Declared topics make a bus self-documenting — `Topics()`
-lists what it carries, with a description each — and turn a misspelt topic
+lists the topics it carries — and turn a misspelt topic
 into an error at the publishing line instead of a message nobody receives. An
 open bus trades both away for zero ceremony, which suits prototypes and
 throwaway tooling. Declared is the default and the recommendation for anything
@@ -319,8 +319,9 @@ The protected call passes the arguments through and allocates nothing.
 ### `bus:Publish(topic, ...)`
 
 Validates the topic and arguments as above, then delivers `...` to every
-subscriber of `topic` in subscription order. A topic nobody subscribed to costs
-one table lookup and allocates nothing.
+subscriber of `topic` in subscription order. A topic nobody subscribed to still
+has its policy applied — an argument count, or the validator runs — and then
+delivers nothing; it allocates nothing either way.
 
 **Listener errors are isolated.** A raw signal belongs to whoever holds it, so
 its listener errors propagate to the caller of `Fire`, who owns the listeners.
@@ -334,7 +335,9 @@ the publisher. See the taint section of
 [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#taint).
 
 The `xpcall` path stages the payload in one reusable buffer and one reusable
-trampoline, so a steady-state publish allocates nothing on either path.
+trampoline, so a steady-state publish allocates nothing of SignalKit's own on
+either path. The `xpcall` path is guarded by a spec; on the other path the cost
+of `securecallfunction` itself is the client's.
 
 ### `bus:Subscribe(topic, callback)` and `bus:SubscribeOnce(topic, callback)`
 

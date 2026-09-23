@@ -240,7 +240,7 @@ The rules:
 - **Lazy.** Each field is created on its first read and cached; a module that
   never reads its scope creates nothing and pays nothing beyond the one scope
   table every module carries.
-- **Optional Kits.** ModuleKit has no dependency on TimerKit, EventKit,
+- **Optional Kits.** ModuleKit has no required dependency on TimerKit, EventKit,
   SchedulerKit, HookKit, CommandKit or CommKit, and uses SignalKit only through LifecycleKit. Each
   is resolved through `Registry:Find` at first read, and a field reads as `nil`
   when its Kit is not loaded or is a revision without `CreateScope` (for
@@ -361,6 +361,13 @@ brings such a module back:
   raising out of `CreateModule`;
 - recovery of blocked dependents skips it, so enabling its other
   dependencies leaves it off.
+
+A module whose own `OnEnable` halts its addon, or one of its `requiresAddons`,
+is taken down as soon as the hook returns, exactly as the halt would have taken
+it down had it already been enabled: it runs `OnDisable`, keeps its intent and
+reports the halt in `blockedBy`. The `Enable` that started it does not raise
+for that; under the `automatic` policy the module that asked for it stays off,
+blocked by it.
 
 `"halted"` is the value for the addon's own halt. A module named `halted`
 would read the same; do not name a module that.
@@ -492,7 +499,7 @@ Lifecycle shutdown is different: it is terminal best-effort cleanup. ModuleKit a
 For each addon container:
 
 - LifecycleKit `loaded` → `InitializeAll()`
-- LifecycleKit `ready` → `EnableAll()`
+- LifecycleKit `ready` → the whole-container enable, which states no intent: a module the addon explicitly disabled stays disabled (see [`EnableAll()` re-enables explicitly disabled modules](#enableall-re-enables-explicitly-disabled-modules))
 - LifecycleKit `shutdown` → terminal reverse-order cleanup
 - LifecycleKit `OnHalted` → the addon's own halt; see [Halted addons](#halted-addons)
 - LifecycleKit `OnDependencyHalted` → a required addon's halt
@@ -518,7 +525,7 @@ Module scopes use TimerKit API 1, EventKit API 1, SchedulerKit API 1, HookKit
 API 1, CommandKit API 1, CommKit API 1 and SignalKit API 1 when they are
 loaded, found through `Registry:Find`
 (Registry revision 7; an older Registry's `Get` is used as the equivalent
-fallback). None of them is a dependency: without them the matching scope field
+fallback). None of them is a required dependency: without them the matching scope field
 reads as `nil`. TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are
 declared under `optionalDependencies` in the manifest; EventKit and SignalKit
 are always present through LifecycleKit.

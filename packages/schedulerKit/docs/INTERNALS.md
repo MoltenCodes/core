@@ -207,8 +207,8 @@ A scope keeps a second intrusive list beside its jobs: `_familyHead` /
 `Debounce`, `Coalesce` and `Watch` handle. `CancelAll` walks it with the next
 pointer captured first (a cancelled watch unlinks itself); `Close` re-reads the
 head after each member, because every member close unlinks before anything
-that can raise. Scopes from revision 6 have no such fields; `nil` reads as an
-empty list.
+that can raise. Scopes created before revision 7 have no such fields; `nil` reads
+as an empty list.
 
 ### Timers and dispatch
 
@@ -288,7 +288,7 @@ Expected allocations include:
 
 Terminal jobs clear execution-only references such as their callback, Context, coroutine, and delay handle. A retained Job handle therefore does not unnecessarily retain the callback closure after completion/cancellation/failure.
 
-Scope ownership is two-stage lazy. Loading SchedulerKit allocates neither its package-level convenience scope nor a TimerKit delay scope. Creating a SchedulerKit scope also does not allocate TimerKit ownership state; that happens only when the scope first schedules `NextFrame`, `After`, or `Every` work. Immediate-only scheduling therefore stays independent of TimerKit scope allocation after dependency bootstrap.
+Scope ownership is two-stage lazy. Loading SchedulerKit allocates neither its package-level convenience scope nor a TimerKit delay scope. Creating a SchedulerKit scope also does not allocate TimerKit ownership state; that happens only when the scope first arms a timer: `NextFrame`, `After` or `Every` work, a `Debounce` or `Coalesce` window, or a lane retry backoff. Immediate-only scheduling therefore stays independent of TimerKit scope allocation after dependency bootstrap.
 
 The coalescing family adds: one handle table (plus two set tables for
 `Coalesce`, one or two eight-slot argument tables for `Debounce`, and one

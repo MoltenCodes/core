@@ -36,7 +36,7 @@
 
 local PACKAGE_NAME = "poolKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 2
 local DEFAULT_MAX_RETAINED = 128
@@ -140,7 +140,7 @@ local REASON_CLOSED = "closed"
 ---@field REVISION integer Compatible implementation revision.
 ---@field Pool PoolKit.Pool Shared pool prototype.
 ---@field UNBOUNDED table Sentinel selecting caller-owned unbounded retention.
----@field DEFAULT_MAX_RETAINED integer
+---@field DEFAULT_MAX_RETAINED integer Retention bound a pool gets when `maxRetained` is absent (`128`).
 ---@field New fun(self: PoolKit, options: PoolKit.NewOptions): PoolKit.Pool
 ---@field NewTablePool fun(self: PoolKit, options: PoolKit.CommonOptions?): PoolKit.Pool
 
@@ -300,7 +300,7 @@ else
         -- Revisions 1 to 3 kept no generations and no deferred releases. Their
         -- pools cannot be enumerated from here, so they are upgraded lazily
         -- (see `upgradePool`). Revision 4 also recorded a `legacyGeneration`
-        -- here; revision 5 no longer reads it and leaves it where it is.
+        -- here; revisions 5 and later never read it and leave it where it is.
         rawset(state, "hookedGroups", setmetatable({}, { __mode = "k" }))
         rawset(state, "deferredPool", {})
         rawset(state, "deferredObject", {})
@@ -365,11 +365,24 @@ end
 ---`_schema` is not current: one field comparison per call, nothing allocated
 ---once the pool is current. The defaults reproduce the older behaviour exactly:
 ---no caps, no queue, no children, and the default generation.
+---
+---Revision 1 pools also predate the re-entrancy depth counter and the leak
+---warning, which revision 2 added to every pool it built but never back-filled.
+---Those fields are filled only when absent, so a revision 2 or 3 pool keeps the
+---warning threshold and warned flag it already has.
 ---@param pool table
 local function upgradePool(pool)
-    local generation = DEFAULT_GENERATION
-    rawset(pool, "_generation", generation)
-    rawset(pool, "_baseGeneration", generation)
+    if rawget(pool, "_callbackDepth") == nil then
+        rawset(pool, "_callbackDepth", 0)
+    end
+    if rawget(pool, "_maxActiveWarning") == nil then
+        rawset(pool, "_maxActiveWarning", false)
+    end
+    if rawget(pool, "_activeWarned") == nil then
+        rawset(pool, "_activeWarned", false)
+    end
+    rawset(pool, "_generation", DEFAULT_GENERATION)
+    rawset(pool, "_baseGeneration", DEFAULT_GENERATION)
     rawset(pool, "_stamps", false)
     rawset(pool, "_maxCreated", false)
     rawset(pool, "_maxActive", false)
@@ -1419,7 +1432,6 @@ local function newPool(settings)
         _reset = settings.reset or false,
         _destroy = settings.destroy or false,
         _maxRetained = settings.maxRetained,
-        _strict = settings.strict,
         _available = {},
         _availableCount = 0,
         _active = {},

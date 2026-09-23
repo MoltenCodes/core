@@ -78,7 +78,7 @@ Other options:
 
 | Option | Effect |
 |---|---|
-| `--all` | include every package in the repository |
+| `--all` | include every release package (packages marked `distribution: development` are skipped and listed in `manifest.json`) |
 | `--package NAME` | include `NAME` and its runtime dependencies |
 | `--out DIR` | output directory; created if missing |
 | `--zip` | additionally write `<bundle>.zip` |

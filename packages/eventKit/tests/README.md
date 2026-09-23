@@ -12,11 +12,35 @@ It also covers:
 - unit-group release, Frame reuse, and the Frame-creation cap;
 - disconnect-during-dispatch from another connection and from another channel;
 - the stack level of argument errors versus host-environment errors;
-- in-place upgrade from implementation revision 1;
 - per-event allocation, guarded with `collectgarbage("count")` deltas;
+- owner scopes: bookkeeping, one-shots, unit subscriptions, bulk teardown order
+  and failure handling, closing (also during a dispatch, with the deferred
+  sweep), caller-line errors, receiver validation, addon scopes and the
+  two-step shutdown wiring;
 - `Coalesce`: the payload set, `byEvent` and `nil`-payload keying, unit events, `maxKeys`, `Flush`, scope release (also mid-dispatch), refusal without SchedulerKit, caller-line errors, and an allocation guard;
-- `Derive`: recompute, debounce, `delaySeconds`, `OnChange`, `equals`, `Invalidate`, raising compute and listeners, `Close` and scope release, and the synchronous path without SchedulerKit;
-- in-place upgrade from implementation revision 6.
+- `Derive`: recompute, debounce, `delaySeconds`, `OnChange`, `equals`, `Invalidate`, raising compute and listeners, `Close` (which disconnects the change listeners) and scope release, a compute that closes its own scope, and the synchronous path without SchedulerKit;
+- in-place upgrade from implementation revisions 1, 4, 5, 6 and 8, and the
+  refusal to downgrade a newer copy.
+
+## Spec files
+
+| File | Covers |
+|---|---|
+| `Bootstrap_spec.lua` | Load order, duplicate embedding, corrupted state, every in-place upgrade, no downgrade. |
+| `Manifest_spec.lua` | Manifest and runtime metadata agree. |
+| `Registration_spec.lua` | Lazy registration and final-listener unregistration. |
+| `Connection_spec.lua` | Connection handles: connected state and exactly-once disconnect. |
+| `Dispatch_spec.lua` | Payload forwarding, ordering, mutation and nesting during dispatch, per-event allocation. |
+| `Once_spec.lua` | One-shot subscriptions. |
+| `UnitEvents_spec.lua` | Unit filters, the two-token limit, unit-group release and the Frame cap. |
+| `Errors_spec.lua` | Argument, receiver and host-environment errors and their levels; refused registrations; listener isolation. |
+| `Scope_spec.lua` | Manual and addon scopes, deferred close, `CloseAddonScopes`. |
+| `Coalesce_spec.lua` | `Coalesce`, with and without SchedulerKit. |
+| `Derive_spec.lua` | `Derive`, with and without SchedulerKit. |
+
+`EventKitTestEnv.LoadSourceAtRevision(revision)` runs the EventKit source again
+with only its revision changed, standing in for another embedded copy whose
+`_state` schema matches.
 
 `EventKitTestEnv.Scheduled` is a second environment that also loads
 LifecycleKit, TimerKit and SchedulerKit. The manifest names SchedulerKit under

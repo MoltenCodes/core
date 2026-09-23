@@ -41,6 +41,24 @@ Print the supported `## Interface` line from `validation/supported_clients.json`
 python3 -m tooling.validation.interface_numbers
 ```
 
+Build a distributable bundle:
+
+```bash
+python3 -m tooling.package.build --all --out dist
+python3 -m tooling.package.build --package signalKit --out dist --zip
+```
+
+List the package IDs (`--release` leaves out development packages):
+
+```bash
+python3 -m tooling.package.list --release
+```
+
+The release workflow also runs the commands in `release/`: `check_tag` checks a
+`v<SemVer>` tag against `docs/RELEASES.md` and the manifests, `notes` prints a
+tag's release notes, and `library_toc` prints the packaging-only `.toc`. See
+[`../docs/RELEASES.md`](../docs/RELEASES.md).
+
 Run tooling unit tests:
 
 ```bash
@@ -58,12 +76,5 @@ is which for anyone who lands in the wrong one.
 `python3 -m tooling.validation.validate_repository` refuses to run on anything
 older and checks that the declaration and the tooling's own constant agree. CI
 runs the tooling unit tests on both the floor and the current release.
-
-Build a distributable bundle:
-
-```bash
-python3 -m tooling.package.build --all --out dist
-python3 -m tooling.package.build --package signalKit --out dist --zip
-```
 
 See [`../docs/TOOLING.md`](../docs/TOOLING.md) for architecture and [`../docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md) for local setup.

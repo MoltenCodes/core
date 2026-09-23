@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2 — 2026-09-23
+
+- Corrupted package state found by `Get`, `GetInfo` and `OnRetire` is raised at the caller's line again. 0.6.0 routed those three through a shared lookup helper, which moved the error one frame too shallow, onto a line inside `Registry.lua`; `Register` and `Find` were unaffected.
+- `Packages()` no longer lists malformed private state as data. A malformed entry used to be skipped or listed as a row, and a bucket with a non-integer API key made `table.sort` fail inside Registry; every such case now raises the same corruption error `Get` raises, at the caller.
+- Corrected `docs/API.md`: the corruption paragraph now names every method that checks state, and the migration story no longer says the framework packages still read the plain `MoltenCodes.Registry` alias — every package resolves `MoltenCodes.Registries[2]` first.
+- Three specs: the caller's line for corrupted state from all six methods, `Packages` refusing four kinds of malformed bucket, and an in-place upgrade from revision 8 that keeps an unfinished migration run and completes it.
+- Implementation revision 9. The private state layout is unchanged from revision 8.
+
 ## 0.6.1 — 2026-09-23
 
 - Fixed a failed migration step being skipped for good. The next copy started after the revision the failed copy had registered, so the failing step never ran again and later steps received `nil` because the hand-over had been consumed. While a run is unfinished Registry now keeps the state the last completed step produced and where that step left the layout; the next copy (newer revision or same-revision `resume`) resumes from there with that state, without asking the outgoing copy to retire twice. The kept state is released when a run completes.

@@ -266,6 +266,26 @@ describe("LifecycleKit dependencies", function()
         assert.are.equal(1, received)
     end)
 
+    it("stops replaying once the subscriber halts in response", function()
+        LifecycleKit:ForAddon("FirstLibrary"):Halt("broken")
+        LifecycleKit:ForAddon("SecondLibrary"):Halt("also broken")
+        local consumer = LifecycleKit:ForAddon("MyConsumer")
+        consumer:DependsOn("FirstLibrary")
+        consumer:DependsOn("SecondLibrary")
+        local received = {}
+
+        local subscription = consumer:OnDependencyHalted(function(instance, dependencyName)
+            received[#received + 1] = dependencyName
+            instance:Halt(dependencyName .. " halted")
+        end)
+
+        -- The first replay halted the consumer, which ends its subscription:
+        -- a halted addon is not told about the second dependency.
+        assert.are.same({ "FirstLibrary" }, received)
+        assert.are.equal("FirstLibrary halted", consumer:GetHaltReason())
+        assert.is_false(subscription:IsConnected())
+    end)
+
     it("does not tell addons that did not declare the dependency", function()
         local library = LifecycleKit:ForAddon("MyLibrary")
         local bystander = LifecycleKit:ForAddon("Bystander")

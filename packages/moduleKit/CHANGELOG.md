@@ -1,12 +1,20 @@
 # Changelog
 
+## 0.6.3 — 2026-09-23
+
+- Fixed a module left enabled after its own `OnEnable` halted the addon or one of its `requiresAddons`, the natural place for a module to discover that its saved variables are unusable. The halt pass skipped the module because it was not enabled yet, and the enable then completed: the module stayed enabled with its scope open, and nothing would ever close it, since LifecycleKit delivers no `shutdown` to a halted addon. `enableOne` now asks `haltBlocker` once `OnEnable` returns and takes the module down as the halt pass would have: disabled, still wanted, blocked by the halt, with its scope closed even when `OnDisable` fails on its own addon's halt. An `automatic` targeted `Enable` whose dependency is taken down that way leaves the dependent off and blocked by that dependency instead of enabling it on top of a disabled dependency.
+- Fixed the error level of a refusal deep in an `automatic` dependency chain. A halted-addon refusal, or a cycle, found while recursing into a dependency was reported at a line inside ModuleKit instead of at the line that called `Enable` or `Activate`; the recursion now adds its depth to the level.
+- Corrected the `GetEnableState` doc comment (`blockedBy` also names a halted addon) and reflowed the module-scopes section comment.
+- Five new specs in `Halted_spec.lua`, one of them an upgrade from revision 10.
+- Implementation revision 11. `ModuleKit` API generation 1 is unchanged.
+
 ## 0.6.2 — 2026-09-23
 
 - Added `module.scope.Comm`, a CommKit scope (`CommKit:CreateScope()`) created on first read and closed with the other scope fields, so a module's prefix registrations, SyncSets and pending sends end when it is disabled. Fields now close in the fixed order comm, commands, events, hooks, jobs, messages, timers.
 - CommKit is declared under `optionalDependencies`; without it `Comm` reads as `nil`. The test environment loads CommKit and its remaining dependencies after the module chain (`LoadCommKit`), because CommKit requires LifecycleKit and the real TimerKit and SchedulerKit would displace the stand-ins other scope specs register.
 - Two new specs in `Scope_spec.lua`, one against the real CommKit.
 - Implementation revision 10. `ModuleKit` API generation 1 is unchanged.
-- Manifest only, after the closing review (no executed-code change, so no version or revision change): `timerKit` and `schedulerKit` API 1 are now declared under `optionalDependencies`, since `scope.Timers` and `scope.Jobs` find them through `Registry:Find`. The suite's module chain is unchanged; the scope specs still stand them in through Registry.
+- The manifest also declares `timerKit` and `schedulerKit` API 1 under `optionalDependencies`, since `scope.Timers` and `scope.Jobs` find them through `Registry:Find` (a manifest-only change made in this version's closing review; the executed code is unaffected). The suite's module chain is unchanged; the scope specs still stand them in through Registry.
 
 ## 0.6.1 — 2026-09-23
 

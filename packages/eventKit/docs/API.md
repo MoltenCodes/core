@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **8**.
+Implementation revision: **9**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -298,9 +298,9 @@ print(freeSlots:Get())
 | Method | Purpose |
 |---|---|
 | `Get()` | The cached value. It is not recomputed by reading it. |
-| `OnChange(callback)` | `callback(value, previous)` whenever a recompute changes the value; returns a SignalKit connection. Listeners are isolated like event listeners. |
+| `OnChange(callback)` | `callback(value, previous)` whenever a recompute changes the value; returns a SignalKit connection. Listeners are isolated like event listeners. On a closed handle it raises `EventKit.DeriveHandle:OnChange cannot subscribe to a closed derived value` at the caller's line. |
 | `Invalidate()` | Mark the value stale, exactly as one of its events would. |
-| `Close()` | Unregister the events, drop a pending recompute. Terminal; `Get()` keeps returning the last value. |
+| `Close()` | Unregister the events, drop a pending recompute, disconnect the `OnChange` listeners. Terminal; `false` if already closed; `Get()` keeps returning the last value. |
 | `IsClosed()` | Whether the handle is closed. |
 
 A `compute` that raises during a recompute is reported and the previous value
@@ -315,7 +315,9 @@ counts as **one** member in `GetActiveCount()`; `DisconnectAll()` and `Close()`
 release it with everything it owns — its event registrations and the
 SchedulerKit scope holding its timing handle — and closing a scope during a
 dispatch defers that, as for any connection. The handle's own event
-connections are internal and belong to no scope.
+connections are internal and belong to no scope. A `Derive` whose `compute`
+closes the scope it is being created in is refused with `EventKit.Scope:Derive
+cannot connect in a closed scope` and leaves nothing registered.
 
 Each handle creates its own SchedulerKit scope, so closing the package-level
 SchedulerKit scope from elsewhere cannot silently stop it; a `Derive` whose
@@ -451,7 +453,11 @@ one would.
 
 ## Embedded copies and upgrades
 
-Registry owns one stable EventKit table for `(events, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table, and existing Frame handlers resolve dispatch functions through the stable EventKit facade.
+Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
+
+Revisions 8 and 9 kept `_state` at schema 5. A copy loading over revision 7 or
+8 adopts the state as it is; handles the older copy created close through the
+newer code from then on.
 
 Revision 7 moved `_state` from schema 4 to schema 5, adding the dispatch table
 that `Coalesce` and `Derive` listeners resolve through and the metatables their

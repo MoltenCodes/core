@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.2 — 2026-09-23
+
+Documentation and annotation corrections from the phase 4 audit. No runtime
+behaviour change: `IMPLEMENTATION_REVISION` stays 8, and `luac -s -l` produces an
+identical instruction listing before and after.
+
+- `docs/API.md`: the addon-scope shutdown and package-level scope sections now
+  say that they also release `Debounce`, `Coalesce` and `Watch` handles and lane
+  submissions; the lazy TimerKit scope is also allocated by a `Debounce` or
+  `Coalesce` window or a lane retry backoff, not only by `NextFrame`, `After` and
+  `Every`; the WoW driver boundary lists `GetTimePreciseSec` as the family's
+  clock, not only a fallback, and names `geterrorhandler`; `Close()` and
+  `Cancel()` document their `false` return when already closed; a closed
+  `Coalesce` handle returns `false`, and its interval may be `0`.
+- `docs/INTERNALS.md`: the same lazy-scope correction, and scopes created by
+  any revision before 7, not only revision 6, carry no member links.
+- LuaCATS: both `Flush` methods return `"deferred"|"dropped"` as their reason;
+  `SchedulerKit.CoalesceCallback` states that a set delivered through a lane
+  lives until the lane job ends; `maxInFlight` counts admitted submissions,
+  including those waiting out a retry backoff.
+- One new spec: a full or closed lane refuses `Submit` without allocating, as
+  `docs/API.md` promises.
+
 ## 0.5.1 — 2026-09-23
 
 Fixes from the acceptance review of 0.5.0.

@@ -30,7 +30,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 10
+local IMPLEMENTATION_REVISION = 11
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -1042,8 +1042,9 @@ end
 -- Module scopes -------------------------------------------------------------
 --
 -- A module registers addon-message prefixes, slash commands, timers, events,
--- scheduler jobs, hooks and bus subscriptions through `module.scope` and ModuleKit releases all of them when
--- the module is disabled, so a module needs no `OnDisable` just to clean up.
+-- scheduler jobs, hooks and bus subscriptions through `module.scope`, and
+-- ModuleKit releases all of them when the module is disabled, so a module
+-- needs no `OnDisable` just to clean up.
 -- ModuleKit has no hard dependency on the Kits behind the scope: each is
 -- resolved through `Registry:Find` on first use, and a field whose Kit is not
 -- loaded reads as `nil`.
@@ -1387,6 +1388,29 @@ local function haltRefusalMessage(module, blocker)
     return prefix .. 'required addon "' .. blocker .. '" has halted'
 end
 
+---Disable exactly `module`, ignoring dependency policy.
+---@param module ModuleKit.Module
+---@return ModuleKit.Module module
+local function disableOne(module)
+    if rawget(module, "_state") ~= "enabled" then
+        return module
+    end
+
+    local ok, value = invokeHook(module, "OnDisable")
+    if not ok then
+        recordFailure(module, value, nil, true)
+        error(value, 0)
+    end
+
+    rawset(module, "_state", "disabled")
+    clearFailure(module)
+
+    -- The module is disabled either way; a scope that failed to close is
+    -- reported after the transition rather than leaving the module enabled.
+    raiseCaptured(closeModuleScope(module))
+    return module
+end
+
 ---Enable exactly `module`, initializing it first when it is still `created`.
 ---@param module ModuleKit.Module
 ---@return ModuleKit.Module module
@@ -1425,29 +1449,25 @@ local function enableOne(module)
     rawset(module, "_wantedEnabled", true)
     rawset(module, "_enableBlockedBy", nil)
     clearFailure(module)
-    return module
-end
 
----Disable exactly `module`, ignoring dependency policy.
----@param module ModuleKit.Module
----@return ModuleKit.Module module
-local function disableOne(module)
-    if rawget(module, "_state") ~= "enabled" then
-        return module
+    -- `OnEnable` may itself halt the addon or a required addon, typically on
+    -- finding its saved variables unusable. The halt pass skipped this module
+    -- because it was not enabled yet, so it is taken down here, as that pass
+    -- would have: disabled, still wanted, and blocked by the halt.
+    local blocker = haltBlocker(module)
+    if blocker == OWN_ADDON_HALTED then
+        -- Terminal cleanup, like the halt pass: the scope is released even
+        -- when `OnDisable` fails.
+        rawset(module, "_enableBlockedBy", blocker)
+        local disabled, failure = pcall(disableOne, module)
+        if not disabled then
+            closeModuleScope(module)
+            error(failure, 0)
+        end
+    elseif blocker ~= nil then
+        rawset(module, "_enableBlockedBy", blocker)
+        disableOne(module)
     end
-
-    local ok, value = invokeHook(module, "OnDisable")
-    if not ok then
-        recordFailure(module, value, nil, true)
-        error(value, 0)
-    end
-
-    rawset(module, "_state", "disabled")
-    clearFailure(module)
-
-    -- The module is disabled either way; a scope that failed to close is
-    -- reported after the transition rather than leaving the module enabled.
-    raiseCaptured(closeModuleScope(module))
     return module
 end
 
@@ -1511,10 +1531,16 @@ local function initializeWithPolicy(module, visiting)
 end
 
 ---Enable `module` under the container's dependency policy.
+---
+---The `automatic` policy recurses into hard dependencies, one stack frame per
+---level, so `depth` is added to the error level: a refusal deep in the chain
+---is still reported at the line that called `Enable` or `Activate`.
 ---@param module ModuleKit.Module
 ---@param visiting table<ModuleKit.Module, boolean>|nil recursion guard, `automatic` policy only
+---@param depth integer|nil recursion depth below the public call; `nil` at the top
 ---@return ModuleKit.Module module
-local function enableWithPolicy(module, visiting)
+local function enableWithPolicy(module, visiting, depth)
+    depth = depth or 0
     local addon = rawget(module, "_addon")
     ensureNotShutdown(addon, "Enable")
 
@@ -1523,7 +1549,7 @@ local function enableWithPolicy(module, visiting)
         local blocker = haltBlocker(module)
         if blocker ~= nil then
             recordHaltRefusal(module, blocker)
-            error(haltRefusalMessage(module, blocker), 3)
+            error(haltRefusalMessage(module, blocker), 3 + depth)
         end
     end
 
@@ -1537,7 +1563,7 @@ local function enableWithPolicy(module, visiting)
                 'ModuleKit dependency cycle detected while enabling "'
                     .. rawget(module, "_name")
                     .. '"',
-                3
+                3 + depth
             )
         end
         visiting[module] = true
@@ -1549,7 +1575,15 @@ local function enableWithPolicy(module, visiting)
                 -- back; see `recoverBlockedDependents`.
                 rawset(module, "_enableBlockedBy", rawget(dependency, "_name"))
             end
-            enableWithPolicy(dependency, visiting)
+            enableWithPolicy(dependency, visiting, depth + 1)
+            if rawget(dependency, "_state") ~= "enabled" then
+                -- A halt inside the dependency's own `OnEnable` took it down
+                -- again (see `enableOne`). This module stays off, blocked by
+                -- it, exactly as the `ready` pass would leave it.
+                recordFailure(module, nil, rawget(dependency, "_name"), false)
+                visiting[module] = nil
+                return module
+            end
         end
         rawset(module, "_enableBlockedBy", nil)
         visiting[module] = nil
@@ -2139,7 +2173,8 @@ end
 ---
 ---`wanted` is what `Enable`/`Disable` (and the container-wide forms) last
 ---asked for; `actual` is whether the module is enabled right now; `blockedBy`
----names the hard dependency whose failure keeps a wanted module off.
+---names what keeps a wanted module off: a hard dependency, a required addon
+---that halted, or `"halted"` when the module's own addon halted.
 ---@param self ModuleKit.Module
 ---@return ModuleKit.EnableState
 local function moduleGetEnableState(self)

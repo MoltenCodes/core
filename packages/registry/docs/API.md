@@ -1,7 +1,7 @@
 # Registry API
 
 Registry API generation: **2**  
-Implementation revision: **8**
+Implementation revision: **9**
 
 Registry is a zero-dependency runtime resolver for independently embedded framework packages.
 
@@ -448,7 +448,7 @@ A newer Registry implementation revision replaces methods on the existing facade
 
 The private bootstrap key is implementation detail and must not be read or written by consumers.
 
-Registry validates package buckets and entries lazily when they are accessed. If private package state is malformed, `Register()`, `Get()`, and `GetInfo()` fail consistently with a Registry corruption error rather than returning partial or invalid data.
+Registry validates package buckets and entries lazily when they are accessed. If private package state is malformed, `Register()`, `Get()`, `GetInfo()`, `Find()`, `OnRetire()` and `Packages()` fail consistently with a Registry corruption error at the calling line rather than returning partial or invalid data. `Packages()` validates every entry it lists, so a malformed one is never reported as a row.
 
 Bootstrap-state and facade integrity checks use raw table access. Metatable hooks on corrupted or foreign tables cannot synthesize Registry-owned fields or intercept an in-place facade upgrade.
 
@@ -536,9 +536,9 @@ migration is:
    local Registry = generations and rawget(generations, 2) or rawget(namespace, "Registry")
    ```
 
-   This is the shape the shared `Registry:Bootstrap` helper will adopt. The
-   framework packages in this repository still use the plain alias; migrating
-   them is a single coordinated change rather than a per-package one.
+   Every framework package in this repository resolves Registry this way
+   before it calls `Registry:Bootstrap`; see
+   [Reading Registry forward-compatibly](#reading-registry-forward-compatibly).
 
 Registry does not translate between generations. A generation-3 facade is not
 routed generation-2 calls and vice versa; a package that needs both asks for
@@ -549,9 +549,8 @@ both by number.
 Registry raises two kinds of error, and the stack level differs on purpose.
 
 **Argument errors** from `Register()`, `Get()`, `GetInfo()`, `Find()` and
-`OnRetire()`, and corrupted
-package state discovered while serving one of those calls, point at the calling
-line. A package author sees their own `Registry:Register(...)` call, not a line
+`OnRetire()`, and corrupted package state discovered while serving one of those
+calls or `Packages()`, point at the calling line. A package author sees their own `Registry:Register(...)` call, not a line
 inside `Registry.lua`. Failures `Bootstrap` raises on a package's behalf — a
 refused state, a failed migration step, a seal that cannot be applied — carry
 the package's `label` and point at the package's `Bootstrap` call.

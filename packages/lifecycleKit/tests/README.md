@@ -1,11 +1,25 @@
 # LifecycleKit Tests
 
-The LifecycleKit suite covers state transitions, late subscribers, load-on-demand catch-up, callback error isolation, bootstrap/reload behavior, validation, and dependency integration.
+The LifecycleKit suite covers state transitions, late subscribers, load-on-demand catch-up, callback error isolation, bootstrap/reload behavior, validation, the combat gate, the halted state, the scopes closed at shutdown, and dependency integration.
 
-WoW APIs are simulated by `support/LifecycleKitTestEnv.lua`; production source does not expose test-only hooks.
+WoW APIs are simulated by the shared fixture and `support/LifecycleKitTestEnv.lua`; production source does not expose test-only hooks.
+
+| Spec | Covers |
+|---|---|
+| `LifecycleKit_spec.lua` | the phase machine: `loading`, `loaded`, `ready`, `shutdown` |
+| `Subscriptions_spec.lua` | phase subscriptions, replay, `Disconnect` / `IsConnected` |
+| `LateLoad_spec.lua` | load-on-demand catch-up through `IsLoggedIn` and `IsAddOnLoaded` |
+| `Isolation_spec.lua` | one addon's failing callback does not starve another of a global phase |
+| `Errors_spec.lua` | argument validation, pinned `file:line` error positions, error-object propagation |
+| `Bootstrap_spec.lua` | registration, duplicate embedding, newer-revision refusal, watcher repair, upgrades from revisions 3 and 6 |
+| `CombatGate_spec.lua` | `IsInCombat`, `WhenOutOfCombat`, `OnCombatStart` / `OnCombatEnd` |
+| `Halt_spec.lua` | `Halt`, `OnHalted`, `DependsOn`, `OnDependencyHalted` |
+| `EventScopes_spec.lua` | closing the addon's EventKit scope at shutdown |
+| `OwnedScopes_spec.lua` | closing the HookKit, CommandKit and CommKit scopes and the SignalKit bus at shutdown, their order, and the upgrades from revisions 7 to 10 |
+| `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
 
 Additional regression coverage includes multiple callback failures within one phase, arbitrary Lua error objects, same-revision watcher recovery, and missed-login catch-up after interrupted bootstrap.
 
 Argument-error positions are pinned: each spec asserts the exact `file:line` the error reports, so a stray tail call or a wrong `error` level fails the suite instead of passing unnoticed.
 
-The combat gate and the halted state have their own suites, `CombatGate_spec.lua` and `Halt_spec.lua`. The shared fixture does not model `InCombatLockdown`, so `support/LifecycleKitTestEnv.lua` installs it on top of the fixture and removes it again on `Reset`; `EnterCombat` and `LeaveCombat` send the two `PLAYER_REGEN_*` events in the order the client does.
+The shared fixture does not model `InCombatLockdown`, so `support/LifecycleKitTestEnv.lua` installs it on top of the fixture and removes it again on `Reset`; `EnterCombat` and `LeaveCombat` send the two `PLAYER_REGEN_*` events in the order the client does. The same file models the slash-command globals CommandKit writes (`RunSlash`) and loads CommKit after the chain (`LoadCommKit`), because CommKit requires LifecycleKit.

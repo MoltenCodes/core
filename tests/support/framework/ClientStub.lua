@@ -28,6 +28,9 @@
 --- Every profile that publishes a project id also publishes the four
 --- `WOW_PROJECT_*` constants of the supported flavours, as current clients do.
 ---
+--- Every global a profile can install is listed in `Constants.OWNED_GLOBALS`,
+--- so `Reset` clears it whether or not the current profile installed it.
+---
 --- Host data the stubbed calls answer from — spells, items, addon metadata, the
 --- set of valid event names and the set of secret values — is per environment
 --- and reset with it. The helpers that change it are attached by `Attach`.
@@ -89,26 +92,6 @@ local PROFILES = {
 
 --- Profile names in a stable order, for specs that run once per profile.
 ClientStub.PROFILE_NAMES = { "mainline", "mists", "tbc", "classic", "noProjectId" }
-
---- The globals this stub may install. `Constants.OWNED_GLOBALS` lists them too,
---- so `Reset` clears them whether or not the current profile installed them.
-ClientStub.GLOBALS = {
-    "WOW_PROJECT_ID",
-    "WOW_PROJECT_MAINLINE",
-    "WOW_PROJECT_CLASSIC",
-    "WOW_PROJECT_BURNING_CRUSADE_CLASSIC",
-    "WOW_PROJECT_MISTS_CLASSIC",
-    "GetBuildInfo",
-    "issecretvalue",
-    "C_EventUtils",
-    "C_Spell",
-    "C_Item",
-    "C_SpellBook",
-    "GetSpellInfo",
-    "GetItemInfo",
-    "GetAddOnMetadata",
-    "UIParent",
-}
 
 ---Raise a stub precondition error when `name` is not a known profile.
 ---@param name any
@@ -370,11 +353,6 @@ function ClientStub.Attach(environment, state)
     function environment.SetWowProfile(name)
         ClientStub.ValidateProfileName(name, 3)
         state.wowProfile = name
-    end
-
-    ---@return string? name the selected profile
-    function environment.GetWowProfile()
-        return state.wowProfile
     end
 
     ---Return a new value the `issecretvalue` stub reports as secret.

@@ -38,7 +38,7 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local STATE_SCHEMA = 5
@@ -1312,7 +1312,7 @@ local function findSchedulerKit()
         or type(rawget(prototype, "Coalesce")) ~= "function"
         or type(rawget(prototype, "Debounce")) ~= "function"
     then
-        return nil, "the loaded SchedulerKit predates coalescing (revision 7)"
+        return nil, "the loaded SchedulerKit predates coalescing, added in its revision 7"
     end
     return SchedulerKit, nil
 end
@@ -1467,7 +1467,16 @@ local function closeCompositeHandle(handle)
             firstError = { value = value }
         end
     end
+    -- Disconnect the `OnChange` listeners rather than only dropping the
+    -- signal, so the connections their owners hold stop reporting connected.
+    local signal = rawget(handle, "_signal")
     rawset(handle, "_signal", false)
+    if signal ~= false then
+        local ok, value = pcall(signal.DisconnectAll, signal)
+        if not ok and firstError == nil then
+            firstError = { value = value }
+        end
+    end
 
     if firstError ~= nil then
         error(firstError.value, 0)
@@ -1485,7 +1494,8 @@ local function newCompositeListener(handle)
 end
 
 ---Finish building a handle: connect its events, then join `scope`. Releases
----the handle and raises when a registration is refused.
+---the handle and raises when a registration is refused or `scope` closed
+---while the handle was being built.
 ---@param handle table
 ---@param scope EventKit.Scope|false
 ---@param list string[]
@@ -1494,6 +1504,14 @@ end
 ---@param label string qualified public method name, used in the argument errors
 ---@param level integer stack level the failures are reported at
 local function attachCompositeHandle(handle, scope, list, units, key, label, level)
+    -- The scope was open when the public method checked it, but `Derive` ran
+    -- the caller's `compute` since then. A compute that closed the scope must
+    -- not leave a live handle linked into it, where no sweep would reach it.
+    if scope ~= false and rawget(scope, "_closed") == true then
+        pcall(closeCompositeHandle, handle)
+        error(label .. " cannot connect in a closed scope", level)
+    end
+
     local listener = newCompositeListener(handle)
     -- Levels inside the protected call: connectHandleEvents, pcall, this
     -- function, and then `level` more to the caller.

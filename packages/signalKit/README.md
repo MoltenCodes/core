@@ -12,7 +12,7 @@ SignalKit centralizes those semantics:
 
 - listeners run in connection order;
 - disconnects take effect immediately;
-- listeners connected during a `Fire()` wait until the next non-nested dispatch;
+- listeners connected during a `Fire()` are not invoked by that dispatch;
 - a nested `Fire()` sees the listener set as it exists when that nested call begins;
 - `Once()` disconnects before callback invocation;
 - callback errors propagate to the caller and abort that dispatch;

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2 — 2026-09-23
+
+- Fixed the lazy upgrade of pools built by revision 1. Revision 2 added `_callbackDepth`, `_maxActiveWarning` and `_activeWarned` to the pools it built but never back-filled them, so the first `Acquire` on a revision-1 pool raised "attempt to compare number with nil". `upgradePool` now fills each of the three when it is absent and leaves a revision 2 or 3 pool's own values alone.
+- Pools no longer carry a `_strict` field. No revision ever read it: strict diagnostics are the presence of the weak `_released` table.
+- `docs/API.md`: the list of methods a lifecycle callback may not call on its own pool now names every mutating method, `Owns` and `Close` describe parked objects and waiting requests, and the cascading-release section states what a failing child or parent `reset` leaves behind.
+- Implementation revision 6. Two new bootstrap specs cover the revision-1 pool upgrade and an in-place upgrade from revision 5 that keeps a waiting request, a child link and a parked release working, with the `OnFinished` hook revision 5 installed completing through revision 6.
+
 ## 0.4.1 — 2026-09-23
 
 - The default pool generation is now a fixed `1`, and pools built by a revision older than generations take `1` as well. 0.4.0 defaulted to PoolKit's own revision, so behaviour depended on which embedded copy won. Pools created by 0.4.0 keep the generation they were given; the shared state's unused `legacyGeneration` field is left in place.

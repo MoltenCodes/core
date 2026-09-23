@@ -186,6 +186,38 @@ describe("EventKit Derive", function()
         end)
     end)
 
+    it("disconnects its change listeners when it closes", function()
+        local derived = EventKit:Derive("CUSTOM_EVENT", function()
+            return 1
+        end)
+        local first = derived:OnChange(function() end)
+        local second = derived:OnChange(function() end)
+
+        assert.is_true(derived:Close())
+        assert.is_false(first:IsConnected())
+        assert.is_false(second:IsConnected())
+    end)
+
+    it("refuses a scope that its own compute closed, and leaves nothing behind", function()
+        local scope = EventKit:CreateScope()
+        expectErrorAtThisSpec("EventKit.Scope:Derive cannot connect in a closed scope", function()
+            scope:Derive("CUSTOM_EVENT", function()
+                scope:Close()
+                return 1
+            end)
+        end)
+        assert.are.equal(0, scope:GetActiveCount())
+        assert.are.equal(0, #Scheduled.NativeTimers())
+        local computes = 0
+        EventKit:Connect("CUSTOM_EVENT", function()
+            computes = computes + 1
+        end)
+        Scheduled.Emit("CUSTOM_EVENT")
+        assert.are.equal(1, computes)
+        -- The closed handle heard nothing, so no recompute was armed.
+        assert.are.equal(0, #Scheduled.NativeTimers())
+    end)
+
     it("refuses bad arguments at the caller's line", function()
         expectErrorAtThisSpec("EventKit:Derive compute must be a function", function()
             EventKit:Derive("CUSTOM_EVENT", 42)

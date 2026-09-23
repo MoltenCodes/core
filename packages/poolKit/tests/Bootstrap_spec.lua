@@ -76,7 +76,7 @@ describe("PoolKit bootstrap", function()
         local PoolKit = Env.ReloadPackage()
 
         assert.are.equal(legacy, PoolKit)
-        assert.are.equal(5, PoolKit.REVISION)
+        assert.are.equal(6, PoolKit.REVISION)
         assert.are.equal(prototype, PoolKit.Pool)
         assert.are.equal(2, PoolKit._state.schema)
 
@@ -94,6 +94,103 @@ describe("PoolKit bootstrap", function()
         legacyPool:Release(fresh)
         assert.are.equal(1, legacyPool:GetAvailableCount())
         assert.are.equal(fresh, legacyPool:Acquire())
+    end)
+
+    it("upgrades a revision-1 pool, which predates the re-entrancy counter", function()
+        local Registry = require("Registry")
+
+        -- What a revision-1 copy left behind: schema-1 state, and a pool with a
+        -- boolean-style `_callbackPhase` and no `_callbackDepth`,
+        -- `_maxActiveWarning` or `_activeWarned`, which revision 2 added.
+        local legacy = Registry:Register("poolKit", 1, 1)
+        local prototype = {}
+        local metatable = { __index = prototype }
+        local unbounded = {}
+        rawset(legacy, "API", 1)
+        rawset(legacy, "REVISION", 1)
+        rawset(legacy, "Pool", prototype)
+        rawset(legacy, "UNBOUNDED", unbounded)
+        rawset(legacy, "DEFAULT_MAX_RETAINED", 128)
+        rawset(legacy, "_state", { schema = 1, poolMetatable = metatable, unbounded = unbounded })
+
+        local legacyPool
+        legacyPool = setmetatable({
+            _create = function()
+                return {}
+            end,
+            _reset = function()
+                legacyPool:Trim()
+            end,
+            _destroy = false,
+            _maxRetained = 128,
+            _strict = true,
+            _available = {},
+            _availableCount = 0,
+            _active = {},
+            _activeCount = 0,
+            _retained = {},
+            _released = setmetatable({}, { __mode = "k" }),
+            _createdCount = 0,
+            _discardedCount = 0,
+            _closed = false,
+            _callbackPhase = false,
+            _trustedCallbacks = false,
+        }, metatable)
+
+        local PoolKit = Env.ReloadPackage()
+        assert.are.equal(legacy, PoolKit)
+
+        -- The reset re-enters its own pool, so the release is refused by the
+        -- guard revision 2 introduced, and rolled back.
+        local object = legacyPool:Acquire()
+        local ok, message = pcall(legacyPool.Release, legacyPool, object)
+        assert.is_false(ok)
+        assert.is_not_nil(string.find(tostring(message), "during its reset callback", 1, true))
+        assert.is_true(legacyPool:IsActive(object))
+        assert.are.equal(0, rawget(legacyPool, "_callbackDepth"))
+        assert.is_false(rawget(legacyPool, "_maxActiveWarning"))
+        assert.are.equal(1, legacyPool:GetGeneration())
+    end)
+
+    it("upgrades revision-5 pools with their queue, children and parking", function()
+        require("Registry")
+        local previous = Env.LoadRevision(5)
+        assert.are.equal(5, previous.REVISION)
+
+        local frames = previous:New({
+            create = function()
+                return {}
+            end,
+            maxCreated = 1,
+            maxWaiting = 1,
+        })
+        local textures = previous:NewTablePool()
+        local fading = previous:NewTablePool()
+        local frame, texture = frames:Acquire(), textures:Acquire()
+        frames:AttachChild(frame, texture, textures)
+        local served = nil
+        assert.are.same({ nil, "waiting" }, {
+            frames:Acquire(function(object)
+                served = object
+            end),
+        })
+        local group = Env.NewAnimationGroup()
+        local parked = fading:Acquire()
+        assert.is_true(fading:ReleaseAfter(parked, group))
+
+        local PoolKit = Env.ReloadPackage()
+        assert.are.equal(previous, PoolKit)
+        assert.are.equal(6, PoolKit.REVISION)
+
+        -- The hook revision 5 installed now runs revision 6's completion.
+        group:Finish()
+        assert.are.equal(0, fading:GetParkedCount())
+        assert.are.equal(1, fading:GetAvailableCount())
+
+        frames:Release(frame)
+        assert.is_false(textures:IsActive(texture))
+        assert.are.equal(frame, served)
+        assert.are.equal(0, frames:GetWaitingCount())
     end)
 
     it("rejects same-revision UNBOUNDED sentinel drift", function()

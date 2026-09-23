@@ -40,4 +40,39 @@ end
 
 EventKitTestEnv.Scheduled = Scheduled
 
+---Run the EventKit source once more as a copy carrying `revision`, the way a
+---second addon embedding a different copy would. The copy is the current
+---source with only `IMPLEMENTATION_REVISION` changed, so it stands in for an
+---older or newer revision whose `_state` schema matches this one.
+---@param revision integer
+---@return table EventKit the facade the copy returned
+function EventKitTestEnv.LoadSourceAtRevision(revision)
+    -- Lua 5.1 has no `package.searchpath`, so walk the templates by hand.
+    local path, file = nil, nil
+    for template in string.gmatch(package.path, "[^;]+") do
+        local candidate = string.gsub(template, "%?", "EventKit")
+        file = io.open(candidate, "rb")
+        if file ~= nil then
+            path = candidate
+            break
+        end
+    end
+    if file == nil then
+        error("EventKitTestEnv cannot find EventKit.lua on package.path", 2)
+    end
+    local source = file:read("*a")
+    file:close()
+
+    local patched, count = source:gsub(
+        "local IMPLEMENTATION_REVISION = %d+",
+        "local IMPLEMENTATION_REVISION = " .. revision,
+        1
+    )
+    if count ~= 1 then
+        error("EventKitTestEnv found no IMPLEMENTATION_REVISION in " .. path, 2)
+    end
+    local chunk = assert(loadstring(patched, "@" .. path))
+    return chunk()
+end
+
 return EventKitTestEnv

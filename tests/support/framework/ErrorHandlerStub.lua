@@ -14,6 +14,20 @@ function ErrorHandlerStub.Reset(state)
     state.reportedErrors = {}
 end
 
+---Finish one `securecallfunction` call the way the client does: a success
+---returns the callback's results, a failure reaches the host error sink and
+---returns nothing. Taking `pcall`'s results as varargs keeps the stub free of
+---allocation on the success path, like the call it stands in for.
+---@param state table shared stub state
+---@param ok boolean
+---@return any ...
+local function finishSecureCall(state, ok, ...)
+    if ok then
+        return ...
+    end
+    state.reportedErrors[#state.reportedErrors + 1] = { value = (...) }
+end
+
 ---Attach this stub's public helpers to `environment`.
 ---
 ---Installation is deliberately not part of `InstallGlobals`: a pure-Lua package
@@ -39,10 +53,7 @@ function ErrorHandlerStub.Attach(environment, state)
         -- The fixture stands in for the World of Warcraft client, whose API and shared namespace only exist in the global table.
         -- selene: allow(global_usage)
         rawset(_G, "securecallfunction", function(callback, ...)
-            local ok, message = pcall(callback, ...)
-            if not ok then
-                state.reportedErrors[#state.reportedErrors + 1] = { value = message }
-            end
+            return finishSecureCall(state, pcall(callback, ...))
         end)
     end
 

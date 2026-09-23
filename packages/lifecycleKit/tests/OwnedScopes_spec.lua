@@ -346,11 +346,11 @@ end)
 describe("LifecycleKit upgrade from an older schema-3 revision", function()
     after_each(TestEnv.Reset)
 
-    -- Revisions 7 to 9 already wrote schema 3, but each one's logout watcher
-    -- calls its own handler, which misses the scopes later revisions close.
-    -- The upgrade must replace that watcher, or logout would keep running the
-    -- older code.
-    for oldRevision = 7, 9 do
+    -- Revisions 7 to 10 already wrote schema 3, but each one's logout watcher
+    -- calls its own handler, and those of revisions 7 to 9 miss the scopes
+    -- later revisions close. The upgrade must replace that watcher, or logout
+    -- would keep running the older code.
+    for oldRevision = 7, 10 do
         it(
             "replaces revision " .. oldRevision .. "'s host watchers so logout closes what it owns",
             function()
@@ -417,7 +417,7 @@ describe("LifecycleKit upgrade from an older schema-3 revision", function()
                 local subscription = SignalKit:ForAddon("CarriedOver"):Subscribe("Anything", noop)
 
                 assert.are.equal(old, upgraded)
-                assert.are.equal(10, upgraded.REVISION)
+                assert.are.equal(11, upgraded.REVISION)
                 assert.is_false(oldLogoutWatcher:IsConnected())
 
                 TestEnv.Logout()

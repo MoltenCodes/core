@@ -115,7 +115,15 @@ required addon whose `LifecycleKit:ForAddon(name):GetHaltReason()` is set, else
 the authority. Where it is asked:
 
 - `enableWithPolicy`, before the policy logic, for a module that is not
-  enabled: records the refusal and raises at the caller's line;
+  enabled: records the refusal and raises at the caller's line (the
+  `automatic` recursion adds its depth to the error level, so a refusal deep
+  in a dependency chain still points at the caller);
+- `enableOne`, once `OnEnable` has returned: a hook that halted the addon or a
+  required addon found the module not yet enabled, so the halt pass skipped
+  it; it is disabled here instead, and on its own addon's halt its scope is
+  closed even when `OnDisable` fails. The `automatic` recursion checks each
+  dependency's state after enabling it and leaves the dependent blocked by a
+  dependency that was taken down this way;
 - `runEnableAllPass`: the module counts as failed, so its hard dependents are
   blocked behind it, exactly as for a failed dependency;
 - `catchUpModule`: records the refusal without raising, because definition

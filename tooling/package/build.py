@@ -138,7 +138,9 @@ def copy_package(package_name: str, bundle_dir: Path) -> list[str]:
         destination = target_dir / path.relative_to(source_dir)
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, destination)
-        published.append(str(destination.relative_to(bundle_dir)))
+        # A bundle path is always POSIX-style, whatever the builder's platform,
+        # so `manifest.json` is identical wherever the bundle was built.
+        published.append(destination.relative_to(bundle_dir).as_posix())
 
     for relative, published_name in PACKAGE_DOCUMENTS.items():
         source = package_dir / relative
@@ -369,7 +371,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument(
-        "--all", action="store_true", help="build a bundle containing every package"
+        "--all",
+        action="store_true",
+        help="build a bundle containing every release package (development packages are skipped)",
     )
     selection.add_argument(
         "--package",

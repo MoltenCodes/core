@@ -25,6 +25,18 @@ local function expectErrorAtThisSpec(expected, callback)
     )
 end
 
+---Measure the allocation a workload causes, in kilobytes, with the collector
+---stopped so that a collection cycle cannot hide or invent growth.
+local function allocatedKilobytes(workload)
+    collectgarbage()
+    collectgarbage("stop")
+    local before = collectgarbage("count")
+    workload()
+    local after = collectgarbage("count")
+    collectgarbage("restart")
+    return after - before
+end
+
 ---A lane job that holds its slot until `gate[index]` is set.
 local function gatedJob(gate, index, started)
     return function(context)
@@ -549,5 +561,29 @@ describe("SchedulerKit lanes after the acceptance review", function()
         assert.are.equal(20, lane:GetStats().completed)
         assert.are.equal(0, rawget(lane, "_tail"))
         assert.are.equal(1, rawget(lane, "_head"))
+    end)
+
+    it("refuses a full or closed lane without allocating", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        local lane = SchedulerKit:Lane("refusing", { maxQueued = 1 })
+        local callback = function() end
+        lane:Submit(callback)
+        lane:Submit(callback)
+
+        local fullKilobytes = allocatedKilobytes(function()
+            for _ = 1, 200 do
+                lane:Submit(callback)
+            end
+        end)
+        lane:Close()
+        local closedKilobytes = allocatedKilobytes(function()
+            for _ = 1, 200 do
+                lane:Submit(callback)
+            end
+        end)
+
+        assert.are.equal(0, fullKilobytes)
+        assert.are.equal(0, closedKilobytes)
+        assert.are.equal(400, lane:GetStats().refused)
     end)
 end)

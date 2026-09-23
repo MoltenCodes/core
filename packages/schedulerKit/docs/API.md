@@ -395,7 +395,7 @@ local work = SchedulerKit:ForAddon("MyAddon")
 
 `ForAddon` is idempotent for one addon name and binds the scope to `LifecycleKit:ForAddon(addonName)`.
 
-At shutdown, SchedulerKit closes the scope, cancels queued/running/delayed jobs, and closes its internal TimerKit delay scope.
+At shutdown, SchedulerKit closes the scope, cancels queued/running/delayed jobs (lane submissions included), closes its `Debounce` and `Coalesce` handles, cancels its watches, and closes its internal TimerKit delay scope.
 
 If the lifecycle is already terminal when `ForAddon` is first called, SchedulerKit returns the canonical scope already closed.
 
@@ -409,19 +409,26 @@ SchedulerKit:After(1, callback)
 SchedulerKit:Every(5, callback)
 ```
 
+`Debounce`, `Coalesce` and `Watch` called on the package, and `Lane:Submit`
+without `options.scope`, use the same scope.
+
 The package cannot infer addon ownership from an arbitrary caller. Addon code that needs deterministic shutdown cleanup should prefer `ForAddon(addonName)`.
 
-No SchedulerKit convenience scope is allocated merely by loading the package. The SchedulerKit scope is created on the first package-level scheduling operation, while its internal TimerKit delay scope remains unallocated until the first `NextFrame()`, `After()`, or `Every()` operation. Immediate-only `Schedule()` use therefore does not allocate TimerKit ownership state. If the SchedulerKit scope is closed indirectly through `job:GetScope():Close()`, a later package-level scheduling operation creates a fresh scope.
+No SchedulerKit convenience scope is allocated merely by loading the package. The SchedulerKit scope is created on the first package-level scheduling operation, while its internal TimerKit delay scope remains unallocated until something first arms a timer in it: `NextFrame()`, `After()`, `Every()`, the window of a package-level `Debounce` or `Coalesce` handle, or the retry backoff of a lane submission it owns. Immediate-only `Schedule()` use therefore does not allocate TimerKit ownership state. If the SchedulerKit scope is closed indirectly through `job:GetScope():Close()`, every job and handle it owns is released as for any scope close, and a later package-level operation creates a fresh scope.
 
 ## WoW driver boundary
 
-SchedulerKit relies on only two direct WoW facilities:
+SchedulerKit relies on these direct WoW facilities:
 
 ```text
 CreateFrame("Frame") + Frame:SetScript("OnUpdate", ...)
 debugprofilestop()          -- addon CPU milliseconds, the budget clock
-GetTimePreciseSec()         -- documented fallback when the above is absent
+GetTimePreciseSec()         -- the coalescing family's clock, and the budget
+                            -- clock's fallback when the above is absent
+geterrorhandler()           -- best-effort diagnostics
 ```
+
+Every timer SchedulerKit arms, including the `Debounce`, `Coalesce`, `Watch` and lane timers, is a TimerKit timer.
 
 The OnUpdate script is installed only while at least one job is ready to execute and removed when ready queues become empty. Delayed-only jobs therefore do not keep an OnUpdate handler active.
 
@@ -506,7 +513,7 @@ refresh("BAG_UPDATE")  -- returns true; call it as often as you like
 | `Cancel()` | Drop the owed fire; returns whether one was owed. The handle stays usable. |
 | `Flush()` | Run the owed fire now; returns `true`, or `false` when nothing was owed. With a lane it returns `false, "deferred"` when the lane is full (the fire stays owed and is retried one delay later) and `false, "dropped"` when the lane is closed. |
 | `IsPending()` | Whether a fire is owed and has not been handed off yet. |
-| `Close()` | Drop what is owed, cancel a delivery still waiting for the lane, and leave the scope. A delivery the lane already admitted finishes, as lane admissions do. Terminal. |
+| `Close()` | Drop what is owed, cancel a delivery still waiting for the lane, and leave the scope. A delivery the lane already admitted finishes, as lane admissions do. Terminal; returns `false` when already closed. |
 | `IsClosed()` | Whether the handle is closed. |
 
 ### `Coalesce(callback, intervalSeconds[, options])`
@@ -546,7 +553,8 @@ Past `maxKeys` a **new** key is refused: the call returns `false` and the
 refusal is counted. A key already in the set is still updated. Refusing was
 chosen over evicting an older key because a set that silently loses a key
 it already accepted is harder to reason about than one that says no. A `nil`
-or NaN key raises at the caller.
+or NaN key raises at the caller; a closed handle returns `false`.
+`intervalSeconds` may be `0`, which means the next frame.
 
 | Method | Purpose |
 |---|---|
@@ -554,7 +562,7 @@ or NaN key raises at the caller.
 | `Flush()` | Deliver now; returns `true`, or `false` when nothing was collected. With a lane it returns `false, "deferred"` while the previous set is still in the lane or the lane is full (the keys stay collected and the interval timer delivers them), and `false, "dropped"` when the lane is closed. |
 | `IsPending()` | Whether keys are waiting for delivery. |
 | `GetStats()` | `{ keys, refused, delivered, deferred, dropped }`, in a table reused by every call. |
-| `Close()` | Drop the keys, cancel a delivery still waiting for the lane, and leave the scope. A delivery the lane already admitted finishes. Terminal. |
+| `Close()` | Drop the keys, cancel a delivery still waiting for the lane, and leave the scope. A delivery the lane already admitted finishes. Terminal; returns `false` when already closed. |
 | `IsClosed()` | Whether the handle is closed. |
 
 `Flush()` called from inside the handle's own callback returns `false`: the
@@ -593,7 +601,7 @@ ticker's callback, so keep them cheap; put heavy work in a job.
 
 | Method | Purpose |
 |---|---|
-| `Cancel()` | Stop polling. Terminal. |
+| `Cancel()` | Stop polling. Terminal; returns `false` when already cancelled. |
 | `IsActive()` | Whether the watch is still polling. |
 
 ### Lanes: `Lane(name[, options])`
@@ -654,7 +662,7 @@ reported with its traceback, like any job failure.
 | `Submit(callback[, options])` | Queue a job under the lane's limits. |
 | `GetStats()` | `{ queued, inFlight, completed, failed, retried, cancelled, refused }`, in a table reused by every call. |
 | `GetName()` | The shared name. |
-| `Close()` | Refuse new submissions, cancel every waiting one, let admitted ones finish; frees the name. |
+| `Close()` | Refuse new submissions, cancel every waiting one, let admitted ones finish; frees the name. Returns `false` when already closed. |
 | `IsClosed()` | Whether the lane is closed. |
 
 `Close()` **drains** what is in flight rather than cancelling it: an admitted

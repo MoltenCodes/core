@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 from typing import Sequence
 
 from tooling.release import history
@@ -33,15 +32,19 @@ def validate_tag_format(tag: str) -> list[str]:
     return []
 
 
-def check_tag(tag: str, root: Path | None = None) -> list[str]:
-    """Return every reason `tag` cannot be released from the tree at `root`."""
+def check_tag(tag: str) -> list[str]:
+    """Return every reason `tag` cannot be released from the repository tree.
+
+    The release notes are read from `history.ROOT` and the manifests from
+    `validate_manifests.PACKAGES`; tests point both at a throwaway tree.
+    """
     errors = validate_tag_format(tag)
     if errors:
         return errors
 
     document = history.RELEASES_DOCUMENT
     try:
-        text = history.read_releases(root)
+        text = history.read_releases()
     except OSError as exc:
         return [f"{document}: unable to read: {exc}"]
 

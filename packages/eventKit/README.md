@@ -5,10 +5,11 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.5.0`
+- Version: `0.5.2`
 - API generation: `1`
-- Implementation revision: `8`
+- Implementation revision: `9`
 - Runtime dependencies: Registry API 2, SignalKit API 1
+- Optional partner: SchedulerKit API 1, found at call time by `Coalesce` and `Derive`
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW
 session. That shapes three of its guarantees:
@@ -97,4 +98,6 @@ Libs\MoltenCodes\eventKit\EventKit.lua
 
 Direct runtime dependencies: Registry API 2, SignalKit API 1.
 Every file above is required; omitting one makes this package raise at
-load.
+load. SchedulerKit is optional and is not part of this load order: when an
+addon also embeds it (after LifecycleKit and TimerKit), `Coalesce` and `Derive`
+find it when they are called.

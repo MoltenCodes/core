@@ -112,24 +112,24 @@ class HistoryTests(unittest.TestCase):
 
 class CheckTagTests(ReleaseRepository):
     def test_a_consistent_tag_passes(self):
-        self.assertEqual([], check_tag.check_tag("v1.1.0", self.root))
+        self.assertEqual([], check_tag.check_tag("v1.1.0"))
 
     def test_a_per_package_tag_is_rejected(self):
-        errors = check_tag.check_tag("registry-v0.6.1", self.root)
+        errors = check_tag.check_tag("registry-v0.6.1")
 
         self.assertEqual(1, len(errors))
         self.assertIn("not a bundle release tag", errors[0])
 
     def test_a_tag_without_v_prefix_is_rejected(self):
-        self.assertEqual(1, len(check_tag.check_tag("1.1.0", self.root)))
+        self.assertEqual(1, len(check_tag.check_tag("1.1.0")))
 
     def test_a_prerelease_tag_is_accepted_when_documented(self):
         self.write_releases("## Release history\n\n### v1.2.0-beta.1\n\n- `registry` 0.6.1\n")
 
-        self.assertEqual([], check_tag.check_tag("v1.2.0-beta.1", self.root))
+        self.assertEqual([], check_tag.check_tag("v1.2.0-beta.1"))
 
     def test_a_tag_without_a_section_is_rejected(self):
-        errors = check_tag.check_tag("v2.0.0", self.root)
+        errors = check_tag.check_tag("v2.0.0")
 
         self.assertEqual(1, len(errors))
         self.assertIn('no "### v2.0.0" section', errors[0])
@@ -137,13 +137,13 @@ class CheckTagTests(ReleaseRepository):
     def test_a_section_listing_no_packages_is_rejected(self):
         self.write_releases("## Release history\n\n### v1.0.0\n\nNothing listed.\n")
 
-        errors = check_tag.check_tag("v1.0.0", self.root)
+        errors = check_tag.check_tag("v1.0.0")
 
         self.assertEqual(1, len(errors))
         self.assertIn("lists no", errors[0])
 
     def test_a_version_that_differs_from_the_manifest_is_rejected(self):
-        errors = check_tag.check_tag("v1.0.0", self.root)
+        errors = check_tag.check_tag("v1.0.0")
 
         self.assertEqual(1, len(errors))
         self.assertIn('"registry" is listed at 0.6.0, but its manifest says 0.6.1', errors[0])
@@ -152,7 +152,7 @@ class CheckTagTests(ReleaseRepository):
     def test_an_unknown_package_is_rejected(self):
         self.write_releases("## Release history\n\n### v1.0.0\n\n- `ghostKit` 1.0.0\n")
 
-        errors = check_tag.check_tag("v1.0.0", self.root)
+        errors = check_tag.check_tag("v1.0.0")
 
         self.assertEqual(1, len(errors))
         self.assertIn('package "ghostKit" does not exist', errors[0])
@@ -162,7 +162,7 @@ class CheckTagTests(ReleaseRepository):
             "## Release history\n\n### v1.0.0\n\n- `registry` 0.6.1\n- `registry` 0.6.1\n"
         )
 
-        errors = check_tag.check_tag("v1.0.0", self.root)
+        errors = check_tag.check_tag("v1.0.0")
 
         self.assertEqual(1, len(errors))
         self.assertIn("listed more than once", errors[0])
@@ -210,6 +210,28 @@ class LibraryTocTests(unittest.TestCase):
         pkgmeta = (history.ROOT / ".pkgmeta").read_text(encoding="utf-8")
 
         self.assertIn(f"package-as: {library_toc.PACKAGE_NAME}", pkgmeta)
+
+    def test_main_writes_the_toc(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(0, library_toc.main([]))
+
+        self.assertEqual(library_toc.library_toc(), output.getvalue())
+
+    def test_help_prints_usage_instead_of_the_toc(self):
+        output = io.StringIO()
+        with redirect_stdout(output), self.assertRaises(SystemExit) as raised:
+            library_toc.main(["--help"])
+
+        self.assertEqual(0, raised.exception.code)
+        self.assertIn("usage:", output.getvalue())
+        self.assertNotIn("## Interface", output.getvalue())
+
+    def test_rejects_unknown_arguments(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
+            library_toc.main(["--bogus"])
+
+        self.assertEqual(2, raised.exception.code)
 
 
 class RepositoryReleaseHistoryTests(unittest.TestCase):
