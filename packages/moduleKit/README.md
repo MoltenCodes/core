@@ -30,6 +30,8 @@ Dependency policy is explicit:
 
 Whole-container `InitializeAll()` / `EnableAll()` operations always process the complete valid graph in deterministic topological order. `DisableAll()` uses reverse topological order and preserves hard-dependency state if a dependent fails to disable.
 
+Each module carries a `scope` whose `Timers`, `Events` and `Jobs` fields are released automatically when the module is disabled, and records what it is meant to be (`wanted`) apart from what it is (`actual`), so a module blocked by a failed dependency comes back when that dependency is enabled. See [`docs/API.md`](docs/API.md).
+
 Definition-table creation is validated strictly: unknown fields and sparse list fields are rejected rather than silently ignored. Late module creation is also guarded so a new module cannot retroactively introduce an ordering predecessor for a module that has already initialized.
 
 See [`docs/API.md`](docs/API.md) for provider scopes, lifecycle behavior, failure semantics, late-module rules, and the complete public contract.

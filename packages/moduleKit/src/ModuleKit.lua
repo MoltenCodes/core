@@ -11,19 +11,23 @@
 --   Validation helpers ... Argument checks and definition-mutability rules.
 --   Graph ................ Edge construction, cycle reporting, topological order.
 --   Dependency injection . Provider registration, scoped resolution, cycles.
+--   Module scopes ........ Per-module timer, event and job scopes released on
+--                          disable, resolved through `Registry:Find`.
 --   Lifecycle operations . Single-module transitions, dependency policies,
+--                          intent versus fact, recovery of blocked dependents,
 --                          whole-container passes and deferred catch-up.
 --   Module public API ..... Methods installed on the shared Module prototype.
 --   Addon public API ...... Methods installed on the shared Addon prototype.
 --   Addon creation ........ Container identity and LifecycleKit subscriptions.
 --   Commit ................ Publishing the public surface and runtime dispatch.
 --
--- `docs/INTERNALS.md` explains the graph algorithm, the failure model, and the
--- lifecycle replay hazard that the dispatched-phase set guards against.
+-- `docs/INTERNALS.md` explains the graph algorithm, the failure model, the
+-- lifecycle replay hazard that the dispatched-phase set guards against, module
+-- scopes, and the intent-versus-fact enable state.
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -62,6 +66,7 @@ local STATE_SCHEMA = 1
 ---Hook fields are assigned by the consumer, either through the definition table
 ---or directly on the module, and are called by ModuleKit at the matching phase.
 ---@class ModuleKit.Module
+---@field scope ModuleKit.Scope framework registrations released on disable
 ---@field OnInitialize fun(self: ModuleKit.Module, injections: table<string, any>)?
 ---@field OnEnable fun(self: ModuleKit.Module)?
 ---@field OnDisable fun(self: ModuleKit.Module)?
@@ -73,6 +78,7 @@ local STATE_SCHEMA = 1
 ---@field GetLastError fun(self: ModuleKit.Module): any
 ---@field HasLastError fun(self: ModuleKit.Module): boolean
 ---@field GetBlockedBy fun(self: ModuleKit.Module): string|nil
+---@field GetEnableState fun(self: ModuleKit.Module): ModuleKit.EnableState
 ---@field GetInjections fun(self: ModuleKit.Module): table<string, any>
 ---@field DependsOn fun(self: ModuleKit.Module, moduleName: string): ModuleKit.Module
 ---@field OptionalDependency fun(self: ModuleKit.Module, moduleName: string): ModuleKit.Module
@@ -104,6 +110,20 @@ local STATE_SCHEMA = 1
 ---@field ProvideModule fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any): ModuleKit.Addon
 ---@field ProvideTransient fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any): ModuleKit.Addon
 ---@field Resolve fun(self: ModuleKit.Addon, name: string, requestingModule: ModuleKit.Module|nil): any
+
+---Per-module owner of framework registrations, released when the module is
+---disabled. Each field is created on first read, only while the module is
+---enabling or enabled, and is `nil` when the Kit behind it is not loaded.
+---@class ModuleKit.Scope
+---@field Timers table? a TimerKit scope (`TimerKit:CreateScope()`)
+---@field Events table? an EventKit scope (`EventKit:CreateScope()`)
+---@field Jobs table? a SchedulerKit scope (`SchedulerKit:CreateScope()`)
+
+---Intent and fact of one module's enable state, as `GetEnableState` reports it.
+---@class ModuleKit.EnableState
+---@field wanted boolean whether the module is meant to be enabled
+---@field actual boolean whether the module is enabled right now
+---@field blockedBy string|nil the hard dependency whose failure keeps it off
 
 ---An error object wrapped so that `nil` and `false` stay representable.
 ---@class ModuleKit.ErrorRecord
@@ -200,6 +220,7 @@ local function validatePublicSurface(implementation)
         and type(rawget(Module, "GetLastError")) == "function"
         and type(rawget(Module, "HasLastError")) == "function"
         and type(rawget(Module, "GetBlockedBy")) == "function"
+        and type(rawget(Module, "GetEnableState")) == "function"
         and type(rawget(Module, "GetInjections")) == "function"
         and type(rawget(Module, "DependsOn")) == "function"
         and type(rawget(Module, "OptionalDependency")) == "function"
@@ -299,6 +320,7 @@ if previousRevision == nil then
         schema = STATE_SCHEMA,
         addons = {},
         dispatch = {},
+        scopeMetatable = {},
         runtimeRevision = 0,
     }
 
@@ -316,7 +338,15 @@ else
     if type(rawget(state, "runtimeRevision")) ~= "number" then
         rawset(state, "runtimeRevision", previousRevision)
     end
+    if type(rawget(state, "scopeMetatable")) ~= "table" then
+        rawset(state, "scopeMetatable", {})
+    end
 end
+
+-- Every module scope shares this metatable. It lives in shared state, and each
+-- revision installs its own `__index` on it, so scopes created by an older copy
+-- observe the newer lookup after an upgrade.
+local SCOPE_METATABLE = rawget(state, "scopeMetatable")
 
 local ADDON_METATABLE = { __index = Addon }
 local MODULE_METATABLE = { __index = Module }
@@ -988,7 +1018,141 @@ local function resolveInjections(module)
     return resolved
 end
 
+-- Module scopes -------------------------------------------------------------
+--
+-- A module registers timers, events and scheduler jobs through `module.scope`
+-- and ModuleKit releases all of them when the module is disabled, so a module
+-- needs no `OnDisable` just to clean up. ModuleKit has no hard dependency on
+-- the Kits behind the scope: each is resolved through `Registry:Find` on first
+-- use, and a field whose Kit is not loaded reads as `nil`.
+
+---The Kit behind each scope field, and the order scopes are closed in.
+local SCOPE_FIELDS = { "Events", "Jobs", "Timers" }
+local SCOPE_PACKAGES = {
+    Events = "eventKit",
+    Jobs = "schedulerKit",
+    Timers = "timerKit",
+}
+-- eventKit, schedulerKit and timerKit are all API generation 1.
+local SCOPE_PACKAGE_API = 1
+
+---Silent optional-dependency lookup.
+---
+---Registry revision 7 added `Find`; an older Registry's `Get` also returns
+---`nil` for a missing package, so it is a correct fallback. The method is read
+---on every call because an embedded Registry upgrade replaces it in place.
+---@param packageName string
+---@param api integer
+---@return table|nil
+local function findOptionalPackage(packageName, api)
+    local find = rawget(Registry, "Find")
+    if type(find) ~= "function" then
+        find = rawget(Registry, "Get")
+    end
+    local implementation = find(Registry, packageName, api)
+    if type(implementation) ~= "table" then
+        return nil
+    end
+    return implementation
+end
+
+---Create the scope field `key` on first read.
+---
+---The field is written onto the scope with `rawset`, so every later read is a
+---plain table hit and this function runs once per field per enable.
+---@param scope ModuleKit.Scope
+---@param key any
+---@return table|nil
+local function scopeIndex(scope, key)
+    local packageName = SCOPE_PACKAGES[key]
+    if packageName == nil then
+        return nil
+    end
+
+    local module = rawget(scope, "_module")
+    if rawget(module, "_scopeOpen") ~= true then
+        error(
+            'ModuleKit module "'
+                .. tostring(rawget(module, "_name"))
+                .. '" scope.'
+                .. key
+                .. " is available only while the module is enabling or enabled",
+            2
+        )
+    end
+
+    local kit = findOptionalPackage(packageName, SCOPE_PACKAGE_API)
+    local createScope = kit ~= nil and rawget(kit, "CreateScope") or nil
+    if type(createScope) ~= "function" then
+        -- The Kit is not loaded, or is a revision without owner scopes.
+        return nil
+    end
+
+    local created = createScope(kit)
+    rawset(scope, key, created)
+    return created
+end
+
+---Create the scope object a module carries for its whole life.
+---@param module ModuleKit.Module
+---@return ModuleKit.Scope
+local function newModuleScope(module)
+    return setmetatable({ _module = module }, SCOPE_METATABLE)
+end
+
+---Close every scope field the module created and mark the scope closed.
+---
+---Every field is closed even when one `Close` raises; the first failure is
+---returned so the caller can re-raise it once the module's state is settled.
+---@param module ModuleKit.Module
+---@return ModuleKit.ErrorRecord|nil firstError
+local function closeModuleScope(module)
+    rawset(module, "_scopeOpen", false)
+
+    local scope = rawget(module, "_scope")
+    if type(scope) ~= "table" then
+        return nil
+    end
+
+    local firstError
+    for index = 1, #SCOPE_FIELDS do
+        local key = SCOPE_FIELDS[index]
+        local owned = rawget(scope, key)
+        if owned ~= nil then
+            rawset(scope, key, nil)
+            local close = type(owned) == "table" and owned.Close or nil
+            if type(close) == "function" then
+                local ok, value = pcall(close, owned)
+                if not ok and firstError == nil then
+                    firstError = { value = value }
+                end
+            end
+        end
+    end
+    return firstError
+end
+
 -- Lifecycle operations ------------------------------------------------------
+
+---Keep the first failure of a pass that continues after independent errors.
+---@param current ModuleKit.ErrorRecord|nil
+---@param ok boolean
+---@param value any
+---@return ModuleKit.ErrorRecord|nil
+local function captureFirstError(current, ok, value)
+    if current ~= nil or ok then
+        return current
+    end
+    return { value = value }
+end
+
+---Re-raise a captured failure unchanged, or return when there was none.
+---@param record ModuleKit.ErrorRecord|nil
+local function raiseCaptured(record)
+    if record ~= nil then
+        error(rawget(record, "value"), 0)
+    end
+end
 
 ---Record why the last operation on `module` did not complete.
 ---@param module ModuleKit.Module
@@ -1077,13 +1241,20 @@ local function enableOne(module)
         )
     end
 
+    -- The scope is usable from `OnEnable` on, so a hook can register the
+    -- work it owns. A failed `OnEnable` leaves the module where it was, so
+    -- whatever it registered before failing is released with it.
+    rawset(module, "_scopeOpen", true)
     local ok, value = invokeHook(module, "OnEnable")
     if not ok then
+        closeModuleScope(module)
         recordFailure(module, value, nil, true)
         error(value, 0)
     end
 
     rawset(module, "_state", "enabled")
+    rawset(module, "_wantedEnabled", true)
+    rawset(module, "_enableBlockedBy", nil)
     clearFailure(module)
     return module
 end
@@ -1104,7 +1275,19 @@ local function disableOne(module)
 
     rawset(module, "_state", "disabled")
     clearFailure(module)
+
+    -- The module is disabled either way; a scope that failed to close is
+    -- reported after the transition rather than leaving the module enabled.
+    raiseCaptured(closeModuleScope(module))
     return module
+end
+
+---Record that `module` is meant to stay disabled, which also ends any wait
+---for a dependency to recover.
+---@param module ModuleKit.Module
+local function markWantedDisabled(module)
+    rawset(module, "_wantedEnabled", false)
+    rawset(module, "_enableBlockedBy", nil)
 end
 
 ---Initialize `module` under the container's dependency policy.
@@ -1181,8 +1364,16 @@ local function enableWithPolicy(module, visiting)
         end
         visiting[module] = true
         for index = 1, #dependencies do
-            enableWithPolicy(dependencies[index], visiting)
+            local dependency = dependencies[index]
+            if rawget(dependency, "_state") ~= "enabled" then
+                -- Stays recorded if enabling the dependency raises, which is
+                -- what lets the dependency's later recovery bring this module
+                -- back; see `recoverBlockedDependents`.
+                rawset(module, "_enableBlockedBy", rawget(dependency, "_name"))
+            end
+            enableWithPolicy(dependency, visiting)
         end
+        rawset(module, "_enableBlockedBy", nil)
         visiting[module] = nil
     else
         for index = 1, #dependencies do
@@ -1190,6 +1381,7 @@ local function enableWithPolicy(module, visiting)
             if rawget(dependency, "_state") ~= "enabled" then
                 local name = rawget(dependency, "_name")
                 recordFailure(module, nil, name, false)
+                rawset(module, "_enableBlockedBy", name)
                 error(
                     'ModuleKit strict policy: module "'
                         .. rawget(module, "_name")
@@ -1226,31 +1418,66 @@ local function disableWithPolicy(module)
 
     if policy == "automatic" then
         for index = 1, #dependents do
-            disableWithPolicy(dependents[index])
+            -- A cascade is a block, not a change of intent: the dependent
+            -- still wants to be enabled and waits for this module, so it
+            -- recovers when this module is enabled again.
+            local dependent = dependents[index]
+            disableWithPolicy(dependent)
+            rawset(dependent, "_enableBlockedBy", rawget(module, "_name"))
         end
     end
 
     return disableOne(module)
 end
 
----Keep the first failure of a pass that continues after independent errors.
----@param current ModuleKit.ErrorRecord|nil
----@param ok boolean
----@param value any
----@return ModuleKit.ErrorRecord|nil
-local function captureFirstError(current, ok, value)
-    if current ~= nil or ok then
-        return current
+---Enable every blocked module whose hard dependencies are now all enabled.
+---
+---A module blocked by a dependency keeps its intent (`_wantedEnabled`) and
+---records the dependency in `_enableBlockedBy`. When the dependency enables
+---later, this pass brings the module back. It walks the full graph order, so a
+---whole chain recovers in one pass and ordering constraints are respected.
+---
+---It does nothing inside a whole-container pass, which decides blocking for
+---every module it visits, or when the graph is invalid, which targeted
+---operations tolerate but a graph-ordered pass cannot.
+---@param addon ModuleKit.Addon
+---@return ModuleKit.ErrorRecord|nil firstError
+local function recoverBlockedDependents(addon)
+    if rawget(addon, "_shutdown") == true or rawget(addon, "_passDepth") > 0 then
+        return nil
     end
-    return { value = value }
-end
 
----Re-raise a captured failure unchanged, or return when there was none.
----@param record ModuleKit.ErrorRecord|nil
-local function raiseCaptured(record)
-    if record ~= nil then
-        error(rawget(record, "value"), 0)
+    local graphOk, order = pcall(buildGraph, addon)
+    if not graphOk then
+        return nil
     end
+
+    local firstError
+    for index = 1, #order do
+        local module = order[index]
+        if
+            rawget(module, "_wantedEnabled") == true
+            and rawget(module, "_enableBlockedBy") ~= nil
+            and rawget(module, "_state") ~= "enabled"
+        then
+            local ready = true
+            local dependencies = hardDependencies(module)
+            for dependencyIndex = 1, #dependencies do
+                if rawget(dependencies[dependencyIndex], "_state") ~= "enabled" then
+                    ready = false
+                    break
+                end
+            end
+            if ready then
+                -- From here a failure is the module's own, not its
+                -- dependency's, so it is not retried by the next recovery.
+                rawset(module, "_enableBlockedBy", nil)
+                local ok, value = pcall(enableOne, module)
+                firstError = captureFirstError(firstError, ok, value)
+            end
+        end
+    end
+    return firstError
 end
 
 -- Whole-container passes ----------------------------------------------------
@@ -1427,6 +1654,7 @@ local function runEnableAllPass(order)
         if blockedBy ~= nil then
             failed[module] = true
             recordFailure(module, nil, blockedBy, false)
+            rawset(module, "_enableBlockedBy", blockedBy)
         else
             local ok, value = pcall(enableOne, module)
             if not ok then
@@ -1448,6 +1676,14 @@ end
 local function enableAllInternal(addon)
     ensureNotShutdown(addon, "EnableAll")
     local order = buildGraph(addon)
+
+    -- The whole container is meant to be enabled; the pass records which
+    -- modules a failed dependency blocks.
+    for index = 1, #order do
+        rawset(order[index], "_wantedEnabled", true)
+        rawset(order[index], "_enableBlockedBy", nil)
+    end
+
     return runContainerPass(addon, runEnableAllPass, order)
 end
 
@@ -1478,6 +1714,9 @@ local function runDisableAllPass(order, shutdown)
                 local ok, value = pcall(disableOne, module)
                 if not ok then
                     firstError = captureFirstError(firstError, ok, value)
+                    -- Shutdown is terminal: a module whose `OnDisable` failed
+                    -- still releases what it registered through its scope.
+                    closeModuleScope(module)
                 end
             end
         end
@@ -1510,6 +1749,10 @@ local function disableAllInternal(addon, shutdown)
 
     if shutdown then
         rawset(addon, "_shutdown", true)
+    else
+        for index = 1, #order do
+            markWantedDisabled(order[index])
+        end
     end
 
     return runContainerPass(addon, runDisableAllPass, order, shutdown, seedError)
@@ -1572,6 +1815,21 @@ end
 ---@return string|nil
 local function moduleGetBlockedBy(self)
     return rawget(self, "_blockedBy")
+end
+
+---Return a fresh snapshot of this module's intent and fact.
+---
+---`wanted` is what `Enable`/`Disable` (and the container-wide forms) last
+---asked for; `actual` is whether the module is enabled right now; `blockedBy`
+---names the hard dependency whose failure keeps a wanted module off.
+---@param self ModuleKit.Module
+---@return ModuleKit.EnableState
+local function moduleGetEnableState(self)
+    return {
+        wanted = rawget(self, "_wantedEnabled") == true,
+        actual = rawget(self, "_state") == "enabled",
+        blockedBy = rawget(self, "_enableBlockedBy"),
+    }
 end
 
 ---Return a shallow-copy snapshot of the resolved injection table.
@@ -1668,13 +1926,17 @@ end
 ---@param self ModuleKit.Module
 ---@return ModuleKit.Module self
 local function moduleEnable(self)
-    return enableWithPolicy(self)
+    rawset(self, "_wantedEnabled", true)
+    enableWithPolicy(self)
+    raiseCaptured(recoverBlockedDependents(rawget(self, "_addon")))
+    return self
 end
 
 ---Disable this module under the container's dependency policy.
 ---@param self ModuleKit.Module
 ---@return ModuleKit.Module self
 local function moduleDisable(self)
+    markWantedDisabled(self)
     return disableWithPolicy(self)
 end
 
@@ -1694,6 +1956,7 @@ local function moduleActivate(self)
     end
     if lifecycle:IsReady() then
         enableWithPolicy(self)
+        raiseCaptured(recoverBlockedDependents(addon))
     end
     return self
 end
@@ -1865,7 +2128,15 @@ local function addonCreateModule(self, name, definition)
         _lastError = nil,
         _hasLastError = false,
         _blockedBy = nil,
+        -- Every module is meant to be enabled once its addon is ready, until
+        -- an explicit `Disable` says otherwise.
+        _wantedEnabled = true,
+        _enableBlockedBy = nil,
+        _scopeOpen = false,
     }, MODULE_METATABLE)
+    local scope = newModuleScope(module)
+    rawset(module, "_scope", scope)
+    rawset(module, "scope", scope)
 
     applyDefinition(module, definition)
     validateLateModuleOrdering(self, module)
@@ -2099,6 +2370,31 @@ local function isPhaseReached(lifecycle, phase)
     return query(lifecycle) == true
 end
 
+---Install the per-module fields revision 6 added, on a module an earlier
+---revision created.
+---
+---An earlier revision recorded no intent, so it is derived from the fact: a
+---disabled module was disabled deliberately or by a failure, and every other
+---module is still meant to be enabled. Fields already present are kept, which
+---is what carries intent and blocking across an upgrade unchanged.
+---@param module ModuleKit.Module
+local function ensureModuleRuntimeFields(module)
+    local moduleState = rawget(module, "_state")
+    if type(rawget(module, "_wantedEnabled")) ~= "boolean" then
+        rawset(module, "_wantedEnabled", moduleState ~= "disabled")
+    end
+    if type(rawget(module, "_scopeOpen")) ~= "boolean" then
+        rawset(module, "_scopeOpen", moduleState == "enabled")
+    end
+    if type(rawget(module, "_scope")) ~= "table" then
+        local scope = newModuleScope(module)
+        rawset(module, "_scope", scope)
+        if rawget(module, "scope") == nil then
+            rawset(module, "scope", scope)
+        end
+    end
+end
+
 ---Install the per-container runtime fields this implementation revision owns.
 ---
 ---A container created by an earlier compatible revision carries neither the
@@ -2129,6 +2425,11 @@ local function ensureContainerRuntimeFields(addon, lifecycle)
     end
     if type(rawget(addon, "_pendingCatchUp")) ~= "table" then
         rawset(addon, "_pendingCatchUp", {})
+    end
+
+    local order = rawget(addon, "_moduleOrder")
+    for index = 1, #order do
+        ensureModuleRuntimeFields(order[index])
     end
 end
 
@@ -2325,6 +2626,7 @@ rawset(Module, "IsEnabled", moduleIsEnabled)
 rawset(Module, "GetLastError", moduleGetLastError)
 rawset(Module, "HasLastError", moduleHasLastError)
 rawset(Module, "GetBlockedBy", moduleGetBlockedBy)
+rawset(Module, "GetEnableState", moduleGetEnableState)
 rawset(Module, "GetInjections", moduleGetInjections)
 rawset(Module, "DependsOn", moduleDependsOn)
 rawset(Module, "OptionalDependency", moduleOptionalDependency)
@@ -2354,6 +2656,8 @@ rawset(Addon, "ProvideSingleton", addonProvideSingleton)
 rawset(Addon, "ProvideModule", addonProvideModule)
 rawset(Addon, "ProvideTransient", addonProvideTransient)
 rawset(Addon, "Resolve", addonResolve)
+
+rawset(SCOPE_METATABLE, "__index", scopeIndex)
 
 rawset(ModuleKit, "API", API_GENERATION)
 rawset(ModuleKit, "REVISION", IMPLEMENTATION_REVISION)

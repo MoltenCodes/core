@@ -15,7 +15,8 @@ ModuleKit keeps its bootstrap and implementation in `src/ModuleKit.lua`, like ev
 | Validation helpers | Argument checks, definition-mutability rules (`created` state only), post-shutdown rejection, and the late-module ordering guard. |
 | Graph | Edge construction from the four constraint kinds, cycle reporting, and the topological sort. |
 | Dependency injection | Provider registration, the four provider scopes, cycle-checked resolution, and injection-table assembly. |
-| Lifecycle operations | Single-module transitions, the two dependency policies, whole-container passes, and deferred catch-up. |
+| Module scopes | The per-module scope object, its lazy fields resolved through `Registry:Find`, and closing them. |
+| Lifecycle operations | Single-module transitions, the two dependency policies, intent versus fact and recovery of blocked dependents, whole-container passes, and deferred catch-up. |
 | Module public API | The functions installed on the shared `Module` prototype. |
 | Addon public API | The functions installed on the shared `Addon` prototype. |
 | Addon creation | Container identity, the dispatched-phase set, and LifecycleKit subscriptions. |
@@ -33,10 +34,64 @@ ModuleKit facade
     ├── schema
     ├── runtimeRevision
     ├── addons[name] -- containers
-    └── dispatch     -- initializeAll / enableAll / shutdown
+    ├── dispatch     -- initializeAll / enableAll / shutdown
+    └── scopeMetatable -- shared by every module scope; each revision installs its __index
 ```
 
 Existing containers and modules therefore survive an in-place upgrade: their metatables point at the shared prototypes, and the newer copy replaces methods on those prototypes rather than replacing objects.
+
+## Module scopes
+
+Every module carries one scope table (`_scope`, published as `scope`) whose
+metatable is `_state.scopeMetatable`. Keeping that metatable in shared state and
+re-installing `__index` at every commit is what moves scopes created by an older
+copy onto the newer lookup, exactly as the prototypes do for methods.
+
+`__index` runs only for a missing field. It checks `_scopeOpen`, resolves the
+Kit through `Registry:Find` (read from the facade on every call, because an
+embedded Registry upgrade replaces the method), calls `CreateScope()` and stores
+the result with `rawset`, so every later read is a plain table hit. A missing
+Kit, or one without `CreateScope`, yields `nil` and stores nothing, so a Kit
+that loads later is picked up on the next read.
+
+`_scopeOpen` is set immediately before `OnEnable` is invoked and cleared by
+`closeModuleScope`, which runs after a successful `OnDisable`, after a failed
+`OnEnable`, and at shutdown whatever `OnDisable` did. Closing walks the fields
+in a fixed order (events, jobs, timers), closes each one even when an earlier
+`Close` raised, and hands back the first failure; `disableOne` re-raises it only
+after the module has become `disabled`, so a scope failure never leaves a module
+half-transitioned.
+
+## Intent versus fact
+
+Two per-module fields sit beside `_state`:
+
+- `_wantedEnabled` — intent. Starts `true`. Written only by the public
+  `Enable` / `Disable` on the module itself, by `EnableAll` / `DisableAll`
+  before their pass, and set by every successful `enableOne`, since an enabled
+  module is by definition wanted. The `automatic` disable cascade never touches
+  it.
+- `_enableBlockedBy` — the dependency a wanted module is waiting for. Set where
+  an enable is refused or aborted by a dependency: the `EnableAll` pass's blocked
+  branch, the `strict` targeted check, and the `automatic` recursion, which sets
+  it before recursing into a dependency that is not enabled and clears it once
+  every dependency succeeded — so it survives exactly when a dependency raised.
+  The `automatic` disable cascade also sets it on each dependent it takes down,
+  naming the module whose `Disable` caused the cascade, so a chain taken down by
+  one `Disable` comes back, in graph order, when that module is enabled again.
+
+`recoverBlockedDependents` runs after the public `Enable` and `Activate`. It
+walks the full graph order once and enables every wanted, blocked module whose
+hard dependencies are all enabled; because dependencies precede dependents, one
+walk recovers a whole chain. It clears `_enableBlockedBy` before each attempt,
+so a module that then fails on its own is not retried by the next recovery. It
+is skipped inside a whole-container pass (the pass owns blocking), after
+shutdown, and when the graph is invalid, which targeted operations tolerate but
+a graph-ordered walk cannot.
+
+`ensureModuleRuntimeFields` backfills all four fields on modules an older
+revision created and leaves present ones alone, so an upgrade carries intent and
+blocking across unchanged.
 
 ## The dependency graph
 
@@ -139,6 +194,6 @@ Injection aliases are resolved in sorted alias order, so factories with side eff
 
 ## Allocation policy
 
-The per-module steady state is one module table, its four constraint sets, its injection specification and its resolved injection table. Graph operations allocate per call: the adjacency and indegree maps, the ready set, and the result array. That cost is paid by `ValidateGraph`, `GetActivationOrder` and the whole-container passes, which are lifecycle-scale operations rather than per-frame work.
+The per-module steady state is one module table, its four constraint sets, its injection specification, its resolved injection table and its scope table. The scope's Kit scopes are created only when read, so a module that never uses them allocates nothing more; `GetEnableState()` allocates its snapshot. Graph operations allocate per call: the adjacency and indegree maps, the ready set, and the result array. That cost is paid by `ValidateGraph`, `GetActivationOrder` and the whole-container passes, which are lifecycle-scale operations rather than per-frame work.
 
 `GetModules()` and `GetInjections()` return fresh snapshots, so a consumer mutating the returned table cannot corrupt ModuleKit's own collection.

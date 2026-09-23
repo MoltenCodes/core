@@ -46,6 +46,7 @@ Each module exposes:
 | `GetLastError()` | Return the original last error object, which may itself be `nil`. |
 | `HasLastError()` | Distinguish an actual error from `GetLastError() == nil`. |
 | `GetBlockedBy()` | Return the related dependency/dependent name when an operation was blocked. |
+| `GetEnableState()` | Return a fresh `{ wanted, actual, blockedBy }` snapshot of intent versus fact. |
 | `GetInjections()` | Return a shallow-copy snapshot of resolved injections, or an empty table before resolution. |
 | `DependsOn(name)` | Add a required activation dependency. |
 | `OptionalDependency(name)` | Add an ordering edge only when the target exists. |
@@ -56,6 +57,12 @@ Each module exposes:
 | `Disable()` | Targeted disable under the selected dependency policy. |
 | `Activate()` | Catch this module up to already-reached LifecycleKit phases. |
 | `Resolve(name)` | Resolve an injectable with this module as scope context. |
+
+Each module also carries one field:
+
+| Field | Purpose |
+|---|---|
+| `scope` | Per-module owner of timers, events and scheduler jobs, released automatically on disable. See [Module scopes](#module-scopes). |
 
 Inspection methods return values/snapshots; mutating a table returned by `GetModules()` or `GetInjections()` does not mutate ModuleKit's owned collection table.
 
@@ -195,6 +202,90 @@ Do asynchronous work by starting it from the hook and returning, for example by 
 
 `module:Activate()` catches one module up to LifecycleKit's already-reached phases. It follows the selected dependency policy for hard dependencies.
 
+## Module scopes
+
+Everything a module registers through `module.scope` while it is enabled is
+released when it is disabled, so a module does not need an `OnDisable` just to
+clean up:
+
+```lua
+function module:OnEnable()
+    self.scope.Events:Connect("BAG_UPDATE", function() self:Refresh() end)
+    self.scope.Timers:Every(5, function() self:Poll() end)
+    self.scope.Jobs:Schedule(function() self:Rebuild() end)
+end
+-- No OnDisable: Disable() closes all three scopes.
+```
+
+| Field | What it is | Released by |
+|---|---|---|
+| `scope.Timers` | a TimerKit scope (`TimerKit:CreateScope()`) | `Close()` |
+| `scope.Events` | an EventKit scope (`EventKit:CreateScope()`) | `Close()` |
+| `scope.Jobs` | a SchedulerKit scope (`SchedulerKit:CreateScope()`) | `Close()` |
+
+The rules:
+
+- **Lazy.** Each field is created on its first read and cached; a module that
+  never reads its scope creates nothing and pays nothing beyond the one scope
+  table every module carries.
+- **Optional Kits.** ModuleKit has no dependency on TimerKit, EventKit or
+  SchedulerKit. Each is resolved through `Registry:Find` at first read, and a
+  field reads as `nil` when its Kit is not loaded or is a revision without
+  `CreateScope`. Test for `nil` when your addon does not embed the Kit.
+- **The enable window.** The fields are available from the start of `OnEnable`
+  until the module is disabled. Reading one at any other time — in
+  `OnInitialize`, or while the module is disabled — raises at the reading line.
+- **Released on every way out.** `Disable()`, `DisableAll()` and terminal
+  shutdown close every scope the module created, after `OnDisable` has run; a
+  failed `OnEnable` closes whatever it created before failing; at shutdown a
+  module whose `OnDisable` fails still has its scopes closed. The next enable
+  starts with fresh scopes.
+- A module that stays enabled because its `OnDisable` failed outside shutdown
+  keeps its scopes, like the rest of its state.
+
+## Intent versus fact
+
+A module records what it is *meant* to be separately from what it *is*:
+
+```lua
+local state = module:GetEnableState()
+-- state.wanted     boolean: what Enable/Disable last asked for
+-- state.actual     boolean: whether the module is enabled right now
+-- state.blockedBy  string|nil: the hard dependency whose failure keeps it off
+```
+
+`GetEnableState()` returns a fresh table on every call.
+
+**How intent is set.** Every module starts wanted (`wanted = true`): it is meant
+to be enabled once its addon is ready. `module:Enable()` and `EnableAll()` set
+it; `module:Disable()` and `DisableAll()` clear it, and only for the modules
+they are called on. A successful enable of any kind also sets it. Terminal
+shutdown changes the fact only.
+
+**Recovery.** A wanted module that could not be enabled because a hard
+dependency failed, or was not enabled under the `strict` policy, records that
+dependency in `blockedBy` and keeps `wanted = true`. So does a dependent that an
+`automatic`-policy `Disable()` of its dependency took down: a cascade is a block,
+not a change of intent, whether the dependency went away by failure or by an
+explicit call. When the dependency is
+later enabled — by its own `Enable()`, by `Activate()`, or by `EnableAll()` —
+every blocked module whose hard dependencies are now all enabled is enabled
+too, in graph order, so a whole chain recovers at once.
+
+- An explicit `Disable()` on the module itself wins: it clears `wanted` and
+  `blockedBy`, and the module is not brought back when its dependency recovers.
+- A recovered module whose own `OnEnable` fails stays off, is no longer
+  considered blocked, and its error is re-raised from the `Enable()` that
+  triggered the recovery; that dependency stays enabled.
+- Recovery never runs inside a whole-container operation, which decides
+  blocking for every module itself, and never after shutdown.
+- `GetBlockedBy()` keeps its existing meaning — the module named by the last
+  refused operation of any kind — and is independent of `blockedBy` here.
+
+An in-place upgrade preserves both fields. A module created by a revision older
+than 6 has its intent derived from its state: a `disabled` module is not
+wanted, every other module is.
+
 ## Dependency graph
 
 ```lua
@@ -332,6 +423,11 @@ ModuleKit API 1 requires:
 - LifecycleKit API 1
 
 ModuleKit does not depend directly on EventKit or SignalKit; those are implementation dependencies of LifecycleKit and remain outside ModuleKit's direct contract.
+
+Module scopes use TimerKit API 1, EventKit API 1 and SchedulerKit API 1 when
+they are loaded, found through `Registry:Find` (Registry revision 7; an older
+Registry's `Get` is used as the equivalent fallback). None of the three is a
+dependency: without them the matching scope field reads as `nil`.
 
 ## Internals
 

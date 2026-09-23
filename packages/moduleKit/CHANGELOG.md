@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 — 2026-09-23
+
+- Added module scopes. Every module carries `module.scope`, whose `Timers`, `Events` and `Jobs` fields are a TimerKit, EventKit and SchedulerKit scope created on first read. `Disable`, `DisableAll` and terminal shutdown close every scope the module created, so a module needs no `OnDisable` to release what it registered; a failed `OnEnable` releases what it registered before failing, and shutdown releases a module's scopes even when its `OnDisable` fails. The fields are readable from the start of `OnEnable` until the module is disabled and raise at the reading line otherwise. A module that never reads its scope creates nothing.
+- The three Kits stay optional: each is resolved through `Registry:Find` (with `Registry:Get` as the fallback on a Registry older than revision 7) and a field reads as `nil` when its Kit is not loaded or has no `CreateScope`. That capability check also keeps ModuleKit working beside an EventKit revision that predates `EventKit:CreateScope()`. ModuleKit's manifest dependencies are unchanged.
+- Added intent versus fact. A module records `wanted` (`true` from creation; changed only by `Enable`/`Disable` on the module itself and by `EnableAll`/`DisableAll`) apart from `actual`, and the dependency that blocks a wanted module. A module blocked by its dependency — a failed dependency in `EnableAll`, under the `strict` policy or inside an `automatic` targeted `Enable`, or a dependency whose `Disable` took it down in an `automatic` cascade — keeps `wanted = true` and is enabled automatically, in graph order, when that dependency is enabled again (its own `Enable`, `Activate` or `EnableAll`). A cascade is a block, not a change of intent. An explicit `Disable` on the module itself wins over that recovery. New `module:GetEnableState()` returns `{ wanted, actual, blockedBy }`.
+- An in-place upgrade backfills the new per-module fields on modules an older revision created (intent is derived from state) and keeps them unchanged on modules that already carry them. The shared scope metatable lives in `_state`, so scopes created by an older copy use the newer lookup after an upgrade.
+- Documented both features in `docs/API.md` and `docs/INTERNALS.md`.
+- 22 new specs in `Scope_spec.lua` and `EnableState_spec.lua`, one of them against the real `EventKit:CreateScope()`.
+- Implementation revision 6. `ModuleKit` API generation 1 is unchanged; the additions are additive.
+
 ## 0.4.0 — 2026-09-22
 
 - `installAddonSubscriptions` no longer keeps subscribing after the container has been shut down. LifecycleKit replays a phase it has already reached synchronously, inside the `subscribe()` call and before it returns the handle, so a module hook running in that replay can reach container shutdown. The loop tested `_shutdown` exactly once, before the first subscription, and then went on to subscribe the remaining phases: a container that believed it was shut down was left listening for `ready`, and would have run `EnableAll` on it. The shutdown test is now repeated after every `subscribe()`, and a handle produced by a call the shutdown happened inside is disconnected rather than stored.

@@ -159,7 +159,7 @@ describe("ModuleKit bootstrap", function()
         assert.is_false(oldLoaded:IsConnected())
         assert.is_false(oldReady:IsConnected())
         assert.is_false(oldShutdown:IsConnected())
-        assert.are.equal(5, rawget(rawget(upgraded, "_state"), "runtimeRevision"))
+        assert.are.equal(upgraded.REVISION, rawget(rawget(upgraded, "_state"), "runtimeRevision"))
     end)
 end)
 
