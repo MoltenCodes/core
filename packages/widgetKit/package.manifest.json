@@ -1,0 +1,34 @@
+{
+  "name": "widgetKit",
+  "displayName": "WidgetKit",
+  "description": "Pooled, versioned widgets with explicit layouts, a normalised anchor value type with position persistence, and a renderer for OptionsKit trees, for World of Warcraft addons.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "api": 1,
+  "revision": 1,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    },
+    "poolKit": {
+      "api": 1
+    },
+    "signalKit": {
+      "api": 1
+    }
+  },
+  "optionalDependencies": {
+    "optionsKit": {
+      "api": 1
+    },
+    "settingsKit": {
+      "api": 1
+    },
+    "schedulerKit": {
+      "api": 1
+    },
+    "mediaKit": {
+      "api": 1
+    }
+  }
+}

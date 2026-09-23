@@ -142,7 +142,7 @@ module-level factory per file under `tests/support/framework/`:
 | Module | What it stands in for |
 |---|---|
 | `Constants.lua` | Registry state keys, the namespace key, the unit-token limit, and the list of globals an environment owns. |
-| `FrameStub.lua` | `CreateFrame`, the Frame registration bookkeeping, and `Emit`/`Tick`/`Frames`/`ActiveOnUpdateCount`. |
+| `FrameStub.lua` | `CreateFrame` for Frame, Button, CheckButton, Slider, EditBox and ScrollFrame; named frames as globals; sizes and anchors resolved into rectangles; font strings and textures; frame-type state; the event registration bookkeeping; and `Emit`/`Tick`/`Frames`/`ActiveOnUpdateCount`/`RunScript`/`MoveFrame`/`RecordAnchorCalls`. |
 | `TimerStub.lua` | `C_Timer` and the native timer handles, including the three host failures a package must survive. |
 | `ClockStub.lua` | `GetTimePreciseSec` and `debugprofilestop`, kept independent of each other. |
 | (in `LifecycleKitTestEnv.lua`) | `InCombatLockdown` and the `EnterCombat` / `LeaveCombat` helpers, stubbed by the lifecycleKit suite alone; worth promoting into `AddonStub` when a second suite needs them. |
