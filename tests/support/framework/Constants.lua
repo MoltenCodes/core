@@ -37,6 +37,23 @@ Constants.OWNED_GLOBALS = {
     "geterrorhandler",
     "securecallfunction",
     "CombatLogGetCurrentEventInfo",
+    -- Client identity and the flavour-dependent surface `ClientStub` installs
+    -- when a profile is selected.
+    "WOW_PROJECT_ID",
+    "WOW_PROJECT_MAINLINE",
+    "WOW_PROJECT_CLASSIC",
+    "WOW_PROJECT_BURNING_CRUSADE_CLASSIC",
+    "WOW_PROJECT_MISTS_CLASSIC",
+    "GetBuildInfo",
+    "issecretvalue",
+    "C_EventUtils",
+    "C_Spell",
+    "C_Item",
+    "C_SpellBook",
+    "GetSpellInfo",
+    "GetItemInfo",
+    "GetAddOnMetadata",
+    "UIParent",
 }
 
 return Constants

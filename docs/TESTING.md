@@ -108,6 +108,7 @@ module-level factory per file under `tests/support/framework/`:
 | `FrameStub.lua` | `CreateFrame`, the Frame registration bookkeeping, and `Emit`/`Tick`/`Frames`/`ActiveOnUpdateCount`. |
 | `TimerStub.lua` | `C_Timer` and the native timer handles, including the three host failures a package must survive. |
 | `ClockStub.lua` | `GetTimePreciseSec` and `debugprofilestop`, kept independent of each other. |
+| `ClientStub.lua` | `WOW_PROJECT_ID`, `GetBuildInfo` and one host profile per supported flavour (`wowProfile`), plus secret values, event validity, spells and addon metadata. |
 | `AddonStub.lua` | `C_AddOns`, `IsLoggedIn`, `CombatLogGetCurrentEventInfo`, and the `LoadAddon`/`Login`/`Logout` helpers. |
 | `ErrorHandlerStub.lua` | `geterrorhandler` and `securecallfunction`, and the two ways a spec reads what reached them. |
 

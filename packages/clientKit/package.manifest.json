@@ -1,0 +1,14 @@
+{
+  "name": "clientKit",
+  "displayName": "ClientKit",
+  "description": "Client flavour, build and capability detection, taint probes and normalised host shims for World of Warcraft addons.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "api": 1,
+  "revision": 1,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    }
+  }
+}

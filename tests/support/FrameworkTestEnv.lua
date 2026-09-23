@@ -19,6 +19,7 @@
 ---     framework/TimerStub.lua           C_Timer and the native timer handles
 ---     framework/ClockStub.lua           the wall clock and the CPU clock
 ---     framework/AddonStub.lua           addon load state, login, combat log
+---     framework/ClientStub.lua          client identity and per-flavour profiles
 ---     framework/ErrorHandlerStub.lua    geterrorhandler and securecallfunction
 ---
 --- What stays here is what is not any one stub's: option handling, the load
@@ -41,6 +42,7 @@ local FrameStub = require("framework.FrameStub")
 local TimerStub = require("framework.TimerStub")
 local ClockStub = require("framework.ClockStub")
 local AddonStub = require("framework.AddonStub")
+local ClientStub = require("framework.ClientStub")
 local ErrorHandlerStub = require("framework.ErrorHandlerStub")
 
 --- Every stub factory, in the order `Reset` and `InstallWowApi` drive them.
@@ -48,7 +50,10 @@ local ErrorHandlerStub = require("framework.ErrorHandlerStub")
 --- `ErrorHandlerStub` is absent from this list on purpose: it installs nothing
 --- by default, because a pure-Lua package's specs opt into a host error sink
 --- rather than having one installed for them. It is reset with the rest.
-local STUBS = { FrameStub, TimerStub, ClockStub, AddonStub, ErrorHandlerStub }
+---
+--- `ClientStub` comes after `AddonStub` because a legacy client profile
+--- replaces the `C_AddOns` table `AddonStub` installs.
+local STUBS = { FrameStub, TimerStub, ClockStub, AddonStub, ClientStub, ErrorHandlerStub }
 
 local FrameworkTestEnv = {}
 
@@ -93,10 +98,11 @@ end
 ---@field modules string[]? Module names in load order; the last one is the package under test. Omit it for a suite that loads its subject some other way, such as the example addon.
 ---@field wowApi boolean? Whether `NewPackage` installs the WoW stubs. Defaults to `true`.
 ---@field legacyRegistryState boolean? Whether `Reset` also clears the retired API 1 state key.
+---@field wowProfile string? Client profile `InstallWowApi` installs: `"mainline"`, `"mists"`, `"tbc"`, `"classic"` or `"noProjectId"`. Defaults to none, which installs no client identity at all. See `framework/ClientStub.lua`.
 
 ---Validate `options` and return what `New` needs from it.
 ---@param options any
----@return string[] modules, boolean installsWowApi, boolean clearsLegacyState
+---@return string[] modules, boolean installsWowApi, boolean clearsLegacyState, string? wowProfile
 local function readOptions(options)
     if type(options) ~= "table" then
         error("FrameworkTestEnv.New requires an options table", 3)
@@ -109,7 +115,9 @@ local function readOptions(options)
         error("FrameworkTestEnv.New options.modules must be an array of module names", 3)
     end
 
-    return modules, options.wowApi ~= false, options.legacyRegistryState == true
+    ClientStub.ValidateProfileName(options.wowProfile, 4)
+
+    return modules, options.wowApi ~= false, options.legacyRegistryState == true, options.wowProfile
 end
 
 ---Clear every global an environment owns, whether or not it installed it.
@@ -137,7 +145,7 @@ end
 ---@param options FrameworkTestEnv.Options
 ---@return table environment
 function FrameworkTestEnv.New(options)
-    local modules, installsWowApi, clearsLegacyState = readOptions(options)
+    local modules, installsWowApi, clearsLegacyState, wowProfile = readOptions(options)
     local packageModule = modules[#modules]
 
     local environment = {}
@@ -152,7 +160,7 @@ function FrameworkTestEnv.New(options)
     -- One state table per environment, owned jointly by the stub factories and
     -- returned to its initial values by `Reset`. That reset is what keeps specs
     -- independent of each other's execution order.
-    local state = {}
+    local state = { defaultWowProfile = wowProfile }
     for index = 1, #STUBS do
         STUBS[index].Reset(state)
         STUBS[index].Attach(environment, state)
