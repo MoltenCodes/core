@@ -1,0 +1,14 @@
+{
+  "name": "interopKit",
+  "displayName": "InteropKit",
+  "description": "The LibStub bridge for World of Warcraft addons: expose MoltenCodes Kits to LibStub consumers and adopt LibStub libraries as read-only foreign entries.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "api": 1,
+  "revision": 1,
+  "dependencies": {
+    "registry": {
+      "api": 2
+    }
+  }
+}
