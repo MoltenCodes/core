@@ -146,12 +146,12 @@ is what the release artifact's `manifest.json` records under `loadOrder`:
 registry/Registry.lua
 cacheKit/CacheKit.lua
 clientKit/ClientKit.lua
-profileKit/ProfileKit.lua
 signalKit/SignalKit.lua
 eventKit/EventKit.lua
 lifecycleKit/LifecycleKit.lua
 moduleKit/ModuleKit.lua
 poolKit/PoolKit.lua
+profileKit/ProfileKit.lua
 timerKit/TimerKit.lua
 schedulerKit/SchedulerKit.lua
 ```

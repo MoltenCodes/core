@@ -29,6 +29,9 @@ those defaults when they are documented and observable.
 - [x] `schedulerKit`
 - [x] `timerKit`
 - [x] `poolKit`
+- [x] `clientKit`
+- [x] `cacheKit`
+- [x] `profileKit`
 
 These entries describe packages present in this repository snapshot. A checked
 item means its implementation is part of the repository; it does not mean the
@@ -230,7 +233,8 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
 5. Ownership: stateless facade; the capability table is computed once at
    bootstrap and re-read on upgrade. Nothing to tear down.
 6. Performance: each probe is a table read after bootstrap; shims add one
-   call. No allocation after bootstrap.
+   call. No allocation after bootstrap, except the legacy `GetSpellInfo`
+   shim, which builds the result table modern clients return ready made.
 7. Tests: one fixture profile per supported flavour (four), the
    `WOW_PROJECT_ID` absent case, the secret-value and forbidden-frame stubs,
    `IsEventValid` for a known, an unknown and an invalid name, upgrade.
@@ -260,8 +264,9 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
    entries.
 6. Performance: LRU is an intrusive doubly linked list over a hash; `Get`
    and `Set` are O(1) and allocate only for a new entry; eviction reuses
-   entry tables from a bounded free list. `maxEntries` is required, so no
-   cache is unbounded.
+   entry tables from a bounded free list. `maxEntries` is required on LRU
+   and TTL caches and defaults to 128 for `Memoize` and 1024 for a snapshot,
+   so no cache is unbounded.
 7. Tests: eviction order, TTL expiry with the clock stub, memoise hit and
    miss, snapshot diff, clear-on-event, `Close`, allocation guard, upgrade.
 8. Docs: README, API.md, INTERNALS.md (list and free-list layout),
@@ -284,7 +289,8 @@ LibSpellRange-1.0 and LibGetFrame-1.0 (client detection, caches, profiling).
    total, max, last }`; `ProfileKit:Reset()`. When disabled, `Begin`,
    `End` and `Measure` are no-ops bound at enable time so callers pay a
    table read and a call.
-5. Ownership: package-level state, bounded by `maxSections` (default 256,
+5. Ownership: package-level state, bounded by `DEFAULT_MAX_SECTIONS` (256,
+   a facade constant without a setter in 0.1.0;
    further sections refused with a reason).
 6. Performance: `Begin` and `End` allocate nothing; `Report` allocates by
    design and says so. Enabled overhead is two clock reads per section.
@@ -426,5 +432,5 @@ duplicating those specifications.
 
 ---
 
-Last roadmap baseline update: 2026-09-22 (phases 0 through 3 complete; phase 4
-is the next sequenced work).
+Last roadmap baseline update: 2026-09-23 (phases 0 through 3 complete; phase 4
+package A and package B1 complete, package B2 in progress).

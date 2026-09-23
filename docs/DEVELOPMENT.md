@@ -203,12 +203,14 @@ the validator's own constant agree. Every CI job that runs repository tooling â€
 the Lua tests, the linter, the spell check, repository validation and the
 release build â€” runs on both 3.10 and 3.13, so the floor is exercised rather than asserted.
 
-## Client behaviour the test stubs do not model yet
+## Client behaviour the test stubs model on request
 
 The shared fixture under `tests/support/` stands in for the client; its stubs
-are described in [`TESTING.md`](TESTING.md). It does not yet model the Retail
-12.x access rules that [`EMBEDDING.md`](EMBEDDING.md#secret-values-retail-12x)
-documents for consumers:
+are described in [`TESTING.md`](TESTING.md). The Retail 12.x access rules that
+[`EMBEDDING.md`](EMBEDDING.md#secret-values-retail-12x) documents for consumers
+are modelled by `ClientStub.lua`, which is off unless a test environment asks
+for a host profile (`wowProfile`), so every other suite sees the same host as
+before:
 
 - `issecretvalue(value)` reports a **secret value** (patch 12.0.0 and later).
   Tainted code may store one, pass it to functions, and concatenate or format
@@ -220,11 +222,13 @@ documents for consumers:
 - `issecurevariable` and `securecallfunction` are the taint probes and the
   isolation call; the fixture already stubs `securecallfunction`.
 
-Their signatures are declared in [`../meta/wow/`](../meta/wow/). Until the
-fixture stubs `issecretvalue` (planned with the `clientKit` work), a spec that
-needs a secret installs its own stand-in and removes it in `finally`, and code
-under test must treat a missing `issecretvalue` as "never secret", which is what
-every client without secret values looks like.
+Their signatures are declared in [`../meta/wow/`](../meta/wow/). A spec that
+needs a secret builds a test environment with a `wowProfile` and calls
+`NewSecretValue()`; the `mainline` profile installs `issecretvalue`,
+`C_EventUtils.IsEventValid` and the frame access probes, and the other profiles
+omit what their client lacks. Code under test must treat a missing
+`issecretvalue` as "never secret", which is what every client without secret
+values looks like; `ClientKit:IsSecret` is that check, ready made.
 
 ## Measuring a change with ProfileKit
 
