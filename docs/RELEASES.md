@@ -125,6 +125,12 @@ Per package, the builder copies:
 The repository `LICENSE` is copied to the bundle root. Package tests, package
 manifests, repository tooling, editor metadata and the examples are not shipped.
 
+The packager zip the publish job uploads to the addon sites follows the same
+layout for every Lua file and every `docs/` directory, but leaves out each
+package's `README.md` and `CHANGELOG.md`: the BigWigs packager moves
+directories, not files. Those two land only in the builder bundle attached to
+the GitHub release; `.pkgmeta` says so in its header.
+
 The directory layout inside the bundle is the layout an addon embeds, so
 installing an update into `Libs/MoltenCodes/` is a directory copy. See
 [`EMBEDDING.md`](EMBEDDING.md).

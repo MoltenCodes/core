@@ -544,7 +544,7 @@ actually touch, which is deliberately small:
 | `commKit` | SignalKit's, EventKit's, LifecycleKit's, SchedulerKit's and PoolKit's surfaces; `GetTimePreciseSec`; `C_ChatInfo.SendAddonMessage` (legacy global fallback; else `Send` refuses `"unavailable"`) | `C_ChatInfo.RegisterAddonMessagePrefix` and `IsAddonMessagePrefixRegistered` (legacy globals, then nothing registered), `C_ChatInfo.SendAddonMessageLogged` (logged sends refused), the events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE`, `PLAYER_ENTERING_WORLD`, `GetFramerate` (no low-frame-rate mode), `UnitInParty` and `UnitInRaid` (no roster eviction; streams still expire), `Enum` (12.x values assumed), `securecallfunction` (`pcall`), `issecretvalue`, `geterrorhandler` (`print`), CodecKit API 1 (`SyncSet` raises), HookKit API 1 (outside traffic uncharged), SchemaKit API 1 (`schema` raises) |
 | `widgetKit` | PoolKit's and SignalKit's surfaces; `CreateFrame` | `UIParent` (released frames rest on a hidden holder), `issecretvalue` (nothing secret), `geterrorhandler` (`print`), `ColorPickerFrame:SetupColorPickerAndShow` (a click fires the current colour), `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` (no modifiers), OptionsKit API 1 through `Registry:Find` (`RenderOptions` raises at the caller), SchedulerKit API 1 (saves are immediate), MediaKit API 1 (`CreateMediaPicker` raises; the renderer uses the option's `values`) |
 | `hookKit` | nothing but Lua 5.1 | `hooksecurefunc` (`SecureHook` raises at the caller), `issecurevariable` (nothing treated as secure), `Frame:HookScript` / `Frame:GetScript` / `Frame:SetScript` (the matching script hooks raise at the caller), `Frame:IsProtected` (frame not protected), `InCombatLockdown` (never in combat), ClientKit API 1 (`issecretvalue`) |
-| `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript` | `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`) |
+| `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript` | `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`), SchedulerKit API 1 through `Registry:Find` (`Coalesce` refused, `Derive` recomputes synchronously) |
 | `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat), HookKit, CommandKit and CommKit API 1 through `Registry:Find` (their addon scopes are closed at logout when present, then the SignalKit addon bus) |
 | `readinessKit` | TimerKit's surface | `GetTimePreciseSec` (negative cache disabled, timeouts counted in polls), EventKit API 1 through `Registry:Find` (`gate:ReprobeOn` raises at the caller) |
 | `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | `GetTimePreciseSec` (`GetRemaining` and `GetDeadline` then return `nil`) |
@@ -766,12 +766,17 @@ above, and the report that was meant to explain a failure causes another. The
 rule the Kits will meet is: a value the Kit did not create is formatted into an
 error message only after `issecretvalue` says it is not secret; a secret is
 described by a fixed placeholder such as `<secret value>`; argument errors name
-the parameter and the expected type. **Today's Kits do not check yet.** Several
-argument and failure messages in SchedulerKit, TimerKit, PoolKit and Registry
-pass the offending value through `tostring`. The probe exists now:
-`ClientKit:IsSecret(value)` (package `clientKit`); routing every Kit's error
-formatting through it is package B2 work. Until then, do not pass a value that may be secret as an argument a Kit validates. Your own
-error messages should follow the rule from the start.
+the parameter and the expected type. **Where the Kits stand:** every Kit written in phase 4 (ClientKit, CacheKit,
+ProfileKit, ReadinessKit, SchemaKit, LocaleKit, HookKit, SettingsKit,
+OptionsKit, CommandKit, CodecKit, InteropKit, MediaKit, CommKit, WidgetKit,
+TestKit) and SignalKit's bus probe `issecretvalue` before comparing or
+formatting a foreign value. The eight original Kits (Registry, SignalKit's raw
+signals, EventKit, LifecycleKit, ModuleKit, TimerKit, SchedulerKit, PoolKit)
+still format some argument values through `tostring` in error messages; the
+risk is low because each such value was already compared or used as a key, so
+a secret would have failed earlier, and the roadmap's standing obligations
+carry the remaining work. `ClientKit:IsSecret(value)` is the probe to use in
+your own code, and your error messages should follow the rule from the start.
 
 **A tooltip or nameplate consumer, written safely.**
 
@@ -903,10 +908,13 @@ only if you use the parts that exist rather than rebuilding them.
   value recomputed from a set of events. Coalescing needs SchedulerKit loaded:
   without it `Coalesce` is refused at the caller and `Derive` still works but
   recomputes synchronously on every event.
-- **Ration a server resource through a lane.** Inspect requests, `/who`, addon
-  messages and other calls the server throttles go through one shared
-  `SchedulerKit:Lane` (in-flight cap, minimum interval, retry with backoff)
-  rather than a private token bucket per addon.
+- **Ration a server resource through a lane, and send addon messages through
+  CommKit.** Inspect requests, `/who` and other calls the server throttles go
+  through one shared `SchedulerKit:Lane` (in-flight cap, minimum interval,
+  retry with backoff) rather than a private token bucket per addon. Addon
+  messages are the one resource with its own owner: `CommKit` holds the
+  session's bandwidth budget, chunks and reassembles, and refuses rather than
+  grows when a queue is full.
 - **Do not run your own `OnUpdate`.** Every per-frame handler in the session
   costs the client a call whether or not it has work. SchedulerKit installs one
   `OnUpdate` for the whole session, only while ready work exists, and removes it
@@ -933,14 +941,19 @@ only if you use the parts that exist rather than rebuilding them.
   that makes retention your problem. `maxRetained` bounds what the pool keeps,
   not what you borrow: a borrowed object is yours until you release it, and
   `maxActiveWarning` exists to tell you once when too many are out at a time.
-- **Disconnect what you connect.** An EventKit connection keeps its callback
-  alive, and the last connection to an event is what unregisters it from the
-  client. Hold the connection handle and disconnect it in `OnDisable`.
-- **Prefer addon-owned scopes.** `TimerKit:ForAddon(name)` and
-  `SchedulerKit:ForAddon(name)` close on `PLAYER_LOGOUT` without you writing
-  teardown code. The package-level `TimerKit:After` / `SchedulerKit:Schedule`
-  convenience methods use an internal manual scope that is *not* tied to any
-  addon lifecycle.
+- **Let a scope disconnect what you connect.** An EventKit connection keeps its
+  callback alive, and the last connection to an event is what unregisters it
+  from the client. Inside a ModuleKit module, connect through `module.scope`
+  (`Events`, `Timers`, `Jobs`, `Hooks`, `Commands`, `Messages`, `Comm`) and the
+  scope is closed when the module is disabled; outside a module, hold the
+  handle and disconnect it yourself.
+- **Prefer addon-owned scopes.** `EventKit:ForAddon(name)`,
+  `TimerKit:ForAddon(name)`, `SchedulerKit:ForAddon(name)`,
+  `HookKit:ForAddon(name)`, `CommandKit:ForAddon(name)`,
+  `CommKit:ForAddon(name)` and `SignalKit:ForAddon(name)` are closed by
+  LifecycleKit on `PLAYER_LOGOUT` without you writing teardown code. The
+  package-level convenience methods (`TimerKit:After`, `SchedulerKit:Schedule`)
+  use an internal manual scope that is *not* tied to any addon lifecycle.
 - **Keep event handlers small.** The bus is shared. Time spent in your handler is
   time every other addon's handler waits, on an event that may fire thousands of
   times a second.
@@ -1025,6 +1038,33 @@ frame back to a free list when its last listener goes.
 
 You passed something other than the addon folder name. Use the `...` vararg:
 `local ADDON_NAME = ...` at the top of the file.
+
+### `MoltenCodes <Kit> requires SchemaKit API 1 to be loaded first`
+
+SettingsKit, OptionsKit and CommandKit validate through SchemaKit and load
+after it. Put `schemaKit/SchemaKit.lua` before them in `embeds.xml`; the
+release artifact's `loadOrder` already does.
+
+### `Coalesce` is refused, or `EncodeAsync` / `RenderOptions` / `BindOptions` raise "not loaded"
+
+These are the call-time optional dependencies: EventKit coalescing needs
+SchedulerKit, CodecKit's asynchronous variants need SchedulerKit, WidgetKit's
+renderer needs OptionsKit, CommandKit's `BindOptions` needs OptionsKit. Each
+Kit finds the other through `Registry:Find` when the method is called, so the
+fix is to embed the missing Kit, in load order, not to change the call.
+
+### `SettingsKit (<name>) <scope>.<path>: expected <type>, found <type>`
+
+A write into a saved-variable view failed its schema at the writer's line. The
+message is SchemaKit's failure text; fix the value or widen the schema. A
+secret value is refused with the rule `secret`; never store one.
+
+### `CommandKit ... nil, "taken"` or `nil, "emote"`
+
+The slash name is already a chat type (`/s`, `/g`), an emote (`/dance`) or
+another addon's command. Pick another name; the client resolves chat types
+before slash commands and emotes after them, so a colliding command would
+silently never run.
 
 ### Nothing happens, and there is no error
 

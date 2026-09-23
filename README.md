@@ -44,8 +44,9 @@ reconcile to one shared instance at runtime.
   order, supported Interface numbers, coexistence with LibStub, taint rules, the
   combat-log constraint, `/reload` semantics, performance guidance, and the exact
   error message each load-order mistake produces.
-- [`examples/`](examples/) is a complete, runnable example addon — `.toc`,
-  `embeds.xml` and `Core.lua` — that a spec loads and the language server
+- [`examples/`](examples/) is a complete, runnable example addon (`.toc`,
+  `embeds.xml`, `Core.lua` and one small file per Kit it shows, plus two
+  locale files) that a spec loads from login to logout and the language server
   type-checks on every run, so it cannot drift from the framework.
 
 Build the artifact you embed:

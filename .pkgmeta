@@ -7,15 +7,21 @@
 # Libs/MoltenCodes/ and lists them in its own .toc, in the order documented in
 # docs/EMBEDDING.md.
 #
-# The packaged layout is the same one `python3 -m tooling.package.build`
-# produces locally, so what a release publishes and what a contributor can build
-# and checksum on their own machine agree:
+# The packaged layout follows the one `python3 -m tooling.package.build`
+# produces locally, so what a release publishes and what a contributor can
+# build and checksum on their own machine agree on every Lua file:
 #
 #     MoltenCodes/
 #     ├── LICENSE
 #     ├── registry/Registry.lua
+#     ├── registry/docs/API.md
 #     ├── signalKit/SignalKit.lua
 #     └── ...
+#
+# One difference is deliberate: the packager moves directories, not files, so a
+# package's README.md and CHANGELOG.md are left out of the packager zip and ship
+# only in the builder bundle attached to the GitHub release. Each package's
+# docs/ directory travels with its Lua file.
 #
 # See docs/RELEASES.md for tags, artifacts and checksums.
 
@@ -49,7 +55,9 @@ ignore:
   - tests
   - stylua.toml
   - tooling
-  - packages/*/docs
+  - packages/README.md
+  - packages/*/README.md
+  - packages/*/CHANGELOG.md
   - packages/*/tests
   - packages/*/package.manifest.json
   - packages/*/src/.luarc.json
@@ -59,25 +67,48 @@ ignore:
 # inside it keeps its PascalCase facade name.
 move-folders:
   MoltenCodes/packages/registry/src: MoltenCodes/registry
+  MoltenCodes/packages/registry/docs: MoltenCodes/registry/docs
   MoltenCodes/packages/signalKit/src: MoltenCodes/signalKit
+  MoltenCodes/packages/signalKit/docs: MoltenCodes/signalKit/docs
   MoltenCodes/packages/eventKit/src: MoltenCodes/eventKit
+  MoltenCodes/packages/eventKit/docs: MoltenCodes/eventKit/docs
   MoltenCodes/packages/lifecycleKit/src: MoltenCodes/lifecycleKit
+  MoltenCodes/packages/lifecycleKit/docs: MoltenCodes/lifecycleKit/docs
   MoltenCodes/packages/moduleKit/src: MoltenCodes/moduleKit
+  MoltenCodes/packages/moduleKit/docs: MoltenCodes/moduleKit/docs
   MoltenCodes/packages/timerKit/src: MoltenCodes/timerKit
+  MoltenCodes/packages/timerKit/docs: MoltenCodes/timerKit/docs
   MoltenCodes/packages/schedulerKit/src: MoltenCodes/schedulerKit
+  MoltenCodes/packages/schedulerKit/docs: MoltenCodes/schedulerKit/docs
   MoltenCodes/packages/poolKit/src: MoltenCodes/poolKit
+  MoltenCodes/packages/poolKit/docs: MoltenCodes/poolKit/docs
   MoltenCodes/packages/clientKit/src: MoltenCodes/clientKit
+  MoltenCodes/packages/clientKit/docs: MoltenCodes/clientKit/docs
   MoltenCodes/packages/cacheKit/src: MoltenCodes/cacheKit
+  MoltenCodes/packages/cacheKit/docs: MoltenCodes/cacheKit/docs
   MoltenCodes/packages/profileKit/src: MoltenCodes/profileKit
+  MoltenCodes/packages/profileKit/docs: MoltenCodes/profileKit/docs
   MoltenCodes/packages/readinessKit/src: MoltenCodes/readinessKit
+  MoltenCodes/packages/readinessKit/docs: MoltenCodes/readinessKit/docs
   MoltenCodes/packages/schemaKit/src: MoltenCodes/schemaKit
+  MoltenCodes/packages/schemaKit/docs: MoltenCodes/schemaKit/docs
   MoltenCodes/packages/localeKit/src: MoltenCodes/localeKit
+  MoltenCodes/packages/localeKit/docs: MoltenCodes/localeKit/docs
   MoltenCodes/packages/hookKit/src: MoltenCodes/hookKit
+  MoltenCodes/packages/hookKit/docs: MoltenCodes/hookKit/docs
   MoltenCodes/packages/settingsKit/src: MoltenCodes/settingsKit
+  MoltenCodes/packages/settingsKit/docs: MoltenCodes/settingsKit/docs
   MoltenCodes/packages/optionsKit/src: MoltenCodes/optionsKit
+  MoltenCodes/packages/optionsKit/docs: MoltenCodes/optionsKit/docs
   MoltenCodes/packages/commandKit/src: MoltenCodes/commandKit
+  MoltenCodes/packages/commandKit/docs: MoltenCodes/commandKit/docs
   MoltenCodes/packages/codecKit/src: MoltenCodes/codecKit
+  MoltenCodes/packages/codecKit/docs: MoltenCodes/codecKit/docs
   MoltenCodes/packages/interopKit/src: MoltenCodes/interopKit
+  MoltenCodes/packages/interopKit/docs: MoltenCodes/interopKit/docs
   MoltenCodes/packages/mediaKit/src: MoltenCodes/mediaKit
+  MoltenCodes/packages/mediaKit/docs: MoltenCodes/mediaKit/docs
   MoltenCodes/packages/commKit/src: MoltenCodes/commKit
+  MoltenCodes/packages/commKit/docs: MoltenCodes/commKit/docs
   MoltenCodes/packages/widgetKit/src: MoltenCodes/widgetKit
+  MoltenCodes/packages/widgetKit/docs: MoltenCodes/widgetKit/docs

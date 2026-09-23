@@ -477,7 +477,8 @@ the WowAce directory item W6 (a shared validation core).
    untouched, upgrade, manifest, error levels pinned.
 8. Docs: README, API.md leading with the taint model, CHANGELOG;
    EMBEDDING.md host row and a taint-section cross-reference.
-9. Status: implemented (package C2, 0.1.0).
+9. Status: implemented (package C2, 0.1.0); deviations recorded in
+   `packages/hookKit/docs/API.md`.
 
 **settingsKit** — facade `SettingsKit`
 
@@ -834,8 +835,9 @@ and W9) and the WeakAuras media pack (LibSharedMedia).
 
 - [x] `widgetKit` — pooled, versioned widgets and layout, consumed by
       `optionsKit`.
-- [ ] Update `docs/EMBEDDING.md`, the example addon and the package bundle for
-      every new Kit; final acceptance review.
+- [x] Update `docs/EMBEDDING.md`, the example addon and the package bundle for
+      every new Kit; final acceptance review (closing review 2026-09-23:
+      accepted, its five documentation and consistency items applied).
 
 #### Package E planned Kit — the nine points
 
@@ -968,6 +970,5 @@ duplicating those specifications.
 
 ---
 
-Last roadmap baseline update: 2026-09-23 (phases 0 through 3 complete; phase 4
-packages A to E implemented; the closing review and the example addon
-update remain).
+Last roadmap baseline update: 2026-09-23 (phases 0 through 4 complete: 24
+packages, every gate green; the standing obligations continue).
