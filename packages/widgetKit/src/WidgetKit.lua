@@ -187,7 +187,7 @@ local DESCRIPTION_FONTS = {
 local TYPE_OPTION_KEYS = { maxCreated = true }
 local TEXT_OPTION_KEYS = { allowSecret = true }
 local BINDING_OPTION_KEYS = { key = true, delay = true, restore = true }
-local RENDER_OPTION_KEYS = { allowSecret = true, media = true }
+local RENDER_OPTION_KEYS = { allowSecret = true, media = true, confirmText = true }
 
 -- The published surface, listed once so the public-surface predicate reads as
 -- a checklist.
@@ -235,6 +235,7 @@ local WIDGET_METHODS = {
     "GetType",
     "GetFrame",
     "GetParentContainer",
+    "SetDisabled",
     "Release",
 }
 local CONTAINER_METHODS = {
@@ -325,6 +326,7 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field GetType fun(self: WidgetKit.Widget): string
 ---@field GetFrame fun(self: WidgetKit.Widget): WidgetKit.Frame
 ---@field GetParentContainer fun(self: WidgetKit.Widget): WidgetKit.Container?
+---@field SetDisabled fun(self: WidgetKit.Widget, disabled: boolean?)
 ---@field Release fun(self: WidgetKit.Widget): true
 
 ---A widget that holds children.
@@ -343,6 +345,106 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field IsLayoutPaused fun(self: WidgetKit.Container): boolean
 ---@field PerformLayout fun(self: WidgetKit.Container): boolean done, string? reason
 ---@field LayoutFinished fun(self: WidgetKit.Container, width: number?, height: number?)
+
+---The name of a base widget type. `Create` returns `WidgetKit.Widget`; cast
+---the result to the type's class to reach its own methods:
+---
+---    local slider = WidgetKit:Create("Slider") --[[@as WidgetKit.Slider]]
+---@alias WidgetKit.BaseTypeName "Frame"|"Group"|"ScrollFrame"|"Label"|"Button"|"CheckBox"|"Slider"|"EditBox"|"Dropdown"|"ColorPicker"|"Heading"|"Spacer"
+
+---A movable, resizable window with a title and a close button.
+---@class WidgetKit.Window: WidgetKit.Container
+---@field SetTitle fun(self: WidgetKit.Window, text: any, options: WidgetKit.TextOptions?)
+---@field GetTitle fun(self: WidgetKit.Window): any
+---@field SetResizable fun(self: WidgetKit.Window, resizable: boolean)
+---@field SetMovable fun(self: WidgetKit.Window, movable: boolean)
+---@field BindPosition fun(self: WidgetKit.Window, storageTable: table, options: WidgetKit.BindingOptions?): WidgetKit.Binding
+---@field GetBinding fun(self: WidgetKit.Window): WidgetKit.Binding?
+
+---An inline group with a title.
+---@class WidgetKit.Group: WidgetKit.Container
+---@field SetTitle fun(self: WidgetKit.Group, text: any, options: WidgetKit.TextOptions?)
+---@field GetTitle fun(self: WidgetKit.Group): any
+
+---A scroll child with a scrollbar.
+---@class WidgetKit.ScrollFrame: WidgetKit.Container
+---@field GetContentHeight fun(self: WidgetKit.ScrollFrame): number
+---@field GetScrollRange fun(self: WidgetKit.ScrollFrame): number
+---@field GetScroll fun(self: WidgetKit.ScrollFrame): number
+---@field SetScroll fun(self: WidgetKit.ScrollFrame, offset: number)
+
+---One font string.
+---@class WidgetKit.Label: WidgetKit.Widget
+---@field SetText fun(self: WidgetKit.Label, text: any, options: WidgetKit.TextOptions?)
+---@field GetText fun(self: WidgetKit.Label): any
+---@field SetFontObject fun(self: WidgetKit.Label, fontObject: string|table)
+---@field SetColor fun(self: WidgetKit.Label, red: number, green: number, blue: number, alpha: number?)
+---@field SetJustifyH fun(self: WidgetKit.Label, justify: "LEFT"|"CENTER"|"RIGHT")
+
+---A push button that can capture a key.
+---@class WidgetKit.Button: WidgetKit.Widget
+---@field SetText fun(self: WidgetKit.Button, text: any, options: WidgetKit.TextOptions?)
+---@field GetText fun(self: WidgetKit.Button): any
+---@field SetKeyCapture fun(self: WidgetKit.Button, enabled: boolean)
+---@field IsCapturing fun(self: WidgetKit.Button): boolean
+
+---A two- or three-state check box.
+---@class WidgetKit.CheckBox: WidgetKit.Widget
+---@field SetValue fun(self: WidgetKit.CheckBox, value: boolean?)
+---@field GetValue fun(self: WidgetKit.CheckBox): boolean?
+---@field SetTriState fun(self: WidgetKit.CheckBox, enabled: boolean)
+---@field SetLabel fun(self: WidgetKit.CheckBox, text: any, options: WidgetKit.TextOptions?)
+---@field GetLabel fun(self: WidgetKit.CheckBox): any
+
+---A slider with a value box.
+---@class WidgetKit.Slider: WidgetKit.Widget
+---@field SetSliderValues fun(self: WidgetKit.Slider, minimum: number, maximum: number, step: number?)
+---@field SetValue fun(self: WidgetKit.Slider, value: number)
+---@field GetValue fun(self: WidgetKit.Slider): number
+---@field SetIsPercent fun(self: WidgetKit.Slider, isPercent: boolean)
+---@field SetLabel fun(self: WidgetKit.Slider, text: any, options: WidgetKit.TextOptions?)
+---@field GetLabel fun(self: WidgetKit.Slider): any
+
+---Single- and multi-line text entry.
+---@class WidgetKit.EditBox: WidgetKit.Widget
+---@field SetText fun(self: WidgetKit.EditBox, text: any, options: WidgetKit.TextOptions?)
+---@field GetText fun(self: WidgetKit.EditBox): any
+---@field SetMultiLine fun(self: WidgetKit.EditBox, multiLine: boolean, lines: integer?)
+---@field IsMultiLine fun(self: WidgetKit.EditBox): boolean
+---@field SetMaxLetters fun(self: WidgetKit.EditBox, letters: integer)
+---@field SetFocus fun(self: WidgetKit.EditBox)
+---@field SetLabel fun(self: WidgetKit.EditBox, text: any, options: WidgetKit.TextOptions?)
+---@field GetLabel fun(self: WidgetKit.EditBox): any
+
+---A keyboard-free list of buttons.
+---@class WidgetKit.Dropdown: WidgetKit.Widget
+---@field SetList fun(self: WidgetKit.Dropdown, values: table, order: any[]?)
+---@field SetValue fun(self: WidgetKit.Dropdown, key: string|number|nil)
+---@field GetValue fun(self: WidgetKit.Dropdown): string|number|nil
+---@field GetNumEntries fun(self: WidgetKit.Dropdown): integer
+---@field Open fun(self: WidgetKit.Dropdown): boolean
+---@field Close fun(self: WidgetKit.Dropdown)
+---@field IsOpen fun(self: WidgetKit.Dropdown): boolean
+---@field PickIndex fun(self: WidgetKit.Dropdown, index: integer): boolean
+---@field SetLabel fun(self: WidgetKit.Dropdown, text: any, options: WidgetKit.TextOptions?)
+---@field GetLabel fun(self: WidgetKit.Dropdown): any
+
+---A colour swatch over the client colour picker.
+---@class WidgetKit.ColorPicker: WidgetKit.Widget
+---@field SetColor fun(self: WidgetKit.ColorPicker, red: number, green: number, blue: number, alpha: number?)
+---@field GetColor fun(self: WidgetKit.ColorPicker): number, number, number, number
+---@field SetHasAlpha fun(self: WidgetKit.ColorPicker, hasAlpha: boolean)
+---@field OpenPicker fun(self: WidgetKit.ColorPicker): boolean
+---@field SetLabel fun(self: WidgetKit.ColorPicker, text: any, options: WidgetKit.TextOptions?)
+---@field GetLabel fun(self: WidgetKit.ColorPicker): any
+
+---A centred title between two lines.
+---@class WidgetKit.Heading: WidgetKit.Widget
+---@field SetText fun(self: WidgetKit.Heading, text: any, options: WidgetKit.TextOptions?)
+---@field GetText fun(self: WidgetKit.Heading): any
+
+---Empty space.
+---@class WidgetKit.Spacer: WidgetKit.Widget
 
 ---A rect in screen coordinates.
 ---@class WidgetKit.Rect
@@ -387,6 +489,7 @@ local WEAK_KEYS = { __mode = "k" }
 ---@class WidgetKit.RenderOptions
 ---@field allowSecret boolean? Show a secret value in an `input` option's edit box instead of a placeholder.
 ---@field media table<string, string>? Option path to MediaKit media type, for `select` options drawn as media pickers.
+---@field confirmText string? The question an `execute` option with `confirm = true` asks; default `"Click again to confirm."`.
 
 ---The widgets rendered from one OptionsKit tree, released together.
 ---@class WidgetKit.Rendering
@@ -962,6 +1065,16 @@ local function detachFromParent(record, child)
     end
 end
 
+---Check a `SetDisabled` argument for the base method.
+---@param widget any
+---@param disabled any
+local function readDisabledBase(widget, disabled)
+    activeRecord(widget, "WidgetKit.Widget:SetDisabled", 4)
+    if disabled ~= nil and type(disabled) ~= "boolean" then
+        error("WidgetKit.Widget:SetDisabled disabled must be a boolean", 3)
+    end
+end
+
 -- Widget base ----------------------------------------------------------------
 --
 -- Every widget's metatable falls back to these methods; a container's falls
@@ -1149,9 +1262,11 @@ function WidgetBase:GetRelativeWidth()
     return activeRecord(self, "WidgetKit.Widget:GetRelativeWidth", 3).relativeWidth
 end
 
-function WidgetBase:SetPoint(...)
+---@param point string one of the nine anchor points
+---@param ... any the rest of `SetPoint`'s arguments: relative frame, relative point, x, y
+function WidgetBase:SetPoint(point, ...)
     activeRecord(self, "WidgetKit.Widget:SetPoint", 3)
-    self.frame:SetPoint(...)
+    self.frame:SetPoint(point, ...)
 end
 
 function WidgetBase:ClearAllPoints()
@@ -1237,6 +1352,13 @@ end
 function WidgetBase:GetFrame()
     activeRecord(self, "WidgetKit.Widget:GetFrame", 3)
     return self.frame
+end
+
+---The base `SetDisabled` only checks its argument: a widget type that can be
+---disabled defines its own, which is found first. Every base widget does.
+---@param disabled boolean?
+function WidgetBase:SetDisabled(disabled)
+    readDisabledBase(self, disabled)
 end
 
 ---@return WidgetKit.Container?
@@ -1733,6 +1855,13 @@ local function buildWidget(typeRecord)
         layoutFunction = nil,
         layoutPaused = false,
         layingOut = false,
+        -- The type version whose constructor built this widget.
+        version = typeRecord.version,
+        -- Raised on every acquire, so a holder can tell this use from the
+        -- next one of the same pooled widget.
+        serial = 0,
+        -- Renderings drawn into this container, released with it.
+        renderings = nil,
     }
 
     local frame = widget.frame
@@ -1755,6 +1884,9 @@ local function retireWidget(widget)
     end
 end
 
+-- Defined with the renderer, below.
+local releaseContainerRenderings
+
 ---Release `widget` and everything below it. The caller has checked that it is
 ---active and not already releasing.
 ---
@@ -1768,6 +1900,13 @@ local function releaseWidget(widget, record)
     record.releasing = true
     if rawget(state, "focus") == widget then
         WidgetKit:ClearFocus()
+    end
+
+    -- A rendering never outlives its container: it is released first, while
+    -- its widgets are still this container's children.
+    local renderings = record.renderings
+    if renderings ~= nil and #renderings > 0 then
+        releaseContainerRenderings(renderings)
     end
 
     WidgetBase.Fire(widget, "OnRelease")
@@ -1813,7 +1952,12 @@ local function releaseWidget(widget, record)
     detachFromParent(record, widget)
     record.releasing = false
     record.active = false
-    record.typeRecord.pool:Release(widget)
+    local typeRecord = record.typeRecord
+    local borrowed = typeRecord.borrowed
+    if borrowed ~= nil then
+        borrowed[record.version] = (borrowed[record.version] or 1) - 1
+    end
+    typeRecord.pool:Release(widget)
 end
 
 ---Register a widget type, or replace an older version of it.
@@ -1862,16 +2006,29 @@ local function registerType(self, name, constructor, version, options)
 
         -- A newer constructor: pooled widgets of older versions are retired
         -- now and borrowed ones when they are released. Retired frames still
-        -- count against the cap, so the cap grows by what the upgrade uses up.
+        -- count against the cap, so the cap grows by what this upgrade uses
+        -- up: the pooled widgets it retires and the borrowed widgets of the
+        -- generation it replaces. Borrowed widgets of generations before that
+        -- one were counted by the upgrade that replaced them. The cap never
+        -- passes MAX_CREATED_LIMIT.
+        local previousVersion = typeRecord.version
         typeRecord.constructor = constructor
         typeRecord.version = version
+        local borrowed = typeRecord.borrowed
+        if borrowed == nil then
+            borrowed = {}
+            typeRecord.borrowed = borrowed
+        end
+        local stale = borrowed[previousVersion] or 0
         local pool = typeRecord.pool ---@type table
-        local stale = pool:GetActiveCount()
         local retired = pool:SetGeneration(version)
         local cap = pool:GetMaxCreated()
         local wanted = cap + retired + stale
         if maxCreated > wanted then
             wanted = maxCreated
+        end
+        if wanted > MAX_CREATED_LIMIT then
+            wanted = MAX_CREATED_LIMIT
         end
         if wanted > cap then
             pool:SetMaxCreated(wanted)
@@ -1884,6 +2041,8 @@ local function registerType(self, name, constructor, version, options)
         version = version,
         constructor = constructor,
         pool = nil,
+        -- Type version -> widgets of that version currently borrowed.
+        borrowed = {},
     }
     typeRecord.pool = PoolKit:New({
         create = function()
@@ -1938,6 +2097,15 @@ local function create(self, name)
     local record = records[widget]
     record.active = true
     record.releasing = false
+    local serial = (rawget(state, "serial") or 0) + 1
+    rawset(state, "serial", serial)
+    record.serial = serial
+    local borrowed = typeRecord.borrowed
+    if borrowed == nil then
+        borrowed = {}
+        typeRecord.borrowed = borrowed
+    end
+    borrowed[record.version] = (borrowed[record.version] or 0) + 1
     record.parent = nil
     record.layoutName = LAYOUT_LIST
     record.layoutFunction = nil
@@ -2806,6 +2974,7 @@ do
         return self._binding
     end
 
+    ---@param disabled boolean? `true` greys the widget out and ignores input
     local function windowSetDisabled(self, disabled)
         readDisabled(self, disabled, "WidgetKit Frame:SetDisabled", 3)
     end
@@ -2968,6 +3137,7 @@ do
         return self.titleText:GetText()
     end
 
+    ---@param disabled boolean? `true` greys the widget out and ignores input
     local function groupSetDisabled(self, disabled)
         colourLabel(self.titleText, readDisabled(self, disabled, "WidgetKit Group:SetDisabled", 3))
     end
@@ -3061,6 +3231,7 @@ do
         self.scrollbar:SetValue(offset)
     end
 
+    ---@param disabled boolean? `true` greys the widget out and ignores input
     local function scrollSetDisabled(self, disabled)
         readDisabled(self, disabled, "WidgetKit ScrollFrame:SetDisabled", 3)
     end
@@ -3230,6 +3401,7 @@ do
         self.text:SetJustifyH(justify)
     end
 
+    ---@param disabled boolean? `true` greys the widget out and ignores input
     local function labelSetDisabled(self, disabled)
         disabled = readDisabled(self, disabled, "WidgetKit Label:SetDisabled", 3)
         self._disabled = disabled
@@ -3318,6 +3490,7 @@ do
         end
     end
 
+    ---@param disabled boolean? `true` greys the widget out and ignores input
     local function buttonSetDisabled(self, disabled)
         disabled = readDisabled(self, disabled, "WidgetKit Button:SetDisabled", 3)
         if disabled then
@@ -3481,6 +3654,7 @@ do
         checkBoxShowValue(self)
     end
 
+    ---@param disabled boolean? `true` greys the widget out and ignores input
     local function checkBoxSetDisabled(self, disabled)
         disabled = readDisabled(self, disabled, "WidgetKit CheckBox:SetDisabled", 3)
         self.button:SetEnabled(not disabled)
@@ -3655,6 +3829,7 @@ do
         sliderShowValue(self)
     end
 
+    ---@param disabled boolean? `true` greys the widget out and ignores input
     local function sliderSetDisabled(self, disabled)
         disabled = readDisabled(self, disabled, "WidgetKit Slider:SetDisabled", 3)
         self.slider:SetEnabled(not disabled)
@@ -3874,6 +4049,7 @@ do
         self.multiBox:SetMaxLetters(letters)
     end
 
+    ---@param disabled boolean? `true` greys the widget out and ignores input
     local function editBoxSetDisabled(self, disabled)
         disabled = readDisabled(self, disabled, "WidgetKit EditBox:SetDisabled", 3)
         self.singleBox:SetEnabled(not disabled)
@@ -4034,6 +4210,67 @@ do
     end
 end
 
+-- Dropdown list catcher ------------------------------------------------------
+--
+-- While a dropdown list is open, one invisible full-screen frame owned by the
+-- Kit sits just below it and closes it on a click anywhere else. One catcher
+-- serves the whole session; its script calls through `dispatch`, so a newer
+-- copy's code runs for a catcher an older copy created.
+
+---The session's catcher frame, created on first use.
+---@return WidgetKit.Frame
+local function dropdownCatcher()
+    local catcher = rawget(state, "dropdownCatcher")
+    if catcher == nil or catcher == false then
+        local uiParent = restingParent()
+        catcher = createFrame("Frame", uiParent)
+        catcher:SetFrameStrata("FULLSCREEN")
+        catcher:ClearAllPoints()
+        catcher:SetPoint("TOPLEFT", uiParent, "TOPLEFT", 0, 0)
+        catcher:SetPoint("BOTTOMRIGHT", uiParent, "BOTTOMRIGHT", 0, 0)
+        catcher:EnableMouse(true)
+        catcher:SetScript("OnMouseDown", function()
+            dispatch.closeOpenDropdown()
+        end)
+        catcher:Hide()
+        rawset(state, "dropdownCatcher", catcher)
+    end
+    return catcher
+end
+
+---Close `widget`'s list, and hide the catcher when it was the open one.
+---@param widget table
+local function closeDropdownList(widget)
+    widget.list:Hide()
+    if rawget(state, "openDropdown") == widget then
+        rawset(state, "openDropdown", false)
+        local catcher = rawget(state, "dropdownCatcher")
+        if catcher ~= nil and catcher ~= false then
+            catcher:Hide()
+        end
+    end
+end
+
+---Close whichever dropdown list is open.
+local function closeOpenDropdown()
+    local open = rawget(state, "openDropdown")
+    if open ~= nil and open ~= false then
+        closeDropdownList(open)
+    end
+end
+
+---Show `widget`'s list above the catcher, closing any other open list.
+---@param widget table
+local function openDropdownList(widget)
+    local open = rawget(state, "openDropdown")
+    if open ~= nil and open ~= false and open ~= widget then
+        closeDropdownList(open)
+    end
+    rawset(state, "openDropdown", widget)
+    dropdownCatcher():Show()
+    widget.list:Show()
+end
+
 -- Widget: Dropdown -----------------------------------------------------------
 
 do --
@@ -4099,7 +4336,7 @@ do --
         local key = widget._keys[entry]
         widget._value = key
         widget.button:SetText(widget._labels[entry])
-        widget.list:Hide()
+        closeDropdownList(widget)
         widget:Fire("OnValueChanged", key)
     end
 
@@ -4142,7 +4379,10 @@ do --
             error("WidgetKit Dropdown:SetList order must be an array or nil", 2)
         end
 
-        local keys, labels = self._keys, self._labels
+        -- Every entry is checked into staging arrays first; the widget's own
+        -- entries change only once the whole list was accepted, so a refused
+        -- entry leaves the dropdown as it was.
+        local keys, labels = {}, {}
         local count = 0
         local function add(key, label)
             -- `add` runs one call below `SetList`, so its caller is level 3.
@@ -4205,9 +4445,14 @@ do --
             end
         end
 
+        local ownKeys, ownLabels = self._keys, self._labels
+        for index = 1, count do
+            ownKeys[index] = keys[index]
+            ownLabels[index] = labels[index]
+        end
         for index = count + 1, self._count do
-            keys[index] = nil
-            labels[index] = nil
+            ownKeys[index] = nil
+            ownLabels[index] = nil
         end
         self._count = count
         self._offset = 0
@@ -4258,13 +4503,13 @@ do --
             end
         end
         dropdownRenderRows(self)
-        self.list:Show()
+        openDropdownList(self)
         return true
     end
 
     local function dropdownClose(self)
         activeRecord(self, "WidgetKit Dropdown:Close", 3)
-        self.list:Hide()
+        closeDropdownList(self)
     end
 
     ---@return boolean
@@ -4289,13 +4534,14 @@ do --
         return true
     end
 
+    ---@param disabled boolean? `true` greys the widget out and ignores input
     local function dropdownSetDisabled(self, disabled)
         disabled = readDisabled(self, disabled, "WidgetKit Dropdown:SetDisabled", 3)
         self._disabled = disabled
         self.button:SetEnabled(not disabled)
         colourLabel(self.labelText, disabled)
         if disabled then
-            self.list:Hide()
+            closeDropdownList(self)
         end
     end
 
@@ -4308,11 +4554,11 @@ do --
         self.button:SetText("")
         self.labelText:SetText("")
         colourLabel(self.labelText, false)
-        self.list:Hide()
+        closeDropdownList(self)
     end
 
     local function dropdownOnRelease(self)
-        self.list:Hide()
+        closeDropdownList(self)
         local keys, labels = self._keys, self._labels
         for index = 1, self._count do
             keys[index] = nil
@@ -4338,8 +4584,11 @@ do --
         button:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -18)
         button:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -18)
 
-        local list = createFrame("Frame", frame)
+        -- The list lives on UIParent, above everything, so a ScrollFrame or any
+        -- other clipping parent of the dropdown cannot cut it off.
+        local list = createFrame("Frame", restingParent() or frame)
         list:SetFrameStrata("FULLSCREEN_DIALOG")
+        list:SetToplevel(true)
         list:SetPoint("TOPLEFT", button, "BOTTOMLEFT", 0, 0)
         list:SetPoint("TOPRIGHT", button, "BOTTOMRIGHT", 0, 0)
         list:EnableMouse(true)
@@ -4381,10 +4630,15 @@ do --
                 return
             end
             if list:IsShown() then
-                list:Hide()
+                closeDropdownList(widget)
             else
                 widget:Open()
             end
+        end)
+        -- The list is not a child of the widget's frame, so it is closed when
+        -- that frame hides.
+        frame:SetScript("OnHide", function()
+            closeDropdownList(widget)
         end)
         list:SetScript("OnMouseWheel", function(_, delta)
             if not isActive(widget) then
@@ -4452,6 +4706,7 @@ do --
         self._hasAlpha = hasAlpha
     end
 
+    ---@param disabled boolean? `true` greys the widget out and ignores input
     local function colorSetDisabled(self, disabled)
         disabled = readDisabled(self, disabled, "WidgetKit ColorPicker:SetDisabled", 3)
         self._disabled = disabled
@@ -4500,6 +4755,9 @@ do --
         info.hasOpacity = self._hasAlpha
         self._previousRed, self._previousGreen = self._red, self._green
         self._previousBlue, self._previousAlpha = self._blue, self._alpha
+        -- The client picker calls back later; it only reaches this use of the
+        -- widget, never a later one after a release.
+        self._pickerSession = self._session
         setup(picker, info)
         return true
     end
@@ -4517,6 +4775,8 @@ do --
 
     local function colorOnRelease(self)
         self.labelText:SetText("")
+        -- Disarm the client picker's callbacks for this use of the widget.
+        self._session = self._session + 1
     end
 
     ---@return table widget
@@ -4548,6 +4808,8 @@ do --
             _blue = 1,
             _alpha = 1,
             _hasAlpha = false,
+            _session = 0,
+            _pickerSession = -1,
             _disabled = false,
             OnAcquire = colorOnAcquire,
             OnRelease = colorOnRelease,
@@ -4560,14 +4822,23 @@ do --
             SetDisabled = colorSetDisabled,
         }
 
-        ---Read the colour the client picker shows now.
+        ---Whether the client picker was opened by the current use of the widget.
+        local function pickerIsCurrent()
+            return isActive(widget) and widget._pickerSession == widget._session
+        end
+
+        ---Read the colour the client picker shows now. Without alpha, the
+        ---stored alpha is kept.
         local function readPicker()
+            if not pickerIsCurrent() then
+                return
+            end
             local picker = readGlobal("ColorPickerFrame")
             if type(picker) ~= "table" or type(picker.GetColorRGB) ~= "function" then
                 return
             end
             local red, green, blue = picker:GetColorRGB()
-            local alpha = 1
+            local alpha = widget._alpha
             if widget._hasAlpha and type(picker.GetColorAlpha) == "function" then
                 alpha = picker:GetColorAlpha()
             end
@@ -4580,6 +4851,9 @@ do --
             swatchFunc = readPicker,
             opacityFunc = readPicker,
             cancelFunc = function()
+                if not pickerIsCurrent() then
+                    return
+                end
                 colorChosen(
                     widget,
                     widget._previousRed,
@@ -4629,6 +4903,7 @@ do
         return self.text:GetText()
     end
 
+    ---@param disabled boolean? `true` greys the widget out and ignores input
     local function headingSetDisabled(self, disabled)
         colourLabel(self.text, readDisabled(self, disabled, "WidgetKit Heading:SetDisabled", 3))
     end
@@ -4673,6 +4948,7 @@ end
 -- Widget: Spacer -------------------------------------------------------------
 
 do
+    ---@param disabled boolean? `true` greys the widget out and ignores input
     local function spacerSetDisabled(self, disabled)
         readDisabled(self, disabled, "WidgetKit Spacer:SetDisabled", 3)
     end
@@ -4735,849 +5011,1016 @@ local function createMediaPicker(self, mediaType)
     return dropdown
 end
 
+-- The renderer lives in its own block; only its entry point is visible below.
+local renderOptions
+
 -- Renderer -------------------------------------------------------------------
---
--- `RenderOptions` walks `tree:Describe()` once and creates one widget per
--- visible node in display order. Every read afterwards goes through
--- `tree:Get`, `tree:IsDisabled` and `tree:IsHidden`, which allocate nothing;
--- every write goes through `tree:Validate` then `tree:Set`. A refusal is shown
--- in a Label inserted right below the widget. `tree:OnChange` refreshes the
--- widgets in place, and rebuilds them only when a node was shown or hidden.
 
--- Which widget type draws each option kind.
-local NODE_WIDGET_TYPES = {
-    group = "Group",
-    toggle = "CheckBox",
-    range = "Slider",
-    select = "Dropdown",
-    multiselect = "Group",
-    input = "EditBox",
-    color = "ColorPicker",
-    keybinding = "Button",
-    execute = "Button",
-    header = "Heading",
-    description = "Label",
-}
+do --
+    -- `RenderOptions` walks `tree:Describe()` once and creates one widget per
+    -- visible node in display order. Every read afterwards goes through
+    -- `tree:Get`, `tree:IsDisabled` and `tree:IsHidden`, which allocate nothing;
+    -- every write goes through `tree:Validate` then `tree:Set`. A refusal is shown
+    -- in a Label inserted right below the widget. `tree:OnChange` refreshes the
+    -- widgets in place, and rebuilds them only when a node was shown or hidden.
 
--- The option kinds that carry a value `tree:Get` reads.
-local VALUE_KINDS = {
-    toggle = true,
-    range = true,
-    select = true,
-    multiselect = true,
-    input = true,
-    color = true,
-    keybinding = true,
-}
+    -- Which widget type draws each option kind.
+    local NODE_WIDGET_TYPES = {
+        group = "Group",
+        toggle = "CheckBox",
+        range = "Slider",
+        select = "Dropdown",
+        multiselect = "Group",
+        input = "EditBox",
+        color = "ColorPicker",
+        keybinding = "Button",
+        execute = "Button",
+        header = "Heading",
+        description = "Label",
+    }
 
--- The text options of an edit box that may show a secret.
-local ALLOW_SECRET_TEXT = { allowSecret = true }
+    -- The option kinds that carry a value `tree:Get` reads.
+    local VALUE_KINDS = {
+        toggle = true,
+        range = true,
+        select = true,
+        multiselect = true,
+        input = true,
+        color = true,
+        keybinding = true,
+    }
 
--- The colour of an inline refusal.
-local MESSAGE_RED, MESSAGE_GREEN, MESSAGE_BLUE = 1, 0.3, 0.3
+    -- The text options of an edit box that may show a secret.
+    local ALLOW_SECRET_TEXT = { allowSecret = true }
 
----@param rendering any
----@param methodName string qualified public method name, used in the argument error
----@param level integer stack level the failure is reported at
-local function validateRendering(rendering, methodName, level)
-    if type(rendering) ~= "table" or getmetatable(rendering) ~= RENDERING_METATABLE then
-        error(methodName .. " must be called on a WidgetKit rendering", level)
-    end
-end
+    -- Seconds an armed `execute` confirmation waits for its second click.
+    local CONFIRM_SECONDS = 5
 
----Create a widget for the renderer, remembering the first failure.
----@param rendering table
----@param typeName string
----@return table? widget
-local function renderCreate(rendering, typeName)
-    local widget, reason = WidgetKit:Create(typeName)
-    if widget == nil and rendering._failure == nil then
-        rendering._failure = "could not create a " .. typeName .. " widget: " .. tostring(reason)
-    end
-    return widget
-end
+    -- The question an `execute` option with `confirm = true` asks.
+    local DEFAULT_CONFIRM_TEXT = "Click again to confirm."
 
----Add a rendered widget to `parent`, remembering the ones added to the
----container the rendering was given, which it releases itself.
----@param rendering table
----@param parent table
----@param widget table
----@param beforeWidget table?
----@return boolean added
-local function renderAdd(rendering, parent, widget, beforeWidget)
-    local added, reason = parent:AddChild(widget, beforeWidget)
-    if not added then
-        WidgetKit:Release(widget)
-        if rendering._failure == nil then
-            rendering._failure = "could not add a widget to its container: " .. tostring(reason)
+    -- The colour of an inline refusal.
+    local MESSAGE_RED, MESSAGE_GREEN, MESSAGE_BLUE = 1, 0.3, 0.3
+
+    ---@param rendering any
+    ---@param methodName string qualified public method name, used in the argument error
+    ---@param level integer stack level the failure is reported at
+    local function validateRendering(rendering, methodName, level)
+        if type(rendering) ~= "table" or getmetatable(rendering) ~= RENDERING_METATABLE then
+            error(methodName .. " must be called on a WidgetKit rendering", level)
         end
-        return false
     end
-    if parent == rendering._container then
-        local widgets = rendering._widgets
-        widgets[#widgets + 1] = widget
-    end
-    return true
-end
 
----Forget `widget` in the list of widgets the rendering added to its container.
----@param rendering table
----@param widget table
-local function renderForget(rendering, widget)
-    local widgets = rendering._widgets
-    for index = #widgets, 1, -1 do
-        if widgets[index] == widget then
-            table.remove(widgets, index)
+    ---Remember the acquire serial `widget` has now, so the rendering can tell
+    ---its own use of the widget from a later one after the widget went back to
+    ---its pool and was acquired by someone else.
+    ---@param rendering table
+    ---@param widget table
+    local function stamp(rendering, widget)
+        rendering._serials[widget] = records[widget].serial
+    end
+
+    ---Whether `widget` is still the active widget this rendering acquired (or,
+    ---for the container, was given).
+    ---@param rendering table
+    ---@param widget table?
+    ---@return boolean
+    local function owns(rendering, widget)
+        if widget == nil then
+            return false
+        end
+        local record = records[widget]
+        return record ~= nil
+            and record.active == true
+            and record.serial == rendering._serials[widget]
+    end
+
+    ---Create a widget for the renderer, remembering the first failure.
+    ---@param rendering table
+    ---@param typeName string
+    ---@return table? widget
+    local function renderCreate(rendering, typeName)
+        local widget, reason = WidgetKit:Create(typeName)
+        if widget == nil then
+            if rendering._failure == nil then
+                rendering._failure = "could not create a "
+                    .. typeName
+                    .. " widget: "
+                    .. tostring(reason)
+            end
+            return nil
+        end
+        stamp(rendering, widget)
+        return widget
+    end
+
+    ---Whether the rendering may still act: not released, and its container still
+    ---the one it was given. A rendering whose container went away is released
+    ---on the spot, so it never touches widgets it no longer owns.
+    ---@param rendering table
+    ---@return boolean
+    local function renderingAlive(rendering)
+        if rendering._released then
+            return false
+        end
+        if not owns(rendering, rendering._container) then
+            RenderingPrototype.Release(rendering)
+            return false
+        end
+        return true
+    end
+
+    ---Add a rendered widget to `parent`, remembering the ones added to the
+    ---container the rendering was given, which it releases itself.
+    ---@param rendering table
+    ---@param parent table
+    ---@param widget table
+    ---@param beforeWidget table?
+    ---@return boolean added
+    local function renderAdd(rendering, parent, widget, beforeWidget)
+        local added, reason = parent:AddChild(widget, beforeWidget)
+        if not added then
+            WidgetKit:Release(widget)
+            if rendering._failure == nil then
+                rendering._failure = "could not add a widget to its container: " .. tostring(reason)
+            end
+            return false
+        end
+        if parent == rendering._container then
+            local widgets = rendering._widgets
+            widgets[#widgets + 1] = widget
+        end
+        return true
+    end
+
+    ---Forget `widget` in the list of widgets the rendering added to its container.
+    ---@param rendering table
+    ---@param widget table
+    local function renderForget(rendering, widget)
+        local widgets = rendering._widgets
+        for index = #widgets, 1, -1 do
+            if widgets[index] == widget then
+                table.remove(widgets, index)
+                return
+            end
+        end
+    end
+
+    ---Text that can be shown for a message, which may be any error value.
+    ---@param message any
+    ---@return string|number
+    local function messageText(message)
+        if isSecret(message) then
+            return SECRET_PLACEHOLDER
+        end
+        if type(message) == "string" or type(message) == "number" then
+            return message
+        end
+        return tostring(message)
+    end
+
+    ---Show `message` in a Label right below the record's widget.
+    ---@param rendering table
+    ---@param record table
+    ---@param message any
+    local function showMessage(rendering, record, message)
+        local text = messageText(message)
+        local label = record.messageLabel
+        if owns(rendering, label) then
+            label:SetText(text)
+            local parent = record.parent
+            if owns(rendering, parent) then
+                parent:PerformLayout()
+            end
             return
         end
-    end
-end
+        record.messageLabel = nil
 
----Text that can be shown for a message, which may be any error value.
----@param message any
----@return string|number
-local function messageText(message)
-    if isSecret(message) then
-        return SECRET_PLACEHOLDER
-    end
-    if type(message) == "string" or type(message) == "number" then
-        return message
-    end
-    return tostring(message)
-end
-
----Show `message` in a Label right below the record's widget.
----@param rendering table
----@param record table
----@param message any
-local function showMessage(rendering, record, message)
-    local text = messageText(message)
-    local label = record.messageLabel
-    if label ~= nil and isActive(label) then
+        local parent = record.parent
+        if not owns(rendering, parent) or not owns(rendering, record.widget) then
+            return
+        end
+        label = WidgetKit:Create("Label")
+        if label ~= nil then
+            stamp(rendering, label)
+        end
+        if label == nil then
+            -- Nowhere to show it: the user still learns through the error frame.
+            reportError(message)
+            return
+        end
+        label:SetFullWidth(true)
+        label:SetColor(MESSAGE_RED, MESSAGE_GREEN, MESSAGE_BLUE)
         label:SetText(text)
-        local parent = record.parent
-        if isActive(parent) then
-            parent:PerformLayout()
-        end
-        return
-    end
 
-    local parent = record.parent
-    if not isActive(parent) then
-        return
-    end
-    label = WidgetKit:Create("Label")
-    if label == nil then
-        -- Nowhere to show it: the user still learns through the error frame.
-        reportError(message)
-        return
-    end
-    label:SetFullWidth(true)
-    label:SetColor(MESSAGE_RED, MESSAGE_GREEN, MESSAGE_BLUE)
-    label:SetText(text)
-
-    local siblings = parent:GetChildren()
-    local beforeWidget = nil
-    for index = 1, #siblings do
-        if siblings[index] == record.widget then
-            beforeWidget = siblings[index + 1]
-            break
-        end
-    end
-    if not renderAdd(rendering, parent, label, beforeWidget) then
-        rendering._failure = nil
-        reportError(message)
-        return
-    end
-    record.messageLabel = label
-end
-
----Remove the record's inline message, if it has one.
----@param rendering table
----@param record table
-local function clearMessage(rendering, record)
-    local label = record.messageLabel
-    if label == nil then
-        return
-    end
-    record.messageLabel = nil
-    if isActive(label) then
-        renderForget(rendering, label)
-        WidgetKit:Release(label)
-        local parent = record.parent
-        if isActive(parent) then
-            parent:PerformLayout()
-        end
-    end
-end
-
----Whether a value read back from the tree is a table that may be indexed.
----@param value any
----@return boolean
-local function isReadableTable(value)
-    return type(value) == "table" and not isSecret(value)
-end
-
----Show `value` and the disabled state on the record's widgets.
----
----A secret value is never inspected. An `input` option shows it only when the
----caller passed `allowSecret`; every other kind shows a placeholder or its
----default and is disabled, since the user cannot edit what cannot be read.
----@param rendering table
----@param record table
----@param value any
----@param disabled boolean
-local function applyState(rendering, record, value, disabled)
-    local kind = record.kind
-    local widget = record.widget
-    record.disabled = disabled
-
-    if not VALUE_KINDS[kind] then
-        widget:SetDisabled(disabled)
-        return
-    end
-
-    local secret = isSecret(value)
-    if kind == "multiselect" then
-        widget:SetDisabled(disabled)
-        local readable = not secret and isReadableTable(value)
-        local keys, boxes = record.keys, record.checkBoxes
-        for index = 1, #keys do
-            local checked = false
-            if readable then
-                local entry = value[keys[index]]
-                checked = not isSecret(entry) and entry == true
+        local siblings = parent:GetChildren()
+        local beforeWidget = nil
+        for index = 1, #siblings do
+            if siblings[index] == record.widget then
+                beforeWidget = siblings[index + 1]
+                break
             end
-            boxes[index]:SetValue(checked)
-            boxes[index]:SetDisabled(disabled or secret)
         end
-        return
+        if not renderAdd(rendering, parent, label, beforeWidget) then
+            rendering._failure = nil
+            reportError(message)
+            return
+        end
+        record.messageLabel = label
     end
 
-    if secret then
-        if kind == "input" and rendering._allowSecret then
-            widget:SetText(value, ALLOW_SECRET_TEXT)
+    ---Remove the record's inline message, if it has one.
+    ---@param rendering table
+    ---@param record table
+    local function clearMessage(rendering, record)
+        local label = record.messageLabel
+        if label == nil then
+            return
+        end
+        record.messageLabel = nil
+        if owns(rendering, label) then
+            renderForget(rendering, label)
+            WidgetKit:Release(label)
+            local parent = record.parent
+            if owns(rendering, parent) then
+                parent:PerformLayout()
+            end
+        end
+    end
+
+    ---Whether a value read back from the tree is a table that may be indexed.
+    ---@param value any
+    ---@return boolean
+    local function isReadableTable(value)
+        return type(value) == "table" and not isSecret(value)
+    end
+
+    ---Show `value` and the disabled state on the record's widgets.
+    ---
+    ---A secret value is never inspected. An `input` option shows it only when the
+    ---caller passed `allowSecret`; every other kind shows a placeholder or its
+    ---default and is disabled, since the user cannot edit what cannot be read.
+    ---@param rendering table
+    ---@param record table
+    ---@param value any
+    ---@param disabled boolean
+    local function applyState(rendering, record, value, disabled)
+        local kind = record.kind
+        local widget = record.widget
+        record.disabled = disabled
+
+        if not VALUE_KINDS[kind] then
             widget:SetDisabled(disabled)
             return
         end
-        if kind == "input" then
-            widget:SetText(SECRET_PLACEHOLDER)
-        elseif kind == "keybinding" then
-            widget:SetText(record.name .. ": " .. SECRET_PLACEHOLDER)
-        end
-        widget:SetDisabled(true)
-        return
-    end
 
-    if kind == "toggle" then
-        if value == nil and record.triState then
-            widget:SetValue(nil)
-        else
-            widget:SetValue(value == true)
-        end
-    elseif kind == "range" then
-        if type(value) == "number" and value == value then
-            widget:SetValue(value)
-        end
-    elseif kind == "select" then
-        if type(value) == "string" or type(value) == "number" then
-            widget:SetValue(value)
-        else
-            widget:SetValue(nil)
-        end
-    elseif kind == "input" then
-        if type(value) == "string" or type(value) == "number" then
-            widget:SetText(value)
-        else
-            widget:SetText("")
-        end
-    elseif kind == "color" then
-        if isReadableTable(value) then
-            local red, green, blue, alpha = value.r, value.g, value.b, value.a
-            if
-                type(red) == "number"
-                and type(green) == "number"
-                and type(blue) == "number"
-                and not isSecret(red)
-                and not isSecret(green)
-                and not isSecret(blue)
-            then
-                if type(alpha) ~= "number" or isSecret(alpha) then
-                    alpha = 1
+        local secret = isSecret(value)
+        if kind == "multiselect" then
+            widget:SetDisabled(disabled)
+            local readable = not secret and isReadableTable(value)
+            local keys, boxes = record.keys, record.checkBoxes
+            for index = 1, #keys do
+                local checked = false
+                if readable then
+                    local entry = value[keys[index]]
+                    checked = not isSecret(entry) and entry == true
                 end
-                widget:SetColor(red, green, blue, alpha)
+                boxes[index]:SetValue(checked)
+                boxes[index]:SetDisabled(disabled or secret)
+            end
+            return
+        end
+
+        if secret then
+            if kind == "input" and rendering._allowSecret then
+                widget:SetText(value, ALLOW_SECRET_TEXT)
+                widget:SetDisabled(disabled)
+                return
+            end
+            if kind == "input" then
+                widget:SetText(SECRET_PLACEHOLDER)
+            elseif kind == "keybinding" then
+                widget:SetText(record.name .. ": " .. SECRET_PLACEHOLDER)
+            end
+            widget:SetDisabled(true)
+            return
+        end
+
+        if kind == "toggle" then
+            if value == nil and record.triState then
+                widget:SetValue(nil)
+            else
+                widget:SetValue(value == true)
+            end
+        elseif kind == "range" then
+            if type(value) == "number" and value == value then
+                widget:SetValue(value)
+            end
+        elseif kind == "select" then
+            if type(value) == "string" or type(value) == "number" then
+                widget:SetValue(value)
+            else
+                widget:SetValue(nil)
+            end
+        elseif kind == "input" then
+            if type(value) == "string" or type(value) == "number" then
+                widget:SetText(value)
+            else
+                widget:SetText("")
+            end
+        elseif kind == "color" then
+            if isReadableTable(value) then
+                local red, green, blue, alpha = value.r, value.g, value.b, value.a
+                if
+                    type(red) == "number"
+                    and type(green) == "number"
+                    and type(blue) == "number"
+                    and not isSecret(red)
+                    and not isSecret(green)
+                    and not isSecret(blue)
+                then
+                    if type(alpha) ~= "number" or isSecret(alpha) then
+                        alpha = 1
+                    end
+                    widget:SetColor(red, green, blue, alpha)
+                end
+            end
+        elseif kind == "keybinding" then
+            local key = clientText("NOT_BOUND", "Not bound")
+            if type(value) == "string" and value ~= "" then
+                key = value
+            end
+            widget:SetText(record.name .. ": " .. key)
+        end
+        widget:SetDisabled(disabled)
+    end
+
+    ---Read one record's value and state back from the tree.
+    ---@param rendering table
+    ---@param record table
+    local function refreshRecord(rendering, record)
+        if not owns(rendering, record.widget) then
+            return
+        end
+        local tree = rendering._tree
+        local value = nil
+        if VALUE_KINDS[record.kind] then
+            value = tree:Get(record.path)
+        end
+        applyState(rendering, record, value, tree:IsDisabled(record.path) == true)
+    end
+
+    ---Run a refresh that `OnChange` asked for while a write was in progress.
+    ---@param rendering table
+    local function runPendingRefresh(rendering)
+        if rendering._pending and rendering._busy == 0 and not rendering._released then
+            rendering._pending = false
+            RenderingPrototype.Refresh(rendering)
+        end
+    end
+
+    ---Write `value` through the tree: `Validate`, then `Set`. A refusal becomes an
+    ---inline message and the widget shows the stored value again.
+    ---@param rendering table
+    ---@param record table
+    ---@param value any
+    local function writeValue(rendering, record, value)
+        if not renderingAlive(rendering) or not owns(rendering, record.widget) then
+            return
+        end
+        local tree = rendering._tree
+        rendering._busy = rendering._busy + 1
+        -- A raising Validate or Set is shown and reported, never raised into the
+        -- widget's script, and never leaves the rendering busy.
+        local validated, ok, message = pcall(tree.Validate, tree, record.path, value)
+        if not validated then
+            ok, message = false, ok
+            reportError(message)
+        end
+        if ok == true then
+            local called, result, setMessage = pcall(tree.Set, tree, record.path, value)
+            if not called then
+                ok, message = false, result
+                reportError(result)
+            elseif result ~= true then
+                ok, message = false, setMessage
             end
         end
-    elseif kind == "keybinding" then
-        local key = clientText("NOT_BOUND", "Not bound")
-        if type(value) == "string" and value ~= "" then
-            key = value
-        end
-        widget:SetText(record.name .. ": " .. key)
-    end
-    widget:SetDisabled(disabled)
-end
+        rendering._busy = rendering._busy - 1
 
----Read one record's value and state back from the tree.
----@param rendering table
----@param record table
-local function refreshRecord(rendering, record)
-    local tree = rendering._tree
-    local value = nil
-    if VALUE_KINDS[record.kind] then
-        value = tree:Get(record.path)
-    end
-    applyState(rendering, record, value, tree:IsDisabled(record.path) == true)
-end
-
----Run a refresh that `OnChange` asked for while a write was in progress.
----@param rendering table
-local function runPendingRefresh(rendering)
-    if rendering._pending and rendering._busy == 0 and not rendering._released then
-        rendering._pending = false
-        RenderingPrototype.Refresh(rendering)
-    end
-end
-
----Write `value` through the tree: `Validate`, then `Set`. A refusal becomes an
----inline message and the widget shows the stored value again.
----@param rendering table
----@param record table
----@param value any
-local function writeValue(rendering, record, value)
-    if rendering._released then
-        return
-    end
-    local tree = rendering._tree
-    rendering._busy = rendering._busy + 1
-    local ok, message = tree:Validate(record.path, value)
-    if ok == true then
-        local called, result, setMessage = pcall(tree.Set, tree, record.path, value)
-        if not called then
-            ok, message = false, result
-            reportError(result)
-        elseif result ~= true then
-            ok, message = false, setMessage
-        end
-    end
-    rendering._busy = rendering._busy - 1
-
-    if ok == true then
-        clearMessage(rendering, record)
-    else
-        showMessage(rendering, record, message or "refused")
-        refreshRecord(rendering, record)
-    end
-    runPendingRefresh(rendering)
-end
-
----Write a `multiselect` option after one of its boxes changed: a new map of
----the checked keys.
----@param rendering table
----@param record table
----@param key any
----@param checked boolean?
-local function writeMultiselect(rendering, record, key, checked)
-    if rendering._released then
-        return
-    end
-    local current = rendering._tree:Get(record.path)
-    local readable = isReadableTable(current)
-    local map = {}
-    local keys = record.keys
-    for index = 1, #keys do
-        local entryKey = keys[index]
-        local on
-        if entryKey == key then
-            on = checked == true
-        elseif readable then
-            local entry = current[entryKey]
-            on = not isSecret(entry) and entry == true
+        if ok == true then
+            clearMessage(rendering, record)
         else
-            on = false
+            showMessage(rendering, record, message or "refused")
+            refreshRecord(rendering, record)
         end
-        if on then
-            map[entryKey] = true
+        runPendingRefresh(rendering)
+    end
+
+    ---Write a `multiselect` option after one of its boxes changed: a new map of
+    ---the checked keys.
+    ---@param rendering table
+    ---@param record table
+    ---@param key any
+    ---@param checked boolean?
+    local function writeMultiselect(rendering, record, key, checked)
+        if not renderingAlive(rendering) or not owns(rendering, record.widget) then
+            return
         end
-    end
-    writeValue(rendering, record, map)
-end
-
----Run an `execute` option. With `confirm`, the first click arms it and shows
----the question below the button; the second click runs it.
----@param rendering table
----@param record table
-local function executeRecord(rendering, record)
-    if rendering._released then
-        return
-    end
-    local confirm = record.confirm
-    if confirm ~= nil and confirm ~= false and not record.armed then
-        record.armed = true
-        local question = type(confirm) == "string" and confirm or "Click again to confirm."
-        showMessage(rendering, record, question)
-        return
-    end
-    record.armed = false
-    clearMessage(rendering, record)
-
-    local tree = rendering._tree
-    rendering._busy = rendering._busy + 1
-    local ok, failure = pcall(tree.Execute, tree, record.path)
-    rendering._busy = rendering._busy - 1
-    if not ok then
-        reportError(failure)
-        showMessage(rendering, record, failure)
-    end
-    runPendingRefresh(rendering)
-end
-
----The keys of a `select` or `multiselect` node in display order: `sorting`
----when it has one, otherwise by label, then key.
----@param node table
----@return any[]
-local function orderedKeys(node)
-    local values = node.values
-    if type(values) ~= "table" then
-        return {}
-    end
-    local sorting = node.sorting
-    local keys = {}
-    if type(sorting) == "table" then
-        for index = 1, #sorting do
-            if values[sorting[index]] ~= nil then
-                keys[#keys + 1] = sorting[index]
+        local current = rendering._tree:Get(record.path)
+        local readable = isReadableTable(current)
+        local map = {}
+        local keys = record.keys
+        for index = 1, #keys do
+            local entryKey = keys[index]
+            local on
+            if entryKey == key then
+                on = checked == true
+            elseif readable then
+                local entry = current[entryKey]
+                on = not isSecret(entry) and entry == true
+            else
+                on = false
+            end
+            if on then
+                map[entryKey] = true
             end
         end
+        writeValue(rendering, record, map)
+    end
+
+    ---Disarm an armed `execute` confirmation: cancel its timer and remove the
+    ---question.
+    ---@param rendering table
+    ---@param record table
+    local function disarmRecord(rendering, record)
+        local job = record.disarmJob
+        record.disarmJob = nil
+        if job ~= nil and type(job.Cancel) == "function" then
+            pcall(job.Cancel, job)
+        end
+        if record.armed then
+            record.armed = false
+            clearMessage(rendering, record)
+        end
+    end
+
+    ---Run an `execute` option. With `confirm`, the first click arms it and shows
+    ---the question below the button; the second click runs it. An armed
+    ---confirmation disarms itself after `CONFIRM_SECONDS` through SchedulerKit
+    ---when it is registered, otherwise at the next `Refresh`.
+    ---@param rendering table
+    ---@param record table
+    local function executeRecord(rendering, record)
+        if not renderingAlive(rendering) or not owns(rendering, record.widget) then
+            return
+        end
+        local confirm = record.confirm
+        if confirm ~= nil and confirm ~= false and not record.armed then
+            record.armed = true
+            local question = type(confirm) == "string" and confirm or rendering._confirmText
+            showMessage(rendering, record, question)
+            local SchedulerKit = findPackage(Registry, "schedulerKit", OPTIONAL_SCHEDULERKIT_API)
+            if type(SchedulerKit) == "table" and type(SchedulerKit.After) == "function" then
+                record.disarmJob = SchedulerKit:After(CONFIRM_SECONDS, function()
+                    record.disarmJob = nil
+                    if not rendering._released and record.armed then
+                        disarmRecord(rendering, record)
+                    end
+                end)
+            end
+            return
+        end
+        disarmRecord(rendering, record)
+
+        local tree = rendering._tree
+        rendering._busy = rendering._busy + 1
+        local ok, failure = pcall(tree.Execute, tree, record.path)
+        rendering._busy = rendering._busy - 1
+        if not ok then
+            reportError(failure)
+            showMessage(rendering, record, failure)
+        end
+        runPendingRefresh(rendering)
+    end
+
+    ---The keys of a `select` or `multiselect` node in display order: `sorting`
+    ---when it has one, otherwise by label, then key.
+    ---@param node table
+    ---@return any[]
+    local function orderedKeys(node)
+        local values = node.values
+        if type(values) ~= "table" then
+            return {}
+        end
+        local sorting = node.sorting
+        local keys = {}
+        if type(sorting) == "table" then
+            for index = 1, #sorting do
+                if values[sorting[index]] ~= nil then
+                    keys[#keys + 1] = sorting[index]
+                end
+            end
+            return keys
+        end
+        for key in next, values do
+            keys[#keys + 1] = key
+        end
+        table.sort(keys, function(first, second)
+            local firstLabel, secondLabel = tostring(values[first]), tostring(values[second])
+            if firstLabel ~= secondLabel then
+                return firstLabel < secondLabel
+            end
+            if type(first) ~= type(second) then
+                return type(first) == "number"
+            end
+            return first < second
+        end)
         return keys
     end
-    for key in next, values do
-        keys[#keys + 1] = key
-    end
-    table.sort(keys, function(first, second)
-        local firstLabel, secondLabel = tostring(values[first]), tostring(values[second])
-        if firstLabel ~= secondLabel then
-            return firstLabel < secondLabel
-        end
-        if type(first) ~= type(second) then
-            return type(first) == "number"
-        end
-        return first < second
-    end)
-    return keys
-end
 
-local renderNodes
+    local renderNodes
 
----Configure a freshly created widget for its node.
----@param rendering table
----@param record table
----@param node table
----@return boolean ok
-local function configureNode(rendering, record, node)
-    local kind = record.kind
-    local widget = record.widget
+    ---Configure a freshly created widget for its node.
+    ---@param rendering table
+    ---@param record table
+    ---@param node table
+    ---@return boolean ok
+    local function configureNode(rendering, record, node)
+        local kind = record.kind
+        local widget = record.widget
 
-    if kind == "group" then
-        widget:SetTitle(node.name)
-        widget:PauseLayout()
-        local ok = renderNodes(rendering, node.children, widget)
-        widget:ResumeLayout()
-        return ok
-    elseif kind == "toggle" then
-        widget:SetLabel(node.name)
-        widget:SetTriState(record.triState)
-        widget:SetCallback("OnValueChanged", function(_, _, value)
-            writeValue(rendering, record, value)
-        end)
-    elseif kind == "range" then
-        widget:SetLabel(node.name)
-        widget:SetSliderValues(node.min, node.max, node.step or 0)
-        widget:SetIsPercent(node.isPercent == true)
-        widget:SetCallback("OnValueChanged", function(_, _, value)
-            writeValue(rendering, record, value)
-        end)
-    elseif kind == "select" then
-        widget:SetLabel(node.name)
-        local mediaType = rendering._media ~= nil and rendering._media[record.path] or nil
-        local MediaKit = mediaType ~= nil
-                and findPackage(Registry, "mediaKit", OPTIONAL_MEDIAKIT_API)
-            or nil
-        if
-            mediaType == nil
-            or type(MediaKit) ~= "table"
-            or type(MediaKit.List) ~= "function"
-            or not fillMediaDropdown(MediaKit, widget, mediaType)
-        then
-            widget:SetList(type(node.values) == "table" and node.values or {}, node.sorting)
-        end
-        widget:SetCallback("OnValueChanged", function(_, _, value)
-            writeValue(rendering, record, value)
-        end)
-    elseif kind == "multiselect" then
-        widget:SetTitle(node.name)
-        widget:PauseLayout()
-        local keys = orderedKeys(node)
-        record.keys = keys
-        record.checkBoxes = {}
-        for index = 1, #keys do
-            local key = keys[index]
-            local box = renderCreate(rendering, "CheckBox")
-            if box == nil then
-                widget:ResumeLayout()
-                return false
-            end
-            box:SetFullWidth(true)
-            box:SetLabel(node.values[key])
-            if not renderAdd(rendering, widget, box) then
-                widget:ResumeLayout()
-                return false
-            end
-            box:SetCallback("OnValueChanged", function(_, _, checked)
-                writeMultiselect(rendering, record, key, checked)
+        if kind == "group" then
+            widget:SetTitle(node.name)
+            widget:PauseLayout()
+            local ok = renderNodes(rendering, node.children, widget)
+            widget:ResumeLayout()
+            return ok
+        elseif kind == "toggle" then
+            widget:SetLabel(node.name)
+            widget:SetTriState(record.triState)
+            widget:SetCallback("OnValueChanged", function(_, _, value)
+                writeValue(rendering, record, value)
             end)
-            record.checkBoxes[index] = box
+        elseif kind == "range" then
+            widget:SetLabel(node.name)
+            widget:SetSliderValues(node.min, node.max, node.step or 0)
+            widget:SetIsPercent(node.isPercent == true)
+            widget:SetCallback("OnValueChanged", function(_, _, value)
+                writeValue(rendering, record, value)
+            end)
+        elseif kind == "select" then
+            widget:SetLabel(node.name)
+            local mediaType = rendering._media ~= nil and rendering._media[record.path] or nil
+            local MediaKit = mediaType ~= nil
+                    and findPackage(Registry, "mediaKit", OPTIONAL_MEDIAKIT_API)
+                or nil
+            if
+                mediaType == nil
+                or type(MediaKit) ~= "table"
+                or type(MediaKit.List) ~= "function"
+                or not fillMediaDropdown(MediaKit, widget, mediaType)
+            then
+                widget:SetList(type(node.values) == "table" and node.values or {}, node.sorting)
+            end
+            widget:SetCallback("OnValueChanged", function(_, _, value)
+                writeValue(rendering, record, value)
+            end)
+        elseif kind == "multiselect" then
+            widget:SetTitle(node.name)
+            widget:PauseLayout()
+            local keys = orderedKeys(node)
+            record.keys = keys
+            record.checkBoxes = {}
+            for index = 1, #keys do
+                local key = keys[index]
+                local box = renderCreate(rendering, "CheckBox")
+                if box == nil then
+                    widget:ResumeLayout()
+                    return false
+                end
+                box:SetFullWidth(true)
+                box:SetLabel(node.values[key])
+                if not renderAdd(rendering, widget, box) then
+                    widget:ResumeLayout()
+                    return false
+                end
+                box:SetCallback("OnValueChanged", function(_, _, checked)
+                    writeMultiselect(rendering, record, key, checked)
+                end)
+                record.checkBoxes[index] = box
+            end
+            widget:ResumeLayout()
+        elseif kind == "input" then
+            widget:SetLabel(node.name)
+            widget:SetMultiLine(node.multiline == true)
+            widget:SetCallback("OnEnterPressed", function(_, _, text)
+                writeValue(rendering, record, text)
+            end)
+        elseif kind == "color" then
+            widget:SetLabel(node.name)
+            local hasAlpha = node.hasAlpha == true
+            widget:SetHasAlpha(hasAlpha)
+            widget:SetCallback("OnValueChanged", function(_, _, red, green, blue, alpha)
+                writeValue(rendering, record, {
+                    r = red,
+                    g = green,
+                    b = blue,
+                    a = hasAlpha and alpha or nil,
+                })
+            end)
+        elseif kind == "keybinding" then
+            widget:SetKeyCapture(true)
+            widget:SetCallback("OnKeyCaptured", function(_, _, key)
+                writeValue(rendering, record, key)
+            end)
+        elseif kind == "execute" then
+            widget:SetText(node.name)
+            widget:SetCallback("OnClick", function()
+                executeRecord(rendering, record)
+            end)
+        elseif kind == "header" then
+            widget:SetText(node.name)
+        elseif kind == "description" then
+            widget:SetFontObject(DESCRIPTION_FONTS[node.fontSize] or DESCRIPTION_FONTS.medium)
+            widget:SetText(node.name)
         end
-        widget:ResumeLayout()
-    elseif kind == "input" then
-        widget:SetLabel(node.name)
-        widget:SetMultiLine(node.multiline == true)
-        widget:SetCallback("OnEnterPressed", function(_, _, text)
-            writeValue(rendering, record, text)
-        end)
-    elseif kind == "color" then
-        widget:SetLabel(node.name)
-        local hasAlpha = node.hasAlpha == true
-        widget:SetHasAlpha(hasAlpha)
-        widget:SetCallback("OnValueChanged", function(_, _, red, green, blue, alpha)
-            writeValue(rendering, record, {
-                r = red,
-                g = green,
-                b = blue,
-                a = hasAlpha and alpha or nil,
-            })
-        end)
-    elseif kind == "keybinding" then
-        widget:SetKeyCapture(true)
-        widget:SetCallback("OnKeyCaptured", function(_, _, key)
-            writeValue(rendering, record, key)
-        end)
-    elseif kind == "execute" then
-        widget:SetText(node.name)
-        widget:SetCallback("OnClick", function()
-            executeRecord(rendering, record)
-        end)
-    elseif kind == "header" then
-        widget:SetText(node.name)
-    elseif kind == "description" then
-        widget:SetFontObject(DESCRIPTION_FONTS[node.fontSize] or DESCRIPTION_FONTS.medium)
-        widget:SetText(node.name)
-    end
-    return true
-end
-
----Create, add and configure the widget for one visible node.
----@param rendering table
----@param node table
----@param parent table
----@return boolean ok
-local function renderNode(rendering, node, parent)
-    local kind = node.kind
-    local typeName = NODE_WIDGET_TYPES[kind]
-    if typeName == nil then
-        -- A kind this generation does not know is skipped, not refused.
         return true
     end
 
-    local widget = renderCreate(rendering, typeName)
-    if widget == nil then
-        return false
-    end
-    widget:SetFullWidth(true)
-    if not renderAdd(rendering, parent, widget) then
-        return false
-    end
+    ---Create, add and configure the widget for one visible node.
+    ---@param rendering table
+    ---@param node table
+    ---@param parent table
+    ---@return boolean ok
+    local function renderNode(rendering, node, parent)
+        local kind = node.kind
+        local typeName = NODE_WIDGET_TYPES[kind]
+        if typeName == nil then
+            -- A kind this generation does not know is skipped, not refused.
+            return true
+        end
 
-    local record = {
-        path = node.path,
-        kind = kind,
-        name = node.name,
-        widget = widget,
-        parent = parent,
-        triState = node.tristate == true,
-        confirm = node.confirm,
-        armed = false,
-        disabled = false,
-        messageLabel = nil,
-    }
-    local recordList = rendering._records
-    recordList[#recordList + 1] = record
-    rendering._byPath[node.path] = record
-
-    if not configureNode(rendering, record, node) then
-        return false
-    end
-    applyState(rendering, record, node.value, node.disabled == true)
-    return true
-end
-
----Render every node of `nodes` into `parent`, remembering each one's hidden
----state so a refresh can tell when one was shown or hidden.
----@param rendering table
----@param nodes any
----@param parent table
----@return boolean ok
-function renderNodes(rendering, nodes, parent)
-    if type(nodes) ~= "table" then
-        return true
-    end
-    local visited = rendering._nodes
-    for index = 1, #nodes do
-        local node = nodes[index]
-        local hidden = node.hidden == true
-        visited[#visited + 1] = { path = node.path, hidden = hidden }
-        if not hidden and not renderNode(rendering, node, parent) then
+        local widget = renderCreate(rendering, typeName)
+        if widget == nil then
             return false
         end
-    end
-    return true
-end
-
----Release everything the rendering created and forget it.
----@param rendering table
-local function releaseRendered(rendering)
-    local recordList = rendering._records
-    for index = #recordList, 1, -1 do
-        local label = recordList[index].messageLabel
-        if label ~= nil and isActive(label) then
-            renderForget(rendering, label)
-            WidgetKit:Release(label)
+        widget:SetFullWidth(true)
+        if not renderAdd(rendering, parent, widget) then
+            return false
         end
-    end
-    local widgets = rendering._widgets
-    for index = #widgets, 1, -1 do
-        local widget = widgets[index]
-        if isActive(widget) and not WidgetBase.IsReleasing(widget) then
-            WidgetKit:Release(widget)
+
+        local record = {
+            path = node.path,
+            kind = kind,
+            name = node.name,
+            widget = widget,
+            parent = parent,
+            triState = node.tristate == true,
+            confirm = node.confirm,
+            armed = false,
+            disabled = false,
+            messageLabel = nil,
+        }
+        local recordList = rendering._records
+        recordList[#recordList + 1] = record
+        rendering._byPath[node.path] = record
+
+        if not configureNode(rendering, record, node) then
+            return false
         end
-    end
-    rendering._records = {}
-    rendering._byPath = {}
-    rendering._nodes = {}
-    rendering._widgets = {}
-end
-
----Build the widgets from a fresh description and lay the container out once.
----@param rendering table
----@return boolean ok
-local function buildRendering(rendering)
-    local container = rendering._container
-    local containerRecord = records[container]
-    local description = rendering._tree:Describe()
-
-    local wasPaused = containerRecord.layoutPaused
-    containerRecord.layoutPaused = true
-    rendering._failure = nil
-    local ok = renderNodes(rendering, description.children, container)
-    containerRecord.layoutPaused = wasPaused
-    if not ok then
-        return false
-    end
-    if not wasPaused then
-        performLayout(container, containerRecord)
-    end
-    return true
-end
-
----Render `tree` into `container`.
----@param tree table an OptionsKit tree
----@param container WidgetKit.Container
----@param options WidgetKit.RenderOptions?
----@return WidgetKit.Rendering
-local function renderOptions(self, tree, container, options)
-    validateFacade(self, "WidgetKit:RenderOptions", 3)
-    local OptionsKit = findPackage(Registry, "optionsKit", OPTIONAL_OPTIONSKIT_API)
-    if type(OptionsKit) ~= "table" then
-        error("WidgetKit:RenderOptions requires OptionsKit API 1", 2)
-    end
-    if
-        type(tree) ~= "table"
-        or type(tree.Describe) ~= "function"
-        or type(tree.Get) ~= "function"
-        or type(tree.Set) ~= "function"
-        or type(tree.Validate) ~= "function"
-        or type(tree.Execute) ~= "function"
-        or type(tree.IsDisabled) ~= "function"
-        or type(tree.IsHidden) ~= "function"
-        or type(tree.OnChange) ~= "function"
-    then
-        error("WidgetKit:RenderOptions tree must be an OptionsKit tree", 2)
-    end
-    local containerRecord = type(container) == "table" and records[container] or nil
-    if containerRecord == nil or not containerRecord.active or not containerRecord.isContainer then
-        error("WidgetKit:RenderOptions container must be an active WidgetKit container", 2)
-    end
-
-    local allowSecret, media = false, nil
-    if options ~= nil then
-        validateOptionKeys(options, RENDER_OPTION_KEYS, "WidgetKit:RenderOptions options", 3)
-        if options.allowSecret ~= nil and type(options.allowSecret) ~= "boolean" then
-            error("WidgetKit:RenderOptions options.allowSecret must be a boolean", 2)
-        end
-        allowSecret = options.allowSecret == true
-        if options.media ~= nil then
-            if type(options.media) ~= "table" then
-                error("WidgetKit:RenderOptions options.media must be a table", 2)
-            end
-            media = {}
-            for path, mediaType in next, options.media do
-                if type(path) ~= "string" or type(mediaType) ~= "string" then
-                    error(
-                        "WidgetKit:RenderOptions options.media must map option paths to media types",
-                        2
-                    )
-                end
-                media[path] = mediaType
-            end
-        end
-    end
-
-    local rendering = setmetatable({
-        _tree = tree,
-        _container = container,
-        _allowSecret = allowSecret,
-        _media = media,
-        _records = {},
-        _byPath = {},
-        _nodes = {},
-        _widgets = {},
-        _busy = 0,
-        _pending = false,
-        _released = false,
-        _failure = nil,
-        _connection = nil,
-    }, RENDERING_METATABLE)
-
-    if not buildRendering(rendering) then
-        local failure = rendering._failure
-        releaseRendered(rendering)
-        rendering._released = true
-        error("WidgetKit:RenderOptions " .. tostring(failure), 2)
-    end
-
-    rendering._connection = tree:OnChange(function()
-        rendering:Refresh()
-    end)
-    return rendering
-end
-
----Show the tree's current values and states. Rebuilds instead when a node was
----shown or hidden since the last build.
----@return boolean refreshed `false` once released or when a rebuild failed
-function RenderingPrototype:Refresh()
-    validateRendering(self, "WidgetKit.Rendering:Refresh", 3)
-    if self._released then
-        return false
-    end
-    if self._busy > 0 then
-        -- A write is in progress; refresh once it is done.
-        self._pending = true
+        applyState(rendering, record, node.value, node.disabled == true)
         return true
     end
 
-    local tree = self._tree
-    local visited = self._nodes
-    for index = 1, #visited do
-        local entry = visited[index]
-        if (tree:IsHidden(entry.path) == true) ~= entry.hidden then
-            return RenderingPrototype.Rebuild(self)
+    ---Render every node of `nodes` into `parent`, remembering each one's hidden
+    ---state so a refresh can tell when one was shown or hidden.
+    ---@param rendering table
+    ---@param nodes any
+    ---@param parent table
+    ---@return boolean ok
+    function renderNodes(rendering, nodes, parent)
+        if type(nodes) ~= "table" then
+            return true
+        end
+        local visited = rendering._nodes
+        for index = 1, #nodes do
+            local node = nodes[index]
+            local hidden = node.hidden == true
+            visited[#visited + 1] = { path = node.path, hidden = hidden }
+            if not hidden and not renderNode(rendering, node, parent) then
+                return false
+            end
+        end
+        return true
+    end
+
+    ---Release everything the rendering created and forget it.
+    ---@param rendering table
+    local function releaseRendered(rendering)
+        local recordList = rendering._records
+        for index = #recordList, 1, -1 do
+            local record = recordList[index]
+            local job = record.disarmJob
+            record.disarmJob = nil
+            if job ~= nil and type(job.Cancel) == "function" then
+                pcall(job.Cancel, job)
+            end
+            local label = record.messageLabel
+            if owns(rendering, label) and not WidgetBase.IsReleasing(label) then
+                renderForget(rendering, label)
+                WidgetKit:Release(label)
+            end
+        end
+        -- Only widgets this rendering still owns are released: a widget that went
+        -- back to its pool and was acquired by someone else is left alone, and one
+        -- whose container is being released goes with that container.
+        local widgets = rendering._widgets
+        for index = #widgets, 1, -1 do
+            local widget = widgets[index]
+            if owns(rendering, widget) and not WidgetBase.IsReleasing(widget) then
+                WidgetKit:Release(widget)
+            end
+        end
+        rendering._records = {}
+        rendering._byPath = {}
+        rendering._nodes = {}
+        rendering._widgets = {}
+    end
+
+    ---Build the widgets from a fresh description and lay the container out once.
+    ---@param rendering table
+    ---@return boolean ok
+    local function buildRendering(rendering)
+        local container = rendering._container
+        local containerRecord = records[container]
+        local description = rendering._tree:Describe()
+
+        local wasPaused = containerRecord.layoutPaused
+        containerRecord.layoutPaused = true
+        rendering._failure = nil
+        -- The container's pause state is restored even when building raises.
+        local called, ok = pcall(renderNodes, rendering, description.children, container)
+        containerRecord.layoutPaused = wasPaused
+        if not called then
+            rendering._failure = ok
+            return false
+        end
+        if not ok then
+            return false
+        end
+        if not wasPaused then
+            performLayout(container, containerRecord)
+        end
+        return true
+    end
+
+    ---Render `tree` into `container`.
+    ---@param tree table an OptionsKit tree
+    ---@param container WidgetKit.Container
+    ---@param options WidgetKit.RenderOptions?
+    ---@return WidgetKit.Rendering
+    function renderOptions(self, tree, container, options)
+        validateFacade(self, "WidgetKit:RenderOptions", 3)
+        local OptionsKit = findPackage(Registry, "optionsKit", OPTIONAL_OPTIONSKIT_API)
+        if type(OptionsKit) ~= "table" then
+            error("WidgetKit:RenderOptions requires OptionsKit API 1", 2)
+        end
+        if
+            type(tree) ~= "table"
+            or type(tree.Describe) ~= "function"
+            or type(tree.Get) ~= "function"
+            or type(tree.Set) ~= "function"
+            or type(tree.Validate) ~= "function"
+            or type(tree.Execute) ~= "function"
+            or type(tree.IsDisabled) ~= "function"
+            or type(tree.IsHidden) ~= "function"
+            or type(tree.OnChange) ~= "function"
+        then
+            error("WidgetKit:RenderOptions tree must be an OptionsKit tree", 2)
+        end
+        local containerRecord = type(container) == "table" and records[container] or nil
+        if
+            containerRecord == nil
+            or not containerRecord.active
+            or not containerRecord.isContainer
+        then
+            error("WidgetKit:RenderOptions container must be an active WidgetKit container", 2)
+        end
+
+        local allowSecret, media, confirmText = false, nil, DEFAULT_CONFIRM_TEXT
+        if options ~= nil then
+            validateOptionKeys(options, RENDER_OPTION_KEYS, "WidgetKit:RenderOptions options", 3)
+            if options.allowSecret ~= nil and type(options.allowSecret) ~= "boolean" then
+                error("WidgetKit:RenderOptions options.allowSecret must be a boolean", 2)
+            end
+            allowSecret = options.allowSecret == true
+            if options.confirmText ~= nil then
+                validateName(options.confirmText, "WidgetKit:RenderOptions options.confirmText", 3)
+                confirmText = options.confirmText
+            end
+            if options.media ~= nil then
+                if type(options.media) ~= "table" then
+                    error("WidgetKit:RenderOptions options.media must be a table", 2)
+                end
+                media = {}
+                for path, mediaType in next, options.media do
+                    if type(path) ~= "string" or type(mediaType) ~= "string" then
+                        error(
+                            "WidgetKit:RenderOptions options.media must map option paths to media types",
+                            2
+                        )
+                    end
+                    media[path] = mediaType
+                end
+            end
+        end
+
+        local rendering = setmetatable({
+            _tree = tree,
+            _container = container,
+            _allowSecret = allowSecret,
+            _media = media,
+            _confirmText = confirmText,
+            -- Widget -> the acquire serial it had when this rendering took it.
+            _serials = setmetatable({}, WEAK_KEYS),
+            _records = {},
+            _byPath = {},
+            _nodes = {},
+            _widgets = {},
+            _busy = 0,
+            _pending = false,
+            _released = false,
+            _failure = nil,
+            _connection = nil,
+        }, RENDERING_METATABLE)
+
+        stamp(rendering, container)
+        if not buildRendering(rendering) then
+            local failure = rendering._failure
+            releaseRendered(rendering)
+            rendering._released = true
+            error("WidgetKit:RenderOptions " .. tostring(failure), 2)
+        end
+
+        -- The container releases its renderings first when it is released.
+        local renderings = containerRecord.renderings
+        if renderings == nil then
+            renderings = {}
+            containerRecord.renderings = renderings
+        end
+        renderings[#renderings + 1] = rendering
+
+        rendering._connection = tree:OnChange(function()
+            rendering:Refresh()
+        end)
+        return rendering
+    end
+
+    ---Show the tree's current values and states. Rebuilds instead when a node was
+    ---shown or hidden since the last build.
+    ---@return boolean refreshed `false` once released or when a rebuild failed
+    function RenderingPrototype:Refresh()
+        validateRendering(self, "WidgetKit.Rendering:Refresh", 3)
+        if not renderingAlive(self) then
+            return false
+        end
+        if self._busy > 0 then
+            -- A write is in progress; refresh once it is done.
+            self._pending = true
+            return true
+        end
+
+        local tree = self._tree
+        local visited = self._nodes
+        for index = 1, #visited do
+            local entry = visited[index]
+            if (tree:IsHidden(entry.path) == true) ~= entry.hidden then
+                return RenderingPrototype.Rebuild(self)
+            end
+        end
+
+        local recordList = self._records
+        local scheduled = findPackage(Registry, "schedulerKit", OPTIONAL_SCHEDULERKIT_API) ~= nil
+        for index = 1, #recordList do
+            local record = recordList[index]
+            -- Without SchedulerKit an armed confirmation lasts until the next
+            -- refresh.
+            if record.armed and not scheduled then
+                disarmRecord(self, record)
+            end
+            refreshRecord(self, record)
+        end
+        return true
+    end
+
+    ---Release every rendered widget and build them again from a fresh description.
+    ---@return boolean rebuilt `false` once released, or when widgets ran out (reported)
+    function RenderingPrototype:Rebuild()
+        validateRendering(self, "WidgetKit.Rendering:Rebuild", 3)
+        if not renderingAlive(self) then
+            return false
+        end
+        releaseRendered(self)
+        if not buildRendering(self) then
+            reportError("WidgetKit.Rendering:Rebuild " .. tostring(self._failure))
+            releaseRendered(self)
+            return false
+        end
+        return true
+    end
+
+    ---Release every widget the rendering created, together, and stop listening.
+    ---@return boolean released `false` when it was already released
+    function RenderingPrototype:Release()
+        validateRendering(self, "WidgetKit.Rendering:Release", 3)
+        if self._released then
+            return false
+        end
+        self._released = true
+        local connection = self._connection
+        if connection ~= nil then
+            connection:Disconnect()
+            self._connection = nil
+        end
+        releaseRendered(self)
+        local container = self._container
+        local containerRecord = records[container]
+        if containerRecord ~= nil then
+            local renderings = containerRecord.renderings
+            if renderings ~= nil then
+                for index = #renderings, 1, -1 do
+                    if renderings[index] == self then
+                        table.remove(renderings, index)
+                    end
+                end
+            end
+        end
+        if
+            containerRecord ~= nil
+            and owns(self, container)
+            and not isReleasingRecord(containerRecord)
+        then
+            performLayout(container, containerRecord)
+        end
+        return true
+    end
+
+    ---Release every rendering drawn into a container that is being released.
+    ---@param renderings table[] the container record's list, emptied by the releases
+    function releaseContainerRenderings(renderings)
+        for index = #renderings, 1, -1 do
+            local rendering = renderings[index]
+            if rendering ~= nil then
+                if rendering._released then
+                    table.remove(renderings, index)
+                else
+                    RenderingPrototype.Release(rendering)
+                end
+            end
         end
     end
 
-    local recordList = self._records
-    for index = 1, #recordList do
-        refreshRecord(self, recordList[index])
+    ---@return boolean
+    function RenderingPrototype:IsReleased()
+        validateRendering(self, "WidgetKit.Rendering:IsReleased", 3)
+        return self._released == true
     end
-    return true
-end
 
----Release every rendered widget and build them again from a fresh description.
----@return boolean rebuilt `false` once released, or when widgets ran out (reported)
-function RenderingPrototype:Rebuild()
-    validateRendering(self, "WidgetKit.Rendering:Rebuild", 3)
-    if self._released then
-        return false
+    ---The widget drawing the option at `path`, or `nil` when it is hidden or the
+    ---rendering was released. A `multiselect` option is drawn by a Group.
+    ---@param path string
+    ---@return WidgetKit.Widget?
+    function RenderingPrototype:GetWidget(path)
+        validateRendering(self, "WidgetKit.Rendering:GetWidget", 3)
+        validateName(path, "WidgetKit.Rendering:GetWidget path", 3)
+        local record = self._byPath[path]
+        if record == nil or not owns(self, record.widget) then
+            return nil
+        end
+        return record.widget
     end
-    releaseRendered(self)
-    if not buildRendering(self) then
-        reportError("WidgetKit.Rendering:Rebuild " .. tostring(self._failure))
-        releaseRendered(self)
-        return false
-    end
-    return true
-end
 
----Release every widget the rendering created, together, and stop listening.
----@return boolean released `false` when it was already released
-function RenderingPrototype:Release()
-    validateRendering(self, "WidgetKit.Rendering:Release", 3)
-    if self._released then
-        return false
+    ---The inline message shown below the option at `path`, or `nil`.
+    ---@param path string
+    ---@return any
+    function RenderingPrototype:GetMessage(path)
+        validateRendering(self, "WidgetKit.Rendering:GetMessage", 3)
+        validateName(path, "WidgetKit.Rendering:GetMessage path", 3)
+        local record = self._byPath[path]
+        local label = record ~= nil and record.messageLabel or nil
+        if label == nil or not owns(self, label) then
+            return nil
+        end
+        return label.text:GetText()
     end
-    self._released = true
-    local connection = self._connection
-    if connection ~= nil then
-        connection:Disconnect()
-        self._connection = nil
-    end
-    releaseRendered(self)
-    local container = self._container
-    local containerRecord = records[container]
-    if
-        containerRecord ~= nil
-        and containerRecord.active
-        and not isReleasingRecord(containerRecord)
-    then
-        performLayout(container, containerRecord)
-    end
-    return true
-end
-
----@return boolean
-function RenderingPrototype:IsReleased()
-    validateRendering(self, "WidgetKit.Rendering:IsReleased", 3)
-    return self._released == true
-end
-
----The widget drawing the option at `path`, or `nil` when it is hidden or the
----rendering was released. A `multiselect` option is drawn by a Group.
----@param path string
----@return WidgetKit.Widget?
-function RenderingPrototype:GetWidget(path)
-    validateRendering(self, "WidgetKit.Rendering:GetWidget", 3)
-    validateName(path, "WidgetKit.Rendering:GetWidget path", 3)
-    local record = self._byPath[path]
-    return record ~= nil and record.widget or nil
-end
-
----The inline message shown below the option at `path`, or `nil`.
----@param path string
----@return any
-function RenderingPrototype:GetMessage(path)
-    validateRendering(self, "WidgetKit.Rendering:GetMessage", 3)
-    validateName(path, "WidgetKit.Rendering:GetMessage path", 3)
-    local record = self._byPath[path]
-    local label = record ~= nil and record.messageLabel or nil
-    if label == nil or not isActive(label) then
-        return nil
-    end
-    return label:GetText()
 end
 
 -- Commit ---------------------------------------------------------------------
 
 rawset(dispatch, "build", buildWidget)
 rawset(dispatch, "retire", retireWidget)
+rawset(dispatch, "closeOpenDropdown", closeOpenDropdown)
 
 -- Built-in layouts are this package's own, so each copy installs its own
 -- functions over whatever an older copy registered under the same names.

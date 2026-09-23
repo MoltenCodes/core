@@ -163,6 +163,24 @@ describe("WidgetKit layouts", function()
         assert.are.equal(1, #results)
     end)
 
+    it("refuses a layout pass nested 32 deep with depth", function()
+        local groups = {}
+        local results = {}
+        for index = 1, 34 do
+            groups[index] = WidgetKit:Create("Group")
+        end
+        for index = 1, 33 do
+            groups[index]:SetLayout(function()
+                results[index] = { groups[index + 1]:PerformLayout() }
+                return 0, 0
+            end)
+        end
+        assert.is_true(groups[1]:PerformLayout())
+        assert.are.same({ false, "depth" }, results[32])
+        assert.are.same({ true }, results[31])
+        assert.is_nil(results[33])
+    end)
+
     it("re-raises a layout error and leaves the container usable", function()
         local fail = true
         local group = groupAt(WidgetKit, 216, function()

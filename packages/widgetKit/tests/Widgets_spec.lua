@@ -322,6 +322,95 @@ describe("WidgetKit base widgets", function()
         TestEnv.SetGlobal("ColorPickerFrame", nil)
     end)
 
+    it("ColorPicker: client picker callbacks never reach a later use of the widget", function()
+        local shown = nil
+        TestEnv.SetGlobal("ColorPickerFrame", {
+            SetupColorPickerAndShow = function(_, info)
+                shown = info
+            end,
+            GetColorRGB = function()
+                return 0, 1, 0
+            end,
+            GetColorAlpha = function()
+                return 0.2
+            end,
+        })
+        local picker = WidgetKit:Create("ColorPicker")
+        picker:SetColor(1, 0, 0, 0.5)
+        picker:OpenPicker()
+        -- Without alpha the stored alpha is kept.
+        shown.swatchFunc()
+        assert.are.same({ 0, 1, 0, 0.5 }, { picker:GetColor() })
+
+        WidgetKit:Release(picker)
+        local again = WidgetKit:Create("ColorPicker")
+        assert.are.equal(picker, again)
+        local fired = recorder(again, { "OnValueChanged" })
+        shown.swatchFunc()
+        shown.cancelFunc()
+        assert.are.same({}, fired)
+        assert.are.same({ 1, 1, 1, 1 }, { again:GetColor() })
+        TestEnv.SetGlobal("ColorPickerFrame", nil)
+    end)
+
+    it("Dropdown: a refused list leaves the entries as they were", function()
+        local dropdown = WidgetKit:Create("Dropdown")
+        dropdown:SetList({ a = "Alpha" })
+        dropdown:SetValue("a")
+        TestEnv.expectErrorContaining("labels must be strings", function()
+            dropdown:SetList({ b = "Bravo", c = 3 })
+        end)
+        assert.are.equal(1, dropdown:GetNumEntries())
+        assert.are.equal("a", dropdown._keys[1])
+        assert.are.equal("Alpha", dropdown._labels[1])
+        assert.is_nil(dropdown._keys[2])
+        assert.are.equal("Alpha", dropdown.button:GetText())
+    end)
+
+    it(
+        "Dropdown: the list sits on UIParent above everything and closes on an outside click",
+        function()
+            local uiParent = TestEnv.GetGlobal("UIParent")
+            local scroll = WidgetKit:Create("ScrollFrame")
+            local first = WidgetKit:Create("Dropdown")
+            local second = WidgetKit:Create("Dropdown")
+            scroll:AddChildren(first, second)
+            first:SetList({ a = "A" })
+            second:SetList({ b = "B" })
+            assert.are.equal(uiParent, first.list:GetParent())
+            assert.are.equal("FULLSCREEN_DIALOG", first.list:GetFrameStrata())
+
+            assert.is_true(first:Open())
+            local catcher = WidgetKit._state.dropdownCatcher
+            assert.is_true(catcher:IsShown())
+            assert.are.equal("FULLSCREEN", catcher:GetFrameStrata())
+            assert.is_true(catcher:IsMouseEnabled())
+            assert.are.equal(uiParent:GetWidth(), catcher:GetWidth())
+
+            -- Opening another dropdown closes the first.
+            second:Open()
+            assert.is_false(first:IsOpen())
+            assert.is_true(second:IsOpen())
+
+            -- A click anywhere else lands on the catcher and closes the list.
+            TestEnv.RunScript(catcher, "OnMouseDown", "LeftButton")
+            assert.is_false(second:IsOpen())
+            assert.is_false(catcher:IsShown())
+
+            -- Hiding the dropdown's frame closes its list too.
+            first:Open()
+            TestEnv.RunScript(first.frame, "OnHide")
+            assert.is_false(first:IsOpen())
+            assert.is_false(catcher:IsShown())
+
+            -- Releasing an open dropdown closes it and hides the catcher.
+            second:Open()
+            WidgetKit:Release(second)
+            assert.is_false(catcher:IsShown())
+            assert.are.equal(catcher, WidgetKit._state.dropdownCatcher)
+        end
+    )
+
     it("Heading and Spacer: full-width title and empty space", function()
         local heading = WidgetKit:Create("Heading")
         assert.is_true(heading:IsFullWidth())

@@ -151,6 +151,40 @@ describe("WidgetKit type registry", function()
         assert.are.equal(WidgetKit.MAX_CREATED + 2, statistics.maxCreated)
     end)
 
+    it("raises the cap by the retired generation only, and never past the limit", function()
+        local counter = { built = 0 }
+        WidgetKit:RegisterType("Small", countingConstructor(counter), 1, { maxCreated = 4 })
+        local first = WidgetKit:Create("Small")
+        local second = WidgetKit:Create("Small")
+        WidgetKit:Release(WidgetKit:Create("Small"))
+        assert.is_not_nil(first)
+        assert.is_not_nil(second)
+
+        -- v1 -> v2 retires one pooled widget and two borrowed ones.
+        WidgetKit:RegisterType("Small", countingConstructor(counter), 2, { maxCreated = 4 })
+        assert.are.equal(7, WidgetKit:GetStatistics().byType.Small.maxCreated)
+        -- v2 -> v3: the borrowed v1 widgets were counted already; nothing of
+        -- v2 is borrowed or pooled, so the cap stays.
+        WidgetKit:RegisterType("Small", countingConstructor(counter), 3, { maxCreated = 4 })
+        assert.are.equal(7, WidgetKit:GetStatistics().byType.Small.maxCreated)
+    end)
+
+    it("keeps the cap within the limit over repeated upgrades of a large type", function()
+        local counter = { built = 0 }
+        local constructor = countingConstructor(counter)
+        WidgetKit:RegisterType("Large", constructor, 1, { maxCreated = 4096 })
+        local held = {}
+        for index = 1, 50 do
+            held[index] = WidgetKit:Create("Large")
+        end
+        for version = 2, 4 do
+            WidgetKit:RegisterType("Large", constructor, version, { maxCreated = 4096 })
+        end
+        local cap = WidgetKit:GetStatistics().byType.Large.maxCreated
+        assert.is_true(cap <= 3 * 4096)
+        assert.is_true(cap <= 4096)
+    end)
+
     it("caps the frames a type ever builds with a named refusal", function()
         local counter = { built = 0 }
         WidgetKit:RegisterType("Capped", countingConstructor(counter), 1, { maxCreated = 2 })

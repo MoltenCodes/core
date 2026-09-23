@@ -867,11 +867,14 @@ embedding addon's state depend on which copy won.
   is fine; using them for protected actions (casting, targeting, secure
   attribute buttons) is not, and a secure frame must never be parented into a
   widget, because the parent's taint reaches it.
-- **WidgetKit never touches frames it did not create.** It sets no scripts and
-  writes no fields on client frames. The one client frame it uses,
-  `ColorPickerFrame`, is opened only after `IsForbidden` and
-  `CanBeAccessedInContext` allow it, and a click fires the current colour when
-  they do not.
+- **WidgetKit sets scripts and fields only on frames it creates.** It does
+  re-anchor a frame you hand it: `BindPosition`, `binding:Capture`,
+  `binding:Restore` and `Anchor.Apply` call `ClearAllPoints`, `SetPoint` and
+  `SetScale` on that frame, after `IsForbidden` and `CanBeAccessedInContext`
+  allow it, and bindings refuse a frame they may not touch. The one client
+  frame it uses, `ColorPickerFrame`, is opened only through its own
+  `SetupColorPickerAndShow` after the same check, and a click fires the current
+  colour when the check fails.
 - **Text setters refuse a secret.** `Label:SetText` and `EditBox:SetText`
   refuse a secret value unless the caller passes `allowSecret`, and every
   pooled widget clears its text on release, so a recycled region never shows

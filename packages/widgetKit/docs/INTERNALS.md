@@ -71,6 +71,11 @@ PoolKit:New({
   released. Retiring runs `destroy`, which removes the record and parks the
   frame, hidden, on the holder frame. The client still owns that frame, so the
   cap is raised by the number retired (`SetMaxCreated`).
+- **Upgrades count one generation.** Each type record keeps the number of
+  borrowed widgets per version. An upgrade adds to the cap the pooled widgets
+  `SetGeneration` retires and the borrowed widgets of the version it replaces;
+  older versions were counted by earlier upgrades. The result is clamped to
+  4096.
 - **Validation outside the pool.** `build` checks the constructor's result.
   When it breaks the author contract, `build` leaves a message in
   `state.buildProblem` and raises; `Create` catches the pool's error, finds the
@@ -179,9 +184,20 @@ refresh never writes.
 comparison. A multiselect's table value is indexed only after the table itself
 passed that check, and each entry is checked before it is compared.
 
-**Release.** Inline messages are released first, then the widgets in
-`_widgets` from last to first (their children with them), the tree connection
-is disconnected and the container is laid out once.
+**Ownership.** Every widget acquire raises a session-wide serial kept in the
+widget's record. The rendering stores the serial of each widget it acquired,
+and of its container, in a weak-keyed `_serials` table; `owns(widget)` is true
+only while the widget is active with that same serial. Every refresh, write,
+message and release goes through it, so a widget re-acquired by someone else is
+never touched. A container's record lists the renderings drawn into it, and
+`releaseWidget` releases them before anything else.
+
+**Release.** The tree connection is disconnected first. Then armed
+confirmation timers are cancelled, inline messages the rendering still owns are
+released, and the widgets in `_widgets` it still owns are released from last to
+first (their children with them) — except those whose container is being
+released, which go with it. The rendering leaves its container's list, and the
+container is laid out once unless it is being released.
 
 ## Bindings
 
@@ -194,6 +210,16 @@ offsets by the frame's effective scale, re-anchors the frame, saves or arms the
 debounce, and fires the signal. A save always writes a fresh plain table: a
 SettingsKit view refuses a table that is a view or carries a metatable, and a
 fresh table can never alias the binding's working copy.
+
+## The dropdown catcher
+
+A dropdown list is a child of `UIParent`, not of the widget, so no clipping
+parent can cut it off. `openDropdownList` closes any other open list, records
+the widget as `state.openDropdown`, shows the session's catcher (created on
+first use) and then the list. The catcher is a full-screen frame at the
+`FULLSCREEN` strata with the mouse enabled; its `OnMouseDown` calls
+`dispatch.closeOpenDropdown`, so a newer copy's code runs for a catcher an older
+copy created. The widget's own frame closes its list from `OnHide`.
 
 ## Frames WidgetKit creates
 

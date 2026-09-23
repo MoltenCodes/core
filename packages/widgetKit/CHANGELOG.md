@@ -12,4 +12,10 @@
 - Added `RenderOptions(tree, container, options?)`, rendering every OptionsKit kind with `Validate`-then-`Set` writes, inline refusals, `OnChange` refreshes and a rendering handle (`Refresh`, `Rebuild`, `Release`, `GetWidget`, `GetMessage`), and `CreateMediaPicker(mediaType)` over MediaKit.
 - Text setters refuse secret values unless `options.allowSecret` is `true`; released widgets clear their text.
 - The shared test fixture's `FrameStub` now models sizes, anchors, regions and the frame types widgets use.
-- 110 specs, including allocation guards on acquire/release cycles and on `PerformLayout`, and in-place upgrade specs.
+- A rendering is released with its container, and remembers the acquire serial of every widget it took, so a widget re-acquired elsewhere is never refreshed, written or released by it; `Release` after the container's release returns `false`.
+- A type upgrade raises the frame cap only by the retired generation's widgets and never past 4096 (at most `(upgrades + 1) × cap`).
+- `ColorPicker` callbacks from the client picker are disarmed by a release, and keep the stored alpha without `SetHasAlpha(true)`.
+- `Dropdown:SetList` checks every entry before changing anything; dropdown lists sit on `UIParent` at `FULLSCREEN_DIALOG` and close on an outside click through one session-wide catcher frame.
+- The renderer shows and reports a raising `Validate` or `Set`, restores the container's layout pause state when building raises, disarms an armed confirmation after 5 seconds (or at the next `Refresh` without SchedulerKit), and takes `options.confirmText`.
+- A base `SetDisabled`, and LuaCATS classes for each base widget type.
+- 126 specs, including allocation guards on acquire/release cycles and on `PerformLayout`, and in-place upgrade specs.

@@ -72,6 +72,7 @@ Widget base (`WidgetKit.Widget`), on every widget:
 | `SetFullWidth(bool)`, `IsFullWidth()`, `SetFullHeight(bool)`, `IsFullHeight()`, `SetRelativeWidth(fraction?)`, `GetRelativeWidth()` | Size requests layouts read. `SetFullWidth(true)` clears a relative width and the other way round. |
 | `SetPoint(...)`, `ClearAllPoints()`, `GetPoint(index?)`, `GetNumPoints()` | Anchor methods forwarded to the frame. |
 | `SetParent(frameOrWidget)` | Re-parent a widget that is not inside a container. |
+| `SetDisabled(disabled?)` | Every base widget greys out and ignores input; the base method only checks its argument, for types that cannot be disabled. |
 | `Show()`, `Hide()`, `IsShown()`, `IsVisible()` | Visibility methods forwarded to the frame; `Hide` clears the focus when this widget holds it. |
 | `IsReleasing()` | Whether this widget or any container above it is being released. |
 | `GetType()`, `GetFrame()`, `GetParentContainer()` | Introspection. |
@@ -108,15 +109,16 @@ A widget type is a constructor registered with `RegisterType`. These are require
 
 `WidgetKit:Release(widget)` and `widget:Release()` run, in this order:
 
-1. the `OnRelease` **callback** (`SetCallback("OnRelease", ...)`);
-2. the release of every child, **last first**, each by this same procedure;
-3. the type's `OnRelease` **hook**;
-4. callbacks, user data, size requests and the layout choice are cleared;
-5. the frame loses its anchors, is hidden and is re-parented to `UIParent` (or the hidden holder);
-6. the widget leaves its container;
-7. the pool takes it back.
+1. every **rendering** drawn into the widget (when it is a container) is released, as `rendering:Release()` would, except that the widgets it placed in this container go with the container in step 3;
+2. the `OnRelease` **callback** (`SetCallback("OnRelease", ...)`);
+3. the release of every child, **last first**, each by this same procedure;
+4. the type's `OnRelease` **hook**;
+5. callbacks, user data, size requests and the layout choice are cleared;
+6. the frame loses its anchors, is hidden and is re-parented to `UIParent` (or the hidden holder);
+7. the widget leaves its container;
+8. the pool takes it back.
 
-During steps 1 to 3, `IsReleasing()` is `true` for the widget and for every widget below it. A widget that was already released, one being released, and anything that is not a widget are refused at the caller's line (`WidgetKit:Release widget was already released`, `... is already being released`, `... must be a WidgetKit widget`). Every method of a released widget raises `... cannot be called on a released widget`, except `IsReleasing`, `GetType` and `Fire`, which returns `false`.
+During steps 1 to 4, `IsReleasing()` is `true` for the widget and for every widget below it. A widget that was already released, one being released, and anything that is not a widget are refused at the caller's line (`WidgetKit:Release widget was already released`, `... is already being released`, `... must be a WidgetKit widget`). Every method of a released widget raises `... cannot be called on a released widget`, except `IsReleasing`, `GetType` and `Fire`, which returns `false`.
 
 ## The layout contract
 
@@ -156,7 +158,11 @@ A widget's methods and scripts are closures of the constructor that built it, so
 
 ## The frame cap
 
-The client can create frames but never destroy them, so every type is capped: at most `options.maxCreated` frames over the session (default `MAX_CREATED`, 256; at most 4096). The pool retains every released widget, so none is discarded for lack of room. At the cap, `Create` returns `nil, "exhausted"`. Retired widgets still count against the cap; a version upgrade raises the cap by the number of widgets it retires, or to the new registration's `maxCreated` when that is larger.
+The client can create frames but never destroy them, so every type is capped: at most `options.maxCreated` frames over the session (default `MAX_CREATED`, 256; at most 4096). The pool retains every released widget, so none is discarded for lack of room. At the cap, `Create` returns `nil, "exhausted"`.
+
+Retired widgets still count against the cap, so a version upgrade raises it by what that upgrade uses up: the pooled widgets it retires and the borrowed widgets of the version it replaces (borrowed widgets of earlier versions were counted by the upgrade that replaced them), or to the new registration's `maxCreated` when that is larger. The cap after `n` upgrades is therefore at most `(n + 1) × cap`, and never more than 4096; once it reaches 4096, retired frames are not replaced and the type may answer `"exhausted"` sooner.
+
+A constructor that raises, or breaks the author contract, after it called `CreateFrame` leaves that frame behind outside the cap: PoolKit counts only successful builds. Such a constructor is a bug to fix, not a path to rely on.
 
 ## The anchor model
 
@@ -213,6 +219,7 @@ local rendering = WidgetKit:RenderOptions(tree, container, { allowSecret = false
 |---|---|
 | `allowSecret` | An `input` option whose value is secret shows it instead of `<secret value>`. |
 | `media` | Option path → MediaKit type: that `select` is drawn with MediaKit's names when MediaKit is registered. |
+| `confirmText` | The question an `execute` option with `confirm = true` asks; default `"Click again to confirm."`. A `confirm` string is asked as it is. |
 
 | Kind | Widget |
 |---|---|
@@ -224,7 +231,7 @@ local rendering = WidgetKit:RenderOptions(tree, container, { allowSecret = false
 | `input` | `EditBox`, multi-line with `multiline` |
 | `color` | `ColorPicker`, with alpha for `hasAlpha` |
 | `keybinding` | `Button` in key-capture mode: click, press a key (`ESCAPE` cancels, right click unbinds) |
-| `execute` | `Button`; with `confirm`, the first click shows the question below it and the second runs `tree:Execute` |
+| `execute` | `Button`; with `confirm`, the first click shows the question below it and the second runs `tree:Execute`. An armed question disarms itself after 5 seconds through SchedulerKit when it is registered, otherwise at the next `Refresh` |
 | `header` | `Heading` |
 | `description` | `Label` in the font for `fontSize` |
 
@@ -238,7 +245,11 @@ Every widget is full width and the container uses its own layout. Nodes are rend
 | `GetWidget(path)` | The widget drawing an option (a `Group` for `multiselect`), or `nil`. |
 | `GetMessage(path)` | The inline refusal shown below an option, or `nil`. |
 
-`RenderOptions` raises at the caller when OptionsKit is not registered, when `tree` is not a tree, when `container` is not an active container, and when a widget type runs out of frames — after releasing what it had built.
+**Ownership.** A rendering never outlives its container: releasing the container (directly or through an ancestor) releases the rendering first, and `rendering:Release()` afterwards returns `false`. The rendering also remembers the acquire serial of every widget it took; a widget that went back to its pool — released by the container or by anyone else — and was acquired again is never refreshed, written or released by the rendering, and `GetWidget` answers `nil` for it. A rendering whose container is no longer the one it was given releases itself at its next `Refresh`, write or click.
+
+**Refusals and failures.** A `Validate` or `Set` that raises is shown inline like a refusal and reported through the host error handler; the rendering is never left mid-write. When a container is full (256 children), building stops with `could not add a widget to its container: full`.
+
+`RenderOptions` raises at the caller when OptionsKit is not registered, when `tree` is not a tree, when `container` is not an active container, when a widget type runs out of frames or the container is full, and when building raises (`WidgetKit:RenderOptions <error>`) — after releasing what it had built and restoring the container's layout pause state.
 
 ## Base widgets
 
@@ -260,6 +271,16 @@ Every base widget has `SetDisabled(disabled)`. Text setters take `(text, options
 | `Spacer` | — | — |
 
 Every widget also fires `OnRelease` when it is released. Programmatic setters (`SetValue`, `SetText`, `SetColor`) never fire callbacks; only user input does.
+
+**Dropdown lists** are parented to `UIParent` (the widget's frame without one) at the `FULLSCREEN_DIALOG` strata, so a `ScrollFrame` or any clipping parent cannot cut them off. While a list is open, one invisible full-screen frame owned by WidgetKit — one for the session, at the `FULLSCREEN` strata just below the list — closes it on a click anywhere else. Opening a list closes any other open list; hiding or releasing the dropdown closes its list. `SetList` checks every entry before it changes anything, so a refused list leaves the dropdown as it was.
+
+**ColorPicker** callbacks from the client picker reach only the use of the widget that opened it: a release disarms them. Without `SetHasAlpha(true)` the stored alpha is kept.
+
+**Types in the editor.** `Create` is annotated as returning `WidgetKit.Widget`. Each base type has its own class — `WidgetKit.Window` (the `Frame` type), `WidgetKit.Group`, `WidgetKit.ScrollFrame`, `WidgetKit.Label`, `WidgetKit.Button`, `WidgetKit.CheckBox`, `WidgetKit.Slider`, `WidgetKit.EditBox`, `WidgetKit.Dropdown`, `WidgetKit.ColorPicker`, `WidgetKit.Heading`, `WidgetKit.Spacer` — reached with a cast:
+
+```lua
+local slider = WidgetKit:Create("Slider") --[[@as WidgetKit.Slider]]
+```
 
 ## Secret values
 
@@ -370,5 +391,9 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`RegisterType` reports an equal version** with `false, "current"`, beside the planned `false, "older"` for a lower one.
 - **`Trim` is not exposed.** The pool retains every released widget; trimming would free widget tables while their frames, which the client never frees, stay counted against the cap.
 - **`RegisterLayout` never replaces a layout** (`false, "taken"`): layouts are shared by every addon in the session.
+- **`RegisterType` takes a fourth `options` argument** (`maxCreated`), so a type can ask for a cap other than 256.
+- **`Frame:BindPosition(storage, options?)`** binds the window to a storage table and releases the binding with the window; the plan named only `WidgetKit:BindPosition`.
+- **A SettingsKit scope view is passed directly as the storage table**; WidgetKit never looks SettingsKit up, which is why it appears among the optional dependencies only as a documented storage shape.
+- **The `execute` confirmation text is a render option (`confirmText`),** not an option field: OptionsKit refuses fields its kinds do not declare. A `confirm` string on the option is still asked as it is.
 - **Additions:** `IsWidget`, `GetFocus`, `GetParentContainer`, `GetChildren`, `GetNumChildren`, `GetContent`, `GetLayoutName`, `IsLayoutPaused`, `Anchor.POINTS`, an `into` table for `FromRect`, `binding:Capture`, `Restore`, `Flush`, `IsReleased`, `rendering:Rebuild`, `GetWidget`, `GetMessage`, `CreateMediaPicker`, and `options.allowSecret` / `options.media` for the renderer.
 - **Not rendered in generation 1:** an option's `desc` (there is no tooltip widget), `softMin` / `softMax`, `bigStep`, and `usage`. Groups are always nested `Group`s; tabs and trees of pages wait for a widget set that provides them.
