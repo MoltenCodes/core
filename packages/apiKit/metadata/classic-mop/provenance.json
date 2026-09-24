@@ -1,0 +1,14 @@
+{
+  "branch": "classic",
+  "build": 69934,
+  "capturedOn": "2026-09-24",
+  "commit": "cde55d0033e89b246381385b2f063cd6c6047ef8",
+  "committedAt": "2026-09-22T21:31:23Z",
+  "documentationPath": "Interface/AddOns/Blizzard_APIDocumentationGenerated",
+  "fileCount": 533,
+  "flavour": "classic-mop",
+  "repository": "Gethe/wow-ui-source",
+  "schema": 1,
+  "subject": "5.5.4 (69934)",
+  "version": "5.5.4"
+}

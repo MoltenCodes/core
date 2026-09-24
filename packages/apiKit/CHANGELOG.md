@@ -23,5 +23,12 @@
   functions, 1,782 events, 844 enumerations, 752 structures, 20 callbacks,
   60 constants tables, 57 restriction predicates; the LuaCATS definitions
   under `types/retail/` and the first history entry. The reference and the
-  search index are built into a release asset rather than committed. Flavour
-  files for the other clients follow with their captures.
+  search index are built into a release asset rather than committed.
+- Classic Era bindings from `Gethe/wow-ui-source@33e177d9bf38d76d5c6c6e05d5da78db1899659a`
+  (classic_era, client 1.15.9, build 69722, 534 tables): 337 namespaces,
+  4,589 functions, 1,483 events, 740 enumerations. Mists of Pandaria Classic
+  bindings from `Gethe/wow-ui-source@cde55d0033e89b246381385b2f063cd6c6047ef8`
+  (classic, client 5.5.4, build 69934, 533 tables): 337 namespaces, 4,590
+  functions, 1,483 events, 740 enumerations. Two host types the Classic tables
+  reference joined `types.json` (`luaFunction`, `RoleShortageReward`). PTR and
+  Beta follow when the mirror carries their tables.

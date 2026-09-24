@@ -44,6 +44,13 @@ class HeaderAndDependencyTests(unittest.TestCase):
         self.assertIn('ApiKit:RegisterFlavor("retail", function(api, host)', text)
         self.assertTrue(text.endswith('end, { version = "12.1.0", build = 69933 })\n'))
 
+    def test_long_error_messages_wrap_like_stylua(self):
+        long_flavour = dataclasses.replace(RETAIL, display_name="Mists of Pandaria Classic Public Test Realm")
+
+        text = module.render_runtime(sample_metadata(), long_flavour)
+
+        self.assertIn("    error(\n        \"MoltenCodes ApiKit (Mists of Pandaria Classic Public Test Realm bindings) requires Registry API 2 to be loaded first\",\n        2\n    )\n", text)
+
     def test_registration_without_a_known_build_passes_no_info(self):
         metadata = sample_metadata()
         metadata = dataclasses.replace(

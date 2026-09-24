@@ -1,0 +1,88 @@
+{
+  "callbacks": [
+    {
+      "name": "EventCallbackType",
+      "source": "FrameScriptDocumentation.lua",
+      "system": "FrameScript"
+    },
+    {
+      "name": "FixturePointUpdatedCallback",
+      "source": "HousingFixturePointFrameAPIDocumentation.lua",
+      "system": "HousingFixturePointFrameAPI"
+    },
+    {
+      "name": "FrameEventCallbackType",
+      "source": "SimpleFrameAPIDocumentation.lua",
+      "system": "SimpleFrameAPI"
+    },
+    {
+      "arguments": [
+        {
+          "name": "success",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "texture",
+          "nilable": false,
+          "type": "fileID"
+        }
+      ],
+      "name": "GetTitleIconTextureCallback",
+      "source": "TextureUtilsDocumentation.lua",
+      "system": "TextureUtils"
+    },
+    {
+      "name": "HousingCatalogSearchResultsUpdatedCallback",
+      "source": "HousingCatalogSearcherAPIDocumentation.lua",
+      "system": "HousingCatalogSearcherAPI"
+    },
+    {
+      "arguments": [
+        {
+          "name": "keystate",
+          "nilable": false,
+          "type": "cstring"
+        }
+      ],
+      "name": "InputCommandCallback",
+      "source": "KeyBindingsDocumentation.lua",
+      "system": "KeyBindings"
+    },
+    {
+      "arguments": [
+        {
+          "name": "macroLine",
+          "nilable": false,
+          "type": "cstring"
+        }
+      ],
+      "name": "MacroExecuteLineCallback",
+      "source": "UIMacrosDocumentation.lua",
+      "system": "UIMacros"
+    },
+    {
+      "name": "PinUpdatedCallback",
+      "source": "HousingLayoutUITypesDocumentation.lua"
+    },
+    {
+      "arguments": [
+        {
+          "name": "cb",
+          "nilable": false,
+          "type": "TimerCallback"
+        }
+      ],
+      "name": "TickerCallback",
+      "source": "UITimerDocumentation.lua",
+      "system": "UITimer"
+    },
+    {
+      "name": "TimerCallback",
+      "source": "UITimerDocumentation.lua",
+      "system": "UITimer"
+    }
+  ],
+  "flavour": "classic-mop",
+  "schema": 1
+}

@@ -1144,8 +1144,16 @@ begins; H4 to H6 may overlap where they do not share files.
       capture produced) are not committed: decided with the owner on
       2026-09-24, they are built by `generate --reference-out` and attached
       to releases; the release workflow does so.
-- [ ] **H5 — Classic Era and Mists of Pandaria Classic.** Same as H4 per
-      flavour; flavour-isolation checks across the three captures.
+- [x] **H5 — Classic Era and Mists of Pandaria Classic.** Classic Era at
+      `Gethe/wow-ui-source@33e177d9` (classic_era, 1.15.9, build 69722, 534
+      tables: 337 namespaces, 4,589 functions) and Mists at `@cde55d00`
+      (classic, 5.5.4, build 69934, 533 tables: 337 namespaces, 4,590
+      functions), normalised, generated and checked like Retail; two host
+      types the Classic tables reference added to `types.json`; the exhaustive
+      binding test and a Busted spec per flavour; flavour isolation made
+      visible by a tooling test over every committed pair (each adds
+      bindings the other lacks; each file registers only itself). Package
+      after three flavours: 20 MB committed (2026-09-24).
 - [ ] **H6 — PTR and Beta.** Same as H4 when the mirror branches carry the
       documentation tables; until then the flavours exist as empty surfaces
       and the README says so.

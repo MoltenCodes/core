@@ -1,0 +1,1596 @@
+{
+  "constants": [
+    {
+      "name": "AuctionConstants",
+      "source": "AuctionHouseConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "DEFAULT_AUCTION_PRICE_MULTIPLIER",
+          "type": "number",
+          "value": 1.5
+        }
+      ],
+      "wrapper": "auctionConstants"
+    },
+    {
+      "name": "CAAConstants",
+      "source": "CombatAudioAlertConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "CAAEnabledDefault",
+          "type": "bool",
+          "value": false
+        },
+        {
+          "name": "CAAVoiceDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAASayCombatStartDefault",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "name": "CAASayCombatEndDefault",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "name": "CAAPlayerHealthPercentDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAAPlayerHealthFormatDefault",
+          "type": "number",
+          "value": 1
+        },
+        {
+          "name": "CAATargetNameDefault",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "name": "CAATargetHealthPercentDefault",
+          "type": "number",
+          "value": 2
+        },
+        {
+          "name": "CAATargetHealthFormatDefault",
+          "type": "number",
+          "value": 3
+        },
+        {
+          "name": "CAATargetDeathBehaviorDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAASayIfTargetedDefault",
+          "type": "number",
+          "value": 1
+        },
+        {
+          "name": "CAAPartyHealthPercentDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAAPlayerCastModeDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAAPlayerCastFormatDefault",
+          "type": "number",
+          "value": 4
+        },
+        {
+          "name": "CAATargetCastModeDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAATargetCastFormatDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAAInterruptCastDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAAInterruptCastSuccessDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAASayYourDebuffsDefault",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "name": "CAASayYourDebuffsFormatDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAASayYourDebuffsMinDurationDefault",
+          "type": "number",
+          "value": 1.5
+        },
+        {
+          "name": "CAASayYourDebuffsMinDurationMin",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAASayYourDebuffsMinDurationMax",
+          "type": "number",
+          "value": 5
+        },
+        {
+          "name": "CAASayYourDebuffsMinDurationStep",
+          "type": "number",
+          "value": 0.5
+        },
+        {
+          "name": "CAADebuffSelfAlertDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAAPlayerResourcePercentDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAAPlayerResourceFormatDefault",
+          "type": "number",
+          "value": 1
+        },
+        {
+          "name": "CAAMinCastTimeMin",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAAMinCastTimeMax",
+          "type": "number",
+          "value": 5
+        },
+        {
+          "name": "CAAMinCastTimeDefault",
+          "type": "number",
+          "value": 1.5
+        },
+        {
+          "name": "CAAMinCastTimeStep",
+          "type": "number",
+          "value": 0.5
+        },
+        {
+          "name": "CAAThrottleMin",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAAThrottleMax",
+          "type": "number",
+          "value": 5
+        },
+        {
+          "name": "CAAThrottleDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAAThrottleStep",
+          "type": "number",
+          "value": 0.5
+        },
+        {
+          "name": "CAAFrequencyMin",
+          "type": "number",
+          "value": -10
+        },
+        {
+          "name": "CAAFrequencyMax",
+          "type": "number",
+          "value": 10
+        },
+        {
+          "name": "CAAFrequencyDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CAASampleTextThrottleTime",
+          "type": "number",
+          "value": 1
+        },
+        {
+          "name": "CAASamePercentThrottleTime",
+          "type": "number",
+          "value": 10
+        }
+      ],
+      "wrapper": "caaConstants"
+    },
+    {
+      "name": "CalendarGetEventTypeConstants",
+      "source": "CalendarConstantsDocumentation.lua",
+      "values": [
+        {
+          "expression": "Enum.CalendarGetEventType.Get",
+          "name": "DEFAULT_CALENDAR_GET_EVENT_TYPE",
+          "type": "CalendarGetEventType"
+        }
+      ],
+      "wrapper": "calendarGetEventTypeConstants"
+    },
+    {
+      "name": "CatalogShopVirtualCurrencyConstants",
+      "source": "CatalogShopConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "HEARTHSTEEL_VC_CURRENCY_CODE",
+          "type": "cstring",
+          "value": "XVV"
+        },
+        {
+          "name": "TRADERS_TENDER_VC_CURRENCY_CODE",
+          "type": "cstring",
+          "value": "XWP"
+        }
+      ],
+      "wrapper": "catalogShopVirtualCurrencyConstants"
+    },
+    {
+      "name": "CharCustomizationConstants",
+      "source": "CharacterCustomizationSharedDocumentation.lua",
+      "values": [
+        {
+          "name": "CHAR_CUSTOMIZE_CUSTOM_DISPLAY_OPTION_FIRST",
+          "type": "CharCustomizationType",
+          "value": "CustomOptionTattoo"
+        },
+        {
+          "name": "CHAR_CUSTOMIZE_CUSTOM_DISPLAY_OPTION_LAST",
+          "type": "CharCustomizationType",
+          "value": "CustomOptionTattooColor"
+        },
+        {
+          "expression": "Constants.CharCustomizationConstants.CHAR_CUSTOMIZE_CUSTOM_DISPLAY_OPTION_LAST - Constants.CharCustomizationConstants.CHAR_CUSTOMIZE_CUSTOM_DISPLAY_OPTION_FIRST + 1",
+          "name": "NUM_CUSTOM_DISPLAY",
+          "type": "number"
+        },
+        {
+          "name": "NAME_RESERVATION_DAYS",
+          "type": "number",
+          "value": 30
+        }
+      ],
+      "wrapper": "charCustomizationConstants"
+    },
+    {
+      "name": "ChatFrameConstants",
+      "source": "ChatConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "MaxChatWindows",
+          "type": "number",
+          "value": 10
+        },
+        {
+          "name": "MaxChatChannels",
+          "type": "number",
+          "value": 20
+        },
+        {
+          "expression": "FULLNAME_MAX_CHAR",
+          "name": "MaxCharacterNameBytes",
+          "type": "number"
+        }
+      ],
+      "wrapper": "chatFrameConstants"
+    },
+    {
+      "name": "CombatLogMessageLimits",
+      "source": "CombatLogConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "CombatLogDefaultMessageLimit",
+          "type": "number",
+          "value": 300
+        },
+        {
+          "name": "CombatLogMaximumMessageLimit",
+          "type": "number",
+          "value": 1000
+        }
+      ],
+      "wrapper": "combatLogMessageLimits"
+    },
+    {
+      "name": "CombatLogObjectMasks",
+      "source": "CombatLogConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "COMBATLOG_OBJECT_AFFILIATION_MASK",
+          "type": "CombatLogObject",
+          "value": 15
+        },
+        {
+          "name": "COMBATLOG_OBJECT_REACTION_MASK",
+          "type": "CombatLogObject",
+          "value": 240
+        },
+        {
+          "name": "COMBATLOG_OBJECT_CONTROL_MASK",
+          "type": "CombatLogObject",
+          "value": 768
+        },
+        {
+          "name": "COMBATLOG_OBJECT_TYPE_MASK",
+          "type": "CombatLogObject",
+          "value": 64512
+        },
+        {
+          "name": "COMBATLOG_OBJECT_SPECIAL_MASK",
+          "type": "CombatLogObject",
+          "value": 4294901760
+        }
+      ],
+      "wrapper": "combatLogObjectMasks"
+    },
+    {
+      "name": "CombatLogObjectTargetMasks",
+      "source": "CombatLogConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "COMBATLOG_OBJECT_RAID_TARGET_MASK",
+          "type": "CombatLogObjectTarget",
+          "value": 255
+        },
+        {
+          "name": "COMBATLOG_OBJECT_RAID_MASK",
+          "type": "CombatLogObjectTarget",
+          "value": 4294967295
+        }
+      ],
+      "wrapper": "combatLogObjectTargetMasks"
+    },
+    {
+      "name": "ContentTrackingConsts",
+      "source": "ContentTrackingTypesDocumentation.lua",
+      "values": [
+        {
+          "name": "MaxTrackedCollectableSources",
+          "type": "number",
+          "value": 15
+        },
+        {
+          "name": "MaxTrackedAchievements",
+          "type": "number",
+          "value": 10
+        }
+      ],
+      "wrapper": "contentTrackingConsts"
+    },
+    {
+      "name": "CooldownFrameDefaults",
+      "source": "CooldownFrameConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "COOLDOWN_DEFAULT_COUNTDOWN_ABBREV_THRESHOLD_MS",
+          "type": "number",
+          "value": 120000
+        },
+        {
+          "name": "COOLDOWN_DEFAULT_COUNTDOWN_MILLISECOND_THRESHOLD_MS",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "COOLDOWN_DEFAULT_COUNTDOWN_MINIMUM_DURATION_MS",
+          "type": "number",
+          "value": 2000
+        },
+        {
+          "name": "COOLDOWN_DEFAULT_BLING_DURATION_MS",
+          "type": "number",
+          "value": 1000
+        },
+        {
+          "name": "COOLDOWN_DEFAULT_USE_AURA_DISPLAY_TIME",
+          "type": "bool",
+          "value": false
+        }
+      ],
+      "wrapper": "cooldownFrameDefaults"
+    },
+    {
+      "name": "CooldownViewerUIConstants",
+      "source": "CooldownViewerConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "COOLDOWN_VIEWER_LINKED_SPELLS_SIZE",
+          "type": "number",
+          "value": 4
+        },
+        {
+          "name": "COOLDOWN_VIEWER_CATEGORY_SET_SIZE",
+          "type": "number",
+          "value": 16
+        }
+      ],
+      "wrapper": "cooldownViewerUIConstants"
+    },
+    {
+      "name": "CurrencyConsts",
+      "source": "CurrencyConstantsDocumentation.lua",
+      "values": [
+        {
+          "expression": "Enum.PlayerCurrencyFlagsDbFlags.InBackpack + Enum.PlayerCurrencyFlagsDbFlags.UnusedInUI",
+          "name": "PLAYER_CURRENCY_CLIENT_FLAGS",
+          "type": "PlayerCurrencyFlagsDbFlags"
+        },
+        {
+          "name": "MAX_CURRENCY_QUANTITY",
+          "type": "number",
+          "value": 100000000
+        },
+        {
+          "name": "CONQUEST_ARENA_AND_BG_META_CURRENCY_ID",
+          "type": "number",
+          "value": 483
+        },
+        {
+          "name": "CONQUEST_RATED_BG_META_CURRENCY_ID",
+          "type": "number",
+          "value": 484
+        },
+        {
+          "name": "CONQUEST_ASHRAN_META_CURRENCY_ID",
+          "type": "number",
+          "value": 692
+        },
+        {
+          "name": "ACCOUNT_WIDE_HONOR_CURRENCY_ID",
+          "type": "number",
+          "value": 1585
+        },
+        {
+          "name": "ACCOUNT_WIDE_HONOR_LEVEL_CURRENCY_ID",
+          "type": "number",
+          "value": 1586
+        },
+        {
+          "name": "CONQUEST_CURRENCY_ID",
+          "type": "number",
+          "value": 1602
+        },
+        {
+          "name": "CONQUEST_POINTS_CURRENCY_ID",
+          "type": "number",
+          "value": 390
+        },
+        {
+          "name": "CONQUEST_ARENA_META_CURRENCY_ID",
+          "type": "number",
+          "value": 483
+        },
+        {
+          "name": "CONQUEST_BG_META_CURRENCY_ID",
+          "type": "number",
+          "value": 484
+        },
+        {
+          "name": "HONOR_CURRENCY_ID",
+          "type": "number",
+          "value": 1792
+        },
+        {
+          "name": "CLASSIC_ARENA_POINTS_CURRENCY_ID",
+          "type": "number",
+          "value": 1900
+        },
+        {
+          "name": "CLASSIC_HONOR_CURRENCY_ID",
+          "type": "number",
+          "value": 1901
+        },
+        {
+          "name": "CLASSIC_CONQUEST_CURRENCY_ID",
+          "type": "number",
+          "value": 390
+        },
+        {
+          "name": "HONOR_PER_CURRENCY",
+          "type": "number",
+          "value": 10
+        },
+        {
+          "name": "ARTIFACT_KNOWLEDGE_CURRENCY_ID",
+          "type": "number",
+          "value": 1171
+        },
+        {
+          "name": "WAR_RESOURCES_CURRENCY_ID",
+          "type": "number",
+          "value": 1560
+        },
+        {
+          "name": "ECHOES_OF_NYALOTHA_CURRENCY_ID",
+          "type": "number",
+          "value": 1803
+        },
+        {
+          "name": "DRAGON_ISLES_SUPPLIES_CURRENCY_ID",
+          "type": "number",
+          "value": 2003
+        },
+        {
+          "name": "QUESTIONMARK_INV_ICON",
+          "type": "number",
+          "value": 134400
+        },
+        {
+          "name": "PVP_CURRENCY_CONQUEST_ALLIANCE_INV_ICON",
+          "type": "number",
+          "value": 463448
+        },
+        {
+          "name": "PVP_CURRENCY_CONQUEST_HORDE_INV_ICON",
+          "type": "number",
+          "value": 463449
+        },
+        {
+          "name": "PVP_CURRENCY_HONOR_ALLIANCE_INV_ICON",
+          "type": "number",
+          "value": 463450
+        },
+        {
+          "name": "PVP_CURRENCY_HONOR_HORDE_INV_ICON",
+          "type": "number",
+          "value": 463451
+        },
+        {
+          "name": "CURRENCY_ID_RENOWN",
+          "type": "number",
+          "value": 1822
+        },
+        {
+          "name": "CURRENCY_ID_RENOWN_KYRIAN",
+          "type": "number",
+          "value": 1829
+        },
+        {
+          "name": "CURRENCY_ID_RENOWN_VENTHYR",
+          "type": "number",
+          "value": 1830
+        },
+        {
+          "name": "CURRENCY_ID_RENOWN_NIGHT_FAE",
+          "type": "number",
+          "value": 1831
+        },
+        {
+          "name": "CURRENCY_ID_RENOWN_NECROLORD",
+          "type": "number",
+          "value": 1832
+        },
+        {
+          "name": "CURRENCY_ID_WILLING_SOUL",
+          "type": "number",
+          "value": 1810
+        },
+        {
+          "name": "CURRENCY_ID_RESERVOIR_ANIMA",
+          "type": "number",
+          "value": 1813
+        },
+        {
+          "name": "CURRENCY_ID_PERKS_PROGRAM_DISPLAY_INFO",
+          "type": "number",
+          "value": 2032
+        },
+        {
+          "name": "CURRENCY_WALLET_TYPE_WOWMONEY",
+          "type": "number",
+          "value": 0
+        }
+      ],
+      "wrapper": "currencyConsts"
+    },
+    {
+      "name": "DelvesConsts",
+      "source": "DelvesConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "DELVES_MIN_PLAYER_LEVEL_CONTENT_TUNING_ID",
+          "type": "number",
+          "value": 2677
+        },
+        {
+          "name": "DELVES_NORMAL_KEY_CURRENCY_ID",
+          "type": "number",
+          "value": 3028
+        },
+        {
+          "name": "DELVES_COMPANION_INFO_SELECTION_CHARACTER_DATA_ELEMENT_ID",
+          "type": "number",
+          "value": 13
+        },
+        {
+          "name": "DELVES_COMPANION_TOOLTIP_WIDGET_SET_ID",
+          "type": "number",
+          "value": 1331
+        }
+      ],
+      "wrapper": "delvesConsts"
+    },
+    {
+      "name": "EditModeConsts",
+      "source": "EditModeManagerConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "EditModeDefaultGridSpacing",
+          "type": "number",
+          "value": 100
+        },
+        {
+          "name": "EditModeMinGridSpacing",
+          "type": "number",
+          "value": 20
+        },
+        {
+          "name": "EditModeMaxGridSpacing",
+          "type": "number",
+          "value": 300
+        },
+        {
+          "name": "EditModeMaxLayoutsPerType",
+          "type": "number",
+          "value": 5
+        }
+      ],
+      "wrapper": "editModeConsts"
+    },
+    {
+      "name": "EditModeLayoutConsts",
+      "source": "EditModeManagerConstants_ClassicDocumentation.lua",
+      "values": [
+        {
+          "expression": "Enum.EditModePresetLayouts.Classic",
+          "name": "EditModeDefaultLayout",
+          "type": "EditModePresetLayouts"
+        }
+      ],
+      "wrapper": "editModeLayoutConsts"
+    },
+    {
+      "name": "EncodingLimits",
+      "source": "EncodingUtilConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "EncodingDecompressSizeLimit",
+          "type": "size",
+          "value": 104857600
+        },
+        {
+          "name": "EncodingStackSizeLimit",
+          "type": "number",
+          "value": 100
+        }
+      ],
+      "wrapper": "encodingLimits"
+    },
+    {
+      "name": "EncounterTimelineEventConstants",
+      "source": "EncounterTimelineConstantsDocumentation.lua",
+      "values": [
+        {
+          "documentation": [
+            "Constant used for invalid event IDs. Script APIs are guaranteed to always return nil data if supplied this ID, and events will never be added to the timeline with this ID."
+          ],
+          "name": "ENCOUNTER_TIMELINE_INVALID_EVENT",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "documentation": [
+            "Minimum size of internal arrays that are preallocated for event storage."
+          ],
+          "name": "ENCOUNTER_TIMELINE_RESERVED_EVENT_COUNT",
+          "type": "number",
+          "value": 40
+        }
+      ],
+      "wrapper": "encounterTimelineEventConstants"
+    },
+    {
+      "name": "EncounterTimelineIconMasks",
+      "source": "EncounterTimelineConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "EncounterTimelineTankAlertIcons",
+          "type": "EncounterEventIconmask",
+          "value": "TankRole"
+        },
+        {
+          "name": "EncounterTimelineHealerAlertIcons",
+          "type": "EncounterEventIconmask",
+          "value": "HealerRole"
+        },
+        {
+          "name": "EncounterTimelineDamageAlertIcons",
+          "type": "EncounterEventIconmask",
+          "value": "DpsRole"
+        },
+        {
+          "name": "EncounterTimelineDeadlyIcons",
+          "type": "EncounterEventIconmask",
+          "value": "DeadlyEffect"
+        },
+        {
+          "name": "EncounterTimelineDispelIcons",
+          "type": "EncounterEventIconmask",
+          "value": 124
+        },
+        {
+          "name": "EncounterTimelineEnrageIcons",
+          "type": "EncounterEventIconmask",
+          "value": "EnrageEffect"
+        },
+        {
+          "name": "EncounterTimelineAllIcons",
+          "type": "EncounterEventIconmask",
+          "value": 1023
+        },
+        {
+          "name": "EncounterTimelineRoleIcons",
+          "type": "EncounterEventIconmask",
+          "value": 896
+        },
+        {
+          "name": "EncounterTimelineOtherIcons",
+          "type": "EncounterEventIconmask",
+          "value": 127
+        },
+        {
+          "name": "EncounterTimelineNoIcons",
+          "type": "EncounterEventIconmask",
+          "value": 0
+        }
+      ],
+      "wrapper": "encounterTimelineIconMasks"
+    },
+    {
+      "name": "EventScheduler",
+      "source": "EventSchedulerConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "SCHEDULED_EVENT_REMINDER_WARNING_SECONDS",
+          "type": "number",
+          "value": 300
+        },
+        {
+          "name": "SCHEDULED_EVENT_FUTURE_LIMIT",
+          "type": "number",
+          "value": 12
+        },
+        {
+          "name": "SCHEDULED_EVENT_REMINDER_DEAD_SECONDS",
+          "type": "number",
+          "value": 10
+        },
+        {
+          "name": "SCHEDULED_EVENT_PAST_LIMIT_SECONDS",
+          "type": "number",
+          "value": 3600
+        }
+      ],
+      "wrapper": "eventScheduler"
+    },
+    {
+      "name": "HousingCatalogConsts",
+      "source": "HousingCatalogConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "HOUSING_CATALOG_FEATURED_CATEGORY_ID",
+          "type": "number",
+          "value": 17
+        },
+        {
+          "name": "HOUSING_CATALOG_ALL_CATEGORY_ID",
+          "type": "number",
+          "value": 18
+        },
+        {
+          "name": "HOUSING_CATALOG_DECOR_MODELSCENEID_DEFAULT",
+          "type": "number",
+          "value": 1317
+        }
+      ],
+      "wrapper": "housingCatalogConsts"
+    },
+    {
+      "name": "ITEM_WEAPON_SUBCLASSConstants",
+      "source": "ItemConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "ITEM_WEAPON_SUBCLASS_NONE",
+          "type": "ItemWeaponSubclass",
+          "value": -1
+        },
+        {
+          "name": "ITEM_WEAPON_SUBCLASS_MASK",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "ITEM_WEAPON_SUBCLASS_IS2HWEAPON_MASK",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "ITEM_WEAPON_SUBCLASS_USES2HANDS_MASK",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "ITEM_WEAPON_SUBCLASS_ISRANGEDWEAPON_MASK",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "ITEM_WEAPON_SUBCLASS_ISTWOHANDEDRANGEDWEAPON_MASK",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "ITEM_WEAPON_SUBCLASS_ISMAINHANDWEAPON_NONRANGED_MASK",
+          "type": "number",
+          "value": 0
+        }
+      ],
+      "wrapper": "itemWeaponSubclassConstants"
+    },
+    {
+      "name": "ITEM_WEAPON_SUBCLASSConstants_PostMists",
+      "source": "ItemConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "ITEM_WEAPON_SUBCLASS_ISTITANSGRIPWEAPON_MASK",
+          "type": "number",
+          "value": 0
+        }
+      ],
+      "wrapper": "itemWeaponSubclassConstantsPostMists"
+    },
+    {
+      "name": "ITEM_WEAPON_SUBCLASS_CLASSIC",
+      "source": "ItemConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "ITEM_WEAPON_SUBCLASS_EXOTIC1H",
+          "type": "ItemWeaponSubclass",
+          "value": "Bearclaw"
+        },
+        {
+          "name": "ITEM_WEAPON_SUBCLASS_EXOTIC2H",
+          "type": "ItemWeaponSubclass",
+          "value": "Catclaw"
+        },
+        {
+          "name": "ITEM_WEAPON_SUBCLASS_SPEAR",
+          "type": "ItemWeaponSubclass",
+          "value": "Obsolete3"
+        }
+      ],
+      "wrapper": "itemWeaponSubclassClassic"
+    },
+    {
+      "name": "InventoryConstants",
+      "source": "ItemConstants_ClassicDocumentation.lua",
+      "values": [
+        {
+          "expression": "NUM_BAG_SLOTS",
+          "name": "NumBagSlots",
+          "type": "number"
+        },
+        {
+          "expression": "BANK_NUM_GENERIC_SLOTS",
+          "name": "NumGenericBankSlots",
+          "type": "number"
+        },
+        {
+          "expression": "NUM_BANKBAG_SLOTS",
+          "name": "NumBankBagSlots",
+          "type": "number"
+        }
+      ],
+      "wrapper": "inventoryConstants"
+    },
+    {
+      "name": "ItemConsts",
+      "source": "ItemConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "NUM_ITEM_ENCHANTMENT_SOCKETS",
+          "type": "number",
+          "value": 3
+        },
+        {
+          "name": "MAX_LOOT_OBJECT_ITEMS",
+          "type": "number",
+          "value": 31
+        },
+        {
+          "name": "INVALID_BANK_TAB_SLOT",
+          "type": "number",
+          "value": 255
+        },
+        {
+          "name": "DEFAULT_ITEM_SAVE_VERSION",
+          "type": "number",
+          "value": 2
+        },
+        {
+          "expression": "DEFAULT_ITEM_SAVE_VERSION",
+          "name": "CURRENT_ITEM_SAVE_VERSION",
+          "type": "number"
+        },
+        {
+          "name": "DEFAULT_ARTIFACT_POWERS_VERSION",
+          "type": "number",
+          "value": 1
+        },
+        {
+          "expression": "DEFAULT_ARTIFACT_POWERS_VERSION",
+          "name": "CURRENT_ARTIFACT_POWERS_VERSION",
+          "type": "number"
+        },
+        {
+          "name": "DEFAULT_RETENTION",
+          "type": "number",
+          "value": 7
+        }
+      ],
+      "wrapper": "itemConsts"
+    },
+    {
+      "name": "LFGConstsExposed",
+      "source": "LFGConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "GROUP_FINDER_MAX_ACTIVITY_CAPACITY",
+          "type": "number",
+          "value": 16
+        }
+      ],
+      "wrapper": "lfgConstsExposed"
+    },
+    {
+      "name": "LFG_ROLEConstants",
+      "source": "LFGConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "LFG_ROLE_NO_ROLE",
+          "type": "LFGRole",
+          "value": -1
+        },
+        {
+          "expression": "Enum.LFGRoleMeta.NumValues",
+          "name": "LFG_ROLE_ANY",
+          "type": "LFGRole"
+        }
+      ],
+      "wrapper": "lfgRoleConstants"
+    },
+    {
+      "name": "LevelConstsExposed",
+      "source": "LevelConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "MIN_RES_SICKNESS_LEVEL",
+          "type": "number",
+          "value": 10
+        },
+        {
+          "name": "MIN_ACHIEVEMENT_LEVEL",
+          "type": "number",
+          "value": 10
+        }
+      ],
+      "wrapper": "levelConstsExposed"
+    },
+    {
+      "name": "LootConsts",
+      "source": "LootConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "MasterLootQualityThreshold",
+          "type": "number",
+          "value": 5
+        }
+      ],
+      "wrapper": "lootConsts"
+    },
+    {
+      "name": "MoneyFormattingConstants",
+      "source": "MoneyConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "GOLD_REWARD_THRESHOLD_TO_HIDE_COPPER",
+          "type": "number",
+          "value": 10
+        }
+      ],
+      "wrapper": "moneyFormattingConstants"
+    },
+    {
+      "name": "MountDynamicFlightConsts",
+      "source": "MountConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "TRAIT_SYSTEM_ID",
+          "type": "number",
+          "value": 1
+        },
+        {
+          "name": "TREE_ID",
+          "type": "number",
+          "value": 672
+        }
+      ],
+      "wrapper": "mountDynamicFlightConsts"
+    },
+    {
+      "name": "PartyCountdownConstants",
+      "source": "PartyConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "MaxCountdownSeconds",
+          "type": "number",
+          "value": 3600
+        }
+      ],
+      "wrapper": "partyCountdownConstants"
+    },
+    {
+      "name": "PetConsts",
+      "source": "PetConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "PETNUMBER_INVALIDSLOT",
+          "type": "number",
+          "value": -1
+        },
+        {
+          "name": "MAX_SUMMONABLE_PETS",
+          "type": "number",
+          "value": 25
+        },
+        {
+          "name": "PETNUMBER_INVALIDPET",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "PETNUMBER_PENDINGPET",
+          "type": "number",
+          "value": -1
+        }
+      ],
+      "wrapper": "petConsts"
+    },
+    {
+      "name": "PetConsts_PostCata",
+      "source": "PetConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "NUM_PET_SLOTS_THAT_NEED_LEARNED_SPELL",
+          "type": "number",
+          "value": 5
+        },
+        {
+          "expression": "Constants.PetConsts_PostCata.NUM_PET_SLOTS_THAT_NEED_LEARNED_SPELL",
+          "name": "MAX_SUMMONABLE_HUNTER_PETS",
+          "type": "number"
+        },
+        {
+          "name": "MAX_STABLE_SLOTS",
+          "type": "number",
+          "value": 200
+        },
+        {
+          "expression": "Constants.PetConsts_PostCata.MAX_SUMMONABLE_HUNTER_PETS",
+          "name": "EXTRA_PET_STABLE_SLOT",
+          "type": "number"
+        },
+        {
+          "expression": "Constants.PetConsts_PostCata.EXTRA_PET_STABLE_SLOT",
+          "name": "STABLED_PETS_FIRST_SLOT_INDEX",
+          "type": "number"
+        },
+        {
+          "expression": "Constants.PetConsts_PostCata.MAX_STABLE_SLOTS + Constants.PetConsts_PostCata.NUM_PET_SLOTS_THAT_NEED_LEARNED_SPELL",
+          "name": "NUM_PET_SLOTS_HUNTER",
+          "type": "number"
+        },
+        {
+          "expression": "Constants.PetConsts.MAX_SUMMONABLE_PETS",
+          "name": "NUM_PET_SLOTS_DEATHKNIGHT",
+          "type": "number"
+        },
+        {
+          "name": "DEATHKNIGHT_PET_CREATURE_ID",
+          "type": "number",
+          "value": 26125
+        },
+        {
+          "name": "NUM_PET_SLOTS_MAGE",
+          "type": "number",
+          "value": 1
+        },
+        {
+          "expression": "Constants.PetConsts.MAX_SUMMONABLE_PETS",
+          "name": "NUM_PET_SLOTS_WARLOCK",
+          "type": "number"
+        },
+        {
+          "expression": "Constants.PetConsts_PostCata.NUM_PET_SLOTS_HUNTER",
+          "name": "MAX_NUM_PET_SLOTS",
+          "type": "number"
+        },
+        {
+          "name": "PET_MAX_LEVEL_DIFFERENCE",
+          "type": "number",
+          "value": 0
+        }
+      ],
+      "wrapper": "petConstsPostCata"
+    },
+    {
+      "name": "ProfessionConsts",
+      "source": "ProfessionConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "NUM_PRIMARY_PROFESSIONS",
+          "type": "number",
+          "value": 2
+        },
+        {
+          "name": "CLASSIC_PROFESSION_PARENT_TIER_INDEX",
+          "type": "number",
+          "value": 4
+        },
+        {
+          "name": "RUNEFORGING_SKILL_LINE_ID",
+          "type": "number",
+          "value": 960
+        },
+        {
+          "name": "RUNEFORGING_ROOT_CATEGORY_ID",
+          "type": "number",
+          "value": 210
+        },
+        {
+          "name": "MAX_CRAFTING_REAGENT_SLOTS",
+          "type": "number",
+          "value": 12
+        },
+        {
+          "name": "CRAFTING_ORDER_CLAIM_DURATION",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "PUBLIC_CRAFTING_ORDER_STALE_THRESHOLD",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "CRAFTING_ORDER_ITEM_RETENTION",
+          "type": "number",
+          "value": 30
+        },
+        {
+          "name": "CRAFTING_ORDER_CURRENCY_WALLET_ITEM_ID",
+          "type": "number",
+          "value": 262724
+        }
+      ],
+      "wrapper": "professionConsts"
+    },
+    {
+      "name": "PvpInfoConsts",
+      "source": "PvpInfoConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "MaxPlayersPerInstance",
+          "type": "number",
+          "value": 80
+        },
+        {
+          "name": "MAX_PVP_LOCK_LIST_MAP",
+          "type": "number",
+          "value": 2
+        }
+      ],
+      "wrapper": "pvpInfoConsts"
+    },
+    {
+      "name": "QuestWatchConsts_Classic",
+      "source": "QuestConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "MAX_QUEST_WATCHES",
+          "type": "number",
+          "value": 25
+        },
+        {
+          "name": "MAX_WORLD_QUEST_WATCHES",
+          "type": "number",
+          "value": 1
+        },
+        {
+          "name": "MAX_WORLD_QUEST_HARD_WATCHES",
+          "type": "number",
+          "value": 5
+        }
+      ],
+      "wrapper": "questWatchConstsClassic"
+    },
+    {
+      "name": "RecentAlliesConsts",
+      "source": "RecentAlliesConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "PIN_EXPIRATION_WARNING_DAYS",
+          "type": "number",
+          "value": 5
+        }
+      ],
+      "wrapper": "recentAlliesConsts"
+    },
+    {
+      "name": "SpellBookSpellIDs",
+      "source": "SpellIDDocumentation.lua",
+      "values": [
+        {
+          "name": "SPELL_ID_DISMISS_PET",
+          "type": "number",
+          "value": 2641
+        }
+      ],
+      "wrapper": "spellBookSpellIDs"
+    },
+    {
+      "name": "SpellCooldownConsts",
+      "source": "SpellConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "GLOBAL_RECOVERY_CATEGORY",
+          "type": "number",
+          "value": 133
+        }
+      ],
+      "wrapper": "spellCooldownConsts"
+    },
+    {
+      "name": "TTSConstants",
+      "source": "ChatConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "TTSRateMin",
+          "type": "number",
+          "value": -10
+        },
+        {
+          "name": "TTSRateMax",
+          "type": "number",
+          "value": 10
+        },
+        {
+          "name": "TTSRateDefault",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "TTSVolumeMin",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "TTSVolumeMax",
+          "type": "number",
+          "value": 100
+        },
+        {
+          "name": "TTSVolumeDefault",
+          "type": "number",
+          "value": 100
+        }
+      ],
+      "wrapper": "ttsConstants"
+    },
+    {
+      "name": "TalentConsts",
+      "source": "TalentConstantsDocumentation.lua",
+      "values": [
+        {
+          "expression": "Constants.TalentConsts.NUM_TALENT_COLUMNS",
+          "name": "NumTalentColumns",
+          "type": "number"
+        }
+      ],
+      "wrapper": "talentConsts"
+    },
+    {
+      "name": "TalentTierConstants",
+      "source": "TalentAndGlyphConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "MAX_TALENT_TIERS",
+          "type": "number",
+          "value": 7
+        }
+      ],
+      "wrapper": "talentTierConstants"
+    },
+    {
+      "name": "TieredEntranceConsts",
+      "source": "DelvesConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "TIERED_ENTRANCE_TIER_SCORE_VALUE_TIER_LEVEL",
+          "type": "number",
+          "value": 1
+        },
+        {
+          "name": "TIERED_ENTRANCE_TIER_SCORE_VALUE_MAP_ID",
+          "type": "number",
+          "value": 3
+        },
+        {
+          "name": "TIERED_ENTRANCE_TIER_SCORE_VALUE_PLAYER_CONDITION_ID",
+          "type": "number",
+          "value": 6
+        },
+        {
+          "name": "TIERED_ENTRANCE_INFO_WORLD_TIER_DIFFICULTY_CHARACTER_ELEMENT_ID",
+          "type": "number",
+          "value": 522
+        }
+      ],
+      "wrapper": "tieredEntranceConsts"
+    },
+    {
+      "name": "TimerunningConsts",
+      "source": "TimerunningConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "TIMERUNNING_SEASON_NONE",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "TIMERUNNING_SEASON_PANDARIA",
+          "type": "number",
+          "value": 1
+        },
+        {
+          "name": "TIMERUNNING_SEASON_LEGION",
+          "type": "number",
+          "value": 2
+        },
+        {
+          "name": "TIMERUNNING_ITEM_CTR",
+          "type": "number",
+          "value": 2905
+        },
+        {
+          "name": "TIMERUNNING_LEGION_ARTIFACT_CTR",
+          "type": "number",
+          "value": 4579
+        }
+      ],
+      "wrapper": "timerunningConsts"
+    },
+    {
+      "name": "TraitConsts",
+      "source": "TraitConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "MAX_COMBAT_TRAIT_CONFIGS",
+          "type": "number",
+          "value": 40
+        },
+        {
+          "name": "COMMIT_COMBAT_TRAIT_CONFIG_CHANGES_SPELL_ID",
+          "type": "number",
+          "value": 384255
+        },
+        {
+          "name": "INSPECT_TRAIT_CONFIG_ID",
+          "type": "number",
+          "value": -1
+        },
+        {
+          "name": "STARTER_BUILD_TRAIT_CONFIG_ID",
+          "type": "number",
+          "value": -2
+        },
+        {
+          "name": "VIEW_TRAIT_CONFIG_ID",
+          "type": "number",
+          "value": -3
+        }
+      ],
+      "wrapper": "traitConsts"
+    },
+    {
+      "name": "Transmog",
+      "source": "TransmogConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "NoTransmogID",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "MainHandTransmogIsIndividualWeapon",
+          "type": "number",
+          "value": -1
+        },
+        {
+          "name": "MainHandTransmogIsPairedWeapon",
+          "type": "number",
+          "value": 0
+        }
+      ],
+      "wrapper": "transmog"
+    },
+    {
+      "name": "TransmogOutfitDataConsts",
+      "source": "TransmogOutfitConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "EQUIP_TRANSMOG_OUTFIT_MANUAL_SPELL_ID",
+          "type": "number",
+          "value": 1247613
+        },
+        {
+          "name": "TRANSMOG_OUTFIT_SLOT_NONE",
+          "type": "TransmogOutfitSlot",
+          "value": -1
+        }
+      ],
+      "wrapper": "transmogOutfitDataConsts"
+    },
+    {
+      "name": "UICharacterClasses",
+      "source": "UICharacterClassConstantsDocumentation.lua",
+      "values": [
+        {
+          "name": "Warrior",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "Paladin",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "Hunter",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "Rogue",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "Priest",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "DeathKnight",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "Shaman",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "Mage",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "Warlock",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "Monk",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "Druid",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "DemonHunter",
+          "type": "number",
+          "value": 0
+        },
+        {
+          "name": "Evoker",
+          "type": "number",
+          "value": 0
+        }
+      ],
+      "wrapper": "uiCharacterClasses"
+    },
+    {
+      "name": "UnitEventConstants",
+      "source": "UnitSharedDocumentation.lua",
+      "values": [
+        {
+          "name": "MAX_UNIT_TOKENS_IN_EVENT",
+          "type": "number",
+          "value": 4
+        }
+      ],
+      "wrapper": "unitEventConstants"
+    },
+    {
+      "name": "UnitPowerSpellIDs",
+      "source": "SpellIDDocumentation.lua",
+      "values": [
+        {
+          "name": "VOID_METAMORPHOSIS_SPELL_ID",
+          "type": "number",
+          "value": 1217607
+        },
+        {
+          "name": "DARK_HEART_SPELL_ID",
+          "type": "number",
+          "value": 1225789
+        },
+        {
+          "name": "SILENCE_THE_WHISPERS_SPELL_ID",
+          "type": "number",
+          "value": 1227702
+        },
+        {
+          "name": "COLLAPSING_STAR_PASSIVE_SPELL_ID",
+          "type": "number",
+          "value": 1221167
+        },
+        {
+          "name": "COLLAPSING_STAR_SPELL_ID",
+          "type": "number",
+          "value": 1221150
+        }
+      ],
+      "wrapper": "unitPowerSpellIDs"
+    }
+  ],
+  "flavour": "classic-mop",
+  "schema": 1
+}

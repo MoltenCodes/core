@@ -108,6 +108,14 @@ def _assignment(indent: str, left: str, right: str) -> list[str]:
     return [f"{indent}{left} =", f"{indent}    {right}"]
 
 
+def _error_call(indent: str, message: str, level: int) -> list[str]:
+    """`error("...", level)` on one line, or spread over lines the way StyLua spreads a long call."""
+    line = f"{indent}error({message}, {level})"
+    if len(line) <= STYLUA_COLUMN_WIDTH:
+        return [line]
+    return [f"{indent}error(", f"{indent}    {message},", f"{indent}    {level}", f"{indent})"]
+
+
 def _lua_string(text: str) -> str:
     """A double-quoted Lua string literal for `text`."""
     escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
@@ -154,12 +162,12 @@ def _dependency_block(flavour: flavours.Flavour) -> list[str]:
         '    Registry = rawget(namespace, "Registry")',
         "end",
         f'if type(Registry) ~= "table" or rawget(Registry, "API") ~= {REQUIRED_REGISTRY_API} then',
-        f"    error({registry_missing}, 2)",
+        *_error_call("    ", registry_missing, 2),
         "end",
         "",
         'local getPackage = rawget(Registry, "Get")',
         'if type(getPackage) ~= "function" then',
-        f"    error({registry_invalid}, 2)",
+        *_error_call("    ", registry_invalid, 2),
         "end",
         f'local ApiKit = getPackage(Registry, "apiKit", {REQUIRED_API_KIT_API})',
         "if",
@@ -167,7 +175,7 @@ def _dependency_block(flavour: flavours.Flavour) -> list[str]:
         f'    or rawget(ApiKit, "API") ~= {REQUIRED_API_KIT_API}',
         '    or type(rawget(ApiKit, "RegisterFlavor")) ~= "function"',
         "then",
-        f"    error({facade_missing}, 2)",
+        *_error_call("    ", facade_missing, 2),
         "end",
         "",
         f"ApiKit:RegisterFlavor({_lua_string(flavour.id)}, function(api, host)",

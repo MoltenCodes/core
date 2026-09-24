@@ -1,8 +1,8 @@
 # ApiKit Tests
 
-The ApiKit suite covers the handwritten facade; the generated flavour files are
-covered by the sampled generated-output specs that arrive with each flavour's
-capture.
+The ApiKit suite covers the handwritten facade and loads each committed
+flavour file against it; the exhaustive check that a flavour file binds every
+documented function and nothing else is `tooling/tests/test_api_committed_flavours.py`.
 
 - flavour detection for every supported client, an unsupported client and a
   client without a project id; probes that are absent; the beta client that
@@ -31,6 +31,7 @@ Spec files:
 | `ErrorLevels_spec.lua` | every argument and receiver failure at the caller's line |
 | `FlavourTable_spec.lua` | the facade's table against the tooling's flavour table |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
+| `RetailBindings_spec.lua`, `ClassicEraBindings_spec.lua`, `ClassicMopBindings_spec.lua` | each committed flavour file against the real facade and the shared fixture: direct aliases, absent namespaces, another flavour's client, loading before the facade |
 
 Not yet covered: an in-place upgrade from an older revision (none exists), so
 the facade's own inherited-state validation is exercised only by a same-revision

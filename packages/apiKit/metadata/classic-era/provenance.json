@@ -1,0 +1,14 @@
+{
+  "branch": "classic_era",
+  "build": 69722,
+  "capturedOn": "2026-09-24",
+  "commit": "33e177d9bf38d76d5c6c6e05d5da78db1899659a",
+  "committedAt": "2026-09-12T19:01:13Z",
+  "documentationPath": "Interface/AddOns/Blizzard_APIDocumentationGenerated",
+  "fileCount": 534,
+  "flavour": "classic-era",
+  "repository": "Gethe/wow-ui-source",
+  "schema": 1,
+  "subject": "1.15.9 (69722)",
+  "version": "1.15.9"
+}

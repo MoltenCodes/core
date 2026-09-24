@@ -1,0 +1,225 @@
+{
+  "flavour": "classic-mop",
+  "restrictions": [
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "HasRestrictions",
+      "source": "ActionDocumentation.lua"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "IsProtectedFunction",
+      "source": "UISharedDocumentation.lua"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequiresActiveCommentator",
+      "source": "CommentatorSharedDocumentation.lua"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequiresCommentator",
+      "source": "CommentatorSharedDocumentation.lua"
+    },
+    {
+      "documentation": [
+        "Guarded APIs only accept unit token pairs that can be compared with one another. For example, comparisons where either unit is 'player' or 'target' are permitted, but comparisons between 'nameplate3' and 'boss1' are not."
+      ],
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequiresComparableUnitTokens",
+      "source": "SecretPredicatesDocumentation.lua"
+    },
+    {
+      "documentation": [
+        "Guarded APIs and events require that callers have access to the identity of a supplied unit token."
+      ],
+      "failureMode": "ReturnWithError",
+      "kind": "precondition",
+      "name": "RequiresDeclassifiedUnitIdentity",
+      "source": "SecretPredicatesDocumentation.lua"
+    },
+    {
+      "documentation": [
+        "Guarded APIs reject access for tainted callers if the object has the secret Text aspect assigned."
+      ],
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequiresFontStringTextAccess",
+      "source": "SecretPredicatesDocumentation.lua"
+    },
+    {
+      "failureMode": "Error",
+      "kind": "precondition",
+      "name": "RequiresRestrictedAbbreviationBreakpoints",
+      "source": "LocalizationSharedDocumentation.lua"
+    },
+    {
+      "failureMode": "ReturnWithError",
+      "kind": "precondition",
+      "name": "RequiresScriptObjectAlphaAccess",
+      "source": "SecretPredicatesDocumentation.lua"
+    },
+    {
+      "failureMode": "ReturnWithError",
+      "kind": "precondition",
+      "name": "RequiresScriptObjectDesaturationAccess",
+      "source": "SecretPredicatesDocumentation.lua"
+    },
+    {
+      "failureMode": "ReturnWithError",
+      "kind": "precondition",
+      "name": "RequiresStatusBarDesaturationAccess",
+      "source": "SecretPredicatesDocumentation.lua"
+    },
+    {
+      "documentation": [
+        "Guarded APIs and events require that callers have access to unit identity values. This does not raise a blocked action error - instead, protected APIs will return no values."
+      ],
+      "failureMode": "ReturnWithError",
+      "kind": "precondition",
+      "name": "RequiresUnitIdentityAccess",
+      "source": "SecretPredicatesDocumentation.lua"
+    },
+    {
+      "failureMode": "Error",
+      "kind": "precondition",
+      "name": "RequiresValidAbbreviationBreakpoints",
+      "source": "LocalizationSharedDocumentation.lua"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequiresValidActionSlot",
+      "source": "ActionBarSharedDocumentation.lua"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequiresValidSpellIdentifier",
+      "source": "SpellSharedDocumentation.lua"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequiresValidUnitAuraInstance",
+      "source": "UnitAuraSharedDocumentation.lua"
+    },
+    {
+      "documentation": [
+        "Restricts sending chat messages on chat types that can be observed by external players. Only applies during instance encounters for messages initiated from macros."
+      ],
+      "kind": "precondition",
+      "name": "RestrictedForMacroChatMessages",
+      "source": "ChatConstantsDocumentation.lua"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "IsIndexInRange",
+      "source": "CVarDocumentation.lua",
+      "system": "CVarScripts"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "IsNotReadOnly",
+      "source": "CVarDocumentation.lua",
+      "system": "CVarScripts"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "IsNotSecure",
+      "source": "CVarDocumentation.lua",
+      "system": "CVarScripts"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "IsValidAndPublic",
+      "source": "CVarDocumentation.lua",
+      "system": "CVarScripts"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequiresClubsInitialized",
+      "source": "ClubDocumentation.lua",
+      "system": "Club"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequiresValidTimelineEvent",
+      "source": "EncounterTimelineDocumentation.lua",
+      "system": "EncounterTimeline"
+    },
+    {
+      "documentation": [
+        "Guarded APIs require that the nameplate frame must allow changes to its hit test points."
+      ],
+      "failureMode": "Error",
+      "kind": "precondition",
+      "name": "RequiresCanChangeHitTestPoints",
+      "source": "FrameAPINamePlateDocumentation.lua",
+      "system": "FrameAPINamePlate"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequiresFriendList",
+      "source": "FriendListDocumentation.lua",
+      "system": "FriendList"
+    },
+    {
+      "documentation": [
+        "Requires that all mouse foci are not forbidden, hidden from the global environment, fully locked down, script inaccessible, or protected frames (while in combat)"
+      ],
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "MouseFocusValidForLimitedInput",
+      "source": "InputDocumentation.lua",
+      "system": "Input"
+    },
+    {
+      "failureMode": "Error",
+      "kind": "precondition",
+      "name": "RequiresLimitedInput",
+      "source": "InputDocumentation.lua",
+      "system": "Input"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequiresRecentAllies",
+      "source": "RecentAlliesDocumentation.lua",
+      "system": "RecentAllies"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequiresSpellDiminishUI",
+      "source": "SpellDiminishUIDocumentation.lua",
+      "system": "SpellDiminishUI"
+    },
+    {
+      "failureMode": "ReturnNothing",
+      "kind": "precondition",
+      "name": "RequireNPERestricted",
+      "source": "TutorialDocumentation.lua",
+      "system": "Tutorial"
+    },
+    {
+      "kind": "precondition",
+      "name": "RequiresNonSecretAura",
+      "source": "UnitAuraDocumentation.lua",
+      "system": "UnitAuras"
+    }
+  ],
+  "schema": 1
+}

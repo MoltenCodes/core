@@ -409,6 +409,10 @@
       "kind": "opaque",
       "lua": "any"
     },
+    "RoleShortageReward": {
+      "kind": "class",
+      "lua": "RoleShortageReward"
+    },
     "ScriptRegion": {
       "kind": "class",
       "lua": "ScriptRegion"
@@ -636,6 +640,10 @@
     "kstringLfgListSearch": {
       "kind": "alias",
       "lua": "string"
+    },
+    "luaFunction": {
+      "kind": "primitive",
+      "lua": "function"
     },
     "luaIndex": {
       "kind": "alias",

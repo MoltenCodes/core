@@ -1,0 +1,12 @@
+{
+  "entries": [
+    {
+      "build": 69722,
+      "capturedOn": "2026-09-24",
+      "commit": "33e177d9bf38d76d5c6c6e05d5da78db1899659a",
+      "committedAt": "2026-09-12T19:01:13Z",
+      "version": "1.15.9"
+    }
+  ],
+  "schema": 1
+}
