@@ -1190,6 +1190,168 @@ the generated reference and search index are not committed but built into a
 release asset (design document, section 13). Implementation started on the
 owner's go on 2026-09-24.
 
+### Phase 5 — beyond Ace3: capabilities, then developer packages
+
+Decided 2026-09-24 with the project owner. Ace3 parity is complete and phase 4
+went past it; what remains for the core is (a) capabilities the phase 4 study
+identified for existing Kits (items W10 to W16 of the WowAce survey, plus one
+Ace3 gap the survey did not list: AceDBOptions' ready-made profile management
+options) and (b) non-UI packages that developers reach for daily and that the
+ecosystem still hand-rolls. Everything about user interface beyond widgetKit's
+base set (tooltip, menu, bar and dialog sets, the minimap launcher, the
+engine-driven ticker, key bindings) is deliberately last, as its own phase,
+because the owner wants the developer-facing core finished first. Each step
+ends with the gates green and a read-only review; capabilities are checkboxes
+under their Kit, new Kits carry nine points.
+
+#### Package I — capabilities for existing Kits
+
+- [ ] **signalKit** (W10) — `SignalKit:New({ onFirst, onLast })` hooks that fire
+      on the 0→1 and 1→0 subscriber transitions (a source can activate only
+      while observed, CallbackHandler's `OnUsed`/`OnUnused`);
+      `SignalKit:NewJournal(capacity)`, a signal that keeps its last firings in
+      a preallocated ring for explicit pull through `journal:History()` (no
+      replay on connect; default capacity 128, argument-count cap documented);
+      `signal:GetGeneration()` incrementing on every fire for cheap
+      "changed since I looked" checks. Hooks cost one comparison per connect
+      and disconnect and must hold under re-entrant connect and disconnect.
+- [ ] **cacheKit** (W11) — `Memoize(fn, { cacheable })`: a predicate that
+      returns a result without storing it while it is incomplete;
+      `cache:PutNegative(key, ttlSeconds)`: a negative entry with its own
+      expiry on a TTL cache (a peer that answered "nothing" is not asked again
+      for a while); `CacheKit:Lazy(resolve, options)`: a compact resident form
+      expanded on demand under a namespace path with recursive parent
+      invalidation; `CacheKit:NewQueue(capacity, overflow)`: a bounded ring
+      with an explicit `dropOldest`, `dropNewest` or `reject` policy, O(1)
+      and allocation-free after construction.
+- [ ] **eventKit** (W12) — `EventKit:ConnectCombatLog(subEvent, callback)` and
+      the scope form: one `CombatLogGetCurrentEventInfo()` read per event,
+      O(1) routing by sub-event, listeners receive the multiple returns
+      unchanged, a sub-event with no listener costs one lookup; isolation as
+      for `Connect`.
+- [ ] **moduleKit** (W16) — an `implements` option on `Provide` and on module
+      definitions: a list of method names checked once at registration,
+      failing at the caller's line with the missing name; a SchemaKit schema
+      accepted in its place when SchemaKit is loaded.
+- [ ] **optionsKit** (AceDBOptions parity) — `OptionsKit:ProfileOptions(db,
+      options?)`: a ready-made options group over a SettingsKit database
+      (choose the active profile, create one by name, copy from another,
+      reset the current one, delete one, with confirmations and the current
+      profile's name in descriptions), built from existing option kinds so
+      every renderer shows it; refuses when SettingsKit is absent.
+- [ ] **clientKit** (W13, the part Registry's spent line budget leaves to it)
+      — `ClientKit:GetManifest(addonName)`: a read-only snapshot of an addon's
+      `.toc` fields with locale-suffixed fallback (`## Notes-deDE` before
+      `## Notes`), read once per addon and cached. Registry's `Deprecate` and
+      data-package kinds stay unbuilt until a consumer needs them.
+- [ ] Deferred to the user-interface phase: **timerKit** engine-driven
+      pausable ticker (W15, needs an animation host), **frameKit** (W14,
+      folded into widgetKit's anchors), Registry deprecation warnings (W13).
+
+#### Package J — brokerKit
+
+**brokerKit** — facade `BrokerKit`
+
+1. Package `brokerKit`, facade `BrokerKit`, API generation 1.
+2. Purpose: data objects for display addons, compatible with the
+   LibDataBroker-1.1 contract every display addon already consumes (Titan,
+   Bazooka, ChocolateBar): typed data objects with `text`, `label`, `icon`,
+   `value`, `suffix` and the callbacks `OnClick`, `OnEnter`, `OnLeave`,
+   `OnTooltipShow`; attribute-change notification per object and per
+   attribute through SignalKit; enumeration; and a bridge that publishes
+   MoltenCodes objects into a foreign LibDataBroker when one is loaded and
+   adopts foreign objects read-only, so an addon written against BrokerKit is
+   seen by every display addon and sees theirs. Non-goals: rendering a
+   display, the minimap launcher (UI phase), persisting anything.
+3. Dependencies: registry API 2, signalKit API 1; interopKit API 1 optional
+   through `Registry:Find` (finding LibStub's LibDataBroker).
+4. Surface: `BrokerKit:New(name, definition)` → object; `BrokerKit:Get(name)`;
+   `BrokerKit:Objects()` sorted; `object:Set(attribute, value)` /
+   `object:Get(attribute)`; `object:OnChange(attribute?, callback)`;
+   `BrokerKit:OnObjectAdded(callback)`; `BrokerKit:ExposeToLibDataBroker()` /
+   `AdoptFromLibDataBroker()`; `SetLimits{ maxObjects, maxAttributes }`.
+5. Ownership: objects live for the session (a display addon keeps
+   references); attributes are plain fields for LibDataBroker readers and
+   change through `Set` for notification; foreign objects are read-only.
+6. Performance: `Set` is one comparison and one signal fire when the value
+   changed; reads are field reads; no allocation per update.
+7. Tests: attribute change signals, per-attribute subscriptions, callbacks
+   invoked with the object, enumeration order, the bridge both ways with a
+   fake LibDataBroker, limits, upgrade, manifest, error levels.
+8. Docs: README, API.md (the LibDataBroker mapping field by field), CHANGELOG;
+   EMBEDDING footprint and host-requirements rows.
+9. Status: planned 2026-09-24.
+
+#### Package K — logKit
+
+**logKit** — facade `LogKit`
+
+1. Package `logKit`, facade `LogKit`, API generation 1.
+2. Purpose: levelled, structured logging for addons and Kits with lazy
+   formatting (arguments are formatted only when a sink is listening at that
+   level), per-addon loggers with a tri-state override (addon, global,
+   default), a bounded in-memory journal readable after the fact (built on
+   SignalKit's journal), and sinks: chat frame, the journal, a callback; the
+   sink contract ProfileKit reports can share. Non-goals: log files (the
+   client has none), remote shipping, a viewer window (UI phase).
+3. Dependencies: registry API 2, signalKit API 1; commandKit API 1 optional
+   (`/log <addon> <level>`), settingsKit API 1 optional (persisting the
+   per-addon level).
+4. Surface: `LogKit:ForAddon(addonName)` → logger with `Trace`, `Debug`,
+   `Info`, `Warn`, `Error`, each `(message, ...)` formatted lazily, and
+   `logger:SetLevel(level)`, `logger:GetLevel()`, `logger:IsEnabled(level)`;
+   `LogKit:SetGlobalLevel(level|nil)`; `LogKit:AddSink(sink)` /
+   `RemoveSink`; `LogKit:History(addonName?)` → iterator over the journal;
+   `SetLimits{ journalCapacity, maxSinks, maxMessageLength }`.
+5. Ownership: loggers are per addon and live for the session; sinks are
+   removed by their handle; the journal is a ring.
+6. Performance: a disabled level costs one comparison; formatting happens
+   once per enabled message; secret values are never formatted.
+7. Tests: level gating, lazy formatting (the formatter is not called when
+   disabled), override precedence, journal ring order, sinks and their
+   removal, secret-safe formatting, limits, upgrade, manifest, error levels.
+8. Docs: README, API.md, CHANGELOG; EMBEDDING rows.
+9. Status: planned 2026-09-24.
+
+#### Package L — compatKit
+
+**compatKit** — facade `CompatKit`
+
+1. Package `compatKit`, facade `CompatKit`, API generation 1.
+2. Purpose (W17): named, independently versioned shims with a host opt-out
+   table (TaintLess's model: the newest version of a shim wins across
+   embedded copies, a shim can be skipped by name); a provider registry with
+   liveness probes and a deterministic fallback cascade that output-routing
+   consumers share (LibSink's model); and a documented catalogue of
+   taint-hostile Blizzard subsystems with their sanctioned replacements. The
+   apiKit metadata is used to state, per flavour, which documented function
+   a shim covers and where it moved, so the catalogue is data, not memory.
+   Non-goals: flavour detection (clientKit), rewriting Blizzard behaviour,
+   the wrapper itself (apiKit).
+3. Dependencies: registry API 2; clientKit API 1 optional (flavour facts),
+   apiKit API 1 optional (presence checks).
+4. Surface: `CompatKit:Shim(name, version, implementation)`,
+   `CompatKit:SkipShim(name)`, `CompatKit:GetShims()`, `CompatKit:Apply()`;
+   `CompatKit:Providers(kind)` → registry with `Register(name, implementation,
+   probe, priority)`, `Resolve(preferred?)`, `List()`; `SetLimits{ maxShims,
+   maxProviders }`.
+5. Ownership: shims are process-wide and applied once; providers are
+   memoised per kind and re-validated by their probe.
+6. Performance: load-time apart from `Resolve`.
+7. Tests: shim version convergence across two embedded copies, skip honoured,
+   apply idempotent, cascade order, a dead preferred provider falls through,
+   limits, upgrade, manifest, error levels.
+8. Docs: README, API.md, CHANGELOG; the catalogue in EMBEDDING's taint
+   section; EMBEDDING rows.
+9. Status: planned 2026-09-24.
+
+#### Package M — the user-interface phase (last, by the owner's decision)
+
+- [ ] tooltipKit (multi-column pooled tooltips), menuKit (taint-safe menus),
+      barKit (status and timer bars), dialogKit and toastKit, the minimap
+      launcher for brokerKit, timerKit's engine-driven ticker (W15),
+      bindingKit. Recorded when their turn comes.
+
 ### Standing obligations
 
 These apply to every phase rather than being completed once.
@@ -1251,5 +1413,6 @@ duplicating those specifications.
 ---
 
 Last roadmap baseline update: 2026-09-24 (phases 0 through 4 and packages F,
-G and H complete: 25 packages, every gate green; the standing obligations
-continue).
+G and H complete: 25 packages, every gate green; phase 5 planned: package I
+capabilities, then brokerKit, logKit, compatKit, the user-interface phase last;
+the standing obligations continue).
