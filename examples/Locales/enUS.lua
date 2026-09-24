@@ -10,7 +10,7 @@ local ADDON_NAME, ADDON_TABLE = ...
 
 local L = ADDON_TABLE.Kits.LocaleKit:NewLocale(ADDON_NAME, "enUS", { isDefault = true })
 if not L then
-    return
+  return
 end
 
 -- Chat output (Core.lua).

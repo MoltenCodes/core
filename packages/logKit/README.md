@@ -26,7 +26,7 @@ local level, source = log:GetLevel() -- "debug", "addon"
 
 -- The journal is always on and holds the last 1024 delivered messages.
 for position, addon, levelName, message, time in LogKit:History("MyAddon", "warn") do
-    print(position, addon, levelName, message, time)
+  print(position, addon, levelName, message, time)
 end
 ```
 

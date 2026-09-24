@@ -48,12 +48,12 @@ observed (the `OnUsed` / `OnUnused` idea of CallbackHandler).
 
 ```lua
 local health = SignalKit:New({
-    onFirst = function(signal)
-        eventScope:ConnectUnit("UNIT_HEALTH", forward, "player") -- activate the source
-    end,
-    onLast = function(signal)
-        eventScope:DisconnectAll() -- nobody is listening any more
-    end,
+  onFirst = function(signal)
+    eventScope:ConnectUnit("UNIT_HEALTH", forward, "player") -- activate the source
+  end,
+  onLast = function(signal)
+    eventScope:DisconnectAll() -- nobody is listening any more
+  end,
 })
 ```
 
@@ -100,7 +100,7 @@ Connects `callback` and returns a connection handle.
 
 ```lua
 local connection = changed:Connect(function(value)
-    print(value)
+  print(value)
 end)
 ```
 
@@ -184,8 +184,8 @@ polls rather than listens:
 local seen = profile.changed:GetGeneration()
 -- later, on a frame update
 if profile.changed:GetGeneration() ~= seen then
-    seen = profile.changed:GetGeneration()
-    rebuild()
+  seen = profile.changed:GetGeneration()
+  rebuild()
 end
 ```
 
@@ -232,7 +232,7 @@ messages:Fire("Alice", "hello")
 messages:Fire("Bob", "hi")
 
 for position, entry in messages:History() do
-    print(position, entry.generation, entry[1], entry[2])
+  print(position, entry.generation, entry[1], entry[2])
 end
 -- 1  1  Alice  hello
 -- 2  2  Bob    hi
@@ -287,8 +287,8 @@ newest:
 
 ```lua
 for position, entry in journal:History() do
-    -- position: 1 for the oldest entry, up to the number recorded
-    -- entry: a SignalKit.HistoryEntry
+  -- position: 1 for the oldest entry, up to the number recorded
+  -- entry: a SignalKit.HistoryEntry
 end
 ```
 
@@ -398,14 +398,14 @@ bus name and a topic.
 -- In the addon that owns the information.
 local bus = SignalKit:ForAddon("MyAddon")
 bus:DeclareTopic("ProfileChanged", {
-    arguments = 1,
-    description = "The active profile changed; the argument is its name.",
+  arguments = 1,
+  description = "The active profile changed; the argument is its name.",
 })
 bus:Publish("ProfileChanged", "Default")
 
 -- In a module or another addon that holds no reference to the first one.
 SignalKit:Bus("MyAddon"):Subscribe("ProfileChanged", function(profileName)
-    print("profile is now", profileName)
+  print("profile is now", profileName)
 end)
 ```
 
@@ -659,8 +659,8 @@ reached is refused with `nil, "full"`, never grown silently.
 ```lua
 -- A bus whose owner expects many topics and many listeners per topic.
 local bus = SignalKit:Bus("MyAddon", {
-    maxTopics = 1024,
-    maxListeners = SignalKit.UNBOUNDED,
+  maxTopics = 1024,
+  maxListeners = SignalKit.UNBOUNDED,
 })
 
 -- Package-wide limits: read them back as a fresh table.

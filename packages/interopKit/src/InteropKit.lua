@@ -110,103 +110,103 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
 if type(Registry) == "nil" and type(namespace) == "table" then
-    Registry = rawget(namespace, "Registry")
+  Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
-    error("MoltenCodes InteropKit requires Registry API 2 to be loaded first", 2)
+  error("MoltenCodes InteropKit requires Registry API 2 to be loaded first", 2)
 end
 
 local bootstrapPackage = rawget(Registry, "Bootstrap")
 if
-    type(bootstrapPackage) ~= "function"
-    or type(rawget(Registry, "Find")) ~= "function"
-    or type(rawget(Registry, "Packages")) ~= "function"
+  type(bootstrapPackage) ~= "function"
+  or type(rawget(Registry, "Find")) ~= "function"
+  or type(rawget(Registry, "Packages")) ~= "function"
 then
-    error("MoltenCodes InteropKit requires a valid Registry API 2 facade", 2)
+  error("MoltenCodes InteropKit requires a valid Registry API 2 facade", 2)
 end
 
 -- Bootstrap ------------------------------------------------------------------
 
 -- Every method name the facade publishes, used by the surface check.
 local PUBLIC_METHODS = {
-    "IsLibStubPresent",
-    "ExposeToLibStub",
-    "ExposeAll",
-    "AdoptFromLibStub",
-    "Find",
-    "Adopted",
+  "IsLibStubPresent",
+  "ExposeToLibStub",
+  "ExposeAll",
+  "AdoptFromLibStub",
+  "Find",
+  "Adopted",
 }
 
 ---Whether `implementation` exposes the complete InteropKit API 1 surface.
 ---@param implementation any shared package table handed back by Registry
 ---@return boolean
 local function validatePublicSurface(implementation)
-    if
-        type(implementation) ~= "table"
-        or rawget(implementation, "API") ~= API_GENERATION
-        or type(rawget(implementation, "REVISION")) ~= "number"
-    then
-        return false
-    end
+  if
+    type(implementation) ~= "table"
+    or rawget(implementation, "API") ~= API_GENERATION
+    or type(rawget(implementation, "REVISION")) ~= "number"
+  then
+    return false
+  end
 
-    for index = 1, #PUBLIC_METHODS do
-        if type(rawget(implementation, PUBLIC_METHODS[index])) ~= "function" then
-            return false
-        end
+  for index = 1, #PUBLIC_METHODS do
+    if type(rawget(implementation, PUBLIC_METHODS[index])) ~= "function" then
+      return false
     end
-    return true
+  end
+  return true
 end
 
 ---Whether `currentState` has the shape this revision's schema requires.
 ---@param currentState any
 ---@return boolean
 local function validateState(currentState)
-    return type(currentState) == "table"
-        and rawget(currentState, "schema") == STATE_SCHEMA
-        and type(rawget(currentState, "adopted")) == "table"
+  return type(currentState) == "table"
+    and rawget(currentState, "schema") == STATE_SCHEMA
+    and type(rawget(currentState, "adopted")) == "table"
 end
 
 ---Whether a copy carrying this revision already committed its state.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateState(rawget(implementation, "_state"))
+  return validateState(rawget(implementation, "_state"))
 end
 
 -- `Registry:Bootstrap` owns the reconciliation every embedded package repeats:
 -- look the package up, refuse to reinterpret state owned by a newer revision,
 -- and register this one. What stays here is what only InteropKit can answer.
 local InteropKit, previousRevision, selected = bootstrapPackage(Registry, {
-    package = PACKAGE_NAME,
-    api = API_GENERATION,
-    revision = IMPLEMENTATION_REVISION,
-    label = "MoltenCodes InteropKit",
-    validatePublicSurface = validatePublicSurface,
-    validateState = validateCurrentState,
+  package = PACKAGE_NAME,
+  api = API_GENERATION,
+  revision = IMPLEMENTATION_REVISION,
+  label = "MoltenCodes InteropKit",
+  validatePublicSurface = validatePublicSurface,
+  validateState = validateCurrentState,
 })
 
 if InteropKit == nil then
-    -- Equal or newer compatible revision already owns the shared package table.
-    return selected
+  -- Equal or newer compatible revision already owns the shared package table.
+  return selected
 end
 
 local state = rawget(InteropKit, "_state")
 
 if previousRevision == nil then
-    if state ~= nil then
-        error("MoltenCodes InteropKit package state is corrupted or incomplete", 2)
-    end
-
-    state = {
-        schema = STATE_SCHEMA,
-        -- Adopted LibStub libraries, keyed by major:
-        -- `{ library = table, minor = number }`. Adoptions are load-time
-        -- registrations and survive an in-place upgrade with this table.
-        adopted = {},
-    }
-    rawset(InteropKit, "_state", state)
-elseif not validateState(state) then
+  if state ~= nil then
     error("MoltenCodes InteropKit package state is corrupted or incomplete", 2)
+  end
+
+  state = {
+    schema = STATE_SCHEMA,
+    -- Adopted LibStub libraries, keyed by major:
+    -- `{ library = table, minor = number }`. Adoptions are load-time
+    -- registrations and survive an in-place upgrade with this table.
+    adopted = {},
+  }
+  rawset(InteropKit, "_state", state)
+elseif not validateState(state) then
+  error("MoltenCodes InteropKit package state is corrupted or incomplete", 2)
 end
 
 local adopted = rawget(state, "adopted")
@@ -220,10 +220,10 @@ local adopted = rawget(state, "adopted")
 ---@param value any
 ---@return boolean
 local function isSecret(value)
-    -- The World of Warcraft client API is reachable only through the global table.
-    -- selene: allow(global_usage)
-    local isSecretValue = rawget(_G, "issecretvalue")
-    return type(isSecretValue) == "function" and isSecretValue(value) == true
+  -- The World of Warcraft client API is reachable only through the global table.
+  -- selene: allow(global_usage)
+  local isSecretValue = rawget(_G, "issecretvalue")
+  return type(isSecretValue) == "function" and isSecretValue(value) == true
 end
 
 ---Raise at `level` unless `value` is a non-empty, non-secret string.
@@ -235,12 +235,12 @@ end
 ---@param parameterName string
 ---@param level integer stack level the failure is reported at
 local function validateName(value, methodName, parameterName, level)
-    if isSecret(value) then
-        error(methodName .. " " .. parameterName .. " must not be a secret value", level)
-    end
-    if type(value) ~= "string" or value == "" then
-        error(methodName .. " " .. parameterName .. " must be a non-empty string", level)
-    end
+  if isSecret(value) then
+    error(methodName .. " " .. parameterName .. " must not be a secret value", level)
+  end
+  if type(value) ~= "string" or value == "" then
+    error(methodName .. " " .. parameterName .. " must be a non-empty string", level)
+  end
 end
 
 ---Raise at `level` unless `value` is a Registry package identifier.
@@ -248,10 +248,10 @@ end
 ---@param methodName string
 ---@param level integer
 local function validatePackageName(value, methodName, level)
-    validateName(value, methodName, "packageName", level + 1)
-    if not string.match(value, PACKAGE_NAME_PATTERN) then
-        error(methodName .. " packageName must match " .. PACKAGE_NAME_PATTERN, level)
-    end
+  validateName(value, methodName, "packageName", level + 1)
+  if not string.match(value, PACKAGE_NAME_PATTERN) then
+    error(methodName .. " packageName must match " .. PACKAGE_NAME_PATTERN, level)
+  end
 end
 
 ---Raise at `level` unless `value` is a positive integer API generation.
@@ -262,12 +262,12 @@ end
 ---@param methodName string
 ---@param level integer
 local function validateApi(value, methodName, level)
-    if isSecret(value) then
-        error(methodName .. " api must not be a secret value", level)
-    end
-    if type(value) ~= "number" or value % 1 ~= 0 or value < 1 or value > MAXIMUM_INTEGER then
-        error(methodName .. " api must be a positive integer", level)
-    end
+  if isSecret(value) then
+    error(methodName .. " api must not be a secret value", level)
+  end
+  if type(value) ~= "number" or value % 1 ~= 0 or value < 1 or value > MAXIMUM_INTEGER then
+    error(methodName .. " api must be a positive integer", level)
+  end
 end
 
 -- LibStub access -------------------------------------------------------------
@@ -275,17 +275,17 @@ end
 ---Return LibStub when it is loaded and has the two public methods, else `nil`.
 ---@return table|nil
 local function findLibStub()
-    -- LibStub publishes itself only as a global; there is no other way to find it.
-    -- selene: allow(global_usage)
-    local libStub = rawget(_G, LIBSTUB_GLOBAL)
-    if
-        type(libStub) ~= "table"
-        or type(rawget(libStub, "NewLibrary")) ~= "function"
-        or type(rawget(libStub, "GetLibrary")) ~= "function"
-    then
-        return nil
-    end
-    return libStub
+  -- LibStub publishes itself only as a global; there is no other way to find it.
+  -- selene: allow(global_usage)
+  local libStub = rawget(_G, LIBSTUB_GLOBAL)
+  if
+    type(libStub) ~= "table"
+    or type(rawget(libStub, "NewLibrary")) ~= "function"
+    or type(rawget(libStub, "GetLibrary")) ~= "function"
+  then
+    return nil
+  end
+  return libStub
 end
 
 ---Return LibStub's `libs` and `minors` tables, or `nil` when this LibStub does
@@ -294,12 +294,12 @@ end
 ---@return table|nil libs
 ---@return table|nil minors
 local function libStubTables(libStub)
-    local libs = rawget(libStub, "libs")
-    local minors = rawget(libStub, "minors")
-    if type(libs) ~= "table" or type(minors) ~= "table" then
-        return nil, nil
-    end
-    return libs, minors
+  local libs = rawget(libStub, "libs")
+  local minors = rawget(libStub, "minors")
+  if type(libs) ~= "table" or type(minors) ~= "table" then
+    return nil, nil
+  end
+  return libs, minors
 end
 
 -- Package lookup -------------------------------------------------------------
@@ -309,7 +309,7 @@ end
 ---@param packageName string
 ---@return string
 local function displayName(packageName)
-    return string.upper(string.sub(packageName, 1, 1)) .. string.sub(packageName, 2)
+  return string.upper(string.sub(packageName, 1, 1)) .. string.sub(packageName, 2)
 end
 
 ---Return a package's facade and revision, or `nil` and Registry's reason.
@@ -321,20 +321,20 @@ end
 ---@return table|nil facade
 ---@return integer|string revisionOrReason
 local function findPackage(packageName, api)
-    if packageName ~= REGISTRY_PACKAGE_NAME then
-        return Registry:Find(packageName, api)
-    end
+  if packageName ~= REGISTRY_PACKAGE_NAME then
+    return Registry:Find(packageName, api)
+  end
 
-    -- The shared MoltenCodes namespace is the documented handoff point.
-    -- selene: allow(global_usage)
-    local currentNamespace = rawget(_G, "MoltenCodes")
-    local published = type(currentNamespace) == "table" and rawget(currentNamespace, "Registries")
-        or nil
-    local facade = type(published) == "table" and rawget(published, api) or nil
-    if type(facade) ~= "table" or type(rawget(facade, "REVISION")) ~= "number" then
-        return nil, "generation_mismatch"
-    end
-    return facade, rawget(facade, "REVISION")
+  -- The shared MoltenCodes namespace is the documented handoff point.
+  -- selene: allow(global_usage)
+  local currentNamespace = rawget(_G, "MoltenCodes")
+  local published = type(currentNamespace) == "table" and rawget(currentNamespace, "Registries")
+    or nil
+  local facade = type(published) == "table" and rawget(published, api) or nil
+  if type(facade) ~= "table" or type(rawget(facade, "REVISION")) ~= "number" then
+    return nil, "generation_mismatch"
+  end
+  return facade, rawget(facade, "REVISION")
 end
 
 -- Exposing -------------------------------------------------------------------
@@ -343,7 +343,7 @@ end
 ---`GetLibrary`.
 ---@return boolean
 local function packageIsLibStubPresent()
-    return findLibStub() ~= nil
+  return findLibStub() ~= nil
 end
 
 ---Register `facade` with LibStub under `major` at minor `revision`.
@@ -357,40 +357,40 @@ end
 ---@return boolean ok
 ---@return InteropKit.Reason|nil reason
 local function exposeFacade(libStub, facade, major, revision)
-    local libs, minors = libStubTables(libStub)
-    if libs == nil or minors == nil then
-        return false, REASON_UNSUPPORTED
-    end
+  local libs, minors = libStubTables(libStub)
+  if libs == nil or minors == nil then
+    return false, REASON_UNSUPPORTED
+  end
 
-    local held = rawget(libs, major)
-    local heldMinor = rawget(minors, major)
+  local held = rawget(libs, major)
+  local heldMinor = rawget(minors, major)
 
-    if type(held) ~= "nil" and held ~= facade then
-        -- Another library owns the name. Asking LibStub for it with a higher
-        -- minor would already raise that library's recorded minor, so the
-        -- refusal happens before LibStub is called at all.
-        return false, REASON_TAKEN
-    end
-    if type(held) == "nil" and type(heldMinor) ~= "nil" then
-        -- A minor without a library is a state LibStub itself never produces.
-        return false, REASON_UNSUPPORTED
-    end
-    if held == facade and type(heldMinor) == "number" and heldMinor >= revision then
-        -- Already exposed at this revision or a newer one.
-        return true, nil
-    end
-
-    local created = rawget(libStub, "NewLibrary")(libStub, major, revision)
-    if type(created) ~= "table" or rawget(libs, major) ~= created then
-        return false, REASON_UNSUPPORTED
-    end
-
-    -- The one write into LibStub's internals: LibStub has just recorded the
-    -- major and minor and created an empty table for them; the Kit's facade
-    -- takes that table's place so `LibStub(major)` returns the shared facade.
-    -- On a re-exposure `created` already is the facade and nothing changes.
-    rawset(libs, major, facade)
+  if type(held) ~= "nil" and held ~= facade then
+    -- Another library owns the name. Asking LibStub for it with a higher
+    -- minor would already raise that library's recorded minor, so the
+    -- refusal happens before LibStub is called at all.
+    return false, REASON_TAKEN
+  end
+  if type(held) == "nil" and type(heldMinor) ~= "nil" then
+    -- A minor without a library is a state LibStub itself never produces.
+    return false, REASON_UNSUPPORTED
+  end
+  if held == facade and type(heldMinor) == "number" and heldMinor >= revision then
+    -- Already exposed at this revision or a newer one.
     return true, nil
+  end
+
+  local created = rawget(libStub, "NewLibrary")(libStub, major, revision)
+  if type(created) ~= "table" or rawget(libs, major) ~= created then
+    return false, REASON_UNSUPPORTED
+  end
+
+  -- The one write into LibStub's internals: LibStub has just recorded the
+  -- major and minor and created an empty table for them; the Kit's facade
+  -- takes that table's place so `LibStub(major)` returns the shared facade.
+  -- On a re-exposure `created` already is the facade and nothing changes.
+  rawset(libs, major, facade)
+  return true, nil
 end
 
 ---Make a Kit reachable as a LibStub library.
@@ -410,30 +410,30 @@ end
 ---@return string|InteropKit.Reason majorOrReason
 ---@return string? registryReason
 local function packageExposeToLibStub(_, packageName, api, major)
-    local methodName = "InteropKit:ExposeToLibStub"
-    validatePackageName(packageName, methodName, 3)
-    validateApi(api, methodName, 3)
-    if type(major) ~= "nil" then
-        validateName(major, methodName, "major", 3)
-    else
-        major = DEFAULT_MAJOR_PREFIX .. displayName(packageName) .. "-" .. api
-    end
+  local methodName = "InteropKit:ExposeToLibStub"
+  validatePackageName(packageName, methodName, 3)
+  validateApi(api, methodName, 3)
+  if type(major) ~= "nil" then
+    validateName(major, methodName, "major", 3)
+  else
+    major = DEFAULT_MAJOR_PREFIX .. displayName(packageName) .. "-" .. api
+  end
 
-    local libStub = findLibStub()
-    if libStub == nil then
-        return false, REASON_ABSENT
-    end
+  local libStub = findLibStub()
+  if libStub == nil then
+    return false, REASON_ABSENT
+  end
 
-    local facade, revisionOrReason = findPackage(packageName, api)
-    if facade == nil then
-        return false, REASON_UNKNOWN, revisionOrReason --[[@as string]]
-    end
+  local facade, revisionOrReason = findPackage(packageName, api)
+  if facade == nil then
+    return false, REASON_UNKNOWN, revisionOrReason --[[@as string]]
+  end
 
-    local ok, reason = exposeFacade(libStub, facade, major, revisionOrReason --[[@as integer]])
-    if not ok then
-        return false, reason --[[@as InteropKit.Reason]]
-    end
-    return true, major
+  local ok, reason = exposeFacade(libStub, facade, major, revisionOrReason --[[@as integer]])
+  if not ok then
+    return false, reason --[[@as InteropKit.Reason]]
+  end
+  return true, major
 end
 
 ---Build a set from the `except` array of `ExposeAll`, raising at `level` for a
@@ -442,27 +442,27 @@ end
 ---@param level integer
 ---@return table<string, boolean>
 local function readExcept(options, level)
-    local methodName = "InteropKit:ExposeAll"
-    if type(options) == "nil" then
-        return {}
-    end
-    if type(options) ~= "table" then
-        error(methodName .. " options must be a table or nil", level)
-    end
+  local methodName = "InteropKit:ExposeAll"
+  if type(options) == "nil" then
+    return {}
+  end
+  if type(options) ~= "table" then
+    error(methodName .. " options must be a table or nil", level)
+  end
 
-    local except = rawget(options, "except")
-    local excluded = {}
-    if type(except) == "nil" then
-        return excluded
-    end
-    if type(except) ~= "table" then
-        error(methodName .. " options.except must be an array of package names", level)
-    end
-    for index = 1, #except do
-        validatePackageName(rawget(except, index), methodName, level + 1)
-        excluded[rawget(except, index)] = true
-    end
+  local except = rawget(options, "except")
+  local excluded = {}
+  if type(except) == "nil" then
     return excluded
+  end
+  if type(except) ~= "table" then
+    error(methodName .. " options.except must be an array of package names", level)
+  end
+  for index = 1, #except do
+    validatePackageName(rawget(except, index), methodName, level + 1)
+    excluded[rawget(except, index)] = true
+  end
+  return excluded
 end
 
 ---Expose every active package `Registry:Packages()` lists, under its default
@@ -478,29 +478,29 @@ end
 ---@return integer skipped
 ---@return integer refused
 local function packageExposeAll(_, options)
-    local excluded = readExcept(options, 3)
-    local libStub = findLibStub()
-    local exposed, skipped, refused = 0, 0, 0
+  local excluded = readExcept(options, 3)
+  local libStub = findLibStub()
+  local exposed, skipped, refused = 0, 0, 0
 
-    local rows = Registry:Packages()
-    for index = 1, #rows do
-        local row = rows[index]
-        local packageName = row.package
-        if excluded[packageName] or row.status ~= STATUS_ACTIVE then
-            skipped = skipped + 1
-        elseif libStub == nil then
-            refused = refused + 1
-        else
-            local facade = Registry:Find(packageName, row.api)
-            local major = DEFAULT_MAJOR_PREFIX .. displayName(packageName) .. "-" .. row.api
-            if facade ~= nil and exposeFacade(libStub, facade, major, row.revision) then
-                exposed = exposed + 1
-            else
-                refused = refused + 1
-            end
-        end
+  local rows = Registry:Packages()
+  for index = 1, #rows do
+    local row = rows[index]
+    local packageName = row.package
+    if excluded[packageName] or row.status ~= STATUS_ACTIVE then
+      skipped = skipped + 1
+    elseif libStub == nil then
+      refused = refused + 1
+    else
+      local facade = Registry:Find(packageName, row.api)
+      local major = DEFAULT_MAJOR_PREFIX .. displayName(packageName) .. "-" .. row.api
+      if facade ~= nil and exposeFacade(libStub, facade, major, row.revision) then
+        exposed = exposed + 1
+      else
+        refused = refused + 1
+      end
     end
-    return exposed, skipped, refused
+  end
+  return exposed, skipped, refused
 end
 
 -- Adopting -------------------------------------------------------------------
@@ -517,26 +517,26 @@ end
 ---@return table|nil library
 ---@return number|InteropKit.Reason minorOrReason
 local function packageAdoptFromLibStub(_, major)
-    validateName(major, "InteropKit:AdoptFromLibStub", "major", 3)
+  validateName(major, "InteropKit:AdoptFromLibStub", "major", 3)
 
-    local libStub = findLibStub()
-    if libStub == nil then
-        return nil, REASON_ABSENT
-    end
+  local libStub = findLibStub()
+  if libStub == nil then
+    return nil, REASON_ABSENT
+  end
 
-    local library, minor = rawget(libStub, "GetLibrary")(libStub, major, true)
-    if type(library) ~= "table" then
-        return nil, REASON_UNKNOWN
-    end
+  local library, minor = rawget(libStub, "GetLibrary")(libStub, major, true)
+  if type(library) ~= "table" then
+    return nil, REASON_UNKNOWN
+  end
 
-    local record = rawget(adopted, major)
-    if record == nil then
-        record = {}
-        rawset(adopted, major, record)
-    end
-    rawset(record, "library", library)
-    rawset(record, "minor", minor)
-    return library, minor
+  local record = rawget(adopted, major)
+  if record == nil then
+    record = {}
+    rawset(adopted, major, record)
+  end
+  rawset(record, "library", library)
+  rawset(record, "minor", minor)
+  return library, minor
 end
 
 ---Silent lookup of an adopted library, the foreign counterpart of
@@ -549,13 +549,13 @@ end
 ---@return table|nil library
 ---@return number|InteropKit.Reason minorOrReason
 local function packageFind(_, major)
-    validateName(major, "InteropKit:Find", "major", 3)
+  validateName(major, "InteropKit:Find", "major", 3)
 
-    local record = rawget(adopted, major)
-    if record == nil then
-        return nil, REASON_UNKNOWN
-    end
-    return rawget(record, "library"), rawget(record, "minor")
+  local record = rawget(adopted, major)
+  if record == nil then
+    return nil, REASON_UNKNOWN
+  end
+  return rawget(record, "library"), rawget(record, "minor")
 end
 
 ---Order two `Adopted` rows by major.
@@ -563,7 +563,7 @@ end
 ---@param right InteropKit.AdoptedRow
 ---@return boolean
 local function adoptedRowBefore(left, right)
-    return left.major < right.major
+  return left.major < right.major
 end
 
 ---Diagnostic listing of every adopted library, sorted by major.
@@ -572,12 +572,12 @@ end
 ---for consoles and options pages, never for a hot path.
 ---@return InteropKit.AdoptedRow[]
 local function packageAdopted()
-    local rows = {}
-    for major, record in next, adopted do
-        rows[#rows + 1] = { major = major, minor = rawget(record, "minor") }
-    end
-    table.sort(rows, adoptedRowBefore)
-    return rows
+  local rows = {}
+  for major, record in next, adopted do
+    rows[#rows + 1] = { major = major, minor = rawget(record, "minor") }
+  end
+  table.sort(rows, adoptedRowBefore)
+  return rows
 end
 
 -- Commit ---------------------------------------------------------------------
@@ -592,7 +592,7 @@ rawset(InteropKit, "Find", packageFind)
 rawset(InteropKit, "Adopted", packageAdopted)
 
 if not validatePublicSurface(InteropKit) or not validateCurrentState(InteropKit) then
-    error("MoltenCodes InteropKit package state is corrupted or incomplete", 2)
+  error("MoltenCodes InteropKit package state is corrupted or incomplete", 2)
 end
 
 return InteropKit

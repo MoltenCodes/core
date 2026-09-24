@@ -8,26 +8,26 @@ Warcraft flavours.
 local ClientKit = MoltenCodes.Registries[2]:Get("clientKit", 1)
 
 if ClientKit:GetFlavor() == "mainline" and ClientKit:IsAtLeast(120100) then
-    -- Midnight 12.1 or later.
+  -- Midnight 12.1 or later.
 end
 
 if ClientKit:Has("eventValidity") and ClientKit:IsEventValid("LEARNED_SPELL_IN_TAB") then
-    frame:RegisterEvent("LEARNED_SPELL_IN_TAB")
+  frame:RegisterEvent("LEARNED_SPELL_IN_TAB")
 end
 
 local info = ClientKit:GetSpellInfo(116) -- same table shape on every flavour
 if info then
-    print(info.name, info.castTime)
+  print(info.name, info.castTime)
 end
 
 if not ClientKit:IsSecret(name) and name == trackedName then
-    -- only a non-secret value may be compared
+  -- only a non-secret value may be compared
 end
 
 local manifest = ClientKit:GetManifest("MyAddon") -- read once, cached for the session
 if manifest then
-    print(manifest.title, manifest.version, #manifest.savedVariables)
-    print(manifest:Get("X-Website"))
+  print(manifest.title, manifest.version, #manifest.savedVariables)
+  print(manifest:Get("X-Website"))
 end
 ```
 

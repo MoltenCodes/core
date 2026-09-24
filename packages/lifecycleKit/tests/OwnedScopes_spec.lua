@@ -16,639 +16,636 @@ local CURRENT_REVISION = 14
 ---@return table target
 ---@return table calls how often the original ran
 local function newTarget()
-    local calls = { original = 0 }
-    local target = {}
-    function target.Refresh()
-        calls.original = calls.original + 1
-    end
-    return target, calls
+  local calls = { original = 0 }
+  local target = {}
+  function target.Refresh()
+    calls.original = calls.original + 1
+  end
+  return target, calls
 end
 
 describe("LifecycleKit shutdown of addon-owned scopes", function()
-    local LifecycleKit, SignalKit, EventKit, HookKit, CommandKit, CommKit, TimerKit, SchedulerKit
-    before_each(function()
-        LifecycleKit, _, SignalKit, EventKit, HookKit, _, CommandKit = TestEnv.NewPackage()
-        CommKit = TestEnv.LoadCommKit()
-        TimerKit = require("TimerKit")
-        SchedulerKit = require("SchedulerKit")
-    end)
-    after_each(TestEnv.Reset)
+  local LifecycleKit, SignalKit, EventKit, HookKit, CommandKit, CommKit, TimerKit, SchedulerKit
+  before_each(function()
+    LifecycleKit, _, SignalKit, EventKit, HookKit, _, CommandKit = TestEnv.NewPackage()
+    CommKit = TestEnv.LoadCommKit()
+    TimerKit = require("TimerKit")
+    SchedulerKit = require("SchedulerKit")
+  end)
+  after_each(TestEnv.Reset)
 
-    it("closes the addon's timer scope and scheduler scope at logout", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local timers = TimerKit:ForAddon("MyAddon")
-        local ticker = timers:Every(1, function() end)
-        local jobs = SchedulerKit:ForAddon("MyAddon")
-        local job = jobs:Schedule(function() end)
-        local delayed = jobs:After(5, function() end)
+  it("closes the addon's timer scope and scheduler scope at logout", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local timers = TimerKit:ForAddon("MyAddon")
+    local ticker = timers:Every(1, function() end)
+    local jobs = SchedulerKit:ForAddon("MyAddon")
+    local job = jobs:Schedule(function() end)
+    local delayed = jobs:After(5, function() end)
 
-        TestEnv.Logout()
+    TestEnv.Logout()
 
-        assert.is_true(life:IsShutdown())
-        assert.is_true(timers:IsClosed())
-        assert.is_true(ticker:IsCancelled())
-        assert.is_true(jobs:IsClosed())
-        assert.are.equal("cancelled", job:GetState())
-        assert.are.equal("cancelled", delayed:GetState())
-        assert.are.same({}, TestEnv.TakeReportedErrors())
-    end)
+    assert.is_true(life:IsShutdown())
+    assert.is_true(timers:IsClosed())
+    assert.is_true(ticker:IsCancelled())
+    assert.is_true(jobs:IsClosed())
+    assert.are.equal("cancelled", job:GetState())
+    assert.are.equal("cancelled", delayed:GetState())
+    assert.are.same({}, TestEnv.TakeReportedErrors())
+  end)
 
-    it("leaves manual scopes open and closes every addon's timer and scheduler scope", function()
-        LifecycleKit:ForAddon("MyAddon")
-        TimerKit:ForAddon("MyAddon")
-        local manualTimers = TimerKit:CreateScope()
-        local manualTicker = manualTimers:Every(1, function() end)
-        local otherJobs = SchedulerKit:ForAddon("OtherAddon")
+  it("leaves manual scopes open and closes every addon's timer and scheduler scope", function()
+    LifecycleKit:ForAddon("MyAddon")
+    TimerKit:ForAddon("MyAddon")
+    local manualTimers = TimerKit:CreateScope()
+    local manualTicker = manualTimers:Every(1, function() end)
+    local otherJobs = SchedulerKit:ForAddon("OtherAddon")
 
-        TestEnv.Logout()
+    TestEnv.Logout()
 
-        assert.is_true(TimerKit:ForAddon("MyAddon"):IsClosed())
-        assert.is_false(manualTimers:IsClosed())
-        assert.is_true(manualTicker:IsPending())
-        -- OtherAddon never asked LifecycleKit for an instance, but
-        -- SchedulerKit's ForAddon made sure it has one (it reads
-        -- CLOSES_ADDON_SCOPES), so the shutdown pass reaches its scope too.
-        assert.is_true(otherJobs:IsClosed())
-    end)
+    assert.is_true(TimerKit:ForAddon("MyAddon"):IsClosed())
+    assert.is_false(manualTimers:IsClosed())
+    assert.is_true(manualTicker:IsPending())
+    -- OtherAddon never asked LifecycleKit for an instance, but
+    -- SchedulerKit's ForAddon made sure it has one (it reads
+    -- CLOSES_ADDON_SCOPES), so the shutdown pass reaches its scope too.
+    assert.is_true(otherJobs:IsClosed())
+  end)
 
-    it("runs shutdown callbacks while the addon's timers and jobs are still live", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local timers = TimerKit:ForAddon("MyAddon")
-        local jobs = SchedulerKit:ForAddon("MyAddon")
-        timers:Every(1, function() end)
-        jobs:Schedule(function() end)
-        local observed
-        life:OnShutdown(function()
-            observed = {
-                timersClosed = timers:IsClosed(),
-                activeTimers = timers:GetActiveCount(),
-                jobsClosed = jobs:IsClosed(),
-            }
-        end)
-
-        TestEnv.Logout()
-
-        assert.are.same({ timersClosed = false, activeTimers = 1, jobsClosed = false }, observed)
-        assert.is_true(timers:IsClosed())
-        assert.is_true(jobs:IsClosed())
+  it("runs shutdown callbacks while the addon's timers and jobs are still live", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local timers = TimerKit:ForAddon("MyAddon")
+    local jobs = SchedulerKit:ForAddon("MyAddon")
+    timers:Every(1, function() end)
+    jobs:Schedule(function() end)
+    local observed
+    life:OnShutdown(function()
+      observed = {
+        timersClosed = timers:IsClosed(),
+        activeTimers = timers:GetActiveCount(),
+        jobsClosed = jobs:IsClosed(),
+      }
     end)
 
-    it("closes timers and jobs before the event scope", function()
-        LifecycleKit:ForAddon("MyAddon")
-        local timers = TimerKit:ForAddon("MyAddon")
-        local jobs = SchedulerKit:ForAddon("MyAddon")
-        local events = EventKit:ForAddon("MyAddon")
-        local seenByEvents
-        local closeEvents = rawget(EventKit, "CloseAddonScopes")
-        rawset(EventKit, "CloseAddonScopes", function(self, addonName)
-            seenByEvents = { timers = timers:IsClosed(), jobs = jobs:IsClosed() }
-            return closeEvents(self, addonName)
-        end)
+    TestEnv.Logout()
 
-        TestEnv.Logout()
+    assert.are.same({ timersClosed = false, activeTimers = 1, jobsClosed = false }, observed)
+    assert.is_true(timers:IsClosed())
+    assert.is_true(jobs:IsClosed())
+  end)
 
-        rawset(EventKit, "CloseAddonScopes", closeEvents)
-        assert.are.same({ timers = true, jobs = true }, seenByEvents)
-        assert.is_true(events:IsClosed())
+  it("closes timers and jobs before the event scope", function()
+    LifecycleKit:ForAddon("MyAddon")
+    local timers = TimerKit:ForAddon("MyAddon")
+    local jobs = SchedulerKit:ForAddon("MyAddon")
+    local events = EventKit:ForAddon("MyAddon")
+    local seenByEvents
+    local closeEvents = rawget(EventKit, "CloseAddonScopes")
+    rawset(EventKit, "CloseAddonScopes", function(self, addonName)
+      seenByEvents = { timers = timers:IsClosed(), jobs = jobs:IsClosed() }
+      return closeEvents(self, addonName)
     end)
 
-    it("closes the timer and scheduler scopes of a halted addon at logout", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local timers = TimerKit:ForAddon("MyAddon")
-        local jobs = SchedulerKit:ForAddon("MyAddon")
-        life:Halt("broken")
+    TestEnv.Logout()
 
-        assert.is_false(timers:IsClosed())
-        assert.is_false(jobs:IsClosed())
+    rawset(EventKit, "CloseAddonScopes", closeEvents)
+    assert.are.same({ timers = true, jobs = true }, seenByEvents)
+    assert.is_true(events:IsClosed())
+  end)
 
-        TestEnv.Logout()
+  it("closes the timer and scheduler scopes of a halted addon at logout", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local timers = TimerKit:ForAddon("MyAddon")
+    local jobs = SchedulerKit:ForAddon("MyAddon")
+    life:Halt("broken")
 
-        assert.are.equal("halted", life:GetState())
-        assert.is_true(timers:IsClosed())
-        assert.is_true(jobs:IsClosed())
+    assert.is_false(timers:IsClosed())
+    assert.is_false(jobs:IsClosed())
+
+    TestEnv.Logout()
+
+    assert.are.equal("halted", life:GetState())
+    assert.is_true(timers:IsClosed())
+    assert.is_true(jobs:IsClosed())
+  end)
+
+  it("shuts down unchanged against a TimerKit without CloseAddonScopes", function()
+    -- A TimerKit older than 0.5.0 has no CloseAddonScopes; it closed its
+    -- addon scopes from its own shutdown subscription instead.
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local timers = TimerKit:ForAddon("MyAddon")
+    local ticker = timers:Every(1, function() end)
+    local jobs = SchedulerKit:ForAddon("MyAddon")
+    local events = EventKit:ForAddon("MyAddon")
+    local original = rawget(TimerKit, "CloseAddonScopes")
+    rawset(TimerKit, "CloseAddonScopes", nil)
+
+    TestEnv.Logout()
+
+    rawset(TimerKit, "CloseAddonScopes", original)
+    assert.is_true(life:IsShutdown())
+    assert.is_false(timers:IsClosed())
+    assert.is_true(ticker:IsPending())
+    assert.is_true(jobs:IsClosed())
+    assert.is_true(events:IsClosed())
+    assert.are.same({}, TestEnv.TakeReportedErrors())
+  end)
+
+  it("shuts down unchanged against a SchedulerKit without CloseAddonScopes", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local timers = TimerKit:ForAddon("MyAddon")
+    local jobs = SchedulerKit:ForAddon("MyAddon")
+    local original = rawget(SchedulerKit, "CloseAddonScopes")
+    rawset(SchedulerKit, "CloseAddonScopes", nil)
+
+    TestEnv.Logout()
+
+    rawset(SchedulerKit, "CloseAddonScopes", original)
+    assert.is_true(life:IsShutdown())
+    assert.is_true(timers:IsClosed())
+    assert.is_false(jobs:IsClosed())
+    assert.are.same({}, TestEnv.TakeReportedErrors())
+  end)
+
+  it("prefers a timer-scope failure over the scheduler and event failures of one addon", function()
+    LifecycleKit:ForAddon("MyAddon")
+    local closeTimers = rawget(TimerKit, "CloseAddonScopes")
+    local closeJobs = rawget(SchedulerKit, "CloseAddonScopes")
+    local closeEvents = rawget(EventKit, "CloseAddonScopes")
+    rawset(TimerKit, "CloseAddonScopes", function()
+      error("timer teardown failed", 0)
+    end)
+    rawset(SchedulerKit, "CloseAddonScopes", function()
+      error("scheduler teardown failed", 0)
+    end)
+    rawset(EventKit, "CloseAddonScopes", function()
+      error("event teardown failed", 0)
+    end)
+    local events = EventKit:ForAddon("MyAddon")
+    local subscription = SignalKit:ForAddon("MyAddon"):Subscribe("Anything", function() end)
+
+    TestEnv.Logout()
+
+    rawset(TimerKit, "CloseAddonScopes", closeTimers)
+    rawset(SchedulerKit, "CloseAddonScopes", closeJobs)
+    rawset(EventKit, "CloseAddonScopes", closeEvents)
+    local reported = TestEnv.TakeReportedErrors()
+    assert.are.equal(1, #reported)
+    assert.are.equal("timer teardown failed", reported[1].value)
+    -- Every later step still ran.
+    assert.is_false(events:IsClosed())
+    assert.is_false(subscription:IsConnected())
+  end)
+
+  it("prefers a scheduler-scope failure over an event failure of one addon", function()
+    LifecycleKit:ForAddon("MyAddon")
+    local closeJobs = rawget(SchedulerKit, "CloseAddonScopes")
+    local closeEvents = rawget(EventKit, "CloseAddonScopes")
+    rawset(SchedulerKit, "CloseAddonScopes", function()
+      error("scheduler teardown failed", 0)
+    end)
+    rawset(EventKit, "CloseAddonScopes", function()
+      error("event teardown failed", 0)
+    end)
+    local timers = TimerKit:ForAddon("MyAddon")
+
+    TestEnv.Logout()
+
+    rawset(SchedulerKit, "CloseAddonScopes", closeJobs)
+    rawset(EventKit, "CloseAddonScopes", closeEvents)
+    local reported = TestEnv.TakeReportedErrors()
+    assert.are.equal(1, #reported)
+    assert.are.equal("scheduler teardown failed", reported[1].value)
+    assert.is_true(timers:IsClosed())
+  end)
+
+  it("undoes the addon's scoped hooks and closes its bus at logout", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local target, calls = newTarget()
+    local hooked = 0
+    HookKit:ForAddon("MyAddon"):Hook(target, "Refresh", function()
+      hooked = hooked + 1
+    end)
+    local bus = SignalKit:ForAddon("MyAddon")
+    bus:DeclareTopic("Changed", { arguments = 0 })
+    local delivered = 0
+    local subscription = bus:Subscribe("Changed", function()
+      delivered = delivered + 1
+    end)
+    target.Refresh()
+    bus:Publish("Changed")
+
+    TestEnv.Logout()
+
+    assert.is_true(life:IsShutdown())
+    assert.is_true(HookKit:ForAddon("MyAddon"):IsClosed())
+    assert.is_false(subscription:IsConnected())
+    target.Refresh()
+    bus:Publish("Changed")
+    assert.are.equal(1, hooked)
+    assert.are.equal(1, delivered)
+    assert.are.equal(2, calls.original)
+  end)
+
+  it("runs shutdown callbacks while hooks and the bus still work", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local target = newTarget()
+    local hooked = 0
+    HookKit:ForAddon("MyAddon"):Hook(target, "Refresh", function()
+      hooked = hooked + 1
+    end)
+    local bus = SignalKit:ForAddon("MyAddon")
+    bus:DeclareTopic("Saving", { arguments = 0 })
+    local delivered = 0
+    bus:Subscribe("Saving", function()
+      delivered = delivered + 1
+    end)
+    life:OnShutdown(function()
+      target.Refresh()
+      bus:Publish("Saving")
     end)
 
-    it("shuts down unchanged against a TimerKit without CloseAddonScopes", function()
-        -- A TimerKit older than 0.5.0 has no CloseAddonScopes; it closed its
-        -- addon scopes from its own shutdown subscription instead.
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local timers = TimerKit:ForAddon("MyAddon")
-        local ticker = timers:Every(1, function() end)
-        local jobs = SchedulerKit:ForAddon("MyAddon")
-        local events = EventKit:ForAddon("MyAddon")
-        local original = rawget(TimerKit, "CloseAddonScopes")
-        rawset(TimerKit, "CloseAddonScopes", nil)
+    TestEnv.Logout()
 
-        TestEnv.Logout()
+    assert.are.equal(1, hooked)
+    assert.are.equal(1, delivered)
+  end)
 
-        rawset(TimerKit, "CloseAddonScopes", original)
-        assert.is_true(life:IsShutdown())
-        assert.is_false(timers:IsClosed())
-        assert.is_true(ticker:IsPending())
-        assert.is_true(jobs:IsClosed())
-        assert.is_true(events:IsClosed())
-        assert.are.same({}, TestEnv.TakeReportedErrors())
-    end)
+  it("closes the scopes of a halted addon at logout too", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local events = EventKit:ForAddon("MyAddon")
+    local subscription = SignalKit:ForAddon("MyAddon"):Subscribe("Anything", function() end)
+    local hooks = HookKit:ForAddon("MyAddon")
+    life:Halt("broken")
 
-    it("shuts down unchanged against a SchedulerKit without CloseAddonScopes", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local timers = TimerKit:ForAddon("MyAddon")
-        local jobs = SchedulerKit:ForAddon("MyAddon")
-        local original = rawget(SchedulerKit, "CloseAddonScopes")
-        rawset(SchedulerKit, "CloseAddonScopes", nil)
+    -- A halt closes nothing by itself: the addon may still report its
+    -- failure through what it owns until the session ends.
+    assert.is_false(hooks:IsClosed())
+    assert.is_true(subscription:IsConnected())
 
-        TestEnv.Logout()
+    TestEnv.Logout()
 
-        rawset(SchedulerKit, "CloseAddonScopes", original)
-        assert.is_true(life:IsShutdown())
-        assert.is_true(timers:IsClosed())
-        assert.is_false(jobs:IsClosed())
-        assert.are.same({}, TestEnv.TakeReportedErrors())
-    end)
+    assert.are.equal("halted", life:GetState())
+    assert.is_true(hooks:IsClosed())
+    assert.is_false(subscription:IsConnected())
+    assert.is_true(events:IsClosed())
+  end)
 
-    it(
-        "prefers a timer-scope failure over the scheduler and event failures of one addon",
-        function()
-            LifecycleKit:ForAddon("MyAddon")
-            local closeTimers = rawget(TimerKit, "CloseAddonScopes")
-            local closeJobs = rawget(SchedulerKit, "CloseAddonScopes")
-            local closeEvents = rawget(EventKit, "CloseAddonScopes")
-            rawset(TimerKit, "CloseAddonScopes", function()
-                error("timer teardown failed", 0)
-            end)
-            rawset(SchedulerKit, "CloseAddonScopes", function()
-                error("scheduler teardown failed", 0)
-            end)
-            rawset(EventKit, "CloseAddonScopes", function()
-                error("event teardown failed", 0)
-            end)
-            local events = EventKit:ForAddon("MyAddon")
-            local subscription = SignalKit:ForAddon("MyAddon"):Subscribe("Anything", function() end)
+  it("shuts down an addon that never asked for hooks or a bus without error", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
 
-            TestEnv.Logout()
+    TestEnv.Logout()
 
-            rawset(TimerKit, "CloseAddonScopes", closeTimers)
-            rawset(SchedulerKit, "CloseAddonScopes", closeJobs)
-            rawset(EventKit, "CloseAddonScopes", closeEvents)
-            local reported = TestEnv.TakeReportedErrors()
-            assert.are.equal(1, #reported)
-            assert.are.equal("timer teardown failed", reported[1].value)
-            -- Every later step still ran.
-            assert.is_false(events:IsClosed())
-            assert.is_false(subscription:IsConnected())
+    assert.is_true(life:IsShutdown())
+    assert.are.same({}, TestEnv.TakeReportedErrors())
+    -- `CloseAddonBus` answered `false`, which records nothing; asking now
+    -- creates an open bus.
+    assert.is_not_nil(SignalKit:ForAddon("MyAddon"):Subscribe("Late", function() end))
+  end)
+
+  it("leaves the addon's scoped slash commands inert after logout", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local runs = 0
+    assert.is_true(CommandKit:ForAddon("MyAddon"):Register("mycmd", {
+      handler = function()
+        runs = runs + 1
+      end,
+    }))
+    assert.is_true(TestEnv.RunSlash("/mycmd"))
+    assert.are.equal(1, runs)
+
+    TestEnv.Logout()
+
+    assert.is_true(life:IsShutdown())
+    -- The client keeps the slash name; typing it now does nothing.
+    assert.is_true(TestEnv.RunSlash("/mycmd"))
+    assert.are.equal(1, runs)
+    assert.is_false(CommandKit:ForAddon("MyAddon"):IsRegistered("mycmd"))
+  end)
+
+  it("disconnects the addon's scoped prefix registrations at logout", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local comm = CommKit:ForAddon("MyAddon")
+    assert.is_not_nil(comm:Register("MyPrefix", function() end))
+    assert.are.equal(1, comm:GetRegistrationCount())
+
+    TestEnv.Logout()
+
+    assert.is_true(life:IsShutdown())
+    assert.is_true(comm:IsClosed())
+    assert.are.equal(0, comm:GetRegistrationCount())
+    assert.are.same({}, TestEnv.TakeReportedErrors())
+  end)
+
+  it("shuts down unchanged against a CommKit without CloseAddonScopes", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local events = EventKit:ForAddon("MyAddon")
+    local comm = CommKit:ForAddon("MyAddon")
+    comm:Register("MyPrefix", function() end)
+    local original = rawget(CommKit, "CloseAddonScopes")
+    rawset(CommKit, "CloseAddonScopes", nil)
+
+    TestEnv.Logout()
+
+    rawset(CommKit, "CloseAddonScopes", original)
+    assert.is_true(life:IsShutdown())
+    assert.is_true(events:IsClosed())
+    assert.are.same({}, TestEnv.TakeReportedErrors())
+  end)
+
+  it("shuts down unchanged against a CommandKit without CloseAddonScopes", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local runs = 0
+    CommandKit:ForAddon("MyAddon"):Register("mycmd", {
+      handler = function()
+        runs = runs + 1
+      end,
+    })
+    local original = rawget(CommandKit, "CloseAddonScopes")
+    rawset(CommandKit, "CloseAddonScopes", nil)
+
+    TestEnv.Logout()
+
+    rawset(CommandKit, "CloseAddonScopes", original)
+    assert.is_true(life:IsShutdown())
+    TestEnv.RunSlash("/mycmd")
+    assert.are.equal(1, runs)
+    assert.are.same({}, TestEnv.TakeReportedErrors())
+  end)
+
+  it("shuts down unchanged against a HookKit without CloseAddonScopes", function()
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local events = EventKit:ForAddon("MyAddon")
+    local hooks = HookKit:ForAddon("MyAddon")
+    local original = rawget(HookKit, "CloseAddonScopes")
+    rawset(HookKit, "CloseAddonScopes", nil)
+
+    TestEnv.Logout()
+
+    rawset(HookKit, "CloseAddonScopes", original)
+    assert.is_true(life:IsShutdown())
+    assert.is_false(hooks:IsClosed())
+    assert.is_true(events:IsClosed())
+    assert.are.same({}, TestEnv.TakeReportedErrors())
+  end)
+
+  it(
+    "reports the first failure in timer, scheduler, event, hook, command, comm, bus order",
+    function()
+      local first = LifecycleKit:ForAddon("FirstAddon")
+      local second = LifecycleKit:ForAddon("SecondAddon")
+      local attempted = {}
+      local closeTimers = rawget(TimerKit, "CloseAddonScopes")
+      rawset(TimerKit, "CloseAddonScopes", function(_, addonName)
+        attempted[#attempted + 1] = "timers " .. addonName
+        return closeTimers(TimerKit, addonName)
+      end)
+      local closeJobs = rawget(SchedulerKit, "CloseAddonScopes")
+      rawset(SchedulerKit, "CloseAddonScopes", function(_, addonName)
+        attempted[#attempted + 1] = "jobs " .. addonName
+        return closeJobs(SchedulerKit, addonName)
+      end)
+      local closeEvents = rawget(EventKit, "CloseAddonScopes")
+      local closeHooks = rawget(HookKit, "CloseAddonScopes")
+      local closeBus = rawget(SignalKit, "CloseAddonBus")
+      local closeCommands = rawget(CommandKit, "CloseAddonScopes")
+      rawset(CommandKit, "CloseAddonScopes", function(_, addonName)
+        attempted[#attempted + 1] = "commands " .. addonName
+        error("command teardown failed", 0)
+      end)
+      local closeComm = rawget(CommKit, "CloseAddonScopes")
+      rawset(CommKit, "CloseAddonScopes", function(_, addonName)
+        attempted[#attempted + 1] = "comm " .. addonName
+        error("comm teardown failed", 0)
+      end)
+      rawset(EventKit, "CloseAddonScopes", function(_, addonName)
+        attempted[#attempted + 1] = "events " .. addonName
+        if addonName == "SecondAddon" then
+          error("event teardown failed", 0)
         end
-    )
+        return closeEvents(EventKit, addonName)
+      end)
+      rawset(HookKit, "CloseAddonScopes", function(_, addonName)
+        attempted[#attempted + 1] = "hooks " .. addonName
+        error("hook teardown failed", 0)
+      end)
+      rawset(SignalKit, "CloseAddonBus", function(_, addonName)
+        attempted[#attempted + 1] = "bus " .. addonName
+        error("bus teardown failed", 0)
+      end)
 
-    it("prefers a scheduler-scope failure over an event failure of one addon", function()
-        LifecycleKit:ForAddon("MyAddon")
-        local closeJobs = rawget(SchedulerKit, "CloseAddonScopes")
-        local closeEvents = rawget(EventKit, "CloseAddonScopes")
-        rawset(SchedulerKit, "CloseAddonScopes", function()
-            error("scheduler teardown failed", 0)
-        end)
-        rawset(EventKit, "CloseAddonScopes", function()
-            error("event teardown failed", 0)
-        end)
-        local timers = TimerKit:ForAddon("MyAddon")
+      TestEnv.Logout()
 
-        TestEnv.Logout()
+      rawset(EventKit, "CloseAddonScopes", closeEvents)
+      rawset(HookKit, "CloseAddonScopes", closeHooks)
+      rawset(SignalKit, "CloseAddonBus", closeBus)
+      rawset(CommandKit, "CloseAddonScopes", closeCommands)
+      rawset(CommKit, "CloseAddonScopes", closeComm)
+      rawset(TimerKit, "CloseAddonScopes", closeTimers)
+      rawset(SchedulerKit, "CloseAddonScopes", closeJobs)
+      -- Every step ran for every addon, even after earlier failures.
+      assert.are.same({
+        "timers FirstAddon",
+        "jobs FirstAddon",
+        "events FirstAddon",
+        "hooks FirstAddon",
+        "commands FirstAddon",
+        "comm FirstAddon",
+        "bus FirstAddon",
+        "timers SecondAddon",
+        "jobs SecondAddon",
+        "events SecondAddon",
+        "hooks SecondAddon",
+        "commands SecondAddon",
+        "comm SecondAddon",
+        "bus SecondAddon",
+      }, attempted)
+      -- Addons advance by name; FirstAddon's first failure is its hook
+      -- scope, which wins over SecondAddon's event-scope failure.
+      local reported = TestEnv.TakeReportedErrors()
+      assert.are.equal(1, #reported)
+      assert.are.equal("hook teardown failed", reported[1].value)
+      assert.is_true(first:IsShutdown())
+      assert.is_true(second:IsShutdown())
+    end
+  )
 
-        rawset(SchedulerKit, "CloseAddonScopes", closeJobs)
-        rawset(EventKit, "CloseAddonScopes", closeEvents)
-        local reported = TestEnv.TakeReportedErrors()
-        assert.are.equal(1, #reported)
-        assert.are.equal("scheduler teardown failed", reported[1].value)
-        assert.is_true(timers:IsClosed())
+  it("prefers a comm-scope failure over a bus failure of one addon", function()
+    LifecycleKit:ForAddon("MyAddon")
+    local closeComm = rawget(CommKit, "CloseAddonScopes")
+    local closeBus = rawget(SignalKit, "CloseAddonBus")
+    rawset(CommKit, "CloseAddonScopes", function()
+      error("comm teardown failed", 0)
+    end)
+    rawset(SignalKit, "CloseAddonBus", function()
+      error("bus teardown failed", 0)
     end)
 
-    it("undoes the addon's scoped hooks and closes its bus at logout", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local target, calls = newTarget()
-        local hooked = 0
-        HookKit:ForAddon("MyAddon"):Hook(target, "Refresh", function()
-            hooked = hooked + 1
-        end)
-        local bus = SignalKit:ForAddon("MyAddon")
-        bus:DeclareTopic("Changed", { arguments = 0 })
-        local delivered = 0
-        local subscription = bus:Subscribe("Changed", function()
-            delivered = delivered + 1
-        end)
-        target.Refresh()
-        bus:Publish("Changed")
+    TestEnv.Logout()
 
-        TestEnv.Logout()
+    rawset(CommKit, "CloseAddonScopes", closeComm)
+    rawset(SignalKit, "CloseAddonBus", closeBus)
+    local reported = TestEnv.TakeReportedErrors()
+    assert.are.equal(1, #reported)
+    assert.are.equal("comm teardown failed", reported[1].value)
+  end)
 
-        assert.is_true(life:IsShutdown())
-        assert.is_true(HookKit:ForAddon("MyAddon"):IsClosed())
-        assert.is_false(subscription:IsConnected())
-        target.Refresh()
-        bus:Publish("Changed")
-        assert.are.equal(1, hooked)
-        assert.are.equal(1, delivered)
-        assert.are.equal(2, calls.original)
+  it("prefers a command-scope failure over a bus failure of one addon", function()
+    LifecycleKit:ForAddon("MyAddon")
+    local closeCommands = rawget(CommandKit, "CloseAddonScopes")
+    local closeBus = rawget(SignalKit, "CloseAddonBus")
+    rawset(CommandKit, "CloseAddonScopes", function()
+      error("command teardown failed", 0)
+    end)
+    rawset(SignalKit, "CloseAddonBus", function()
+      error("bus teardown failed", 0)
     end)
 
-    it("runs shutdown callbacks while hooks and the bus still work", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local target = newTarget()
-        local hooked = 0
-        HookKit:ForAddon("MyAddon"):Hook(target, "Refresh", function()
-            hooked = hooked + 1
-        end)
-        local bus = SignalKit:ForAddon("MyAddon")
-        bus:DeclareTopic("Saving", { arguments = 0 })
-        local delivered = 0
-        bus:Subscribe("Saving", function()
-            delivered = delivered + 1
-        end)
-        life:OnShutdown(function()
-            target.Refresh()
-            bus:Publish("Saving")
-        end)
+    TestEnv.Logout()
 
-        TestEnv.Logout()
+    rawset(CommandKit, "CloseAddonScopes", closeCommands)
+    rawset(SignalKit, "CloseAddonBus", closeBus)
+    local reported = TestEnv.TakeReportedErrors()
+    assert.are.equal(1, #reported)
+    assert.are.equal("command teardown failed", reported[1].value)
+  end)
 
-        assert.are.equal(1, hooked)
-        assert.are.equal(1, delivered)
+  it("prefers an event-scope failure over the hook and bus failures of one addon", function()
+    LifecycleKit:ForAddon("MyAddon")
+    local closeEvents = rawget(EventKit, "CloseAddonScopes")
+    local closeHooks = rawget(HookKit, "CloseAddonScopes")
+    rawset(EventKit, "CloseAddonScopes", function()
+      error("event teardown failed", 0)
     end)
-
-    it("closes the scopes of a halted addon at logout too", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local events = EventKit:ForAddon("MyAddon")
-        local subscription = SignalKit:ForAddon("MyAddon"):Subscribe("Anything", function() end)
-        local hooks = HookKit:ForAddon("MyAddon")
-        life:Halt("broken")
-
-        -- A halt closes nothing by itself: the addon may still report its
-        -- failure through what it owns until the session ends.
-        assert.is_false(hooks:IsClosed())
-        assert.is_true(subscription:IsConnected())
-
-        TestEnv.Logout()
-
-        assert.are.equal("halted", life:GetState())
-        assert.is_true(hooks:IsClosed())
-        assert.is_false(subscription:IsConnected())
-        assert.is_true(events:IsClosed())
+    rawset(HookKit, "CloseAddonScopes", function()
+      error("hook teardown failed", 0)
     end)
+    local subscription = SignalKit:ForAddon("MyAddon"):Subscribe("Anything", function() end)
 
-    it("shuts down an addon that never asked for hooks or a bus without error", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
+    TestEnv.Logout()
 
-        TestEnv.Logout()
-
-        assert.is_true(life:IsShutdown())
-        assert.are.same({}, TestEnv.TakeReportedErrors())
-        -- `CloseAddonBus` answered `false`, which records nothing; asking now
-        -- creates an open bus.
-        assert.is_not_nil(SignalKit:ForAddon("MyAddon"):Subscribe("Late", function() end))
-    end)
-
-    it("leaves the addon's scoped slash commands inert after logout", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local runs = 0
-        assert.is_true(CommandKit:ForAddon("MyAddon"):Register("mycmd", {
-            handler = function()
-                runs = runs + 1
-            end,
-        }))
-        assert.is_true(TestEnv.RunSlash("/mycmd"))
-        assert.are.equal(1, runs)
-
-        TestEnv.Logout()
-
-        assert.is_true(life:IsShutdown())
-        -- The client keeps the slash name; typing it now does nothing.
-        assert.is_true(TestEnv.RunSlash("/mycmd"))
-        assert.are.equal(1, runs)
-        assert.is_false(CommandKit:ForAddon("MyAddon"):IsRegistered("mycmd"))
-    end)
-
-    it("disconnects the addon's scoped prefix registrations at logout", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local comm = CommKit:ForAddon("MyAddon")
-        assert.is_not_nil(comm:Register("MyPrefix", function() end))
-        assert.are.equal(1, comm:GetRegistrationCount())
-
-        TestEnv.Logout()
-
-        assert.is_true(life:IsShutdown())
-        assert.is_true(comm:IsClosed())
-        assert.are.equal(0, comm:GetRegistrationCount())
-        assert.are.same({}, TestEnv.TakeReportedErrors())
-    end)
-
-    it("shuts down unchanged against a CommKit without CloseAddonScopes", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local events = EventKit:ForAddon("MyAddon")
-        local comm = CommKit:ForAddon("MyAddon")
-        comm:Register("MyPrefix", function() end)
-        local original = rawget(CommKit, "CloseAddonScopes")
-        rawset(CommKit, "CloseAddonScopes", nil)
-
-        TestEnv.Logout()
-
-        rawset(CommKit, "CloseAddonScopes", original)
-        assert.is_true(life:IsShutdown())
-        assert.is_true(events:IsClosed())
-        assert.are.same({}, TestEnv.TakeReportedErrors())
-    end)
-
-    it("shuts down unchanged against a CommandKit without CloseAddonScopes", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local runs = 0
-        CommandKit:ForAddon("MyAddon"):Register("mycmd", {
-            handler = function()
-                runs = runs + 1
-            end,
-        })
-        local original = rawget(CommandKit, "CloseAddonScopes")
-        rawset(CommandKit, "CloseAddonScopes", nil)
-
-        TestEnv.Logout()
-
-        rawset(CommandKit, "CloseAddonScopes", original)
-        assert.is_true(life:IsShutdown())
-        TestEnv.RunSlash("/mycmd")
-        assert.are.equal(1, runs)
-        assert.are.same({}, TestEnv.TakeReportedErrors())
-    end)
-
-    it("shuts down unchanged against a HookKit without CloseAddonScopes", function()
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local events = EventKit:ForAddon("MyAddon")
-        local hooks = HookKit:ForAddon("MyAddon")
-        local original = rawget(HookKit, "CloseAddonScopes")
-        rawset(HookKit, "CloseAddonScopes", nil)
-
-        TestEnv.Logout()
-
-        rawset(HookKit, "CloseAddonScopes", original)
-        assert.is_true(life:IsShutdown())
-        assert.is_false(hooks:IsClosed())
-        assert.is_true(events:IsClosed())
-        assert.are.same({}, TestEnv.TakeReportedErrors())
-    end)
-
-    it(
-        "reports the first failure in timer, scheduler, event, hook, command, comm, bus order",
-        function()
-            local first = LifecycleKit:ForAddon("FirstAddon")
-            local second = LifecycleKit:ForAddon("SecondAddon")
-            local attempted = {}
-            local closeTimers = rawget(TimerKit, "CloseAddonScopes")
-            rawset(TimerKit, "CloseAddonScopes", function(_, addonName)
-                attempted[#attempted + 1] = "timers " .. addonName
-                return closeTimers(TimerKit, addonName)
-            end)
-            local closeJobs = rawget(SchedulerKit, "CloseAddonScopes")
-            rawset(SchedulerKit, "CloseAddonScopes", function(_, addonName)
-                attempted[#attempted + 1] = "jobs " .. addonName
-                return closeJobs(SchedulerKit, addonName)
-            end)
-            local closeEvents = rawget(EventKit, "CloseAddonScopes")
-            local closeHooks = rawget(HookKit, "CloseAddonScopes")
-            local closeBus = rawget(SignalKit, "CloseAddonBus")
-            local closeCommands = rawget(CommandKit, "CloseAddonScopes")
-            rawset(CommandKit, "CloseAddonScopes", function(_, addonName)
-                attempted[#attempted + 1] = "commands " .. addonName
-                error("command teardown failed", 0)
-            end)
-            local closeComm = rawget(CommKit, "CloseAddonScopes")
-            rawset(CommKit, "CloseAddonScopes", function(_, addonName)
-                attempted[#attempted + 1] = "comm " .. addonName
-                error("comm teardown failed", 0)
-            end)
-            rawset(EventKit, "CloseAddonScopes", function(_, addonName)
-                attempted[#attempted + 1] = "events " .. addonName
-                if addonName == "SecondAddon" then
-                    error("event teardown failed", 0)
-                end
-                return closeEvents(EventKit, addonName)
-            end)
-            rawset(HookKit, "CloseAddonScopes", function(_, addonName)
-                attempted[#attempted + 1] = "hooks " .. addonName
-                error("hook teardown failed", 0)
-            end)
-            rawset(SignalKit, "CloseAddonBus", function(_, addonName)
-                attempted[#attempted + 1] = "bus " .. addonName
-                error("bus teardown failed", 0)
-            end)
-
-            TestEnv.Logout()
-
-            rawset(EventKit, "CloseAddonScopes", closeEvents)
-            rawset(HookKit, "CloseAddonScopes", closeHooks)
-            rawset(SignalKit, "CloseAddonBus", closeBus)
-            rawset(CommandKit, "CloseAddonScopes", closeCommands)
-            rawset(CommKit, "CloseAddonScopes", closeComm)
-            rawset(TimerKit, "CloseAddonScopes", closeTimers)
-            rawset(SchedulerKit, "CloseAddonScopes", closeJobs)
-            -- Every step ran for every addon, even after earlier failures.
-            assert.are.same({
-                "timers FirstAddon",
-                "jobs FirstAddon",
-                "events FirstAddon",
-                "hooks FirstAddon",
-                "commands FirstAddon",
-                "comm FirstAddon",
-                "bus FirstAddon",
-                "timers SecondAddon",
-                "jobs SecondAddon",
-                "events SecondAddon",
-                "hooks SecondAddon",
-                "commands SecondAddon",
-                "comm SecondAddon",
-                "bus SecondAddon",
-            }, attempted)
-            -- Addons advance by name; FirstAddon's first failure is its hook
-            -- scope, which wins over SecondAddon's event-scope failure.
-            local reported = TestEnv.TakeReportedErrors()
-            assert.are.equal(1, #reported)
-            assert.are.equal("hook teardown failed", reported[1].value)
-            assert.is_true(first:IsShutdown())
-            assert.is_true(second:IsShutdown())
-        end
-    )
-
-    it("prefers a comm-scope failure over a bus failure of one addon", function()
-        LifecycleKit:ForAddon("MyAddon")
-        local closeComm = rawget(CommKit, "CloseAddonScopes")
-        local closeBus = rawget(SignalKit, "CloseAddonBus")
-        rawset(CommKit, "CloseAddonScopes", function()
-            error("comm teardown failed", 0)
-        end)
-        rawset(SignalKit, "CloseAddonBus", function()
-            error("bus teardown failed", 0)
-        end)
-
-        TestEnv.Logout()
-
-        rawset(CommKit, "CloseAddonScopes", closeComm)
-        rawset(SignalKit, "CloseAddonBus", closeBus)
-        local reported = TestEnv.TakeReportedErrors()
-        assert.are.equal(1, #reported)
-        assert.are.equal("comm teardown failed", reported[1].value)
-    end)
-
-    it("prefers a command-scope failure over a bus failure of one addon", function()
-        LifecycleKit:ForAddon("MyAddon")
-        local closeCommands = rawget(CommandKit, "CloseAddonScopes")
-        local closeBus = rawget(SignalKit, "CloseAddonBus")
-        rawset(CommandKit, "CloseAddonScopes", function()
-            error("command teardown failed", 0)
-        end)
-        rawset(SignalKit, "CloseAddonBus", function()
-            error("bus teardown failed", 0)
-        end)
-
-        TestEnv.Logout()
-
-        rawset(CommandKit, "CloseAddonScopes", closeCommands)
-        rawset(SignalKit, "CloseAddonBus", closeBus)
-        local reported = TestEnv.TakeReportedErrors()
-        assert.are.equal(1, #reported)
-        assert.are.equal("command teardown failed", reported[1].value)
-    end)
-
-    it("prefers an event-scope failure over the hook and bus failures of one addon", function()
-        LifecycleKit:ForAddon("MyAddon")
-        local closeEvents = rawget(EventKit, "CloseAddonScopes")
-        local closeHooks = rawget(HookKit, "CloseAddonScopes")
-        rawset(EventKit, "CloseAddonScopes", function()
-            error("event teardown failed", 0)
-        end)
-        rawset(HookKit, "CloseAddonScopes", function()
-            error("hook teardown failed", 0)
-        end)
-        local subscription = SignalKit:ForAddon("MyAddon"):Subscribe("Anything", function() end)
-
-        TestEnv.Logout()
-
-        rawset(EventKit, "CloseAddonScopes", closeEvents)
-        rawset(HookKit, "CloseAddonScopes", closeHooks)
-        local reported = TestEnv.TakeReportedErrors()
-        assert.are.equal(1, #reported)
-        assert.are.equal("event teardown failed", reported[1].value)
-        -- The bus is still closed after both earlier steps failed.
-        assert.is_false(subscription:IsConnected())
-    end)
+    rawset(EventKit, "CloseAddonScopes", closeEvents)
+    rawset(HookKit, "CloseAddonScopes", closeHooks)
+    local reported = TestEnv.TakeReportedErrors()
+    assert.are.equal(1, #reported)
+    assert.are.equal("event teardown failed", reported[1].value)
+    -- The bus is still closed after both earlier steps failed.
+    assert.is_false(subscription:IsConnected())
+  end)
 end)
 
 describe("LifecycleKit shutdown without HookKit", function()
-    after_each(TestEnv.Reset)
+  after_each(TestEnv.Reset)
 
-    it("closes the event scope and the bus when HookKit is not loaded", function()
-        -- This chain loads no TimerKit and no SchedulerKit either, so their
-        -- `Registry:Find` misses are covered here too.
-        local LifecycleKit, Registry, SignalKit, EventKit = TestEnv.NewPackageWithoutHookKit()
-        assert.is_nil(Registry:Find("timerKit", 1))
-        assert.is_nil(Registry:Find("schedulerKit", 1))
-        local events = EventKit:ForAddon("MyAddon")
-        local life = LifecycleKit:ForAddon("MyAddon")
-        local subscription = SignalKit:ForAddon("MyAddon"):Subscribe("Anything", function() end)
+  it("closes the event scope and the bus when HookKit is not loaded", function()
+    -- This chain loads no TimerKit and no SchedulerKit either, so their
+    -- `Registry:Find` misses are covered here too.
+    local LifecycleKit, Registry, SignalKit, EventKit = TestEnv.NewPackageWithoutHookKit()
+    assert.is_nil(Registry:Find("timerKit", 1))
+    assert.is_nil(Registry:Find("schedulerKit", 1))
+    local events = EventKit:ForAddon("MyAddon")
+    local life = LifecycleKit:ForAddon("MyAddon")
+    local subscription = SignalKit:ForAddon("MyAddon"):Subscribe("Anything", function() end)
 
-        TestEnv.Logout()
+    TestEnv.Logout()
 
-        assert.is_true(life:IsShutdown())
-        assert.is_false(subscription:IsConnected())
-        assert.is_true(events:IsClosed())
-        assert.are.same({}, TestEnv.TakeReportedErrors())
-    end)
+    assert.is_true(life:IsShutdown())
+    assert.is_false(subscription:IsConnected())
+    assert.is_true(events:IsClosed())
+    assert.are.same({}, TestEnv.TakeReportedErrors())
+  end)
 end)
 
 describe("LifecycleKit upgrade from an older schema-3 revision", function()
-    after_each(TestEnv.Reset)
+  after_each(TestEnv.Reset)
 
-    -- Revisions 7 to 12 already wrote schema 3, but each one's logout watcher
-    -- calls its own handler, and revisions 7 to 11 miss scopes later
-    -- revisions close: none closes a TimerKit or SchedulerKit scope. The
-    -- upgrade must replace that watcher, or logout would keep running the
-    -- older code. Revisions 12 and later close the same scopes as the current
-    -- one; their watchers are replaced all the same, so the running handler is
-    -- always the newest.
-    for oldRevision = 7, CURRENT_REVISION - 1 do
-        it(
-            "replaces revision " .. oldRevision .. "'s host watchers so logout closes what it owns",
-            function()
-                TestEnv.Reset()
-                TestEnv.InstallWowApi()
-                local Registry = require("Registry")
-                local SignalKit = require("SignalKit")
-                local EventKit = require("EventKit")
-                local HookKit = require("HookKit")
-                local TimerKit = require("TimerKit")
+  -- Revisions 7 to 12 already wrote schema 3, but each one's logout watcher
+  -- calls its own handler, and revisions 7 to 11 miss scopes later
+  -- revisions close: none closes a TimerKit or SchedulerKit scope. The
+  -- upgrade must replace that watcher, or logout would keep running the
+  -- older code. Revisions 12 and later close the same scopes as the current
+  -- one; their watchers are replaced all the same, so the running handler is
+  -- always the newest.
+  for oldRevision = 7, CURRENT_REVISION - 1 do
+    it(
+      "replaces revision " .. oldRevision .. "'s host watchers so logout closes what it owns",
+      function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        local Registry = require("Registry")
+        local SignalKit = require("SignalKit")
+        local EventKit = require("EventKit")
+        local HookKit = require("HookKit")
+        local TimerKit = require("TimerKit")
 
-                local old = Registry:Register("lifecycleKit", 1, oldRevision)
-                local noop = function() end
-                old.API = 1
-                old.REVISION = oldRevision
-                old.Instance = {}
-                old.Subscription = { Disconnect = noop, IsConnected = noop }
-                old.DeferredCall = { Cancel = noop, IsPending = noop }
-                old.ForAddon = noop
-                old.IsInCombat = noop
-                local instance = setmetatable({
-                    _addonName = "CarriedOver",
-                    _loaded = false,
-                    _ready = false,
-                    _shutdown = false,
-                    _halted = false,
-                    _dependencies = {},
-                    _combatQueue = {},
-                    _combatQueueLength = 0,
-                    _combatPending = 0,
-                    _combatQueueLimit = 64,
-                    _draining = false,
-                    _combatCaptures = {
-                        combatStart = { active = false, failed = false },
-                        combatEnd = { active = false, failed = false },
-                    },
-                    _signals = {
-                        loaded = SignalKit:New(),
-                        ready = SignalKit:New(),
-                        shutdown = SignalKit:New(),
-                        halted = SignalKit:New(),
-                        dependencyHalted = SignalKit:New(),
-                        combatStart = SignalKit:New(),
-                        combatEnd = SignalKit:New(),
-                    },
-                    _phaseCaptures = {},
-                }, { __index = old.Instance })
+        local old = Registry:Register("lifecycleKit", 1, oldRevision)
+        local noop = function() end
+        old.API = 1
+        old.REVISION = oldRevision
+        old.Instance = {}
+        old.Subscription = { Disconnect = noop, IsConnected = noop }
+        old.DeferredCall = { Cancel = noop, IsPending = noop }
+        old.ForAddon = noop
+        old.IsInCombat = noop
+        local instance = setmetatable({
+          _addonName = "CarriedOver",
+          _loaded = false,
+          _ready = false,
+          _shutdown = false,
+          _halted = false,
+          _dependencies = {},
+          _combatQueue = {},
+          _combatQueueLength = 0,
+          _combatPending = 0,
+          _combatQueueLimit = 64,
+          _draining = false,
+          _combatCaptures = {
+            combatStart = { active = false, failed = false },
+            combatEnd = { active = false, failed = false },
+          },
+          _signals = {
+            loaded = SignalKit:New(),
+            ready = SignalKit:New(),
+            shutdown = SignalKit:New(),
+            halted = SignalKit:New(),
+            dependencyHalted = SignalKit:New(),
+            combatStart = SignalKit:New(),
+            combatEnd = SignalKit:New(),
+          },
+          _phaseCaptures = {},
+        }, { __index = old.Instance })
 
-                local oldLogoutCalls = 0
-                local oldLogoutWatcher = EventKit:Once("PLAYER_LOGOUT", function()
-                    oldLogoutCalls = oldLogoutCalls + 1
-                end)
-                old._state = {
-                    schema = 3,
-                    addons = { CarriedOver = instance },
-                    instances = { instance },
-                    globalWatchers = { playerLogout = oldLogoutWatcher },
-                    loginSeen = false,
-                    shutdownSeen = false,
-                    inCombat = false,
-                }
+        local oldLogoutCalls = 0
+        local oldLogoutWatcher = EventKit:Once("PLAYER_LOGOUT", function()
+          oldLogoutCalls = oldLogoutCalls + 1
+        end)
+        old._state = {
+          schema = 3,
+          addons = { CarriedOver = instance },
+          instances = { instance },
+          globalWatchers = { playerLogout = oldLogoutWatcher },
+          loginSeen = false,
+          shutdownSeen = false,
+          inCombat = false,
+        }
 
-                local upgraded = require("LifecycleKit")
-                local hooks = HookKit:ForAddon("CarriedOver")
-                local timers = TimerKit:ForAddon("CarriedOver")
-                local subscription = SignalKit:ForAddon("CarriedOver"):Subscribe("Anything", noop)
+        local upgraded = require("LifecycleKit")
+        local hooks = HookKit:ForAddon("CarriedOver")
+        local timers = TimerKit:ForAddon("CarriedOver")
+        local subscription = SignalKit:ForAddon("CarriedOver"):Subscribe("Anything", noop)
 
-                assert.are.equal(old, upgraded)
-                assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
-                assert.is_true(upgraded.CLOSES_ADDON_SCOPES.timerKit)
-                assert.is_false(oldLogoutWatcher:IsConnected())
+        assert.are.equal(old, upgraded)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
+        assert.is_true(upgraded.CLOSES_ADDON_SCOPES.timerKit)
+        assert.is_false(oldLogoutWatcher:IsConnected())
 
-                TestEnv.Logout()
+        TestEnv.Logout()
 
-                assert.are.equal(0, oldLogoutCalls)
-                assert.are.equal("shutdown", instance:GetState())
-                assert.is_true(hooks:IsClosed())
-                assert.is_true(timers:IsClosed())
-                assert.is_false(subscription:IsConnected())
-            end
-        )
-    end
+        assert.are.equal(0, oldLogoutCalls)
+        assert.are.equal("shutdown", instance:GetState())
+        assert.is_true(hooks:IsClosed())
+        assert.is_true(timers:IsClosed())
+        assert.is_false(subscription:IsConnected())
+      end
+    )
+  end
 end)

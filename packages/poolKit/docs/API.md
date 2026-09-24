@@ -259,8 +259,8 @@ Use `GetActiveCount()` to observe it, and `maxActiveWarning` to be told about it
 
 ```lua
 local pool = PoolKit:New({
-    create = factory,
-    maxActiveWarning = 500,
+  create = factory,
+  maxActiveWarning = 500,
 })
 ```
 
@@ -283,8 +283,8 @@ Unbounded retention is an explicit escape hatch:
 
 ```lua
 local pool = PoolKit:New({
-    create = factory,
-    maxRetained = PoolKit.UNBOUNDED,
+  create = factory,
+  maxRetained = PoolKit.UNBOUNDED,
 })
 ```
 
@@ -441,11 +441,11 @@ them. Pooling them needs bounds the host will not provide.
 
 ```lua
 local rows = PoolKit:New({
-    create = function() return CreateFrame("Frame", nil, parent) end,
-    reset = function(frame) frame:Hide(); frame:ClearAllPoints() end,
-    maxCreated = 40,   -- never more than 40 Frames, ever
-    maxActive = 20,    -- never more than 20 on screen at once
-    maxWaiting = 8,    -- up to 8 requests may wait for a free row
+  create = function() return CreateFrame("Frame", nil, parent) end,
+  reset = function(frame) frame:Hide(); frame:ClearAllPoints() end,
+  maxCreated = 40,   -- never more than 40 Frames, ever
+  maxActive = 20,    -- never more than 20 on screen at once
+  maxWaiting = 8,    -- up to 8 requests may wait for a free row
 })
 ```
 

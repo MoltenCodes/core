@@ -108,133 +108,133 @@ local OptionsKit = Registry:Get("optionsKit", 1)
 local S = SchemaKit
 
 local db = SettingsKit:Open("MyAddonDB", {
-    profile = S.table({
+  profile = S.table({
+    fields = {
+      enabled = S.optional(S.boolean(), true),
+      frame = S.optional(S.table({
         fields = {
-            enabled = S.optional(S.boolean(), true),
-            frame = S.optional(S.table({
-                fields = {
-                    scale = S.optional(S.number({ min = 0.5, max = 2 }), 1),
-                    anchor = S.optional(S.enum({ "TOP", "CENTER", "BOTTOM" }), "CENTER"),
-                    color = S.optional(S.table({
-                        fields = {
-                            r = S.optional(S.number({ min = 0, max = 1 })),
-                            g = S.optional(S.number({ min = 0, max = 1 })),
-                            b = S.optional(S.number({ min = 0, max = 1 })),
-                        },
-                    })),
-                },
-            }), {}),
-            channels = S.optional(S.map({ keys = S.string(), values = S.boolean(), max = 8 }), {}),
-            label = S.optional(S.string({ max = 24 }), ""),
-            toggleKey = S.optional(S.string(), ""),
+          scale = S.optional(S.number({ min = 0.5, max = 2 }), 1),
+          anchor = S.optional(S.enum({ "TOP", "CENTER", "BOTTOM" }), "CENTER"),
+          color = S.optional(S.table({
+            fields = {
+              r = S.optional(S.number({ min = 0, max = 1 })),
+              g = S.optional(S.number({ min = 0, max = 1 })),
+              b = S.optional(S.number({ min = 0, max = 1 })),
+            },
+          })),
         },
-    }),
-    global = S.table({ fields = { debug = S.optional(S.boolean()) } }),
+      }), {}),
+      channels = S.optional(S.map({ keys = S.string(), values = S.boolean(), max = 8 }), {}),
+      label = S.optional(S.string({ max = 24 }), ""),
+      toggleKey = S.optional(S.string(), ""),
+    },
+  }),
+  global = S.table({ fields = { debug = S.optional(S.boolean()) } }),
 })
 
 local options = OptionsKit:Define("MyAddon", {
-    type = "group",
-    name = "My Addon",
-    args = {
-        intro = { type = "description", name = "Settings for My Addon.", fontSize = "medium", order = 0 },
-        enabled = { type = "toggle", name = "Enabled", order = 1, bind = "profile.enabled" },
-        frame = {
-            type = "group",
-            name = "Frame",
-            order = 2,
-            disabled = function(info)
-                return not info.tree:Get("enabled")
-            end,
-            args = {
-                layout = { type = "header", name = "Layout", order = 1 },
-                scale = {
-                    type = "range",
-                    name = "Scale",
-                    desc = "Size of the main frame.",
-                    order = 2,
-                    min = 0.5,
-                    max = 2,
-                    step = 0.05,
-                    bigStep = 0.25,
-                    isPercent = true,
-                    bind = "profile.frame.scale",
-                },
-                anchor = {
-                    type = "select",
-                    name = "Anchor",
-                    order = 3,
-                    values = { TOP = "Top", CENTER = "Centre", BOTTOM = "Bottom" },
-                    sorting = { "TOP", "CENTER", "BOTTOM" },
-                    bind = "profile.frame.anchor",
-                },
-                color = { type = "color", name = "Border colour", order = 4, bind = "profile.frame.color" },
-                resetPosition = {
-                    type = "execute",
-                    name = "Reset position",
-                    order = 5,
-                    confirm = "Move the frame back to the centre?",
-                    func = function()
-                        MyAddon:ResetPosition()
-                    end,
-                },
-            },
+  type = "group",
+  name = "My Addon",
+  args = {
+    intro = { type = "description", name = "Settings for My Addon.", fontSize = "medium", order = 0 },
+    enabled = { type = "toggle", name = "Enabled", order = 1, bind = "profile.enabled" },
+    frame = {
+      type = "group",
+      name = "Frame",
+      order = 2,
+      disabled = function(info)
+        return not info.tree:Get("enabled")
+      end,
+      args = {
+        layout = { type = "header", name = "Layout", order = 1 },
+        scale = {
+          type = "range",
+          name = "Scale",
+          desc = "Size of the main frame.",
+          order = 2,
+          min = 0.5,
+          max = 2,
+          step = 0.05,
+          bigStep = 0.25,
+          isPercent = true,
+          bind = "profile.frame.scale",
         },
-        chat = {
-            type = "group",
-            name = "Chat",
-            order = 3,
-            inline = true,
-            args = {
-                channels = {
-                    type = "multiselect",
-                    name = "Announce in",
-                    values = function()
-                        return MyAddon:AvailableChannels() -- { SAY = "Say", PARTY = "Party", ... }
-                    end,
-                    bind = "profile.channels",
-                },
-                label = {
-                    type = "input",
-                    name = "Label",
-                    usage = "<letters, digits and spaces>",
-                    pattern = "^[%w ]*$",
-                    bind = "profile.label",
-                    validate = function(_, value)
-                        if #value > 24 then
-                            return false, "at most 24 characters"
-                        end
-                        return true
-                    end,
-                },
-            },
+        anchor = {
+          type = "select",
+          name = "Anchor",
+          order = 3,
+          values = { TOP = "Top", CENTER = "Centre", BOTTOM = "Bottom" },
+          sorting = { "TOP", "CENTER", "BOTTOM" },
+          bind = "profile.frame.anchor",
         },
-        toggleKey = { type = "keybinding", name = "Toggle key", order = 4, bind = "profile.toggleKey" },
-        debug = {
-            type = "toggle",
-            name = "Debug output",
-            order = 5,
-            tristate = true,
-            hidden = function()
-                return not MyAddon.developerMode
-            end,
-            bind = "global.debug",
+        color = { type = "color", name = "Border colour", order = 4, bind = "profile.frame.color" },
+        resetPosition = {
+          type = "execute",
+          name = "Reset position",
+          order = 5,
+          confirm = "Move the frame back to the centre?",
+          func = function()
+            MyAddon:ResetPosition()
+          end,
         },
-        sessionOnly = {
-            type = "toggle",
-            name = "Show the frame this session",
-            order = 6,
-            get = function()
-                return MyAddon.frame:IsShown()
-            end,
-            set = function(_, shown)
-                MyAddon.frame:SetShown(shown)
-            end,
-        },
+      },
     },
+    chat = {
+      type = "group",
+      name = "Chat",
+      order = 3,
+      inline = true,
+      args = {
+        channels = {
+          type = "multiselect",
+          name = "Announce in",
+          values = function()
+            return MyAddon:AvailableChannels() -- { SAY = "Say", PARTY = "Party", ... }
+          end,
+          bind = "profile.channels",
+        },
+        label = {
+          type = "input",
+          name = "Label",
+          usage = "<letters, digits and spaces>",
+          pattern = "^[%w ]*$",
+          bind = "profile.label",
+          validate = function(_, value)
+            if #value > 24 then
+              return false, "at most 24 characters"
+            end
+            return true
+          end,
+        },
+      },
+    },
+    toggleKey = { type = "keybinding", name = "Toggle key", order = 4, bind = "profile.toggleKey" },
+    debug = {
+      type = "toggle",
+      name = "Debug output",
+      order = 5,
+      tristate = true,
+      hidden = function()
+        return not MyAddon.developerMode
+      end,
+      bind = "global.debug",
+    },
+    sessionOnly = {
+      type = "toggle",
+      name = "Show the frame this session",
+      order = 6,
+      get = function()
+        return MyAddon.frame:IsShown()
+      end,
+      set = function(_, shown)
+        MyAddon.frame:SetShown(shown)
+      end,
+    },
+  },
 }, { db = db })
 
 options:OnChange(function(_, path, value)
-    MyAddon:ApplySetting(path, value)
+  MyAddon:ApplySetting(path, value)
 end)
 
 options:Set("frame.scale", 1.25)          --> true
@@ -417,11 +417,11 @@ The group AceDBOptions gives an AceDB database, over a SettingsKit database: the
 
 ```lua
 local options = OptionsKit:Define("MyAddon", {
-    type = "group",
-    args = {
-        general = { ... },
-        profiles = OptionsKit:ProfileOptions(db, { order = 90 }),
-    },
+  type = "group",
+  args = {
+    general = { ... },
+    profiles = OptionsKit:ProfileOptions(db, { order = 90 }),
+  },
 })
 ```
 
@@ -508,9 +508,9 @@ Every tree is bounded by default, and each bound is an option of the `Define` ca
 
 ```lua
 OptionsKit:Define("MyAddon", tree, {
-    db = db,
-    maxOptions = OptionsKit.UNBOUNDED,
-    maxDepth = 12,
+  db = db,
+  maxOptions = OptionsKit.UNBOUNDED,
+  maxDepth = 12,
 })
 ```
 

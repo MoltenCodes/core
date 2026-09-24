@@ -42,12 +42,12 @@ Three small additions cover what an observer primitive is usually wrapped in:
 
 ```lua
 local recent = SignalKit:NewJournal(16, {
-    onFirst = function() print("somebody is watching") end,
-    onLast = function() print("nobody is watching") end,
+  onFirst = function() print("somebody is watching") end,
+  onLast = function() print("nobody is watching") end,
 })
 recent:Fire("login", "Alice")
 for position, entry in recent:History() do
-    print(position, entry.generation, entry[1], entry[2])
+  print(position, entry.generation, entry[1], entry[2])
 end
 ```
 
@@ -86,7 +86,7 @@ local bus = SignalKit:ForAddon("MyAddon")
 bus:DeclareTopic("ProfileChanged", { arguments = 1 })
 
 SignalKit:Bus("MyAddon"):Subscribe("ProfileChanged", function(profileName)
-    print("profile is now", profileName)
+  print("profile is now", profileName)
 end)
 
 bus:Publish("ProfileChanged", "Default")
@@ -101,7 +101,7 @@ local SignalKit = Registry:Get("signalKit", 1)
 local changed = SignalKit:New()
 
 local connection = changed:Connect(function(unit, value)
-    print(unit, value)
+  print(unit, value)
 end)
 
 changed:Fire("player", 42)

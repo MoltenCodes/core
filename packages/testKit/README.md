@@ -18,21 +18,21 @@ local TestKit = MoltenCodes.Registries[2]:Get("testKit", 1)
 local suite = TestKit:Suite("MyAddon")
 
 suite:Test("the bag index rebuilds on BAG_UPDATE_DELAYED", function(ctx)
-    local rebuilt = false
-    ctx:Replace(MyAddon, "Rebuild", function()
-        rebuilt = true
-    end)
-    local fired = ctx:WaitFor("BAG_UPDATE_DELAYED", 5)
-    ctx:Expect(fired):ToBe(true)
-    ctx:Expect(rebuilt):ToBe(true)
+  local rebuilt = false
+  ctx:Replace(MyAddon, "Rebuild", function()
+    rebuilt = true
+  end)
+  local fired = ctx:WaitFor("BAG_UPDATE_DELAYED", 5)
+  ctx:Expect(fired):ToBe(true)
+  ctx:Expect(rebuilt):ToBe(true)
 end)
 
 suite:Test("our tooltip hook leaves GameTooltip secure", function(ctx)
-    ctx:Expect(nil):ToBeSecure(nil, "GameTooltip")
+  ctx:Expect(nil):ToBeSecure(nil, "GameTooltip")
 end)
 
 TestKit:OnFinished(function(report)
-    print(("%d passed, %d failed"):format(report.totals.passed, report.totals.failed))
+  print(("%d passed, %d failed"):format(report.totals.passed, report.totals.failed))
 end)
 ```
 

@@ -133,21 +133,21 @@ package ID. A run replaces its package's entry:
 
 ```lua
 MoltenCodesTestResults = {
-    registry = {
-        schema = 1,
-        package = "registry",
-        client = {
-            version = "12.1.0", build = "...", buildDate = "...", interface = 120100,
-            projectId = 1, locale = "enUS", date = "2026-09-24 18:00:00",
-            registryRevision = 12, expectedInstalled = true,
-            packages = {
-                { package = "apiKit", api = 1, revision = 2, status = "active",
-                  facadeRevision = 2, expectedRevision = 2 },
-                -- every Registry entry, as Registry:Packages() lists it
-            },
-        },
-        report = { suites = { ... }, totals = { ... } }, -- TestKit:Report(), this package's suites
+  registry = {
+    schema = 1,
+    package = "registry",
+    client = {
+      version = "12.1.0", build = "...", buildDate = "...", interface = 120100,
+      projectId = 1, locale = "enUS", date = "2026-09-24 18:00:00",
+      registryRevision = 13, expectedInstalled = true,
+      packages = {
+        { package = "apiKit", api = 1, revision = 2, status = "active",
+          facadeRevision = 2, expectedRevision = 2 },
+        -- every Registry entry, as Registry:Packages() lists it
+      },
     },
+    report = { suites = { ... }, totals = { ... } }, -- TestKit:Report(), this package's suites
+  },
 }
 ```
 
@@ -214,7 +214,7 @@ local Harness = rawget(_G, "MoltenCodesTest")
 
 local suite = Harness:Suite("eventKit", "dispatch", addonName) -- the TestKit suite "eventKit.dispatch"
 suite:Test("PLAYER_TARGET_CHANGED reaches a listener once per change", function(ctx)
-    -- ...
+  -- ...
 end)
 ```
 
@@ -264,7 +264,8 @@ so instead of passing. `collectReportedErrors` in
 
 The addons are runtime Lua that the client loads, so they are held to the
 runtime rules: `python3 -m tooling.lint` judges them in the runtime scope
-(`selene.toml`), `stylua --check .` formats them, and
+(`selene.toml`), `stylua --check .` holds them to the repository's two-space
+formatting (`stylua.toml`), and
 
 ```bash
 lua-language-server --check tests/client --checklevel=Warning

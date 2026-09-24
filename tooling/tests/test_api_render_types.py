@@ -297,8 +297,8 @@ class ApiFileTests(unittest.TestCase):
         lines = module.function_stub_lines("api.namespace.aVeryLongFunctionNameIndeed", parameters)
 
         self.assertEqual("function api.namespace.aVeryLongFunctionNameIndeed(", lines[0])
-        self.assertEqual("    parameter0,", lines[1])
-        self.assertEqual("    parameter7", lines[8])
+        self.assertEqual("  parameter0,", lines[1])
+        self.assertEqual("  parameter7", lines[8])
         self.assertEqual([")", "end"], lines[9:])
 
     def test_short_function_stub_stays_on_one_line(self):
@@ -346,9 +346,9 @@ class EnumsFileTests(unittest.TestCase):
         expected = (
             "---@enum Enum.PhaseReason\n"
             "Enum.PhaseReason = {\n"
-            "    Phasing = 0,\n"
-            "    ---Shards.\n"
-            "    Sharding = 1,\n"
+            "  Phasing = 0,\n"
+            "  ---Shards.\n"
+            "  Sharding = 1,\n"
             "}\n"
         )
         self.assertIn(expected, self.text)
@@ -439,10 +439,10 @@ class DocumentationTests(unittest.TestCase):
         self.assertEqual(["---one", "---two"], module.wrap_documentation("one\ntwo"))
 
     def test_indented_documentation_wraps_shorter(self):
-        lines = module.wrap_documentation(" ".join(["word"] * 60), indent="    ")
+        lines = module.wrap_documentation(" ".join(["word"] * 60), indent=module.INDENT)
 
         for line in lines:
-            self.assertTrue(line.startswith("    ---"))
+            self.assertTrue(line.startswith(module.INDENT + "---"))
             self.assertLessEqual(len(line), module.DOC_COLUMN_WIDTH)
 
 

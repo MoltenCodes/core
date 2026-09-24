@@ -46,7 +46,7 @@ local Registry = MoltenCodes.Registry
 local EventKit = Registry:Get("eventKit", 1)
 
 local connection = EventKit:Connect("PLAYER_LOGIN", function(eventName)
-    print("Logged in via", eventName)
+  print("Logged in via", eventName)
 end)
 
 -- Later:
@@ -57,7 +57,7 @@ Unit-filtered events use the same connection lifecycle:
 
 ```lua
 local health = EventKit:ConnectUnit("UNIT_HEALTH", function(eventName, unit)
-    print(eventName, "for", unit)
+  print(eventName, "for", unit)
 end, "player")
 ```
 
@@ -67,11 +67,11 @@ return to the listeners of that sub-event (or of `"*"`, every sub-event):
 
 ```lua
 if EventKit:IsCombatLogAvailable() then
-    local damage = EventKit:ConnectCombatLog("SPELL_DAMAGE", function(timestamp, subEvent,
-            hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
-            destGUID, destName, destFlags, destRaidFlags, spellId, spellName, spellSchool, amount)
-        print(spellName, "hit", destName, "for", amount)
-    end)
+  local damage = EventKit:ConnectCombatLog("SPELL_DAMAGE", function(timestamp, subEvent,
+      hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
+      destGUID, destName, destFlags, destRaidFlags, spellId, spellName, spellSchool, amount)
+    print(spellName, "hit", destName, "for", amount)
+  end)
 end
 ```
 
@@ -101,9 +101,9 @@ depend on it):
 
 ```lua
 events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, 0.1, function(units)
-    for unit in pairs(units) do
-        updateHealthBar(unit)
-    end
+  for unit in pairs(units) do
+    updateHealthBar(unit)
+  end
 end)
 
 local freeSlots = events:Derive("BAG_UPDATE_DELAYED", countFreeSlots)

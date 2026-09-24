@@ -93,9 +93,9 @@ Matchers, each also on `matcher.Not`:
 
 ```lua
 local suite = TestKit:Suite("MyAddon.Combat", {
-    phase = "ready",
-    addonName = "MyAddon",
-    timeoutSeconds = 20,
+  phase = "ready",
+  addonName = "MyAddon",
+  timeoutSeconds = 20,
 })
 ```
 
@@ -161,7 +161,7 @@ Calling `coroutine.yield` directly fails the test (`the test called coroutine.yi
 ```lua
 local fired, unit = ctx:WaitFor("UNIT_AURA", 2)
 if not fired then
-    ctx:Fail("no UNIT_AURA within two seconds")
+  ctx:Fail("no UNIT_AURA within two seconds")
 end
 ```
 
@@ -229,18 +229,18 @@ A run **finishes** when nothing is running, queued or waiting for a phase; then 
 
 ```lua
 local report = {
-    suites = {
-        {
-            name = "MyAddon",
-            phase = "ready",
-            addonName = "MyAddon",
-            tests = {
-                { name = "rebuilds", status = "passed", message = nil, durationMs = 3.2, logs = {} },
-                { name = "secure",   status = "failed", message = "Tests.lua:31: expected ...", durationMs = 0.4, logs = { "..." } },
-            },
-        },
+  suites = {
+    {
+      name = "MyAddon",
+      phase = "ready",
+      addonName = "MyAddon",
+      tests = {
+        { name = "rebuilds", status = "passed", message = nil, durationMs = 3.2, logs = {} },
+        { name = "secure",   status = "failed", message = "Tests.lua:31: expected ...", durationMs = 0.4, logs = { "..." } },
+      },
     },
-    totals = { suites = 1, tests = 2, passed = 1, failed = 1, skipped = 0, timeout = 0 },
+  },
+  totals = { suites = 1, tests = 2, passed = 1, failed = 1, skipped = 0, timeout = 0 },
 }
 ```
 

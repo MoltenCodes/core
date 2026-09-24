@@ -122,15 +122,15 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
 if type(Registry) == "nil" and type(namespace) == "table" then
-    Registry = rawget(namespace, "Registry")
+  Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
-    error("MoltenCodes LocaleKit requires Registry API 2 to be loaded first", 2)
+  error("MoltenCodes LocaleKit requires Registry API 2 to be loaded first", 2)
 end
 
 local bootstrapPackage = rawget(Registry, "Bootstrap")
 if type(bootstrapPackage) ~= "function" then
-    error("MoltenCodes LocaleKit requires a valid Registry API 2 facade", 2)
+  error("MoltenCodes LocaleKit requires a valid Registry API 2 facade", 2)
 end
 
 local stringFormat = string.format
@@ -143,49 +143,49 @@ local tableSort = table.sort
 ---@param implementation any shared package table handed back by Registry
 ---@return boolean
 local function validatePublicSurface(implementation)
-    if
-        type(implementation) ~= "table"
-        or rawget(implementation, "API") ~= API_GENERATION
-        or type(rawget(implementation, "REVISION")) ~= "number"
-        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
-    then
-        return false
+  if
+    type(implementation) ~= "table"
+    or rawget(implementation, "API") ~= API_GENERATION
+    or type(rawget(implementation, "REVISION")) ~= "number"
+    or type(rawget(implementation, "UNBOUNDED")) ~= "table"
+  then
+    return false
+  end
+  for index = 1, #FACADE_METHODS do
+    if type(rawget(implementation, FACADE_METHODS[index])) ~= "function" then
+      return false
     end
-    for index = 1, #FACADE_METHODS do
-        if type(rawget(implementation, FACADE_METHODS[index])) ~= "function" then
-            return false
-        end
-    end
-    return true
+  end
+  return true
 end
 
 ---Whether `currentState` has the fields every API 1 revision shares.
 ---@param currentState any
 ---@return boolean
 local function validateStateBase(currentState)
-    if type(currentState) ~= "table" or rawget(currentState, "schema") ~= STATE_SCHEMA then
-        return false
-    end
-    local override = rawget(currentState, "localeOverride")
-    return type(rawget(currentState, "runtimeRevision")) == "number"
-        and type(rawget(currentState, "addons")) == "table"
-        and type(rawget(currentState, "recordByStrings")) == "table"
-        and type(rawget(currentState, "proxyRecords")) == "table"
-        and type(rawget(currentState, "translatedProxyMetatable")) == "table"
-        and type(rawget(currentState, "defaultProxyMetatable")) == "table"
-        and type(rawget(currentState, "reportMetatable")) == "table"
-        and type(rawget(currentState, "silentMetatable")) == "table"
-        and type(rawget(currentState, "unbounded")) == "table"
-        and (override == false or type(override) == "string")
+  if type(currentState) ~= "table" or rawget(currentState, "schema") ~= STATE_SCHEMA then
+    return false
+  end
+  local override = rawget(currentState, "localeOverride")
+  return type(rawget(currentState, "runtimeRevision")) == "number"
+    and type(rawget(currentState, "addons")) == "table"
+    and type(rawget(currentState, "recordByStrings")) == "table"
+    and type(rawget(currentState, "proxyRecords")) == "table"
+    and type(rawget(currentState, "translatedProxyMetatable")) == "table"
+    and type(rawget(currentState, "defaultProxyMetatable")) == "table"
+    and type(rawget(currentState, "reportMetatable")) == "table"
+    and type(rawget(currentState, "silentMetatable")) == "table"
+    and type(rawget(currentState, "unbounded")) == "table"
+    and (override == false or type(override) == "string")
 end
 
 ---Whether `implementation` carries package state of this revision's schema.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    local currentState = rawget(implementation, "_state")
-    return validateStateBase(currentState)
-        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
+  local currentState = rawget(implementation, "_state")
+  return validateStateBase(currentState)
+    and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -194,54 +194,54 @@ end
 -- look the package up, refuse to reinterpret state owned by a newer revision,
 -- and register this one. What stays here is what only LocaleKit can answer.
 local LocaleKit, previousRevision, selected = bootstrapPackage(Registry, {
-    package = PACKAGE_NAME,
-    api = API_GENERATION,
-    revision = IMPLEMENTATION_REVISION,
-    label = "MoltenCodes LocaleKit",
-    validatePublicSurface = validatePublicSurface,
-    validateState = validateCurrentState,
+  package = PACKAGE_NAME,
+  api = API_GENERATION,
+  revision = IMPLEMENTATION_REVISION,
+  label = "MoltenCodes LocaleKit",
+  validatePublicSurface = validatePublicSurface,
+  validateState = validateCurrentState,
 })
 
 if type(LocaleKit) == "nil" then
-    -- An equal or newer compatible revision already owns the shared package table.
-    return selected
+  -- An equal or newer compatible revision already owns the shared package table.
+  return selected
 end
 
 local state = rawget(LocaleKit, "_state")
 
 if type(previousRevision) == "nil" then
-    if state ~= nil then
-        error("MoltenCodes LocaleKit package state is corrupted or incomplete", 2)
-    end
-
-    state = {
-        schema = STATE_SCHEMA,
-        runtimeRevision = 0,
-        -- Addon name to addon record. Records live for the session: a locale
-        -- table is what an addon reads its strings from until `/reload`.
-        addons = {},
-        -- An addon's read table to its record, for the read metatables.
-        recordByStrings = {},
-        -- A write proxy to its addon record. Weak-keyed, because a proxy is
-        -- normally dropped as soon as its translation file has run.
-        proxyRecords = setmetatable({}, { __mode = "k" }),
-        -- Shared metatables. Their functions are rewritten by every loading
-        -- revision, so proxies and read tables an older copy created run the
-        -- newer behaviour.
-        translatedProxyMetatable = {},
-        defaultProxyMetatable = {},
-        reportMetatable = {},
-        silentMetatable = {},
-        -- The translator's override, or `false`.
-        localeOverride = false,
-        -- The `LocaleKit.UNBOUNDED` sentinel. Created once and kept in state so
-        -- every revision hands out the same table, and an addon record opened
-        -- with it stays unbounded across an upgrade.
-        unbounded = {},
-    }
-    rawset(LocaleKit, "_state", state)
-elseif not validateStateBase(state) then
+  if state ~= nil then
     error("MoltenCodes LocaleKit package state is corrupted or incomplete", 2)
+  end
+
+  state = {
+    schema = STATE_SCHEMA,
+    runtimeRevision = 0,
+    -- Addon name to addon record. Records live for the session: a locale
+    -- table is what an addon reads its strings from until `/reload`.
+    addons = {},
+    -- An addon's read table to its record, for the read metatables.
+    recordByStrings = {},
+    -- A write proxy to its addon record. Weak-keyed, because a proxy is
+    -- normally dropped as soon as its translation file has run.
+    proxyRecords = setmetatable({}, { __mode = "k" }),
+    -- Shared metatables. Their functions are rewritten by every loading
+    -- revision, so proxies and read tables an older copy created run the
+    -- newer behaviour.
+    translatedProxyMetatable = {},
+    defaultProxyMetatable = {},
+    reportMetatable = {},
+    silentMetatable = {},
+    -- The translator's override, or `false`.
+    localeOverride = false,
+    -- The `LocaleKit.UNBOUNDED` sentinel. Created once and kept in state so
+    -- every revision hands out the same table, and an addon record opened
+    -- with it stays unbounded across an upgrade.
+    unbounded = {},
+  }
+  rawset(LocaleKit, "_state", state)
+elseif not validateStateBase(state) then
+  error("MoltenCodes LocaleKit package state is corrupted or incomplete", 2)
 end
 
 local addons = rawget(state, "addons")
@@ -264,18 +264,18 @@ local UNBOUNDED = rawget(state, "unbounded")
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateNonEmptyString(value, label, level)
-    if type(value) ~= "string" or value == "" then
-        error(label .. " must be a non-empty string", level)
-    end
+  if type(value) ~= "string" or value == "" then
+    error(label .. " must be a non-empty string", level)
+  end
 end
 
 ---@param value any
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateLocaleCode(value, label, level)
-    if type(value) ~= "string" or type(value:match(LOCALE_CODE_PATTERN)) == "nil" then
-        error(label .. ' must be a client locale code such as "deDE"', level)
-    end
+  if type(value) ~= "string" or type(value:match(LOCALE_CODE_PATTERN)) == "nil" then
+    error(label .. ' must be a client locale code such as "deDE"', level)
+  end
 end
 
 ---Refuse a non-table option table and any field outside `allowedKeys`.
@@ -284,25 +284,25 @@ end
 ---@param methodName string public method name, used in the argument errors
 ---@param level integer stack level the failures are reported at
 local function validateOptionKeys(options, allowedKeys, methodName, level)
-    if type(options) ~= "table" then
-        error(methodName .. " options must be a table", level)
-    end
+  if type(options) ~= "table" then
+    error(methodName .. " options must be a table", level)
+  end
 
-    -- Report the alphabetically first unknown field without allocating: track
-    -- the smallest key seen instead of collecting and sorting every offender.
-    local firstUnknown = nil
-    for key in next, options do
-        if allowedKeys[key] ~= true then
-            -- `tostring` could run a caller's `__tostring`; name other keys by type.
-            local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
-            if firstUnknown == nil or text < firstUnknown then
-                firstUnknown = text
-            end
-        end
+  -- Report the alphabetically first unknown field without allocating: track
+  -- the smallest key seen instead of collecting and sorting every offender.
+  local firstUnknown = nil
+  for key in next, options do
+    if allowedKeys[key] ~= true then
+      -- `tostring` could run a caller's `__tostring`; name other keys by type.
+      local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
+      if firstUnknown == nil or text < firstUnknown then
+        firstUnknown = text
+      end
     end
-    if firstUnknown ~= nil then
-        error(methodName .. ' options contains unknown field "' .. firstUnknown .. '"', level)
-    end
+  end
+  if firstUnknown ~= nil then
+    error(methodName .. ' options contains unknown field "' .. firstUnknown .. '"', level)
+  end
 end
 
 ---Whether `value` is an exact integer of one or more. `nan` and both
@@ -310,11 +310,11 @@ end
 ---@param value any
 ---@return boolean
 local function isPositiveInteger(value)
-    return type(value) == "number"
-        and value == value
-        and value ~= math.huge
-        and value >= 1
-        and value % 1 == 0
+  return type(value) == "number"
+    and value == value
+    and value ~= math.huge
+    and value >= 1
+    and value % 1 == 0
 end
 
 ---Refuse anything but a positive integer or `UNBOUNDED`. A secret raises on
@@ -324,27 +324,27 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateLimit(value, label, level)
-    -- The secret check runs before the value meets the sentinel or a number.
-    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-    -- selene: allow(global_usage)
-    local isSecretValue = rawget(_G, "issecretvalue")
-    local secret = type(isSecretValue) == "function" and isSecretValue(value) == true
-    if not secret and rawequal(value, UNBOUNDED) then
-        return
-    end
-    if secret or not isPositiveInteger(value) then
-        error(label .. " must be a positive integer or LocaleKit.UNBOUNDED", level)
-    end
+  -- The secret check runs before the value meets the sentinel or a number.
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local isSecretValue = rawget(_G, "issecretvalue")
+  local secret = type(isSecretValue) == "function" and isSecretValue(value) == true
+  if not secret and rawequal(value, UNBOUNDED) then
+    return
+  end
+  if secret or not isPositiveInteger(value) then
+    error(label .. " must be a positive integer or LocaleKit.UNBOUNDED", level)
+  end
 end
 
 ---Render a validated limit for an error message.
 ---@param value integer|table a positive integer or `UNBOUNDED`
 ---@return string
 local function describeLimit(value)
-    if rawequal(value, UNBOUNDED) then
-        return "LocaleKit.UNBOUNDED"
-    end
-    return tostring(value)
+  if rawequal(value, UNBOUNDED) then
+    return "LocaleKit.UNBOUNDED"
+  end
+  return tostring(value)
 end
 
 -- Client locale --------------------------------------------------------------
@@ -353,7 +353,7 @@ end
 ---@param locale string
 ---@return string
 local function foldLocale(locale)
-    return FOLDED_LOCALES[locale] or locale
+  return FOLDED_LOCALES[locale] or locale
 end
 
 ---The locale this client runs in: the translator's override when one is set,
@@ -361,22 +361,22 @@ end
 ---or override installed after LocaleKit loaded is honoured.
 ---@return string locale
 local function resolveClientLocale()
-    local override = rawget(state, "localeOverride")
-    if override ~= false then
-        return override
-    end
+  local override = rawget(state, "localeOverride")
+  if override ~= false then
+    return override
+  end
 
-    -- GetLocale is a World of Warcraft client API reachable only through the global table.
-    -- selene: allow(global_usage)
-    local getLocale = rawget(_G, "GetLocale")
-    if type(getLocale) ~= "function" then
-        return FALLBACK_LOCALE
-    end
-    local locale = getLocale()
-    if type(locale) ~= "string" or type(locale:match(LOCALE_CODE_PATTERN)) == "nil" then
-        return FALLBACK_LOCALE
-    end
-    return foldLocale(locale)
+  -- GetLocale is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getLocale = rawget(_G, "GetLocale")
+  if type(getLocale) ~= "function" then
+    return FALLBACK_LOCALE
+  end
+  local locale = getLocale()
+  if type(locale) ~= "string" or type(locale:match(LOCALE_CODE_PATTERN)) == "nil" then
+    return FALLBACK_LOCALE
+  end
+  return foldLocale(locale)
 end
 
 -- Reporting ------------------------------------------------------------------
@@ -384,21 +384,21 @@ end
 ---Hand a diagnostic to the host error handler, or print it without one.
 ---@param message string
 local function report(message)
-    -- geterrorhandler is a World of Warcraft client API reachable only through the global table.
-    -- selene: allow(global_usage)
-    local getErrorHandler = rawget(_G, "geterrorhandler")
-    if type(getErrorHandler) == "function" then
-        local handler = getErrorHandler()
-        if type(handler) == "function" then
-            handler(message)
-            return
-        end
+  -- geterrorhandler is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
+  if type(getErrorHandler) == "function" then
+    local handler = getErrorHandler()
+    if type(handler) == "function" then
+      handler(message)
+      return
     end
+  end
 
-    -- Outside a WoW client there is no error handler to report through.
-    -- Printing is what the client's own default handler does, and staying
-    -- silent would turn a missing translation into an invisible one.
-    print(message)
+  -- Outside a WoW client there is no error handler to report through.
+  -- Printing is what the client's own default handler does, and staying
+  -- silent would turn a missing translation into an invisible one.
+  print(message)
 end
 
 -- Addon records --------------------------------------------------------------
@@ -422,32 +422,32 @@ end
 ---@param locale string
 ---@return LocaleKit.Record
 local function newRecord(addonName, locale)
-    local strings = {}
-    local record = {
-        schema = RECORD_SCHEMA,
-        name = addonName,
-        locale = locale,
-        defaultLocale = false,
-        strings = strings,
-        missing = {},
-        missingCount = 0,
-        capReported = false,
-        maxMissingKeys = MAX_MISSING_KEYS,
-        mode = false,
-    }
-    addons[addonName] = record
-    recordByStrings[strings] = record
-    return record
+  local strings = {}
+  local record = {
+    schema = RECORD_SCHEMA,
+    name = addonName,
+    locale = locale,
+    defaultLocale = false,
+    strings = strings,
+    missing = {},
+    missingCount = 0,
+    capReported = false,
+    maxMissingKeys = MAX_MISSING_KEYS,
+    mode = false,
+  }
+  addons[addonName] = record
+  recordByStrings[strings] = record
+  return record
 end
 
 ---Forget that `key` was missing, because a translation file has now defined it.
 ---@param record LocaleKit.Record
 ---@param key string
 local function clearMissing(record, key)
-    if record.missing[key] == true then
-        record.missing[key] = nil
-        record.missingCount = record.missingCount - 1
-    end
+  if record.missing[key] == true then
+    record.missing[key] = nil
+    record.missingCount = record.missingCount - 1
+  end
 end
 
 -- Write proxies --------------------------------------------------------------
@@ -462,7 +462,7 @@ end
 -- build one; it is still refused at the assignment line rather than failing
 -- inside LocaleKit.
 local FOREIGN_PROXY_MESSAGE =
-    "LocaleKit translation target is not a proxy returned by LocaleKit:NewLocale"
+  "LocaleKit translation target is not a proxy returned by LocaleKit:NewLocale"
 
 ---Refuse an assignment that is not `L["non-empty string"] = "text" | true`
 ---and return the text to store. Level 3 is the assignment line: this
@@ -471,16 +471,16 @@ local FOREIGN_PROXY_MESSAGE =
 ---@param value any
 ---@return string text
 local function translationText(key, value)
-    if type(key) ~= "string" or key == "" then
-        error("LocaleKit translation key must be a non-empty string", 3)
-    end
-    if value == true then
-        return key
-    end
-    if type(value) ~= "string" then
-        error('LocaleKit translation "' .. key .. '" must be a string or true', 3)
-    end
-    return value
+  if type(key) ~= "string" or key == "" then
+    error("LocaleKit translation key must be a non-empty string", 3)
+  end
+  if value == true then
+    return key
+  end
+  if type(value) ~= "string" then
+    error('LocaleKit translation "' .. key .. '" must be a string or true', 3)
+  end
+  return value
 end
 
 ---`__newindex` of a proxy for the client's own locale: always writes, so a
@@ -489,13 +489,13 @@ end
 ---@param key any
 ---@param value any
 local function writeTranslated(proxy, key, value)
-    local record = proxyRecords[proxy]
-    if record == nil then
-        error(FOREIGN_PROXY_MESSAGE, 2)
-    end
-    local text = translationText(key, value)
-    rawset(record.strings, key, text)
-    clearMissing(record, key)
+  local record = proxyRecords[proxy]
+  if record == nil then
+    error(FOREIGN_PROXY_MESSAGE, 2)
+  end
+  local text = translationText(key, value)
+  rawset(record.strings, key, text)
+  clearMissing(record, key)
 end
 
 ---`__newindex` of a proxy for the default locale: writes only a key that is
@@ -505,16 +505,16 @@ end
 ---@param key any
 ---@param value any
 local function writeDefault(proxy, key, value)
-    local record = proxyRecords[proxy]
-    if record == nil then
-        error(FOREIGN_PROXY_MESSAGE, 2)
-    end
-    local text = translationText(key, value)
-    local strings = record.strings
-    if rawget(strings, key) == nil or record.missing[key] == true then
-        rawset(strings, key, text)
-        clearMissing(record, key)
-    end
+  local record = proxyRecords[proxy]
+  if record == nil then
+    error(FOREIGN_PROXY_MESSAGE, 2)
+  end
+  local text = translationText(key, value)
+  local strings = record.strings
+  if rawget(strings, key) == nil or record.missing[key] == true then
+    rawset(strings, key, text)
+    clearMissing(record, key)
+  end
 end
 
 ---`__index` of every proxy: the stored text or `nil`, never an error, so a
@@ -523,11 +523,11 @@ end
 ---@param key any
 ---@return string|nil
 local function readThroughProxy(proxy, key)
-    local record = proxyRecords[proxy]
-    if record == nil then
-        return nil
-    end
-    return rawget(record.strings, key)
+  local record = proxyRecords[proxy]
+  if record == nil then
+    return nil
+  end
+  return rawget(record.strings, key)
 end
 
 -- Read tables ----------------------------------------------------------------
@@ -541,58 +541,58 @@ end
 ---@param reports boolean
 ---@return string|nil
 local function readMissing(strings, key, reports)
-    -- A secret (Retail 12.x) raises when used as a table key or concatenated
-    -- into the report, so it is handed back untouched: not stored, recorded
-    -- or reported. Retail 12.1.0 b69933 never gets here with one: the client
-    -- refuses a secret key at the index, before `__index` runs, so
-    -- `L[secretKey]` raises at the caller. The check stays for a host that
-    -- lets the read through. The probe is looked up at call time; without it
-    -- nothing is secret.
-    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-    -- selene: allow(global_usage)
-    local isSecretValue = rawget(_G, "issecretvalue")
-    if type(isSecretValue) == "function" and isSecretValue(key) then
-        return key
-    end
-    if type(key) ~= "string" then
-        return nil
-    end
-    local record = recordByStrings[strings]
-    if record == nil then
-        return key
-    end
+  -- A secret (Retail 12.x) raises when used as a table key or concatenated
+  -- into the report, so it is handed back untouched: not stored, recorded
+  -- or reported. Retail 12.1.0 b69933 never gets here with one: the client
+  -- refuses a secret key at the index, before `__index` runs, so
+  -- `L[secretKey]` raises at the caller. The check stays for a host that
+  -- lets the read through. The probe is looked up at call time; without it
+  -- nothing is secret.
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local isSecretValue = rawget(_G, "issecretvalue")
+  if type(isSecretValue) == "function" and isSecretValue(key) then
+    return key
+  end
+  if type(key) ~= "string" then
+    return nil
+  end
+  local record = recordByStrings[strings]
+  if record == nil then
+    return key
+  end
 
-    local limit = record.maxMissingKeys
-    if limit ~= UNBOUNDED and record.missingCount >= limit then
-        if reports and not record.capReported then
-            record.capReported = true
-            report(
-                "LocaleKit: "
-                    .. record.name
-                    .. " has more than "
-                    .. limit
-                    .. " missing translations; further ones are neither recorded nor reported"
-                    .. " (raise options.maxMissingKeys to record more)"
-            )
-        end
-        return key
-    end
-
-    rawset(strings, key, key)
-    record.missing[key] = true
-    record.missingCount = record.missingCount + 1
-    if reports then
-        report(
-            'LocaleKit: missing translation "'
-                .. key
-                .. '" for '
-                .. record.name
-                .. " ("
-                .. record.locale
-                .. ")"
-        )
+  local limit = record.maxMissingKeys
+  if limit ~= UNBOUNDED and record.missingCount >= limit then
+    if reports and not record.capReported then
+      record.capReported = true
+      report(
+        "LocaleKit: "
+          .. record.name
+          .. " has more than "
+          .. limit
+          .. " missing translations; further ones are neither recorded nor reported"
+          .. " (raise options.maxMissingKeys to record more)"
+      )
     end
     return key
+  end
+
+  rawset(strings, key, key)
+  record.missing[key] = true
+  record.missingCount = record.missingCount + 1
+  if reports then
+    report(
+      'LocaleKit: missing translation "'
+        .. key
+        .. '" for '
+        .. record.name
+        .. " ("
+        .. record.locale
+        .. ")"
+    )
+  end
+  return key
 end
 
 ---`__index` of a read table in `"report"` mode.
@@ -600,7 +600,7 @@ end
 ---@param key any
 ---@return string|nil
 local function readMissingReported(strings, key)
-    return readMissing(strings, key, true)
+  return readMissing(strings, key, true)
 end
 
 ---`__index` of a read table in `"silent"` mode.
@@ -608,7 +608,7 @@ end
 ---@param key any
 ---@return string|nil
 local function readMissingSilently(strings, key)
-    return readMissing(strings, key, false)
+  return readMissing(strings, key, false)
 end
 
 -- Formatting -----------------------------------------------------------------
@@ -625,18 +625,18 @@ local formatNextSequential = 0
 
 ---Drop the staged arguments, so the array retains nothing between calls.
 local function clearFormatArguments()
-    for index = 1, formatArgumentCount do
-        formatArguments[index] = nil
-    end
-    formatArgumentCount = 0
+  for index = 1, formatArgumentCount do
+    formatArguments[index] = nil
+  end
+  formatArgumentCount = 0
 end
 
 ---Raise a template failure at the caller of `Format`: this function, the
 ---replacement function, `string.gsub`, `Format`, then the caller.
 ---@param message string
 local function failFormat(message)
-    clearFormatArguments()
-    error("LocaleKit:Format " .. message, 5)
+  clearFormatArguments()
+  error("LocaleKit:Format " .. message, 5)
 end
 
 ---Replace one specifier. Called by `string.gsub` with the four captures of
@@ -647,59 +647,54 @@ end
 ---@param conversion string
 ---@return string
 local function replaceSpecifier(digits, dollar, flags, conversion)
-    if conversion == "%" and digits == "" and dollar == "" and flags == "" then
-        return "%"
-    end
-    if conversion ~= "s" and conversion ~= "d" and conversion ~= "f" then
-        failFormat(
-            'template has an unsupported specifier "%'
-                .. digits
-                .. dollar
-                .. flags
-                .. conversion
-                .. '"'
-        )
-    end
+  if conversion == "%" and digits == "" and dollar == "" and flags == "" then
+    return "%"
+  end
+  if conversion ~= "s" and conversion ~= "d" and conversion ~= "f" then
+    failFormat(
+      'template has an unsupported specifier "%' .. digits .. dollar .. flags .. conversion .. '"'
+    )
+  end
 
-    local index
-    local specifier
-    if dollar == "$" then
-        index = tonumber(digits)
-        if type(index) == "nil" or index < 1 then
-            failFormat("template argument indexes start at 1")
-        end
-        specifier = "%" .. flags .. conversion
-    else
-        formatNextSequential = formatNextSequential + 1
-        index = formatNextSequential
-        specifier = "%" .. digits .. flags .. conversion
+  local index
+  local specifier
+  if dollar == "$" then
+    index = tonumber(digits)
+    if type(index) == "nil" or index < 1 then
+      failFormat("template argument indexes start at 1")
     end
+    specifier = "%" .. flags .. conversion
+  else
+    formatNextSequential = formatNextSequential + 1
+    index = formatNextSequential
+    specifier = "%" .. digits .. flags .. conversion
+  end
 
-    if index > formatArgumentCount then
-        failFormat(
-            "template needs argument " .. index .. " but " .. formatArgumentCount .. " were given"
-        )
-    end
+  if index > formatArgumentCount then
+    failFormat(
+      "template needs argument " .. index .. " but " .. formatArgumentCount .. " were given"
+    )
+  end
 
-    local value = formatArguments[index]
-    local valueType = type(value)
-    if conversion == "s" then
-        if valueType ~= "string" and valueType ~= "number" then
-            failFormat("argument " .. index .. " must be a string or a number, got " .. valueType)
-        end
-    elseif valueType ~= "number" then
-        failFormat("argument " .. index .. " must be a number, got " .. valueType)
+  local value = formatArguments[index]
+  local valueType = type(value)
+  if conversion == "s" then
+    if valueType ~= "string" and valueType ~= "number" then
+      failFormat("argument " .. index .. " must be a string or a number, got " .. valueType)
     end
-    -- The pattern admits shapes `string.format` refuses, such as a width over
-    -- 99 or a repeated flag. Run it protected so those fail like every other
-    -- template error: named, at the caller, with the arguments cleared.
-    local formatted, text = pcall(stringFormat, specifier, value)
-    if not formatted then
-        failFormat(
-            'template has an invalid specifier "%' .. digits .. dollar .. flags .. conversion .. '"'
-        )
-    end
-    return text
+  elseif valueType ~= "number" then
+    failFormat("argument " .. index .. " must be a number, got " .. valueType)
+  end
+  -- The pattern admits shapes `string.format` refuses, such as a width over
+  -- 99 or a repeated flag. Run it protected so those fail like every other
+  -- template error: named, at the caller, with the arguments cleared.
+  local formatted, text = pcall(stringFormat, specifier, value)
+  if not formatted then
+    failFormat(
+      'template has an invalid specifier "%' .. digits .. dollar .. flags .. conversion .. '"'
+    )
+  end
+  return text
 end
 
 -- Package public API ---------------------------------------------------------
@@ -721,49 +716,46 @@ end
 ---@param options LocaleKit.NewLocaleOptions?
 ---@return LocaleKit.WriteProxy? proxy
 local function packageNewLocale(_, addonName, locale, options)
-    validateNonEmptyString(addonName, "LocaleKit:NewLocale addonName", 3)
-    validateLocaleCode(locale, "LocaleKit:NewLocale locale", 3)
-    local isDefault = false
-    if type(options) ~= "nil" then
-        validateOptionKeys(options, NEW_LOCALE_OPTION_KEYS, "LocaleKit:NewLocale", 3)
-        local flag = rawget(options, "isDefault")
-        if type(flag) ~= "nil" and type(flag) ~= "boolean" then
-            error("LocaleKit:NewLocale isDefault must be a boolean", 2)
-        end
-        isDefault = flag == true
+  validateNonEmptyString(addonName, "LocaleKit:NewLocale addonName", 3)
+  validateLocaleCode(locale, "LocaleKit:NewLocale locale", 3)
+  local isDefault = false
+  if type(options) ~= "nil" then
+    validateOptionKeys(options, NEW_LOCALE_OPTION_KEYS, "LocaleKit:NewLocale", 3)
+    local flag = rawget(options, "isDefault")
+    if type(flag) ~= "nil" and type(flag) ~= "boolean" then
+      error("LocaleKit:NewLocale isDefault must be a boolean", 2)
     end
+    isDefault = flag == true
+  end
 
-    local record = addons[addonName]
-    if isDefault and record ~= nil then
-        local defaultLocale = record.defaultLocale
-        if defaultLocale ~= false and defaultLocale ~= locale then
-            error(
-                "LocaleKit:NewLocale "
-                    .. addonName
-                    .. " already has default locale "
-                    .. defaultLocale,
-                2
-            )
-        end
+  local record = addons[addonName]
+  if isDefault and record ~= nil then
+    local defaultLocale = record.defaultLocale
+    if defaultLocale ~= false and defaultLocale ~= locale then
+      error(
+        "LocaleKit:NewLocale " .. addonName .. " already has default locale " .. defaultLocale,
+        2
+      )
     end
+  end
 
-    local clientLocale = record ~= nil and record.locale or resolveClientLocale()
-    if not isDefault and locale ~= clientLocale then
-        return nil
-    end
+  local clientLocale = record ~= nil and record.locale or resolveClientLocale()
+  if not isDefault and locale ~= clientLocale then
+    return nil
+  end
 
-    if record == nil then
-        record = newRecord(addonName, clientLocale)
-    end
+  if record == nil then
+    record = newRecord(addonName, clientLocale)
+  end
 
-    local metatable = TRANSLATED_PROXY_METATABLE
-    if isDefault then
-        record.defaultLocale = locale
-        metatable = DEFAULT_PROXY_METATABLE
-    end
-    local proxy = setmetatable({}, metatable)
-    proxyRecords[proxy] = record
-    return proxy
+  local metatable = TRANSLATED_PROXY_METATABLE
+  if isDefault then
+    record.defaultLocale = locale
+    metatable = DEFAULT_PROXY_METATABLE
+  end
+  local proxy = setmetatable({}, metatable)
+  proxyRecords[proxy] = record
+  return proxy
 end
 
 ---Return the table `addonName` reads its strings from.
@@ -786,70 +778,70 @@ end
 ---@param options LocaleKit.GetLocaleOptions?
 ---@return LocaleKit.Strings strings
 local function packageGetLocale(_, addonName, options)
-    validateNonEmptyString(addonName, "LocaleKit:GetLocale addonName", 3)
-    local requested = nil
-    local maxMissingKeys = nil
-    if type(options) ~= "nil" then
-        validateOptionKeys(options, GET_LOCALE_OPTION_KEYS, "LocaleKit:GetLocale", 3)
-        requested = rawget(options, "missing")
-        if type(requested) ~= "nil" and MISSING_MODES[requested] ~= true then
-            error('LocaleKit:GetLocale missing must be "report", "silent" or "raw"', 2)
-        end
-        maxMissingKeys = rawget(options, "maxMissingKeys")
-        if type(maxMissingKeys) ~= "nil" then
-            validateLimit(maxMissingKeys, "LocaleKit:GetLocale options.maxMissingKeys", 3)
-        end
+  validateNonEmptyString(addonName, "LocaleKit:GetLocale addonName", 3)
+  local requested = nil
+  local maxMissingKeys = nil
+  if type(options) ~= "nil" then
+    validateOptionKeys(options, GET_LOCALE_OPTION_KEYS, "LocaleKit:GetLocale", 3)
+    requested = rawget(options, "missing")
+    if type(requested) ~= "nil" and MISSING_MODES[requested] ~= true then
+      error('LocaleKit:GetLocale missing must be "report", "silent" or "raw"', 2)
     end
-
-    local record = addons[addonName]
-    if record == nil then
-        error(
-            "LocaleKit:GetLocale found no locale registered for "
-                .. addonName
-                .. "; load its translation files first",
-            2
-        )
-    end
-
-    local mode = record.mode
-    local firstCall = mode == false
-    if firstCall then
-        mode = requested or DEFAULT_MISSING_MODE
-        record.mode = mode
-        if mode == "report" then
-            setmetatable(record.strings, REPORT_METATABLE)
-        elseif mode == "silent" then
-            setmetatable(record.strings, SILENT_METATABLE)
-        end
-    elseif type(requested) ~= "nil" and requested ~= mode then
-        error(
-            "LocaleKit:GetLocale "
-                .. addonName
-                .. ' already uses missing mode "'
-                .. mode
-                .. '", not "'
-                .. requested
-                .. '"',
-            2
-        )
-    end
-
+    maxMissingKeys = rawget(options, "maxMissingKeys")
     if type(maxMissingKeys) ~= "nil" then
-        if firstCall then
-            record.maxMissingKeys = maxMissingKeys
-        elseif not rawequal(maxMissingKeys, record.maxMissingKeys) then
-            error(
-                "LocaleKit:GetLocale "
-                    .. addonName
-                    .. " already uses options.maxMissingKeys "
-                    .. describeLimit(record.maxMissingKeys)
-                    .. ", not "
-                    .. describeLimit(maxMissingKeys),
-                2
-            )
-        end
+      validateLimit(maxMissingKeys, "LocaleKit:GetLocale options.maxMissingKeys", 3)
     end
-    return record.strings
+  end
+
+  local record = addons[addonName]
+  if record == nil then
+    error(
+      "LocaleKit:GetLocale found no locale registered for "
+        .. addonName
+        .. "; load its translation files first",
+      2
+    )
+  end
+
+  local mode = record.mode
+  local firstCall = mode == false
+  if firstCall then
+    mode = requested or DEFAULT_MISSING_MODE
+    record.mode = mode
+    if mode == "report" then
+      setmetatable(record.strings, REPORT_METATABLE)
+    elseif mode == "silent" then
+      setmetatable(record.strings, SILENT_METATABLE)
+    end
+  elseif type(requested) ~= "nil" and requested ~= mode then
+    error(
+      "LocaleKit:GetLocale "
+        .. addonName
+        .. ' already uses missing mode "'
+        .. mode
+        .. '", not "'
+        .. requested
+        .. '"',
+      2
+    )
+  end
+
+  if type(maxMissingKeys) ~= "nil" then
+    if firstCall then
+      record.maxMissingKeys = maxMissingKeys
+    elseif not rawequal(maxMissingKeys, record.maxMissingKeys) then
+      error(
+        "LocaleKit:GetLocale "
+          .. addonName
+          .. " already uses options.maxMissingKeys "
+          .. describeLimit(record.maxMissingKeys)
+          .. ", not "
+          .. describeLimit(maxMissingKeys),
+        2
+      )
+    end
+  end
+  return record.strings
 end
 
 ---Return the keys `addonName` read but never defined, sorted.
@@ -860,19 +852,19 @@ end
 ---@param addonName string
 ---@return string[] keys
 local function packageMissingKeys(_, addonName)
-    validateNonEmptyString(addonName, "LocaleKit:MissingKeys addonName", 3)
-    local keys = {}
-    local record = addons[addonName]
-    if record == nil then
-        return keys
-    end
-    local count = 0
-    for key in next, record.missing do
-        count = count + 1
-        keys[count] = key
-    end
-    tableSort(keys)
+  validateNonEmptyString(addonName, "LocaleKit:MissingKeys addonName", 3)
+  local keys = {}
+  local record = addons[addonName]
+  if record == nil then
     return keys
+  end
+  local count = 0
+  for key in next, record.missing do
+    count = count + 1
+    keys[count] = key
+  end
+  tableSort(keys)
+  return keys
 end
 
 ---Format `template` with `...`, supporting `%s`, `%d`, `%f` with flags, width
@@ -889,38 +881,38 @@ end
 ---@param ... any
 ---@return string text
 local function packageFormat(_, template, ...)
-    if type(template) ~= "string" then
-        error("LocaleKit:Format template must be a string", 2)
-    end
+  if type(template) ~= "string" then
+    error("LocaleKit:Format template must be a string", 2)
+  end
 
-    local count = select("#", ...)
-    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-    -- selene: allow(global_usage)
-    local isSecretValue = rawget(_G, "issecretvalue")
-    if type(isSecretValue) == "function" then
-        -- A secret template (a host string, say) must never reach
-        -- `string.gsub`. A read table cannot supply one: the client refuses
-        -- a secret key at the index, before `__index` runs.
-        if isSecretValue(template) then
-            error("LocaleKit:Format template must not be a secret value", 2)
-        end
-        for index = 1, count do
-            if isSecretValue((select(index, ...))) then
-                error("LocaleKit:Format argument " .. index .. " must not be a secret value", 2)
-            end
-        end
+  local count = select("#", ...)
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local isSecretValue = rawget(_G, "issecretvalue")
+  if type(isSecretValue) == "function" then
+    -- A secret template (a host string, say) must never reach
+    -- `string.gsub`. A read table cannot supply one: the client refuses
+    -- a secret key at the index, before `__index` runs.
+    if isSecretValue(template) then
+      error("LocaleKit:Format template must not be a secret value", 2)
     end
-
-    clearFormatArguments()
     for index = 1, count do
-        formatArguments[index] = (select(index, ...))
+      if isSecretValue((select(index, ...))) then
+        error("LocaleKit:Format argument " .. index .. " must not be a secret value", 2)
+      end
     end
-    formatArgumentCount = count
-    formatNextSequential = 0
+  end
 
-    local text = stringGsub(template, FORMAT_PATTERN, replaceSpecifier)
-    clearFormatArguments()
-    return text
+  clearFormatArguments()
+  for index = 1, count do
+    formatArguments[index] = (select(index, ...))
+  end
+  formatArgumentCount = count
+  formatNextSequential = 0
+
+  local text = stringGsub(template, FORMAT_PATTERN, replaceSpecifier)
+  clearFormatArguments()
+  return text
 end
 
 ---Make every addon registered from now on use `locale` instead of the
@@ -930,12 +922,12 @@ end
 ---@param _ LocaleKit
 ---@param locale string? a client locale code, or `nil` to clear
 local function packageSetLocaleOverride(_, locale)
-    if type(locale) == "nil" then
-        rawset(state, "localeOverride", false)
-        return
-    end
-    validateLocaleCode(locale, "LocaleKit:SetLocaleOverride locale", 3)
-    rawset(state, "localeOverride", foldLocale(locale))
+  if type(locale) == "nil" then
+    rawset(state, "localeOverride", false)
+    return
+  end
+  validateLocaleCode(locale, "LocaleKit:SetLocaleOverride locale", 3)
+  rawset(state, "localeOverride", foldLocale(locale))
 end
 
 -- Commit ---------------------------------------------------------------------
@@ -966,7 +958,7 @@ rawset(LocaleKit, "SetLocaleOverride", packageSetLocaleOverride)
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(LocaleKit) or not validateCurrentState(LocaleKit) then
-    error("MoltenCodes LocaleKit package state is corrupted or incomplete", 2)
+  error("MoltenCodes LocaleKit package state is corrupted or incomplete", 2)
 end
 
 return LocaleKit

@@ -14,7 +14,7 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local TimerKitTestEnv = FrameworkTestEnv.New({
-    modules = { "Registry", "TimerKit" },
+  modules = { "Registry", "TimerKit" },
 })
 
 --- TimerKit's specs name the native-timer failure hooks without the `Timer`
@@ -30,17 +30,17 @@ local resetFixture = TimerKitTestEnv.Reset
 
 ---Reset the shared fixture and unload the optional modules.
 function TimerKitTestEnv.Reset()
-    resetFixture()
-    for index = #OPTIONAL_MODULES, 1, -1 do
-        package.loaded[OPTIONAL_MODULES[index]] = nil
-    end
+  resetFixture()
+  for index = #OPTIONAL_MODULES, 1, -1 do
+    package.loaded[OPTIONAL_MODULES[index]] = nil
+  end
 end
 
 ---Load SignalKit and EventKit after the chain `NewPackage` loaded.
 ---@return table EventKit
 function TimerKitTestEnv.LoadEventKit()
-    require("SignalKit")
-    return require("EventKit")
+  require("SignalKit")
+  return require("EventKit")
 end
 
 ---Load SignalKit, EventKit and LifecycleKit after the chain `NewPackage`
@@ -48,8 +48,8 @@ end
 ---@return table LifecycleKit
 ---@return table EventKit
 function TimerKitTestEnv.LoadLifecycleKit()
-    local EventKit = TimerKitTestEnv.LoadEventKit()
-    return require("LifecycleKit"), EventKit
+  local EventKit = TimerKitTestEnv.LoadEventKit()
+  return require("LifecycleKit"), EventKit
 end
 
 ---Return the kilobytes `workload` allocates, with the collector stopped so
@@ -57,13 +57,13 @@ end
 ---@param workload fun()
 ---@return number kilobytes
 function TimerKitTestEnv.AllocatedKilobytes(workload)
-    collectgarbage()
-    collectgarbage("stop")
-    local before = collectgarbage("count")
-    workload()
-    local after = collectgarbage("count")
-    collectgarbage("restart")
-    return after - before
+  collectgarbage()
+  collectgarbage("stop")
+  local before = collectgarbage("count")
+  workload()
+  local after = collectgarbage("count")
+  collectgarbage("restart")
+  return after - before
 end
 
 ---Run this package's own source as if it were implementation revision
@@ -75,36 +75,34 @@ end
 ---@param revision integer
 ---@return table TimerKit
 function TimerKitTestEnv.LoadRevision(revision)
-    -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
-    -- `require` does.
-    local path = nil
-    for template in package.path:gmatch("[^;]+") do
-        local candidate = template:gsub("%?", "TimerKit")
-        local file = io.open(candidate, "r")
-        if file ~= nil then
-            file:close()
-            path = candidate
-            break
-        end
+  -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
+  -- `require` does.
+  local path = nil
+  for template in package.path:gmatch("[^;]+") do
+    local candidate = template:gsub("%?", "TimerKit")
+    local file = io.open(candidate, "r")
+    if file ~= nil then
+      file:close()
+      path = candidate
+      break
     end
-    if path == nil then
-        error("TimerKitTestEnv.LoadRevision could not find TimerKit.lua on package.path", 2)
-    end
+  end
+  if path == nil then
+    error("TimerKitTestEnv.LoadRevision could not find TimerKit.lua on package.path", 2)
+  end
 
-    local file = assert(io.open(path, "r"))
-    local text = file:read("*a")
-    file:close()
+  local file = assert(io.open(path, "r"))
+  local text = file:read("*a")
+  file:close()
 
-    local patched, replacements = text:gsub(
-        "local IMPLEMENTATION_REVISION = %d+",
-        "local IMPLEMENTATION_REVISION = " .. revision
-    )
-    if replacements ~= 1 then
-        error("TimerKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
-    end
+  local patched, replacements =
+    text:gsub("local IMPLEMENTATION_REVISION = %d+", "local IMPLEMENTATION_REVISION = " .. revision)
+  if replacements ~= 1 then
+    error("TimerKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
+  end
 
-    local chunk = assert(loadstring(patched, "@" .. path))
-    return chunk()
+  local chunk = assert(loadstring(patched, "@" .. path))
+  return chunk()
 end
 
 return TimerKitTestEnv

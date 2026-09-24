@@ -1,130 +1,130 @@
 local TestEnv = require("SignalKitTestEnv")
 
 describe("SignalKit mutation during dispatch", function()
-    local SignalKit
-    local signal
+  local SignalKit
+  local signal
 
-    before_each(function()
-        SignalKit = TestEnv.NewPackage()
-        signal = SignalKit:New()
+  before_each(function()
+    SignalKit = TestEnv.NewPackage()
+    signal = SignalKit:New()
+  end)
+
+  after_each(TestEnv.Reset)
+
+  it("does not run listeners connected during the current Fire", function()
+    local calls = {}
+    local added = false
+
+    signal:Connect(function()
+      calls[#calls + 1] = "first"
+      if not added then
+        added = true
+        signal:Connect(function()
+          calls[#calls + 1] = "late"
+        end)
+      end
     end)
 
-    after_each(TestEnv.Reset)
+    signal:Fire()
+    assert.are.equal(1, #calls)
+    assert.are.equal("first", calls[1])
 
-    it("does not run listeners connected during the current Fire", function()
-        local calls = {}
-        local added = false
+    signal:Fire()
+    assert.are.equal(3, #calls)
+    assert.are.equal("first", calls[2])
+    assert.are.equal("late", calls[3])
+  end)
 
-        signal:Connect(function()
-            calls[#calls + 1] = "first"
-            if not added then
-                added = true
-                signal:Connect(function()
-                    calls[#calls + 1] = "late"
-                end)
-            end
-        end)
+  it("skips a later listener disconnected before its turn", function()
+    local calls = {}
+    local second
 
-        signal:Fire()
-        assert.are.equal(1, #calls)
-        assert.are.equal("first", calls[1])
-
-        signal:Fire()
-        assert.are.equal(3, #calls)
-        assert.are.equal("first", calls[2])
-        assert.are.equal("late", calls[3])
+    signal:Connect(function()
+      calls[#calls + 1] = "first"
+      second:Disconnect()
+    end)
+    second = signal:Connect(function()
+      calls[#calls + 1] = "second"
     end)
 
-    it("skips a later listener disconnected before its turn", function()
-        local calls = {}
-        local second
+    signal:Fire()
 
-        signal:Connect(function()
-            calls[#calls + 1] = "first"
-            second:Disconnect()
-        end)
-        second = signal:Connect(function()
-            calls[#calls + 1] = "second"
-        end)
+    assert.are.equal(1, #calls)
+    assert.are.equal("first", calls[1])
+  end)
 
-        signal:Fire()
+  it("allows a listener to disconnect itself without disrupting later listeners", function()
+    local calls = {}
+    local first
 
-        assert.are.equal(1, #calls)
-        assert.are.equal("first", calls[1])
+    first = signal:Connect(function()
+      calls[#calls + 1] = "first"
+      first:Disconnect()
+    end)
+    signal:Connect(function()
+      calls[#calls + 1] = "second"
     end)
 
-    it("allows a listener to disconnect itself without disrupting later listeners", function()
-        local calls = {}
-        local first
+    signal:Fire()
+    signal:Fire()
 
-        first = signal:Connect(function()
-            calls[#calls + 1] = "first"
-            first:Disconnect()
-        end)
-        signal:Connect(function()
-            calls[#calls + 1] = "second"
-        end)
+    assert.are.equal("first", calls[1])
+    assert.are.equal("second", calls[2])
+    assert.are.equal("second", calls[3])
+    assert.are.equal(3, #calls)
+  end)
 
-        signal:Fire()
-        signal:Fire()
+  it("DisconnectAll prevents remaining callbacks in the current Fire", function()
+    local calls = {}
 
-        assert.are.equal("first", calls[1])
-        assert.are.equal("second", calls[2])
-        assert.are.equal("second", calls[3])
-        assert.are.equal(3, #calls)
+    signal:Connect(function()
+      calls[#calls + 1] = "first"
+      signal:DisconnectAll()
+    end)
+    signal:Connect(function()
+      calls[#calls + 1] = "second"
     end)
 
-    it("DisconnectAll prevents remaining callbacks in the current Fire", function()
-        local calls = {}
+    signal:Fire()
 
-        signal:Connect(function()
-            calls[#calls + 1] = "first"
-            signal:DisconnectAll()
-        end)
-        signal:Connect(function()
-            calls[#calls + 1] = "second"
-        end)
+    assert.are.equal(1, #calls)
+    assert.are.equal("first", calls[1])
+  end)
 
-        signal:Fire()
+  it("can connect again after DisconnectAll", function()
+    local calls = 0
 
-        assert.are.equal(1, #calls)
-        assert.are.equal("first", calls[1])
+    signal:Connect(function()
+      calls = calls + 100
+    end)
+    signal:DisconnectAll()
+    signal:Connect(function()
+      calls = calls + 1
     end)
 
-    it("can connect again after DisconnectAll", function()
-        local calls = 0
+    signal:Fire()
 
-        signal:Connect(function()
-            calls = calls + 100
-        end)
-        signal:DisconnectAll()
-        signal:Connect(function()
-            calls = calls + 1
-        end)
+    assert.are.equal(1, calls)
+  end)
 
-        signal:Fire()
+  it("preserves order after removing a middle connection", function()
+    local calls = {}
 
-        assert.are.equal(1, calls)
+    signal:Connect(function()
+      calls[#calls + 1] = "first"
+    end)
+    local middle = signal:Connect(function()
+      calls[#calls + 1] = "middle"
+    end)
+    signal:Connect(function()
+      calls[#calls + 1] = "last"
     end)
 
-    it("preserves order after removing a middle connection", function()
-        local calls = {}
+    middle:Disconnect()
+    signal:Fire()
 
-        signal:Connect(function()
-            calls[#calls + 1] = "first"
-        end)
-        local middle = signal:Connect(function()
-            calls[#calls + 1] = "middle"
-        end)
-        signal:Connect(function()
-            calls[#calls + 1] = "last"
-        end)
-
-        middle:Disconnect()
-        signal:Fire()
-
-        assert.are.equal("first", calls[1])
-        assert.are.equal("last", calls[2])
-        assert.are.equal(2, #calls)
-    end)
+    assert.are.equal("first", calls[1])
+    assert.are.equal("last", calls[2])
+    assert.are.equal(2, #calls)
+  end)
 end)

@@ -26,8 +26,8 @@ local MODULES = { "Registry", "SignalKit", "LogKit" }
 -- The mainline profile publishes `issecretvalue`, which the secret-value
 -- specs need behind `NewSecretValue`; LogKit reads nothing else from it.
 local LogKitTestEnv = FrameworkTestEnv.New({
-    modules = MODULES,
-    wowProfile = "mainline",
+  modules = MODULES,
+  wowProfile = "mainline",
 })
 
 --- The host globals this environment installs and removes.
@@ -46,47 +46,47 @@ local chatLines = {}
 ---@param name string
 ---@param value any
 local function setGlobal(name, value)
-    -- selene: allow(global_usage)
-    rawset(_G, name, value)
+  -- selene: allow(global_usage)
+  rawset(_G, name, value)
 end
 
 ---Read a host global the same way.
 ---@param name string
 ---@return any
 local function getGlobal(name)
-    -- selene: allow(global_usage)
-    return rawget(_G, name)
+  -- selene: allow(global_usage)
+  return rawget(_G, name)
 end
 
 ---Write a host global from a spec, for a host function a case replaces.
 ---@param name string
 ---@param value any
 function LogKitTestEnv.SetGlobal(name, value)
-    setGlobal(name, value)
+  setGlobal(name, value)
 end
 
 ---Install `DEFAULT_CHAT_FRAME` recording every line it receives.
 function LogKitTestEnv.InstallChatApi()
-    setGlobal("DEFAULT_CHAT_FRAME", {
-        AddMessage = function(_, text)
-            chatLines[#chatLines + 1] = text
-        end,
-    })
+  setGlobal("DEFAULT_CHAT_FRAME", {
+    AddMessage = function(_, text)
+      chatLines[#chatLines + 1] = text
+    end,
+  })
 end
 
 ---The lines `DEFAULT_CHAT_FRAME` received since the last `Reset`.
 ---@return string[]
 function LogKitTestEnv.ChatLines()
-    return chatLines
+  return chatLines
 end
 
 ---Make the host's `issecretvalue` report `secret` (compared with `rawequal`)
 ---as a secret value. The shared fixture owns and clears this global.
 ---@param secret any
 function LogKitTestEnv.InstallSecretProbe(secret)
-    setGlobal("issecretvalue", function(value)
-        return rawequal(value, secret)
-    end)
+  setGlobal("issecretvalue", function(value)
+    return rawequal(value, secret)
+  end)
 end
 
 ---Load the module chain into a host that publishes no `GetTimePreciseSec`.
@@ -95,37 +95,37 @@ end
 ---is loaded by hand after withholding it. LogKit binds the clock once at load.
 ---@return table LogKit
 function LogKitTestEnv.NewPackageWithoutClock()
-    LogKitTestEnv.Reset()
-    LogKitTestEnv.InstallWowApi()
-    setGlobal("GetTimePreciseSec", nil)
-    require(MODULES[1])
-    require(MODULES[2])
-    return require(MODULES[3])
+  LogKitTestEnv.Reset()
+  LogKitTestEnv.InstallWowApi()
+  setGlobal("GetTimePreciseSec", nil)
+  require(MODULES[1])
+  require(MODULES[2])
+  return require(MODULES[3])
 end
 
 ---Install `SlashCmdList` and load SchemaKit and CommandKit on top of the chain.
 ---@return table CommandKit
 function LogKitTestEnv.LoadCommandKit()
-    if getGlobal("SlashCmdList") == nil then
-        setGlobal("SlashCmdList", {})
-    end
-    require("SchemaKit")
-    return require("CommandKit")
+  if getGlobal("SlashCmdList") == nil then
+    setGlobal("SlashCmdList", {})
+  end
+  require("SchemaKit")
+  return require("CommandKit")
 end
 
 ---Load SchemaKit and SettingsKit on top of the chain.
 ---@return table SettingsKit
 ---@return table SchemaKit
 function LogKitTestEnv.LoadSettingsKit()
-    local SchemaKit = require("SchemaKit")
-    return require("SettingsKit"), SchemaKit
+  local SchemaKit = require("SchemaKit")
+  return require("SettingsKit"), SchemaKit
 end
 
 ---Remember a saved-variable global a spec opened a database over, so `Reset`
 ---removes it. `SettingsKit:Open` creates the global when it is missing.
 ---@param name string
 function LogKitTestEnv.SavedVariable(name)
-    savedVariables[name] = true
+  savedVariables[name] = true
 end
 
 ---Find the slash-table key whose `SLASH_<key><n>` globals include `slash`,
@@ -133,40 +133,40 @@ end
 ---@param slash string `"/name"`
 ---@return string|nil key
 local function findSlashKey(slash)
-    local list = getGlobal("SlashCmdList")
-    if type(list) ~= "table" then
-        return nil
-    end
-    local upper = slash:upper()
-    for key in pairs(list) do
-        local index = 1
-        while true do
-            local value = getGlobal("SLASH_" .. key .. index)
-            if value == nil then
-                break
-            end
-            if value:upper() == upper then
-                return key
-            end
-            index = index + 1
-        end
-    end
+  local list = getGlobal("SlashCmdList")
+  if type(list) ~= "table" then
     return nil
+  end
+  local upper = slash:upper()
+  for key in pairs(list) do
+    local index = 1
+    while true do
+      local value = getGlobal("SLASH_" .. key .. index)
+      if value == nil then
+        break
+      end
+      if value:upper() == upper then
+        return key
+      end
+      index = index + 1
+    end
+  end
+  return nil
 end
 
 ---Run a typed chat line the way the client does: split off `/name`, find its
 ---key and call the slash function with the rest of the line.
 ---@param line string
 function LogKitTestEnv.RunSlash(line)
-    local slash, rest = line:match("^(/%S+)%s*(.*)$")
-    if slash == nil then
-        error("LogKitTestEnv.RunSlash expects a line starting with /name", 2)
-    end
-    local key = findSlashKey(slash)
-    if key == nil then
-        error("LogKitTestEnv.RunSlash found no slash command " .. slash, 2)
-    end
-    getGlobal("SlashCmdList")[key](rest)
+  local slash, rest = line:match("^(/%S+)%s*(.*)$")
+  if slash == nil then
+    error("LogKitTestEnv.RunSlash expects a line starting with /name", 2)
+  end
+  local key = findSlashKey(slash)
+  if key == nil then
+    error("LogKitTestEnv.RunSlash found no slash command " .. slash, 2)
+  end
+  getGlobal("SlashCmdList")[key](rest)
 end
 
 local sharedReset = LogKitTestEnv.Reset
@@ -174,28 +174,28 @@ local sharedReset = LogKitTestEnv.Reset
 ---Clear everything the shared fixture clears, plus the modules loaded on top
 ---of the chain, the chat and slash globals and every saved variable.
 function LogKitTestEnv.Reset()
-    sharedReset()
-    for index = 1, #EXTRA_MODULES do
-        package.loaded[EXTRA_MODULES[index]] = nil
+  sharedReset()
+  for index = 1, #EXTRA_MODULES do
+    package.loaded[EXTRA_MODULES[index]] = nil
+  end
+  for index = 1, #OWNED_GLOBALS do
+    setGlobal(OWNED_GLOBALS[index], nil)
+  end
+  for name in pairs(savedVariables) do
+    setGlobal(name, nil)
+  end
+  savedVariables = {}
+  local slashNames = {}
+  -- selene: allow(global_usage)
+  for name in pairs(_G) do
+    if type(name) == "string" and name:find("^SLASH_") then
+      slashNames[#slashNames + 1] = name
     end
-    for index = 1, #OWNED_GLOBALS do
-        setGlobal(OWNED_GLOBALS[index], nil)
-    end
-    for name in pairs(savedVariables) do
-        setGlobal(name, nil)
-    end
-    savedVariables = {}
-    local slashNames = {}
-    -- selene: allow(global_usage)
-    for name in pairs(_G) do
-        if type(name) == "string" and name:find("^SLASH_") then
-            slashNames[#slashNames + 1] = name
-        end
-    end
-    for index = 1, #slashNames do
-        setGlobal(slashNames[index], nil)
-    end
-    chatLines = {}
+  end
+  for index = 1, #slashNames do
+    setGlobal(slashNames[index], nil)
+  end
+  chatLines = {}
 end
 
 ---Kilobytes allocated while `action` runs, with the collector stopped.
@@ -205,14 +205,14 @@ end
 ---@param action fun()
 ---@return number kilobytes
 function LogKitTestEnv.AllocatedKilobytes(action)
-    action()
-    collectgarbage()
-    collectgarbage("stop")
-    local before = collectgarbage("count")
-    action()
-    local after = collectgarbage("count")
-    collectgarbage("restart")
-    return after - before
+  action()
+  collectgarbage()
+  collectgarbage("stop")
+  local before = collectgarbage("count")
+  action()
+  local after = collectgarbage("count")
+  collectgarbage("restart")
+  return after - before
 end
 
 ---Load the LogKit source again as a copy carrying `revision`, the way a
@@ -220,36 +220,34 @@ end
 ---@param revision integer
 ---@return table LogKit
 function LogKitTestEnv.LoadRevision(revision)
-    -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
-    -- `require` does.
-    local path = nil
-    for template in package.path:gmatch("[^;]+") do
-        local candidate = template:gsub("%?", "LogKit")
-        local file = io.open(candidate, "r")
-        if file ~= nil then
-            file:close()
-            path = candidate
-            break
-        end
+  -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
+  -- `require` does.
+  local path = nil
+  for template in package.path:gmatch("[^;]+") do
+    local candidate = template:gsub("%?", "LogKit")
+    local file = io.open(candidate, "r")
+    if file ~= nil then
+      file:close()
+      path = candidate
+      break
     end
-    if path == nil then
-        error("LogKitTestEnv.LoadRevision could not find LogKit.lua on package.path", 2)
-    end
+  end
+  if path == nil then
+    error("LogKitTestEnv.LoadRevision could not find LogKit.lua on package.path", 2)
+  end
 
-    local file = assert(io.open(path, "r"))
-    local text = file:read("*a")
-    file:close()
+  local file = assert(io.open(path, "r"))
+  local text = file:read("*a")
+  file:close()
 
-    local patched, replacements = text:gsub(
-        "local IMPLEMENTATION_REVISION = %d+",
-        "local IMPLEMENTATION_REVISION = " .. revision
-    )
-    if replacements ~= 1 then
-        error("LogKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
-    end
+  local patched, replacements =
+    text:gsub("local IMPLEMENTATION_REVISION = %d+", "local IMPLEMENTATION_REVISION = " .. revision)
+  if replacements ~= 1 then
+    error("LogKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
+  end
 
-    local chunk = assert(loadstring(patched, "@" .. path))
-    return chunk()
+  local chunk = assert(loadstring(patched, "@" .. path))
+  return chunk()
 end
 
 return LogKitTestEnv

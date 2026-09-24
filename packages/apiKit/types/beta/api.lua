@@ -1860,11 +1860,11 @@ function api.auctionHouse.sendBrowseQuery(query) end
 ---@param minLevelFilter? number
 ---@param maxLevelFilter? number
 function api.auctionHouse.sendSearchQuery(
-    itemKey,
-    sorts,
-    separateOwnerItems,
-    minLevelFilter,
-    maxLevelFilter
+  itemKey,
+  sorts,
+  separateOwnerItems,
+  minLevelFilter,
+  maxLevelFilter
 )
 end
 
@@ -1906,7 +1906,7 @@ function api.azeriteEmpoweredItem.canSelectPower(azeriteEmpoweredItemLocation, p
 ---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 function api.azeriteEmpoweredItem.confirmAzeriteEmpoweredItemRespec(
-    azeriteEmpoweredItemLocation
+  azeriteEmpoweredItemLocation
 )
 end
 
@@ -3072,10 +3072,10 @@ function api.catalogShop.productDisplayedTelemetry(categoryId, sectionId, catalo
 ---@param catalogShopProductID number
 ---@param wasCodeSelection boolean
 function api.catalogShop.productSelectedTelemetry(
-    categoryId,
-    sectionId,
-    catalogShopProductID,
-    wasCodeSelection
+  categoryId,
+  sectionId,
+  catalogShopProductID,
+  wasCodeSelection
 )
 end
 
@@ -3189,7 +3189,7 @@ function api.challengeMode.getSlottedKeystoneInfo() end
 ---@param specificDungeonOverallScore number
 ---@return colorRGB specificDungeonOverallScoreColor
 function api.challengeMode.getSpecificDungeonOverallScoreRarityColor(
-    specificDungeonOverallScore
+  specificDungeonOverallScore
 )
 end
 
@@ -3405,9 +3405,9 @@ function api.chatInfo.registerAddonMessagePrefix(prefix) end
 ---@param noGroupReplacement? boolean
 ---@return string output
 function api.chatInfo.replaceIconAndGroupExpressions(
-    input,
-    noIconReplacement,
-    noGroupReplacement
+  input,
+  noIconReplacement,
+  noGroupReplacement
 )
 end
 
@@ -3838,11 +3838,11 @@ function api.club.createStream(clubId, name, subject, leadersAndModeratorsOnly) 
 ---@param defaultStreamId? string
 ---@param isCrossFaction? boolean
 function api.club.createTicket(
-    clubId,
-    allowedRedeemCount,
-    duration,
-    defaultStreamId,
-    isCrossFaction
+  clubId,
+  allowedRedeemCount,
+  duration,
+  defaultStreamId,
+  isCrossFaction
 )
 end
 
@@ -3892,13 +3892,13 @@ function api.club.doesCommunityHaveMembersOfTheOppositeFaction(clubId) end
 ---@param broadcast? string
 ---@param crossFaction? boolean
 function api.club.editClub(
-    clubId,
-    name,
-    shortName,
-    description,
-    avatarId,
-    broadcast,
-    crossFaction
+  clubId,
+  name,
+  shortName,
+  description,
+  avatarId,
+  broadcast,
+  crossFaction
 )
 end
 
@@ -4007,11 +4007,11 @@ function api.club.getInfoFromLastCommunityChatLine() end
 ---@param clubId string
 ---@return ClubInvitationCandidateInfo[] candidates
 function api.club.getInvitationCandidates(
-    filter,
-    maxResults,
-    cursorPosition,
-    allowFullMatch,
-    clubId
+  filter,
+  maxResults,
+  cursorPosition,
+  allowFullMatch,
+  clubId
 )
 end
 
@@ -4432,14 +4432,14 @@ function api.clubFinder.playerReturnPendingGuildsList() end
 ---@param crossFaction? boolean
 ---@return boolean succesful
 function api.clubFinder.postClub(
-    clubId,
-    itemLevelRequirement,
-    name,
-    description,
-    avatarId,
-    specs,
-    type,
-    crossFaction
+  clubId,
+  itemLevelRequirement,
+  name,
+  description,
+  avatarId,
+  specs,
+  type,
+  crossFaction
 )
 end
 
@@ -4487,13 +4487,13 @@ function api.clubFinder.resetClubPostingMapCache() end
 ---@param forceAccept boolean
 ---@param reported? boolean
 function api.clubFinder.respondToApplicant(
-    clubFinderGUID,
-    playerGUID,
-    shouldAccept,
-    requestType,
-    playerName,
-    forceAccept,
-    reported
+  clubFinderGUID,
+  playerGUID,
+  shouldAccept,
+  requestType,
+  playerName,
+  forceAccept,
+  reported
 )
 end
 
@@ -5458,11 +5458,11 @@ function api.commentator.spellUsesItemCharges(spellID) end
 ---@param teamOneCaptain string
 ---@param teamTwoCaptain string
 function api.commentator.startWargame(
-    listID,
-    teamSize,
-    tournamentRules,
-    teamOneCaptain,
-    teamTwoCaptain
+  listID,
+  teamSize,
+  tournamentRules,
+  teamOneCaptain,
+  teamTwoCaptain
 )
 end
 
@@ -5713,10 +5713,10 @@ function api.container.getContainerItemLink(containerIndex, slotIndex) end
 ---@param isEquipped boolean
 ---@return ItemPurchaseCurrency? currencyInfo
 function api.container.getContainerItemPurchaseCurrency(
-    containerIndex,
-    slotIndex,
-    itemIndex,
-    isEquipped
+  containerIndex,
+  slotIndex,
+  itemIndex,
+  isEquipped
 )
 end
 
@@ -5734,10 +5734,10 @@ function api.container.getContainerItemPurchaseInfo(containerIndex, slotIndex, i
 ---@param isEquipped boolean
 ---@return ItemPurchaseItem? itemInfo
 function api.container.getContainerItemPurchaseItem(
-    containerIndex,
-    slotIndex,
-    itemIndex,
-    isEquipped
+  containerIndex,
+  slotIndex,
+  itemIndex,
+  isEquipped
 )
 end
 
@@ -5868,11 +5868,11 @@ function api.container.splitContainerItem(containerIndex, slotIndex, amount) end
 ---@param bankType? Enum.BankType
 ---@param reagentBankOpen? boolean
 function api.container.useContainerItem(
-    containerIndex,
-    slotIndex,
-    unitToken,
-    bankType,
-    reagentBankOpen
+  containerIndex,
+  slotIndex,
+  unitToken,
+  bankType,
+  reagentBankOpen
 )
 end
 
@@ -6221,9 +6221,9 @@ function api.craftingOrders.areOrderNotesDisabled() end
 ---@param orderDuration Enum.CraftingOrderDuration
 ---@return integer deposit
 function api.craftingOrders.calculateCraftingOrderPostingFee(
-    skillLineAbilityID,
-    orderType,
-    orderDuration
+  skillLineAbilityID,
+  orderType,
+  orderDuration
 )
 end
 
@@ -6580,9 +6580,9 @@ function api.currencyInfo.requestCurrencyDataForAccountCharacters() end
 ---@param currencyID number
 ---@param quantity number
 function api.currencyInfo.requestCurrencyFromAccountCharacter(
-    sourceCharacterGUID,
-    currencyID,
-    quantity
+  sourceCharacterGUID,
+  currencyID,
+  quantity
 )
 end
 
@@ -6740,10 +6740,10 @@ function api.damageMeter.getCombatSessionFromType(sessionType, type) end
 ---@param sourceCreatureID? number
 ---@return DamageMeterCombatSessionSource sessionSource
 function api.damageMeter.getCombatSessionSourceFromID(
-    sessionID,
-    type,
-    sourceGUID,
-    sourceCreatureID
+  sessionID,
+  type,
+  sourceGUID,
+  sourceCreatureID
 )
 end
 
@@ -6755,10 +6755,10 @@ end
 ---@param sourceCreatureID? number
 ---@return DamageMeterCombatSessionSource sessionSource
 function api.damageMeter.getCombatSessionSourceFromType(
-    sessionType,
-    type,
-    sourceGUID,
-    sourceCreatureID
+  sessionType,
+  type,
+  sourceGUID,
+  sourceCreatureID
 )
 end
 
@@ -7436,10 +7436,10 @@ function api.encounterTimeline.getEventTrack(eventID) end
 ---@param excludeHiddenEvents? boolean
 ---@return integer[] events
 function api.encounterTimeline.getSortedEventList(
-    maxEventCount,
-    maxEventDuration,
-    excludeTerminalStates,
-    excludeHiddenEvents
+  maxEventCount,
+  maxEventDuration,
+  excludeTerminalStates,
+  excludeHiddenEvents
 )
 end
 
@@ -8596,9 +8596,9 @@ function api.garrison.getAutoMissionTargetingInfo(missionID, followerID, casterB
 ---@param casterBoardIndex number
 ---@return AutoMissionTargetingInfo[] targetInfo
 function api.garrison.getAutoMissionTargetingInfoForSpell(
-    missionID,
-    autoCombatSpellID,
-    casterBoardIndex
+  missionID,
+  autoCombatSpellID,
+  casterBoardIndex
 )
 end
 
@@ -8711,11 +8711,11 @@ function api.garrison.getTalentTreeResetInfo(garrTalentTreeID) end
 ---@return GarrisonTalentCurrencyCostInfo[] currencyCosts
 ---@return number durationSecs
 function api.garrison.getTalentTreeTalentPointResearchInfo(
-    garrTalentID,
-    researchRank,
-    garrTalentTreeID,
-    talentPointIndex,
-    isRespec
+  garrTalentID,
+  researchRank,
+  garrTalentTreeID,
+  talentPointIndex,
+  isRespec
 )
 end
 
@@ -9453,8 +9453,8 @@ function api.housingBasicMode.startPlacingNewDecor(catalogEntryID) end
 ---@param decorRecordID number
 ---@param bundleCatalogShopProductID? number
 function api.housingBasicMode.startPlacingPreviewDecor(
-    decorRecordID,
-    bundleCatalogShopProductID
+  decorRecordID,
+  bundleCatalogShopProductID
 )
 end
 
@@ -9631,7 +9631,7 @@ function api.housingCustomizeMode.applyWallpaperToAllWalls(roomComponentTextureR
 ---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param roomComponentTextureRecID number
 function api.housingCustomizeMode.applyWallpaperToSelectedRoomComponent(
-    roomComponentTextureRecID
+  roomComponentTextureRecID
 )
 end
 
@@ -9742,9 +9742,9 @@ function api.housingCustomizeMode.roomComponentSupportsVariant(componentID, vari
 ---@param componentID number
 ---@param ceilingType Enum.HousingRoomComponentCeilingType
 function api.housingCustomizeMode.setRoomComponentCeilingType(
-    roomGUID,
-    componentID,
-    ceilingType
+  roomGUID,
+  componentID,
+  ceilingType
 )
 end
 
@@ -10716,11 +10716,11 @@ function api.item.getItemCooldown(itemInfo) end
 ---@param includeAccountBank? boolean
 ---@return number count
 function api.item.getItemCount(
-    itemInfo,
-    includeBank,
-    includeUses,
-    includeReagentBank,
-    includeAccountBank
+  itemInfo,
+  includeBank,
+  includeUses,
+  includeReagentBank,
+  includeAccountBank
 )
 end
 
@@ -11427,9 +11427,9 @@ function api.legendaryCrafting.craftRuneforgeLegendary(description) end
 ---@param modifiers? number[]
 ---@return RuneforgeItemPreviewInfo? info
 function api.legendaryCrafting.getRuneforgeItemPreviewInfo(
-    baseItem,
-    runeforgePowerID,
-    modifiers
+  baseItem,
+  runeforgePowerID,
+  modifiers
 )
 end
 
@@ -11463,10 +11463,10 @@ function api.legendaryCrafting.getRuneforgeLegendaryUpgradeCost(runeforgeLegenda
 ---@return string name
 ---@return string[] description
 function api.legendaryCrafting.getRuneforgeModifierInfo(
-    baseItem,
-    powerID,
-    addedModifierIndex,
-    modifiers
+  baseItem,
+  powerID,
+  addedModifierIndex,
+  modifiers
 )
 end
 
@@ -11497,10 +11497,10 @@ function api.legendaryCrafting.getRuneforgePowers(baseItem, filter) end
 ---@param filter? Enum.RuneforgePowerFilter
 ---@return number[] runeforgePowerIDs
 function api.legendaryCrafting.getRuneforgePowersByClassSpecAndCovenant(
-    classID,
-    specID,
-    covenantID,
-    filter
+  classID,
+  specID,
+  covenantID,
+  filter
 )
 end
 
@@ -11519,8 +11519,8 @@ function api.legendaryCrafting.isRuneforgeLegendaryMaxLevel(runeforgeLegendary) 
 ---@param upgradeItem ItemLocation
 ---@return boolean isValid
 function api.legendaryCrafting.isUpgradeItemValidForRuneforgeLegendary(
-    runeforgeLegendary,
-    upgradeItem
+  runeforgeLegendary,
+  upgradeItem
 )
 end
 
@@ -11535,9 +11535,9 @@ function api.legendaryCrafting.isValidRuneforgeBaseItem(baseItem) end
 ---@param modifiers number[]
 ---@return RuneforgeLegendaryCraftDescription description
 function api.legendaryCrafting.makeRuneforgeCraftDescription(
-    baseItem,
-    runeforgePowerID,
-    modifiers
+  baseItem,
+  runeforgePowerID,
+  modifiers
 )
 end
 
@@ -11703,11 +11703,11 @@ function api.lfgList.createListing(createData) end
 ---@param scenarioID number
 ---@return boolean canCreate
 function api.lfgList.createScenarioListing(
-    activityID,
-    itemLevel,
-    autoAccept,
-    privateGroup,
-    scenarioID
+  activityID,
+  itemLevel,
+  autoAccept,
+  privateGroup,
+  scenarioID
 )
 end
 
@@ -11718,10 +11718,10 @@ end
 ---@param generalPlaystyle? Enum.LFGEntryGeneralPlaystyle
 ---@return boolean matches
 function api.lfgList.doesEntryTitleMatchPrebuiltTitle(
-    activityID,
-    groupID,
-    playstyle,
-    generalPlaystyle
+  activityID,
+  groupID,
+  playstyle,
+  generalPlaystyle
 )
 end
 
@@ -11880,13 +11880,13 @@ function api.lfgList.saveAdvancedFilter(options) end
 ---@param advancedFilter? AdvancedFilterOptions
 ---@param activityIDsFilter? number[]
 function api.lfgList.search(
-    categoryID,
-    filter,
-    preferredFilters,
-    languageFilter,
-    searchCrossFactionListings,
-    advancedFilter,
-    activityIDsFilter
+  categoryID,
+  filter,
+  preferredFilters,
+  languageFilter,
+  searchCrossFactionListings,
+  advancedFilter,
+  activityIDsFilter
 )
 end
 
@@ -13087,9 +13087,9 @@ function api.mythicPlus.getRewardLevelFromKeystoneLevel(keystoneLevel) end
 ---@param currentSeasonOnly? boolean
 ---@return MythicPlusRunInfo[] runs
 function api.mythicPlus.getRunHistory(
-    includePreviousWeeks,
-    includeIncompleteRuns,
-    currentSeasonOnly
+  includePreviousWeeks,
+  includeIncompleteRuns,
+  currentSeasonOnly
 )
 end
 
@@ -15448,10 +15448,10 @@ function api.pvp.startSoloRBGWarGameByName(args) end
 ---@param tournamentRules boolean
 ---@return number success
 function api.pvp.startSpectatorSoloRBGWarGame(
-    opaqueID1,
-    opaqueID2,
-    specifiedMap,
-    tournamentRules
+  opaqueID1,
+  opaqueID2,
+  specifiedMap,
+  tournamentRules
 )
 end
 
@@ -16348,8 +16348,8 @@ function api.reportSystem.getMajorCategoryString(majorCategory) end
 ---@param majorCategory Enum.ReportMajorCategory
 ---@return Enum.ReportMinorCategory[] minorCategories
 function api.reportSystem.getMinorCategoriesForReportTypeAndMajorCategory(
-    reportType,
-    majorCategory
+  reportType,
+  majorCategory
 )
 end
 
@@ -16699,8 +16699,8 @@ function api.secrets.shouldSpellAuraBeSecret(spellIdentifier) end
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isCooldownSecret
 function api.secrets.shouldSpellBookItemCooldownBeSecret(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank
 )
 end
 
@@ -17167,11 +17167,11 @@ function api.sound.playItemSound(soundType, itemLocation) end
 ---@return boolean? success
 ---@return integer? soundHandle
 function api.sound.playSound(
-    soundKitID,
-    uiSoundSubType,
-    forceNoDuplicates,
-    runFinishCallback,
-    overridePriority
+  soundKitID,
+  uiSoundSubType,
+  forceNoDuplicates,
+  runFinishCallback,
+  overridePriority
 )
 end
 
@@ -17275,13 +17275,13 @@ function api.specializationInfo.getSpecialization(isInspect, isPet, specGroupInd
 ---@return number previewPointsSpent
 ---@return boolean isUnlocked
 function api.specializationInfo.getSpecializationInfo(
-    specializationIndex,
-    isInspect,
-    isPet,
-    inspectTarget,
-    sex,
-    groupIndex,
-    classID
+  specializationIndex,
+  isInspect,
+  isPet,
+  inspectTarget,
+  sex,
+  groupIndex,
+  classID
 )
 end
 
@@ -17291,9 +17291,9 @@ end
 ---@param isPet? boolean
 ---@return number[] spellIDs
 function api.specializationInfo.getSpecializationMasterySpells(
-    specializationIndex,
-    isInspect,
-    isPet
+  specializationIndex,
+  isInspect,
+  isPet
 )
 end
 
@@ -17771,9 +17771,9 @@ api.spellBook = {}
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@param targetSelf? boolean
 function api.spellBook.castSpellBookItem(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank,
-    targetSelf
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank,
+  targetSelf
 )
 end
 
@@ -17802,11 +17802,11 @@ function api.spellBook.findFlyoutSlotBySpellID(spellID) end
 ---@return integer? spellBookItemSlotIndex
 ---@return Enum.SpellBookSpellBank? spellBookItemSpellBank
 function api.spellBook.findSpellBookSlotForSpell(
-    spellIdentifier,
-    includeHidden,
-    includeFlyouts,
-    includeFutureSpells,
-    includeOffSpec
+  spellIdentifier,
+  includeHidden,
+  includeFlyouts,
+  includeFutureSpells,
+  includeOffSpec
 )
 end
 
@@ -17851,8 +17851,8 @@ function api.spellBook.getSpellBookItemCastCount(spellBookItemSlotIndex, spellBo
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return LuaDurationObject? duration
 function api.spellBook.getSpellBookItemChargeDuration(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank
 )
 end
 
@@ -17878,8 +17878,8 @@ function api.spellBook.getSpellBookItemCooldown(spellBookItemSlotIndex, spellBoo
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return LuaDurationObject? duration
 function api.spellBook.getSpellBookItemCooldownDuration(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank
 )
 end
 
@@ -17888,8 +17888,8 @@ end
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return string? description
 function api.spellBook.getSpellBookItemDescription(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank
 )
 end
 
@@ -17906,8 +17906,8 @@ function api.spellBook.getSpellBookItemInfo(spellBookItemSlotIndex, spellBookIte
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return number levelLearned
 function api.spellBook.getSpellBookItemLevelLearned(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank
 )
 end
 
@@ -17917,9 +17917,9 @@ end
 ---@param glyphID? number
 ---@return string? spellLink
 function api.spellBook.getSpellBookItemLink(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank,
-    glyphID
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank,
+  glyphID
 )
 end
 
@@ -17931,8 +17931,8 @@ end
 ---@return number? startTime
 ---@return number? duration
 function api.spellBook.getSpellBookItemLossOfControlCooldown(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank
 )
 end
 
@@ -17943,8 +17943,8 @@ end
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return LuaDurationObject? duration
 function api.spellBook.getSpellBookItemLossOfControlCooldownDuration(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank
 )
 end
 
@@ -17969,8 +17969,8 @@ function api.spellBook.getSpellBookItemPowerCost(spellBookItemSlotIndex, spellBo
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return integer? skillLineIndex
 function api.spellBook.getSpellBookItemSkillLineIndex(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank
 )
 end
 
@@ -17986,8 +17986,8 @@ function api.spellBook.getSpellBookItemTexture(spellBookItemSlotIndex, spellBook
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return string? spellLink
 function api.spellBook.getSpellBookItemTradeSkillLink(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank
 )
 end
 
@@ -18022,8 +18022,8 @@ function api.spellBook.isAutoAttackSpellBookItem(spellBookItemSlotIndex, spellBo
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isClassTalent
 function api.spellBook.isClassTalentSpellBookItem(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank
 )
 end
 
@@ -18041,8 +18041,8 @@ function api.spellBook.isPvPTalentSpellBookItem(spellBookItemSlotIndex, spellBoo
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isRangedAutoAttack
 function api.spellBook.isRangedAutoAttackSpellBookItem(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank
 )
 end
 
@@ -18068,9 +18068,9 @@ function api.spellBook.isSpellBookItemHelpful(spellBookItemSlotIndex, spellBookI
 ---@param targetUnit? string
 ---@return boolean? inRange
 function api.spellBook.isSpellBookItemInRange(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank,
-    targetUnit
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank,
+  targetUnit
 )
 end
 
@@ -18134,9 +18134,9 @@ function api.spellBook.pickupSpellBookItem(spellBookItemSlotIndex, spellBookItem
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@param enabled boolean
 function api.spellBook.setSpellBookItemAutoCastEnabled(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank,
-    enabled
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank,
+  enabled
 )
 end
 
@@ -18152,8 +18152,8 @@ function api.spellBook.spellBookItemHasRange(spellBookItemSlotIndex, spellBookIt
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 function api.spellBook.toggleSpellBookItemAutoCast(
-    spellBookItemSlotIndex,
-    spellBookItemSpellBank
+  spellBookItemSlotIndex,
+  spellBookItemSpellBank
 )
 end
 
@@ -18336,12 +18336,12 @@ function api.stringUtil.roundToNearestString(number) end
 ---@param maintainTextures? boolean
 ---@return string stripped
 function api.stringUtil.stripHyperlinks(
-    text,
-    maintainColor,
-    maintainBrackets,
-    stripNewlines,
-    maintainAtlases,
-    maintainTextures
+  text,
+  maintainColor,
+  maintainBrackets,
+  stripNewlines,
+  maintainAtlases,
+  maintainTextures
 )
 end
 
@@ -18862,10 +18862,10 @@ function api.tooltipComparison.compareItem(comparisonItem, tooltip, anchorFrame)
 ---@param addPairedStats? boolean
 ---@return string[]? lines
 function api.tooltipComparison.getItemComparisonDelta(
-    comparisonItem,
-    equippedItem,
-    pairedItem,
-    addPairedStats
+  comparisonItem,
+  equippedItem,
+  pairedItem,
+  addPairedStats
 )
 end
 
@@ -19187,11 +19187,11 @@ function api.tooltipInfo.getRecipeReagentItem(recipeSpellID, dataSlotIndex) end
 ---@param overrideQualityID? number
 ---@return TooltipData? data
 function api.tooltipInfo.getRecipeResultItem(
-    recipeID,
-    reagentInfos,
-    recraftItemGUID,
-    recipeLevel,
-    overrideQualityID
+  recipeID,
+  reagentInfos,
+  recraftItemGUID,
+  recipeLevel,
+  overrideQualityID
 )
 end
 
@@ -19203,11 +19203,11 @@ end
 ---@param overrideQualityID? number
 ---@return TooltipData? data
 function api.tooltipInfo.getRecipeResultItemForOrder(
-    recipeID,
-    reagentInfos,
-    orderID,
-    recipeLevel,
-    overrideQualityID
+  recipeID,
+  reagentInfos,
+  orderID,
+  recipeLevel,
+  overrideQualityID
 )
 end
 
@@ -19260,12 +19260,12 @@ function api.tooltipInfo.getSpellBookItem(spellBookItemSlotIndex, spellBookItemS
 ---@param isLink? boolean
 ---@return TooltipData? data
 function api.tooltipInfo.getSpellByID(
-    spellID,
-    isPet,
-    showSubtext,
-    dontOverride,
-    difficultyID,
-    isLink
+  spellID,
+  isPet,
+  showSubtext,
+  dontOverride,
+  difficultyID,
+  isLink
 )
 end
 
@@ -19475,11 +19475,11 @@ function api.tradeSkillUI.confirmProfessionRespec() end
 ---@param itemTarget? ItemLocation
 ---@param applyConcentration? boolean
 function api.tradeSkillUI.craftEnchant(
-    recipeSpellID,
-    numCasts,
-    craftingReagents,
-    itemTarget,
-    applyConcentration
+  recipeSpellID,
+  numCasts,
+  craftingReagents,
+  itemTarget,
+  applyConcentration
 )
 end
 
@@ -19491,12 +19491,12 @@ end
 ---@param orderID? integer
 ---@param applyConcentration? boolean
 function api.tradeSkillUI.craftRecipe(
-    recipeSpellID,
-    numCasts,
-    craftingReagents,
-    recipeLevel,
-    orderID,
-    applyConcentration
+  recipeSpellID,
+  numCasts,
+  craftingReagents,
+  recipeLevel,
+  orderID,
+  applyConcentration
 )
 end
 
@@ -19507,11 +19507,11 @@ end
 ---@param craftingReagents? CraftingReagentInfo[]
 ---@param applyConcentration? boolean
 function api.tradeSkillUI.craftSalvage(
-    recipeSpellID,
-    numCasts,
-    itemTarget,
-    craftingReagents,
-    applyConcentration
+  recipeSpellID,
+  numCasts,
+  itemTarget,
+  craftingReagents,
+  applyConcentration
 )
 end
 
@@ -19551,10 +19551,10 @@ function api.tradeSkillUI.getCraftableCount(recipeSpellID, recipeLevel) end
 ---@param applyConcentration boolean
 ---@return CraftingOperationInfo? info
 function api.tradeSkillUI.getCraftingOperationInfo(
-    recipeID,
-    craftingReagents,
-    allocationItemGUID,
-    applyConcentration
+  recipeID,
+  craftingReagents,
+  allocationItemGUID,
+  applyConcentration
 )
 end
 
@@ -19565,10 +19565,10 @@ end
 ---@param applyConcentration boolean
 ---@return CraftingOperationInfo? info
 function api.tradeSkillUI.getCraftingOperationInfoForOrder(
-    recipeID,
-    craftingReagents,
-    orderID,
-    applyConcentration
+  recipeID,
+  craftingReagents,
+  orderID,
+  applyConcentration
 )
 end
 
@@ -19579,10 +19579,10 @@ end
 ---@param allocationItemGUID? string
 ---@return string[] bonusText
 function api.tradeSkillUI.getCraftingReagentBonusText(
-    recipeSpellID,
-    craftingReagentIndex,
-    craftingReagents,
-    allocationItemGUID
+  recipeSpellID,
+  craftingReagentIndex,
+  craftingReagents,
+  allocationItemGUID
 )
 end
 
@@ -19751,11 +19751,11 @@ function api.tradeSkillUI.getRecipeItemQualityInfo(recipeID, quality) end
 ---@param recraftOrderID? integer
 ---@return CraftingRecipeOutputInfo outputInfo
 function api.tradeSkillUI.getRecipeOutputItemData(
-    recipeSpellID,
-    reagents,
-    allocationItemGUID,
-    overrideQualityID,
-    recraftOrderID
+  recipeSpellID,
+  reagents,
+  allocationItemGUID,
+  overrideQualityID,
+  recraftOrderID
 )
 end
 
@@ -19914,10 +19914,10 @@ function api.tradeSkillUI.recraftLimitCategoryValid(reagent) end
 ---@param applyConcentration? boolean
 ---@return boolean result
 function api.tradeSkillUI.recraftRecipe(
-    itemGUID,
-    craftingReagents,
-    removedModifications,
-    applyConcentration
+  itemGUID,
+  craftingReagents,
+  removedModifications,
+  applyConcentration
 )
 end
 
@@ -19929,11 +19929,11 @@ end
 ---@param applyConcentration? boolean
 ---@return boolean result
 function api.tradeSkillUI.recraftRecipeForOrder(
-    orderID,
-    itemGUID,
-    craftingReagents,
-    removedModifications,
-    applyConcentration
+  orderID,
+  itemGUID,
+  craftingReagents,
+  removedModifications,
+  applyConcentration
 )
 end
 
@@ -20344,8 +20344,8 @@ function api.transmogCollection.getAppearanceCameraID(itemAppearanceID, variatio
 ---@param variation? Enum.TransmogCameraVariation
 ---@return number cameraID
 function api.transmogCollection.getAppearanceCameraIDBySource(
-    itemModifiedAppearanceID,
-    variation
+  itemModifiedAppearanceID,
+  variation
 )
 end
 
@@ -20370,9 +20370,9 @@ function api.transmogCollection.getAppearanceSourceInfo(itemModifiedAppearanceID
 ---@param transmogLocation? TransmogLocation
 ---@return AppearanceSourceInfo[]? sources
 function api.transmogCollection.getAppearanceSources(
-    appearanceID,
-    categoryType,
-    transmogLocation
+  appearanceID,
+  categoryType,
+  transmogLocation
 )
 end
 
@@ -20423,7 +20423,7 @@ function api.transmogCollection.getCollectedShown() end
 ---@param itemTransmogInfoList ItemTransmogInfo[]
 ---@return string? hyperlink
 function api.transmogCollection.getCustomSetHyperlinkFromItemTransmogInfoList(
-    itemTransmogInfoList
+  itemTransmogInfoList
 )
 end
 
@@ -20533,10 +20533,10 @@ function api.transmogCollection.getUncollectedShown() end
 ---@param transmogLocation? TransmogLocation
 ---@return AppearanceSourceInfo[]? sources
 function api.transmogCollection.getValidAppearanceSourcesForClass(
-    appearanceID,
-    classID,
-    categoryType,
-    transmogLocation
+  appearanceID,
+  classID,
+  categoryType,
+  transmogLocation
 )
 end
 
@@ -20623,7 +20623,7 @@ function api.transmogCollection.playerHasTransmogByItemInfo(itemInfo) end
 ---@param itemModifiedAppearanceID number
 ---@return boolean hasTransmog
 function api.transmogCollection.playerHasTransmogItemModifiedAppearance(
-    itemModifiedAppearanceID
+  itemModifiedAppearanceID
 )
 end
 
@@ -20714,10 +20714,10 @@ function api.transmogOutfitInfo.addNewOutfit(name, icon) end
 ---@param toggleLock boolean
 ---@param allowRemoveOutfit boolean
 function api.transmogOutfitInfo.changeDisplayedOutfit(
-    outfitID,
-    trigger,
-    toggleLock,
-    allowRemoveOutfit
+  outfitID,
+  trigger,
+  toggleLock,
+  allowRemoveOutfit
 )
 end
 
@@ -20759,9 +20759,9 @@ function api.transmogOutfitInfo.getAllSlotLocationInfo() end
 ---@param collectionType Enum.TransmogCollectionType
 ---@return TransmogOutfitWeaponCollectionInfo? collectionInfo
 function api.transmogOutfitInfo.getCollectionInfoForSlotAndOption(
-    slot,
-    weaponOption,
-    collectionType
+  slot,
+  weaponOption,
+  collectionType
 )
 end
 
@@ -21391,7 +21391,7 @@ function api.uiWidgetManager.getPreyHuntProgressWidgetVisualizationInfo(widgetID
 ---@param widgetID number
 ---@return ScenarioHeaderCurrenciesAndBackgroundWidgetVisualizationInfo? widgetInfo
 function api.uiWidgetManager.getScenarioHeaderCurrenciesAndBackgroundWidgetVisualizationInfo(
-    widgetID
+  widgetID
 )
 end
 
@@ -22761,10 +22761,10 @@ function api.unitAuras.doesAuraHaveExpirationTime(auraInstanceUnit, auraInstance
 ---@param maxDisplayCount? number
 ---@return string count
 function api.unitAuras.getAuraApplicationDisplayCount(
-    auraInstanceUnit,
-    auraInstanceID,
-    minDisplayCount,
-    maxDisplayCount
+  auraInstanceUnit,
+  auraInstanceID,
+  minDisplayCount,
+  maxDisplayCount
 )
 end
 

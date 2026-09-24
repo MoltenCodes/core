@@ -108,7 +108,7 @@ Other types are never filtered.
 MediaKit:Register("statusbar", "MyPack Smooth", [[Interface\AddOns\MyPack\Smooth.tga]])
 MediaKit:Register("sound", "MyPack Chime", 569593)
 MediaKit:Register("font", "MyPack Sans", [[Interface\AddOns\MyPack\Sans.ttf]], {
-    scripts = { "latin", "cyrillic" },
+  scripts = { "latin", "cyrillic" },
 })
 ```
 
@@ -157,7 +157,7 @@ Returns the names of the type sorted with `<` (byte order: upper case before low
 
 ```lua
 local connection = MediaKit:OnRegistered("font", function(mediaType, name, data)
-    refreshFontDropdown()
+  refreshFontDropdown()
 end)
 ```
 

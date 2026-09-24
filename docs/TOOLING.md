@@ -339,7 +339,10 @@ report (`docs/changes/<flavour>/<old build>-<new build>.md`) and an entry in
 index are rendered on every run (a link that does not resolve refuses the
 run) but written only where `--reference-out DIR` says, as `DIR/<flavour>/`
 and `DIR/<flavour>/search.json`; they are not committed, and the release
-workflow attaches them to each release instead. Generated Lua is checked with `luac -p`
+workflow attaches them to each release instead. The renderers write Lua already in
+the shape StyLua produces for `stylua.toml` (two-space indentation, built from
+one `INDENT` constant in each renderer, and the formatter's own wrapping at
+100 columns), and generated Lua is checked with `luac -p`
 and the repository's StyLua configuration before anything is written, a
 directory of generated files is replaced as a whole, and `--check` compares
 without writing so CI can refuse a metadata change that was committed without

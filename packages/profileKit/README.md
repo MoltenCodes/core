@@ -10,9 +10,9 @@ local ProfileKit = MoltenCodes.Registries[2]:Get("profileKit", 1)
 local onUpdate = ProfileKit:Section("MyAddon.OnUpdate") -- once, at file scope
 
 frame:SetScript("OnUpdate", function(_, elapsed)
-    onUpdate:Begin()
-    MyAddon:Refresh(elapsed)
-    onUpdate:End()
+  onUpdate:Begin()
+  MyAddon:Refresh(elapsed)
+  onUpdate:End()
 end)
 
 local rebuilt = ProfileKit:Measure("MyAddon.Rebuild", MyAddon.Rebuild, MyAddon)
@@ -20,7 +20,7 @@ local rebuilt = ProfileKit:Measure("MyAddon.Rebuild", MyAddon.Rebuild, MyAddon)
 ProfileKit:Enable() -- from a slash command or a debug build, never by default
 -- ...
 for _, row in ipairs(ProfileKit:Report()) do
-    print(row.name, row.count, row.total, row.max, row.last)
+  print(row.name, row.count, row.total, row.max, row.last)
 end
 ```
 

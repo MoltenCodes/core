@@ -21,8 +21,8 @@ window:AddChild(scroll)
 local rendering = WidgetKit:RenderOptions(OptionsKit:Get("MyAddon"), scroll)
 
 window:SetCallback("OnClose", function()
-    rendering:Release()           -- every rendered widget goes back to its pool
-    WidgetKit:Release(window)     -- and the window with its scroll frame
+  rendering:Release()           -- every rendered widget goes back to its pool
+  WidgetKit:Release(window)     -- and the window with its scroll frame
 end)
 ```
 

@@ -11,24 +11,24 @@ local S = SchemaKit
 local commands = CommandKit:ForAddon("MyAddon")
 
 commands:Register("myaddon", {
-    description = "My Addon commands.",
-    subcommands = {
-        scale = {
-            description = "Set the frame scale.",
-            arguments = { S.number({ min = 0.5, max = 2 }) },
-            handler = function(context, scale)
-                MyAddonFrame:SetScale(scale)
-                context:Printf("Scale set to %.2f.", scale)
-            end,
-        },
-        link = {
-            description = "Remember an item.",
-            arguments = { S.string({ pattern = "^|c.-|Hitem:" }) },
-            handler = function(context, itemLink)
-                context:Print("Remembered", itemLink)
-            end,
-        },
+  description = "My Addon commands.",
+  subcommands = {
+    scale = {
+      description = "Set the frame scale.",
+      arguments = { S.number({ min = 0.5, max = 2 }) },
+      handler = function(context, scale)
+        MyAddonFrame:SetScale(scale)
+        context:Printf("Scale set to %.2f.", scale)
+      end,
     },
+    link = {
+      description = "Remember an item.",
+      arguments = { S.string({ pattern = "^|c.-|Hitem:" }) },
+      handler = function(context, itemLink)
+        context:Print("Remembered", itemLink)
+      end,
+    },
+  },
 })
 ```
 

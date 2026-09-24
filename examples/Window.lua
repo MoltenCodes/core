@@ -33,62 +33,62 @@ local L = ADDON_TABLE.Kits.LocaleKit:GetLocale(ADDON_NAME)
 ---@param database SettingsKit.Database
 ---@return ExampleAddon.Window
 local function newWindow(options, database)
-    local window = {}
-    local frame = nil ---@type ExampleAddon.WindowFrame|nil
-    local rendering = nil ---@type WidgetKit.Rendering|nil
+  local window = {}
+  local frame = nil ---@type ExampleAddon.WindowFrame|nil
+  local rendering = nil ---@type WidgetKit.Rendering|nil
 
-    function window:IsShown()
-        return frame ~= nil
+  function window:IsShown()
+    return frame ~= nil
+  end
+
+  function window:GetFrame()
+    return frame
+  end
+
+  function window:Show()
+    if frame ~= nil then
+      return
     end
-
-    function window:GetFrame()
-        return frame
+    local created, reason = WidgetKit:Create("Frame")
+    if type(created) == "nil" then
+      -- "exhausted": every frame this type may create is in use.
+      error(ADDON_NAME .. " could not open its window: " .. tostring(reason), 0)
     end
+    frame = created --[[@as ExampleAddon.WindowFrame]]
+    frame:SetTitle(L["Example Addon"])
+    frame:GetFrame():SetScale(database.profile.windowScale)
+    -- The close button hides the frame and fires `OnClose`; releasing it
+    -- is the owner's job.
+    frame:SetCallback("OnClose", function()
+      window:Hide()
+    end)
+    rendering = WidgetKit:RenderOptions(options, frame)
+    frame:Show()
+  end
 
-    function window:Show()
-        if frame ~= nil then
-            return
-        end
-        local created, reason = WidgetKit:Create("Frame")
-        if type(created) == "nil" then
-            -- "exhausted": every frame this type may create is in use.
-            error(ADDON_NAME .. " could not open its window: " .. tostring(reason), 0)
-        end
-        frame = created --[[@as ExampleAddon.WindowFrame]]
-        frame:SetTitle(L["Example Addon"])
-        frame:GetFrame():SetScale(database.profile.windowScale)
-        -- The close button hides the frame and fires `OnClose`; releasing it
-        -- is the owner's job.
-        frame:SetCallback("OnClose", function()
-            window:Hide()
-        end)
-        rendering = WidgetKit:RenderOptions(options, frame)
-        frame:Show()
+  function window:Hide()
+    if frame == nil then
+      return
     end
-
-    function window:Hide()
-        if frame == nil then
-            return
-        end
-        -- The rendering first, so its widgets leave the frame together; then
-        -- the frame goes back to WidgetKit's pool.
-        if rendering ~= nil then
-            rendering:Release()
-            rendering = nil
-        end
-        frame:Release()
-        frame = nil
+    -- The rendering first, so its widgets leave the frame together; then
+    -- the frame goes back to WidgetKit's pool.
+    if rendering ~= nil then
+      rendering:Release()
+      rendering = nil
     end
+    frame:Release()
+    frame = nil
+  end
 
-    function window:Toggle()
-        if frame == nil then
-            window:Show()
-        else
-            window:Hide()
-        end
+  function window:Toggle()
+    if frame == nil then
+      window:Show()
+    else
+      window:Hide()
     end
+  end
 
-    return window
+  return window
 end
 
 ---Build the window. Called once, by ModuleKit, when the main module
@@ -96,7 +96,7 @@ end
 ---@param modules ModuleKit.Addon
 ---@return ExampleAddon.Window
 local function provideWindow(modules)
-    return newWindow(modules:Resolve("Options"), modules:Resolve("Database"))
+  return newWindow(modules:Resolve("Options"), modules:Resolve("Database"))
 end
 
 ADDON_TABLE.Modules:ProvideSingleton("Window", provideWindow)

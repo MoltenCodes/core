@@ -83,7 +83,7 @@ floor depends on the flavour, test the flavour first:
 
 ```lua
 if ClientKit:GetFlavor() == "mainline" and ClientKit:IsAtLeast(120000) then
-    -- Midnight or later
+  -- Midnight or later
 end
 ```
 
@@ -251,13 +251,13 @@ is compared or used as a key.
 ```lua
 local manifest, reason = ClientKit:GetManifest("MyAddon")
 if manifest == nil then
-    print("no manifest:", reason) -- "unknown" or "unavailable"
+  print("no manifest:", reason) -- "unknown" or "unavailable"
 else
-    print(manifest.title, manifest.version)
-    for index = 1, #manifest.savedVariables do
-        print(manifest.savedVariables[index])
-    end
-    print(manifest:Get("X-Website"))
+  print(manifest.title, manifest.version)
+  for index = 1, #manifest.savedVariables do
+    print(manifest.savedVariables[index])
+  end
+  print(manifest:Get("X-Website"))
 end
 ```
 

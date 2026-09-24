@@ -49,7 +49,7 @@ class HeaderAndDependencyTests(unittest.TestCase):
 
         text = module.render_runtime(sample_metadata(), long_flavour)
 
-        self.assertIn("    error(\n        \"MoltenCodes ApiKit (Mists of Pandaria Classic Public Test Realm bindings) requires Registry API 2 to be loaded first\",\n        2\n    )\n", text)
+        self.assertIn("  error(\n    \"MoltenCodes ApiKit (Mists of Pandaria Classic Public Test Realm bindings) requires Registry API 2 to be loaded first\",\n    2\n  )\n", text)
 
     def test_registration_without_a_known_build_passes_no_info(self):
         metadata = sample_metadata()
@@ -67,17 +67,17 @@ class BindingTests(unittest.TestCase):
         block = textwrap.dedent(
             """\
                 do
-                    local source = host.C_AddOnProfiler
-                    if source then
-                        local target = {}
-                        api.addOnProfiler = target
-                        api.profiler = target
-                        target.measureCall = source.MeasureCall
-                    end
+                  local source = host.C_AddOnProfiler
+                  if source then
+                    local target = {}
+                    api.addOnProfiler = target
+                    api.profiler = target
+                    target.measureCall = source.MeasureCall
+                  end
                 end
             """
         )
-        self.assertIn(textwrap.indent(block, "    "), text)
+        self.assertIn(textwrap.indent(block, module.INDENT), text)
 
     def test_global_functions_are_read_from_the_host_by_name(self):
         metadata = sample_metadata()
@@ -91,7 +91,7 @@ class BindingTests(unittest.TestCase):
 
         text = render(metadata)
 
-        self.assertIn("        api.unit = target\n        target.name = host.UnitName\n", text)
+        self.assertIn("    api.unit = target\n    target.name = host.UnitName\n", text)
 
     def test_object_types_produce_nothing(self):
         self.assertNotIn("Clock", render().replace("Example/wow-ui-source", ""))
@@ -99,11 +99,11 @@ class BindingTests(unittest.TestCase):
     def test_events_enums_and_constants_blocks(self):
         text = render()
 
-        self.assertIn('    api.events = {\n        addonLoaded = "ADDON_LOADED",\n    }\n', text)
-        self.assertIn("        local source = host.Enum or {}\n", text)
-        self.assertIn("        api.enums = target\n        target.phaseReason = source.PhaseReason\n", text)
-        self.assertIn("        local source = host.Constants or {}\n", text)
-        self.assertIn("        target.auctionConstants = source.AuctionConstants\n", text)
+        self.assertIn('  api.events = {\n    addonLoaded = "ADDON_LOADED",\n  }\n', text)
+        self.assertIn("    local source = host.Enum or {}\n", text)
+        self.assertIn("    api.enums = target\n    target.phaseReason = source.PhaseReason\n", text)
+        self.assertIn("    local source = host.Constants or {}\n", text)
+        self.assertIn("    target.auctionConstants = source.AuctionConstants\n", text)
 
     def test_names_that_are_not_identifiers_use_bracket_access(self):
         metadata = sample_metadata()
@@ -131,8 +131,14 @@ class BindingTests(unittest.TestCase):
 
         text = render(metadata)
 
-        self.assertIn(f"            target.{function.wrapper} =\n                source.{long_name}\n", text)
+        self.assertIn(f"      target.{function.wrapper} =\n        source.{long_name}\n", text)
         self.assertTrue(all(len(line) <= 100 for line in text.splitlines()), "a line exceeds 100 columns")
+
+    def test_indentation_is_built_from_one_two_space_unit(self):
+        self.assertEqual("  ", module.INDENT)
+        for line in render().splitlines():
+            leading = len(line) - len(line.lstrip(" "))
+            self.assertEqual(0, leading % len(module.INDENT), repr(line))
 
     def test_reserved_wrapper_names_are_refused(self):
         metadata = sample_metadata()
@@ -231,15 +237,57 @@ class LuaExecutionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             runtime = Path(directory) / "Retail.lua"
             runtime.write_text(render(), encoding="utf-8")
-
-            completed = subprocess.run(
-                [stylua, "--check", "--config-path", str(ROOT / "stylua.toml"), str(runtime)],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
+            completed = self._stylua_check(stylua, runtime)
 
         self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
+
+    def test_wrapping_at_the_column_limit_matches_stylua(self):
+        """Bindings one column either side of the limit, at every nesting depth, need no reformatting."""
+        stylua = shutil.which("stylua")
+        if stylua is None:
+            self.skipTest("stylua is not on PATH")
+        metadata = sample_metadata()
+        namespace = metadata.namespaces[0]
+        namespaced = []
+        global_functions = []
+        # `target.<wrapper> = source.<Name>` at depth 3 and `= host.<Name>` at
+        # depth 2: a wrapper of n letters and a name of n or n + 1 letters walk
+        # the line length across the limit one column at a time.
+        for length in range(36, 46):
+            for extra, marker in enumerate("AB"):
+                name = f"G{marker}" + "x" * (length - 2 + extra)
+                wrapper = f"g{marker.lower()}" + "x" * (length - 2)
+                namespaced.append(
+                    model.Function(name=name, wrapper=wrapper, binding=f"C_AddOnProfiler.{name}")
+                )
+                global_functions.append(model.Function(name=name, wrapper=wrapper, binding=name))
+        namespace = dataclasses.replace(namespace, functions=tuple(namespaced))
+        globals_namespace = model.Namespace(
+            wrapper="edge", kind="global", system="Edge", functions=tuple(global_functions)
+        )
+        metadata = dataclasses.replace(
+            metadata, namespaces=(namespace, metadata.namespaces[1], globals_namespace)
+        )
+        text = render(metadata)
+        lengths = {len(line) for line in text.splitlines()}
+        self.assertIn(100, lengths, "no binding sits exactly at the limit")
+        self.assertTrue(any("=" == line.rstrip()[-1:] for line in text.splitlines()), "nothing wrapped")
+
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory) / "Retail.lua"
+            runtime.write_text(text, encoding="utf-8")
+            completed = self._stylua_check(stylua, runtime)
+
+        self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
+
+    @staticmethod
+    def _stylua_check(stylua: str, path: Path) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [stylua, "--check", "--config-path", str(ROOT / "stylua.toml"), str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
 
 if __name__ == "__main__":

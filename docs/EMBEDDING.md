@@ -375,31 +375,31 @@ local lifecycle = LifecycleKit:ForAddon(ADDON_NAME)
 local modules = ModuleKit:ForAddon(ADDON_NAME)
 
 modules:CreateModule("Main", {
-    inject = {
-        database = "Database",
-        options = "Options",
-        window = "Window",
-        registerCommands = "RegisterCommands",
-    },
+  inject = {
+    database = "Database",
+    options = "Options",
+    window = "Window",
+    registerCommands = "RegisterCommands",
+  },
 
-    onEnable = function(self)
-        -- Everything registered through the scope is released on disable.
-        local scope = self.scope
-        scope.Events:Connect("PLAYER_ENTERING_WORLD", function() end)
-        scope.Events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, 0.5, function(units)
-            -- One callback per burst, with the set of units that changed.
-        end, { units = { "player" } })
-        scope.Timers:Every(60, function() end)
-        scope.Hooks:SecureHook("ToggleGameMenu", function()
-            self.window:Hide()
-        end)
-        self.registerCommands(scope.Commands, self.options, self.window)
-    end,
+  onEnable = function(self)
+    -- Everything registered through the scope is released on disable.
+    local scope = self.scope
+    scope.Events:Connect("PLAYER_ENTERING_WORLD", function() end)
+    scope.Events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, 0.5, function(units)
+      -- One callback per burst, with the set of units that changed.
+    end, { units = { "player" } })
+    scope.Timers:Every(60, function() end)
+    scope.Hooks:SecureHook("ToggleGameMenu", function()
+      self.window:Hide()
+    end)
+    self.registerCommands(scope.Commands, self.options, self.window)
+  end,
 
-    onDisable = function(self)
-        -- Widgets and readiness gates are not scope-owned; close them here.
-        self.window:Hide()
-    end,
+  onDisable = function(self)
+    -- Widgets and readiness gates are not scope-owned; close them here.
+    self.window:Hide()
+  end,
 })
 
 lifecycle:OnReady(function() end)
@@ -807,7 +807,7 @@ the function, so probe it once:
 
 ```lua
 local isSecret = issecretvalue or function()
-    return false
+  return false
 end
 ```
 
@@ -840,13 +840,13 @@ before calling it:
 
 ```lua
 local function canTouch(frame)
-    if frame.IsForbidden and frame:IsForbidden() then
-        return false
-    end
-    if frame.CanBeAccessedInContext and not frame:CanBeAccessedInContext() then
-        return false
-    end
-    return true
+  if frame.IsForbidden and frame:IsForbidden() then
+    return false
+  end
+  if frame.CanBeAccessedInContext and not frame:CanBeAccessedInContext() then
+    return false
+  end
+  return true
 end
 ```
 
@@ -923,18 +923,18 @@ your own code, and your error messages should follow the rule from the start.
 local plates = {} -- per-plate state, keyed by the frame; never stored on it
 
 EventKit:Connect("NAME_PLATE_UNIT_ADDED", function(_, unit)
-    local plate = C_NamePlate.GetNamePlateForUnit(unit)
-    if not plate or not canTouch(plate) then
-        return -- a forbidden plate, such as a friendly one in an instance
-    end
+  local plate = C_NamePlate.GetNamePlateForUnit(unit)
+  if not plate or not canTouch(plate) then
+    return -- a forbidden plate, such as a friendly one in an instance
+  end
 
-    local name = UnitName(unit)
-    plates[plate] = plates[plate] or {}
-    plates[plate].name = name -- storing a secret is allowed
+  local name = UnitName(unit)
+  plates[plate] = plates[plate] or {}
+  plates[plate].name = name -- storing a secret is allowed
 
-    if not isSecret(name) and name == trackedName then
-        -- only a non-secret name may be compared
-    end
+  if not isSecret(name) and name == trackedName then
+    -- only a non-secret name may be compared
+  end
 end)
 ```
 
@@ -978,8 +978,8 @@ listener receives the event name and nothing else:
 
 ```lua
 EventKit:Connect("COMBAT_LOG_EVENT_UNFILTERED", function()
-    local timestamp, subEvent, hideCaster, sourceGUID = CombatLogGetCurrentEventInfo()
-    -- ...
+  local timestamp, subEvent, hideCaster, sourceGUID = CombatLogGetCurrentEventInfo()
+  -- ...
 end)
 ```
 
@@ -1022,12 +1022,12 @@ not touch it at file scope.
 
 ```lua
 lifecycle:OnLoaded(function()
-    local db = SettingsKit:Open("MyAddonDB", {
-        profile = SchemaKit.table{ fields = {
-            scale = SchemaKit.optional(SchemaKit.number{ min = 0.5, max = 2 }, 1),
-        } },
-    }, { version = 1 })
-    print(db.profile.scale) -- 1, read from the defaults, never stored
+  local db = SettingsKit:Open("MyAddonDB", {
+    profile = SchemaKit.table{ fields = {
+      scale = SchemaKit.optional(SchemaKit.number{ min = 0.5, max = 2 }, 1),
+    } },
+  }, { version = 1 })
+  print(db.profile.scale) -- 1, read from the defaults, never stored
 end)
 ```
 

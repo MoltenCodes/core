@@ -4,13 +4,13 @@ PoolKit provides allocation-conscious reusable object pools for Lua tables and u
 
 ```lua
 local pool = PoolKit:New({
-    create = function()
-        return {}
-    end,
-    reset = function(object)
-        wipe(object)
-    end,
-    maxRetained = 128,
+  create = function()
+    return {}
+  end,
+  reset = function(object)
+    wipe(object)
+  end,
+  maxRetained = 128,
 })
 
 local object = pool:Acquire()

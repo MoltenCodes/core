@@ -31,13 +31,13 @@ the `describe` that holds only such specs:
 
 ```lua
 describe("TimerKit allocation #allocation", function()
-    it("allocates nothing to deliver a repeating tick", function()
-        -- ...
-    end)
+  it("allocates nothing to deliver a repeating tick", function()
+    -- ...
+  end)
 end)
 
 it("allocates nothing per event in steady state #allocation", function()
-    -- ...
+  -- ...
 end)
 ```
 
@@ -99,9 +99,9 @@ Typical tests use:
 
 ```lua
 describe("Feature", function()
-    it("does something", function()
-        assert.are.equal(expected, actual)
-    end)
+  it("does something", function()
+    assert.are.equal(expected, actual)
+  end)
 end)
 ```
 
@@ -231,7 +231,7 @@ package under test is the last entry:
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local TimerKitTestEnv = FrameworkTestEnv.New({
-    modules = { "Registry", "TimerKit" },
+  modules = { "Registry", "TimerKit" },
 })
 ```
 
@@ -296,8 +296,8 @@ error and the guard it claims to cover is never executed:
 
 ```lua
 local function requireAfterFailedLoad(moduleName)
-    package.loaded[moduleName] = nil
-    return require(moduleName)
+  package.loaded[moduleName] = nil
+  return require(moduleName)
 end
 ```
 

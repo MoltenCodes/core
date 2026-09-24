@@ -191,6 +191,11 @@ Format Lua:
 stylua .
 ```
 
+StyLua reads [`stylua.toml`](../stylua.toml): two-space indentation, a column
+width of 100, Unix line endings, double quotes where possible and parentheses
+on every call. Python keeps PEP 8's four spaces; [`.editorconfig`](../.editorconfig)
+tells editors both. See [`CONTRIBUTING.md`](CONTRIBUTING.md#development-principles).
+
 Type-check one package's runtime Lua:
 
 ```bash
@@ -320,25 +325,25 @@ clock's place after the chain is loaded and before ProfileKit binds it:
 local Env = require("SignalKitTestEnv") -- the suite of the Kit being changed
 
 it("measures SignalKit Fire", function()
-    local SignalKit = Env.NewPackage() -- resets the stubs, so override after it
-    rawset(_G, "debugprofilestop", function()
-        return os.clock() * 1000 -- CPU milliseconds, like the client clock
-    end)
-    local ProfileKit = require("ProfileKit") -- binds the clock now
-    ProfileKit:Enable()
+  local SignalKit = Env.NewPackage() -- resets the stubs, so override after it
+  rawset(_G, "debugprofilestop", function()
+    return os.clock() * 1000 -- CPU milliseconds, like the client clock
+  end)
+  local ProfileKit = require("ProfileKit") -- binds the clock now
+  ProfileKit:Enable()
 
-    local signal = SignalKit:New()
-    signal:Connect(function() end)
-    local fire = ProfileKit:Section("SignalKit.Fire")
-    for _ = 1, 100000 do
-        fire:Begin()
-        signal:Fire("player", 42)
-        fire:End()
-    end
+  local signal = SignalKit:New()
+  signal:Connect(function() end)
+  local fire = ProfileKit:Section("SignalKit.Fire")
+  for _ = 1, 100000 do
+    fire:Begin()
+    signal:Fire("player", 42)
+    fire:End()
+  end
 
-    local row = ProfileKit:Report()[1]
-    print(row.name, row.count, row.total, row.max)
-    package.loaded.ProfileKit = nil
+  local row = ProfileKit:Report()[1]
+  print(row.name, row.count, row.total, row.max)
+  package.loaded.ProfileKit = nil
 end)
 ```
 

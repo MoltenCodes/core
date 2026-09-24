@@ -13,20 +13,20 @@ local CompatKit = MoltenCodes.Registries[2]:Get("compatKit", 1)
 
 -- A shim: named, versioned, run at most once per session by Apply.
 CompatKit:Shim("MyAddon.FixDropDownTaint", 3, function(context)
-    if context.hasGlobal("UIDropDownMenu_InitializeHelper") then
-        -- ... a post-hook, never a replacement (see docs/EMBEDDING.md, Taint)
-    end
+  if context.hasGlobal("UIDropDownMenu_InitializeHelper") then
+    -- ... a post-hook, never a replacement (see docs/EMBEDDING.md, Taint)
+  end
 end, { description = "Keeps UIDropDownMenu's globals secure", flavours = { "mainline" } })
 
 -- A provider registry: whoever prints output, resolved by priority and liveness.
 local outputs = CompatKit:Providers("output")
 outputs:Register("chat", function(text)
-    DEFAULT_CHAT_FRAME:AddMessage(text)
+  DEFAULT_CHAT_FRAME:AddMessage(text)
 end)
 outputs:Register("window", function(text)
-    MyAddonWindow:Append(text)
+  MyAddonWindow:Append(text)
 end, function()
-    return MyAddonWindow ~= nil and MyAddonWindow:IsShown()
+  return MyAddonWindow ~= nil and MyAddonWindow:IsShown()
 end, 10)
 
 -- Later, at PLAYER_LOGIN: run every pending shim, then route output.
@@ -82,16 +82,16 @@ CompatKit:Shim("SharedLib.FixTooltips", 1, function() end) -- false, "ignored"
 -- Apply records in the shim's `missing` field which of them the installed
 -- surface lacks; the shim itself asks context.hasApi before relying on one.
 CompatKit:Shim("SharedLib.TooltipData", 1, function(context)
-    if not context.hasApi("C_TooltipInfo.GetUnit") then
-        return -- nothing to do on this client
-    end
+  if not context.hasApi("C_TooltipInfo.GetUnit") then
+    return -- nothing to do on this client
+  end
 end, { covers = { "C_TooltipInfo.GetUnit" } })
 
 -- The host (the addon that owns the session) switches one off by name.
 CompatKit:SkipShim("SharedLib.FixTooltips")
 
 for _, shim in ipairs(CompatKit:GetShims()) do
-    print(shim.name, shim.version, shim.status, shim.applied)
+  print(shim.name, shim.version, shim.status, shim.applied)
 end
 ```
 
@@ -105,7 +105,7 @@ running a second implementation over a first one is what shims exist to avoid.
 local sinks = CompatKit:Providers("sink")
 sinks:Register("chat", "chat-sink") -- priority 0, always alive
 sinks:Register("bag", "bag-sink", function()
-    return BagWindow and BagWindow:IsShown() or false
+  return BagWindow and BagWindow:IsShown() or false
 end, 5)
 
 local sink, name = sinks:Resolve() -- "bag-sink", "bag" while the window shows
@@ -113,7 +113,7 @@ sink, name = sinks:Resolve("chat") -- "chat-sink", "chat": a live preferred wins
 sink, name = sinks:Resolve("gone") -- falls through to the cascade
 
 for _, row in ipairs(sinks:List()) do
-    print(row.name, row.priority, row.alive)
+  print(row.name, row.priority, row.alive)
 end
 ```
 

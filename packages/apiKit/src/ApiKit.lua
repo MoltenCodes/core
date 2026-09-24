@@ -56,28 +56,28 @@ local RETAIL_PROJECT_ID = 1
 -- the facts a client of that flavour reports. Every row states all three
 -- facts, so a client matches exactly one row or none.
 local FLAVORS = {
-    { id = "retail", path = { "retail" }, projectId = 1, testBuild = false, betaBuild = false },
-    {
-        id = "classic-era",
-        path = { "classic", "era" },
-        projectId = 2,
-        testBuild = false,
-        betaBuild = false,
-    },
-    {
-        id = "classic-mop",
-        path = { "classic", "mop" },
-        projectId = 19,
-        testBuild = false,
-        betaBuild = false,
-    },
-    { id = "ptr", path = { "ptr" }, projectId = 1, testBuild = true, betaBuild = false },
-    { id = "beta", path = { "beta" }, projectId = 1, testBuild = true, betaBuild = true },
+  { id = "retail", path = { "retail" }, projectId = 1, testBuild = false, betaBuild = false },
+  {
+    id = "classic-era",
+    path = { "classic", "era" },
+    projectId = 2,
+    testBuild = false,
+    betaBuild = false,
+  },
+  {
+    id = "classic-mop",
+    path = { "classic", "mop" },
+    projectId = 19,
+    testBuild = false,
+    betaBuild = false,
+  },
+  { id = "ptr", path = { "ptr" }, projectId = 1, testBuild = true, betaBuild = false },
+  { id = "beta", path = { "beta" }, projectId = 1, testBuild = true, betaBuild = true },
 }
 
 local FLAVOR_BY_ID = {}
 for index = 1, #FLAVORS do
-    FLAVOR_BY_ID[FLAVORS[index].id] = FLAVORS[index]
+  FLAVOR_BY_ID[FLAVORS[index].id] = FLAVORS[index]
 end
 
 -- Public types --------------------------------------------------------------
@@ -121,15 +121,15 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
 if type(Registry) == "nil" and type(namespace) == "table" then
-    Registry = rawget(namespace, "Registry")
+  Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
-    error("MoltenCodes ApiKit requires Registry API 2 to be loaded first", 2)
+  error("MoltenCodes ApiKit requires Registry API 2 to be loaded first", 2)
 end
 
 local bootstrapPackage = rawget(Registry, "Bootstrap")
 if type(bootstrapPackage) ~= "function" then
-    error("MoltenCodes ApiKit requires a valid Registry API 2 facade", 2)
+  error("MoltenCodes ApiKit requires a valid Registry API 2 facade", 2)
 end
 
 -- Validation ----------------------------------------------------------------
@@ -138,52 +138,52 @@ end
 ---@param implementation any shared package table handed back by Registry
 ---@return boolean
 local function validatePublicSurface(implementation)
-    return type(implementation) == "table"
-        and rawget(implementation, "API") == API_GENERATION
-        and type(rawget(implementation, "REVISION")) == "number"
-        and type(rawget(implementation, "SUPPORTED_FLAVORS")) == "table"
-        and type(rawget(implementation, "SUPPORTED_FLAVOR_COUNT")) == "number"
-        and type(rawget(implementation, "GetFlavor")) == "function"
-        and type(rawget(implementation, "GetGlobalStatus")) == "function"
-        and type(rawget(implementation, "RegisterFlavor")) == "function"
-        and type(rawget(implementation, "GetMetadataBuild")) == "function"
+  return type(implementation) == "table"
+    and rawget(implementation, "API") == API_GENERATION
+    and type(rawget(implementation, "REVISION")) == "number"
+    and type(rawget(implementation, "SUPPORTED_FLAVORS")) == "table"
+    and type(rawget(implementation, "SUPPORTED_FLAVOR_COUNT")) == "number"
+    and type(rawget(implementation, "GetFlavor")) == "function"
+    and type(rawget(implementation, "GetGlobalStatus")) == "function"
+    and type(rawget(implementation, "RegisterFlavor")) == "function"
+    and type(rawget(implementation, "GetMetadataBuild")) == "function"
 end
 
 ---Whether `currentState` has the fields every API 1 revision shares.
 ---@param currentState any
 ---@return boolean
 local function validateStateBase(currentState)
-    return type(currentState) == "table"
-        and rawget(currentState, "schema") == STATE_SCHEMA
-        and type(rawget(currentState, "root")) == "table"
-        and type(rawget(currentState, "apis")) == "table"
-        and type(rawget(currentState, "installed")) == "table"
-        and type(rawget(currentState, "info")) == "table"
-        and type(rawget(currentState, "supportedFlavors")) == "table"
-        and type(rawget(currentState, "supportedFlavorsView")) == "table"
+  return type(currentState) == "table"
+    and rawget(currentState, "schema") == STATE_SCHEMA
+    and type(rawget(currentState, "root")) == "table"
+    and type(rawget(currentState, "apis")) == "table"
+    and type(rawget(currentState, "installed")) == "table"
+    and type(rawget(currentState, "info")) == "table"
+    and type(rawget(currentState, "supportedFlavors")) == "table"
+    and type(rawget(currentState, "supportedFlavorsView")) == "table"
 end
 
 ---Whether `implementation` carries package state of this revision's schema.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    return validateStateBase(rawget(implementation, "_state"))
+  return validateStateBase(rawget(implementation, "_state"))
 end
 
 -- Bootstrap -----------------------------------------------------------------
 
 local ApiKit, previousRevision, selected = bootstrapPackage(Registry, {
-    package = PACKAGE_NAME,
-    api = API_GENERATION,
-    revision = IMPLEMENTATION_REVISION,
-    label = "MoltenCodes ApiKit",
-    validatePublicSurface = validatePublicSurface,
-    validateState = validateCurrentState,
+  package = PACKAGE_NAME,
+  api = API_GENERATION,
+  revision = IMPLEMENTATION_REVISION,
+  label = "MoltenCodes ApiKit",
+  validatePublicSurface = validatePublicSurface,
+  validateState = validateCurrentState,
 })
 
 if ApiKit == nil then
-    -- Equal or newer compatible revision already owns the shared package table.
-    return selected
+  -- Equal or newer compatible revision already owns the shared package table.
+  return selected
 end
 
 -- Host probing --------------------------------------------------------------
@@ -192,9 +192,9 @@ end
 ---@param name string
 ---@return any
 local function readGlobal(name)
-    -- The World of Warcraft client API is reachable only through the global table.
-    -- selene: allow(global_usage)
-    return rawget(_G, name)
+  -- The World of Warcraft client API is reachable only through the global table.
+  -- selene: allow(global_usage)
+  return rawget(_G, name)
 end
 
 ---Call a boolean probe of the host, treating a missing probe as `false`.
@@ -204,11 +204,11 @@ end
 ---@param name string
 ---@return boolean
 local function probeBoolean(name)
-    local probe = readGlobal(name)
-    if type(probe) ~= "function" then
-        return false
-    end
-    return probe() == true
+  local probe = readGlobal(name)
+  if type(probe) ~= "function" then
+    return false
+  end
+  return probe() == true
 end
 
 ---Derive the flavour id from the host's facts.
@@ -222,24 +222,22 @@ end
 ---before the comparison.
 ---@return string flavorId one of the `FLAVORS` ids, or `UNSUPPORTED_FLAVOR`
 local function probeFlavor()
-    local projectId = readGlobal(PROJECT_ID_GLOBAL)
-    if type(projectId) ~= "number" then
-        return UNSUPPORTED_FLAVOR
-    end
-    local betaBuild = probeBoolean(BETA_BUILD_PROBE)
-    local testBuild = betaBuild or probeBoolean(TEST_BUILD_PROBE)
-    for index = 1, #FLAVORS do
-        local row = FLAVORS[index]
-        if row.projectId == projectId then
-            local buildFactsApply = projectId == RETAIL_PROJECT_ID
-            if
-                not buildFactsApply or (row.testBuild == testBuild and row.betaBuild == betaBuild)
-            then
-                return row.id
-            end
-        end
-    end
+  local projectId = readGlobal(PROJECT_ID_GLOBAL)
+  if type(projectId) ~= "number" then
     return UNSUPPORTED_FLAVOR
+  end
+  local betaBuild = probeBoolean(BETA_BUILD_PROBE)
+  local testBuild = betaBuild or probeBoolean(TEST_BUILD_PROBE)
+  for index = 1, #FLAVORS do
+    local row = FLAVORS[index]
+    if row.projectId == projectId then
+      local buildFactsApply = projectId == RETAIL_PROJECT_ID
+      if not buildFactsApply or (row.testBuild == testBuild and row.betaBuild == betaBuild) then
+        return row.id
+      end
+    end
+  end
+  return UNSUPPORTED_FLAVOR
 end
 
 -- Namespace tables ----------------------------------------------------------
@@ -250,35 +248,35 @@ end
 ---rather than an error; only the running flavour's table is ever filled.
 ---@return table root, table<string, table> apis the `api` table of each flavour id
 local function buildNamespaceRoot()
-    local root = {}
-    local apis = {}
-    for index = 1, #FLAVORS do
-        local row = FLAVORS[index]
-        local node = root
-        for segment = 1, #row.path do
-            local key = row.path[segment]
-            local child = rawget(node, key)
-            if child == nil then
-                child = {}
-                rawset(node, key, child)
-            end
-            node = child
-        end
-        local api = {}
-        rawset(node, "api", api)
-        apis[row.id] = api
+  local root = {}
+  local apis = {}
+  for index = 1, #FLAVORS do
+    local row = FLAVORS[index]
+    local node = root
+    for segment = 1, #row.path do
+      local key = row.path[segment]
+      local child = rawget(node, key)
+      if child == nil then
+        child = {}
+        rawset(node, key, child)
+      end
+      node = child
     end
-    return root, apis
+    local api = {}
+    rawset(node, "api", api)
+    apis[row.id] = api
+  end
+  return root, apis
 end
 
 ---Refuse every write to `ApiKit.SUPPORTED_FLAVORS`.
 ---@param _ table
 ---@param key any
 local function refuseSupportedFlavorsWrite(_, key)
-    error(
-        'ApiKit.SUPPORTED_FLAVORS is read-only; index "' .. tostring(key) .. '" cannot be written',
-        2
-    )
+  error(
+    'ApiKit.SUPPORTED_FLAVORS is read-only; index "' .. tostring(key) .. '" cannot be written',
+    2
+  )
 end
 
 ---Publish `root` as the short global when nothing else owns that name.
@@ -289,11 +287,11 @@ end
 ---read live by `GetGlobalStatus`, so a later replacement is reported too.
 ---@param root table
 local function publishShortGlobal(root)
+  -- selene: allow(global_usage)
+  if type(rawget(_G, SHORT_GLOBAL_NAME)) == "nil" then
     -- selene: allow(global_usage)
-    if type(rawget(_G, SHORT_GLOBAL_NAME)) == "nil" then
-        -- selene: allow(global_usage)
-        rawset(_G, SHORT_GLOBAL_NAME, root)
-    end
+    rawset(_G, SHORT_GLOBAL_NAME, root)
+  end
 end
 
 ---Make `MoltenCodes.wow` the root, refusing to overwrite something else.
@@ -303,49 +301,49 @@ end
 ---`MoltenCodes.wow.retail.api` must never be handed another table.
 ---@param root table
 local function publishNamespaceRoot(root)
-    if type(namespace) ~= "table" then
-        return
-    end
-    local existing = rawget(namespace, SHORT_GLOBAL_NAME)
-    if type(existing) == "nil" then
-        rawset(namespace, SHORT_GLOBAL_NAME, root)
-    elseif existing ~= root then
-        error("MoltenCodes ApiKit found MoltenCodes.wow owned by something else", 2)
-    end
+  if type(namespace) ~= "table" then
+    return
+  end
+  local existing = rawget(namespace, SHORT_GLOBAL_NAME)
+  if type(existing) == "nil" then
+    rawset(namespace, SHORT_GLOBAL_NAME, root)
+  elseif existing ~= root then
+    error("MoltenCodes ApiKit found MoltenCodes.wow owned by something else", 2)
+  end
 end
 
 local state = rawget(ApiKit, "_state")
 
 if previousRevision == nil then
-    if state ~= nil then
-        error("MoltenCodes ApiKit package state is corrupted or incomplete", 2)
-    end
-    local root, apis = buildNamespaceRoot()
-    local supportedFlavors = {}
-    for index = 1, #FLAVORS do
-        supportedFlavors[index] = FLAVORS[index].id
-    end
-    state = {
-        schema = STATE_SCHEMA,
-        flavor = UNSUPPORTED_FLAVOR,
-        root = root,
-        apis = apis,
-        -- Per flavour id: `true` once its installer has run.
-        installed = {},
-        -- Per flavour id: the `info` its registration carried (`false` for none).
-        info = {},
-        supportedFlavors = supportedFlavors,
-        supportedFlavorsView = setmetatable({}, {
-            __index = supportedFlavors,
-            __newindex = refuseSupportedFlavorsWrite,
-            __metatable = false,
-        }),
-    }
-    rawset(ApiKit, "_state", state)
-    publishShortGlobal(root)
-    publishNamespaceRoot(root)
-elseif not validateStateBase(state) then
+  if state ~= nil then
     error("MoltenCodes ApiKit package state is corrupted or incomplete", 2)
+  end
+  local root, apis = buildNamespaceRoot()
+  local supportedFlavors = {}
+  for index = 1, #FLAVORS do
+    supportedFlavors[index] = FLAVORS[index].id
+  end
+  state = {
+    schema = STATE_SCHEMA,
+    flavor = UNSUPPORTED_FLAVOR,
+    root = root,
+    apis = apis,
+    -- Per flavour id: `true` once its installer has run.
+    installed = {},
+    -- Per flavour id: the `info` its registration carried (`false` for none).
+    info = {},
+    supportedFlavors = supportedFlavors,
+    supportedFlavorsView = setmetatable({}, {
+      __index = supportedFlavors,
+      __newindex = refuseSupportedFlavorsWrite,
+      __metatable = false,
+    }),
+  }
+  rawset(ApiKit, "_state", state)
+  publishShortGlobal(root)
+  publishNamespaceRoot(root)
+elseif not validateStateBase(state) then
+  error("MoltenCodes ApiKit package state is corrupted or incomplete", 2)
 end
 
 -- The flavour is probed on every bootstrap, first load and upgrade alike, as
@@ -362,9 +360,9 @@ rawset(state, "flavor", probeFlavor())
 ---@param self any
 ---@param methodName string
 local function validateReceiver(self, methodName)
-    if self ~= ApiKit then
-        error("ApiKit:" .. methodName .. " must be called on the ApiKit facade", 3)
-    end
+  if self ~= ApiKit then
+    error("ApiKit:" .. methodName .. " must be called on the ApiKit facade", 3)
+  end
 end
 
 ---Validate a flavour id argument, at the caller's level.
@@ -372,58 +370,58 @@ end
 ---@param methodName string
 ---@return table row
 local function validateFlavorArgument(flavor, methodName)
-    local row = type(flavor) == "string" and FLAVOR_BY_ID[flavor] or nil
-    if row == nil then
-        error(
-            "ApiKit:"
-                .. methodName
-                .. " flavor must be one of "
-                .. table.concat(rawget(state, "supportedFlavors"), ", "),
-            3
-        )
-    end
-    return row
+  local row = type(flavor) == "string" and FLAVOR_BY_ID[flavor] or nil
+  if row == nil then
+    error(
+      "ApiKit:"
+        .. methodName
+        .. " flavor must be one of "
+        .. table.concat(rawget(state, "supportedFlavors"), ", "),
+      3
+    )
+  end
+  return row
 end
 
 ---Validate the optional `info` table of a registration, at the caller's level.
 ---@param info any
 ---@return table|false
 local function validateInfoArgument(info)
-    if type(info) == "nil" then
-        return false
-    end
-    if type(info) ~= "table" then
-        error("ApiKit:RegisterFlavor info must be a table when given", 3)
-    end
-    local version = rawget(info, "version")
-    local build = rawget(info, "build")
-    if type(version) ~= "nil" and type(version) ~= "string" then
-        error("ApiKit:RegisterFlavor info.version must be a string when given", 3)
-    end
-    if type(build) ~= "nil" and (type(build) ~= "number" or build % 1 ~= 0) then
-        error("ApiKit:RegisterFlavor info.build must be an integer when given", 3)
-    end
-    return { version = version, build = build }
+  if type(info) == "nil" then
+    return false
+  end
+  if type(info) ~= "table" then
+    error("ApiKit:RegisterFlavor info must be a table when given", 3)
+  end
+  local version = rawget(info, "version")
+  local build = rawget(info, "build")
+  if type(version) ~= "nil" and type(version) ~= "string" then
+    error("ApiKit:RegisterFlavor info.version must be a string when given", 3)
+  end
+  if type(build) ~= "nil" and (type(build) ~= "number" or build % 1 ~= 0) then
+    error("ApiKit:RegisterFlavor info.build must be an integer when given", 3)
+  end
+  return { version = version, build = build }
 end
 
 ---Return the flavour of the running client.
 ---@param self ApiKit
 ---@return ApiKit.Flavor
 local function packageGetFlavor(self)
-    validateReceiver(self, "GetFlavor")
-    return rawget(state, "flavor")
+  validateReceiver(self, "GetFlavor")
+  return rawget(state, "flavor")
 end
 
 ---Return whether the short `wow` global names `MoltenCodes.wow`, read live.
 ---@param self ApiKit
 ---@return ApiKit.GlobalStatus
 local function packageGetGlobalStatus(self)
-    validateReceiver(self, "GetGlobalStatus")
-    -- selene: allow(global_usage)
-    if rawget(_G, SHORT_GLOBAL_NAME) == rawget(state, "root") then
-        return "published"
-    end
-    return "taken"
+  validateReceiver(self, "GetGlobalStatus")
+  -- selene: allow(global_usage)
+  if rawget(_G, SHORT_GLOBAL_NAME) == rawget(state, "root") then
+    return "published"
+  end
+  return "taken"
 end
 
 ---Register a flavour's installer; the entry point every generated flavour
@@ -446,36 +444,36 @@ end
 ---@param info ApiKit.FlavorInfo?
 ---@return boolean installed whether the installer ran
 local function packageRegisterFlavor(self, flavor, install, info)
-    validateReceiver(self, "RegisterFlavor")
-    local row = validateFlavorArgument(flavor, "RegisterFlavor")
-    if type(install) ~= "function" then
-        error("ApiKit:RegisterFlavor install must be a function", 2)
-    end
-    local recordedInfo = validateInfoArgument(info)
+  validateReceiver(self, "RegisterFlavor")
+  local row = validateFlavorArgument(flavor, "RegisterFlavor")
+  if type(install) ~= "function" then
+    error("ApiKit:RegisterFlavor install must be a function", 2)
+  end
+  local recordedInfo = validateInfoArgument(info)
 
-    local infoTable = rawget(state, "info")
-    if rawget(infoTable, row.id) == nil then
-        rawset(infoTable, row.id, recordedInfo)
-    end
+  local infoTable = rawget(state, "info")
+  if rawget(infoTable, row.id) == nil then
+    rawset(infoTable, row.id, recordedInfo)
+  end
 
-    local installedTable = rawget(state, "installed")
-    if row.id ~= rawget(state, "flavor") or rawget(installedTable, row.id) == true then
-        return false
+  local installedTable = rawget(state, "installed")
+  if row.id ~= rawget(state, "flavor") or rawget(installedTable, row.id) == true then
+    return false
+  end
+  rawset(installedTable, row.id, true)
+  local api = rawget(rawget(state, "apis"), row.id)
+  -- The host is the global table: every alias the installer makes is read from it.
+  -- selene: allow(global_usage)
+  local ok, failure = pcall(install, api, _G)
+  if not ok then
+    for key in pairs(api) do
+      rawset(api, key, nil)
     end
-    rawset(installedTable, row.id, true)
-    local api = rawget(rawget(state, "apis"), row.id)
-    -- The host is the global table: every alias the installer makes is read from it.
-    -- selene: allow(global_usage)
-    local ok, failure = pcall(install, api, _G)
-    if not ok then
-        for key in pairs(api) do
-            rawset(api, key, nil)
-        end
-        rawset(installedTable, row.id, nil)
-        rawset(infoTable, row.id, nil)
-        error(failure, 0)
-    end
-    return true
+    rawset(installedTable, row.id, nil)
+    rawset(infoTable, row.id, nil)
+    error(failure, 0)
+  end
+  return true
 end
 
 ---Return the client version and build the registered metadata of `flavor`
@@ -485,13 +483,13 @@ end
 ---@return string? version
 ---@return integer? build
 local function packageGetMetadataBuild(self, flavor)
-    validateReceiver(self, "GetMetadataBuild")
-    local row = validateFlavorArgument(flavor, "GetMetadataBuild")
-    local recorded = rawget(rawget(state, "info"), row.id)
-    if type(recorded) ~= "table" then
-        return nil, nil
-    end
-    return rawget(recorded, "version"), rawget(recorded, "build")
+  validateReceiver(self, "GetMetadataBuild")
+  local row = validateFlavorArgument(flavor, "GetMetadataBuild")
+  local recorded = rawget(rawget(state, "info"), row.id)
+  if type(recorded) ~= "table" then
+    return nil, nil
+  end
+  return rawget(recorded, "version"), rawget(recorded, "build")
 end
 
 -- Commit -------------------------------------------------------------------
@@ -506,7 +504,7 @@ rawset(ApiKit, "RegisterFlavor", packageRegisterFlavor)
 rawset(ApiKit, "GetMetadataBuild", packageGetMetadataBuild)
 
 if not validatePublicSurface(ApiKit) or not validateCurrentState(ApiKit) then
-    error("MoltenCodes ApiKit package state is corrupted or incomplete", 2)
+  error("MoltenCodes ApiKit package state is corrupted or incomplete", 2)
 end
 
 return ApiKit

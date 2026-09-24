@@ -260,11 +260,11 @@ local limits = CodecKit:GetLimits() -- a fresh table; limits.maxValues == CodecK
 ```lua
 local scope = SchedulerKit:CreateScope()
 local job = CodecKit:EncodeAsync(profile, { compress = "deflate", channel = "print" }, scope, function(ok, text)
-    if ok then
-        ShowExportWindow(text)
-    else
-        print("Export failed: " .. text)
-    end
+  if ok then
+    ShowExportWindow(text)
+  else
+    print("Export failed: " .. text)
+  end
 end)
 ```
 
@@ -282,15 +282,15 @@ A decoded value is whatever the sender chose to encode. The limits keep decoding
 
 ```lua
 local Message = SchemaKit:Seal(SchemaKit.table({
-    fields = {
-        kind = SchemaKit.enum({ "hello", "sync" }),
-        version = SchemaKit.number({ integer = true, min = 1 }),
-    },
+  fields = {
+    kind = SchemaKit.enum({ "hello", "sync" }),
+    version = SchemaKit.number({ integer = true, min = 1 }),
+  },
 }))
 
 local ok, value = CodecKit:Decode(text, { channel = "addon" })
 if not ok or not Message:Check(value) then
-    return -- drop it
+  return -- drop it
 end
 ```
 

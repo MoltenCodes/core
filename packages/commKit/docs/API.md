@@ -114,7 +114,7 @@ A closed scope refuses `Register`, `Send` and `SyncSet` with `nil, "closed"`.
 ```lua
 local scope = CommKit:ForAddon("MyAddon")
 local connection, reason = scope:Register("MyAddon", function(prefix, text, distribution, sender)
-    -- text is one whole message, never a part of one.
+  -- text is one whole message, never a part of one.
 end)
 ```
 
@@ -130,12 +130,12 @@ end)
 ```lua
 local ok, encoded = CodecKit:Encode(payload, { channel = "addon" })
 local handle, reason = scope:Send({
-    prefix = "MyAddon",
-    text = encoded, -- any string without NUL, CR, LF or |
-    distribution = "RAID",
-    priority = CommKit.Priority.BULK,
-    onProgress = function(handle, bytesSent, bytesTotal) end,
-    onComplete = function(handle, state, reason) end,
+  prefix = "MyAddon",
+  text = encoded, -- any string without NUL, CR, LF or |
+  distribution = "RAID",
+  priority = CommKit.Priority.BULK,
+  onProgress = function(handle, bytesSent, bytesTotal) end,
+  onComplete = function(handle, state, reason) end,
 })
 ```
 
@@ -335,13 +335,13 @@ A SyncSet keeps this client's values for a fixed list of fields and a cache of t
 
 ```lua
 local sync = scope:SyncSet("MyAddonSync", {
-    fields = { "name", "level", "talents" },
-    schema = { level = SchemaKit:Seal(SchemaKit.number({ integer = true, min = 1, max = 80 })) },
+  fields = { "name", "level", "talents" },
+  schema = { level = SchemaKit:Seal(SchemaKit.number({ integer = true, min = 1, max = 80 })) },
 })
 
 sync:Set("level", 70)                      -- true, true (the hash changed)
 sync:OnChanged(function(sender, field, value)
-    -- value is nil when the peer cleared the field
+  -- value is nil when the peer cleared the field
 end)
 sync:Request("Friend-Realm")               -- ask for what differs
 local level = sync:GetRemote("Friend-Realm", "level")

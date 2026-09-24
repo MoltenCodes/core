@@ -7,14 +7,14 @@ local addon = ModuleKit:ForAddon("MyAddon")
 addon:SetDependencyPolicy("automatic") -- or "strict"
 
 addon:ProvideSingleton("Database", function()
-    return Database:New()
+  return Database:New()
 end)
 
 local inventory = addon:CreateModule("Inventory")
 inventory:Inject({ database = "Database" })
 
 function inventory:OnInitialize(deps)
-    self.database = deps.database
+  self.database = deps.database
 end
 ```
 

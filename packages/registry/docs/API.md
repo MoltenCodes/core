@@ -126,15 +126,15 @@ This behavior is essential for embedded libraries because different addons can l
 ```lua
 local EventKit, previousRevision = Registry:Register("eventKit", 1, 9)
 if EventKit == nil then
-    return
+  return
 end
 
 if previousRevision ~= nil and previousRevision < 8 then
-    -- Migrate shared package state if revision 9 requires it.
+  -- Migrate shared package state if revision 9 requires it.
 end
 
 function EventKit:Dispatch(eventName)
-    -- revision 9 implementation
+  -- revision 9 implementation
 end
 ```
 
@@ -162,10 +162,10 @@ Returns a metadata snapshot:
 
 ```lua
 {
-    package = "eventKit",
-    api = 1,
-    revision = 9,
-    implementation = EventKit,
+  package = "eventKit",
+  api = 1,
+  revision = 9,
+  implementation = EventKit,
 }
 ```
 
@@ -182,7 +182,7 @@ Silent lookup for an optional dependency. Available from revision **7**.
 ```lua
 local SchedulerKit, revisionOrReason = Registry:Find("schedulerKit", 1)
 if SchedulerKit == nil then
-    -- revisionOrReason explains the miss; carry on without the optional Kit.
+  -- revisionOrReason explains the miss; carry on without the optional Kit.
 end
 ```
 
@@ -204,7 +204,7 @@ Diagnostic enumeration of every registration:
 
 ```lua
 for _, row in ipairs(Registry:Packages()) do
-    print(row.package, row.api, row.revision, row.status)
+  print(row.package, row.api, row.revision, row.status)
 end
 ```
 
@@ -230,16 +230,16 @@ hand, and returns what the package needs in order to finish.
 
 ```lua
 local SignalKit, previousRevision, selected = Registry:Bootstrap({
-    package = "signalKit",
-    api = 1,
-    revision = 3,
-    label = "MoltenCodes SignalKit",
-    validatePublicSurface = validatePublicSurface,
+  package = "signalKit",
+  api = 1,
+  revision = 3,
+  label = "MoltenCodes SignalKit",
+  validatePublicSurface = validatePublicSurface,
 })
 
 if SignalKit == nil then
-    -- An equal or newer compatible revision already owns the package.
-    return selected
+  -- An equal or newer compatible revision already owns the package.
+  return selected
 end
 ```
 
@@ -323,7 +323,7 @@ local namespace = rawget(_G, "MoltenCodes")
 local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
 local Registry = type(generations) == "table" and rawget(generations, 2) or nil
 if Registry == nil and type(namespace) == "table" then
-    Registry = rawget(namespace, "Registry")
+  Registry = rawget(namespace, "Registry")
 end
 ```
 

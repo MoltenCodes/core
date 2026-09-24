@@ -7,23 +7,23 @@ local ReadinessKit = MoltenCodes.Registries[2]:Get("readinessKit", 1)
 
 -- One gate per name for the whole session; the first definition wins.
 local spellbook = ReadinessKit:Gate("MyAddon.spellbook", function()
-    return C_SpellBook.GetNumSpellBookSkillLines() > 0
+  return C_SpellBook.GetNumSpellBookSkillLines() > 0
 end, { timeoutSeconds = 60 })
 
 -- Probe again as soon as the host says something changed.
 spellbook:ReprobeOn("SPELLS_CHANGED")
 
 spellbook:Await(function(ready, reason)
-    if ready then
-        BuildRangeCheckers()
-    else
-        print("spellbook never arrived:", reason) -- "timeout" or "closed"
-    end
+  if ready then
+    BuildRangeCheckers()
+  else
+    print("spellbook never arrived:", reason) -- "timeout" or "closed"
+  end
 end)
 
 -- Several facts at once.
 ReadinessKit:WhenAll({ spellbook, itemCache }, function(ready, reason)
-    -- ...
+  -- ...
 end)
 
 -- The data went away (a respec, say): back to waiting.

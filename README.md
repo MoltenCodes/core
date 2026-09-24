@@ -75,7 +75,7 @@ local TimerKit = Registry:Get("timerKit", 1)
 -- A scope owned by this addon, closed with the addon's other scopes at logout.
 local timers = TimerKit:ForAddon(ADDON_NAME)
 timers:After(5, function()
-    print("five seconds later")
+  print("five seconds later")
 end)
 ```
 

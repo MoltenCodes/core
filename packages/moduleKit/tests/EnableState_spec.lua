@@ -8,330 +8,330 @@ local TestEnv = require("ModuleKitTestEnv")
 ---@return ModuleKit.Module consumer
 ---@return fun() repair
 local function newFailingDependencyFixture(ModuleKit)
+  local addon = ModuleKit:ForAddon("MyAddon")
+  local database = addon:CreateModule("Database")
+  local consumer = addon:CreateModule("Consumer")
+  consumer:DependsOn("Database")
+
+  local broken = true
+  database.OnEnable = function()
+    if broken then
+      error("database offline")
+    end
+  end
+
+  return addon, database, consumer, function()
+    broken = false
+  end
+end
+
+describe("ModuleKit intent versus fact", function()
+  local ModuleKit
+
+  before_each(function()
+    ModuleKit = TestEnv.NewPackage()
+  end)
+
+  after_each(TestEnv.Reset)
+
+  it("starts every module wanted, not enabled and unblocked", function()
+    local module = ModuleKit:ForAddon("MyAddon"):CreateModule("UI")
+
+    assert.are.same({ wanted = true, actual = false }, module:GetEnableState())
+  end)
+
+  it("keeps a module blocked by a failed dependency wanted", function()
+    local addon, _, consumer = newFailingDependencyFixture(ModuleKit)
+
+    assert.has_error(function()
+      addon:EnableAll()
+    end)
+
+    assert.are.same(
+      { wanted = true, actual = false, blockedBy = "Database" },
+      consumer:GetEnableState()
+    )
+  end)
+
+  it("enables a blocked module when its dependency's own Enable succeeds", function()
+    local addon, database, consumer, repair = newFailingDependencyFixture(ModuleKit)
+    local consumerEnables = 0
+    consumer.OnEnable = function()
+      consumerEnables = consumerEnables + 1
+    end
+    assert.has_error(function()
+      addon:EnableAll()
+    end)
+
+    repair()
+    database:Enable()
+
+    assert.are.equal("enabled", consumer:GetState())
+    assert.are.equal(1, consumerEnables)
+    assert.are.same({ wanted = true, actual = true }, consumer:GetEnableState())
+  end)
+
+  it("enables a blocked module when EnableAll runs again", function()
+    local addon, _, consumer, repair = newFailingDependencyFixture(ModuleKit)
+    assert.has_error(function()
+      addon:EnableAll()
+    end)
+
+    repair()
+    addon:EnableAll()
+
+    assert.are.same({ wanted = true, actual = true }, consumer:GetEnableState())
+  end)
+
+  it("recovers a whole chain blocked through a targeted Enable", function()
+    local addon, database, consumer, repair = newFailingDependencyFixture(ModuleKit)
+    local report = addon:CreateModule("Report")
+    report:DependsOn("Consumer")
+
+    assert.has_error(function()
+      report:Enable()
+    end)
+    assert.are.equal("Consumer", report:GetEnableState().blockedBy)
+    assert.are.equal("Database", consumer:GetEnableState().blockedBy)
+
+    repair()
+    database:Enable()
+
+    assert.is_true(consumer:IsEnabled())
+    assert.is_true(report:IsEnabled())
+  end)
+
+  it("recovers a module the strict policy refused", function()
+    local addon = ModuleKit:ForAddon("MyAddon")
+    addon:SetDependencyPolicy("strict")
+    local database = addon:CreateModule("Database")
+    local consumer = addon:CreateModule("Consumer")
+    consumer:DependsOn("Database")
+    database:Initialize()
+    consumer:Initialize()
+
+    assert.has_error(function()
+      consumer:Enable()
+    end)
+    assert.are.equal("Database", consumer:GetEnableState().blockedBy)
+
+    database:Enable()
+
+    assert.is_true(consumer:IsEnabled())
+  end)
+
+  it("lets an explicit Disable win over recovery", function()
+    local addon, database, consumer, repair = newFailingDependencyFixture(ModuleKit)
+    assert.has_error(function()
+      addon:EnableAll()
+    end)
+
+    consumer:Disable()
+    repair()
+    database:Enable()
+
+    -- Blocked before it could initialize, and never attempted since.
+    assert.are.equal("created", consumer:GetState())
+    assert.are.same({ wanted = false, actual = false }, consumer:GetEnableState())
+  end)
+
+  it(
+    "brings back dependents a cascaded Disable took down when the dependency is enabled",
+    function()
+      local addon = ModuleKit:ForAddon("MyAddon")
+      local database = addon:CreateModule("Database")
+      local consumer = addon:CreateModule("Consumer")
+      local report = addon:CreateModule("Report")
+      consumer:DependsOn("Database")
+      report:DependsOn("Consumer")
+      report:Enable()
+
+      database:Disable()
+
+      assert.are.same(
+        { wanted = true, actual = false, blockedBy = "Database" },
+        consumer:GetEnableState()
+      )
+      assert.are.same(
+        { wanted = true, actual = false, blockedBy = "Consumer" },
+        report:GetEnableState()
+      )
+
+      database:Enable()
+
+      assert.are.same({ wanted = true, actual = true }, consumer:GetEnableState())
+      assert.are.same({ wanted = true, actual = true }, report:GetEnableState())
+    end
+  )
+
+  it("brings back cascaded dependents on EnableAll", function()
     local addon = ModuleKit:ForAddon("MyAddon")
     local database = addon:CreateModule("Database")
     local consumer = addon:CreateModule("Consumer")
     consumer:DependsOn("Database")
+    addon:EnableAll()
 
-    local broken = true
-    database.OnEnable = function()
-        if broken then
-            error("database offline")
-        end
+    database:Disable()
+    addon:EnableAll()
+
+    assert.is_true(consumer:IsEnabled())
+  end)
+
+  it("keeps a directly disabled dependent off when its dependency is enabled again", function()
+    local addon = ModuleKit:ForAddon("MyAddon")
+    local database = addon:CreateModule("Database")
+    local consumer = addon:CreateModule("Consumer")
+    consumer:DependsOn("Database")
+    consumer:Enable()
+
+    consumer:Disable()
+    database:Disable()
+    database:Enable()
+
+    assert.are.same({ wanted = false, actual = false }, consumer:GetEnableState())
+  end)
+
+  it("records DisableAll as intent", function()
+    local addon = ModuleKit:ForAddon("MyAddon")
+    local module = addon:CreateModule("UI")
+    addon:EnableAll()
+
+    addon:DisableAll()
+
+    assert.are.same({ wanted = false, actual = false }, module:GetEnableState())
+  end)
+
+  it("leaves the dependency enabled when a recovered dependent fails", function()
+    local addon, database, consumer, repair = newFailingDependencyFixture(ModuleKit)
+    consumer.OnEnable = function()
+      error("consumer still broken", 0)
+    end
+    assert.has_error(function()
+      addon:EnableAll()
+    end)
+
+    repair()
+    assert.has_error(function()
+      database:Enable()
+    end, "consumer still broken")
+
+    assert.is_true(database:IsEnabled())
+    assert.are.same({ wanted = true, actual = false }, consumer:GetEnableState())
+  end)
+
+  it("keeps a module disabled in OnInitialize off when the addon becomes ready", function()
+    local addon = ModuleKit:ForAddon("MyAddon")
+    local optional = addon:CreateModule("Optional")
+    local dependent = addon:CreateModule("Dependent")
+    dependent:DependsOn("Optional")
+    optional.OnInitialize = function(self)
+      self:Disable()
     end
 
-    return addon, database, consumer, function()
-        broken = false
-    end
-end
+    TestEnv.LoadAddon("MyAddon")
+    TestEnv.Login()
 
-describe("ModuleKit intent versus fact", function()
-    local ModuleKit
-
-    before_each(function()
-        ModuleKit = TestEnv.NewPackage()
-    end)
-
-    after_each(TestEnv.Reset)
-
-    it("starts every module wanted, not enabled and unblocked", function()
-        local module = ModuleKit:ForAddon("MyAddon"):CreateModule("UI")
-
-        assert.are.same({ wanted = true, actual = false }, module:GetEnableState())
-    end)
-
-    it("keeps a module blocked by a failed dependency wanted", function()
-        local addon, _, consumer = newFailingDependencyFixture(ModuleKit)
-
-        assert.has_error(function()
-            addon:EnableAll()
-        end)
-
-        assert.are.same(
-            { wanted = true, actual = false, blockedBy = "Database" },
-            consumer:GetEnableState()
-        )
-    end)
-
-    it("enables a blocked module when its dependency's own Enable succeeds", function()
-        local addon, database, consumer, repair = newFailingDependencyFixture(ModuleKit)
-        local consumerEnables = 0
-        consumer.OnEnable = function()
-            consumerEnables = consumerEnables + 1
-        end
-        assert.has_error(function()
-            addon:EnableAll()
-        end)
-
-        repair()
-        database:Enable()
-
-        assert.are.equal("enabled", consumer:GetState())
-        assert.are.equal(1, consumerEnables)
-        assert.are.same({ wanted = true, actual = true }, consumer:GetEnableState())
-    end)
-
-    it("enables a blocked module when EnableAll runs again", function()
-        local addon, _, consumer, repair = newFailingDependencyFixture(ModuleKit)
-        assert.has_error(function()
-            addon:EnableAll()
-        end)
-
-        repair()
-        addon:EnableAll()
-
-        assert.are.same({ wanted = true, actual = true }, consumer:GetEnableState())
-    end)
-
-    it("recovers a whole chain blocked through a targeted Enable", function()
-        local addon, database, consumer, repair = newFailingDependencyFixture(ModuleKit)
-        local report = addon:CreateModule("Report")
-        report:DependsOn("Consumer")
-
-        assert.has_error(function()
-            report:Enable()
-        end)
-        assert.are.equal("Consumer", report:GetEnableState().blockedBy)
-        assert.are.equal("Database", consumer:GetEnableState().blockedBy)
-
-        repair()
-        database:Enable()
-
-        assert.is_true(consumer:IsEnabled())
-        assert.is_true(report:IsEnabled())
-    end)
-
-    it("recovers a module the strict policy refused", function()
-        local addon = ModuleKit:ForAddon("MyAddon")
-        addon:SetDependencyPolicy("strict")
-        local database = addon:CreateModule("Database")
-        local consumer = addon:CreateModule("Consumer")
-        consumer:DependsOn("Database")
-        database:Initialize()
-        consumer:Initialize()
-
-        assert.has_error(function()
-            consumer:Enable()
-        end)
-        assert.are.equal("Database", consumer:GetEnableState().blockedBy)
-
-        database:Enable()
-
-        assert.is_true(consumer:IsEnabled())
-    end)
-
-    it("lets an explicit Disable win over recovery", function()
-        local addon, database, consumer, repair = newFailingDependencyFixture(ModuleKit)
-        assert.has_error(function()
-            addon:EnableAll()
-        end)
-
-        consumer:Disable()
-        repair()
-        database:Enable()
-
-        -- Blocked before it could initialize, and never attempted since.
-        assert.are.equal("created", consumer:GetState())
-        assert.are.same({ wanted = false, actual = false }, consumer:GetEnableState())
-    end)
-
-    it(
-        "brings back dependents a cascaded Disable took down when the dependency is enabled",
-        function()
-            local addon = ModuleKit:ForAddon("MyAddon")
-            local database = addon:CreateModule("Database")
-            local consumer = addon:CreateModule("Consumer")
-            local report = addon:CreateModule("Report")
-            consumer:DependsOn("Database")
-            report:DependsOn("Consumer")
-            report:Enable()
-
-            database:Disable()
-
-            assert.are.same(
-                { wanted = true, actual = false, blockedBy = "Database" },
-                consumer:GetEnableState()
-            )
-            assert.are.same(
-                { wanted = true, actual = false, blockedBy = "Consumer" },
-                report:GetEnableState()
-            )
-
-            database:Enable()
-
-            assert.are.same({ wanted = true, actual = true }, consumer:GetEnableState())
-            assert.are.same({ wanted = true, actual = true }, report:GetEnableState())
-        end
+    assert.are.same({ wanted = false, actual = false }, optional:GetEnableState())
+    assert.are.same(
+      { wanted = true, actual = false, blockedBy = "Optional" },
+      dependent:GetEnableState()
     )
 
-    it("brings back cascaded dependents on EnableAll", function()
-        local addon = ModuleKit:ForAddon("MyAddon")
-        local database = addon:CreateModule("Database")
-        local consumer = addon:CreateModule("Consumer")
-        consumer:DependsOn("Database")
-        addon:EnableAll()
+    -- An explicit EnableAll from the addon is a new intent and wins.
+    addon:EnableAll()
 
-        database:Disable()
-        addon:EnableAll()
+    assert.is_true(optional:IsEnabled())
+    assert.is_true(dependent:IsEnabled())
+  end)
 
-        assert.is_true(consumer:IsEnabled())
+  it("does not build the graph on Enable when nothing is blocked", function()
+    local addon = ModuleKit:ForAddon("MyAddon")
+    local module = addon:CreateModule("UI")
+    addon:CreateModule("Other"):After("UI")
+
+    -- Count calls to ModuleKit's file-local `buildGraph` through a call
+    -- hook, identified by the line it is defined on.
+    local source = debug.getinfo(ModuleKit.ForAddon, "S").source
+    local definedAt
+    local lineNumber = 0
+    for line in io.lines(string.sub(source, 2)) do
+      lineNumber = lineNumber + 1
+      if string.find(line, "^local function buildGraph%(") then
+        definedAt = lineNumber
+      end
+    end
+    assert.is_number(definedAt)
+
+    -- The coverage run installs a line hook of its own on this thread;
+    -- it is put back afterwards, so the specs that follow are still
+    -- measured.
+    local previousHook, previousMask, previousCount = debug.gethook()
+    local graphBuilds = 0
+    debug.sethook(function()
+      local info = debug.getinfo(2, "S")
+      if info.source == source and info.linedefined == definedAt then
+        graphBuilds = graphBuilds + 1
+      end
+    end, "c")
+    local ok, failure = pcall(module.Enable, module)
+    if previousHook ~= nil then
+      debug.sethook(previousHook, previousMask, previousCount)
+    else
+      debug.sethook(nil, "") -- removes the hook
+    end
+
+    assert.is_true(ok, tostring(failure))
+    assert.are.equal(0, graphBuilds)
+  end)
+
+  it("preserves intent and blocking across an in-place upgrade", function()
+    local addon, database, consumer, repair = newFailingDependencyFixture(ModuleKit)
+    local optional = addon:CreateModule("Optional")
+    assert.has_error(function()
+      addon:EnableAll()
     end)
+    optional:Disable()
 
-    it("keeps a directly disabled dependent off when its dependency is enabled again", function()
-        local addon = ModuleKit:ForAddon("MyAddon")
-        local database = addon:CreateModule("Database")
-        local consumer = addon:CreateModule("Consumer")
-        consumer:DependsOn("Database")
-        consumer:Enable()
+    rawset(rawget(ModuleKit, "_state"), "runtimeRevision", ModuleKit.REVISION - 1)
+    local upgraded = TestEnv.ReloadPackage()
 
-        consumer:Disable()
-        database:Disable()
-        database:Enable()
+    assert.are.equal(ModuleKit, upgraded)
+    assert.are.same(
+      { wanted = true, actual = false, blockedBy = "Database" },
+      consumer:GetEnableState()
+    )
+    assert.are.same({ wanted = false, actual = false }, optional:GetEnableState())
 
-        assert.are.same({ wanted = false, actual = false }, consumer:GetEnableState())
-    end)
+    repair()
+    database:Enable()
+    assert.is_true(consumer:IsEnabled())
+  end)
 
-    it("records DisableAll as intent", function()
-        local addon = ModuleKit:ForAddon("MyAddon")
-        local module = addon:CreateModule("UI")
-        addon:EnableAll()
+  it("derives intent for modules an earlier revision created", function()
+    local addon = ModuleKit:ForAddon("MyAddon")
+    local kept = addon:CreateModule("Kept")
+    local dropped = addon:CreateModule("Dropped")
+    kept:Enable()
+    dropped:Enable()
+    dropped:Disable()
+    for _, module in ipairs({ kept, dropped }) do
+      for _, field in ipairs({
+        "_wantedEnabled",
+        "_enableBlockedBy",
+        "_scopeOpen",
+        "_scope",
+        "scope",
+      }) do
+        rawset(module, field, nil)
+      end
+    end
 
-        addon:DisableAll()
+    rawset(rawget(ModuleKit, "_state"), "runtimeRevision", ModuleKit.REVISION - 1)
+    TestEnv.ReloadPackage()
 
-        assert.are.same({ wanted = false, actual = false }, module:GetEnableState())
-    end)
-
-    it("leaves the dependency enabled when a recovered dependent fails", function()
-        local addon, database, consumer, repair = newFailingDependencyFixture(ModuleKit)
-        consumer.OnEnable = function()
-            error("consumer still broken", 0)
-        end
-        assert.has_error(function()
-            addon:EnableAll()
-        end)
-
-        repair()
-        assert.has_error(function()
-            database:Enable()
-        end, "consumer still broken")
-
-        assert.is_true(database:IsEnabled())
-        assert.are.same({ wanted = true, actual = false }, consumer:GetEnableState())
-    end)
-
-    it("keeps a module disabled in OnInitialize off when the addon becomes ready", function()
-        local addon = ModuleKit:ForAddon("MyAddon")
-        local optional = addon:CreateModule("Optional")
-        local dependent = addon:CreateModule("Dependent")
-        dependent:DependsOn("Optional")
-        optional.OnInitialize = function(self)
-            self:Disable()
-        end
-
-        TestEnv.LoadAddon("MyAddon")
-        TestEnv.Login()
-
-        assert.are.same({ wanted = false, actual = false }, optional:GetEnableState())
-        assert.are.same(
-            { wanted = true, actual = false, blockedBy = "Optional" },
-            dependent:GetEnableState()
-        )
-
-        -- An explicit EnableAll from the addon is a new intent and wins.
-        addon:EnableAll()
-
-        assert.is_true(optional:IsEnabled())
-        assert.is_true(dependent:IsEnabled())
-    end)
-
-    it("does not build the graph on Enable when nothing is blocked", function()
-        local addon = ModuleKit:ForAddon("MyAddon")
-        local module = addon:CreateModule("UI")
-        addon:CreateModule("Other"):After("UI")
-
-        -- Count calls to ModuleKit's file-local `buildGraph` through a call
-        -- hook, identified by the line it is defined on.
-        local source = debug.getinfo(ModuleKit.ForAddon, "S").source
-        local definedAt
-        local lineNumber = 0
-        for line in io.lines(string.sub(source, 2)) do
-            lineNumber = lineNumber + 1
-            if string.find(line, "^local function buildGraph%(") then
-                definedAt = lineNumber
-            end
-        end
-        assert.is_number(definedAt)
-
-        -- The coverage run installs a line hook of its own on this thread;
-        -- it is put back afterwards, so the specs that follow are still
-        -- measured.
-        local previousHook, previousMask, previousCount = debug.gethook()
-        local graphBuilds = 0
-        debug.sethook(function()
-            local info = debug.getinfo(2, "S")
-            if info.source == source and info.linedefined == definedAt then
-                graphBuilds = graphBuilds + 1
-            end
-        end, "c")
-        local ok, failure = pcall(module.Enable, module)
-        if previousHook ~= nil then
-            debug.sethook(previousHook, previousMask, previousCount)
-        else
-            debug.sethook(nil, "") -- removes the hook
-        end
-
-        assert.is_true(ok, tostring(failure))
-        assert.are.equal(0, graphBuilds)
-    end)
-
-    it("preserves intent and blocking across an in-place upgrade", function()
-        local addon, database, consumer, repair = newFailingDependencyFixture(ModuleKit)
-        local optional = addon:CreateModule("Optional")
-        assert.has_error(function()
-            addon:EnableAll()
-        end)
-        optional:Disable()
-
-        rawset(rawget(ModuleKit, "_state"), "runtimeRevision", ModuleKit.REVISION - 1)
-        local upgraded = TestEnv.ReloadPackage()
-
-        assert.are.equal(ModuleKit, upgraded)
-        assert.are.same(
-            { wanted = true, actual = false, blockedBy = "Database" },
-            consumer:GetEnableState()
-        )
-        assert.are.same({ wanted = false, actual = false }, optional:GetEnableState())
-
-        repair()
-        database:Enable()
-        assert.is_true(consumer:IsEnabled())
-    end)
-
-    it("derives intent for modules an earlier revision created", function()
-        local addon = ModuleKit:ForAddon("MyAddon")
-        local kept = addon:CreateModule("Kept")
-        local dropped = addon:CreateModule("Dropped")
-        kept:Enable()
-        dropped:Enable()
-        dropped:Disable()
-        for _, module in ipairs({ kept, dropped }) do
-            for _, field in ipairs({
-                "_wantedEnabled",
-                "_enableBlockedBy",
-                "_scopeOpen",
-                "_scope",
-                "scope",
-            }) do
-                rawset(module, field, nil)
-            end
-        end
-
-        rawset(rawget(ModuleKit, "_state"), "runtimeRevision", ModuleKit.REVISION - 1)
-        TestEnv.ReloadPackage()
-
-        assert.are.same({ wanted = true, actual = true }, kept:GetEnableState())
-        assert.are.same({ wanted = false, actual = false }, dropped:GetEnableState())
-        assert.is_table(kept.scope)
-        assert.is_nil(kept.scope.Timers)
-    end)
+    assert.are.same({ wanted = true, actual = true }, kept:GetEnableState())
+    assert.are.same({ wanted = false, actual = false }, dropped:GetEnableState())
+    assert.is_table(kept.scope)
+    assert.is_nil(kept.scope.Timers)
+  end)
 end)

@@ -127,17 +127,17 @@ For a module created after the addon is already loaded/ready, either configure t
 
 ```lua
 local module = addon:CreateModule("Inventory", {
-    dependsOn = { "Database" },
-    optionalDependencies = { "Analytics" },
-    after = { "Profiles" },
-    requiresAddons = { "OtherAddon" },
-    implements = { "OnEnable", "OnDisable" },
-    inject = {
-        database = "DatabaseService",
-    },
-    onInitialize = function(self, deps) end,
-    onEnable = function(self, deps) end,
-    onDisable = function(self, deps) end,
+  dependsOn = { "Database" },
+  optionalDependencies = { "Analytics" },
+  after = { "Profiles" },
+  requiresAddons = { "OtherAddon" },
+  implements = { "OnEnable", "OnDisable" },
+  inject = {
+    database = "DatabaseService",
+  },
+  onInitialize = function(self, deps) end,
+  onEnable = function(self, deps) end,
+  onDisable = function(self, deps) end,
 })
 ```
 
@@ -230,13 +230,13 @@ clean up:
 
 ```lua
 function module:OnEnable()
-    self.scope.Events:Connect("BAG_UPDATE", function() self:Refresh() end)
-    self.scope.Timers:Every(5, function() self:Poll() end)
-    self.scope.Jobs:Schedule(function() self:Rebuild() end)
-    self.scope.Hooks:SecureHook(GameTooltip, "SetUnit", function() self:Decorate() end)
-    self.scope.Messages:Subscribe("ProfileChanged", function(name) self:Reload(name) end)
-    self.scope.Commands:Register("myaddon", { handler = function(context) self:Report(context) end })
-    self.scope.Comm:Register("MyAddonSync", function(prefix, text, distribution, sender) self:Merge(text) end)
+  self.scope.Events:Connect("BAG_UPDATE", function() self:Refresh() end)
+  self.scope.Timers:Every(5, function() self:Poll() end)
+  self.scope.Jobs:Schedule(function() self:Rebuild() end)
+  self.scope.Hooks:SecureHook(GameTooltip, "SetUnit", function() self:Decorate() end)
+  self.scope.Messages:Subscribe("ProfileChanged", function(name) self:Reload(name) end)
+  self.scope.Commands:Register("myaddon", { handler = function(context) self:Report(context) end })
+  self.scope.Comm:Register("MyAddonSync", function(prefix, text, distribution, sender) self:Merge(text) end)
 end
 -- No OnDisable: Disable() closes all seven scopes.
 ```
@@ -344,8 +344,8 @@ in its definition:
 
 ```lua
 addon:CreateModule("Bridge", {
-    requiresAddons = { "OtherAddon" },
-    onEnable = function(self) OtherAddon:Register(self) end,
+  requiresAddons = { "OtherAddon" },
+  onEnable = function(self) OtherAddon:Register(self) end,
 })
 ```
 
@@ -447,7 +447,7 @@ addon:ProvideValue("Config", config)
 
 ```lua
 addon:ProvideSingleton("Database", function(addon)
-    return Database:New()
+  return Database:New()
 end)
 ```
 
@@ -457,7 +457,7 @@ The factory runs once for the addon container. Factory providers must return a n
 
 ```lua
 addon:ProvideModule("Logger", function(addon, module)
-    return Logger:New(module:GetName())
+  return Logger:New(module:GetName())
 end)
 ```
 
@@ -467,7 +467,7 @@ The factory runs once per requesting module. The same module-scoped provider may
 
 ```lua
 addon:ProvideTransient("Request", function(addon, module)
-    return Request:New()
+  return Request:New()
 end)
 ```
 
@@ -480,7 +480,7 @@ one field, `implements`, that states what the provided value must carry:
 
 ```lua
 addon:ProvideSingleton("Database", function()
-    return Database:New()
+  return Database:New()
 end, { implements = { "Save", "Load" } })
 ```
 
@@ -534,13 +534,13 @@ local S = SchemaKit
 local function isFunction(value) return type(value) == "function" end
 
 addon:ProvideValue("Settings", settings, {
-    implements = S.table({
-        fields = {
-            Save = S.custom(isFunction, "function"),
-            scale = S.number({ min = 0.5, max = 2 }),
-        },
-        open = true,
-    }),
+  implements = S.table({
+    fields = {
+      Save = S.custom(isFunction, "function"),
+      scale = S.number({ min = 0.5, max = 2 }),
+    },
+    open = true,
+  }),
 })
 ```
 
@@ -568,8 +568,8 @@ in use` conflict on the same call.
 
 ```lua
 module:Inject({
-    database = "Database",
-    logger = "Logger",
+  database = "Database",
+  logger = "Logger",
 })
 ```
 

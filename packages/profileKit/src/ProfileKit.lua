@@ -112,15 +112,15 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
 if type(Registry) == "nil" and type(namespace) == "table" then
-    Registry = rawget(namespace, "Registry")
+  Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
-    error("MoltenCodes ProfileKit requires Registry API 2 to be loaded first", 2)
+  error("MoltenCodes ProfileKit requires Registry API 2 to be loaded first", 2)
 end
 
 local bootstrapPackage = rawget(Registry, "Bootstrap")
 if type(bootstrapPackage) ~= "function" then
-    error("MoltenCodes ProfileKit requires a valid Registry API 2 facade", 2)
+  error("MoltenCodes ProfileKit requires a valid Registry API 2 facade", 2)
 end
 
 -- `debugprofilestop` reports addon CPU milliseconds, the same clock
@@ -133,7 +133,7 @@ end
 -- selene: allow(global_usage)
 local readClock = rawget(_G, "debugprofilestop")
 if type(readClock) ~= "function" then
-    readClock = nil
+  readClock = nil
 end
 
 -- `issecretvalue` (Retail 12.0 and later, and the current Classic clients) is
@@ -143,7 +143,7 @@ end
 -- selene: allow(global_usage)
 local nativeIsSecretValue = rawget(_G, "issecretvalue")
 if type(nativeIsSecretValue) ~= "function" then
-    nativeIsSecretValue = nil
+  nativeIsSecretValue = nil
 end
 
 local getmetatable = getmetatable
@@ -155,20 +155,20 @@ local type = type
 ---@param implementation any shared package table handed back by Registry
 ---@return boolean
 local function validatePublicSurface(implementation)
-    return type(implementation) == "table"
-        and rawget(implementation, "API") == API_GENERATION
-        and type(rawget(implementation, "REVISION")) == "number"
-        and type(rawget(implementation, "DEFAULT_MAX_SECTIONS")) == "number"
-        and type(rawget(implementation, "UNBOUNDED")) == "table"
-        and type(rawget(implementation, "Enable")) == "function"
-        and type(rawget(implementation, "Disable")) == "function"
-        and type(rawget(implementation, "IsEnabled")) == "function"
-        and type(rawget(implementation, "Section")) == "function"
-        and type(rawget(implementation, "Measure")) == "function"
-        and type(rawget(implementation, "Report")) == "function"
-        and type(rawget(implementation, "Reset")) == "function"
-        and type(rawget(implementation, "SetLimits")) == "function"
-        and type(rawget(implementation, "GetLimits")) == "function"
+  return type(implementation) == "table"
+    and rawget(implementation, "API") == API_GENERATION
+    and type(rawget(implementation, "REVISION")) == "number"
+    and type(rawget(implementation, "DEFAULT_MAX_SECTIONS")) == "number"
+    and type(rawget(implementation, "UNBOUNDED")) == "table"
+    and type(rawget(implementation, "Enable")) == "function"
+    and type(rawget(implementation, "Disable")) == "function"
+    and type(rawget(implementation, "IsEnabled")) == "function"
+    and type(rawget(implementation, "Section")) == "function"
+    and type(rawget(implementation, "Measure")) == "function"
+    and type(rawget(implementation, "Report")) == "function"
+    and type(rawget(implementation, "Reset")) == "function"
+    and type(rawget(implementation, "SetLimits")) == "function"
+    and type(rawget(implementation, "GetLimits")) == "function"
 end
 
 ---Whether `value` is an exact integer of one or more. `nan` fails every
@@ -176,7 +176,7 @@ end
 ---@param value any
 ---@return boolean
 local function isPositiveInteger(value)
-    return type(value) == "number" and value >= 1 and value ~= math.huge and value % 1 == 0
+  return type(value) == "number" and value >= 1 and value ~= math.huge and value % 1 == 0
 end
 
 ---Whether `limits` holds a valid value for every limit this revision knows.
@@ -184,31 +184,31 @@ end
 ---@param unbounded any the package's sentinel
 ---@return boolean
 local function validateLimitsTable(limits, unbounded)
-    if type(limits) ~= "table" then
-        return false
+  if type(limits) ~= "table" then
+    return false
+  end
+  for index = 1, #LIMIT_NAMES do
+    local value = rawget(limits, LIMIT_NAMES[index])
+    if value ~= unbounded and not isPositiveInteger(value) then
+      return false
     end
-    for index = 1, #LIMIT_NAMES do
-        local value = rawget(limits, LIMIT_NAMES[index])
-        if value ~= unbounded and not isPositiveInteger(value) then
-            return false
-        end
-    end
-    return true
+  end
+  return true
 end
 
 ---Whether `currentState` has the fields every API 1 revision shares.
 ---@param currentState any
 ---@return boolean
 local function validateStateBase(currentState)
-    return type(currentState) == "table"
-        and rawget(currentState, "schema") == STATE_SCHEMA
-        and type(rawget(currentState, "enabled")) == "boolean"
-        and type(rawget(currentState, "unbounded")) == "table"
-        and validateLimitsTable(rawget(currentState, "limits"), rawget(currentState, "unbounded"))
-        and type(rawget(currentState, "sections")) == "table"
-        and type(rawget(currentState, "sectionsByName")) == "table"
-        and type(rawget(currentState, "sectionPrototype")) == "table"
-        and type(rawget(currentState, "sectionMetatable")) == "table"
+  return type(currentState) == "table"
+    and rawget(currentState, "schema") == STATE_SCHEMA
+    and type(rawget(currentState, "enabled")) == "boolean"
+    and type(rawget(currentState, "unbounded")) == "table"
+    and validateLimitsTable(rawget(currentState, "limits"), rawget(currentState, "unbounded"))
+    and type(rawget(currentState, "sections")) == "table"
+    and type(rawget(currentState, "sectionsByName")) == "table"
+    and type(rawget(currentState, "sectionPrototype")) == "table"
+    and type(rawget(currentState, "sectionMetatable")) == "table"
 end
 
 ---Whether `implementation` carries package state of this revision's schema,
@@ -216,9 +216,9 @@ end
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    local currentState = rawget(implementation, "_state")
-    return validateStateBase(currentState)
-        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
+  local currentState = rawget(implementation, "_state")
+  return validateStateBase(currentState)
+    and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -228,46 +228,46 @@ end
 -- and register this one. ProfileKit keeps no closures outside the shared
 -- tables, so it needs neither a retire hook nor migration steps yet.
 local ProfileKit, previousRevision, selected = bootstrapPackage(Registry, {
-    package = PACKAGE_NAME,
-    api = API_GENERATION,
-    revision = IMPLEMENTATION_REVISION,
-    label = "MoltenCodes ProfileKit",
-    validatePublicSurface = validatePublicSurface,
-    validateState = validateCurrentState,
+  package = PACKAGE_NAME,
+  api = API_GENERATION,
+  revision = IMPLEMENTATION_REVISION,
+  label = "MoltenCodes ProfileKit",
+  validatePublicSurface = validatePublicSurface,
+  validateState = validateCurrentState,
 })
 
 if type(ProfileKit) == "nil" then
-    -- Equal or newer compatible revision already owns the shared package table.
-    return selected
+  -- Equal or newer compatible revision already owns the shared package table.
+  return selected
 end
 
 local state = rawget(ProfileKit, "_state")
 
 if type(previousRevision) == "nil" then
-    if state ~= nil then
-        error("MoltenCodes ProfileKit package state is corrupted or incomplete", 2)
-    end
-
-    -- The section prototype and metatable live in the shared state, never on a
-    -- file local, so sections created by an older embedded copy resolve to the
-    -- methods the newest copy installs.
-    local sectionPrototype = {}
-    state = {
-        schema = STATE_SCHEMA,
-        enabled = false,
-        -- The sentinel `SetLimits` accepts to lift a limit. It lives here, not
-        -- in a file local, so every embedded revision hands out the same table.
-        unbounded = {},
-        -- The shared limits, kept across upgrades like everything else here.
-        limits = { maxSections = DEFAULT_MAX_SECTIONS },
-        sections = {},
-        sectionsByName = {},
-        sectionPrototype = sectionPrototype,
-        sectionMetatable = { __index = sectionPrototype },
-    }
-    rawset(ProfileKit, "_state", state)
-elseif not validateStateBase(state) then
+  if state ~= nil then
     error("MoltenCodes ProfileKit package state is corrupted or incomplete", 2)
+  end
+
+  -- The section prototype and metatable live in the shared state, never on a
+  -- file local, so sections created by an older embedded copy resolve to the
+  -- methods the newest copy installs.
+  local sectionPrototype = {}
+  state = {
+    schema = STATE_SCHEMA,
+    enabled = false,
+    -- The sentinel `SetLimits` accepts to lift a limit. It lives here, not
+    -- in a file local, so every embedded revision hands out the same table.
+    unbounded = {},
+    -- The shared limits, kept across upgrades like everything else here.
+    limits = { maxSections = DEFAULT_MAX_SECTIONS },
+    sections = {},
+    sectionsByName = {},
+    sectionPrototype = sectionPrototype,
+    sectionMetatable = { __index = sectionPrototype },
+  }
+  rawset(ProfileKit, "_state", state)
+elseif not validateStateBase(state) then
+  error("MoltenCodes ProfileKit package state is corrupted or incomplete", 2)
 end
 
 local SECTION_PROTOTYPE = rawget(state, "sectionPrototype")
@@ -288,28 +288,28 @@ rawset(SECTION_METATABLE, "__index", SECTION_PROTOTYPE)
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateName(name, methodName, level)
-    if type(name) ~= "string" or name == "" then
-        error(methodName .. " name must be a non-empty string", level)
-    end
+  if type(name) ~= "string" or name == "" then
+    error(methodName .. " name must be a non-empty string", level)
+  end
 end
 
 ---@param name any
 ---@param fn any
 ---@param level integer stack level the failure is reported at
 local function validateMeasureArguments(name, fn, level)
-    validateName(name, "ProfileKit:Measure", level + 1)
-    if type(fn) ~= "function" then
-        error("ProfileKit:Measure fn must be a function", level)
-    end
+  validateName(name, "ProfileKit:Measure", level + 1)
+  if type(fn) ~= "function" then
+    error("ProfileKit:Measure fn must be a function", level)
+  end
 end
 
 ---@param section any receiver the section method was called on
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateSection(section, methodName, level)
-    if getmetatable(section) ~= SECTION_METATABLE then
-        error(methodName .. " must be called on a ProfileKit section", level)
-    end
+  if getmetatable(section) ~= SECTION_METATABLE then
+    error(methodName .. " must be called on a ProfileKit section", level)
+  end
 end
 
 -- Limits -------------------------------------------------------------------------
@@ -318,11 +318,11 @@ end
 ---@param label string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-    -- The type test runs first so a caller's non-table receiver, a secret
-    -- included, is never compared with the facade.
-    if type(receiver) ~= "table" or receiver ~= ProfileKit then
-        error(label .. " must be called on the ProfileKit facade; use " .. label .. "(...)", level)
-    end
+  -- The type test runs first so a caller's non-table receiver, a secret
+  -- included, is never compared with the facade.
+  if type(receiver) ~= "table" or receiver ~= ProfileKit then
+    error(label .. " must be called on the ProfileKit facade; use " .. label .. "(...)", level)
+  end
 end
 
 ---Refuse a `SetLimits` argument before any limit changes, so a call with one
@@ -330,39 +330,36 @@ end
 ---@param limits any
 ---@param level integer stack level the failure is reported at
 local function validateLimitUpdate(limits, level)
-    if type(limits) ~= "table" then
-        error("ProfileKit:SetLimits limits must be a table", level)
+  if type(limits) ~= "table" then
+    error("ProfileKit:SetLimits limits must be a table", level)
+  end
+  local key = next(limits)
+  while type(key) ~= "nil" do
+    if type(key) ~= "string" or LIMIT_NAME_SET[key] ~= true then
+      error("ProfileKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
     end
-    local key = next(limits)
-    while type(key) ~= "nil" do
-        if type(key) ~= "string" or LIMIT_NAME_SET[key] ~= true then
-            error(
-                "ProfileKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
-                level
-            )
-        end
-        local value = rawget(limits, key)
-        -- The secret check comes first: comparing a secret with a number
-        -- would raise inside ProfileKit.
-        local secret = nativeIsSecretValue ~= nil and nativeIsSecretValue(value) == true
-        if secret or (value ~= UNBOUNDED and not isPositiveInteger(value)) then
-            error(
-                "ProfileKit:SetLimits limits."
-                    .. key
-                    .. " must be a positive integer or ProfileKit.UNBOUNDED",
-                level
-            )
-        end
-        key = next(limits, key)
+    local value = rawget(limits, key)
+    -- The secret check comes first: comparing a secret with a number
+    -- would raise inside ProfileKit.
+    local secret = nativeIsSecretValue ~= nil and nativeIsSecretValue(value) == true
+    if secret or (value ~= UNBOUNDED and not isPositiveInteger(value)) then
+      error(
+        "ProfileKit:SetLimits limits."
+          .. key
+          .. " must be a positive integer or ProfileKit.UNBOUNDED",
+        level
+      )
     end
+    key = next(limits, key)
+  end
 end
 
 ---Whether one more section fits under the current `maxSections` limit.
 ---@param count integer sections that exist now
 ---@return boolean
 local function hasRoomForSection(count)
-    local maxSections = rawget(sharedLimits, "maxSections")
-    return maxSections == UNBOUNDED or count < maxSections
+  local maxSections = rawget(sharedLimits, "maxSections")
+  return maxSections == UNBOUNDED or count < maxSections
 end
 
 -- Recording ------------------------------------------------------------------
@@ -383,17 +380,17 @@ end
 ---@return number? elapsed `nil` when the sample was dropped
 ---@return ProfileKit.Reason? reason `"clockReset"` when the sample was dropped
 local function recordSample(section, elapsed)
-    if elapsed < 0 then
-        return nil, REASON_CLOCK_RESET
-    end
+  if elapsed < 0 then
+    return nil, REASON_CLOCK_RESET
+  end
 
-    section._count = section._count + 1
-    section._total = section._total + elapsed
-    section._last = elapsed
-    if elapsed > section._max then
-        section._max = elapsed
-    end
-    return elapsed
+  section._count = section._count + 1
+  section._total = section._total + elapsed
+  section._last = elapsed
+  if elapsed > section._max then
+    section._max = elapsed
+  end
+  return elapsed
 end
 
 ---Forget every measurement that has begun but not ended.
@@ -401,9 +398,9 @@ end
 ---Called by `Disable` and `Reset`: an `End` that arrives after either of them
 ---must not record a span that straddled the switch.
 local function abandonOpenMeasurements()
-    for index = 1, #sections do
-        sections[index]._startedAt = false
-    end
+  for index = 1, #sections do
+    sections[index]._startedAt = false
+  end
 end
 
 -- Section methods -------------------------------------------------------------
@@ -413,12 +410,12 @@ end
 ---@return true? begun
 ---@return ProfileKit.Reason? reason `"active"` when the section is already begun
 local function beginMeasuring(self)
-    validateSection(self, "ProfileKit.Section:Begin", 3)
-    if self._startedAt then
-        return nil, REASON_ACTIVE
-    end
-    self._startedAt = readClock()
-    return true
+  validateSection(self, "ProfileKit.Section:Begin", 3)
+  if self._startedAt then
+    return nil, REASON_ACTIVE
+  end
+  self._startedAt = readClock()
+  return true
 end
 
 ---Stop measuring this section and record the span (enabled binding).
@@ -426,14 +423,14 @@ end
 ---@return number? elapsed milliseconds recorded
 ---@return ProfileKit.Reason? reason `"idle"` without a matching `Begin`, `"clockReset"` when dropped
 local function endMeasuring(self)
-    validateSection(self, "ProfileKit.Section:End", 3)
-    local finishedAt = readClock()
-    local startedAt = self._startedAt
-    if not startedAt then
-        return nil, REASON_IDLE
-    end
-    self._startedAt = false
-    return recordSample(self, finishedAt - startedAt)
+  validateSection(self, "ProfileKit.Section:End", 3)
+  local finishedAt = readClock()
+  local startedAt = self._startedAt
+  if not startedAt then
+    return nil, REASON_IDLE
+  end
+  self._startedAt = false
+  return recordSample(self, finishedAt - startedAt)
 end
 
 ---The disabled binding of `Begin` and `End`: nothing at all.
@@ -450,21 +447,21 @@ local function noOperation() end
 ---@param ... any fn's results, or its error value when `ok` is false
 ---@return ...
 local function finishMeasure(section, ok, ...)
-    local finishedAt = readClock()
-    local startedAt = section._startedAt
-    -- `false` here means `fn` itself called `Disable`, `Reset` or this
-    -- section's `End`; the span was abandoned or already recorded.
-    if startedAt then
-        section._startedAt = false
-        recordSample(section, finishedAt - startedAt)
-    end
+  local finishedAt = readClock()
+  local startedAt = section._startedAt
+  -- `false` here means `fn` itself called `Disable`, `Reset` or this
+  -- section's `End`; the span was abandoned or already recorded.
+  if startedAt then
+    section._startedAt = false
+    recordSample(section, finishedAt - startedAt)
+  end
 
-    if not ok then
-        -- Level 0 re-raises the value exactly as `fn` raised it: a string keeps
-        -- the position `fn` gave it, and a table error stays the same table.
-        error((...), 0)
-    end
-    return ...
+  if not ok then
+    -- Level 0 re-raises the value exactly as `fn` raised it: a string keeps
+    -- the position `fn` gave it, and a table error stays the same table.
+    error((...), 0)
+  end
+  return ...
 end
 
 ---Create the section called `name`, or report that the cap refuses it.
@@ -472,22 +469,22 @@ end
 ---@return ProfileKit.Section? section
 ---@return ProfileKit.Reason? reason `"capped"` when `maxSections` is reached
 local function createSection(name)
-    local count = #sections
-    if not hasRoomForSection(count) then
-        return nil, REASON_CAPPED
-    end
+  local count = #sections
+  if not hasRoomForSection(count) then
+    return nil, REASON_CAPPED
+  end
 
-    local section = setmetatable({
-        _name = name,
-        _count = 0,
-        _total = 0,
-        _max = 0,
-        _last = 0,
-        _startedAt = false,
-    }, SECTION_METATABLE)
-    sections[count + 1] = section
-    sectionsByName[name] = section
-    return section
+  local section = setmetatable({
+    _name = name,
+    _count = 0,
+    _total = 0,
+    _max = 0,
+    _last = 0,
+    _startedAt = false,
+  }, SECTION_METATABLE)
+  sections[count + 1] = section
+  sectionsByName[name] = section
+  return section
 end
 
 ---Run `fn(...)` inside section `name` and return its results (enabled binding).
@@ -497,21 +494,21 @@ end
 ---@param ... any
 ---@return ...
 local function measureEnabled(_, name, fn, ...)
-    validateMeasureArguments(name, fn, 3)
+  validateMeasureArguments(name, fn, 3)
 
-    local section = sectionsByName[name]
-    if section == nil then
-        section = createSection(name)
-    end
-    -- A capped name, or a section already open (a recursive `Measure` of the
-    -- same name, or a manual `Begin` still running), runs unmeasured: the
-    -- outer measurement already covers this call.
-    if section == nil or section._startedAt then
-        return fn(...)
-    end
+  local section = sectionsByName[name]
+  if section == nil then
+    section = createSection(name)
+  end
+  -- A capped name, or a section already open (a recursive `Measure` of the
+  -- same name, or a manual `Begin` still running), runs unmeasured: the
+  -- outer measurement already covers this call.
+  if section == nil or section._startedAt then
+    return fn(...)
+  end
 
-    section._startedAt = readClock()
-    return finishMeasure(section, pcall(fn, ...))
+  section._startedAt = readClock()
+  return finishMeasure(section, pcall(fn, ...))
 end
 
 ---Run `fn(...)` and return its results (disabled binding).
@@ -524,8 +521,8 @@ end
 ---@param ... any
 ---@return ...
 local function measureDisabled(_, name, fn, ...)
-    validateMeasureArguments(name, fn, 3)
-    return fn(...)
+  validateMeasureArguments(name, fn, 3)
+  return fn(...)
 end
 
 -- Switching --------------------------------------------------------------------
@@ -536,15 +533,15 @@ end
 ---the method up, so they get whichever binding is current without a branch.
 ---@param enabled boolean
 local function bindImplementations(enabled)
-    if enabled then
-        rawset(SECTION_PROTOTYPE, "Begin", beginMeasuring)
-        rawset(SECTION_PROTOTYPE, "End", endMeasuring)
-        rawset(ProfileKit, "Measure", measureEnabled)
-    else
-        rawset(SECTION_PROTOTYPE, "Begin", noOperation)
-        rawset(SECTION_PROTOTYPE, "End", noOperation)
-        rawset(ProfileKit, "Measure", measureDisabled)
-    end
+  if enabled then
+    rawset(SECTION_PROTOTYPE, "Begin", beginMeasuring)
+    rawset(SECTION_PROTOTYPE, "End", endMeasuring)
+    rawset(ProfileKit, "Measure", measureEnabled)
+  else
+    rawset(SECTION_PROTOTYPE, "Begin", noOperation)
+    rawset(SECTION_PROTOTYPE, "End", noOperation)
+    rawset(ProfileKit, "Measure", measureDisabled)
+  end
 end
 
 -- Package public API -------------------------------------------------------------
@@ -554,12 +551,12 @@ end
 ---@return boolean enabled
 ---@return ProfileKit.Reason? reason `"unavailable"` when the host has no `debugprofilestop`
 local function enable(_)
-    if readClock == nil then
-        return false, REASON_UNAVAILABLE
-    end
-    rawset(state, "enabled", true)
-    bindImplementations(true)
-    return true
+  if readClock == nil then
+    return false, REASON_UNAVAILABLE
+  end
+  rawset(state, "enabled", true)
+  bindImplementations(true)
+  return true
 end
 
 ---Stop measuring. Idempotent; recorded statistics are kept.
@@ -567,16 +564,16 @@ end
 ---A measurement begun before `Disable` is abandoned, not recorded.
 ---@param _ ProfileKit
 local function disable(_)
-    rawset(state, "enabled", false)
-    bindImplementations(false)
-    abandonOpenMeasurements()
+  rawset(state, "enabled", false)
+  bindImplementations(false)
+  abandonOpenMeasurements()
 end
 
 ---Return whether ProfileKit is currently measuring.
 ---@param _ ProfileKit
 ---@return boolean enabled
 local function isEnabled(_)
-    return rawget(state, "enabled")
+  return rawget(state, "enabled")
 end
 
 ---Return the section called `name`, creating it on first use.
@@ -588,12 +585,12 @@ end
 ---@return ProfileKit.Section? section
 ---@return ProfileKit.Reason? reason `"capped"` when a new section would exceed the cap
 local function getSection(_, name)
-    validateName(name, "ProfileKit:Section", 3)
-    local section = sectionsByName[name]
-    if section ~= nil then
-        return section
-    end
-    return createSection(name)
+  validateName(name, "ProfileKit:Section", 3)
+  local section = sectionsByName[name]
+  if section ~= nil then
+    return section
+  end
+  return createSection(name)
 end
 
 ---Order report rows by total descending, then by name for a stable result.
@@ -601,10 +598,10 @@ end
 ---@param right ProfileKit.ReportEntry
 ---@return boolean
 local function byTotalDescending(left, right)
-    if left.total ~= right.total then
-        return left.total > right.total
-    end
-    return left.name < right.name
+  if left.total ~= right.total then
+    return left.total > right.total
+  end
+  return left.name < right.name
 end
 
 ---Return one fresh row per section, sorted by total time descending.
@@ -614,19 +611,19 @@ end
 ---@param _ ProfileKit
 ---@return ProfileKit.ReportEntry[] report
 local function report(_)
-    local rows = {}
-    for index = 1, #sections do
-        local section = sections[index]
-        rows[index] = {
-            name = section._name,
-            count = section._count,
-            total = section._total,
-            max = section._max,
-            last = section._last,
-        }
-    end
-    table.sort(rows, byTotalDescending)
-    return rows
+  local rows = {}
+  for index = 1, #sections do
+    local section = sections[index]
+    rows[index] = {
+      name = section._name,
+      count = section._count,
+      total = section._total,
+      max = section._max,
+      last = section._last,
+    }
+  end
+  table.sort(rows, byTotalDescending)
+  return rows
 end
 
 ---Zero every section's statistics and abandon open measurements.
@@ -635,14 +632,14 @@ end
 ---counting against the `maxSections` limit.
 ---@param _ ProfileKit
 local function reset(_)
-    abandonOpenMeasurements()
-    for index = 1, #sections do
-        local section = sections[index]
-        section._count = 0
-        section._total = 0
-        section._max = 0
-        section._last = 0
-    end
+  abandonOpenMeasurements()
+  for index = 1, #sections do
+    local section = sections[index]
+    section._count = 0
+    section._total = 0
+    section._max = 0
+    section._last = 0
+  end
 end
 
 ---Change any subset of the shared limits. Affects every consumer.
@@ -653,23 +650,23 @@ end
 ---@param self ProfileKit
 ---@param limits ProfileKit.Limits
 local function setLimits(self, limits)
-    validateFacade(self, "ProfileKit:SetLimits", 3)
-    validateLimitUpdate(limits, 3)
-    for index = 1, #LIMIT_NAMES do
-        local name = LIMIT_NAMES[index]
-        local value = rawget(limits, name)
-        if type(value) ~= "nil" then
-            rawset(sharedLimits, name, value)
-        end
+  validateFacade(self, "ProfileKit:SetLimits", 3)
+  validateLimitUpdate(limits, 3)
+  for index = 1, #LIMIT_NAMES do
+    local name = LIMIT_NAMES[index]
+    local value = rawget(limits, name)
+    if type(value) ~= "nil" then
+      rawset(sharedLimits, name, value)
     end
+  end
 end
 
 ---Return a fresh copy of the shared limits. Allocates one table per call.
 ---@param self ProfileKit
 ---@return ProfileKit.Limits limits
 local function getLimits(self)
-    validateFacade(self, "ProfileKit:GetLimits", 3)
-    return { maxSections = rawget(sharedLimits, "maxSections") }
+  validateFacade(self, "ProfileKit:GetLimits", 3)
+  return { maxSections = rawget(sharedLimits, "maxSections") }
 end
 
 -- Commit ---------------------------------------------------------------------------
@@ -691,13 +688,13 @@ rawset(ProfileKit, "GetLimits", getLimits)
 -- clock cannot honour it, so it comes up disabled instead of binding measuring
 -- functions that would call a missing clock.
 if rawget(state, "enabled") and readClock == nil then
-    rawset(state, "enabled", false)
-    abandonOpenMeasurements()
+  rawset(state, "enabled", false)
+  abandonOpenMeasurements()
 end
 bindImplementations(rawget(state, "enabled"))
 
 if not validatePublicSurface(ProfileKit) or not validateCurrentState(ProfileKit) then
-    error("MoltenCodes ProfileKit package state is corrupted or incomplete", 2)
+  error("MoltenCodes ProfileKit package state is corrupted or incomplete", 2)
 end
 
 return ProfileKit

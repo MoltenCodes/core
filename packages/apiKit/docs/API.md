@@ -61,7 +61,7 @@ the two together.
 
 ```lua
 ApiKit:RegisterFlavor("retail", function(api, host)
-    -- generated: api.addOnProfiler.measureCall = host.C_AddOnProfiler.MeasureCall ...
+  -- generated: api.addOnProfiler.measureCall = host.C_AddOnProfiler.MeasureCall ...
 end, { version = "12.1.0", build = 69933 })
 ```
 

@@ -6,15 +6,15 @@ LifecycleKit converts low-level World of Warcraft loading/login/logout events in
 local lifecycle = LifecycleKit:ForAddon("MyAddon")
 
 lifecycle:OnLoaded(function(self)
-    -- The addon's ADDON_LOADED event has completed its transition.
+  -- The addon's ADDON_LOADED event has completed its transition.
 end)
 
 lifecycle:OnReady(function(self)
-    -- The addon is loaded and the player is logged in.
+  -- The addon is loaded and the player is logged in.
 end)
 
 lifecycle:OnShutdown(function(self)
-    -- PLAYER_LOGOUT has begun.
+  -- PLAYER_LOGOUT has begun.
 end)
 ```
 
@@ -30,15 +30,15 @@ An addon that cannot work declares it, and the addons that depend on it are told
 
 ```lua
 lifecycle:OnLoaded(function(self)
-    if not MyAddonDB or MyAddonDB.version == nil then
-        self:Halt("saved variables are unreadable")
-    end
+  if not MyAddonDB or MyAddonDB.version == nil then
+    self:Halt("saved variables are unreadable")
+  end
 end)
 
 local consumer = LifecycleKit:ForAddon("MyPlugin")
 consumer:DependsOn("MyAddon")
 consumer:OnDependencyHalted(function(self, dependencyName, reason)
-    self:Halt(dependencyName .. " halted: " .. reason)
+  self:Halt(dependencyName .. " halted: " .. reason)
 end)
 ```
 
@@ -46,14 +46,14 @@ The combat gate keeps one lockdown state for every addon and defers protected fr
 
 ```lua
 lifecycle:WhenOutOfCombat(function(self, ran, reason)
-    if ran then
-        MyAddonSecureButton:SetAttribute("spell", MyAddonDB.spell)
-    end
-    -- ran is false, with reason "shutdown" or "halted", when the queue closed first
+  if ran then
+    MyAddonSecureButton:SetAttribute("spell", MyAddonDB.spell)
+  end
+  -- ran is false, with reason "shutdown" or "halted", when the queue closed first
 end)
 
 lifecycle:OnCombatStart(function(self)
-    MyAddonOptionsFrame:Hide()
+  MyAddonOptionsFrame:Hide()
 end)
 ```
 

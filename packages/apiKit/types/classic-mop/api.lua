@@ -1272,11 +1272,11 @@ function api.auctionHouse.sendBrowseQuery(query) end
 ---@param minLevelFilter? number
 ---@param maxLevelFilter? number
 function api.auctionHouse.sendSearchQuery(
-    itemKey,
-    sorts,
-    separateOwnerItems,
-    minLevelFilter,
-    maxLevelFilter
+  itemKey,
+  sorts,
+  separateOwnerItems,
+  minLevelFilter,
+  maxLevelFilter
 )
 end
 
@@ -1322,12 +1322,12 @@ function api.autoComplete.getAutoCompleteRealms() end
 ---@param excludeFlags number
 ---@return AutoCompleteResult[] results
 function api.autoComplete.getAutoCompleteResults(
-    name,
-    numResults,
-    cursorPosition,
-    allowFullMatch,
-    includeFlags,
-    excludeFlags
+  name,
+  numResults,
+  cursorPosition,
+  allowFullMatch,
+  includeFlags,
+  excludeFlags
 )
 end
 
@@ -1348,7 +1348,7 @@ function api.azeriteEmpoweredItem.canSelectPower(azeriteEmpoweredItemLocation, p
 
 ---@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 function api.azeriteEmpoweredItem.confirmAzeriteEmpoweredItemRespec(
-    azeriteEmpoweredItemLocation
+  azeriteEmpoweredItemLocation
 )
 end
 
@@ -2245,10 +2245,10 @@ function api.catalogShop.productDisplayedTelemetry(categoryId, sectionId, catalo
 ---@param catalogShopProductID number
 ---@param wasCodeSelection boolean
 function api.catalogShop.productSelectedTelemetry(
-    categoryId,
-    sectionId,
-    catalogShopProductID,
-    wasCodeSelection
+  categoryId,
+  sectionId,
+  catalogShopProductID,
+  wasCodeSelection
 )
 end
 
@@ -2337,7 +2337,7 @@ function api.challengeMode.getNumMedals(mapID) end
 ---@param specificDungeonOverallScore number
 ---@return colorRGB specificDungeonOverallScoreColor
 function api.challengeMode.getSpecificDungeonOverallScoreRarityColor(
-    specificDungeonOverallScore
+  specificDungeonOverallScore
 )
 end
 
@@ -2486,9 +2486,9 @@ function api.chatInfo.registerAddonMessagePrefix(prefix) end
 ---@param noGroupReplacement? boolean
 ---@return string output
 function api.chatInfo.replaceIconAndGroupExpressions(
-    input,
-    noIconReplacement,
-    noGroupReplacement
+  input,
+  noIconReplacement,
+  noGroupReplacement
 )
 end
 
@@ -2679,11 +2679,11 @@ function api.club.createStream(clubId, name, subject, leadersAndModeratorsOnly) 
 ---@param defaultStreamId? string
 ---@param isCrossFaction? boolean
 function api.club.createTicket(
-    clubId,
-    allowedRedeemCount,
-    duration,
-    defaultStreamId,
-    isCrossFaction
+  clubId,
+  allowedRedeemCount,
+  duration,
+  defaultStreamId,
+  isCrossFaction
 )
 end
 
@@ -2733,13 +2733,13 @@ function api.club.doesCommunityHaveMembersOfTheOppositeFaction(clubId) end
 ---@param broadcast? string
 ---@param crossFaction? boolean
 function api.club.editClub(
-    clubId,
-    name,
-    shortName,
-    description,
-    avatarId,
-    broadcast,
-    crossFaction
+  clubId,
+  name,
+  shortName,
+  description,
+  avatarId,
+  broadcast,
+  crossFaction
 )
 end
 
@@ -2846,11 +2846,11 @@ function api.club.getInfoFromLastCommunityChatLine() end
 ---@param clubId string
 ---@return ClubInvitationCandidateInfo[] candidates
 function api.club.getInvitationCandidates(
-    filter,
-    maxResults,
-    cursorPosition,
-    allowFullMatch,
-    clubId
+  filter,
+  maxResults,
+  cursorPosition,
+  allowFullMatch,
+  clubId
 )
 end
 
@@ -3247,14 +3247,14 @@ function api.clubFinder.playerReturnPendingGuildsList() end
 ---@param crossFaction? boolean
 ---@return boolean succesful
 function api.clubFinder.postClub(
-    clubId,
-    itemLevelRequirement,
-    name,
-    description,
-    avatarId,
-    specs,
-    type,
-    crossFaction
+  clubId,
+  itemLevelRequirement,
+  name,
+  description,
+  avatarId,
+  specs,
+  type,
+  crossFaction
 )
 end
 
@@ -3298,13 +3298,13 @@ function api.clubFinder.resetClubPostingMapCache() end
 ---@param forceAccept boolean
 ---@param reported? boolean
 function api.clubFinder.respondToApplicant(
-    clubFinderGUID,
-    playerGUID,
-    shouldAccept,
-    requestType,
-    playerName,
-    forceAccept,
-    reported
+  clubFinderGUID,
+  playerGUID,
+  shouldAccept,
+  requestType,
+  playerName,
+  forceAccept,
+  reported
 )
 end
 
@@ -4177,11 +4177,11 @@ function api.commentator.snapCameraLookAtPoint() end
 ---@param teamOneCaptain string
 ---@param teamTwoCaptain string
 function api.commentator.startWargame(
-    listID,
-    teamSize,
-    tournamentRules,
-    teamOneCaptain,
-    teamTwoCaptain
+  listID,
+  teamSize,
+  tournamentRules,
+  teamOneCaptain,
+  teamTwoCaptain
 )
 end
 
@@ -4382,10 +4382,10 @@ function api.container.getContainerItemLink(containerIndex, slotIndex) end
 ---@param isEquipped boolean
 ---@return ItemPurchaseCurrency? currencyInfo
 function api.container.getContainerItemPurchaseCurrency(
-    containerIndex,
-    slotIndex,
-    itemIndex,
-    isEquipped
+  containerIndex,
+  slotIndex,
+  itemIndex,
+  isEquipped
 )
 end
 
@@ -4401,10 +4401,10 @@ function api.container.getContainerItemPurchaseInfo(containerIndex, slotIndex, i
 ---@param isEquipped boolean
 ---@return ItemPurchaseItem? itemInfo
 function api.container.getContainerItemPurchaseItem(
-    containerIndex,
-    slotIndex,
-    itemIndex,
-    isEquipped
+  containerIndex,
+  slotIndex,
+  itemIndex,
+  isEquipped
 )
 end
 
@@ -4484,11 +4484,11 @@ function api.container.splitContainerItem(containerIndex, slotIndex, amount) end
 ---@param bankType? Enum.BankType
 ---@param reagentBankOpen? boolean
 function api.container.useContainerItem(
-    containerIndex,
-    slotIndex,
-    unitToken,
-    bankType,
-    reagentBankOpen
+  containerIndex,
+  slotIndex,
+  unitToken,
+  bankType,
+  reagentBankOpen
 )
 end
 
@@ -4730,10 +4730,10 @@ function api.damageMeter.getCombatSessionFromType(sessionType, type) end
 ---@param sourceCreatureID? number
 ---@return DamageMeterCombatSessionSource sessionSource
 function api.damageMeter.getCombatSessionSourceFromID(
-    sessionID,
-    type,
-    sourceGUID,
-    sourceCreatureID
+  sessionID,
+  type,
+  sourceGUID,
+  sourceCreatureID
 )
 end
 
@@ -4744,10 +4744,10 @@ end
 ---@param sourceCreatureID? number
 ---@return DamageMeterCombatSessionSource sessionSource
 function api.damageMeter.getCombatSessionSourceFromType(
-    sessionType,
-    type,
-    sourceGUID,
-    sourceCreatureID
+  sessionType,
+  type,
+  sourceGUID,
+  sourceCreatureID
 )
 end
 
@@ -5238,10 +5238,10 @@ function api.encounterTimeline.getEventTrack(eventID) end
 ---@param excludeHiddenEvents? boolean
 ---@return integer[] events
 function api.encounterTimeline.getSortedEventList(
-    maxEventCount,
-    maxEventDuration,
-    excludeTerminalStates,
-    excludeHiddenEvents
+  maxEventCount,
+  maxEventDuration,
+  excludeTerminalStates,
+  excludeHiddenEvents
 )
 end
 
@@ -6886,8 +6886,8 @@ function api.housingBasicMode.startPlacingNewDecor(catalogEntryVariantID) end
 ---@param decorRecordID number
 ---@param bundleCatalogShopProductID? number
 function api.housingBasicMode.startPlacingPreviewDecor(
-    decorRecordID,
-    bundleCatalogShopProductID
+  decorRecordID,
+  bundleCatalogShopProductID
 )
 end
 
@@ -7077,7 +7077,7 @@ function api.housingCustomizeMode.applyWallpaperToAllWalls(roomComponentTextureR
 ---component only
 ---@param roomComponentTextureRecID number
 function api.housingCustomizeMode.applyWallpaperToSelectedRoomComponent(
-    roomComponentTextureRecID
+  roomComponentTextureRecID
 )
 end
 
@@ -7185,9 +7185,9 @@ function api.housingCustomizeMode.roomComponentSupportsVariant(componentID, vari
 ---@param newDoortype Enum.HousingRoomComponentDoorType
 ---@return boolean doorTypeSupported
 function api.housingCustomizeMode.roomConnectionSupportsDoorType(
-    roomGUID,
-    componentID,
-    newDoortype
+  roomGUID,
+  componentID,
+  newDoortype
 )
 end
 
@@ -7197,9 +7197,9 @@ end
 ---@param componentID number
 ---@param ceilingType Enum.HousingRoomComponentCeilingType
 function api.housingCustomizeMode.setRoomComponentCeilingType(
-    roomGUID,
-    componentID,
-    ceilingType
+  roomGUID,
+  componentID,
+  ceilingType
 )
 end
 
@@ -7945,11 +7945,11 @@ function api.item.getItemClassInfo(itemClassID) end
 ---@param includeAccountBank? boolean
 ---@return number count
 function api.item.getItemCount(
-    itemInfo,
-    includeBank,
-    includeUses,
-    includeReagentBank,
-    includeAccountBank
+  itemInfo,
+  includeBank,
+  includeUses,
+  includeReagentBank,
+  includeAccountBank
 )
 end
 
@@ -8443,10 +8443,10 @@ function api.lfgList.createListing(createData) end
 ---@param generalPlaystyle? Enum.LFGEntryGeneralPlaystyle
 ---@return boolean matches
 function api.lfgList.doesEntryTitleMatchPrebuiltTitle(
-    activityID,
-    groupID,
-    playstyle,
-    generalPlaystyle
+  activityID,
+  groupID,
+  playstyle,
+  generalPlaystyle
 )
 end
 
@@ -8574,13 +8574,13 @@ function api.lfgList.reportGroupAsAdvertisement(searchResultID) end
 ---@param advancedFilter? AdvancedFilterOptions
 ---@param activityIDsFilter? number[]
 function api.lfgList.search(
-    categoryID,
-    filter,
-    preferredFilters,
-    languageFilter,
-    searchCrossFactionListings,
-    advancedFilter,
-    activityIDsFilter
+  categoryID,
+  filter,
+  preferredFilters,
+  languageFilter,
+  searchCrossFactionListings,
+  advancedFilter,
+  activityIDsFilter
 )
 end
 
@@ -9304,9 +9304,9 @@ function api.mythicPlus.getRewardLevelFromKeystoneLevel(keystoneLevel) end
 ---@param currentSeasonOnly? boolean
 ---@return MythicPlusRunInfo[] runs
 function api.mythicPlus.getRunHistory(
-    includePreviousWeeks,
-    includeIncompleteRuns,
-    currentSeasonOnly
+  includePreviousWeeks,
+  includeIncompleteRuns,
+  currentSeasonOnly
 )
 end
 
@@ -10866,8 +10866,8 @@ function api.reportSystem.getMajorCategoryString(majorCategory) end
 ---@param majorCategory Enum.ReportMajorCategory
 ---@return Enum.ReportMinorCategory[] minorCategories
 function api.reportSystem.getMinorCategoriesForReportTypeAndMajorCategory(
-    reportType,
-    majorCategory
+  reportType,
+  majorCategory
 )
 end
 
@@ -11291,11 +11291,11 @@ function api.sound.playItemSound(soundType, itemLocation) end
 ---@return boolean? success
 ---@return integer? soundHandle
 function api.sound.playSound(
-    soundKitID,
-    uiSoundSubType,
-    forceNoDuplicates,
-    runFinishCallback,
-    overridePriority
+  soundKitID,
+  uiSoundSubType,
+  forceNoDuplicates,
+  runFinishCallback,
+  overridePriority
 )
 end
 
@@ -11347,13 +11347,13 @@ function api.specializationInfo.getSpecialization(isInspect, isPet, specGroupInd
 ---@return number previewPointsSpent
 ---@return boolean isUnlocked
 function api.specializationInfo.getSpecializationInfo(
-    specializationIndex,
-    isInspect,
-    isPet,
-    inspectTarget,
-    sex,
-    groupIndex,
-    classID
+  specializationIndex,
+  isInspect,
+  isPet,
+  inspectTarget,
+  sex,
+  groupIndex,
+  classID
 )
 end
 
@@ -11362,9 +11362,9 @@ end
 ---@param isPet? boolean
 ---@return number[] spellIDs
 function api.specializationInfo.getSpecializationMasterySpells(
-    specializationIndex,
-    isInspect,
-    isPet
+  specializationIndex,
+  isInspect,
+  isPet
 )
 end
 
@@ -11851,12 +11851,12 @@ function api.stringUtil.roundToNearestString(number) end
 ---@param maintainTextures? boolean
 ---@return string stripped
 function api.stringUtil.stripHyperlinks(
-    text,
-    maintainColor,
-    maintainBrackets,
-    stripNewlines,
-    maintainAtlases,
-    maintainTextures
+  text,
+  maintainColor,
+  maintainBrackets,
+  stripNewlines,
+  maintainAtlases,
+  maintainTextures
 )
 end
 
@@ -12615,8 +12615,8 @@ function api.transmogCollection.getAppearanceCameraID(itemAppearanceID, variatio
 ---@param variation? Enum.TransmogCameraVariation
 ---@return number cameraID
 function api.transmogCollection.getAppearanceCameraIDBySource(
-    itemModifiedAppearanceID,
-    variation
+  itemModifiedAppearanceID,
+  variation
 )
 end
 
@@ -12637,9 +12637,9 @@ function api.transmogCollection.getAppearanceSourceInfo(itemModifiedAppearanceID
 ---@param transmogLocation? TransmogLocation
 ---@return AppearanceSourceInfo[]? sources
 function api.transmogCollection.getAppearanceSources(
-    appearanceID,
-    categoryType,
-    transmogLocation
+  appearanceID,
+  categoryType,
+  transmogLocation
 )
 end
 
@@ -12683,7 +12683,7 @@ function api.transmogCollection.getCollectedShown() end
 ---@param itemTransmogInfoList ItemTransmogInfo[]
 ---@return string? hyperlink
 function api.transmogCollection.getCustomSetHyperlinkFromItemTransmogInfoList(
-    itemTransmogInfoList
+  itemTransmogInfoList
 )
 end
 
@@ -12779,10 +12779,10 @@ function api.transmogCollection.getUncollectedShown() end
 ---@param transmogLocation? TransmogLocation
 ---@return AppearanceSourceInfo[]? sources
 function api.transmogCollection.getValidAppearanceSourcesForClass(
-    appearanceID,
-    classID,
-    categoryType,
-    transmogLocation
+  appearanceID,
+  classID,
+  categoryType,
+  transmogLocation
 )
 end
 
@@ -12855,7 +12855,7 @@ function api.transmogCollection.playerHasTransmogByItemInfo(itemInfo) end
 ---@param itemModifiedAppearanceID number
 ---@return boolean hasTransmog
 function api.transmogCollection.playerHasTransmogItemModifiedAppearance(
-    itemModifiedAppearanceID
+  itemModifiedAppearanceID
 )
 end
 
@@ -12930,10 +12930,10 @@ function api.transmogOutfitInfo.addNewOutfit(name, icon) end
 ---@param toggleLock boolean
 ---@param allowRemoveOutfit boolean
 function api.transmogOutfitInfo.changeDisplayedOutfit(
-    outfitID,
-    trigger,
-    toggleLock,
-    allowRemoveOutfit
+  outfitID,
+  trigger,
+  toggleLock,
+  allowRemoveOutfit
 )
 end
 
@@ -12980,9 +12980,9 @@ function api.transmogOutfitInfo.getAllTransmogOutfitOptionSheatheCategoryInfo(im
 ---@param collectionType Enum.TransmogCollectionType
 ---@return TransmogOutfitWeaponCollectionInfo? collectionInfo
 function api.transmogOutfitInfo.getCollectionInfoForSlotAndOption(
-    slot,
-    weaponOption,
-    collectionType
+  slot,
+  weaponOption,
+  collectionType
 )
 end
 
@@ -13552,7 +13552,7 @@ function api.uiWidgetManager.getPreyHuntProgressWidgetVisualizationInfo(widgetID
 ---@param widgetID number
 ---@return ScenarioHeaderCurrenciesAndBackgroundWidgetVisualizationInfo? widgetInfo
 function api.uiWidgetManager.getScenarioHeaderCurrenciesAndBackgroundWidgetVisualizationInfo(
-    widgetID
+  widgetID
 )
 end
 
@@ -14348,10 +14348,10 @@ function api.unitAuras.doesAuraHaveExpirationTime(auraInstanceUnit, auraInstance
 ---@param maxDisplayCount? number
 ---@return string count
 function api.unitAuras.getAuraApplicationDisplayCount(
-    auraInstanceUnit,
-    auraInstanceID,
-    minDisplayCount,
-    maxDisplayCount
+  auraInstanceUnit,
+  auraInstanceID,
+  minDisplayCount,
+  maxDisplayCount
 )
 end
 

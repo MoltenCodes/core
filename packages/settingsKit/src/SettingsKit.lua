@@ -87,18 +87,18 @@ local DEFAULT_MAX_SCANNED_ENTRIES = 65536
 -- bound text the client renders, not the consumer's own data.
 local LIMIT_NAMES = { "maxProfileNameLength", "pathKeyLimit" }
 local LIMIT_MINIMUMS = {
-    -- A character profile is named "Name - Realm"; a smaller bound could
-    -- refuse the profile `defaultProfile = "char"` creates.
-    maxProfileNameLength = MAX_PROFILE_NAME_LENGTH,
-    pathKeyLimit = 1,
+  -- A character profile is named "Name - Realm"; a smaller bound could
+  -- refuse the profile `defaultProfile = "char"` creates.
+  maxProfileNameLength = MAX_PROFILE_NAME_LENGTH,
+  pathKeyLimit = 1,
 }
 local LIMIT_CEILINGS = {
-    maxProfileNameLength = 1024,
-    pathKeyLimit = 1024,
+  maxProfileNameLength = 1024,
+  pathKeyLimit = 1024,
 }
 local UNBOUNDED_REFUSALS = {
-    maxProfileNameLength = "profile names are typed by players and shown in option screens and dropdowns",
-    pathKeyLimit = "paths show keys other players can send, and every message must stay short and printable",
+  maxProfileNameLength = "profile names are typed by players and shown in option screens and dropdowns",
+  pathKeyLimit = "paths show keys other players can send, and every message must stay short and printable",
 }
 
 -- The scopes a schema may declare, in the order they are documented.
@@ -106,26 +106,26 @@ local SCOPE_NAMES = { "global", "char", "realm", "class", "faction", "profile" }
 
 -- The section of the saved table each scope lives in.
 local SCOPE_SECTIONS = {
-    global = "global",
-    char = "char",
-    realm = "realm",
-    class = "class",
-    faction = "faction",
-    profile = "profiles",
+  global = "global",
+  char = "char",
+  realm = "realm",
+  class = "class",
+  faction = "faction",
+  profile = "profiles",
 }
 
 -- The scope names as a set, for refusing an unknown one without allocating.
 local SCOPE_SET =
-    { global = true, char = true, realm = true, class = true, faction = true, profile = true }
+  { global = true, char = true, realm = true, class = true, faction = true, profile = true }
 
 -- Every section of the saved table, created at Open when missing.
 -- `namespaces` is reserved for API 1's second version (module namespaces).
 local LAYOUT_SECTIONS =
-    { "global", "profiles", "profileKeys", "char", "realm", "class", "faction", "namespaces" }
+  { "global", "profiles", "profileKeys", "char", "realm", "class", "faction", "namespaces" }
 
 -- The complete set of fields an options table accepts.
 local OPTION_KEYS =
-    { defaultProfile = true, version = true, migrations = true, maxScannedEntries = true }
+  { defaultProfile = true, version = true, migrations = true, maxScannedEntries = true }
 
 -- The two kinds of view: a record (a SchemaKit `table`) and a keyed section
 -- (a SchemaKit `map`).
@@ -134,22 +134,22 @@ local KIND_MAP = "map"
 
 local FACADE_METHODS = { "Open", "SetLimits", "GetLimits" }
 local DATABASE_METHODS = {
-    "GetProfile",
-    "SetProfile",
-    "GetProfiles",
-    "CopyProfile",
-    "ResetProfile",
-    "DeleteProfile",
-    "ResetDatabase",
-    "OnChange",
-    "OnProfileChanged",
-    "OnProfileCopied",
-    "OnProfileReset",
-    "OnProfileDeleted",
-    "Compact",
-    "GetSavedVariable",
-    "Pairs",
-    "Validate",
+  "GetProfile",
+  "SetProfile",
+  "GetProfiles",
+  "CopyProfile",
+  "ResetProfile",
+  "DeleteProfile",
+  "ResetDatabase",
+  "OnChange",
+  "OnProfileChanged",
+  "OnProfileCopied",
+  "OnProfileReset",
+  "OnProfileDeleted",
+  "Compact",
+  "GetSavedVariable",
+  "Pairs",
+  "Validate",
 }
 
 local WEAK_KEYS = { __mode = "k" }
@@ -265,41 +265,41 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
 if type(Registry) == "nil" and type(namespace) == "table" then
-    Registry = rawget(namespace, "Registry")
+  Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
-    error("MoltenCodes SettingsKit requires Registry API 2 to be loaded first", 2)
+  error("MoltenCodes SettingsKit requires Registry API 2 to be loaded first", 2)
 end
 
 local bootstrapPackage = rawget(Registry, "Bootstrap")
 local getPackage = rawget(Registry, "Get")
 if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
-    error("MoltenCodes SettingsKit requires a valid Registry API 2 facade", 2)
+  error("MoltenCodes SettingsKit requires a valid Registry API 2 facade", 2)
 end
 
 -- SchemaKit compiles, checks and describes every scope schema.
 local SchemaKit = getPackage(Registry, "schemaKit", REQUIRED_SCHEMAKIT_API)
 local SchemaPrototype = type(SchemaKit) == "table" and rawget(SchemaKit, "Schema") or nil
 if
-    type(SchemaKit) ~= "table"
-    or rawget(SchemaKit, "API") ~= REQUIRED_SCHEMAKIT_API
-    or type(rawget(SchemaKit, "Seal")) ~= "function"
-    or type(rawget(SchemaKit, "MAX_DEPTH")) ~= "number"
-    or type(SchemaPrototype) ~= "table"
-    or type(rawget(SchemaPrototype, "Check")) ~= "function"
-    or type(rawget(SchemaPrototype, "Describe")) ~= "function"
+  type(SchemaKit) ~= "table"
+  or rawget(SchemaKit, "API") ~= REQUIRED_SCHEMAKIT_API
+  or type(rawget(SchemaKit, "Seal")) ~= "function"
+  or type(rawget(SchemaKit, "MAX_DEPTH")) ~= "number"
+  or type(SchemaPrototype) ~= "table"
+  or type(rawget(SchemaPrototype, "Check")) ~= "function"
+  or type(rawget(SchemaPrototype, "Describe")) ~= "function"
 then
-    error("MoltenCodes SettingsKit requires SchemaKit API 1 to be loaded first", 2)
+  error("MoltenCodes SettingsKit requires SchemaKit API 1 to be loaded first", 2)
 end
 
 -- SignalKit carries the change and profile signals.
 local SignalKit = getPackage(Registry, "signalKit", REQUIRED_SIGNALKIT_API)
 if
-    type(SignalKit) ~= "table"
-    or rawget(SignalKit, "API") ~= REQUIRED_SIGNALKIT_API
-    or type(rawget(SignalKit, "New")) ~= "function"
+  type(SignalKit) ~= "table"
+  or rawget(SignalKit, "API") ~= REQUIRED_SIGNALKIT_API
+  or type(rawget(SignalKit, "New")) ~= "function"
 then
-    error("MoltenCodes SettingsKit requires SignalKit API 1 to be loaded first", 2)
+  error("MoltenCodes SettingsKit requires SignalKit API 1 to be loaded first", 2)
 end
 
 ---The deepest value SchemaKit follows now: its `maxDepth` limit, which
@@ -311,20 +311,20 @@ end
 ---so only paths that walk tables call it.
 ---@return integer
 local function readMaxDepth()
-    local getLimits = rawget(SchemaKit, "GetLimits")
-    if type(getLimits) == "function" then
-        return getLimits(SchemaKit).maxDepth
-    end
-    return rawget(SchemaKit, "MAX_DEPTH")
+  local getLimits = rawget(SchemaKit, "GetLimits")
+  if type(getLimits) == "function" then
+    return getLimits(SchemaKit).maxDepth
+  end
+  return rawget(SchemaKit, "MAX_DEPTH")
 end
 
 ---Read a host global without triggering a metatable, or `nil`.
 ---@param name string
 ---@return any
 local function readGlobal(name)
-    -- Host APIs and saved variables are reachable only through the global table.
-    -- selene: allow(global_usage)
-    return rawget(_G, name)
+  -- Host APIs and saved variables are reachable only through the global table.
+  -- selene: allow(global_usage)
+  return rawget(_G, name)
 end
 
 ---Write a host global. Only `Open` calls this, to create a missing saved
@@ -332,9 +332,9 @@ end
 ---@param name string
 ---@param value any
 local function writeGlobal(name, value)
-    -- The saved variable is the addon's own global, named by its TOC.
-    -- selene: allow(global_usage)
-    rawset(_G, name, value)
+  -- The saved variable is the addon's own global, named by its TOC.
+  -- selene: allow(global_usage)
+  rawset(_G, name, value)
 end
 
 -- Validation -----------------------------------------------------------------
@@ -344,46 +344,46 @@ end
 ---@param methodNames string[]
 ---@return boolean
 local function hasMethods(prototype, methodNames)
-    for index = 1, #methodNames do
-        if type(rawget(prototype, methodNames[index])) ~= "function" then
-            return false
-        end
+  for index = 1, #methodNames do
+    if type(rawget(prototype, methodNames[index])) ~= "function" then
+      return false
     end
-    return true
+  end
+  return true
 end
 
 ---Whether `implementation` exposes the complete SettingsKit API 1 surface.
 ---@param implementation any shared package table handed back by Registry
 ---@return boolean
 local function validatePublicSurface(implementation)
-    if
-        type(implementation) ~= "table"
-        or rawget(implementation, "API") ~= API_GENERATION
-        or type(rawget(implementation, "REVISION")) ~= "number"
-        or type(rawget(implementation, "Database")) ~= "table"
-        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
-    then
-        return false
-    end
+  if
+    type(implementation) ~= "table"
+    or rawget(implementation, "API") ~= API_GENERATION
+    or type(rawget(implementation, "REVISION")) ~= "number"
+    or type(rawget(implementation, "Database")) ~= "table"
+    or type(rawget(implementation, "UNBOUNDED")) ~= "table"
+  then
+    return false
+  end
 
-    return hasMethods(implementation, FACADE_METHODS)
-        and hasMethods(rawget(implementation, "Database"), DATABASE_METHODS)
+  return hasMethods(implementation, FACADE_METHODS)
+    and hasMethods(rawget(implementation, "Database"), DATABASE_METHODS)
 end
 
 ---Whether `currentState` has the fields every API 1 revision shares.
 ---@param currentState any
 ---@return boolean
 local function validateStateBase(currentState)
-    return type(currentState) == "table"
-        and rawget(currentState, "schema") == STATE_SCHEMA
-        and type(rawget(currentState, "runtimeRevision")) == "number"
-        and type(rawget(currentState, "dispatch")) == "table"
-        and type(rawget(currentState, "databases")) == "table"
-        and type(rawget(currentState, "views")) == "table"
-        and type(rawget(currentState, "viewMetatable")) == "table"
-        and type(rawget(currentState, "databaseMetatable")) == "table"
-        and type(rawget(currentState, "unbounded")) == "table"
-        and type(rawget(currentState, "limits")) == "table"
+  return type(currentState) == "table"
+    and rawget(currentState, "schema") == STATE_SCHEMA
+    and type(rawget(currentState, "runtimeRevision")) == "number"
+    and type(rawget(currentState, "dispatch")) == "table"
+    and type(rawget(currentState, "databases")) == "table"
+    and type(rawget(currentState, "views")) == "table"
+    and type(rawget(currentState, "viewMetatable")) == "table"
+    and type(rawget(currentState, "databaseMetatable")) == "table"
+    and type(rawget(currentState, "unbounded")) == "table"
+    and type(rawget(currentState, "limits")) == "table"
 end
 
 ---Whether `implementation` carries package state of this revision's schema,
@@ -391,9 +391,9 @@ end
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    local currentState = rawget(implementation, "_state")
-    return validateStateBase(currentState)
-        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
+  local currentState = rawget(implementation, "_state")
+  return validateStateBase(currentState)
+    and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -402,56 +402,56 @@ end
 -- look the package up, refuse to reinterpret state owned by a newer revision,
 -- and register this one. What stays here is what only SettingsKit can answer.
 local SettingsKit, previousRevision, selected = bootstrapPackage(Registry, {
-    package = PACKAGE_NAME,
-    api = API_GENERATION,
-    revision = IMPLEMENTATION_REVISION,
-    label = "MoltenCodes SettingsKit",
-    validatePublicSurface = validatePublicSurface,
-    validateState = validateCurrentState,
+  package = PACKAGE_NAME,
+  api = API_GENERATION,
+  revision = IMPLEMENTATION_REVISION,
+  label = "MoltenCodes SettingsKit",
+  validatePublicSurface = validatePublicSurface,
+  validateState = validateCurrentState,
 })
 
 if SettingsKit == nil then
-    -- An equal or newer compatible revision already owns the shared package table.
-    return selected
+  -- An equal or newer compatible revision already owns the shared package table.
+  return selected
 end
 
 local Database = rawget(SettingsKit, "Database")
 local state = rawget(SettingsKit, "_state")
 
 if previousRevision == nil then
-    if Database ~= nil or state ~= nil then
-        error("MoltenCodes SettingsKit package state is corrupted or incomplete", 2)
-    end
-
-    Database = {}
-    state = {
-        schema = STATE_SCHEMA,
-        runtimeRevision = 0,
-        -- Closures SettingsKit hands to other Kits (the logout listener) call
-        -- through this table, so a newer revision replaces their behaviour.
-        dispatch = {},
-        -- Saved-variable name to its database: one database per name.
-        databases = {},
-        -- View proxy to its private node. Weak-keyed, and no node refers to
-        -- its own proxy, so a view nobody holds can be collected.
-        views = setmetatable({}, WEAK_KEYS),
-        viewMetatable = {},
-        databaseMetatable = {},
-        -- `SettingsKit.UNBOUNDED` lives here so every revision publishes the
-        -- same table and an option written against one copy keeps its meaning
-        -- after an upgrade.
-        unbounded = {},
-        -- The shared limits; `SetLimits` writes here, so a newer revision
-        -- inherits what a consumer set.
-        limits = {
-            maxProfileNameLength = MAX_PROFILE_NAME_LENGTH,
-            pathKeyLimit = DEFAULT_PATH_KEY_LIMIT,
-        },
-    }
-    rawset(SettingsKit, "Database", Database)
-    rawset(SettingsKit, "_state", state)
-elseif type(Database) ~= "table" or not validateStateBase(state) then
+  if Database ~= nil or state ~= nil then
     error("MoltenCodes SettingsKit package state is corrupted or incomplete", 2)
+  end
+
+  Database = {}
+  state = {
+    schema = STATE_SCHEMA,
+    runtimeRevision = 0,
+    -- Closures SettingsKit hands to other Kits (the logout listener) call
+    -- through this table, so a newer revision replaces their behaviour.
+    dispatch = {},
+    -- Saved-variable name to its database: one database per name.
+    databases = {},
+    -- View proxy to its private node. Weak-keyed, and no node refers to
+    -- its own proxy, so a view nobody holds can be collected.
+    views = setmetatable({}, WEAK_KEYS),
+    viewMetatable = {},
+    databaseMetatable = {},
+    -- `SettingsKit.UNBOUNDED` lives here so every revision publishes the
+    -- same table and an option written against one copy keeps its meaning
+    -- after an upgrade.
+    unbounded = {},
+    -- The shared limits; `SetLimits` writes here, so a newer revision
+    -- inherits what a consumer set.
+    limits = {
+      maxProfileNameLength = MAX_PROFILE_NAME_LENGTH,
+      pathKeyLimit = DEFAULT_PATH_KEY_LIMIT,
+    },
+  }
+  rawset(SettingsKit, "Database", Database)
+  rawset(SettingsKit, "_state", state)
+elseif type(Database) ~= "table" or not validateStateBase(state) then
+  error("MoltenCodes SettingsKit package state is corrupted or incomplete", 2)
 end
 
 -- The metatables and the prototype are kept across upgrades, so databases and
@@ -473,37 +473,37 @@ local sharedLimits = rawget(state, "limits")
 ---that appears later is used at once. It costs one `rawget`.
 ---@return (fun(value: any): boolean)|nil
 local function readIsSecret()
-    local probe = readGlobal("issecretvalue")
-    if type(probe) == "function" then
-        return probe
-    end
-    return nil
+  local probe = readGlobal("issecretvalue")
+  if type(probe) == "function" then
+    return probe
+  end
+  return nil
 end
 
 ---Whether `value` is a secret value.
 ---@param value any
 ---@return boolean
 local function isSecret(value)
-    local probe = readIsSecret()
-    return probe ~= nil and probe(value) == true
+  local probe = readIsSecret()
+  return probe ~= nil and probe(value) == true
 end
 
 ---Hand a failure nobody called for (a logout compaction) to the host error
 ---handler.
 ---@param message any
 local function reportError(message)
-    local getErrorHandler = readGlobal("geterrorhandler")
-    if type(getErrorHandler) == "function" then
-        local handler = getErrorHandler()
-        if type(handler) == "function" then
-            handler(message)
-            return
-        end
+  local getErrorHandler = readGlobal("geterrorhandler")
+  if type(getErrorHandler) == "function" then
+    local handler = getErrorHandler()
+    if type(handler) == "function" then
+      handler(message)
+      return
     end
+  end
 
-    -- Outside a WoW client there is no error handler to report through.
-    -- Printing is what the client's own default handler does.
-    print(message)
+  -- Outside a WoW client there is no error handler to report through.
+  -- Printing is what the client's own default handler does.
+  print(message)
 end
 
 -- Argument checks ------------------------------------------------------------
@@ -517,9 +517,9 @@ end
 ---@param methodName string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateDatabase(db, methodName, level)
-    if type(db) ~= "table" or getmetatable(db) ~= DATABASE_METATABLE then
-        error(methodName .. " must be called on a SettingsKit database", level)
-    end
+  if type(db) ~= "table" or getmetatable(db) ~= DATABASE_METATABLE then
+    error(methodName .. " must be called on a SettingsKit database", level)
+  end
 end
 
 ---Refuse a secret scope name before it indexes the scope table, which would
@@ -528,18 +528,18 @@ end
 ---@param methodName string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateScopeName(value, methodName, level)
-    if isSecret(value) then
-        error(methodName .. " scope must not be a secret value", level)
-    end
+  if isSecret(value) then
+    error(methodName .. " scope must not be a secret value", level)
+  end
 end
 
 ---@param value any
 ---@param methodName string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateCallback(value, methodName, level)
-    if type(value) ~= "function" then
-        error(methodName .. " callback must be a function", level)
-    end
+  if type(value) ~= "function" then
+    error(methodName .. " callback must be a function", level)
+  end
 end
 
 ---Refuse anything but a usable profile name. The secret check comes before
@@ -548,33 +548,33 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateProfileName(value, label, level)
-    if type(value) ~= "string" then
-        error(label .. " must be a non-empty string", level)
-    end
-    if isSecret(value) then
-        error(label .. " must not be a secret value", level)
-    end
-    if not value:find("%S") then
-        error(label .. " must contain a character other than whitespace", level)
-    end
-    local maxLength = rawget(sharedLimits, "maxProfileNameLength")
-    if #value > maxLength then
-        error(label .. " must be at most " .. maxLength .. " bytes long", level)
-    end
+  if type(value) ~= "string" then
+    error(label .. " must be a non-empty string", level)
+  end
+  if isSecret(value) then
+    error(label .. " must not be a secret value", level)
+  end
+  if not value:find("%S") then
+    error(label .. " must contain a character other than whitespace", level)
+  end
+  local maxLength = rawget(sharedLimits, "maxProfileNameLength")
+  if #value > maxLength then
+    error(label .. " must be at most " .. maxLength .. " bytes long", level)
+  end
 end
 
 ---@param value any
 ---@param level integer stack level the failure is reported at
 local function validateSavedVariableName(value, level)
-    if type(value) ~= "string" then
-        error("SettingsKit:Open savedVariable must be the name of a saved variable", level)
-    end
-    if isSecret(value) then
-        error("SettingsKit:Open savedVariable must not be a secret value", level)
-    end
-    if not value:find("^[%a_][%w_]*$") then
-        error("SettingsKit:Open savedVariable must be the name of a saved variable", level)
-    end
+  if type(value) ~= "string" then
+    error("SettingsKit:Open savedVariable must be the name of a saved variable", level)
+  end
+  if isSecret(value) then
+    error("SettingsKit:Open savedVariable must not be a secret value", level)
+  end
+  if not value:find("^[%a_][%w_]*$") then
+    error("SettingsKit:Open savedVariable must be the name of a saved variable", level)
+  end
 end
 
 ---Whether `value` is a whole number at least `minimum`.
@@ -582,11 +582,11 @@ end
 ---@param minimum integer
 ---@return boolean
 local function isIntegerAtLeast(value, minimum)
-    return type(value) == "number"
-        and value == value
-        and value >= minimum
-        and value % 1 == 0
-        and value < math.huge
+  return type(value) == "number"
+    and value == value
+    and value >= minimum
+    and value % 1 == 0
+    and value < math.huge
 end
 
 ---Report the alphabetically first key of `options` that is not in `known`,
@@ -596,19 +596,19 @@ end
 ---@param known table<string, boolean>
 ---@return string|nil
 local function firstUnknownKey(options, known)
-    local firstUnknown = nil
-    for key in next, options do
-        if isSecret(key) or known[key] ~= true then
-            local text = "<secret>"
-            if not isSecret(key) then
-                text = type(key) == "string" and key or ("<" .. type(key) .. ">")
-            end
-            if firstUnknown == nil or text < firstUnknown then
-                firstUnknown = text
-            end
-        end
+  local firstUnknown = nil
+  for key in next, options do
+    if isSecret(key) or known[key] ~= true then
+      local text = "<secret>"
+      if not isSecret(key) then
+        text = type(key) == "string" and key or ("<" .. type(key) .. ">")
+      end
+      if firstUnknown == nil or text < firstUnknown then
+        firstUnknown = text
+      end
     end
-    return firstUnknown
+  end
+  return firstUnknown
 end
 
 ---Validate `maxScannedEntries` and return the budget the scan counts down:
@@ -619,22 +619,22 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return number budget
 local function readMaxScannedEntries(value, level)
-    if type(value) == "nil" then
-        return DEFAULT_MAX_SCANNED_ENTRIES
-    end
-    if isSecret(value) then
-        error("SettingsKit:Open options.maxScannedEntries must not be a secret value", level)
-    end
-    if value == UNBOUNDED then
-        return math.huge
-    end
-    if not isIntegerAtLeast(value, 1) then
-        error(
-            "SettingsKit:Open options.maxScannedEntries must be a positive integer or SettingsKit.UNBOUNDED",
-            level
-        )
-    end
-    return value
+  if type(value) == "nil" then
+    return DEFAULT_MAX_SCANNED_ENTRIES
+  end
+  if isSecret(value) then
+    error("SettingsKit:Open options.maxScannedEntries must not be a secret value", level)
+  end
+  if value == UNBOUNDED then
+    return math.huge
+  end
+  if not isIntegerAtLeast(value, 1) then
+    error(
+      "SettingsKit:Open options.maxScannedEntries must be a positive integer or SettingsKit.UNBOUNDED",
+      level
+    )
+  end
+  return value
 end
 
 ---Validate `Open`'s options and return what the database keeps of them.
@@ -642,63 +642,60 @@ end
 ---@param level integer stack level the failures are reported at
 ---@return string defaultProfile, integer|false version, table|false migrations, number maxScannedEntries
 local function readOptions(options, level)
-    if type(options) == "nil" then
-        return DEFAULT_PROFILE_NAME, false, false, DEFAULT_MAX_SCANNED_ENTRIES
-    end
-    if type(options) ~= "table" then
-        error("SettingsKit:Open options must be a table", level)
-    end
+  if type(options) == "nil" then
+    return DEFAULT_PROFILE_NAME, false, false, DEFAULT_MAX_SCANNED_ENTRIES
+  end
+  if type(options) ~= "table" then
+    error("SettingsKit:Open options must be a table", level)
+  end
 
-    local unknown = firstUnknownKey(options, OPTION_KEYS)
-    if unknown ~= nil then
-        error('SettingsKit:Open options contains unknown field "' .. unknown .. '"', level)
-    end
+  local unknown = firstUnknownKey(options, OPTION_KEYS)
+  if unknown ~= nil then
+    error('SettingsKit:Open options contains unknown field "' .. unknown .. '"', level)
+  end
 
-    local defaultProfile = rawget(options, "defaultProfile")
-    if type(defaultProfile) == "nil" then
-        defaultProfile = DEFAULT_PROFILE_NAME
-    else
-        validateProfileName(defaultProfile, "SettingsKit:Open options.defaultProfile", level + 1)
-    end
+  local defaultProfile = rawget(options, "defaultProfile")
+  if type(defaultProfile) == "nil" then
+    defaultProfile = DEFAULT_PROFILE_NAME
+  else
+    validateProfileName(defaultProfile, "SettingsKit:Open options.defaultProfile", level + 1)
+  end
 
-    local version = rawget(options, "version")
-    if isSecret(version) then
-        error("SettingsKit:Open options.version must not be a secret value", level)
-    end
-    if type(version) ~= "nil" and not isIntegerAtLeast(version, 1) then
-        error("SettingsKit:Open options.version must be a positive integer", level)
-    end
+  local version = rawget(options, "version")
+  if isSecret(version) then
+    error("SettingsKit:Open options.version must not be a secret value", level)
+  end
+  if type(version) ~= "nil" and not isIntegerAtLeast(version, 1) then
+    error("SettingsKit:Open options.version must be a positive integer", level)
+  end
 
-    local migrations = rawget(options, "migrations")
-    if type(migrations) ~= "nil" then
-        if type(migrations) ~= "table" then
-            error("SettingsKit:Open options.migrations must be a table", level)
-        end
-        if type(version) == "nil" then
-            error("SettingsKit:Open options.migrations requires options.version", level)
-        end
-        for step, migration in next, migrations do
-            if isSecret(step) then
-                error("SettingsKit:Open options.migrations must not have a secret key", level)
-            end
-            if not isIntegerAtLeast(step, 1) or step > version then
-                error(
-                    "SettingsKit:Open options.migrations keys must be integers from 1 to options.version",
-                    level
-                )
-            end
-            if type(migration) ~= "function" then
-                error(
-                    "SettingsKit:Open options.migrations[" .. step .. "] must be a function",
-                    level
-                )
-            end
-        end
+  local migrations = rawget(options, "migrations")
+  if type(migrations) ~= "nil" then
+    if type(migrations) ~= "table" then
+      error("SettingsKit:Open options.migrations must be a table", level)
     end
+    if type(version) == "nil" then
+      error("SettingsKit:Open options.migrations requires options.version", level)
+    end
+    for step, migration in next, migrations do
+      if isSecret(step) then
+        error("SettingsKit:Open options.migrations must not have a secret key", level)
+      end
+      if not isIntegerAtLeast(step, 1) or step > version then
+        error(
+          "SettingsKit:Open options.migrations keys must be integers from 1 to options.version",
+          level
+        )
+      end
+      if type(migration) ~= "function" then
+        error("SettingsKit:Open options.migrations[" .. step .. "] must be a function", level)
+      end
+    end
+  end
 
-    local maxScannedEntries = readMaxScannedEntries(rawget(options, "maxScannedEntries"), level + 1)
+  local maxScannedEntries = readMaxScannedEntries(rawget(options, "maxScannedEntries"), level + 1)
 
-    return defaultProfile, version or false, migrations or false, maxScannedEntries
+  return defaultProfile, version or false, migrations or false, maxScannedEntries
 end
 
 ---Validate `Open`'s schema argument: a table of SchemaKit nodes or schemas
@@ -706,35 +703,35 @@ end
 ---@param schema any
 ---@param level integer stack level the failures are reported at
 local function validateSchemaTable(schema, level)
-    if type(schema) ~= "table" then
-        error("SettingsKit:Open schema must be a table of scope schemas", level)
-    end
+  if type(schema) ~= "table" then
+    error("SettingsKit:Open schema must be a table of scope schemas", level)
+  end
 
-    local unknown = firstUnknownKey(schema, SCOPE_SET)
-    if unknown ~= nil then
-        error('SettingsKit:Open schema contains unknown scope "' .. unknown .. '"', level)
-    end
+  local unknown = firstUnknownKey(schema, SCOPE_SET)
+  if unknown ~= nil then
+    error('SettingsKit:Open schema contains unknown scope "' .. unknown .. '"', level)
+  end
 
-    local declared = 0
-    for index = 1, #SCOPE_NAMES do
-        local scopeName = SCOPE_NAMES[index]
-        local node = rawget(schema, scopeName)
-        if type(node) ~= "nil" then
-            local name = type(node) == "table" and getmetatable(node) or nil
-            if name ~= "SchemaKit.Node" and name ~= "SchemaKit.Schema" then
-                error(
-                    "SettingsKit:Open schema."
-                        .. scopeName
-                        .. " must be a SchemaKit schema node or sealed schema",
-                    level
-                )
-            end
-            declared = declared + 1
-        end
+  local declared = 0
+  for index = 1, #SCOPE_NAMES do
+    local scopeName = SCOPE_NAMES[index]
+    local node = rawget(schema, scopeName)
+    if type(node) ~= "nil" then
+      local name = type(node) == "table" and getmetatable(node) or nil
+      if name ~= "SchemaKit.Node" and name ~= "SchemaKit.Schema" then
+        error(
+          "SettingsKit:Open schema."
+            .. scopeName
+            .. " must be a SchemaKit schema node or sealed schema",
+          level
+        )
+      end
+      declared = declared + 1
     end
-    if declared == 0 then
-        error("SettingsKit:Open schema must declare at least one scope", level)
-    end
+  end
+  if declared == 0 then
+    error("SettingsKit:Open schema must declare at least one scope", level)
+  end
 end
 
 -- Plain tables ---------------------------------------------------------------
@@ -745,14 +742,14 @@ end
 ---@param value any
 ---@return any
 local function copyPlain(value)
-    if type(value) ~= "table" then
-        return value
-    end
-    local copy = {}
-    for key, item in next, value do
-        rawset(copy, key, copyPlain(item))
-    end
-    return copy
+  if type(value) ~= "table" then
+    return value
+  end
+  local copy = {}
+  for key, item in next, value do
+    rawset(copy, key, copyPlain(item))
+  end
+  return copy
 end
 
 ---Whether a saved table nests more than `maxDepth` tables, which also catches
@@ -762,15 +759,15 @@ end
 ---@param maxDepth integer SchemaKit's `maxDepth` when the check started
 ---@return boolean
 local function isTooDeep(value, depth, maxDepth)
-    if depth > maxDepth then
-        return true
+  if depth > maxDepth then
+    return true
+  end
+  for _, item in next, value do
+    if type(item) == "table" and isTooDeep(item, depth + 1, maxDepth) then
+      return true
     end
-    for _, item in next, value do
-        if type(item) == "table" and isTooDeep(item, depth + 1, maxDepth) then
-            return true
-        end
-    end
-    return false
+  end
+  return false
 end
 
 ---Whether two plain values are equal, comparing tables by content.
@@ -783,37 +780,37 @@ end
 ---@param maxDepth integer SchemaKit's `maxDepth` when the comparison started
 ---@return boolean
 local function deepEqual(left, right, isSecretValue, depth, maxDepth)
-    if isSecretValue ~= nil and (isSecretValue(left) or isSecretValue(right)) then
-        return false
-    end
-    if type(left) ~= "table" or type(right) ~= "table" then
-        return left == right
-    end
-    if depth > maxDepth then
-        return false
-    end
+  if isSecretValue ~= nil and (isSecretValue(left) or isSecretValue(right)) then
+    return false
+  end
+  if type(left) ~= "table" or type(right) ~= "table" then
+    return left == right
+  end
+  if depth > maxDepth then
+    return false
+  end
 
-    local count = 0
-    for key, item in next, left do
-        if not deepEqual(item, rawget(right, key), isSecretValue, depth + 1, maxDepth) then
-            return false
-        end
-        count = count + 1
+  local count = 0
+  for key, item in next, left do
+    if not deepEqual(item, rawget(right, key), isSecretValue, depth + 1, maxDepth) then
+      return false
     end
-    for _ in next, right do
-        count = count - 1
-    end
-    return count == 0
+    count = count + 1
+  end
+  for _ in next, right do
+    count = count - 1
+  end
+  return count == 0
 end
 
 ---Remove every key of `container`, keeping its identity.
 ---@param container table
 local function wipe(container)
-    local key = next(container)
-    while type(key) ~= "nil" do
-        rawset(container, key, nil)
-        key = next(container)
-    end
+  local key = next(container)
+  while type(key) ~= "nil" do
+    rawset(container, key, nil)
+    key = next(container)
+  end
 end
 
 ---Count the entries of `container`, stopping at `limit`.
@@ -821,17 +818,17 @@ end
 ---@param limit integer
 ---@return integer
 local function countEntries(container, limit)
-    if container == nil then
-        return 0
+  if container == nil then
+    return 0
+  end
+  local count = 0
+  for _ in next, container do
+    count = count + 1
+    if count >= limit then
+      return count
     end
-    local count = 0
-    for _ in next, container do
-        count = count + 1
-        if count >= limit then
-            return count
-        end
-    end
-    return count
+  end
+  return count
 end
 
 ---Whether a table may be stored in a saved variable: a plain table, never a
@@ -841,13 +838,13 @@ end
 ---@param value table
 ---@return "view"|"metatable"|nil problem
 local function plainTableProblem(value)
-    if rawget(views, value) ~= nil then
-        return "view"
-    end
-    if type(getmetatable(value)) ~= "nil" then
-        return "metatable"
-    end
-    return nil
+  if rawget(views, value) ~= nil then
+    return "view"
+  end
+  if type(getmetatable(value)) ~= "nil" then
+    return "metatable"
+  end
+  return nil
 end
 
 ---Scan a table about to be stored: secret keys and values (when the host has
@@ -859,52 +856,52 @@ end
 ---@param budget integer entries still allowed to be visited
 ---@return "secret"|"view"|"metatable"|"size"|nil problem, integer budget
 local function scanValue(value, isSecretValue, depth, maxDepth, budget)
-    if depth > maxDepth then
-        return "size", budget
+  if depth > maxDepth then
+    return "size", budget
+  end
+  ---@type "secret"|"view"|"metatable"|"size"|nil
+  local problem = plainTableProblem(value)
+  if problem ~= nil then
+    return problem, budget
+  end
+  for key, item in next, value do
+    budget = budget - 1
+    if budget < 0 then
+      return "size", budget
     end
-    ---@type "secret"|"view"|"metatable"|"size"|nil
-    local problem = plainTableProblem(value)
-    if problem ~= nil then
+    if isSecretValue ~= nil and (isSecretValue(key) or isSecretValue(item)) then
+      return "secret", budget
+    end
+    if type(item) == "table" then
+      problem, budget = scanValue(item, isSecretValue, depth + 1, maxDepth, budget)
+      if problem ~= nil then
         return problem, budget
+      end
     end
-    for key, item in next, value do
-        budget = budget - 1
-        if budget < 0 then
-            return "size", budget
-        end
-        if isSecretValue ~= nil and (isSecretValue(key) or isSecretValue(item)) then
-            return "secret", budget
-        end
-        if type(item) == "table" then
-            problem, budget = scanValue(item, isSecretValue, depth + 1, maxDepth, budget)
-            if problem ~= nil then
-                return problem, budget
-            end
-        end
-    end
-    return nil, budget
+  end
+  return nil, budget
 end
 
 -- What a refused value is told, by the problem `scanValue` found.
 local VALUE_REFUSALS = {
-    secret = " refused a secret value: saved variables never hold secret values",
-    view = " refused a SettingsKit view: assign a plain table, not a table read through db.<scope>",
-    metatable = " refused a table with a metatable: saved variables cannot hold metatables",
-    size = " refused a table too large or too deep to scan",
+  secret = " refused a secret value: saved variables never hold secret values",
+  view = " refused a SettingsKit view: assign a plain table, not a table read through db.<scope>",
+  metatable = " refused a table with a metatable: saved variables cannot hold metatables",
+  size = " refused a table too large or too deep to scan",
 }
 
 ---Return the visible form of one byte `quoteKey` escapes.
 ---@param character string
 ---@return string
 local function escapeKeyCharacter(character)
-    if character == "|" then
-        return "||"
-    elseif character == "\\" then
-        return "\\\\"
-    elseif character == '"' then
-        return '\\"'
-    end
-    return string.format("\\%03d", string.byte(character))
+  if character == "|" then
+    return "||"
+  elseif character == "\\" then
+    return "\\\\"
+  elseif character == '"' then
+    return '\\"'
+  end
+  return string.format("\\%03d", string.byte(character))
 end
 
 ---Render a string key for a message or a path, quoted, following the rule
@@ -919,21 +916,21 @@ end
 ---@param key string
 ---@return string
 local function quoteKey(key)
-    local shown = key
-    local pathKeyLimit = rawget(sharedLimits, "pathKeyLimit")
-    if #shown > pathKeyLimit then
-        -- While the first byte left out is a continuation byte (0x80 to
-        -- 0xBF), leave out one more, so the cut falls before a lead byte.
-        local cut = pathKeyLimit
-        local nextByte = string.byte(key, cut + 1)
-        while cut > 0 and nextByte >= 0x80 and nextByte <= 0xBF do
-            cut = cut - 1
-            nextByte = string.byte(key, cut + 1)
-        end
-        shown = key:sub(1, cut) .. "..."
+  local shown = key
+  local pathKeyLimit = rawget(sharedLimits, "pathKeyLimit")
+  if #shown > pathKeyLimit then
+    -- While the first byte left out is a continuation byte (0x80 to
+    -- 0xBF), leave out one more, so the cut falls before a lead byte.
+    local cut = pathKeyLimit
+    local nextByte = string.byte(key, cut + 1)
+    while cut > 0 and nextByte >= 0x80 and nextByte <= 0xBF do
+      cut = cut - 1
+      nextByte = string.byte(key, cut + 1)
     end
-    local escaped = shown:gsub('[%c\127\\"|]', escapeKeyCharacter)
-    return '"' .. escaped .. '"'
+    shown = key:sub(1, cut) .. "..."
+  end
+  local escaped = shown:gsub('[%c\127\\"|]', escapeKeyCharacter)
+  return '"' .. escaped .. '"'
 end
 
 ---Format a key as a path segment: `.name` for an identifier of at most
@@ -942,21 +939,21 @@ end
 ---@param key any
 ---@return string
 local function formatKey(key)
-    local keyType = type(key)
-    if keyType == "string" then
-        if #key <= rawget(sharedLimits, "pathKeyLimit") and key:find("^[%a_][%w_]*$") then
-            return "." .. key
-        end
-        return "[" .. quoteKey(key) .. "]"
+  local keyType = type(key)
+  if keyType == "string" then
+    if #key <= rawget(sharedLimits, "pathKeyLimit") and key:find("^[%a_][%w_]*$") then
+      return "." .. key
     end
-    if keyType == "number" then
-        return "[" .. string.format("%.14g", key) .. "]"
-    end
-    if keyType == "boolean" then
-        return "[" .. tostring(key) .. "]"
-    end
-    -- A table, function or userdata key has no stable, safe printable form.
-    return "[" .. keyType .. "]"
+    return "[" .. quoteKey(key) .. "]"
+  end
+  if keyType == "number" then
+    return "[" .. string.format("%.14g", key) .. "]"
+  end
+  if keyType == "boolean" then
+    return "[" .. tostring(key) .. "]"
+  end
+  -- A table, function or userdata key has no stable, safe printable form.
+  return "[" .. keyType .. "]"
 end
 
 ---Join a path and a formatted segment, dropping the dot a relative path would
@@ -965,10 +962,10 @@ end
 ---@param segment string
 ---@return string
 local function joinRelative(path, segment)
-    if path == "" and segment:sub(1, 1) == "." then
-        return segment:sub(2)
-    end
-    return path .. segment
+  if path == "" and segment:sub(1, 1) == "." then
+    return segment:sub(2)
+  end
+  return path .. segment
 end
 
 -- Plans ----------------------------------------------------------------------
@@ -991,41 +988,37 @@ end
 ---@param maxDepth integer SchemaKit's `maxDepth` when the database was opened
 ---@return any
 local function fillDefaults(description, value, depth, maxDepth)
-    if type(value) == "nil" then
-        if type(description.default) == "nil" then
-            return nil
-        end
-        value = copyPlain(description.default)
+  if type(value) == "nil" then
+    if type(description.default) == "nil" then
+      return nil
     end
-    if type(value) ~= "table" or depth > maxDepth then
-        return value
-    end
-
-    local kind = description.kind
-    if kind == "table" then
-        local fieldNames = description.fieldNames or {}
-        for index = 1, #fieldNames do
-            local name = fieldNames[index]
-            local filled =
-                fillDefaults(description.fields[name], rawget(value, name), depth + 1, maxDepth)
-            if type(filled) ~= "nil" then
-                rawset(value, name, filled)
-            end
-        end
-    elseif kind == "map" then
-        for key, entry in next, value do
-            rawset(value, key, fillDefaults(description.values, entry, depth + 1, maxDepth))
-        end
-    elseif kind == "array" then
-        for index = 1, #value do
-            rawset(
-                value,
-                index,
-                fillDefaults(description.of, rawget(value, index), depth + 1, maxDepth)
-            )
-        end
-    end
+    value = copyPlain(description.default)
+  end
+  if type(value) ~= "table" or depth > maxDepth then
     return value
+  end
+
+  local kind = description.kind
+  if kind == "table" then
+    local fieldNames = description.fieldNames or {}
+    for index = 1, #fieldNames do
+      local name = fieldNames[index]
+      local filled =
+        fillDefaults(description.fields[name], rawget(value, name), depth + 1, maxDepth)
+      if type(filled) ~= "nil" then
+        rawset(value, name, filled)
+      end
+    end
+  elseif kind == "map" then
+    for key, entry in next, value do
+      rawset(value, key, fillDefaults(description.values, entry, depth + 1, maxDepth))
+    end
+  elseif kind == "array" then
+    for index = 1, #value do
+      rawset(value, index, fillDefaults(description.of, rawget(value, index), depth + 1, maxDepth))
+    end
+  end
+  return value
 end
 
 ---Compile a description into a plan.
@@ -1040,53 +1033,52 @@ end
 ---@param maxDepth integer SchemaKit's `maxDepth` when the database was opened
 ---@return SettingsKit.Plan|nil plan, string|nil refusal
 local function compilePlan(description, depth, label, maxDepth)
-    ---@type SettingsKit.Plan
-    local plan = {
-        proxied = false,
-        fieldNames = false,
-        fields = false,
-        ownDefaults = false,
-        values = false,
-        max = false,
-        keyKind = false,
-        default = fillDefaults(description, nil, depth, maxDepth),
-    }
-    if depth > maxDepth then
-        return plan
-    end
-
-    if description.kind == "table" then
-        plan.proxied = KIND_RECORD
-        plan.fieldNames = {}
-        plan.fields = {}
-        local fieldNames = description.fieldNames or {}
-        for index = 1, #fieldNames do
-            local name = fieldNames[index]
-            local field = description.fields[name]
-            local fieldLabel = label .. "." .. name
-            if field.optional ~= true then
-                return nil, fieldLabel .. " must be optional: a saved variable starts empty"
-            end
-            local fieldPlan, refusal = compilePlan(field, depth + 1, fieldLabel, maxDepth)
-            if fieldPlan == nil then
-                return nil, refusal
-            end
-            plan.fieldNames[index] = name
-            plan.fields[name] = fieldPlan
-        end
-        plan.ownDefaults = fillDefaults(description, {}, depth, maxDepth)
-    elseif description.kind == "map" then
-        local valuesPlan, refusal =
-            compilePlan(description.values, depth + 1, label .. "[*]", maxDepth)
-        if valuesPlan == nil then
-            return nil, refusal
-        end
-        plan.proxied = KIND_MAP
-        plan.values = valuesPlan
-        plan.max = description.max
-        plan.keyKind = description.keys and description.keys.kind or false
-    end
+  ---@type SettingsKit.Plan
+  local plan = {
+    proxied = false,
+    fieldNames = false,
+    fields = false,
+    ownDefaults = false,
+    values = false,
+    max = false,
+    keyKind = false,
+    default = fillDefaults(description, nil, depth, maxDepth),
+  }
+  if depth > maxDepth then
     return plan
+  end
+
+  if description.kind == "table" then
+    plan.proxied = KIND_RECORD
+    plan.fieldNames = {}
+    plan.fields = {}
+    local fieldNames = description.fieldNames or {}
+    for index = 1, #fieldNames do
+      local name = fieldNames[index]
+      local field = description.fields[name]
+      local fieldLabel = label .. "." .. name
+      if field.optional ~= true then
+        return nil, fieldLabel .. " must be optional: a saved variable starts empty"
+      end
+      local fieldPlan, refusal = compilePlan(field, depth + 1, fieldLabel, maxDepth)
+      if fieldPlan == nil then
+        return nil, refusal
+      end
+      plan.fieldNames[index] = name
+      plan.fields[name] = fieldPlan
+    end
+    plan.ownDefaults = fillDefaults(description, {}, depth, maxDepth)
+  elseif description.kind == "map" then
+    local valuesPlan, refusal = compilePlan(description.values, depth + 1, label .. "[*]", maxDepth)
+    if valuesPlan == nil then
+      return nil, refusal
+    end
+    plan.proxied = KIND_MAP
+    plan.values = valuesPlan
+    plan.max = description.max
+    plan.keyKind = description.keys and description.keys.kind or false
+  end
+  return plan
 end
 
 -- Views ----------------------------------------------------------------------
@@ -1104,34 +1096,34 @@ end
 ---@param node table
 ---@return table|nil
 local function resolveContainer(node)
-    local parent = node.parent
-    if parent == false then
-        if node.dead then
-            return nil
-        end
-        local section = rawget(node.db._raw, node.sectionName)
-        if type(section) ~= "table" then
-            return nil
-        end
-        if node.sectionKey == false then
-            return section
-        end
-        local container = rawget(section, node.sectionKey)
-        if type(container) == "table" then
-            return container
-        end
-        return nil
+  local parent = node.parent
+  if parent == false then
+    if node.dead then
+      return nil
     end
-
-    local parentContainer = resolveContainer(parent)
-    if parentContainer == nil then
-        return nil
+    local section = rawget(node.db._raw, node.sectionName)
+    if type(section) ~= "table" then
+      return nil
     end
-    local container = rawget(parentContainer, node.key)
+    if node.sectionKey == false then
+      return section
+    end
+    local container = rawget(section, node.sectionKey)
     if type(container) == "table" then
-        return container
+      return container
     end
     return nil
+  end
+
+  local parentContainer = resolveContainer(parent)
+  if parentContainer == nil then
+    return nil
+  end
+  local container = rawget(parentContainer, node.key)
+  if type(container) == "table" then
+    return container
+  end
+  return nil
 end
 
 ---Resolve the saved table behind `node`, creating it and every missing table
@@ -1139,32 +1131,32 @@ end
 ---@param node table
 ---@return table
 local function resolveForWrite(node)
-    local parent = node.parent
-    if parent == false then
-        local raw = node.db._raw
-        local section = rawget(raw, node.sectionName)
-        if type(section) ~= "table" then
-            section = {}
-            rawset(raw, node.sectionName, section)
-        end
-        if node.sectionKey == false then
-            return section
-        end
-        local container = rawget(section, node.sectionKey)
-        if type(container) ~= "table" then
-            container = {}
-            rawset(section, node.sectionKey, container)
-        end
-        return container
+  local parent = node.parent
+  if parent == false then
+    local raw = node.db._raw
+    local section = rawget(raw, node.sectionName)
+    if type(section) ~= "table" then
+      section = {}
+      rawset(raw, node.sectionName, section)
     end
-
-    local parentContainer = resolveForWrite(parent)
-    local container = rawget(parentContainer, node.key)
+    if node.sectionKey == false then
+      return section
+    end
+    local container = rawget(section, node.sectionKey)
     if type(container) ~= "table" then
-        container = {}
-        rawset(parentContainer, node.key, container)
+      container = {}
+      rawset(section, node.sectionKey, container)
     end
     return container
+  end
+
+  local parentContainer = resolveForWrite(parent)
+  local container = rawget(parentContainer, node.key)
+  if type(container) ~= "table" then
+    container = {}
+    rawset(parentContainer, node.key, container)
+  end
+  return container
 end
 
 ---The defaults a view of `plan` reads when it sits at `key` below a view
@@ -1180,17 +1172,17 @@ end
 ---@param plan SettingsKit.Plan
 ---@return table|false defaults
 local function viewDefaults(parentDefaults, key, plan)
-    local defaults = nil
-    if parentDefaults then
-        defaults = rawget(parentDefaults, key)
-    end
-    if type(defaults) == "nil" then
-        defaults = plan.default
-    end
-    if type(defaults) == "nil" then
-        defaults = plan.ownDefaults
-    end
-    return defaults
+  local defaults = nil
+  if parentDefaults then
+    defaults = rawget(parentDefaults, key)
+  end
+  if type(defaults) == "nil" then
+    defaults = plan.default
+  end
+  if type(defaults) == "nil" then
+    defaults = plan.ownDefaults
+  end
+  return defaults
 end
 
 ---Build a view: a proxy and its node, and for a record every child view.
@@ -1204,65 +1196,65 @@ end
 ---@param path string where the view is, relative to the scope (`frame`)
 ---@return table proxy, table node
 local function newView(db, scope, plan, parent, key, defaults, displayPath, path)
-    local node = {
-        layout = NODE_SCHEMA,
-        kind = plan.proxied,
-        plan = plan,
-        db = db,
-        scope = scope,
-        parent = parent,
-        key = key,
-        root = false,
-        dead = false,
-        sectionName = false,
-        sectionKey = false,
-        defaults = defaults,
-        displayPath = displayPath,
-        path = path,
-        -- The scratch table this view contributes to a write's probe, and the
-        -- one key currently set in it.
-        probe = {},
-        probeSet = false,
-        probeKey = false,
-        children = false,
-        entries = false,
-    }
-    if parent == false then
-        node.root = node
-    else
-        node.root = parent.root
-    end
+  local node = {
+    layout = NODE_SCHEMA,
+    kind = plan.proxied,
+    plan = plan,
+    db = db,
+    scope = scope,
+    parent = parent,
+    key = key,
+    root = false,
+    dead = false,
+    sectionName = false,
+    sectionKey = false,
+    defaults = defaults,
+    displayPath = displayPath,
+    path = path,
+    -- The scratch table this view contributes to a write's probe, and the
+    -- one key currently set in it.
+    probe = {},
+    probeSet = false,
+    probeKey = false,
+    children = false,
+    entries = false,
+  }
+  if parent == false then
+    node.root = node
+  else
+    node.root = parent.root
+  end
 
-    local proxy = setmetatable({}, VIEW_METATABLE)
-    views[proxy] = node
+  local proxy = setmetatable({}, VIEW_METATABLE)
+  views[proxy] = node
 
-    if plan.proxied == KIND_RECORD then
-        local children = {}
-        local fieldNames = plan.fieldNames --[[@as string[] ]]
-        for index = 1, #fieldNames do
-            local name = fieldNames[index]
-            local field = plan.fields[name]
-            if field.proxied ~= false then
-                local segment = formatKey(name)
-                children[name] = newView(
-                    db,
-                    scope,
-                    field,
-                    node,
-                    name,
-                    viewDefaults(defaults, name, field),
-                    displayPath .. segment,
-                    joinRelative(path, segment)
-                )
-            end
-        end
-        node.children = children
-    else
-        -- Entry views are made on first access and cached while somebody
-        -- holds them.
-        node.entries = setmetatable({}, WEAK_VALUES)
+  if plan.proxied == KIND_RECORD then
+    local children = {}
+    local fieldNames = plan.fieldNames --[[@as string[] ]]
+    for index = 1, #fieldNames do
+      local name = fieldNames[index]
+      local field = plan.fields[name]
+      if field.proxied ~= false then
+        local segment = formatKey(name)
+        children[name] = newView(
+          db,
+          scope,
+          field,
+          node,
+          name,
+          viewDefaults(defaults, name, field),
+          displayPath .. segment,
+          joinRelative(path, segment)
+        )
+      end
     end
-    return proxy, node
+    node.children = children
+  else
+    -- Entry views are made on first access and cached while somebody
+    -- holds them.
+    node.entries = setmetatable({}, WEAK_VALUES)
+  end
+  return proxy, node
 end
 
 ---Build the root view of a scope over `section[sectionKey]`.
@@ -1271,11 +1263,11 @@ end
 ---@param sectionKey string|false the key inside the section; `false` for `global`
 ---@return table proxy
 local function newRootView(db, scope, sectionKey)
-    local plan = scope.plan
-    local proxy, node = newView(db, scope, plan, false, false, plan.ownDefaults, scope.name, "")
-    node.sectionName = scope.sectionName
-    node.sectionKey = sectionKey
-    return proxy
+  local plan = scope.plan
+  local proxy, node = newView(db, scope, plan, false, false, plan.ownDefaults, scope.name, "")
+  node.sectionName = scope.sectionName
+  node.sectionKey = sectionKey
+  return proxy
 end
 
 ---Return the view of entry `key` of a keyed section, building it on first use.
@@ -1283,26 +1275,26 @@ end
 ---@param key any
 ---@return table proxy
 local function entryView(node, key)
-    local entries = node.entries
-    local proxy = rawget(entries, key)
-    if proxy ~= nil then
-        return proxy
-    end
-
-    local valuesPlan = node.plan.values --[[@as SettingsKit.Plan]]
-    local segment = formatKey(key)
-    proxy = newView(
-        node.db,
-        node.scope,
-        valuesPlan,
-        node,
-        key,
-        viewDefaults(node.defaults, key, valuesPlan),
-        node.displayPath .. segment,
-        joinRelative(node.path, segment)
-    )
-    rawset(entries, key, proxy)
+  local entries = node.entries
+  local proxy = rawget(entries, key)
+  if proxy ~= nil then
     return proxy
+  end
+
+  local valuesPlan = node.plan.values --[[@as SettingsKit.Plan]]
+  local segment = formatKey(key)
+  proxy = newView(
+    node.db,
+    node.scope,
+    valuesPlan,
+    node,
+    key,
+    viewDefaults(node.defaults, key, valuesPlan),
+    node.displayPath .. segment,
+    joinRelative(node.path, segment)
+  )
+  rawset(entries, key, proxy)
+  return proxy
 end
 
 ---Whether storing anything below `node` would create a keyed-section entry
@@ -1311,19 +1303,19 @@ end
 ---@param node table
 ---@return boolean
 local function wouldCreateEntry(node)
-    local child = node
-    local parent = child.parent
-    while parent ~= false do
-        if parent.kind == KIND_MAP then
-            local container = resolveContainer(parent)
-            if container == nil or type(rawget(container, child.key)) == "nil" then
-                return true
-            end
-        end
-        child = parent
-        parent = child.parent
+  local child = node
+  local parent = child.parent
+  while parent ~= false do
+    if parent.kind == KIND_MAP then
+      local container = resolveContainer(parent)
+      if container == nil or type(rawget(container, child.key)) == "nil" then
+        return true
+      end
     end
-    return false
+    child = parent
+    parent = child.parent
+  end
+  return false
 end
 
 ---Store a copy of a table-valued default and return it.
@@ -1340,13 +1332,13 @@ end
 ---@param default table
 ---@return table
 local function materialise(node, key, default)
-    local copy = copyPlain(default)
-    if node.root.dead or wouldCreateEntry(node) then
-        return copy
-    end
-    local container = resolveForWrite(node)
-    rawset(container, key, copy)
+  local copy = copyPlain(default)
+  if node.root.dead or wouldCreateEntry(node) then
     return copy
+  end
+  local container = resolveForWrite(node)
+  rawset(container, key, copy)
+  return copy
 end
 
 ---Read `key` through a record view.
@@ -1354,49 +1346,49 @@ end
 ---@param key any
 ---@return any
 local function readRecord(node, key)
-    if isSecret(key) then
-        -- readRecord <- viewIndex <- the reading line
-        error(
-            "SettingsKit ("
-                .. node.db._name
-                .. ") "
-                .. node.displayPath
-                .. " cannot be read with a secret key",
-            3
-        )
-    end
-    local container = resolveContainer(node)
-    local value = nil
-    if container ~= nil then
-        value = rawget(container, key)
-    end
+  if isSecret(key) then
+    -- readRecord <- viewIndex <- the reading line
+    error(
+      "SettingsKit ("
+        .. node.db._name
+        .. ") "
+        .. node.displayPath
+        .. " cannot be read with a secret key",
+      3
+    )
+  end
+  local container = resolveContainer(node)
+  local value = nil
+  if container ~= nil then
+    value = rawget(container, key)
+  end
 
-    local field = node.plan.fields[key]
-    if type(value) ~= "nil" then
-        if field ~= nil and field.proxied ~= false and type(value) == "table" then
-            return node.children[key]
-        end
-        return value
+  local field = node.plan.fields[key]
+  if type(value) ~= "nil" then
+    if field ~= nil and field.proxied ~= false and type(value) == "table" then
+      return node.children[key]
     end
-    if field == nil then
-        return nil
-    end
+    return value
+  end
+  if field == nil then
+    return nil
+  end
 
-    local defaults = node.defaults
-    local default = nil
-    if defaults then
-        default = rawget(defaults, key)
+  local defaults = node.defaults
+  local default = nil
+  if defaults then
+    default = rawget(defaults, key)
+  end
+  if field.proxied ~= false then
+    if type(default) ~= "nil" then
+      return node.children[key]
     end
-    if field.proxied ~= false then
-        if type(default) ~= "nil" then
-            return node.children[key]
-        end
-        return nil
-    end
-    if type(default) == "table" then
-        return materialise(node, key, default)
-    end
-    return default
+    return nil
+  end
+  if type(default) == "table" then
+    return materialise(node, key, default)
+  end
+  return default
 end
 
 ---Read `key` through a keyed-section view, falling back to the section's own
@@ -1405,57 +1397,57 @@ end
 ---@param key any
 ---@return any
 local function readMap(node, key)
-    -- The secret probe comes first: the key is compared and used to index
-    -- below, and either raises on a secret.
-    if isSecret(key) then
-        -- readMap <- viewIndex <- the reading line
-        error(
-            "SettingsKit ("
-                .. node.db._name
-                .. ") "
-                .. node.displayPath
-                .. " cannot be read with a secret key",
-            3
-        )
-    end
-    -- Without this, `view[nil]` would answer with the wildcard default.
-    if type(key) == "nil" then
-        return nil
-    end
+  -- The secret probe comes first: the key is compared and used to index
+  -- below, and either raises on a secret.
+  if isSecret(key) then
+    -- readMap <- viewIndex <- the reading line
+    error(
+      "SettingsKit ("
+        .. node.db._name
+        .. ") "
+        .. node.displayPath
+        .. " cannot be read with a secret key",
+      3
+    )
+  end
+  -- Without this, `view[nil]` would answer with the wildcard default.
+  if type(key) == "nil" then
+    return nil
+  end
 
-    local container = resolveContainer(node)
-    local value = nil
-    if container ~= nil then
-        value = rawget(container, key)
-    end
+  local container = resolveContainer(node)
+  local value = nil
+  if container ~= nil then
+    value = rawget(container, key)
+  end
 
-    local valuesPlan = node.plan.values
-    if type(value) ~= "nil" then
-        if valuesPlan.proxied ~= false and type(value) == "table" then
-            return entryView(node, key)
-        end
-        return value
+  local valuesPlan = node.plan.values
+  if type(value) ~= "nil" then
+    if valuesPlan.proxied ~= false and type(value) == "table" then
+      return entryView(node, key)
     end
+    return value
+  end
 
-    local default = nil
-    if node.defaults then
-        default = rawget(node.defaults, key)
-    end
-    if type(default) == "nil" then
-        default = valuesPlan.default
-    end
-    if type(default) == "nil" then
-        return nil
-    end
-    if valuesPlan.proxied ~= false then
-        return entryView(node, key)
-    end
-    if type(default) == "table" then
-        -- A missing entry is never stored by a read: the key may be one the
-        -- key schema refuses, and the section may be full.
-        return copyPlain(default)
-    end
-    return default
+  local default = nil
+  if node.defaults then
+    default = rawget(node.defaults, key)
+  end
+  if type(default) == "nil" then
+    default = valuesPlan.default
+  end
+  if type(default) == "nil" then
+    return nil
+  end
+  if valuesPlan.proxied ~= false then
+    return entryView(node, key)
+  end
+  if type(default) == "table" then
+    -- A missing entry is never stored by a read: the key may be one the
+    -- key schema refuses, and the section may be full.
+    return copyPlain(default)
+  end
+  return default
 end
 
 ---The `__index` of every view.
@@ -1463,14 +1455,14 @@ end
 ---@param key any
 ---@return any
 local function viewIndex(proxy, key)
-    local node = rawget(views, proxy)
-    if node == nil then
-        return nil
-    end
-    if node.kind == KIND_RECORD then
-        return readRecord(node, key)
-    end
-    return readMap(node, key)
+  local node = rawget(views, proxy)
+  if node == nil then
+    return nil
+  end
+  if node.kind == KIND_RECORD then
+    return readRecord(node, key)
+  end
+  return readMap(node, key)
 end
 
 ---Set `key` in `node`'s probe table, clearing whatever key an earlier,
@@ -1479,22 +1471,22 @@ end
 ---@param key any
 ---@param value any
 local function setProbe(node, key, value)
-    local probe = node.probe
-    if node.probeSet then
-        rawset(probe, node.probeKey, nil)
-    end
-    rawset(probe, key, value)
-    node.probeSet = true
-    node.probeKey = key
+  local probe = node.probe
+  if node.probeSet then
+    rawset(probe, node.probeKey, nil)
+  end
+  rawset(probe, key, value)
+  node.probeSet = true
+  node.probeKey = key
 end
 
 ---@param node table
 local function clearProbe(node)
-    if node.probeSet then
-        rawset(node.probe, node.probeKey, nil)
-        node.probeSet = false
-        node.probeKey = false
-    end
+  if node.probeSet then
+    rawset(node.probe, node.probeKey, nil)
+    node.probeSet = false
+    node.probeKey = false
+  end
 end
 
 ---Check the write `node[key] = value` against the scope's schema.
@@ -1509,23 +1501,23 @@ end
 ---@param value any
 ---@return boolean ok, SchemaKit.Failure|nil failure
 local function checkWrite(node, key, value)
-    local child = node
-    local parent = child.parent
-    while parent ~= false do
-        setProbe(parent, child.key, child.probe)
-        child = parent
-        parent = child.parent
-    end
-    setProbe(node, key, value)
+  local child = node
+  local parent = child.parent
+  while parent ~= false do
+    setProbe(parent, child.key, child.probe)
+    child = parent
+    parent = child.parent
+  end
+  setProbe(node, key, value)
 
-    local ok, failure = node.scope.schema:Check(child.probe)
+  local ok, failure = node.scope.schema:Check(child.probe)
 
-    child = node
-    while child ~= false do
-        clearProbe(child)
-        child = child.parent
-    end
-    return ok, failure
+  child = node
+  while child ~= false do
+    clearProbe(child)
+    child = child.parent
+  end
+  return ok, failure
 end
 
 ---Return the keyed-section node the write `node[key] = value` would grow past
@@ -1534,34 +1526,34 @@ end
 ---@param key any
 ---@return table|nil
 local function findFullMap(node, key)
-    if node.kind == KIND_MAP then
-        local container = resolveContainer(node)
-        local max = node.plan.max
-        if
-            (container == nil or type(rawget(container, key)) == "nil")
-            and countEntries(container, max) >= max
-        then
-            return node
-        end
+  if node.kind == KIND_MAP then
+    local container = resolveContainer(node)
+    local max = node.plan.max
+    if
+      (container == nil or type(rawget(container, key)) == "nil")
+      and countEntries(container, max) >= max
+    then
+      return node
     end
+  end
 
-    local child = node
-    local parent = child.parent
-    while parent ~= false do
-        if parent.kind == KIND_MAP then
-            local container = resolveContainer(parent)
-            local max = parent.plan.max
-            if
-                (container == nil or type(rawget(container, child.key)) == "nil")
-                and countEntries(container, max) >= max
-            then
-                return parent
-            end
-        end
-        child = parent
-        parent = child.parent
+  local child = node
+  local parent = child.parent
+  while parent ~= false do
+    if parent.kind == KIND_MAP then
+      local container = resolveContainer(parent)
+      local max = parent.plan.max
+      if
+        (container == nil or type(rawget(container, child.key)) == "nil")
+        and countEntries(container, max) >= max
+      then
+        return parent
+      end
     end
-    return nil
+    child = parent
+    parent = child.parent
+  end
+  return nil
 end
 
 ---Build the message for a failed write, in the shape `schema:Assert` uses.
@@ -1569,30 +1561,30 @@ end
 ---@param failure SchemaKit.Failure
 ---@return string
 local function failureMessage(node, failure)
-    local path = failure.path
-    local where = node.scope.name
-    if path ~= "" then
-        if path:sub(1, 1) == "[" then
-            where = where .. path
-        else
-            where = where .. "." .. path
-        end
+  local path = failure.path
+  local where = node.scope.name
+  if path ~= "" then
+    if path:sub(1, 1) == "[" then
+      where = where .. path
+    else
+      where = where .. "." .. path
     end
-    return "SettingsKit ("
-        .. node.db._name
-        .. ") "
-        .. where
-        .. ": expected "
-        .. failure.expected
-        .. ", found "
-        .. failure.found
+  end
+  return "SettingsKit ("
+    .. node.db._name
+    .. ") "
+    .. where
+    .. ": expected "
+    .. failure.expected
+    .. ", found "
+    .. failure.found
 end
 
 ---The `SettingsKit (<saved variable>) ` prefix every refusal starts with.
 ---@param node table
 ---@return string
 local function refusalLabel(node)
-    return "SettingsKit (" .. node.db._name .. ") "
+  return "SettingsKit (" .. node.db._name .. ") "
 end
 
 ---Return why the write `node[key] = value` would be refused, or `nil` when it
@@ -1604,55 +1596,50 @@ end
 ---@param value any
 ---@return string|nil refusal
 local function refuseWrite(node, key, value)
-    if node.root.dead then
-        return refusalLabel(node)
-            .. node.displayPath
-            .. " belongs to a profile that was deleted or reset away"
-    end
+  if node.root.dead then
+    return refusalLabel(node)
+      .. node.displayPath
+      .. " belongs to a profile that was deleted or reset away"
+  end
 
-    local isSecretValue = readIsSecret()
-    if isSecretValue ~= nil and isSecretValue(key) then
-        return refusalLabel(node)
-            .. node.displayPath
-            .. " refused a secret key: saved variables never hold secret values"
-    end
-    -- Every table is scanned, whether or not the host has secret values: a
-    -- view stored in a saved table would alias another view's data and be
-    -- written through without validation, and a metatable never survives a
-    -- save.
-    local problem = nil
-    if isSecretValue ~= nil and isSecretValue(value) then
-        problem = "secret"
-    elseif type(value) == "table" then
-        problem = scanValue(
-            value,
-            isSecretValue,
-            1,
-            readMaxDepth(),
-            rawget(node.db, "_maxScannedEntries")
-        )
-    end
-    if problem ~= nil then
-        return refusalLabel(node) .. node.displayPath .. formatKey(key) .. VALUE_REFUSALS[problem]
-    end
+  local isSecretValue = readIsSecret()
+  if isSecretValue ~= nil and isSecretValue(key) then
+    return refusalLabel(node)
+      .. node.displayPath
+      .. " refused a secret key: saved variables never hold secret values"
+  end
+  -- Every table is scanned, whether or not the host has secret values: a
+  -- view stored in a saved table would alias another view's data and be
+  -- written through without validation, and a metatable never survives a
+  -- save.
+  local problem = nil
+  if isSecretValue ~= nil and isSecretValue(value) then
+    problem = "secret"
+  elseif type(value) == "table" then
+    problem =
+      scanValue(value, isSecretValue, 1, readMaxDepth(), rawget(node.db, "_maxScannedEntries"))
+  end
+  if problem ~= nil then
+    return refusalLabel(node) .. node.displayPath .. formatKey(key) .. VALUE_REFUSALS[problem]
+  end
 
-    local ok, failure = checkWrite(node, key, value)
-    if not ok then
-        ---@cast failure SchemaKit.Failure
-        return failureMessage(node, failure)
-    end
+  local ok, failure = checkWrite(node, key, value)
+  if not ok then
+    ---@cast failure SchemaKit.Failure
+    return failureMessage(node, failure)
+  end
 
-    if type(value) ~= "nil" then
-        local fullMap = findFullMap(node, key)
-        if fullMap ~= nil then
-            return refusalLabel(node)
-                .. fullMap.displayPath
-                .. ": expected at most "
-                .. fullMap.plan.max
-                .. " entries"
-        end
+  if type(value) ~= "nil" then
+    local fullMap = findFullMap(node, key)
+    if fullMap ~= nil then
+      return refusalLabel(node)
+        .. fullMap.displayPath
+        .. ": expected at most "
+        .. fullMap.plan.max
+        .. " entries"
     end
-    return nil
+  end
+  return nil
 end
 
 ---Validate and store `node[key] = value`, then fire the scope's change signal.
@@ -1665,23 +1652,23 @@ end
 ---@param key any
 ---@param value any
 local function writeView(node, key, value)
-    local refusal = refuseWrite(node, key, value)
-    if refusal ~= nil then
-        error(refusal, 3)
-    end
+  local refusal = refuseWrite(node, key, value)
+  if refusal ~= nil then
+    error(refusal, 3)
+  end
 
-    local container
-    if type(value) == "nil" then
-        container = resolveContainer(node)
-    else
-        container = resolveForWrite(node)
-    end
-    if container ~= nil then
-        rawset(container, key, value)
-    end
+  local container
+  if type(value) == "nil" then
+    container = resolveContainer(node)
+  else
+    container = resolveForWrite(node)
+  end
+  if container ~= nil then
+    rawset(container, key, value)
+  end
 
-    local scope = node.scope
-    scope.signal:Fire(node.db, scope.name, key, value, node.path)
+  local scope = node.scope
+  scope.signal:Fire(node.db, scope.name, key, value, node.path)
 end
 
 ---The `__newindex` of every view.
@@ -1689,11 +1676,11 @@ end
 ---@param key any
 ---@param value any
 local function viewNewIndex(proxy, key, value)
-    local node = rawget(views, proxy)
-    if node == nil then
-        error("SettingsKit views cannot be written once detached", 2)
-    end
-    writeView(node, key, value)
+  local node = rawget(views, proxy)
+  if node == nil then
+    error("SettingsKit views cannot be written once detached", 2)
+  end
+  writeView(node, key, value)
 end
 
 ---The iterator `db:Pairs(view)` returns. Stateless: everything it needs is
@@ -1710,37 +1697,37 @@ end
 ---@param previous any
 ---@return any key, any value
 local function pairsNext(proxy, previous)
-    local node = rawget(views, proxy)
-    if node == nil then
-        return nil
-    end
-    local defaults = node.defaults
-    local key = nil
+  local node = rawget(views, proxy)
+  if node == nil then
+    return nil
+  end
+  local defaults = node.defaults
+  local key = nil
 
-    local inPhaseOne = type(previous) == "nil"
-        or (defaults and type(rawget(defaults, previous)) ~= "nil")
-    if inPhaseOne and defaults then
-        key = next(defaults, previous)
-        if type(key) ~= "nil" then
-            return key, viewIndex(proxy, key)
-        end
-        previous = nil
-    elseif inPhaseOne then
-        previous = nil
+  local inPhaseOne = type(previous) == "nil"
+    or (defaults and type(rawget(defaults, previous)) ~= "nil")
+  if inPhaseOne and defaults then
+    key = next(defaults, previous)
+    if type(key) ~= "nil" then
+      return key, viewIndex(proxy, key)
     end
+    previous = nil
+  elseif inPhaseOne then
+    previous = nil
+  end
 
-    local container = resolveContainer(node)
-    if container == nil then
-        return nil
-    end
-    key = next(container, previous)
-    while type(key) ~= "nil" and defaults and type(rawget(defaults, key)) ~= "nil" do
-        key = next(container, key)
-    end
-    if type(key) == "nil" then
-        return nil
-    end
-    return key, viewIndex(proxy, key)
+  local container = resolveContainer(node)
+  if container == nil then
+    return nil
+  end
+  key = next(container, previous)
+  while type(key) ~= "nil" and defaults and type(rawget(defaults, key)) ~= "nil" do
+    key = next(container, key)
+  end
+  if type(key) == "nil" then
+    return nil
+  end
+  return key, viewIndex(proxy, key)
 end
 
 -- Compaction -----------------------------------------------------------------
@@ -1762,29 +1749,21 @@ local compactValue
 ---@param maxDepth integer SchemaKit's `maxDepth` when the compaction started
 ---@return integer removed
 local function compactRecord(plan, container, defaults, isSecretValue, maxDepth)
-    local removed = 0
-    local fieldNames = plan.fieldNames --[[@as string[] ]]
-    for index = 1, #fieldNames do
-        local name = fieldNames[index]
-        local value = rawget(container, name)
-        if type(value) ~= "nil" then
-            local default = nil
-            if defaults then
-                default = rawget(defaults, name)
-            end
-            removed = removed
-                + compactValue(
-                    plan.fields[name],
-                    container,
-                    name,
-                    value,
-                    default,
-                    isSecretValue,
-                    maxDepth
-                )
-        end
+  local removed = 0
+  local fieldNames = plan.fieldNames --[[@as string[] ]]
+  for index = 1, #fieldNames do
+    local name = fieldNames[index]
+    local value = rawget(container, name)
+    if type(value) ~= "nil" then
+      local default = nil
+      if defaults then
+        default = rawget(defaults, name)
+      end
+      removed = removed
+        + compactValue(plan.fields[name], container, name, value, default, isSecretValue, maxDepth)
     end
-    return removed
+  end
+  return removed
 end
 
 ---@param plan SettingsKit.Plan a map plan
@@ -1794,20 +1773,20 @@ end
 ---@param maxDepth integer SchemaKit's `maxDepth` when the compaction started
 ---@return integer removed
 local function compactMap(plan, container, defaults, isSecretValue, maxDepth)
-    local removed = 0
-    local valuesPlan = plan.values --[[@as SettingsKit.Plan]]
-    for key, entry in next, container do
-        local default = nil
-        if defaults then
-            default = rawget(defaults, key)
-        end
-        if type(default) == "nil" then
-            default = valuesPlan.default
-        end
-        removed = removed
-            + compactValue(valuesPlan, container, key, entry, default, isSecretValue, maxDepth)
+  local removed = 0
+  local valuesPlan = plan.values --[[@as SettingsKit.Plan]]
+  for key, entry in next, container do
+    local default = nil
+    if defaults then
+      default = rawget(defaults, key)
     end
-    return removed
+    if type(default) == "nil" then
+      default = valuesPlan.default
+    end
+    removed = removed
+      + compactValue(valuesPlan, container, key, entry, default, isSecretValue, maxDepth)
+  end
+  return removed
 end
 
 ---Compact `container[key] = value` against `default`.
@@ -1820,29 +1799,29 @@ end
 ---@param maxDepth integer SchemaKit's `maxDepth` when the compaction started
 ---@return integer removed
 compactValue = function(plan, container, key, value, default, isSecretValue, maxDepth)
-    if plan.proxied ~= false and type(value) == "table" then
-        local removed
-        if plan.proxied == KIND_RECORD then
-            local childDefaults = default
-            if type(childDefaults) == "nil" then
-                childDefaults = plan.ownDefaults
-            end
-            removed = compactRecord(plan, value, childDefaults, isSecretValue, maxDepth)
-        else
-            removed = compactMap(plan, value, default, isSecretValue, maxDepth)
-        end
-        if type(default) ~= "nil" and type(next(value)) == "nil" then
-            rawset(container, key, nil)
-            removed = removed + 1
-        end
-        return removed
+  if plan.proxied ~= false and type(value) == "table" then
+    local removed
+    if plan.proxied == KIND_RECORD then
+      local childDefaults = default
+      if type(childDefaults) == "nil" then
+        childDefaults = plan.ownDefaults
+      end
+      removed = compactRecord(plan, value, childDefaults, isSecretValue, maxDepth)
+    else
+      removed = compactMap(plan, value, default, isSecretValue, maxDepth)
     end
+    if type(default) ~= "nil" and type(next(value)) == "nil" then
+      rawset(container, key, nil)
+      removed = removed + 1
+    end
+    return removed
+  end
 
-    if type(default) ~= "nil" and deepEqual(value, default, isSecretValue, 1, maxDepth) then
-        rawset(container, key, nil)
-        return 1
-    end
-    return 0
+  if type(default) ~= "nil" and deepEqual(value, default, isSecretValue, 1, maxDepth) then
+    rawset(container, key, nil)
+    return 1
+  end
+  return 0
 end
 
 ---Compact every table of one scope's section.
@@ -1852,45 +1831,44 @@ end
 ---@param maxDepth integer SchemaKit's `maxDepth` when the compaction started
 ---@return integer removed
 local function compactScope(raw, scope, isSecretValue, maxDepth)
-    local plan = scope.plan
-    local section = rawget(raw, scope.sectionName)
-    if type(section) ~= "table" then
-        return 0
-    end
-    if scope.name == "global" then
-        return compactRecord(plan, section, plan.ownDefaults, isSecretValue, maxDepth)
-    end
+  local plan = scope.plan
+  local section = rawget(raw, scope.sectionName)
+  if type(section) ~= "table" then
+    return 0
+  end
+  if scope.name == "global" then
+    return compactRecord(plan, section, plan.ownDefaults, isSecretValue, maxDepth)
+  end
 
-    local removed = 0
-    for sectionKey, container in next, section do
-        if type(container) == "table" then
-            removed = removed
-                + compactRecord(plan, container, plan.ownDefaults, isSecretValue, maxDepth)
-            -- An empty profile is still a profile; an empty character, realm,
-            -- class or faction entry is just an absent one.
-            if scope.name ~= "profile" and type(next(container)) == "nil" then
-                rawset(section, sectionKey, nil)
-            end
-        end
+  local removed = 0
+  for sectionKey, container in next, section do
+    if type(container) == "table" then
+      removed = removed + compactRecord(plan, container, plan.ownDefaults, isSecretValue, maxDepth)
+      -- An empty profile is still a profile; an empty character, realm,
+      -- class or faction entry is just an absent one.
+      if scope.name ~= "profile" and type(next(container)) == "nil" then
+        rawset(section, sectionKey, nil)
+      end
     end
-    return removed
+  end
+  return removed
 end
 
 ---Compact every declared scope of `db`.
 ---@param db table
 ---@return integer removed
 local function compactDatabase(db)
-    local raw = db._raw
-    local isSecretValue = readIsSecret()
-    local maxDepth = readMaxDepth()
-    local removed = 0
-    for index = 1, #SCOPE_NAMES do
-        local scope = rawget(db._scopes, SCOPE_NAMES[index])
-        if scope ~= nil then
-            removed = removed + compactScope(raw, scope, isSecretValue, maxDepth)
-        end
+  local raw = db._raw
+  local isSecretValue = readIsSecret()
+  local maxDepth = readMaxDepth()
+  local removed = 0
+  for index = 1, #SCOPE_NAMES do
+    local scope = rawget(db._scopes, SCOPE_NAMES[index])
+    if scope ~= nil then
+      removed = removed + compactScope(raw, scope, isSecretValue, maxDepth)
     end
-    return removed
+  end
+  return removed
 end
 
 ---Build the `PLAYER_LOGOUT` listener of one database. It calls through the
@@ -1898,20 +1876,20 @@ end
 ---@param db table
 ---@return fun()
 local function newLogoutListener(db)
-    return function()
-        local compactOnLogout = rawget(dispatch, "compactOnLogout")
-        compactOnLogout(db)
-    end
+  return function()
+    local compactOnLogout = rawget(dispatch, "compactOnLogout")
+    compactOnLogout(db)
+  end
 end
 
 ---Compact at logout. A failure is reported, never raised into EventKit's
 ---dispatch, so one addon's database cannot stop another's compaction.
 ---@param db table
 local function compactOnLogout(db)
-    local ok, failure = pcall(compactDatabase, db)
-    if not ok then
-        reportError(failure)
-    end
+  local ok, failure = pcall(compactDatabase, db)
+  if not ok then
+    reportError(failure)
+  end
 end
 
 ---Connect the logout compaction when EventKit is embedded. The connection is
@@ -1919,15 +1897,15 @@ end
 ---EventKit holds the listener.
 ---@param db table
 local function connectLogout(db)
-    local findPackage = rawget(Registry, "Find")
-    if type(findPackage) ~= "function" then
-        return
-    end
-    local EventKit = findPackage(Registry, "eventKit", OPTIONAL_EVENTKIT_API)
-    if type(EventKit) ~= "table" or type(rawget(EventKit, "Connect")) ~= "function" then
-        return
-    end
-    EventKit:Connect("PLAYER_LOGOUT", newLogoutListener(db))
+  local findPackage = rawget(Registry, "Find")
+  if type(findPackage) ~= "function" then
+    return
+  end
+  local EventKit = findPackage(Registry, "eventKit", OPTIONAL_EVENTKIT_API)
+  if type(EventKit) ~= "table" or type(rawget(EventKit, "Connect")) ~= "function" then
+    return
+  end
+  EventKit:Connect("PLAYER_LOGOUT", newLogoutListener(db))
 end
 
 -- Scope keys -----------------------------------------------------------------
@@ -1937,57 +1915,57 @@ end
 ---@param isSecretValue (fun(value: any): boolean)|nil
 ---@return string|nil
 local function usableKey(value, isSecretValue)
-    if type(value) ~= "string" then
-        return nil
-    end
-    if isSecretValue ~= nil and isSecretValue(value) then
-        return nil
-    end
-    if value == "" then
-        return nil
-    end
-    return value
+  if type(value) ~= "string" then
+    return nil
+  end
+  if isSecretValue ~= nil and isSecretValue(value) then
+    return nil
+  end
+  if value == "" then
+    return nil
+  end
+  return value
 end
 
 ---Call a host function by name with `...`, or return nothing without it.
 ---@param name string
 ---@return any ...
 local function callHost(name, ...)
-    local host = readGlobal(name)
-    if type(host) ~= "function" then
-        return nil
-    end
-    return host(...)
+  local host = readGlobal(name)
+  if type(host) ~= "function" then
+    return nil
+  end
+  return host(...)
 end
 
 ---Read the four scope keys once, the way `Open` resolves them.
 ---@return table<string, string|false> keys
 local function readScopeKeys()
-    local isSecretValue = readIsSecret()
-    local playerName = usableKey((callHost("UnitName", "player")), isSecretValue)
-    local realm = usableKey((callHost("GetRealmName")), isSecretValue)
-    local class = usableKey((select(2, callHost("UnitClass", "player"))), isSecretValue)
-    local faction = usableKey((callHost("UnitFactionGroup", "player")), isSecretValue)
+  local isSecretValue = readIsSecret()
+  local playerName = usableKey((callHost("UnitName", "player")), isSecretValue)
+  local realm = usableKey((callHost("GetRealmName")), isSecretValue)
+  local class = usableKey((select(2, callHost("UnitClass", "player"))), isSecretValue)
+  local faction = usableKey((callHost("UnitFactionGroup", "player")), isSecretValue)
 
-    ---@type string|false
-    local character = false
-    if playerName ~= nil and realm ~= nil then
-        character = playerName .. " - " .. realm
-    end
-    return {
-        char = character,
-        realm = realm or false,
-        class = class or false,
-        faction = faction or false,
-    }
+  ---@type string|false
+  local character = false
+  if playerName ~= nil and realm ~= nil then
+    character = playerName .. " - " .. realm
+  end
+  return {
+    char = character,
+    realm = realm or false,
+    class = class or false,
+    faction = faction or false,
+  }
 end
 
 -- Why each scope can be unavailable, for the error a read of it raises.
 local UNAVAILABLE_REASONS = {
-    char = 'UnitName("player") or GetRealmName() returned no name',
-    realm = "GetRealmName() returned no realm",
-    class = 'UnitClass("player") returned no class',
-    faction = 'UnitFactionGroup("player") returned no faction',
+  char = 'UnitName("player") or GetRealmName() returned no name',
+  realm = "GetRealmName() returned no realm",
+  class = 'UnitClass("player") returned no class',
+  faction = 'UnitFactionGroup("player") returned no faction',
 }
 
 -- Saved table ----------------------------------------------------------------
@@ -2001,44 +1979,44 @@ local UNAVAILABLE_REASONS = {
 ---@param migrations table|false
 ---@param level integer stack level the failures are reported at
 local function migrate(raw, name, version, migrations, level)
-    if version == false then
-        return
-    end
+  if version == false then
+    return
+  end
 
-    -- A table with nothing in it was never written by an older version.
-    if type(next(raw)) == "nil" then
-        rawset(raw, "version", version)
-        return
-    end
+  -- A table with nothing in it was never written by an older version.
+  if type(next(raw)) == "nil" then
+    rawset(raw, "version", version)
+    return
+  end
 
-    local stored = rawget(raw, "version")
-    if type(stored) == "nil" then
-        stored = 0
-    elseif isSecret(stored) or not isIntegerAtLeast(stored, 0) then
-        error("SettingsKit:Open " .. name .. ".version must be a non-negative integer", level)
-    end
+  local stored = rawget(raw, "version")
+  if type(stored) == "nil" then
+    stored = 0
+  elseif isSecret(stored) or not isIntegerAtLeast(stored, 0) then
+    error("SettingsKit:Open " .. name .. ".version must be a non-negative integer", level)
+  end
 
-    for step = stored + 1, version do
-        local migration = migrations and rawget(migrations, step)
-        if type(migration) ~= "nil" then
-            local ok, failure = pcall(migration, raw)
-            if not ok then
-                if isSecret(failure) then
-                    failure = "<secret value>"
-                end
-                error(
-                    "SettingsKit:Open migration "
-                        .. step
-                        .. " of "
-                        .. name
-                        .. " failed: "
-                        .. tostring(failure),
-                    level
-                )
-            end
+  for step = stored + 1, version do
+    local migration = migrations and rawget(migrations, step)
+    if type(migration) ~= "nil" then
+      local ok, failure = pcall(migration, raw)
+      if not ok then
+        if isSecret(failure) then
+          failure = "<secret value>"
         end
-        rawset(raw, "version", step)
+        error(
+          "SettingsKit:Open migration "
+            .. step
+            .. " of "
+            .. name
+            .. " failed: "
+            .. tostring(failure),
+          level
+        )
+      end
     end
+    rawset(raw, "version", step)
+  end
 end
 
 ---Create every missing section of the saved table; refuse one that is not a
@@ -2047,15 +2025,15 @@ end
 ---@param name string saved-variable name, for messages
 ---@param level integer stack level the failures are reported at
 local function ensureLayout(raw, name, level)
-    for index = 1, #LAYOUT_SECTIONS do
-        local sectionName = LAYOUT_SECTIONS[index]
-        local section = rawget(raw, sectionName)
-        if type(section) == "nil" then
-            rawset(raw, sectionName, {})
-        elseif type(section) ~= "table" then
-            error("SettingsKit:Open " .. name .. "." .. sectionName .. " must be a table", level)
-        end
+  for index = 1, #LAYOUT_SECTIONS do
+    local sectionName = LAYOUT_SECTIONS[index]
+    local section = rawget(raw, sectionName)
+    if type(section) == "nil" then
+      rawset(raw, sectionName, {})
+    elseif type(section) ~= "table" then
+      error("SettingsKit:Open " .. name .. "." .. sectionName .. " must be a table", level)
     end
+  end
 end
 
 ---Whether a stored profile name is still usable. A corrupted entry is ignored
@@ -2063,24 +2041,24 @@ end
 ---@param value any
 ---@return boolean
 local function isStoredProfileName(value)
-    return type(value) == "string"
-        and not isSecret(value)
-        and value:find("%S") ~= nil
-        and #value <= rawget(sharedLimits, "maxProfileNameLength")
+  return type(value) == "string"
+    and not isSecret(value)
+    and value:find("%S") ~= nil
+    and #value <= rawget(sharedLimits, "maxProfileNameLength")
 end
 
 ---Make sure the profile `name` has a table.
 ---@param raw table
 ---@param name string
 local function ensureProfile(raw, name)
-    local profiles = rawget(raw, "profiles")
-    if type(profiles) ~= "table" then
-        profiles = {}
-        rawset(raw, "profiles", profiles)
-    end
-    if type(rawget(profiles, name)) ~= "table" then
-        rawset(profiles, name, {})
-    end
+  local profiles = rawget(raw, "profiles")
+  if type(profiles) ~= "table" then
+    profiles = {}
+    rawset(raw, "profiles", profiles)
+  end
+  if type(rawget(profiles, name)) ~= "table" then
+    rawset(profiles, name, {})
+  end
 end
 
 ---Return the cached root view of profile `name`, building it on first use.
@@ -2088,13 +2066,13 @@ end
 ---@param name string
 ---@return table proxy
 local function profileView(db, name)
-    local roots = db._profileRoots
-    local proxy = rawget(roots, name)
-    if proxy == nil then
-        proxy = newRootView(db, rawget(db._scopes, "profile"), name)
-        rawset(roots, name, proxy)
-    end
-    return proxy
+  local roots = db._profileRoots
+  local proxy = rawget(roots, name)
+  if proxy == nil then
+    proxy = newRootView(db, rawget(db._scopes, "profile"), name)
+    rawset(roots, name, proxy)
+  end
+  return proxy
 end
 
 ---Detach the cached root view of profile `name`: reads fall back to defaults
@@ -2102,24 +2080,24 @@ end
 ---@param db table
 ---@param name string
 local function detachProfileView(db, name)
-    local roots = db._profileRoots
-    local proxy = rawget(roots, name)
-    if proxy ~= nil then
-        local node = rawget(views, proxy)
-        if node ~= nil then
-            node.dead = true
-        end
-        rawset(roots, name, nil)
+  local roots = db._profileRoots
+  local proxy = rawget(roots, name)
+  if proxy ~= nil then
+    local node = rawget(views, proxy)
+    if node ~= nil then
+      node.dead = true
     end
+    rawset(roots, name, nil)
+  end
 end
 
 ---Point `db.profile` at the current profile's view, when the profile scope is
 ---declared.
 ---@param db table
 local function publishProfileView(db)
-    if rawget(db._scopes, "profile") ~= nil then
-        rawset(db, "profile", profileView(db, db._profile))
-    end
+  if rawget(db._scopes, "profile") ~= nil then
+    rawset(db, "profile", profileView(db, db._profile))
+  end
 end
 
 -- Database methods -----------------------------------------------------------
@@ -2127,15 +2105,15 @@ end
 ---@param self SettingsKit.Database
 ---@return string name the current profile
 local function databaseGetProfile(self)
-    validateDatabase(self, "SettingsKit.Database:GetProfile", 3)
-    return rawget(self, "_profile")
+  validateDatabase(self, "SettingsKit.Database:GetProfile", 3)
+  return rawget(self, "_profile")
 end
 
 ---@param self SettingsKit.Database
 ---@return string savedVariable the global name the database was opened over
 local function databaseGetSavedVariable(self)
-    validateDatabase(self, "SettingsKit.Database:GetSavedVariable", 3)
-    return rawget(self, "_name")
+  validateDatabase(self, "SettingsKit.Database:GetSavedVariable", 3)
+  return rawget(self, "_name")
 end
 
 ---Switch the current profile, creating it when it does not exist, and record
@@ -2144,93 +2122,93 @@ end
 ---@param name string
 ---@return boolean changed `false` when `name` already was the current profile
 local function databaseSetProfile(self, name)
-    validateDatabase(self, "SettingsKit.Database:SetProfile", 3)
-    validateProfileName(name, "SettingsKit.Database:SetProfile name", 3)
+  validateDatabase(self, "SettingsKit.Database:SetProfile", 3)
+  validateProfileName(name, "SettingsKit.Database:SetProfile name", 3)
 
-    local db = self --[[@as table]]
-    local previous = db._profile
-    if name == previous then
-        return false
-    end
+  local db = self --[[@as table]]
+  local previous = db._profile
+  if name == previous then
+    return false
+  end
 
-    local raw = db._raw
-    ensureProfile(raw, name)
-    if db._charKey ~= false then
-        rawset(rawget(raw, "profileKeys"), db._charKey, name)
-    end
-    db._profile = name
-    publishProfileView(db)
-    db._signals.profileChanged:Fire(self, name, previous)
-    return true
+  local raw = db._raw
+  ensureProfile(raw, name)
+  if db._charKey ~= false then
+    rawset(rawget(raw, "profileKeys"), db._charKey, name)
+  end
+  db._profile = name
+  publishProfileView(db)
+  db._signals.profileChanged:Fire(self, name, previous)
+  return true
 end
 
 ---Return every profile name, sorted. Allocates a fresh array on every call.
 ---@param self SettingsKit.Database
 ---@return string[] names
 local function databaseGetProfiles(self)
-    validateDatabase(self, "SettingsKit.Database:GetProfiles", 3)
-    local db = self --[[@as table]]
-    local names = {}
-    local current = db._profile
-    local hasCurrent = false
-    local profiles = rawget(db._raw, "profiles")
-    if type(profiles) == "table" then
-        for name, profile in next, profiles do
-            if isStoredProfileName(name) and type(profile) == "table" then
-                names[#names + 1] = name
-                if name == current then
-                    hasCurrent = true
-                end
-            end
+  validateDatabase(self, "SettingsKit.Database:GetProfiles", 3)
+  local db = self --[[@as table]]
+  local names = {}
+  local current = db._profile
+  local hasCurrent = false
+  local profiles = rawget(db._raw, "profiles")
+  if type(profiles) == "table" then
+    for name, profile in next, profiles do
+      if isStoredProfileName(name) and type(profile) == "table" then
+        names[#names + 1] = name
+        if name == current then
+          hasCurrent = true
         end
+      end
     end
-    if not hasCurrent then
-        names[#names + 1] = current
-    end
-    table.sort(names)
-    return names
+  end
+  if not hasCurrent then
+    names[#names + 1] = current
+  end
+  table.sort(names)
+  return names
 end
 
 ---Replace the current profile's contents with a copy of profile `from`.
 ---@param self SettingsKit.Database
 ---@param from string
 local function databaseCopyProfile(self, from)
-    validateDatabase(self, "SettingsKit.Database:CopyProfile", 3)
-    validateProfileName(from, "SettingsKit.Database:CopyProfile from", 3)
+  validateDatabase(self, "SettingsKit.Database:CopyProfile", 3)
+  validateProfileName(from, "SettingsKit.Database:CopyProfile from", 3)
 
-    local db = self --[[@as table]]
-    local current = db._profile
-    if from == current then
-        error("SettingsKit.Database:CopyProfile cannot copy the current profile onto itself", 2)
-    end
-    local raw = db._raw
-    local source = rawget(rawget(raw, "profiles"), from)
-    if type(source) ~= "table" then
-        error("SettingsKit.Database:CopyProfile from names a profile that does not exist", 2)
-    end
-    local maxDepth = readMaxDepth()
-    if isTooDeep(source, 1, maxDepth) then
-        error("SettingsKit.Database:CopyProfile from nests more than " .. maxDepth .. " tables", 2)
-    end
+  local db = self --[[@as table]]
+  local current = db._profile
+  if from == current then
+    error("SettingsKit.Database:CopyProfile cannot copy the current profile onto itself", 2)
+  end
+  local raw = db._raw
+  local source = rawget(rawget(raw, "profiles"), from)
+  if type(source) ~= "table" then
+    error("SettingsKit.Database:CopyProfile from names a profile that does not exist", 2)
+  end
+  local maxDepth = readMaxDepth()
+  if isTooDeep(source, 1, maxDepth) then
+    error("SettingsKit.Database:CopyProfile from nests more than " .. maxDepth .. " tables", 2)
+  end
 
-    ensureProfile(raw, current)
-    local target = rawget(rawget(raw, "profiles"), current)
-    wipe(target)
-    for key, value in next, source do
-        rawset(target, key, copyPlain(value))
-    end
-    db._signals.profileCopied:Fire(self, from, current)
+  ensureProfile(raw, current)
+  local target = rawget(rawget(raw, "profiles"), current)
+  wipe(target)
+  for key, value in next, source do
+    rawset(target, key, copyPlain(value))
+  end
+  db._signals.profileCopied:Fire(self, from, current)
 end
 
 ---Remove every value of the current profile, so it reads its defaults again.
 ---@param self SettingsKit.Database
 local function databaseResetProfile(self)
-    validateDatabase(self, "SettingsKit.Database:ResetProfile", 3)
-    local db = self --[[@as table]]
-    local current = db._profile
-    ensureProfile(db._raw, current)
-    wipe(rawget(rawget(db._raw, "profiles"), current))
-    db._signals.profileReset:Fire(self, current)
+  validateDatabase(self, "SettingsKit.Database:ResetProfile", 3)
+  local db = self --[[@as table]]
+  local current = db._profile
+  ensureProfile(db._raw, current)
+  wipe(rawget(rawget(db._raw, "profiles"), current))
+  db._signals.profileReset:Fire(self, current)
 end
 
 ---Delete a profile that is not the current one. Characters that used it fall
@@ -2238,29 +2216,29 @@ end
 ---@param self SettingsKit.Database
 ---@param name string
 local function databaseDeleteProfile(self, name)
-    validateDatabase(self, "SettingsKit.Database:DeleteProfile", 3)
-    validateProfileName(name, "SettingsKit.Database:DeleteProfile name", 3)
+  validateDatabase(self, "SettingsKit.Database:DeleteProfile", 3)
+  validateProfileName(name, "SettingsKit.Database:DeleteProfile name", 3)
 
-    local db = self --[[@as table]]
-    if name == db._profile then
-        error("SettingsKit.Database:DeleteProfile cannot delete the current profile", 2)
-    end
-    local raw = db._raw
-    local profiles = rawget(raw, "profiles")
-    if type(rawget(profiles, name)) ~= "table" then
-        error("SettingsKit.Database:DeleteProfile name names a profile that does not exist", 2)
-    end
+  local db = self --[[@as table]]
+  if name == db._profile then
+    error("SettingsKit.Database:DeleteProfile cannot delete the current profile", 2)
+  end
+  local raw = db._raw
+  local profiles = rawget(raw, "profiles")
+  if type(rawget(profiles, name)) ~= "table" then
+    error("SettingsKit.Database:DeleteProfile name names a profile that does not exist", 2)
+  end
 
-    rawset(profiles, name, nil)
-    local profileKeys = rawget(raw, "profileKeys")
-    for character, profile in next, profileKeys do
-        -- A saved value is asked about secrecy before it is compared.
-        if not isSecret(profile) and profile == name then
-            rawset(profileKeys, character, nil)
-        end
+  rawset(profiles, name, nil)
+  local profileKeys = rawget(raw, "profileKeys")
+  for character, profile in next, profileKeys do
+    -- A saved value is asked about secrecy before it is compared.
+    if not isSecret(profile) and profile == name then
+      rawset(profileKeys, character, nil)
     end
-    detachProfileView(db, name)
-    db._signals.profileDeleted:Fire(self, name)
+  end
+  detachProfileView(db, name)
+  db._signals.profileDeleted:Fire(self, name)
 end
 
 ---Wipe the whole saved variable back to an empty layout. Every profile view
@@ -2268,34 +2246,34 @@ end
 ---profile.
 ---@param self SettingsKit.Database
 local function databaseResetDatabase(self)
-    validateDatabase(self, "SettingsKit.Database:ResetDatabase", 3)
-    local db = self --[[@as table]]
-    local raw = db._raw
-    local previous = db._profile
+  validateDatabase(self, "SettingsKit.Database:ResetDatabase", 3)
+  local db = self --[[@as table]]
+  local raw = db._raw
+  local previous = db._profile
 
-    wipe(raw)
-    if db._version ~= false then
-        rawset(raw, "version", db._version)
+  wipe(raw)
+  if db._version ~= false then
+    rawset(raw, "version", db._version)
+  end
+  ensureLayout(raw, db._name, 3)
+
+  for name in next, db._profileRoots do
+    local node = rawget(views, rawget(db._profileRoots, name))
+    if node ~= nil then
+      node.dead = true
     end
-    ensureLayout(raw, db._name, 3)
+  end
+  wipe(db._profileRoots)
 
-    for name in next, db._profileRoots do
-        local node = rawget(views, rawget(db._profileRoots, name))
-        if node ~= nil then
-            node.dead = true
-        end
-    end
-    wipe(db._profileRoots)
+  local name = db._defaultProfile
+  ensureProfile(raw, name)
+  db._profile = name
+  publishProfileView(db)
 
-    local name = db._defaultProfile
-    ensureProfile(raw, name)
-    db._profile = name
-    publishProfileView(db)
-
-    db._signals.profileReset:Fire(self, name)
-    if name ~= previous then
-        db._signals.profileChanged:Fire(self, name, previous)
-    end
+  db._signals.profileReset:Fire(self, name)
+  if name ~= previous then
+    db._signals.profileChanged:Fire(self, name, previous)
+  end
 end
 
 ---Connect a listener to validated writes of one scope.
@@ -2304,15 +2282,15 @@ end
 ---@param callback SettingsKit.ChangeListener
 ---@return SignalKit.Connection connection
 local function databaseOnChange(self, scopeName, callback)
-    validateDatabase(self, "SettingsKit.Database:OnChange", 3)
-    local db = self --[[@as table]]
-    validateScopeName(scopeName, "SettingsKit.Database:OnChange", 3)
-    local scope = type(scopeName) == "string" and rawget(db._scopes, scopeName) or nil
-    if scope == nil or not scope.available then
-        error("SettingsKit.Database:OnChange scope must name a declared, available scope", 2)
-    end
-    validateCallback(callback, "SettingsKit.Database:OnChange", 3)
-    return scope.signal:Connect(callback)
+  validateDatabase(self, "SettingsKit.Database:OnChange", 3)
+  local db = self --[[@as table]]
+  validateScopeName(scopeName, "SettingsKit.Database:OnChange", 3)
+  local scope = type(scopeName) == "string" and rawget(db._scopes, scopeName) or nil
+  if scope == nil or not scope.available then
+    error("SettingsKit.Database:OnChange scope must name a declared, available scope", 2)
+  end
+  validateCallback(callback, "SettingsKit.Database:OnChange", 3)
+  return scope.signal:Connect(callback)
 end
 
 ---Connect `callback` to one of the database's profile signals.
@@ -2322,58 +2300,53 @@ end
 ---@param callback any
 ---@return SignalKit.Connection
 local function connectProfileSignal(db, signalName, methodName, callback)
-    -- connectProfileSignal <- the public method <- the caller
-    validateDatabase(db, methodName, 4)
-    validateCallback(callback, methodName, 4)
-    return rawget(rawget(db, "_signals"), signalName):Connect(callback)
+  -- connectProfileSignal <- the public method <- the caller
+  validateDatabase(db, methodName, 4)
+  validateCallback(callback, methodName, 4)
+  return rawget(rawget(db, "_signals"), signalName):Connect(callback)
 end
 
 ---@param self SettingsKit.Database
 ---@param callback SettingsKit.ProfileChangedListener
 ---@return SignalKit.Connection connection
 local function databaseOnProfileChanged(self, callback)
-    return connectProfileSignal(
-        self,
-        "profileChanged",
-        "SettingsKit.Database:OnProfileChanged",
-        callback
-    )
+  return connectProfileSignal(
+    self,
+    "profileChanged",
+    "SettingsKit.Database:OnProfileChanged",
+    callback
+  )
 end
 
 ---@param self SettingsKit.Database
 ---@param callback SettingsKit.ProfileCopiedListener
 ---@return SignalKit.Connection connection
 local function databaseOnProfileCopied(self, callback)
-    return connectProfileSignal(
-        self,
-        "profileCopied",
-        "SettingsKit.Database:OnProfileCopied",
-        callback
-    )
+  return connectProfileSignal(
+    self,
+    "profileCopied",
+    "SettingsKit.Database:OnProfileCopied",
+    callback
+  )
 end
 
 ---@param self SettingsKit.Database
 ---@param callback SettingsKit.ProfileListener
 ---@return SignalKit.Connection connection
 local function databaseOnProfileReset(self, callback)
-    return connectProfileSignal(
-        self,
-        "profileReset",
-        "SettingsKit.Database:OnProfileReset",
-        callback
-    )
+  return connectProfileSignal(self, "profileReset", "SettingsKit.Database:OnProfileReset", callback)
 end
 
 ---@param self SettingsKit.Database
 ---@param callback SettingsKit.ProfileListener
 ---@return SignalKit.Connection connection
 local function databaseOnProfileDeleted(self, callback)
-    return connectProfileSignal(
-        self,
-        "profileDeleted",
-        "SettingsKit.Database:OnProfileDeleted",
-        callback
-    )
+  return connectProfileSignal(
+    self,
+    "profileDeleted",
+    "SettingsKit.Database:OnProfileDeleted",
+    callback
+  )
 end
 
 ---Iterate a view: every key with a default, then every saved key without one,
@@ -2386,12 +2359,12 @@ end
 ---@param view table a view of this database
 ---@return function iterator, table view, nil
 local function databasePairs(self, view)
-    validateDatabase(self, "SettingsKit.Database:Pairs", 3)
-    local node = type(view) == "table" and rawget(views, view) or nil
-    if node == nil or node.db ~= self then
-        error("SettingsKit.Database:Pairs view must be a view of this database", 2)
-    end
-    return pairsNext, view, nil
+  validateDatabase(self, "SettingsKit.Database:Pairs", 3)
+  local node = type(view) == "table" and rawget(views, view) or nil
+  if node == nil or node.db ~= self then
+    error("SettingsKit.Database:Pairs view must be a view of this database", 2)
+  end
+  return pairsNext, view, nil
 end
 
 ---Step from `node` to the view of its record field or keyed-section entry
@@ -2400,30 +2373,30 @@ end
 ---@param key any
 ---@return table|nil child, string|nil refusal
 local function descendPath(node, key)
-    if isSecret(key) then
-        return nil,
-            refusalLabel(node)
-                .. node.displayPath
-                .. " refused a secret key: saved variables never hold secret values"
-    end
-    if type(key) == "nil" or key ~= key then
-        return nil, refusalLabel(node) .. node.displayPath .. " key must not be nil or NaN"
-    end
+  if isSecret(key) then
+    return nil,
+      refusalLabel(node)
+        .. node.displayPath
+        .. " refused a secret key: saved variables never hold secret values"
+  end
+  if type(key) == "nil" or key ~= key then
+    return nil, refusalLabel(node) .. node.displayPath .. " key must not be nil or NaN"
+  end
 
-    local child = nil
-    if node.kind == KIND_RECORD then
-        child = node.children[key]
-    elseif node.plan.values.proxied ~= false then
-        child = entryView(node, key)
-    end
-    if child == nil then
-        return nil,
-            refusalLabel(node)
-                .. node.displayPath
-                .. formatKey(key)
-                .. " is not a record or keyed section"
-    end
-    return rawget(views, child)
+  local child = nil
+  if node.kind == KIND_RECORD then
+    child = node.children[key]
+  elseif node.plan.values.proxied ~= false then
+    child = entryView(node, key)
+  end
+  if child == nil then
+    return nil,
+      refusalLabel(node)
+        .. node.displayPath
+        .. formatKey(key)
+        .. " is not a record or keyed section"
+  end
+  return rawget(views, child)
 end
 
 ---Turn a dotted-path segment into the key it names: a number when it is one
@@ -2432,13 +2405,13 @@ end
 ---@param segment string
 ---@return string|number
 local function segmentKey(node, segment)
-    if node.kind == KIND_MAP and node.plan.keyKind == "number" then
-        local number = tonumber(segment)
-        if number ~= nil then
-            return number
-        end
+  if node.kind == KIND_MAP and node.plan.keyKind == "number" then
+    local number = tonumber(segment)
+    if number ~= nil then
+      return number
     end
-    return segment
+  end
+  return segment
 end
 
 ---Check whether writing `value` at `path` in `scope` would be accepted,
@@ -2459,69 +2432,69 @@ end
 ---@param value any
 ---@return boolean ok, string|nil message the text a refused write would raise, without a position
 local function databaseValidate(self, scopeName, path, value)
-    validateDatabase(self, "SettingsKit.Database:Validate", 3)
-    local db = self --[[@as table]]
-    validateScopeName(scopeName, "SettingsKit.Database:Validate", 3)
-    local scope = type(scopeName) == "string" and rawget(db._scopes, scopeName) or nil
-    if scope == nil or not scope.available then
-        error("SettingsKit.Database:Validate scope must name a declared, available scope", 2)
-    end
-    local node = rawget(views, rawget(db, scopeName))
-    local refusal = nil
-    local key = nil
+  validateDatabase(self, "SettingsKit.Database:Validate", 3)
+  local db = self --[[@as table]]
+  validateScopeName(scopeName, "SettingsKit.Database:Validate", 3)
+  local scope = type(scopeName) == "string" and rawget(db._scopes, scopeName) or nil
+  if scope == nil or not scope.available then
+    error("SettingsKit.Database:Validate scope must name a declared, available scope", 2)
+  end
+  local node = rawget(views, rawget(db, scopeName))
+  local refusal = nil
+  local key = nil
 
-    local pathType = type(path)
-    if pathType == "table" and rawget(views, path) == nil then
-        local count = #path
-        if count == 0 then
-            error(
-                "SettingsKit.Database:Validate path must be a dotted string or a non-empty array of keys",
-                2
-            )
-        end
-        for index = 1, count - 1 do
-            node, refusal = descendPath(node, rawget(path, index))
-            if node == nil then
-                return false, refusal
-            end
-        end
-        key = rawget(path, count)
-    elseif pathType == "string" and not isSecret(path) and path ~= "" then
-        local start = 1
-        while true do
-            local stop = path:find(".", start, true)
-            local segment = path:sub(start, stop and stop - 1 or -1)
-            if segment == "" then
-                error("SettingsKit.Database:Validate path must not contain an empty segment", 2)
-            end
-            if stop == nil then
-                key = segmentKey(node, segment)
-                break
-            end
-            node, refusal = descendPath(node, segmentKey(node, segment))
-            if node == nil then
-                return false, refusal
-            end
-            start = stop + 1
-        end
-    else
-        error(
-            "SettingsKit.Database:Validate path must be a dotted string or a non-empty array of keys",
-            2
-        )
+  local pathType = type(path)
+  if pathType == "table" and rawget(views, path) == nil then
+    local count = #path
+    if count == 0 then
+      error(
+        "SettingsKit.Database:Validate path must be a dotted string or a non-empty array of keys",
+        2
+      )
     end
-
-    -- A write would never reach SettingsKit with these keys; say so the same
-    -- way a step on the path does.
-    if not isSecret(key) and (type(key) == "nil" or key ~= key) then
-        return false,
-            "SettingsKit (" .. db._name .. ") " .. node.displayPath .. " key must not be nil or NaN"
-    end
-    refusal = refuseWrite(node, key, value)
-    if refusal ~= nil then
+    for index = 1, count - 1 do
+      node, refusal = descendPath(node, rawget(path, index))
+      if node == nil then
         return false, refusal
+      end
     end
-    return true
+    key = rawget(path, count)
+  elseif pathType == "string" and not isSecret(path) and path ~= "" then
+    local start = 1
+    while true do
+      local stop = path:find(".", start, true)
+      local segment = path:sub(start, stop and stop - 1 or -1)
+      if segment == "" then
+        error("SettingsKit.Database:Validate path must not contain an empty segment", 2)
+      end
+      if stop == nil then
+        key = segmentKey(node, segment)
+        break
+      end
+      node, refusal = descendPath(node, segmentKey(node, segment))
+      if node == nil then
+        return false, refusal
+      end
+      start = stop + 1
+    end
+  else
+    error(
+      "SettingsKit.Database:Validate path must be a dotted string or a non-empty array of keys",
+      2
+    )
+  end
+
+  -- A write would never reach SettingsKit with these keys; say so the same
+  -- way a step on the path does.
+  if not isSecret(key) and (type(key) == "nil" or key ~= key) then
+    return false,
+      "SettingsKit (" .. db._name .. ") " .. node.displayPath .. " key must not be nil or NaN"
+  end
+  refusal = refuseWrite(node, key, value)
+  if refusal ~= nil then
+    return false, refusal
+  end
+  return true
 end
 
 ---Remove every saved value equal to its default, in every character, realm,
@@ -2529,8 +2502,8 @@ end
 ---@param self SettingsKit.Database
 ---@return integer removed how many values and tables were removed
 local function databaseCompact(self)
-    validateDatabase(self, "SettingsKit.Database:Compact", 3)
-    return compactDatabase(self)
+  validateDatabase(self, "SettingsKit.Database:Compact", 3)
+  return compactDatabase(self)
 end
 
 ---The database metatable's `__index`: methods from the prototype, and a clear
@@ -2539,28 +2512,28 @@ end
 ---@param key any
 ---@return any
 local function databaseIndex(db, key)
-    -- A secret key would raise inside SettingsKit while it indexes the
-    -- prototype; refuse it at the reading line instead.
-    if isSecret(key) then
-        -- databaseIndex <- the reading line
-        error("SettingsKit databases cannot be read with a secret key", 2)
-    end
-    local method = rawget(Database, key)
-    if method ~= nil then
-        return method
-    end
-    local unavailable = rawget(db, "_unavailable")
-    local reason = type(unavailable) == "table" and rawget(unavailable, key) or nil
-    if reason ~= nil then
-        -- databaseIndex <- the reading line
-        error(reason, 2)
-    end
-    return nil
+  -- A secret key would raise inside SettingsKit while it indexes the
+  -- prototype; refuse it at the reading line instead.
+  if isSecret(key) then
+    -- databaseIndex <- the reading line
+    error("SettingsKit databases cannot be read with a secret key", 2)
+  end
+  local method = rawget(Database, key)
+  if method ~= nil then
+    return method
+  end
+  local unavailable = rawget(db, "_unavailable")
+  local reason = type(unavailable) == "table" and rawget(unavailable, key) or nil
+  if reason ~= nil then
+    -- databaseIndex <- the reading line
+    error(reason, 2)
+  end
+  return nil
 end
 
 ---The database metatable's `__newindex`: a database has no writable fields.
 local function databaseNewIndex()
-    error("SettingsKit databases are read-only; write through db.<scope> instead", 2)
+  error("SettingsKit databases are read-only; write through db.<scope> instead", 2)
 end
 
 -- Package public API ---------------------------------------------------------
@@ -2572,67 +2545,63 @@ end
 ---@param level integer stack level the failures are reported at
 ---@return table scopes, table unavailable
 local function buildScopes(schema, keys, name, level)
-    local scopes = {}
-    local unavailable = {}
-    local sealSchema = rawget(SchemaKit, "Seal")
-    for index = 1, #SCOPE_NAMES do
-        local scopeName = SCOPE_NAMES[index]
-        local node = rawget(schema, scopeName)
-        if type(node) == "nil" then
-            unavailable[scopeName] = "SettingsKit ("
-                .. name
-                .. ") db."
-                .. scopeName
-                .. " is not declared; pass schema."
-                .. scopeName
-                .. " to SettingsKit:Open"
-        else
-            -- Sealing a sealed schema returns a new one with its own failure
-            -- table, so a consumer checking with the same schema can never see
-            -- its failure overwritten by a write here.
-            local sealed = sealSchema(SchemaKit, node)
-            local description = sealed:Describe()
-            if description.kind ~= "table" then
-                error(
-                    "SettingsKit:Open schema." .. scopeName .. " must be a SchemaKit.table schema",
-                    level
-                )
-            end
-            local plan, refusal =
-                compilePlan(description, 1, "schema." .. scopeName, readMaxDepth())
-            if plan == nil then
-                error("SettingsKit:Open " .. tostring(refusal), level)
-            end
+  local scopes = {}
+  local unavailable = {}
+  local sealSchema = rawget(SchemaKit, "Seal")
+  for index = 1, #SCOPE_NAMES do
+    local scopeName = SCOPE_NAMES[index]
+    local node = rawget(schema, scopeName)
+    if type(node) == "nil" then
+      unavailable[scopeName] = "SettingsKit ("
+        .. name
+        .. ") db."
+        .. scopeName
+        .. " is not declared; pass schema."
+        .. scopeName
+        .. " to SettingsKit:Open"
+    else
+      -- Sealing a sealed schema returns a new one with its own failure
+      -- table, so a consumer checking with the same schema can never see
+      -- its failure overwritten by a write here.
+      local sealed = sealSchema(SchemaKit, node)
+      local description = sealed:Describe()
+      if description.kind ~= "table" then
+        error("SettingsKit:Open schema." .. scopeName .. " must be a SchemaKit.table schema", level)
+      end
+      local plan, refusal = compilePlan(description, 1, "schema." .. scopeName, readMaxDepth())
+      if plan == nil then
+        error("SettingsKit:Open " .. tostring(refusal), level)
+      end
 
-            ---@type string|false
-            local sectionKey = false
-            local available = true
-            if scopeName ~= "global" and scopeName ~= "profile" then
-                sectionKey = keys[scopeName]
-                available = sectionKey ~= false
-            end
-            if not available then
-                unavailable[scopeName] = "SettingsKit ("
-                    .. name
-                    .. ") db."
-                    .. scopeName
-                    .. " is unavailable: "
-                    .. UNAVAILABLE_REASONS[scopeName]
-                    .. " when the database was opened"
-            end
+      ---@type string|false
+      local sectionKey = false
+      local available = true
+      if scopeName ~= "global" and scopeName ~= "profile" then
+        sectionKey = keys[scopeName]
+        available = sectionKey ~= false
+      end
+      if not available then
+        unavailable[scopeName] = "SettingsKit ("
+          .. name
+          .. ") db."
+          .. scopeName
+          .. " is unavailable: "
+          .. UNAVAILABLE_REASONS[scopeName]
+          .. " when the database was opened"
+      end
 
-            scopes[scopeName] = {
-                name = scopeName,
-                schema = sealed,
-                plan = plan,
-                sectionName = SCOPE_SECTIONS[scopeName],
-                sectionKey = sectionKey,
-                available = available,
-                signal = available and SignalKit:New() or false,
-            }
-        end
+      scopes[scopeName] = {
+        name = scopeName,
+        schema = sealed,
+        plan = plan,
+        sectionName = SCOPE_SECTIONS[scopeName],
+        sectionKey = sectionKey,
+        available = available,
+        signal = available and SignalKit:New() or false,
+      }
     end
-    return scopes, unavailable
+  end
+  return scopes, unavailable
 end
 
 ---Open the database over the saved variable `savedVariable`.
@@ -2646,113 +2615,111 @@ end
 ---@param options SettingsKit.Options?
 ---@return SettingsKit.Database db
 local function open(_, savedVariable, schema, options)
-    validateSavedVariableName(savedVariable, 3)
+  validateSavedVariableName(savedVariable, 3)
 
-    local existing = rawget(databases, savedVariable)
-    if existing ~= nil then
-        -- A secret is never a table, so the type test keeps it from the
-        -- identity comparison.
-        if
-            type(schema) ~= "nil"
-            and (type(schema) ~= "table" or schema ~= rawget(existing, "_schemaSource"))
-        then
-            error(
-                "SettingsKit:Open "
-                    .. savedVariable
-                    .. " is already open with a different schema table",
-                2
-            )
-        end
-        local current = readGlobal(savedVariable)
-        if type(current) ~= "table" or current ~= rawget(existing, "_raw") then
-            error(
-                "SettingsKit:Open "
-                    .. savedVariable
-                    .. " was replaced after it was opened; open the database in the addon's loaded phase",
-                2
-            )
-        end
-        return existing
+  local existing = rawget(databases, savedVariable)
+  if existing ~= nil then
+    -- A secret is never a table, so the type test keeps it from the
+    -- identity comparison.
+    if
+      type(schema) ~= "nil"
+      and (type(schema) ~= "table" or schema ~= rawget(existing, "_schemaSource"))
+    then
+      error(
+        "SettingsKit:Open " .. savedVariable .. " is already open with a different schema table",
+        2
+      )
     end
-
-    validateSchemaTable(schema, 3)
-    ---@cast schema table
-    local defaultProfile, version, migrations, maxScannedEntries = readOptions(options, 3)
-
-    local raw = readGlobal(savedVariable)
-    if type(raw) ~= "nil" and type(raw) ~= "table" then
-        error("SettingsKit:Open " .. savedVariable .. " must be a table or nil", 2)
+    local current = readGlobal(savedVariable)
+    if type(current) ~= "table" or current ~= rawget(existing, "_raw") then
+      error(
+        "SettingsKit:Open "
+          .. savedVariable
+          .. " was replaced after it was opened; open the database in the addon's loaded phase",
+        2
+      )
     end
+    return existing
+  end
 
-    -- Scope keys are read once, before anything is written, so a schema or
-    -- layout refusal leaves the saved variable untouched.
-    local keys = readScopeKeys()
-    local scopes, unavailable = buildScopes(schema, keys, savedVariable, 3)
+  validateSchemaTable(schema, 3)
+  ---@cast schema table
+  local defaultProfile, version, migrations, maxScannedEntries = readOptions(options, 3)
 
-    if type(raw) == "nil" then
-        raw = {}
-        writeGlobal(savedVariable, raw)
+  local raw = readGlobal(savedVariable)
+  if type(raw) ~= "nil" and type(raw) ~= "table" then
+    error("SettingsKit:Open " .. savedVariable .. " must be a table or nil", 2)
+  end
+
+  -- Scope keys are read once, before anything is written, so a schema or
+  -- layout refusal leaves the saved variable untouched.
+  local keys = readScopeKeys()
+  local scopes, unavailable = buildScopes(schema, keys, savedVariable, 3)
+
+  if type(raw) == "nil" then
+    raw = {}
+    writeGlobal(savedVariable, raw)
+  end
+  migrate(raw, savedVariable, version, migrations, 3)
+  ensureLayout(raw, savedVariable, 3)
+
+  local charKey = keys.char
+  local resolvedDefault = defaultProfile
+  if defaultProfile == CHARACTER_PROFILE then
+    resolvedDefault = charKey or DEFAULT_PROFILE_NAME
+  end
+  local profileName = resolvedDefault
+  if charKey ~= false then
+    local stored = rawget(rawget(raw, "profileKeys"), charKey)
+    if isStoredProfileName(stored) then
+      profileName = stored
     end
-    migrate(raw, savedVariable, version, migrations, 3)
-    ensureLayout(raw, savedVariable, 3)
+  end
+  ensureProfile(raw, profileName)
 
-    local charKey = keys.char
-    local resolvedDefault = defaultProfile
-    if defaultProfile == CHARACTER_PROFILE then
-        resolvedDefault = charKey or DEFAULT_PROFILE_NAME
+  local db = setmetatable({
+    _layout = DATABASE_SCHEMA,
+    _name = savedVariable,
+    _raw = raw,
+    _schemaSource = schema,
+    _scopes = scopes,
+    _unavailable = unavailable,
+    _charKey = charKey,
+    _defaultProfile = resolvedDefault,
+    _profile = profileName,
+    _profileRoots = {},
+    _version = version,
+    -- `math.huge` when opened with `maxScannedEntries = SettingsKit.UNBOUNDED`.
+    _maxScannedEntries = maxScannedEntries,
+    _signals = {
+      profileChanged = SignalKit:New(),
+      profileCopied = SignalKit:New(),
+      profileReset = SignalKit:New(),
+      profileDeleted = SignalKit:New(),
+    },
+  }, DATABASE_METATABLE)
+
+  for index = 1, #SCOPE_NAMES do
+    local scopeName = SCOPE_NAMES[index]
+    local scope = rawget(scopes, scopeName)
+    if scope ~= nil and scope.available and scopeName ~= "profile" then
+      rawset(db, scopeName, newRootView(db, scope, scope.sectionKey))
     end
-    local profileName = resolvedDefault
-    if charKey ~= false then
-        local stored = rawget(rawget(raw, "profileKeys"), charKey)
-        if isStoredProfileName(stored) then
-            profileName = stored
-        end
-    end
-    ensureProfile(raw, profileName)
+  end
+  publishProfileView(db)
 
-    local db = setmetatable({
-        _layout = DATABASE_SCHEMA,
-        _name = savedVariable,
-        _raw = raw,
-        _schemaSource = schema,
-        _scopes = scopes,
-        _unavailable = unavailable,
-        _charKey = charKey,
-        _defaultProfile = resolvedDefault,
-        _profile = profileName,
-        _profileRoots = {},
-        _version = version,
-        -- `math.huge` when opened with `maxScannedEntries = SettingsKit.UNBOUNDED`.
-        _maxScannedEntries = maxScannedEntries,
-        _signals = {
-            profileChanged = SignalKit:New(),
-            profileCopied = SignalKit:New(),
-            profileReset = SignalKit:New(),
-            profileDeleted = SignalKit:New(),
-        },
-    }, DATABASE_METATABLE)
-
-    for index = 1, #SCOPE_NAMES do
-        local scopeName = SCOPE_NAMES[index]
-        local scope = rawget(scopes, scopeName)
-        if scope ~= nil and scope.available and scopeName ~= "profile" then
-            rawset(db, scopeName, newRootView(db, scope, scope.sectionKey))
-        end
-    end
-    publishProfileView(db)
-
-    connectLogout(db)
-    rawset(databases, savedVariable, db)
-    return db --[[@as SettingsKit.Database]]
+  connectLogout(db)
+  rawset(databases, savedVariable, db)
+  return db --[[@as SettingsKit.Database]]
 end
 
 ---@param receiver any
 ---@param label string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-    if receiver ~= SettingsKit then
-        error(label .. " must be called on the SettingsKit facade; use " .. label .. "(...)", level)
-    end
+  if receiver ~= SettingsKit then
+    error(label .. " must be called on the SettingsKit facade; use " .. label .. "(...)", level)
+  end
 end
 
 ---Refuse a limit update before anything changes: a secret key or value, an
@@ -2762,48 +2729,45 @@ end
 ---@param limits any
 ---@param level integer stack level the failures are reported at
 local function validateLimitUpdate(limits, level)
-    if type(limits) ~= "table" then
-        error("SettingsKit:SetLimits limits must be a table", level)
+  if type(limits) ~= "table" then
+    error("SettingsKit:SetLimits limits must be a table", level)
+  end
+  local key = next(limits)
+  while type(key) ~= "nil" do
+    if isSecret(key) then
+      error("SettingsKit:SetLimits limits must not have a secret key", level)
     end
-    local key = next(limits)
-    while type(key) ~= "nil" do
-        if isSecret(key) then
-            error("SettingsKit:SetLimits limits must not have a secret key", level)
-        end
-        if type(key) ~= "string" or LIMIT_CEILINGS[key] == nil then
-            error(
-                "SettingsKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
-                level
-            )
-        end
-        local value = rawget(limits, key)
-        if isSecret(value) then
-            error("SettingsKit:SetLimits limits." .. key .. " must not be a secret value", level)
-        end
-        if value == UNBOUNDED then
-            error(
-                "SettingsKit:SetLimits limits."
-                    .. key
-                    .. " cannot be SettingsKit.UNBOUNDED: "
-                    .. UNBOUNDED_REFUSALS[key],
-                level
-            )
-        end
-        local minimum = LIMIT_MINIMUMS[key]
-        local ceiling = LIMIT_CEILINGS[key]
-        if not isIntegerAtLeast(value, minimum) or value > ceiling then
-            error(
-                "SettingsKit:SetLimits limits."
-                    .. key
-                    .. " must be an integer from "
-                    .. minimum
-                    .. " to "
-                    .. ceiling,
-                level
-            )
-        end
-        key = next(limits, key)
+    if type(key) ~= "string" or LIMIT_CEILINGS[key] == nil then
+      error("SettingsKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
     end
+    local value = rawget(limits, key)
+    if isSecret(value) then
+      error("SettingsKit:SetLimits limits." .. key .. " must not be a secret value", level)
+    end
+    if value == UNBOUNDED then
+      error(
+        "SettingsKit:SetLimits limits."
+          .. key
+          .. " cannot be SettingsKit.UNBOUNDED: "
+          .. UNBOUNDED_REFUSALS[key],
+        level
+      )
+    end
+    local minimum = LIMIT_MINIMUMS[key]
+    local ceiling = LIMIT_CEILINGS[key]
+    if not isIntegerAtLeast(value, minimum) or value > ceiling then
+      error(
+        "SettingsKit:SetLimits limits."
+          .. key
+          .. " must be an integer from "
+          .. minimum
+          .. " to "
+          .. ceiling,
+        level
+      )
+    end
+    key = next(limits, key)
+  end
 end
 
 ---Change any subset of the shared limits. Affects every consumer in the
@@ -2811,26 +2775,26 @@ end
 ---@param self SettingsKit
 ---@param limits table
 local function setLimits(self, limits)
-    validateFacade(self, "SettingsKit:SetLimits", 3)
-    validateLimitUpdate(limits, 3)
-    for index = 1, #LIMIT_NAMES do
-        local name = LIMIT_NAMES[index]
-        local value = rawget(limits, name)
-        if type(value) ~= "nil" then
-            rawset(sharedLimits, name, value)
-        end
+  validateFacade(self, "SettingsKit:SetLimits", 3)
+  validateLimitUpdate(limits, 3)
+  for index = 1, #LIMIT_NAMES do
+    local name = LIMIT_NAMES[index]
+    local value = rawget(limits, name)
+    if type(value) ~= "nil" then
+      rawset(sharedLimits, name, value)
     end
+  end
 end
 
 ---Return a fresh copy of the shared limits.
 ---@param self SettingsKit
 ---@return SettingsKit.Limits
 local function getLimits(self)
-    validateFacade(self, "SettingsKit:GetLimits", 3)
-    return {
-        maxProfileNameLength = rawget(sharedLimits, "maxProfileNameLength"),
-        pathKeyLimit = rawget(sharedLimits, "pathKeyLimit"),
-    }
+  validateFacade(self, "SettingsKit:GetLimits", 3)
+  return {
+    maxProfileNameLength = rawget(sharedLimits, "maxProfileNameLength"),
+    pathKeyLimit = rawget(sharedLimits, "pathKeyLimit"),
+  }
 end
 
 -- Upgrades -------------------------------------------------------------------
@@ -2841,16 +2805,16 @@ end
 ---@param node table
 ---@param repaired table<table, boolean> nodes already recomputed
 local function repairNodeDefaults(node, repaired)
-    if repaired[node] then
-        return
-    end
-    repaired[node] = true
-    local parent = node.parent
-    if parent == false then
-        return
-    end
-    repairNodeDefaults(parent, repaired)
-    node.defaults = viewDefaults(parent.defaults, node.key, node.plan)
+  if repaired[node] then
+    return
+  end
+  repaired[node] = true
+  local parent = node.parent
+  if parent == false then
+    return
+  end
+  repairNodeDefaults(parent, repaired)
+  node.defaults = viewDefaults(parent.defaults, node.key, node.plan)
 end
 
 -- Revision 1 gave an entry view of a keyed section declared without a default
@@ -2860,10 +2824,10 @@ end
 -- node's defaults the way `viewDefaults` builds them now. A node revision 1
 -- built correctly gets the same table back.
 if previousRevision ~= nil and previousRevision < 2 then
-    local repaired = {}
-    for _, node in next, views do
-        repairNodeDefaults(node, repaired)
-    end
+  local repaired = {}
+  for _, node in next, views do
+    repairNodeDefaults(node, repaired)
+  end
 end
 
 -- Commit ---------------------------------------------------------------------
@@ -2904,7 +2868,7 @@ rawset(dispatch, "compactOnLogout", compactOnLogout)
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(SettingsKit) or not validateCurrentState(SettingsKit) then
-    error("MoltenCodes SettingsKit package state is corrupted or incomplete", 2)
+  error("MoltenCodes SettingsKit package state is corrupted or incomplete", 2)
 end
 
 return SettingsKit

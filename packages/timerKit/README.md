@@ -6,11 +6,11 @@ TimerKit provides cancelable, deterministic, scope-aware timers on top of World 
 local timers = TimerKit:ForAddon("MyAddon")
 
 timers:After(0.5, function(timer)
-    print("one shot")
+  print("one shot")
 end)
 
 local ticker = timers:Every(5, function(timer)
-    print("tick")
+  print("tick")
 end)
 
 -- The scope closes at logout whenever LifecycleKit or EventKit is loaded.

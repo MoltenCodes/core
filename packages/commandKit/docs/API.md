@@ -97,68 +97,68 @@ local S = SchemaKit
 local commands = CommandKit:ForAddon("MyAddon")
 
 local registered, reason = commands:Register("myaddon", {
-    description = "My Addon.",
-    subcommands = {
-        status = {
-            description = "Show what the addon is doing.",
-            handler = function(context)
-                context:Printf("%d frames tracked, mode %s.", MyAddon:CountFrames(), MyAddon.mode)
-            end,
-        },
-        scale = {
-            description = "Set the frame scale.",
-            arguments = { S.number({ min = 0.5, max = 2 }) },
-            handler = function(context, scale)
-                MyAddon:SetScale(scale)
-                context:Printf("Scale %.2f.", scale)
-            end,
-        },
-        mode = {
-            description = "Choose what to track.",
-            arguments = { S.enum({ "party", "raid", "all" }), S.optional(S.boolean()) },
-            handler = function(context, mode, quiet)
-                MyAddon.mode = mode
-                if not quiet then
-                    context:Print("Tracking", mode)
-                end
-            end,
-        },
-        watch = {
-            description = "Watch an item: shift-click it into the chat box.",
-            usage = "<item link>",
-            arguments = { S.string({ pattern = "|Hitem:" }) },
-            handler = function(context, itemLink)
-                MyAddon:Watch(itemLink)
-                context:Print("Watching", itemLink)
-            end,
-        },
-        frame = {
-            description = "Frame commands.",
-            subcommands = {
-                show = {
-                    arguments = { S.string() },
-                    handler = function(context, name)
-                        if not MyAddon:ShowFrame(name) then
-                            context:Fail('no frame named "' .. name .. '"')
-                        end
-                    end,
-                    complete = function(context, text, position)
-                        return MyAddon:FrameNames()
-                    end,
-                },
-                reset = {
-                    handler = function(context)
-                        MyAddon:ResetFrames()
-                    end,
-                },
-            },
-        },
+  description = "My Addon.",
+  subcommands = {
+    status = {
+      description = "Show what the addon is doing.",
+      handler = function(context)
+        context:Printf("%d frames tracked, mode %s.", MyAddon:CountFrames(), MyAddon.mode)
+      end,
     },
+    scale = {
+      description = "Set the frame scale.",
+      arguments = { S.number({ min = 0.5, max = 2 }) },
+      handler = function(context, scale)
+        MyAddon:SetScale(scale)
+        context:Printf("Scale %.2f.", scale)
+      end,
+    },
+    mode = {
+      description = "Choose what to track.",
+      arguments = { S.enum({ "party", "raid", "all" }), S.optional(S.boolean()) },
+      handler = function(context, mode, quiet)
+        MyAddon.mode = mode
+        if not quiet then
+          context:Print("Tracking", mode)
+        end
+      end,
+    },
+    watch = {
+      description = "Watch an item: shift-click it into the chat box.",
+      usage = "<item link>",
+      arguments = { S.string({ pattern = "|Hitem:" }) },
+      handler = function(context, itemLink)
+        MyAddon:Watch(itemLink)
+        context:Print("Watching", itemLink)
+      end,
+    },
+    frame = {
+      description = "Frame commands.",
+      subcommands = {
+        show = {
+          arguments = { S.string() },
+          handler = function(context, name)
+            if not MyAddon:ShowFrame(name) then
+              context:Fail('no frame named "' .. name .. '"')
+            end
+          end,
+          complete = function(context, text, position)
+            return MyAddon:FrameNames()
+          end,
+        },
+        reset = {
+          handler = function(context)
+            MyAddon:ResetFrames()
+          end,
+        },
+      },
+    },
+  },
 })
 if not registered then
-    -- "taken": another addon or a chat type owns /myaddon; "emote": an emote
-    -- does; "full": the scope's maxCommands (64 by default) already.
-    print("MyAddon could not register its command: " .. reason)
+  -- "taken": another addon or a chat type owns /myaddon; "emote": an emote
+  -- does; "full": the scope's maxCommands (64 by default) already.
+  print("MyAddon could not register its command: " .. reason)
 end
 
 commands:BindOptions(OptionsKit:Get("MyAddon"), "myaddon_options", { description = "My Addon options." })

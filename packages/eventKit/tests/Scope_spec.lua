@@ -5,416 +5,407 @@ local function noop() end
 ---Measures the allocation a workload causes, in kilobytes, with the collector
 ---stopped so that a collection cycle cannot hide or invent growth.
 local function allocatedKilobytes(workload)
-    collectgarbage()
-    collectgarbage("stop")
-    local before = collectgarbage("count")
-    workload()
-    local after = collectgarbage("count")
-    collectgarbage("restart")
-    return after - before
+  collectgarbage()
+  collectgarbage("stop")
+  local before = collectgarbage("count")
+  workload()
+  local after = collectgarbage("count")
+  collectgarbage("restart")
+  return after - before
 end
 
 ---Assert that `callback` fails with `expected` at a line of this spec file.
 local function expectErrorAtThisSpec(expected, callback)
-    local ok, message = pcall(callback)
-    message = tostring(message)
-    assert.is_false(ok)
-    assert.is_not_nil(string.find(message, expected, 1, true))
-    assert.is_not_nil(string.find(message, "packages/eventKit/tests/Scope_spec.lua:", 1, true))
+  local ok, message = pcall(callback)
+  message = tostring(message)
+  assert.is_false(ok)
+  assert.is_not_nil(string.find(message, expected, 1, true))
+  assert.is_not_nil(string.find(message, "packages/eventKit/tests/Scope_spec.lua:", 1, true))
 end
 
 describe("EventKit scopes", function()
-    local EventKit
-    before_each(function()
-        EventKit = TestEnv.NewPackage()
+  local EventKit
+  before_each(function()
+    EventKit = TestEnv.NewPackage()
+  end)
+  after_each(TestEnv.Reset)
+
+  it("counts the live connections made through a manual scope", function()
+    local scope = EventKit:CreateScope()
+
+    assert.is_nil(scope:GetAddonName())
+    assert.is_false(scope:IsClosed())
+    assert.are.equal(0, scope:GetActiveCount())
+
+    scope:Connect("PLAYER_LOGIN", noop)
+    scope:Once("PLAYER_LOGOUT", noop)
+    scope:ConnectUnit("UNIT_HEALTH", noop, "player")
+    scope:OnceUnit("UNIT_POWER_UPDATE", noop, "player", "target")
+
+    assert.are.equal(4, scope:GetActiveCount())
+  end)
+
+  it("delivers events to scoped listeners exactly like package-level ones", function()
+    local scope = EventKit:CreateScope()
+    local received = {}
+    scope:Connect("CUSTOM_EVENT", function(eventName, value)
+      received[#received + 1] = eventName .. ":" .. tostring(value)
     end)
-    after_each(TestEnv.Reset)
+    scope:ConnectUnit("UNIT_HEALTH", function(eventName, unit)
+      received[#received + 1] = eventName .. ":" .. unit
+    end, "player")
 
-    it("counts the live connections made through a manual scope", function()
-        local scope = EventKit:CreateScope()
+    TestEnv.Emit("CUSTOM_EVENT", 7)
+    TestEnv.Emit("UNIT_HEALTH", "player")
 
-        assert.is_nil(scope:GetAddonName())
-        assert.is_false(scope:IsClosed())
-        assert.are.equal(0, scope:GetActiveCount())
+    assert.are.same({ "CUSTOM_EVENT:7", "UNIT_HEALTH:player" }, received)
+  end)
 
-        scope:Connect("PLAYER_LOGIN", noop)
-        scope:Once("PLAYER_LOGOUT", noop)
-        scope:ConnectUnit("UNIT_HEALTH", noop, "player")
-        scope:OnceUnit("UNIT_POWER_UPDATE", noop, "player", "target")
+  it("drops an individually disconnected connection from the scope", function()
+    local scope = EventKit:CreateScope()
+    local first = scope:Connect("FIRST_EVENT", noop)
+    local middle = scope:Connect("MIDDLE_EVENT", noop)
+    local last = scope:Connect("LAST_EVENT", noop)
 
-        assert.are.equal(4, scope:GetActiveCount())
+    assert.is_true(middle:Disconnect())
+    assert.are.equal(2, scope:GetActiveCount())
+    assert.is_true(first:Disconnect())
+    assert.is_true(last:Disconnect())
+    assert.are.equal(0, scope:GetActiveCount())
+
+    -- No dead handle stays linked: the intrusive list is empty again.
+    assert.is_false(rawget(scope, "_head"))
+    assert.is_false(rawget(scope, "_tail"))
+    assert.are.equal(0, scope:DisconnectAll())
+  end)
+
+  it("drops a one-shot connection from the scope when it fires", function()
+    local scope = EventKit:CreateScope()
+    local calls = 0
+    local connection = scope:Once("CUSTOM_EVENT", function()
+      calls = calls + 1
     end)
+    local unitConnection = scope:OnceUnit("UNIT_HEALTH", noop, "player")
 
-    it("delivers events to scoped listeners exactly like package-level ones", function()
-        local scope = EventKit:CreateScope()
-        local received = {}
-        scope:Connect("CUSTOM_EVENT", function(eventName, value)
-            received[#received + 1] = eventName .. ":" .. tostring(value)
-        end)
-        scope:ConnectUnit("UNIT_HEALTH", function(eventName, unit)
-            received[#received + 1] = eventName .. ":" .. unit
-        end, "player")
+    TestEnv.Emit("CUSTOM_EVENT")
+    TestEnv.Emit("CUSTOM_EVENT")
+    TestEnv.Emit("UNIT_HEALTH", "player")
 
-        TestEnv.Emit("CUSTOM_EVENT", 7)
-        TestEnv.Emit("UNIT_HEALTH", "player")
+    assert.are.equal(1, calls)
+    assert.is_false(connection:IsConnected())
+    assert.is_false(unitConnection:IsConnected())
+    assert.are.equal(0, scope:GetActiveCount())
+  end)
 
-        assert.are.same({ "CUSTOM_EVENT:7", "UNIT_HEALTH:player" }, received)
-    end)
+  it("disconnects everything in creation order and stays reusable", function()
+    local scope = EventKit:CreateScope()
+    local outside = EventKit:Connect("SHARED_EVENT", noop)
+    local first = scope:Connect("SHARED_EVENT", noop)
+    local second = scope:Connect("OTHER_EVENT", noop)
+    local third = scope:ConnectUnit("UNIT_HEALTH", noop, "player")
 
-    it("drops an individually disconnected connection from the scope", function()
-        local scope = EventKit:CreateScope()
-        local first = scope:Connect("FIRST_EVENT", noop)
-        local middle = scope:Connect("MIDDLE_EVENT", noop)
-        local last = scope:Connect("LAST_EVENT", noop)
+    assert.are.equal(3, scope:DisconnectAll())
 
-        assert.is_true(middle:Disconnect())
-        assert.are.equal(2, scope:GetActiveCount())
-        assert.is_true(first:Disconnect())
-        assert.is_true(last:Disconnect())
-        assert.are.equal(0, scope:GetActiveCount())
+    assert.is_false(first:IsConnected())
+    assert.is_false(second:IsConnected())
+    assert.is_false(third:IsConnected())
+    assert.is_true(outside:IsConnected())
+    assert.is_false(scope:IsClosed())
+    assert.are.equal(0, scope:GetActiveCount())
 
-        -- No dead handle stays linked: the intrusive list is empty again.
-        assert.is_false(rawget(scope, "_head"))
-        assert.is_false(rawget(scope, "_tail"))
-        assert.are.equal(0, scope:DisconnectAll())
-    end)
+    -- The unrelated connection keeps its host registration; the other
+    -- event lost its last listener and was unregistered.
+    local regularFrame = TestEnv.Frames()[1]
+    assert.is_not_nil(regularFrame.registrations.SHARED_EVENT)
+    assert.is_nil(regularFrame.registrations.OTHER_EVENT)
+    assert.are.same({ "OTHER_EVENT" }, regularFrame.unregisterEventCalls)
 
-    it("drops a one-shot connection from the scope when it fires", function()
-        local scope = EventKit:CreateScope()
-        local calls = 0
-        local connection = scope:Once("CUSTOM_EVENT", function()
-            calls = calls + 1
-        end)
-        local unitConnection = scope:OnceUnit("UNIT_HEALTH", noop, "player")
+    local replacement = scope:Connect("OTHER_EVENT", noop)
+    assert.is_true(replacement:IsConnected())
+    assert.are.equal(1, scope:GetActiveCount())
+  end)
 
-        TestEnv.Emit("CUSTOM_EVENT")
-        TestEnv.Emit("CUSTOM_EVENT")
-        TestEnv.Emit("UNIT_HEALTH", "player")
+  it("keeps disconnecting past a host failure and re-raises the first error", function()
+    local scope = EventKit:CreateScope()
+    local first = scope:Connect("FIRST_EVENT", noop)
+    local second = scope:Connect("SECOND_EVENT", noop)
+    local third = scope:Connect("THIRD_EVENT", noop)
 
-        assert.are.equal(1, calls)
-        assert.is_false(connection:IsConnected())
-        assert.is_false(unitConnection:IsConnected())
-        assert.are.equal(0, scope:GetActiveCount())
-    end)
+    local frame = TestEnv.Frames()[1]
+    local unregister = frame.UnregisterEvent
+    local failure = { reason = "host refused" }
+    function frame:UnregisterEvent(eventName)
+      if eventName == "SECOND_EVENT" then
+        error(failure, 0)
+      end
+      return unregister(self, eventName)
+    end
 
-    it("disconnects everything in creation order and stays reusable", function()
-        local scope = EventKit:CreateScope()
-        local outside = EventKit:Connect("SHARED_EVENT", noop)
-        local first = scope:Connect("SHARED_EVENT", noop)
-        local second = scope:Connect("OTHER_EVENT", noop)
-        local third = scope:ConnectUnit("UNIT_HEALTH", noop, "player")
-
-        assert.are.equal(3, scope:DisconnectAll())
-
-        assert.is_false(first:IsConnected())
-        assert.is_false(second:IsConnected())
-        assert.is_false(third:IsConnected())
-        assert.is_true(outside:IsConnected())
-        assert.is_false(scope:IsClosed())
-        assert.are.equal(0, scope:GetActiveCount())
-
-        -- The unrelated connection keeps its host registration; the other
-        -- event lost its last listener and was unregistered.
-        local regularFrame = TestEnv.Frames()[1]
-        assert.is_not_nil(regularFrame.registrations.SHARED_EVENT)
-        assert.is_nil(regularFrame.registrations.OTHER_EVENT)
-        assert.are.same({ "OTHER_EVENT" }, regularFrame.unregisterEventCalls)
-
-        local replacement = scope:Connect("OTHER_EVENT", noop)
-        assert.is_true(replacement:IsConnected())
-        assert.are.equal(1, scope:GetActiveCount())
-    end)
-
-    it("keeps disconnecting past a host failure and re-raises the first error", function()
-        local scope = EventKit:CreateScope()
-        local first = scope:Connect("FIRST_EVENT", noop)
-        local second = scope:Connect("SECOND_EVENT", noop)
-        local third = scope:Connect("THIRD_EVENT", noop)
-
-        local frame = TestEnv.Frames()[1]
-        local unregister = frame.UnregisterEvent
-        local failure = { reason = "host refused" }
-        function frame:UnregisterEvent(eventName)
-            if eventName == "SECOND_EVENT" then
-                error(failure, 0)
-            end
-            return unregister(self, eventName)
-        end
-
-        local ok, raised = pcall(function()
-            scope:DisconnectAll()
-        end)
-
-        assert.is_false(ok)
-        assert.are.equal(failure, raised)
-        assert.is_false(first:IsConnected())
-        assert.is_false(second:IsConnected())
-        assert.is_false(third:IsConnected())
-        assert.are.equal(0, scope:GetActiveCount())
+    local ok, raised = pcall(function()
+      scope:DisconnectAll()
     end)
 
-    it("closes terminally and refuses new connections at the caller's line", function()
-        local scope = EventKit:CreateScope()
-        local connection = scope:Connect("PLAYER_LOGIN", noop)
+    assert.is_false(ok)
+    assert.are.equal(failure, raised)
+    assert.is_false(first:IsConnected())
+    assert.is_false(second:IsConnected())
+    assert.is_false(third:IsConnected())
+    assert.are.equal(0, scope:GetActiveCount())
+  end)
 
-        assert.is_true(scope:Close())
-        assert.is_true(scope:IsClosed())
-        assert.is_false(connection:IsConnected())
-        assert.are.equal(0, scope:GetActiveCount())
-        assert.is_false(scope:Close())
+  it("closes terminally and refuses new connections at the caller's line", function()
+    local scope = EventKit:CreateScope()
+    local connection = scope:Connect("PLAYER_LOGIN", noop)
 
-        expectErrorAtThisSpec("EventKit.Scope:Connect cannot connect in a closed scope", function()
-            scope:Connect("PLAYER_LOGIN", noop)
-        end)
-        expectErrorAtThisSpec("EventKit.Scope:Once cannot connect in a closed scope", function()
-            scope:Once("PLAYER_LOGIN", noop)
-        end)
-        expectErrorAtThisSpec(
-            "EventKit.Scope:ConnectUnit cannot connect in a closed scope",
-            function()
-                scope:ConnectUnit("UNIT_HEALTH", noop, "player")
-            end
-        )
-        expectErrorAtThisSpec("EventKit.Scope:OnceUnit cannot connect in a closed scope", function()
-            scope:OnceUnit("UNIT_HEALTH", noop, "player")
-        end)
+    assert.is_true(scope:Close())
+    assert.is_true(scope:IsClosed())
+    assert.is_false(connection:IsConnected())
+    assert.are.equal(0, scope:GetActiveCount())
+    assert.is_false(scope:Close())
+
+    expectErrorAtThisSpec("EventKit.Scope:Connect cannot connect in a closed scope", function()
+      scope:Connect("PLAYER_LOGIN", noop)
+    end)
+    expectErrorAtThisSpec("EventKit.Scope:Once cannot connect in a closed scope", function()
+      scope:Once("PLAYER_LOGIN", noop)
+    end)
+    expectErrorAtThisSpec("EventKit.Scope:ConnectUnit cannot connect in a closed scope", function()
+      scope:ConnectUnit("UNIT_HEALTH", noop, "player")
+    end)
+    expectErrorAtThisSpec("EventKit.Scope:OnceUnit cannot connect in a closed scope", function()
+      scope:OnceUnit("UNIT_HEALTH", noop, "player")
+    end)
+  end)
+
+  it("reports scope argument errors at the caller's line with the scope's name", function()
+    local scope = EventKit:CreateScope()
+
+    expectErrorAtThisSpec("EventKit.Scope:Connect eventName must be a non-empty string", function()
+      scope:Connect("", noop)
+    end)
+    expectErrorAtThisSpec("EventKit.Scope:Once callback must be a function", function()
+      scope:Once("PLAYER_LOGIN", "nope")
+    end)
+    expectErrorAtThisSpec("EventKit.Scope:ConnectUnit requires at least one unit token", function()
+      scope:ConnectUnit("UNIT_HEALTH", noop)
+    end)
+    expectErrorAtThisSpec(
+      "EventKit.Scope:OnceUnit accepts at most 2 distinct unit tokens",
+      function()
+        scope:OnceUnit("UNIT_HEALTH", noop, "player", "target", "focus")
+      end
+    )
+    expectErrorAtThisSpec("EventKit.Scope:Connect could not register event", function()
+      TestEnv.FailNextRegisterEvent()
+      scope:Connect("PLAYER_LOGIN", noop)
+    end)
+    assert.are.equal(0, scope:GetActiveCount())
+  end)
+
+  it("lets the dispatch in flight finish when a scope closes during it", function()
+    local scope = EventKit:CreateScope()
+    local order = {}
+    -- Connected first, so it runs before the scope's own listeners.
+    EventKit:Once("PLAYER_LOGOUT", function()
+      order[#order + 1] = "closer"
+      assert.is_true(scope:Close())
+      assert.is_true(scope:IsClosed())
+    end)
+    scope:Connect("PLAYER_LOGOUT", function()
+      order[#order + 1] = "save"
+    end)
+    scope:Once("PLAYER_LOGOUT", function()
+      order[#order + 1] = "once"
+    end)
+    local otherEvents = 0
+    scope:Connect("CHAT_MSG_SAY", function()
+      otherEvents = otherEvents + 1
     end)
 
-    it("reports scope argument errors at the caller's line with the scope's name", function()
-        local scope = EventKit:CreateScope()
+    TestEnv.Emit("PLAYER_LOGOUT")
 
-        expectErrorAtThisSpec(
-            "EventKit.Scope:Connect eventName must be a non-empty string",
-            function()
-                scope:Connect("", noop)
-            end
-        )
-        expectErrorAtThisSpec("EventKit.Scope:Once callback must be a function", function()
-            scope:Once("PLAYER_LOGIN", "nope")
-        end)
-        expectErrorAtThisSpec(
-            "EventKit.Scope:ConnectUnit requires at least one unit token",
-            function()
-                scope:ConnectUnit("UNIT_HEALTH", noop)
-            end
-        )
-        expectErrorAtThisSpec(
-            "EventKit.Scope:OnceUnit accepts at most 2 distinct unit tokens",
-            function()
-                scope:OnceUnit("UNIT_HEALTH", noop, "player", "target", "focus")
-            end
-        )
-        expectErrorAtThisSpec("EventKit.Scope:Connect could not register event", function()
-            TestEnv.FailNextRegisterEvent()
-            scope:Connect("PLAYER_LOGIN", noop)
-        end)
-        assert.are.equal(0, scope:GetActiveCount())
+    -- Close prevents future deliveries, never the one in flight.
+    assert.are.same({ "closer", "save", "once" }, order)
+    assert.are.equal(0, scope:GetActiveCount())
+    TestEnv.Emit("PLAYER_LOGOUT")
+    TestEnv.Emit("CHAT_MSG_SAY")
+    assert.are.equal(3, #order)
+    assert.are.equal(0, otherEvents)
+    assert.is_nil(TestEnv.Frames()[1].registrations.CHAT_MSG_SAY)
+  end)
+
+  it("refuses new connections at once when a scope closes during a dispatch", function()
+    local scope = EventKit:CreateScope()
+    scope:Connect("CUSTOM_EVENT", function() end)
+    local refused = nil
+    EventKit:Connect("CUSTOM_EVENT", function()
+      scope:Close()
+      refused = not pcall(scope.Connect, scope, "OTHER_EVENT", function() end)
     end)
 
-    it("lets the dispatch in flight finish when a scope closes during it", function()
-        local scope = EventKit:CreateScope()
-        local order = {}
-        -- Connected first, so it runs before the scope's own listeners.
-        EventKit:Once("PLAYER_LOGOUT", function()
-            order[#order + 1] = "closer"
-            assert.is_true(scope:Close())
-            assert.is_true(scope:IsClosed())
-        end)
-        scope:Connect("PLAYER_LOGOUT", function()
-            order[#order + 1] = "save"
-        end)
-        scope:Once("PLAYER_LOGOUT", function()
-            order[#order + 1] = "once"
-        end)
-        local otherEvents = 0
-        scope:Connect("CHAT_MSG_SAY", function()
-            otherEvents = otherEvents + 1
-        end)
+    TestEnv.Emit("CUSTOM_EVENT")
 
-        TestEnv.Emit("PLAYER_LOGOUT")
+    assert.is_true(refused)
+    assert.are.equal(0, scope:GetActiveCount())
+  end)
 
-        -- Close prevents future deliveries, never the one in flight.
-        assert.are.same({ "closer", "save", "once" }, order)
-        assert.are.equal(0, scope:GetActiveCount())
-        TestEnv.Emit("PLAYER_LOGOUT")
-        TestEnv.Emit("CHAT_MSG_SAY")
-        assert.are.equal(3, #order)
-        assert.are.equal(0, otherEvents)
-        assert.is_nil(TestEnv.Frames()[1].registrations.CHAT_MSG_SAY)
+  it("reports a failure of the deferred sweep through the host error handler", function()
+    local scope = EventKit:CreateScope()
+    scope:Connect("FAILING_EVENT", function() end)
+    EventKit:Connect("CUSTOM_EVENT", function()
+      scope:Close()
+    end)
+    local frame = TestEnv.Frames()[1]
+    local unregister = frame.UnregisterEvent
+    function frame:UnregisterEvent(eventName)
+      if eventName == "FAILING_EVENT" then
+        error("host refused", 0)
+      end
+      return unregister(self, eventName)
+    end
+
+    TestEnv.Emit("CUSTOM_EVENT")
+
+    local reported = TestEnv.ReportedErrors()
+    assert.are.equal(1, #reported)
+    assert.are.equal("host refused", reported[1])
+    assert.are.equal(0, scope:GetActiveCount())
+  end)
+
+  it("names the misuse when a scope method is called without a scope", function()
+    local calls = {
+      { "EventKit.Scope:Connect", EventKit.Scope.Connect },
+      { "EventKit.Scope:Once", EventKit.Scope.Once },
+      { "EventKit.Scope:ConnectUnit", EventKit.Scope.ConnectUnit },
+      { "EventKit.Scope:OnceUnit", EventKit.Scope.OnceUnit },
+      { "EventKit.Scope:DisconnectAll", EventKit.Scope.DisconnectAll },
+      { "EventKit.Scope:Close", EventKit.Scope.Close },
+      { "EventKit.Scope:IsClosed", EventKit.Scope.IsClosed },
+      { "EventKit.Scope:GetAddonName", EventKit.Scope.GetAddonName },
+      { "EventKit.Scope:GetActiveCount", EventKit.Scope.GetActiveCount },
+    }
+
+    for index = 1, #calls do
+      local label, method = calls[index][1], calls[index][2]
+      expectErrorAtThisSpec(label .. " must be called on an EventKit scope", function()
+        method({}, "PLAYER_LOGIN", noop)
+      end)
+    end
+  end)
+
+  it("allocates nothing per event for scoped listeners #allocation", function()
+    local scope = EventKit:CreateScope()
+    local sink = 0
+    for _ = 1, 8 do
+      scope:Connect("CUSTOM_EVENT", function(_, first, second)
+        sink = sink + first + second
+      end)
+    end
+
+    local allocated = allocatedKilobytes(function()
+      for _ = 1, 20000 do
+        TestEnv.Emit("CUSTOM_EVENT", 1, 2)
+      end
     end)
 
-    it("refuses new connections at once when a scope closes during a dispatch", function()
-        local scope = EventKit:CreateScope()
-        scope:Connect("CUSTOM_EVENT", function() end)
-        local refused = nil
-        EventKit:Connect("CUSTOM_EVENT", function()
-            scope:Close()
-            refused = not pcall(scope.Connect, scope, "OTHER_EVENT", function() end)
-        end)
-
-        TestEnv.Emit("CUSTOM_EVENT")
-
-        assert.is_true(refused)
-        assert.are.equal(0, scope:GetActiveCount())
-    end)
-
-    it("reports a failure of the deferred sweep through the host error handler", function()
-        local scope = EventKit:CreateScope()
-        scope:Connect("FAILING_EVENT", function() end)
-        EventKit:Connect("CUSTOM_EVENT", function()
-            scope:Close()
-        end)
-        local frame = TestEnv.Frames()[1]
-        local unregister = frame.UnregisterEvent
-        function frame:UnregisterEvent(eventName)
-            if eventName == "FAILING_EVENT" then
-                error("host refused", 0)
-            end
-            return unregister(self, eventName)
-        end
-
-        TestEnv.Emit("CUSTOM_EVENT")
-
-        local reported = TestEnv.ReportedErrors()
-        assert.are.equal(1, #reported)
-        assert.are.equal("host refused", reported[1])
-        assert.are.equal(0, scope:GetActiveCount())
-    end)
-
-    it("names the misuse when a scope method is called without a scope", function()
-        local calls = {
-            { "EventKit.Scope:Connect", EventKit.Scope.Connect },
-            { "EventKit.Scope:Once", EventKit.Scope.Once },
-            { "EventKit.Scope:ConnectUnit", EventKit.Scope.ConnectUnit },
-            { "EventKit.Scope:OnceUnit", EventKit.Scope.OnceUnit },
-            { "EventKit.Scope:DisconnectAll", EventKit.Scope.DisconnectAll },
-            { "EventKit.Scope:Close", EventKit.Scope.Close },
-            { "EventKit.Scope:IsClosed", EventKit.Scope.IsClosed },
-            { "EventKit.Scope:GetAddonName", EventKit.Scope.GetAddonName },
-            { "EventKit.Scope:GetActiveCount", EventKit.Scope.GetActiveCount },
-        }
-
-        for index = 1, #calls do
-            local label, method = calls[index][1], calls[index][2]
-            expectErrorAtThisSpec(label .. " must be called on an EventKit scope", function()
-                method({}, "PLAYER_LOGIN", noop)
-            end)
-        end
-    end)
-
-    it("allocates nothing per event for scoped listeners #allocation", function()
-        local scope = EventKit:CreateScope()
-        local sink = 0
-        for _ = 1, 8 do
-            scope:Connect("CUSTOM_EVENT", function(_, first, second)
-                sink = sink + first + second
-            end)
-        end
-
-        local allocated = allocatedKilobytes(function()
-            for _ = 1, 20000 do
-                TestEnv.Emit("CUSTOM_EVENT", 1, 2)
-            end
-        end)
-
-        assert.are.equal(8 * 3 * 20000, sink)
-        assert.is_true(allocated < 4, "dispatch allocated " .. allocated .. " KiB")
-    end)
+    assert.are.equal(8 * 3 * 20000, sink)
+    assert.is_true(allocated < 4, "dispatch allocated " .. allocated .. " KiB")
+  end)
 end)
 
 describe("EventKit addon scopes", function()
-    local EventKit
-    before_each(function()
-        EventKit = TestEnv.NewPackage()
+  local EventKit
+  before_each(function()
+    EventKit = TestEnv.NewPackage()
+  end)
+  after_each(TestEnv.Reset)
+
+  it("returns one canonical scope per addon name", function()
+    local scope = EventKit:ForAddon("MyAddon")
+
+    assert.are.equal(scope, EventKit:ForAddon("MyAddon"))
+    assert.are_not.equal(scope, EventKit:ForAddon("OtherAddon"))
+    assert.are.equal("MyAddon", scope:GetAddonName())
+  end)
+
+  it("rejects an invalid addon name at the caller's line", function()
+    expectErrorAtThisSpec("EventKit:ForAddon addonName must be a non-empty string", function()
+      EventKit:ForAddon("")
     end)
-    after_each(TestEnv.Reset)
+    expectErrorAtThisSpec(
+      "EventKit:CloseAddonScopes addonName must be a non-empty string",
+      function()
+        EventKit:CloseAddonScopes(42)
+      end
+    )
+  end)
 
-    it("returns one canonical scope per addon name", function()
-        local scope = EventKit:ForAddon("MyAddon")
+  it("closes an addon's scope through CloseAddonScopes and keeps it canonical", function()
+    local scope = EventKit:ForAddon("MyAddon")
+    local connection = scope:Connect("PLAYER_LOGIN", noop)
+    local other = EventKit:ForAddon("OtherAddon"):Connect("PLAYER_LOGIN", noop)
 
-        assert.are.equal(scope, EventKit:ForAddon("MyAddon"))
-        assert.are_not.equal(scope, EventKit:ForAddon("OtherAddon"))
-        assert.are.equal("MyAddon", scope:GetAddonName())
+    assert.is_true(EventKit:CloseAddonScopes("MyAddon"))
+
+    assert.is_true(scope:IsClosed())
+    assert.is_false(connection:IsConnected())
+    assert.is_true(other:IsConnected())
+    assert.are.equal(scope, EventKit:ForAddon("MyAddon"))
+    assert.is_false(EventKit:CloseAddonScopes("MyAddon"))
+    expectErrorAtThisSpec("cannot connect in a closed scope", function()
+      EventKit:ForAddon("MyAddon"):Connect("PLAYER_LOGIN", noop)
     end)
+  end)
 
-    it("rejects an invalid addon name at the caller's line", function()
-        expectErrorAtThisSpec("EventKit:ForAddon addonName must be a non-empty string", function()
-            EventKit:ForAddon("")
-        end)
-        expectErrorAtThisSpec(
-            "EventKit:CloseAddonScopes addonName must be a non-empty string",
-            function()
-                EventKit:CloseAddonScopes(42)
-            end
-        )
+  it("records nothing for an addon that never asked for a scope", function()
+    assert.is_false(EventKit:CloseAddonScopes("LateAddon"))
+
+    assert.is_nil(rawget(rawget(EventKit, "_state").addonScopes, "LateAddon"))
+    local scope = EventKit:ForAddon("LateAddon")
+    assert.is_false(scope:IsClosed())
+    assert.are.equal("LateAddon", scope:GetAddonName())
+  end)
+
+  it("refuses CloseAddonScopes called without the facade, at the caller's line", function()
+    expectErrorAtThisSpec(
+      "EventKit:CloseAddonScopes must be called on the EventKit facade",
+      function()
+        EventKit.CloseAddonScopes("MyAddon")
+      end
+    )
+  end)
+
+  it("keeps hand-written two-step wiring working beside its own logout close", function()
+    -- Before revision 11 a consumer without LifecycleKit wired the second
+    -- step to PLAYER_LOGOUT itself. EventKit now closes the scope from its
+    -- own one-shot as well (LogoutCoverage_spec.lua); the old wiring still
+    -- works, and the second close is a harmless `false`.
+    local scope = EventKit:ForAddon("MyAddon")
+    local combatEvents = 0
+    scope:Connect("PLAYER_REGEN_DISABLED", function()
+      combatEvents = combatEvents + 1
     end)
-
-    it("closes an addon's scope through CloseAddonScopes and keeps it canonical", function()
-        local scope = EventKit:ForAddon("MyAddon")
-        local connection = scope:Connect("PLAYER_LOGIN", noop)
-        local other = EventKit:ForAddon("OtherAddon"):Connect("PLAYER_LOGIN", noop)
-
-        assert.is_true(EventKit:CloseAddonScopes("MyAddon"))
-
-        assert.is_true(scope:IsClosed())
-        assert.is_false(connection:IsConnected())
-        assert.is_true(other:IsConnected())
-        assert.are.equal(scope, EventKit:ForAddon("MyAddon"))
-        assert.is_false(EventKit:CloseAddonScopes("MyAddon"))
-        expectErrorAtThisSpec("cannot connect in a closed scope", function()
-            EventKit:ForAddon("MyAddon"):Connect("PLAYER_LOGIN", noop)
-        end)
-    end)
-
-    it("records nothing for an addon that never asked for a scope", function()
-        assert.is_false(EventKit:CloseAddonScopes("LateAddon"))
-
-        assert.is_nil(rawget(rawget(EventKit, "_state").addonScopes, "LateAddon"))
-        local scope = EventKit:ForAddon("LateAddon")
-        assert.is_false(scope:IsClosed())
-        assert.are.equal("LateAddon", scope:GetAddonName())
-    end)
-
-    it("refuses CloseAddonScopes called without the facade, at the caller's line", function()
-        expectErrorAtThisSpec(
-            "EventKit:CloseAddonScopes must be called on the EventKit facade",
-            function()
-                EventKit.CloseAddonScopes("MyAddon")
-            end
-        )
-    end)
-
-    it("keeps hand-written two-step wiring working beside its own logout close", function()
-        -- Before revision 11 a consumer without LifecycleKit wired the second
-        -- step to PLAYER_LOGOUT itself. EventKit now closes the scope from its
-        -- own one-shot as well (LogoutCoverage_spec.lua); the old wiring still
-        -- works, and the second close is a harmless `false`.
-        local scope = EventKit:ForAddon("MyAddon")
-        local combatEvents = 0
-        scope:Connect("PLAYER_REGEN_DISABLED", function()
-            combatEvents = combatEvents + 1
-        end)
-        EventKit:Once("PLAYER_LOGOUT", function()
-            EventKit:CloseAddonScopes("MyAddon")
-        end)
-
-        TestEnv.Emit("PLAYER_REGEN_DISABLED")
-        TestEnv.Emit("PLAYER_LOGOUT")
-        TestEnv.Emit("PLAYER_REGEN_DISABLED")
-
-        assert.are.equal(1, combatEvents)
-        assert.is_true(scope:IsClosed())
-        assert.is_nil(TestEnv.Frames()[1].registrations.PLAYER_REGEN_DISABLED)
+    EventKit:Once("PLAYER_LOGOUT", function()
+      EventKit:CloseAddonScopes("MyAddon")
     end)
 
-    it("keeps addon scopes and the scope prototype across duplicate embedding", function()
-        local scope = EventKit:ForAddon("MyAddon")
-        local prototype = EventKit.Scope
-        local reloaded = TestEnv.ReloadPackage()
+    TestEnv.Emit("PLAYER_REGEN_DISABLED")
+    TestEnv.Emit("PLAYER_LOGOUT")
+    TestEnv.Emit("PLAYER_REGEN_DISABLED")
 
-        assert.are.equal(prototype, reloaded.Scope)
-        assert.are.equal(scope, reloaded:ForAddon("MyAddon"))
-        scope:Connect("PLAYER_LOGIN", noop)
-        assert.are.equal(1, scope:GetActiveCount())
-    end)
+    assert.are.equal(1, combatEvents)
+    assert.is_true(scope:IsClosed())
+    assert.is_nil(TestEnv.Frames()[1].registrations.PLAYER_REGEN_DISABLED)
+  end)
+
+  it("keeps addon scopes and the scope prototype across duplicate embedding", function()
+    local scope = EventKit:ForAddon("MyAddon")
+    local prototype = EventKit.Scope
+    local reloaded = TestEnv.ReloadPackage()
+
+    assert.are.equal(prototype, reloaded.Scope)
+    assert.are.equal(scope, reloaded:ForAddon("MyAddon"))
+    scope:Connect("PLAYER_LOGIN", noop)
+    assert.are.equal(1, scope:GetActiveCount())
+  end)
 end)

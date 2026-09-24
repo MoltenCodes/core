@@ -7,25 +7,25 @@ local SchemaKit = MoltenCodes.Registries[2]:Get("schemaKit", 1)
 local S = SchemaKit
 
 local BarSettings = SchemaKit:Seal(S.table({
-    fields = {
-        enabled = S.optional(S.boolean(), true),
-        scale = S.optional(S.number({ min = 0.5, max = 2 }), 1),
-        anchor = S.optional(S.string({ oneOf = { "TOP", "BOTTOM" } }), "TOP"),
-        buttons = S.optional(S.array({ of = S.number({ integer = true }), max = 12 }), {}),
-    },
+  fields = {
+    enabled = S.optional(S.boolean(), true),
+    scale = S.optional(S.number({ min = 0.5, max = 2 }), 1),
+    anchor = S.optional(S.string({ oneOf = { "TOP", "BOTTOM" } }), "TOP"),
+    buttons = S.optional(S.array({ of = S.number({ integer = true }), max = 12 }), {}),
+  },
 }))
 
 local ok, failure = BarSettings:Check(saved)
 if not ok then
-    print(failure.path, failure.rule, failure.expected, failure.found)
-    -- scale   max   number <= 2   larger number
+  print(failure.path, failure.rule, failure.expected, failure.found)
+  -- scale   max   number <= 2   larger number
 end
 
 local applied, settings = BarSettings:Apply(saved) -- a copy with the defaults filled in
 
 function MyBar:Configure(options)
-    BarSettings:Assert(options, "MyBar:Configure options", 2)
-    -- MyBar:Configure options.scale: expected number <= 2, found larger number
+  BarSettings:Assert(options, "MyBar:Configure options", 2)
+  -- MyBar:Configure options.scale: expected number <= 2, found larger number
 end
 ```
 

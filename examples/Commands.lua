@@ -22,27 +22,27 @@ local L = LocaleKit:GetLocale(ADDON_NAME)
 ---@param registered boolean|nil
 ---@param reason string|nil
 local function reportRegistration(name, registered, reason)
-    if not registered then
-        print(LocaleKit:Format(L["Could not register /%s: %s."], name, tostring(reason)))
-    end
+  if not registered then
+    print(LocaleKit:Format(L["Could not register /%s: %s."], name, tostring(reason)))
+  end
 end
 
 ---Register the addon's slash commands into `commands`.
 ---@alias ExampleAddon.RegisterCommands fun(commands: CommandKit.Scope, options: OptionsKit.Tree, window: ExampleAddon.Window)
 ---@type ExampleAddon.RegisterCommands
 local function registerCommands(commands, options, window)
-    local bound, boundReason = commands:BindOptions(options, "exampleaddon", {
-        description = L["Example Addon settings."],
-    })
-    reportRegistration("exampleaddon", bound, boundReason)
+  local bound, boundReason = commands:BindOptions(options, "exampleaddon", {
+    description = L["Example Addon settings."],
+  })
+  reportRegistration("exampleaddon", bound, boundReason)
 
-    local registered, registeredReason = commands:Register("exampleaddonwindow", {
-        description = L["Open or close the settings window."],
-        handler = function()
-            window:Toggle()
-        end,
-    })
-    reportRegistration("exampleaddonwindow", registered, registeredReason)
+  local registered, registeredReason = commands:Register("exampleaddonwindow", {
+    description = L["Open or close the settings window."],
+    handler = function()
+      window:Toggle()
+    end,
+  })
+  reportRegistration("exampleaddonwindow", registered, registeredReason)
 end
 
 ADDON_TABLE.Modules:ProvideValue("RegisterCommands", registerCommands)

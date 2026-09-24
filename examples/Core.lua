@@ -27,17 +27,17 @@ local REGISTRY_API = 2
 --- HookKit are embedded too but reached only through other Kits: ModuleKit's
 --- module scopes, EventKit's `Coalesce`, WidgetKit's pools.
 local REQUIRED_APIS = {
-    clientKit = 1,
-    commandKit = 1,
-    eventKit = 1,
-    lifecycleKit = 1,
-    localeKit = 1,
-    moduleKit = 1,
-    optionsKit = 1,
-    readinessKit = 1,
-    schemaKit = 1,
-    settingsKit = 1,
-    widgetKit = 1,
+  clientKit = 1,
+  commandKit = 1,
+  eventKit = 1,
+  lifecycleKit = 1,
+  localeKit = 1,
+  moduleKit = 1,
+  optionsKit = 1,
+  readinessKit = 1,
+  schemaKit = 1,
+  settingsKit = 1,
+  widgetKit = 1,
 }
 
 -- Resolving the framework ---------------------------------------------------
@@ -50,21 +50,21 @@ local REQUIRED_APIS = {
 ---Return the Registry facade for the API generation this addon targets.
 ---@return Registry
 local function resolveRegistry()
-    -- `MoltenCodes` is the documented global the framework publishes itself
-    -- under; reaching it is the whole point of this example.
-    -- selene: allow(undefined_variable)
-    local namespace = MoltenCodes
-    if type(namespace) ~= "table" then
-        error(ADDON_NAME .. " requires MoltenCodes Registry API " .. REGISTRY_API, 0)
-    end
+  -- `MoltenCodes` is the documented global the framework publishes itself
+  -- under; reaching it is the whole point of this example.
+  -- selene: allow(undefined_variable)
+  local namespace = MoltenCodes
+  if type(namespace) ~= "table" then
+    error(ADDON_NAME .. " requires MoltenCodes Registry API " .. REGISTRY_API, 0)
+  end
 
-    local generations = namespace.Registries
-    local registry = generations and generations[REGISTRY_API] or namespace.Registry
-    if type(registry) ~= "table" or registry.API ~= REGISTRY_API then
-        error(ADDON_NAME .. " requires MoltenCodes Registry API " .. REGISTRY_API, 0)
-    end
+  local generations = namespace.Registries
+  local registry = generations and generations[REGISTRY_API] or namespace.Registry
+  if type(registry) ~= "table" or registry.API ~= REGISTRY_API then
+    error(ADDON_NAME .. " requires MoltenCodes Registry API " .. REGISTRY_API, 0)
+  end
 
-    return registry
+  return registry
 end
 
 local Registry = resolveRegistry()
@@ -76,20 +76,20 @@ local Registry = resolveRegistry()
 ---@param packageName string
 ---@return table
 local function requirePackage(packageName)
-    local api = REQUIRED_APIS[packageName]
-    local implementation = Registry:Get(packageName, api)
-    if type(implementation) == "nil" then
-        error(
-            ADDON_NAME
-                .. " requires MoltenCodes "
-                .. packageName
-                .. " API "
-                .. api
-                .. "; add it to embeds.xml",
-            0
-        )
-    end
-    return implementation
+  local api = REQUIRED_APIS[packageName]
+  local implementation = Registry:Get(packageName, api)
+  if type(implementation) == "nil" then
+    error(
+      ADDON_NAME
+        .. " requires MoltenCodes "
+        .. packageName
+        .. " API "
+        .. api
+        .. "; add it to embeds.xml",
+      0
+    )
+  end
+  return implementation
 end
 
 ---The Kits the addon's files share, resolved once.
@@ -106,17 +106,17 @@ end
 ---@field SettingsKit SettingsKit
 ---@field WidgetKit WidgetKit
 local Kits = {
-    ClientKit = requirePackage("clientKit"),
-    CommandKit = requirePackage("commandKit"),
-    EventKit = requirePackage("eventKit"),
-    LifecycleKit = requirePackage("lifecycleKit"),
-    LocaleKit = requirePackage("localeKit"),
-    ModuleKit = requirePackage("moduleKit"),
-    OptionsKit = requirePackage("optionsKit"),
-    ReadinessKit = requirePackage("readinessKit"),
-    SchemaKit = requirePackage("schemaKit"),
-    SettingsKit = requirePackage("settingsKit"),
-    WidgetKit = requirePackage("widgetKit"),
+  ClientKit = requirePackage("clientKit"),
+  CommandKit = requirePackage("commandKit"),
+  EventKit = requirePackage("eventKit"),
+  LifecycleKit = requirePackage("lifecycleKit"),
+  LocaleKit = requirePackage("localeKit"),
+  ModuleKit = requirePackage("moduleKit"),
+  OptionsKit = requirePackage("optionsKit"),
+  ReadinessKit = requirePackage("readinessKit"),
+  SchemaKit = requirePackage("schemaKit"),
+  SettingsKit = requirePackage("settingsKit"),
+  WidgetKit = requirePackage("widgetKit"),
 }
 
 -- Per-addon handles ---------------------------------------------------------
@@ -169,32 +169,32 @@ local REMINDER_INTERVAL_SECONDS = 60
 ---@param template string a key of the addon's locale table
 ---@param ... string|number
 local function say(template, ...)
-    local L = Kits.LocaleKit:GetLocale(ADDON_NAME)
-    print(Kits.LocaleKit:Format(L[template], ...))
+  local L = Kits.LocaleKit:GetLocale(ADDON_NAME)
+  print(Kits.LocaleKit:Format(L[template], ...))
 end
 
 ---Greet the player once the module is enabled, counting greetings across
 ---sessions in the database's `global` scope.
 ---@param self ExampleAddon.Main
 local function greet(self)
-    self.database.global.greetings = self.database.global.greetings + 1
-    if not self.database.profile.greet then
-        return
-    end
+  self.database.global.greetings = self.database.global.greetings + 1
+  if not self.database.profile.greet then
+    return
+  end
 
-    -- ClientKit probes what the running client can do. Test a capability like
-    -- this one rather than a version number: the answer stays right when a
-    -- patch moves a feature between flavours. Secret values exist on Retail
-    -- 12.x only; see docs/EMBEDDING.md.
-    local L = Kits.LocaleKit:GetLocale(ADDON_NAME)
-    local secretValues = Kits.ClientKit:Has("secretValues") and L["yes"] or L["no"]
-    say(
-        "%1$s is ready on the %2$s client (secret values: %3$s); greeting #%4$d.",
-        ADDON_NAME,
-        Kits.ClientKit:GetFlavor(),
-        secretValues,
-        self.database.global.greetings
-    )
+  -- ClientKit probes what the running client can do. Test a capability like
+  -- this one rather than a version number: the answer stays right when a
+  -- patch moves a feature between flavours. Secret values exist on Retail
+  -- 12.x only; see docs/EMBEDDING.md.
+  local L = Kits.LocaleKit:GetLocale(ADDON_NAME)
+  local secretValues = Kits.ClientKit:Has("secretValues") and L["yes"] or L["no"]
+  say(
+    "%1$s is ready on the %2$s client (secret values: %3$s); greeting #%4$d.",
+    ADDON_NAME,
+    Kits.ClientKit:GetFlavor(),
+    secretValues,
+    self.database.global.greetings
+  )
 end
 
 ---Wait for spell data that the client loads after login.
@@ -203,22 +203,22 @@ end
 ---a module scope, so the module closes it itself in `onDisable`.
 ---@param self ExampleAddon.Main
 local function waitForSpellData(self)
-    local gate = Kits.ReadinessKit:Gate(ADDON_NAME .. ".spellData", function()
-        -- Absence of a value the addon did not create is tested with `type`, the
-        -- repository rule: it never compares anything, and on Retail 12.x a client
-        -- value may be secret (docs/EMBEDDING.md, "Secret values").
-        return type(Kits.ClientKit:GetSpellInfo(SPELL_ID)) ~= "nil"
-    end, { intervalSeconds = 1, timeoutSeconds = 30 })
-    self.spellGate = gate
+  local gate = Kits.ReadinessKit:Gate(ADDON_NAME .. ".spellData", function()
+    -- Absence of a value the addon did not create is tested with `type`, the
+    -- repository rule: it never compares anything, and on Retail 12.x a client
+    -- value may be secret (docs/EMBEDDING.md, "Secret values").
+    return type(Kits.ClientKit:GetSpellInfo(SPELL_ID)) ~= "nil"
+  end, { intervalSeconds = 1, timeoutSeconds = 30 })
+  self.spellGate = gate
 
-    gate:Await(function(ready, reason)
-        if ready then
-            local spell = Kits.ClientKit:GetSpellInfo(SPELL_ID)
-            say("Spell data is ready: %s.", spell and spell.name or tostring(SPELL_ID))
-        else
-            say("Spell data did not arrive (%s).", reason)
-        end
-    end)
+  gate:Await(function(ready, reason)
+    if ready then
+      local spell = Kits.ClientKit:GetSpellInfo(SPELL_ID)
+      say("Spell data is ready: %s.", spell and spell.name or tostring(SPELL_ID))
+    else
+      say("Spell data did not arrive (%s).", reason)
+    end
+  end)
 end
 
 ---Connect the module's events, timer, hook and commands through its scope.
@@ -229,82 +229,82 @@ end
 ---not embedded; this addon embeds all of them, so they are cast.
 ---@param self ExampleAddon.Main
 local function connectScope(self)
-    local events = self.scope.Events --[[@as EventKit.Scope]]
-    local timers = self.scope.Timers --[[@as TimerKit.Scope]]
-    local hooks = self.scope.Hooks --[[@as HookKit.Scope]]
-    local commands = self.scope.Commands --[[@as CommandKit.Scope]]
+  local events = self.scope.Events --[[@as EventKit.Scope]]
+  local timers = self.scope.Timers --[[@as TimerKit.Scope]]
+  local hooks = self.scope.Hooks --[[@as HookKit.Scope]]
+  local commands = self.scope.Commands --[[@as CommandKit.Scope]]
 
-    -- One shared event bus serves every addon in the session. Keep a handler
-    -- short and never call a protected function from it.
-    events:Connect("PLAYER_ENTERING_WORLD", function(_, isInitialLogin, isReloadingUi)
-        say(
-            "Entered the world (login: %s, reload: %s).",
-            tostring(isInitialLogin),
-            tostring(isReloadingUi)
-        )
-    end)
+  -- One shared event bus serves every addon in the session. Keep a handler
+  -- short and never call a protected function from it.
+  events:Connect("PLAYER_ENTERING_WORLD", function(_, isInitialLogin, isReloadingUi)
+    say(
+      "Entered the world (login: %s, reload: %s).",
+      tostring(isInitialLogin),
+      tostring(isReloadingUi)
+    )
+  end)
 
-    -- `EventKit:Coalesce`, owned by the scope: a burst of health events becomes
-    -- one callback per interval, with the set of units that changed. It needs
-    -- SchedulerKit embedded. The set is reused: read it, never keep it.
-    events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, HEALTH_INTERVAL_SECONDS, function(units)
-        if not self.database.profile.announceHealth then
-            return
-        end
-        for unit in pairs(units) do
-            say("Health changed: %s.", unit)
-        end
-    end, { units = { "player" } })
+  -- `EventKit:Coalesce`, owned by the scope: a burst of health events becomes
+  -- one callback per interval, with the set of units that changed. It needs
+  -- SchedulerKit embedded. The set is reused: read it, never keep it.
+  events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, HEALTH_INTERVAL_SECONDS, function(units)
+    if not self.database.profile.announceHealth then
+      return
+    end
+    for unit in pairs(units) do
+      say("Health changed: %s.", unit)
+    end
+  end, { units = { "player" } })
 
-    timers:Every(REMINDER_INTERVAL_SECONDS, function()
-        say("%s is still running.", ADDON_NAME)
-    end)
+  timers:Every(REMINDER_INTERVAL_SECONDS, function()
+    say("%s is still running.", ADDON_NAME)
+  end)
 
-    -- A secure post-hook reacts without tainting the hooked function. Opening
-    -- the game menu closes the settings window.
-    hooks:SecureHook("ToggleGameMenu", function()
-        self.window:Hide()
-    end)
+  -- A secure post-hook reacts without tainting the hooked function. Opening
+  -- the game menu closes the settings window.
+  hooks:SecureHook("ToggleGameMenu", function()
+    self.window:Hide()
+  end)
 
-    self.registerCommands(commands, self.options, self.window)
+  self.registerCommands(commands, self.options, self.window)
 end
 
 local main = modules:CreateModule("Main", {
-    -- Injection names what the module needs; the files that provide it load
-    -- after this one, which is fine: names are resolved when the module
-    -- initializes, in the `loaded` phase.
-    inject = {
-        database = "Database",
-        options = "Options",
-        window = "Window",
-        registerCommands = "RegisterCommands",
-    },
+  -- Injection names what the module needs; the files that provide it load
+  -- after this one, which is fine: names are resolved when the module
+  -- initializes, in the `loaded` phase.
+  inject = {
+    database = "Database",
+    options = "Options",
+    window = "Window",
+    registerCommands = "RegisterCommands",
+  },
 
-    ---@param self ExampleAddon.Main
-    ---@param injections table<string, any>
-    onInitialize = function(self, injections)
-        self.database = injections.database
-        self.options = injections.options
-        self.window = injections.window
-        self.registerCommands = injections.registerCommands
-    end,
+  ---@param self ExampleAddon.Main
+  ---@param injections table<string, any>
+  onInitialize = function(self, injections)
+    self.database = injections.database
+    self.options = injections.options
+    self.window = injections.window
+    self.registerCommands = injections.registerCommands
+  end,
 
-    ---@param self ExampleAddon.Main
-    onEnable = function(self)
-        greet(self)
-        connectScope(self)
-        waitForSpellData(self)
-    end,
+  ---@param self ExampleAddon.Main
+  onEnable = function(self)
+    greet(self)
+    connectScope(self)
+    waitForSpellData(self)
+  end,
 
-    ---@param self ExampleAddon.Main
-    onDisable = function(self)
-        -- Widgets and gates are not scope-owned: release them here.
-        self.window:Hide()
-        if self.spellGate ~= nil then
-            self.spellGate:Close()
-            self.spellGate = nil
-        end
-    end,
+  ---@param self ExampleAddon.Main
+  onDisable = function(self)
+    -- Widgets and gates are not scope-owned: release them here.
+    self.window:Hide()
+    if self.spellGate ~= nil then
+      self.spellGate:Close()
+      self.spellGate = nil
+    end
+  end,
 }) --[[@as ExampleAddon.Main]]
 
 private.Main = main
@@ -317,7 +317,7 @@ private.Main = main
 -- are replay-aware: a subscription made after its phase still runs, at once.
 
 lifecycle:OnReady(function()
-    if main.database.profile.greet then
-        say("Type /exampleaddon list for the settings, /exampleaddonwindow to edit them.")
-    end
+  if main.database.profile.greet then
+    say("Type /exampleaddon list for the settings, /exampleaddonwindow to edit them.")
+  end
 end)

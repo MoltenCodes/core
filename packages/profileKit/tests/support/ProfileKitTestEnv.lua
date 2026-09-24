@@ -13,7 +13,7 @@ local FrameworkTestEnv = require("FrameworkTestEnv")
 local MODULES = { "Registry", "ProfileKit" }
 
 local ProfileKitTestEnv = FrameworkTestEnv.New({
-    modules = MODULES,
+  modules = MODULES,
 })
 
 ---Load the module chain into a host that publishes no `debugprofilestop`.
@@ -23,13 +23,13 @@ local ProfileKitTestEnv = FrameworkTestEnv.New({
 ---@return table ProfileKit
 ---@return table Registry
 function ProfileKitTestEnv.NewPackageWithoutProfilingClock()
-    ProfileKitTestEnv.Reset()
-    ProfileKitTestEnv.WithoutProfilingClock()
-    ProfileKitTestEnv.InstallWowApi()
+  ProfileKitTestEnv.Reset()
+  ProfileKitTestEnv.WithoutProfilingClock()
+  ProfileKitTestEnv.InstallWowApi()
 
-    local Registry = require(MODULES[1])
-    local ProfileKit = require(MODULES[2])
-    return ProfileKit, Registry
+  local Registry = require(MODULES[1])
+  local ProfileKit = require(MODULES[2])
+  return ProfileKit, Registry
 end
 
 ---Kilobytes allocated while `action` runs, with the collector stopped.
@@ -39,14 +39,14 @@ end
 ---@param action fun()
 ---@return number kilobytes
 function ProfileKitTestEnv.AllocatedKilobytes(action)
-    action()
-    collectgarbage()
-    collectgarbage("stop")
-    local before = collectgarbage("count")
-    action()
-    local after = collectgarbage("count")
-    collectgarbage("restart")
-    return after - before
+  action()
+  collectgarbage()
+  collectgarbage("stop")
+  local before = collectgarbage("count")
+  action()
+  local after = collectgarbage("count")
+  collectgarbage("restart")
+  return after - before
 end
 
 return ProfileKitTestEnv

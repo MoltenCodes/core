@@ -12,7 +12,7 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local ClientKitTestEnv = FrameworkTestEnv.New({
-    modules = { "Registry", "ClientKit" },
+  modules = { "Registry", "ClientKit" },
 })
 
 --- Path of the runtime source, relative to the repository root the runner
@@ -25,10 +25,10 @@ ClientKitTestEnv.DEFAULT_CLIENT_LOCALE = "enUS"
 --- The host functions this environment installs itself and therefore clears
 --- on every reset, whichever form the profile placed them in.
 local OWNED_GLOBALS = {
-    "GetLocale",
-    "GetAddOnInfo",
-    "GetAddOnDependencies",
-    "GetAddOnOptionalDependencies",
+  "GetLocale",
+  "GetAddOnInfo",
+  "GetAddOnDependencies",
+  "GetAddOnOptionalDependencies",
 }
 
 --- Lower-cased addon folder name to `{ name, dependencies,
@@ -51,9 +51,9 @@ local sharedReset = ClientKitTestEnv.Reset
 ---@param name string
 ---@param value any
 local function setGlobal(name, value)
-    -- The stub stands in for a World of Warcraft client API that only exists in the global table.
-    -- selene: allow(global_usage)
-    rawset(_G, name, value)
+  -- The stub stands in for a World of Warcraft client API that only exists in the global table.
+  -- selene: allow(global_usage)
+  rawset(_G, name, value)
 end
 
 ---Options for `NewPackageFor`.
@@ -67,10 +67,10 @@ end
 ---@param addonName any
 ---@return table?
 local function findKnownAddOn(addonName)
-    if type(addonName) ~= "string" then
-        return nil
-    end
-    return knownAddOns[string.lower(addonName)]
+  if type(addonName) ~= "string" then
+    return nil
+  end
+  return knownAddOns[string.lower(addonName)]
 end
 
 ---Install `GetAddOnInfo`, `GetAddOnDependencies` and
@@ -82,27 +82,27 @@ end
 ---returns the folder name in the host's spelling with no reason.
 ---@param install fun(name: string, value: function)
 local function installAddOnInfo(install)
-    install("GetAddOnInfo", function(addonName)
-        local known = findKnownAddOn(addonName)
-        if known == nil then
-            return addonName, addonName, nil, false, "MISSING", "INSECURE", false
-        end
-        return known.name, known.name, nil, true, nil, "INSECURE", false
-    end)
-    install("GetAddOnDependencies", function(addonName)
-        local known = findKnownAddOn(addonName)
-        if known == nil then
-            return
-        end
-        return unpack(known.dependencies)
-    end)
-    install("GetAddOnOptionalDependencies", function(addonName)
-        local known = findKnownAddOn(addonName)
-        if known == nil then
-            return
-        end
-        return unpack(known.optionalDependencies)
-    end)
+  install("GetAddOnInfo", function(addonName)
+    local known = findKnownAddOn(addonName)
+    if known == nil then
+      return addonName, addonName, nil, false, "MISSING", "INSECURE", false
+    end
+    return known.name, known.name, nil, true, nil, "INSECURE", false
+  end)
+  install("GetAddOnDependencies", function(addonName)
+    local known = findKnownAddOn(addonName)
+    if known == nil then
+      return
+    end
+    return unpack(known.dependencies)
+  end)
+  install("GetAddOnOptionalDependencies", function(addonName)
+    local known = findKnownAddOn(addonName)
+    if known == nil then
+      return
+    end
+    return unpack(known.optionalDependencies)
+  end)
 end
 
 ---Wrap the metadata call the profile installed so that every read is counted,
@@ -111,94 +111,94 @@ end
 ---@param read fun(name: string): function?
 ---@param install fun(name: string, value: function)
 local function wrapMetadataCall(read, install)
-    local hostCall = read("GetAddOnMetadata")
-    if hostCall == nil then
-        return
+  local hostCall = read("GetAddOnMetadata")
+  if hostCall == nil then
+    return
+  end
+  install("GetAddOnMetadata", function(addon, field)
+    local known = findKnownAddOn(addon)
+    local hostName = known and known.name or addon
+    local key = tostring(hostName) .. "\0" .. tostring(field)
+    metadataReads[key] = (metadataReads[key] or 0) + 1
+    if refusedFields[field] then
+      error("Usage: GetAddOnMetadata(index or name, field)", 2)
     end
-    install("GetAddOnMetadata", function(addon, field)
-        local known = findKnownAddOn(addon)
-        local hostName = known and known.name or addon
-        local key = tostring(hostName) .. "\0" .. tostring(field)
-        metadataReads[key] = (metadataReads[key] or 0) + 1
-        if refusedFields[field] then
-            error("Usage: GetAddOnMetadata(index or name, field)", 2)
-        end
-        return hostCall(hostName, field)
-    end)
+    return hostCall(hostName, field)
+  end)
 end
 
 ---Make the profile's `issecretvalue` also report every string in
 ---`secretStrings` as secret. A profile without the probe cannot be extended.
 ---@param secretStrings string[]
 local function extendSecretProbe(secretStrings)
-    -- The stub stands in for a World of Warcraft client API that only exists in the global table.
-    -- selene: allow(global_usage)
-    local hostProbe = rawget(_G, "issecretvalue")
-    if type(hostProbe) ~= "function" then
-        error("ClientKitTestEnv secretStrings needs a profile with issecretvalue", 3)
-    end
-    local secrets = {}
-    for index = 1, #secretStrings do
-        secrets[secretStrings[index]] = true
-    end
-    setGlobal("issecretvalue", function(value)
-        return secrets[value] == true or hostProbe(value)
-    end)
+  -- The stub stands in for a World of Warcraft client API that only exists in the global table.
+  -- selene: allow(global_usage)
+  local hostProbe = rawget(_G, "issecretvalue")
+  if type(hostProbe) ~= "function" then
+    error("ClientKitTestEnv secretStrings needs a profile with issecretvalue", 3)
+  end
+  local secrets = {}
+  for index = 1, #secretStrings do
+    secrets[secretStrings[index]] = true
+  end
+  setGlobal("issecretvalue", function(value)
+    return secrets[value] == true or hostProbe(value)
+  end)
 end
 
 ---Install this environment's own host functions on the form the current
 ---profile uses: into `C_AddOns` when that table exists, else as globals.
 ---@param hostOptions ClientKitTestEnv.HostOptions
 local function installClientKitHost(hostOptions)
-    local locale = hostOptions.locale
-    if locale == nil then
-        locale = ClientKitTestEnv.DEFAULT_CLIENT_LOCALE
-    end
-    if locale ~= false then
-        setGlobal("GetLocale", function()
-            return locale
-        end)
-    end
+  local locale = hostOptions.locale
+  if locale == nil then
+    locale = ClientKitTestEnv.DEFAULT_CLIENT_LOCALE
+  end
+  if locale ~= false then
+    setGlobal("GetLocale", function()
+      return locale
+    end)
+  end
 
-    -- The stub stands in for a World of Warcraft client API that only exists in the global table.
-    -- selene: allow(global_usage)
-    local addOns = rawget(_G, "C_AddOns")
-    local read, install
-    if type(addOns) == "table" then
-        read = function(name)
-            return rawget(addOns, name)
-        end
-        install = function(name, value)
-            rawset(addOns, name, value)
-        end
-    else
-        read = function(name)
-            -- The stub stands in for a World of Warcraft client API that only exists in the global table.
-            -- selene: allow(global_usage)
-            return rawget(_G, name)
-        end
-        install = setGlobal
+  -- The stub stands in for a World of Warcraft client API that only exists in the global table.
+  -- selene: allow(global_usage)
+  local addOns = rawget(_G, "C_AddOns")
+  local read, install
+  if type(addOns) == "table" then
+    read = function(name)
+      return rawget(addOns, name)
     end
+    install = function(name, value)
+      rawset(addOns, name, value)
+    end
+  else
+    read = function(name)
+      -- The stub stands in for a World of Warcraft client API that only exists in the global table.
+      -- selene: allow(global_usage)
+      return rawget(_G, name)
+    end
+    install = setGlobal
+  end
 
-    wrapMetadataCall(read, install)
-    if hostOptions.addOnInfo ~= false then
-        installAddOnInfo(install)
-    end
-    if hostOptions.secretStrings ~= nil then
-        extendSecretProbe(hostOptions.secretStrings)
-    end
+  wrapMetadataCall(read, install)
+  if hostOptions.addOnInfo ~= false then
+    installAddOnInfo(install)
+  end
+  if hostOptions.secretStrings ~= nil then
+    extendSecretProbe(hostOptions.secretStrings)
+  end
 end
 
 ---Clear everything the shared fixture clears, plus this environment's own
 ---host functions and bookkeeping.
 function ClientKitTestEnv.Reset()
-    sharedReset()
-    for index = 1, #OWNED_GLOBALS do
-        setGlobal(OWNED_GLOBALS[index], nil)
-    end
-    knownAddOns = {}
-    metadataReads = {}
-    refusedFields = {}
+  sharedReset()
+  for index = 1, #OWNED_GLOBALS do
+    setGlobal(OWNED_GLOBALS[index], nil)
+  end
+  knownAddOns = {}
+  metadataReads = {}
+  refusedFields = {}
 end
 
 ---Reset, install the host as `profileName` models it plus this environment's
@@ -208,11 +208,11 @@ end
 ---@param hostOptions ClientKitTestEnv.HostOptions? locale and addon-info surface; every field has a default
 ---@return table Registry
 function ClientKitTestEnv.NewHostFor(profileName, hostOptions)
-    ClientKitTestEnv.Reset()
-    ClientKitTestEnv.SetWowProfile(profileName)
-    ClientKitTestEnv.InstallWowApi()
-    installClientKitHost(hostOptions or {})
-    return require("Registry")
+  ClientKitTestEnv.Reset()
+  ClientKitTestEnv.SetWowProfile(profileName)
+  ClientKitTestEnv.InstallWowApi()
+  installClientKitHost(hostOptions or {})
+  return require("Registry")
 end
 
 ---`NewHostFor`, then load ClientKit against that host.
@@ -221,8 +221,8 @@ end
 ---@return table ClientKit
 ---@return table Registry
 function ClientKitTestEnv.NewPackageFor(profileName, hostOptions)
-    local Registry = ClientKitTestEnv.NewHostFor(profileName, hostOptions)
-    return require("ClientKit"), Registry
+  local Registry = ClientKitTestEnv.NewHostFor(profileName, hostOptions)
+  return require("ClientKit"), Registry
 end
 
 ---Options for `RegisterAddOn`.
@@ -236,19 +236,19 @@ end
 ---@param addonName string the folder name as the host spells it
 ---@param options ClientKitTestEnv.AddOnOptions?
 function ClientKitTestEnv.RegisterAddOn(addonName, options)
-    options = options or {}
-    knownAddOns[string.lower(addonName)] = {
-        name = addonName,
-        dependencies = options.dependencies or {},
-        optionalDependencies = options.optionalDependencies or {},
-    }
+  options = options or {}
+  knownAddOns[string.lower(addonName)] = {
+    name = addonName,
+    dependencies = options.dependencies or {},
+    optionalDependencies = options.optionalDependencies or {},
+  }
 end
 
 ---Make the metadata call raise for `field`, as a client whose `.toc` reader
 ---does not export that field does.
 ---@param field string
 function ClientKitTestEnv.RefuseMetadataField(field)
-    refusedFields[field] = true
+  refusedFields[field] = true
 end
 
 ---How many times the host's metadata call was asked for `field` of `addon`
@@ -257,9 +257,9 @@ end
 ---@param field string
 ---@return integer
 function ClientKitTestEnv.MetadataReads(addon, field)
-    local known = findKnownAddOn(addon)
-    local hostName = known and known.name or addon
-    return metadataReads[hostName .. "\0" .. field] or 0
+  local known = findKnownAddOn(addon)
+  local hostName = known and known.name or addon
+  return metadataReads[hostName .. "\0" .. field] or 0
 end
 
 ---Options for `NewFrame`.
@@ -273,24 +273,24 @@ end
 ---@param options ClientKitTestEnv.FrameOptions?
 ---@return table frame
 function ClientKitTestEnv.NewFrame(options)
-    options = options or {}
-    local frame = { calls = {} }
+  options = options or {}
+  local frame = { calls = {} }
 
-    if options.forbidden ~= nil then
-        function frame:IsForbidden()
-            self.calls[#self.calls + 1] = "IsForbidden"
-            return options.forbidden
-        end
+  if options.forbidden ~= nil then
+    function frame:IsForbidden()
+      self.calls[#self.calls + 1] = "IsForbidden"
+      return options.forbidden
     end
+  end
 
-    if options.accessible ~= nil then
-        function frame:CanBeAccessedInContext()
-            self.calls[#self.calls + 1] = "CanBeAccessedInContext"
-            return options.accessible
-        end
+  if options.accessible ~= nil then
+    function frame:CanBeAccessedInContext()
+      self.calls[#self.calls + 1] = "CanBeAccessedInContext"
+      return options.accessible
     end
+  end
 
-    return frame
+  return frame
 end
 
 ---Load a copy of the ClientKit source that claims `revision`, against the
@@ -298,27 +298,27 @@ end
 ---@param revision integer
 ---@return any
 function ClientKitTestEnv.LoadSourceAtRevision(revision)
-    local file = io.open(ClientKitTestEnv.SOURCE_PATH, "r")
-    if file == nil then
-        error("ClientKitTestEnv cannot read " .. ClientKitTestEnv.SOURCE_PATH, 2)
-    end
-    local source = file:read("*a")
-    file:close()
+  local file = io.open(ClientKitTestEnv.SOURCE_PATH, "r")
+  if file == nil then
+    error("ClientKitTestEnv cannot read " .. ClientKitTestEnv.SOURCE_PATH, 2)
+  end
+  local source = file:read("*a")
+  file:close()
 
-    local patched, count = source:gsub(
-        "local IMPLEMENTATION_REVISION = %d+",
-        "local IMPLEMENTATION_REVISION = " .. revision,
-        1
-    )
-    if count ~= 1 then
-        error("ClientKitTestEnv found no IMPLEMENTATION_REVISION to patch", 2)
-    end
+  local patched, count = source:gsub(
+    "local IMPLEMENTATION_REVISION = %d+",
+    "local IMPLEMENTATION_REVISION = " .. revision,
+    1
+  )
+  if count ~= 1 then
+    error("ClientKitTestEnv found no IMPLEMENTATION_REVISION to patch", 2)
+  end
 
-    local chunk, message = loadstring(patched, "@" .. ClientKitTestEnv.SOURCE_PATH)
-    if chunk == nil then
-        error(message, 2)
-    end
-    return chunk()
+  local chunk, message = loadstring(patched, "@" .. ClientKitTestEnv.SOURCE_PATH)
+  if chunk == nil then
+    error(message, 2)
+  end
+  return chunk()
 end
 
 return ClientKitTestEnv

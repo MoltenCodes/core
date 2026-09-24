@@ -7,63 +7,63 @@ local Registry = MoltenCodes.Registries[2]
 local OptionsKit = Registry:Get("optionsKit", 1)
 
 local options = OptionsKit:Define("MyAddon", {
-    type = "group",
-    name = "My Addon",
-    args = {
-        general = {
-            type = "group",
-            name = "General",
-            order = 1,
-            args = {
-                enabled = { type = "toggle", name = "Enabled", bind = "profile.enabled" },
-                scale = { type = "range", name = "Scale", min = 0.5, max = 2, step = 0.05, bind = "profile.frame.scale" },
-                anchor = {
-                    type = "select",
-                    name = "Anchor",
-                    values = { TOP = "Top", CENTER = "Center", BOTTOM = "Bottom" },
-                    sorting = { "TOP", "CENTER", "BOTTOM" },
-                    bind = "profile.frame.anchor",
-                },
-            },
+  type = "group",
+  name = "My Addon",
+  args = {
+    general = {
+      type = "group",
+      name = "General",
+      order = 1,
+      args = {
+        enabled = { type = "toggle", name = "Enabled", bind = "profile.enabled" },
+        scale = { type = "range", name = "Scale", min = 0.5, max = 2, step = 0.05, bind = "profile.frame.scale" },
+        anchor = {
+          type = "select",
+          name = "Anchor",
+          values = { TOP = "Top", CENTER = "Center", BOTTOM = "Bottom" },
+          sorting = { "TOP", "CENTER", "BOTTOM" },
+          bind = "profile.frame.anchor",
         },
-        advanced = {
-            type = "group",
-            name = "Advanced",
-            order = 2,
-            hidden = function()
-                return not MyAddon.showAdvanced
-            end,
-            args = {
-                label = {
-                    type = "input",
-                    name = "Label",
-                    pattern = "^[%w ]*$",
-                    get = function(info)
-                        return MyAddon.label
-                    end,
-                    set = function(info, value)
-                        MyAddon.label = value
-                        MyAddon:RefreshLabel()
-                    end,
-                    validate = function(info, value)
-                        if #value > 24 then
-                            return false, "at most 24 characters"
-                        end
-                        return true
-                    end,
-                },
-                resetPosition = {
-                    type = "execute",
-                    name = "Reset position",
-                    confirm = "Move the frame back to the centre?",
-                    func = function()
-                        MyAddon:ResetPosition()
-                    end,
-                },
-            },
-        },
-        profiles = OptionsKit:ProfileOptions(MyAddon.db, { order = 90 }), -- choose, create, copy, reset, delete
+      },
     },
+    advanced = {
+      type = "group",
+      name = "Advanced",
+      order = 2,
+      hidden = function()
+        return not MyAddon.showAdvanced
+      end,
+      args = {
+        label = {
+          type = "input",
+          name = "Label",
+          pattern = "^[%w ]*$",
+          get = function(info)
+            return MyAddon.label
+          end,
+          set = function(info, value)
+            MyAddon.label = value
+            MyAddon:RefreshLabel()
+          end,
+          validate = function(info, value)
+            if #value > 24 then
+              return false, "at most 24 characters"
+            end
+            return true
+          end,
+        },
+        resetPosition = {
+          type = "execute",
+          name = "Reset position",
+          confirm = "Move the frame back to the centre?",
+          func = function()
+            MyAddon:ResetPosition()
+          end,
+        },
+      },
+    },
+    profiles = OptionsKit:ProfileOptions(MyAddon.db, { order = 90 }), -- choose, create, copy, reset, delete
+  },
 }, { db = MyAddon.db }) -- a SettingsKit database, needed only for `bind`
 
 options:Get("general.scale")          --> 1 (the SettingsKit default)

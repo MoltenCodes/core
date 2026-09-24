@@ -91,11 +91,11 @@ listener together, and calls each listener of the event's sub-event with
 
 ```lua
 EventKit:ConnectCombatLog("SPELL_DAMAGE", function(timestamp, subEvent, hideCaster,
-        sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
-        destGUID, destName, destFlags, destRaidFlags,
-        spellId, spellName, spellSchool, amount, overkill, school, resisted,
-        blocked, absorbed, critical, glancing, crushing, isOffHand)
-    -- ...
+    sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
+    destGUID, destName, destFlags, destRaidFlags,
+    spellId, spellName, spellSchool, amount, overkill, school, resisted,
+    blocked, absorbed, critical, glancing, crushing, isOffHand)
+  -- ...
 end)
 ```
 
@@ -187,9 +187,9 @@ an addon that wants combat-log data on every client asks first:
 
 ```lua
 if EventKit:IsCombatLogAvailable() then
-    EventKit:ForAddon("MyAddon"):ConnectCombatLog("SPELL_DAMAGE", onSpellDamage)
+  EventKit:ForAddon("MyAddon"):ConnectCombatLog("SPELL_DAMAGE", onSpellDamage)
 else
-    -- Retail 12: addon code gets no combat-log reader; degrade or stay quiet.
+  -- Retail 12: addon code gets no combat-log reader; degrade or stay quiet.
 end
 ```
 
@@ -329,7 +329,7 @@ LifecycleKit through `Registry:Find` and takes the first case that applies:
 
 ```lua
 EventKit:Once("PLAYER_LOGOUT", function()
-    EventKit:CloseAddonScopes("MyAddon")
+  EventKit:CloseAddonScopes("MyAddon")
 end)
 ```
 
@@ -403,9 +403,9 @@ everything collected*.
 ```lua
 local events = EventKit:ForAddon("MyAddon")
 events:Coalesce({ "UNIT_HEALTH", "UNIT_MAXHEALTH" }, 0.1, function(units)
-    for unit in pairs(units) do
-        updateHealthBar(unit)
-    end
+  for unit in pairs(units) do
+    updateHealthBar(unit)
+  end
 end, { units = { "player", "target" } })
 ```
 
@@ -445,7 +445,7 @@ raises, the error reaches the caller and nothing is left behind.
 ```lua
 local freeSlots = EventKit:ForAddon("MyAddon"):Derive("BAG_UPDATE_DELAYED", countFreeSlots)
 freeSlots:OnChange(function(now, before)
-    print("free slots", before, "->", now)
+  print("free slots", before, "->", now)
 end)
 print(freeSlots:Get())
 ```
@@ -621,11 +621,11 @@ delivery continues to every other listener of that event.
 
 ```lua
 EventKit:Connect("PLAYER_LOGIN", function()
-    error("one addon's bug")
+  error("one addon's bug")
 end)
 
 EventKit:Connect("PLAYER_LOGIN", function()
-    -- still runs
+  -- still runs
 end)
 ```
 
@@ -767,15 +767,15 @@ host registration:
 ```lua
 -- Raw: read the client yourself, filter yourself.
 EventKit:Connect("COMBAT_LOG_EVENT_UNFILTERED", function()
-    local timestamp, subEvent, hideCaster, sourceGUID = CombatLogGetCurrentEventInfo()
-    if subEvent == "SPELL_DAMAGE" then
-        -- ...
-    end
+  local timestamp, subEvent, hideCaster, sourceGUID = CombatLogGetCurrentEventInfo()
+  if subEvent == "SPELL_DAMAGE" then
+    -- ...
+  end
 end)
 
 -- Routed: EventKit reads the client once and delivers by sub-event.
 EventKit:ConnectCombatLog("SPELL_DAMAGE", function(timestamp, subEvent, hideCaster, sourceGUID)
-    -- ...
+  -- ...
 end)
 ```
 

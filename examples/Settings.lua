@@ -26,41 +26,41 @@ local DATABASE_VERSION = 1
 -- fills in one write at a time, and only values that differ from their default
 -- are kept after the logout compaction.
 local SCHEMA = {
-    global = SchemaKit.table({
-        fields = {
-            greetings = SchemaKit.optional(SchemaKit.number({ integer = true, min = 0 }), 0),
-        },
-    }),
-    profile = SchemaKit.table({
-        fields = {
-            greet = SchemaKit.optional(SchemaKit.boolean(), true),
-            announceHealth = SchemaKit.optional(SchemaKit.boolean(), false),
-            windowScale = SchemaKit.optional(SchemaKit.number({ min = 0.5, max = 2 }), 1),
-        },
-    }),
+  global = SchemaKit.table({
+    fields = {
+      greetings = SchemaKit.optional(SchemaKit.number({ integer = true, min = 0 }), 0),
+    },
+  }),
+  profile = SchemaKit.table({
+    fields = {
+      greet = SchemaKit.optional(SchemaKit.boolean(), true),
+      announceHealth = SchemaKit.optional(SchemaKit.boolean(), false),
+      windowScale = SchemaKit.optional(SchemaKit.number({ min = 0.5, max = 2 }), 1),
+    },
+  }),
 }
 
 local MIGRATIONS = {
-    -- The release before SettingsKit saved `{ greetings = n }` at the top of the
-    -- table. Migrations receive the raw saved table and run before the layout
-    -- exists, so a step can restructure anything an older release wrote.
-    [1] = function(raw)
-        if type(raw.greetings) ~= "nil" then
-            raw.global = raw.global or {}
-            raw.global.greetings = raw.greetings
-            raw.greetings = nil
-        end
-    end,
+  -- The release before SettingsKit saved `{ greetings = n }` at the top of the
+  -- table. Migrations receive the raw saved table and run before the layout
+  -- exists, so a step can restructure anything an older release wrote.
+  [1] = function(raw)
+    if type(raw.greetings) ~= "nil" then
+      raw.global = raw.global or {}
+      raw.global.greetings = raw.greetings
+      raw.greetings = nil
+    end
+  end,
 }
 
 ---Open the addon's database. Called once, by ModuleKit, in the `loaded` phase.
 ---@return SettingsKit.Database
 local function openDatabase()
-    return SettingsKit:Open(SAVED_VARIABLE, SCHEMA, {
-        defaultProfile = SettingsKit.DEFAULT_PROFILE,
-        version = DATABASE_VERSION,
-        migrations = MIGRATIONS,
-    })
+  return SettingsKit:Open(SAVED_VARIABLE, SCHEMA, {
+    defaultProfile = SettingsKit.DEFAULT_PROFILE,
+    version = DATABASE_VERSION,
+    migrations = MIGRATIONS,
+  })
 end
 
 ADDON_TABLE.Modules:ProvideSingleton("Database", openDatabase)

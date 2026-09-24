@@ -82,10 +82,10 @@ BrokerKit never calls `OnClick` and the other handlers: a display does, with its
 
 ```lua
 local status = BrokerKit:New("MyAddon", {
-    type = "data source",
-    text = "0 ms",
-    icon = 134400,
-    OnClick = function(frame, button) end,
+  type = "data source",
+  text = "0 ms",
+  icon = 134400,
+  OnClick = function(frame, button) end,
 })
 local launcher = BrokerKit:New("MyAddonLauncher", { type = "launcher", icon = [[Interface\Icons\X]] })
 local bare = BrokerKit:New("Bare") -- a data source with no other attribute
@@ -138,10 +138,10 @@ The name the object was created or adopted under. Read-only: writing it raises `
 
 ```lua
 local connection = status:OnChange("text", function(object, attribute, value, previous)
-    button:SetText(value)
+  button:SetText(value)
 end)
 status:OnChange(function(object, attribute, value, previous)
-    -- any attribute
+  -- any attribute
 end)
 ```
 
@@ -157,10 +157,10 @@ Returns the object named `name`, whether MoltenCodes or foreign, or `nil`. The n
 
 ```lua
 for _, name in ipairs(BrokerKit:Objects()) do
-    dropdown:AddItem(name)
+  dropdown:AddItem(name)
 end
 for name, object in BrokerKit:Iterate() do
-    panel:AddEntry(name, object)
+  panel:AddEntry(name, object)
 end
 ```
 

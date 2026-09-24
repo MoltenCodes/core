@@ -50,10 +50,10 @@ Scopes:
 
 ```lua
 local timer = TimerKit:New({
-    delay = 1.5,
-    callback = function(self)
-        print(self:GetState()) -- completed for a one-shot callback
-    end,
+  delay = 1.5,
+  callback = function(self)
+    print(self:GetState()) -- completed for a one-shot callback
+  end,
 })
 
 timer:Start()
@@ -273,7 +273,7 @@ Who takes the second step is arranged by TimerKit itself whenever the framework 
 local logoutFrame = CreateFrame("Frame")
 logoutFrame:RegisterEvent("PLAYER_LOGOUT")
 logoutFrame:SetScript("OnEvent", function()
-    TimerKit:CloseAddonScopes("MyAddon")
+  TimerKit:CloseAddonScopes("MyAddon")
 end)
 ```
 

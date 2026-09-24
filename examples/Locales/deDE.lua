@@ -10,13 +10,13 @@ local ADDON_NAME, ADDON_TABLE = ...
 
 local L = ADDON_TABLE.Kits.LocaleKit:NewLocale(ADDON_NAME, "deDE")
 if not L then
-    return
+  return
 end
 
 L["yes"] = "ja"
 L["no"] = "nein"
 L["%1$s is ready on the %2$s client (secret values: %3$s); greeting #%4$d."] =
-    "Begrüßung Nr. %4$d: %1$s ist bereit (Client %2$s, geheime Werte: %3$s)."
+  "Begrüßung Nr. %4$d: %1$s ist bereit (Client %2$s, geheime Werte: %3$s)."
 L["Example Addon"] = "Beispiel-Addon"
 L["Greet on login"] = "Beim Einloggen begrüßen"
 L["Window scale"] = "Fenstergröße"

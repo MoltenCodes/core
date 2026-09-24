@@ -9,27 +9,27 @@ local SettingsKit = Registry:Get("settingsKit", 1)
 local S = SchemaKit
 
 local schema = {
-    global = S.table({ fields = { firstRun = S.optional(S.boolean(), true) } }),
-    profile = S.table({
-        fields = {
-            scale = S.optional(S.number({ min = 0.5, max = 2 }), 1),
-            anchor = S.optional(S.enum({ "TOP", "CENTER", "BOTTOM" }), "CENTER"),
-            auras = S.optional(S.map({
-                keys = S.number({ integer = true }),
-                values = S.optional(S.table({ fields = { shown = S.optional(S.boolean(), true) } }), {}),
-                max = 256,
-            }), {}),
-        },
-    }),
+  global = S.table({ fields = { firstRun = S.optional(S.boolean(), true) } }),
+  profile = S.table({
+    fields = {
+      scale = S.optional(S.number({ min = 0.5, max = 2 }), 1),
+      anchor = S.optional(S.enum({ "TOP", "CENTER", "BOTTOM" }), "CENTER"),
+      auras = S.optional(S.map({
+        keys = S.number({ integer = true }),
+        values = S.optional(S.table({ fields = { shown = S.optional(S.boolean(), true) } }), {}),
+        max = 256,
+      }), {}),
+    },
+  }),
 }
 
 lifecycle:OnLoaded(function()
-    local db = SettingsKit:Open("MyAddonDB", schema, { version = 2 })
+  local db = SettingsKit:Open("MyAddonDB", schema, { version = 2 })
 
-    print(db.profile.scale)          -- 1, the default; nothing is written
-    print(db.profile.auras[118].shown) -- true, the wildcard default
-    db.profile.scale = 1.25          -- checked against the schema, then stored
-    db.profile.scale = 7             -- raises here: "expected number <= 2, found larger number"
+  print(db.profile.scale)          -- 1, the default; nothing is written
+  print(db.profile.auras[118].shown) -- true, the wildcard default
+  db.profile.scale = 1.25          -- checked against the schema, then stored
+  db.profile.scale = 7             -- raises here: "expected number <= 2, found larger number"
 end)
 ```
 
@@ -81,6 +81,6 @@ table exists:
 ```lua
 local lifecycle = LifecycleKit:ForAddon(ADDON_NAME)
 lifecycle:OnLoaded(function()
-    addon.db = SettingsKit:Open("MyAddonDB", schema, { defaultProfile = "Default", version = 1 })
+  addon.db = SettingsKit:Open("MyAddonDB", schema, { defaultProfile = "Default", version = 1 })
 end)
 ```

@@ -32,7 +32,7 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local HookKitTestEnv = FrameworkTestEnv.New({
-    modules = { "Registry", "ClientKit", "HookKit" },
+  modules = { "Registry", "ClientKit", "HookKit" },
 })
 
 --- Modules a spec may load on top of the chain, in the order `Reset` unloads
@@ -43,13 +43,13 @@ local OPTIONAL_MODULES = { "LifecycleKit", "EventKit", "SignalKit" }
 --- What LifecycleKit 0.6.0 publishes as `CLOSES_ADDON_SCOPES`: the package ids
 --- whose addon scopes (or bus) it closes at shutdown.
 local CLOSES_ADDON_SCOPES = {
-    timerKit = true,
-    schedulerKit = true,
-    eventKit = true,
-    hookKit = true,
-    commandKit = true,
-    commKit = true,
-    signalKit = true,
+  timerKit = true,
+  schedulerKit = true,
+  eventKit = true,
+  hookKit = true,
+  commandKit = true,
+  commKit = true,
+  signalKit = true,
 }
 
 --- The host globals this environment installs and removes.
@@ -72,49 +72,49 @@ local frameForbidden = setmetatable({}, { __mode = "k" })
 ---@param name string
 ---@param value any
 local function setGlobal(name, value)
-    -- selene: allow(global_usage)
-    rawset(_G, name, value)
+  -- selene: allow(global_usage)
+  rawset(_G, name, value)
 end
 
 ---Read a host global the same way.
 ---@param name string
 ---@return any
 local function getGlobal(name)
-    -- selene: allow(global_usage)
-    return rawget(_G, name)
+  -- selene: allow(global_usage)
+  return rawget(_G, name)
 end
 
 ---Split `hooksecurefunc`'s two call forms.
 ---@return table target, string name, function hook
 local function splitHookArguments(first, second, third)
-    if type(first) == "string" then
-        -- selene: allow(global_usage)
-        return _G, first, second
-    end
-    return first, second, third
+  if type(first) == "string" then
+    -- selene: allow(global_usage)
+    return _G, first, second
+  end
+  return first, second, third
 end
 
 ---The `hooksecurefunc` stub: replace the field with a wrapper that calls the
 ---original, then the hook with the same arguments, and returns the original's
 ---results. Up to four results are carried, so a call allocates nothing.
 local function hookSecureFunction(first, second, third)
-    local target, name, hook = splitHookArguments(first, second, third)
-    local original = target[name]
-    if type(original) ~= "function" then
-        error("hooksecurefunc stub: " .. tostring(name) .. " is not a function", 2)
-    end
-    if type(hook) ~= "function" then
-        error("hooksecurefunc stub: hook must be a function", 2)
-    end
-    local function wrapper(...)
-        local resultOne, resultTwo, resultThree, resultFour = original(...)
-        hook(...)
-        return resultOne, resultTwo, resultThree, resultFour
-    end
-    if secureFunctions[original] then
-        secureFunctions[wrapper] = true
-    end
-    rawset(target, name, wrapper)
+  local target, name, hook = splitHookArguments(first, second, third)
+  local original = target[name]
+  if type(original) ~= "function" then
+    error("hooksecurefunc stub: " .. tostring(name) .. " is not a function", 2)
+  end
+  if type(hook) ~= "function" then
+    error("hooksecurefunc stub: hook must be a function", 2)
+  end
+  local function wrapper(...)
+    local resultOne, resultTwo, resultThree, resultFour = original(...)
+    hook(...)
+    return resultOne, resultTwo, resultThree, resultFour
+  end
+  if secureFunctions[original] then
+    secureFunctions[wrapper] = true
+  end
+  rawset(target, name, wrapper)
 end
 
 ---The `issecurevariable` stub, faithful to the client on the two points
@@ -122,25 +122,25 @@ end
 ---secure, and an absent raw key is reported as secure (nothing tainted it),
 ---whatever the table inherits through `__index`.
 local function isSecureVariable(first, second)
-    local target, name = first, second
-    if second == nil then
-        -- selene: allow(global_usage)
-        target, name = _G, first
-    end
-    local value = rawget(target, name)
-    if value == nil then
-        return true
-    end
-    return secureFunctions[value] == true
+  local target, name = first, second
+  if second == nil then
+    -- selene: allow(global_usage)
+    target, name = _G, first
+  end
+  local value = rawget(target, name)
+  if value == nil then
+    return true
+  end
+  return secureFunctions[value] == true
 end
 
 ---Install the HookKit host globals. Must run before HookKit loads.
 function HookKitTestEnv.InstallHookApi()
-    setGlobal("hooksecurefunc", hookSecureFunction)
-    setGlobal("issecurevariable", isSecureVariable)
-    setGlobal("InCombatLockdown", function()
-        return inCombat
-    end)
+  setGlobal("hooksecurefunc", hookSecureFunction)
+  setGlobal("issecurevariable", isSecureVariable)
+  setGlobal("InCombatLockdown", function()
+    return inCombat
+  end)
 end
 
 local sharedReset = HookKitTestEnv.Reset
@@ -148,14 +148,14 @@ local sharedReset = HookKitTestEnv.Reset
 ---Clear every module, global and stub this environment owns, including the
 ---HookKit host globals.
 function HookKitTestEnv.Reset()
-    for index = 1, #OPTIONAL_MODULES do
-        package.loaded[OPTIONAL_MODULES[index]] = nil
-    end
-    sharedReset()
-    for index = 1, #HOOK_GLOBALS do
-        setGlobal(HOOK_GLOBALS[index], nil)
-    end
-    inCombat = false
+  for index = 1, #OPTIONAL_MODULES do
+    package.loaded[OPTIONAL_MODULES[index]] = nil
+  end
+  sharedReset()
+  for index = 1, #HOOK_GLOBALS do
+    setGlobal(HOOK_GLOBALS[index], nil)
+  end
+  inCombat = false
 end
 
 ---Reset, install the host stubs and the HookKit host globals, then load the
@@ -164,43 +164,43 @@ end
 ---@return table Registry
 ---@return table ClientKit
 function HookKitTestEnv.NewPackage()
-    HookKitTestEnv.Reset()
-    HookKitTestEnv.InstallWowApi()
-    HookKitTestEnv.InstallHookApi()
-    local Registry = require("Registry")
-    local ClientKit = require("ClientKit")
-    local HookKit = require("HookKit")
-    return HookKit, Registry, ClientKit
+  HookKitTestEnv.Reset()
+  HookKitTestEnv.InstallWowApi()
+  HookKitTestEnv.InstallHookApi()
+  local Registry = require("Registry")
+  local ClientKit = require("ClientKit")
+  local HookKit = require("HookKit")
+  return HookKit, Registry, ClientKit
 end
 
 ---Load Registry and HookKit only, as a consumer that embeds no ClientKit does.
 ---@return table HookKit
 ---@return table Registry
 function HookKitTestEnv.NewPackageWithoutClientKit()
-    HookKitTestEnv.Reset()
-    HookKitTestEnv.InstallWowApi()
-    HookKitTestEnv.InstallHookApi()
-    local Registry = require("Registry")
-    local HookKit = require("HookKit")
-    return HookKit, Registry
+  HookKitTestEnv.Reset()
+  HookKitTestEnv.InstallWowApi()
+  HookKitTestEnv.InstallHookApi()
+  local Registry = require("Registry")
+  local HookKit = require("HookKit")
+  return HookKit, Registry
 end
 
 ---Load the module chain on a host with none of `hooksecurefunc`,
 ---`issecurevariable` and `InCombatLockdown`.
 ---@return table HookKit
 function HookKitTestEnv.NewPackageWithoutHookApi()
-    HookKitTestEnv.Reset()
-    HookKitTestEnv.InstallWowApi()
-    require("Registry")
-    require("ClientKit")
-    return require("HookKit")
+  HookKitTestEnv.Reset()
+  HookKitTestEnv.InstallWowApi()
+  require("Registry")
+  require("ClientKit")
+  return require("HookKit")
 end
 
 ---Load EventKit (and SignalKit, which it requires) on top of the chain.
 ---@return table EventKit
 function HookKitTestEnv.LoadEventKit()
-    require("SignalKit")
-    return require("EventKit")
+  require("SignalKit")
+  return require("EventKit")
 end
 
 ---Load LifecycleKit (and SignalKit and EventKit, which it requires) on top of
@@ -213,58 +213,58 @@ end
 ---@return table LifecycleKit
 ---@return table EventKit
 function HookKitTestEnv.LoadLifecycleKit(closesAddonScopes)
-    local EventKit = HookKitTestEnv.LoadEventKit()
-    local LifecycleKit = require("LifecycleKit")
-    HookKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
-    return LifecycleKit, EventKit
+  local EventKit = HookKitTestEnv.LoadEventKit()
+  local LifecycleKit = require("LifecycleKit")
+  HookKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
+  return LifecycleKit, EventKit
 end
 
 ---Make `LifecycleKit` announce, or stop announcing, `CLOSES_ADDON_SCOPES`.
 ---@param LifecycleKit table
 ---@param closesAddonScopes boolean|table `true` for the full list, `false` for none, or a list of its own
 function HookKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
-    local value = nil
-    if closesAddonScopes == true then
-        value = CLOSES_ADDON_SCOPES
-    elseif type(closesAddonScopes) == "table" then
-        value = closesAddonScopes
-    end
-    rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", value)
+  local value = nil
+  if closesAddonScopes == true then
+    value = CLOSES_ADDON_SCOPES
+  elseif type(closesAddonScopes) == "table" then
+    value = closesAddonScopes
+  end
+  rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", value)
 end
 
 ---Mark `fn` as a function the host considers secure, and return it.
 ---@param fn function
 ---@return function
 function HookKitTestEnv.MarkSecure(fn)
-    secureFunctions[fn] = true
-    return fn
+  secureFunctions[fn] = true
+  return fn
 end
 
 ---Change what a fake frame built with `forbidden` answers to `IsForbidden`.
 ---@param frame table
 ---@param value boolean
 function HookKitTestEnv.SetForbidden(frame, value)
-    frameForbidden[getmetatable(frame).__index] = value
+  frameForbidden[getmetatable(frame).__index] = value
 end
 
 ---Enter or leave combat lockdown.
 ---@param value boolean
 function HookKitTestEnv.SetCombatLockdown(value)
-    inCombat = value
+  inCombat = value
 end
 
 ---Read a global, for specs that hook one.
 ---@param name string
 ---@return any
 function HookKitTestEnv.GetGlobal(name)
-    return getGlobal(name)
+  return getGlobal(name)
 end
 
 ---Write a global, for specs that hook one.
 ---@param name string
 ---@param value any
 function HookKitTestEnv.SetGlobal(name, value)
-    setGlobal(name, value)
+  setGlobal(name, value)
 end
 
 ---Options accepted by `NewFrame`.
@@ -279,60 +279,60 @@ end
 ---@param options HookKitTestEnv.FrameOptions?
 ---@return table frame
 function HookKitTestEnv.NewFrame(options)
-    options = options or {}
-    local scripts = {}
-    local postHooks = {}
-    local methods = {}
+  options = options or {}
+  local scripts = {}
+  local postHooks = {}
+  local methods = {}
 
-    function methods.GetScript(_, script)
-        return scripts[script]
+  function methods.GetScript(_, script)
+    return scripts[script]
+  end
+
+  function methods.SetScript(_, script, handler)
+    if handler ~= nil and type(handler) ~= "function" then
+      error("Frame:SetScript stub: handler must be a function or nil", 2)
     end
+    scripts[script] = handler
+    -- Modelled as the worst case HookKit guards against: `SetScript`
+    -- drops the post-hooks `HookScript` added to that script.
+    postHooks[script] = nil
+  end
 
-    function methods.SetScript(_, script, handler)
-        if handler ~= nil and type(handler) ~= "function" then
-            error("Frame:SetScript stub: handler must be a function or nil", 2)
-        end
-        scripts[script] = handler
-        -- Modelled as the worst case HookKit guards against: `SetScript`
-        -- drops the post-hooks `HookScript` added to that script.
-        postHooks[script] = nil
+  function methods.HookScript(_, script, handler)
+    local list = postHooks[script]
+    if list == nil then
+      list = {}
+      postHooks[script] = list
     end
+    list[#list + 1] = handler
+  end
 
-    function methods.HookScript(_, script, handler)
-        local list = postHooks[script]
-        if list == nil then
-            list = {}
-            postHooks[script] = list
-        end
-        list[#list + 1] = handler
+  if options.withoutIsProtected ~= true then
+    local protected = options.protected == true
+    function methods.IsProtected()
+      return protected, protected
     end
+  end
 
-    if options.withoutIsProtected ~= true then
-        local protected = options.protected == true
-        function methods.IsProtected()
-            return protected, protected
-        end
+  if options.forbidden ~= nil then
+    function methods.IsForbidden()
+      return frameForbidden[methods] == true
     end
+    frameForbidden[methods] = options.forbidden
+  end
 
-    if options.forbidden ~= nil then
-        function methods.IsForbidden()
-            return frameForbidden[methods] == true
-        end
-        frameForbidden[methods] = options.forbidden
+  if options.accessible ~= nil then
+    local accessible = options.accessible == true
+    function methods.CanBeAccessedInContext()
+      return accessible
     end
+  end
 
-    if options.accessible ~= nil then
-        local accessible = options.accessible == true
-        function methods.CanBeAccessedInContext()
-            return accessible
-        end
-    end
+  function methods.Show() end
 
-    function methods.Show() end
-
-    local frame = setmetatable({}, { __index = methods })
-    frameScripts[frame] = { scripts = scripts, postHooks = postHooks }
-    return frame
+  local frame = setmetatable({}, { __index = methods })
+  frameScripts[frame] = { scripts = scripts, postHooks = postHooks }
+  return frame
 end
 
 ---Fire `script` on a fake frame the way the host does: the handler set with
@@ -343,22 +343,22 @@ end
 ---@param ... any
 ---@return any
 function HookKitTestEnv.RunScript(frame, script, ...)
-    local entry = frameScripts[frame]
-    if entry == nil then
-        error("HookKitTestEnv.RunScript expects a frame from NewFrame", 2)
+  local entry = frameScripts[frame]
+  if entry == nil then
+    error("HookKitTestEnv.RunScript expects a frame from NewFrame", 2)
+  end
+  local result = nil
+  local handler = entry.scripts[script]
+  if handler ~= nil then
+    result = handler(frame, ...)
+  end
+  local list = entry.postHooks[script]
+  if list ~= nil then
+    for index = 1, #list do
+      list[index](frame, ...)
     end
-    local result = nil
-    local handler = entry.scripts[script]
-    if handler ~= nil then
-        result = handler(frame, ...)
-    end
-    local list = entry.postHooks[script]
-    if list ~= nil then
-        for index = 1, #list do
-            list[index](frame, ...)
-        end
-    end
-    return result
+  end
+  return result
 end
 
 ---Measure the allocation a workload causes, in kilobytes, with the collector
@@ -366,13 +366,13 @@ end
 ---@param workload fun()
 ---@return number kilobytes
 function HookKitTestEnv.AllocatedKilobytes(workload)
-    collectgarbage()
-    collectgarbage("stop")
-    local before = collectgarbage("count")
-    workload()
-    local after = collectgarbage("count")
-    collectgarbage("restart")
-    return after - before
+  collectgarbage()
+  collectgarbage("stop")
+  local before = collectgarbage("count")
+  workload()
+  local after = collectgarbage("count")
+  collectgarbage("restart")
+  return after - before
 end
 
 ---Load the HookKit source again as a copy carrying `revision`, the way a
@@ -380,36 +380,34 @@ end
 ---@param revision integer
 ---@return table HookKit
 function HookKitTestEnv.LoadRevision(revision)
-    -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
-    -- `require` does.
-    local path = nil
-    for template in package.path:gmatch("[^;]+") do
-        local candidate = template:gsub("%?", "HookKit")
-        local file = io.open(candidate, "r")
-        if file ~= nil then
-            file:close()
-            path = candidate
-            break
-        end
+  -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
+  -- `require` does.
+  local path = nil
+  for template in package.path:gmatch("[^;]+") do
+    local candidate = template:gsub("%?", "HookKit")
+    local file = io.open(candidate, "r")
+    if file ~= nil then
+      file:close()
+      path = candidate
+      break
     end
-    if path == nil then
-        error("HookKitTestEnv.LoadRevision could not find HookKit.lua on package.path", 2)
-    end
+  end
+  if path == nil then
+    error("HookKitTestEnv.LoadRevision could not find HookKit.lua on package.path", 2)
+  end
 
-    local file = assert(io.open(path, "r"))
-    local text = file:read("*a")
-    file:close()
+  local file = assert(io.open(path, "r"))
+  local text = file:read("*a")
+  file:close()
 
-    local patched, replacements = text:gsub(
-        "local IMPLEMENTATION_REVISION = %d+",
-        "local IMPLEMENTATION_REVISION = " .. revision
-    )
-    if replacements ~= 1 then
-        error("HookKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
-    end
+  local patched, replacements =
+    text:gsub("local IMPLEMENTATION_REVISION = %d+", "local IMPLEMENTATION_REVISION = " .. revision)
+  if replacements ~= 1 then
+    error("HookKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
+  end
 
-    local chunk = assert(loadstring(patched, "@" .. path))
-    return chunk()
+  local chunk = assert(loadstring(patched, "@" .. path))
+  return chunk()
 end
 
 return HookKitTestEnv

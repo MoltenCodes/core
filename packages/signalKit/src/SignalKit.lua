@@ -75,12 +75,12 @@ local STATE_SCHEMA = 4
 -- later still takes the bus over, so its shutdown callbacks run before the bus
 -- closes. The API generations of the two Kits asked share the table.
 local LOGOUT = {
-    lifecycleKitApi = 1,
-    eventKitApi = 1,
-    byLifecycle = "lifecycleKit",
-    byShutdownCallback = "onShutdown",
-    byEvent = "playerLogout",
-    byNobody = "none",
+  lifecycleKitApi = 1,
+  eventKitApi = 1,
+  byLifecycle = "lifecycleKit",
+  byShutdownCallback = "onShutdown",
+  byEvent = "playerLogout",
+  byNobody = "none",
 }
 
 -- Named buses are package state shared by every addon in the session and are
@@ -121,14 +121,14 @@ local MAX_JOURNAL_ARGUMENTS_CEILING = 64
 -- ceiling each accepts and why each refuses `UNBOUNDED`.
 local LIMIT_NAMES = { "maxBuses", "maxJournalCapacity", "maxJournalArguments" }
 local LIMIT_CEILINGS = {
-    maxBuses = MAX_BUSES_CEILING,
-    maxJournalCapacity = MAX_JOURNAL_CAPACITY_CEILING,
-    maxJournalArguments = MAX_JOURNAL_ARGUMENTS_CEILING,
+  maxBuses = MAX_BUSES_CEILING,
+  maxJournalCapacity = MAX_JOURNAL_CAPACITY_CEILING,
+  maxJournalArguments = MAX_JOURNAL_ARGUMENTS_CEILING,
 }
 local LIMIT_UNBOUNDED_REFUSALS = {
-    maxBuses = "buses are shared by every addon and never freed",
-    maxJournalCapacity = "the ring is allocated when the journal is created",
-    maxJournalArguments = "each firing is staged into a reused slot table",
+  maxBuses = "buses are shared by every addon and never freed",
+  maxJournalCapacity = "the ring is allocated when the journal is created",
+  maxJournalArguments = "each firing is staged into a reused slot table",
 }
 
 -- Values staged with one multiple assignment, both into the reusable `xpcall`
@@ -157,26 +157,26 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
 if type(Registry) == "nil" and type(namespace) == "table" then
-    Registry = rawget(namespace, "Registry")
+  Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
-    error("MoltenCodes SignalKit requires Registry API 2 to be loaded first", 2)
+  error("MoltenCodes SignalKit requires Registry API 2 to be loaded first", 2)
 end
 
 local bootstrapPackage = rawget(Registry, "Bootstrap")
 if type(bootstrapPackage) ~= "function" then
-    error("MoltenCodes SignalKit requires a valid Registry API 2 facade", 2)
+  error("MoltenCodes SignalKit requires a valid Registry API 2 facade", 2)
 end
 
 -- Method names each shared prototype must carry once a copy has committed.
 local BUS_METHODS = {
-    "DeclareTopic",
-    "Publish",
-    "Subscribe",
-    "SubscribeOnce",
-    "Unsubscribe",
-    "Topics",
-    "CreateScope",
+  "DeclareTopic",
+  "Publish",
+  "Subscribe",
+  "SubscribeOnce",
+  "Unsubscribe",
+  "Topics",
+  "CreateScope",
 }
 local BUS_SCOPE_METHODS = { "Subscribe", "SubscribeOnce", "DisconnectAll", "Close", "IsClosed" }
 local JOURNAL_METHODS = { "Fire", "History" }
@@ -186,40 +186,40 @@ local JOURNAL_METHODS = { "Fire", "History" }
 ---@param methods string[]
 ---@return boolean
 local function hasMethods(prototype, methods)
-    if type(prototype) ~= "table" then
-        return false
+  if type(prototype) ~= "table" then
+    return false
+  end
+  for index = 1, #methods do
+    if type(rawget(prototype, methods[index])) ~= "function" then
+      return false
     end
-    for index = 1, #methods do
-        if type(rawget(prototype, methods[index])) ~= "function" then
-            return false
-        end
-    end
-    return true
+  end
+  return true
 end
 
 ---Whether `implementation` exposes the complete SignalKit API 1 surface.
 ---@param implementation any shared package table handed back by Registry
 ---@return boolean
 local function validatePublicSurface(implementation)
-    return type(implementation) == "table"
-        and rawget(implementation, "API") == API_GENERATION
-        and type(rawget(implementation, "REVISION")) == "number"
-        and type(rawget(implementation, "Connection")) == "table"
-        and type(rawget(implementation, "New")) == "function"
-        and type(rawget(implementation, "NewJournal")) == "function"
-        and type(rawget(implementation, "Connect")) == "function"
-        and type(rawget(implementation, "Once")) == "function"
-        and type(rawget(implementation, "Fire")) == "function"
-        and type(rawget(implementation, "DisconnectAll")) == "function"
-        and type(rawget(implementation, "GetGeneration")) == "function"
-        and type(rawget(implementation, "Bus")) == "function"
-        and type(rawget(implementation, "ForAddon")) == "function"
-        and type(rawget(implementation, "CloseAddonBus")) == "function"
-        and type(rawget(implementation, "UNBOUNDED")) == "table"
-        and type(rawget(implementation, "SetLimits")) == "function"
-        and type(rawget(implementation, "GetLimits")) == "function"
-        and type(rawget(rawget(implementation, "Connection"), "Disconnect")) == "function"
-        and type(rawget(rawget(implementation, "Connection"), "IsConnected")) == "function"
+  return type(implementation) == "table"
+    and rawget(implementation, "API") == API_GENERATION
+    and type(rawget(implementation, "REVISION")) == "number"
+    and type(rawget(implementation, "Connection")) == "table"
+    and type(rawget(implementation, "New")) == "function"
+    and type(rawget(implementation, "NewJournal")) == "function"
+    and type(rawget(implementation, "Connect")) == "function"
+    and type(rawget(implementation, "Once")) == "function"
+    and type(rawget(implementation, "Fire")) == "function"
+    and type(rawget(implementation, "DisconnectAll")) == "function"
+    and type(rawget(implementation, "GetGeneration")) == "function"
+    and type(rawget(implementation, "Bus")) == "function"
+    and type(rawget(implementation, "ForAddon")) == "function"
+    and type(rawget(implementation, "CloseAddonBus")) == "function"
+    and type(rawget(implementation, "UNBOUNDED")) == "table"
+    and type(rawget(implementation, "SetLimits")) == "function"
+    and type(rawget(implementation, "GetLimits")) == "function"
+    and type(rawget(rawget(implementation, "Connection"), "Disconnect")) == "function"
+    and type(rawget(rawget(implementation, "Connection"), "IsConnected")) == "function"
 end
 
 ---Whether `currentState` has the fields every state schema shares, from
@@ -227,14 +227,14 @@ end
 ---@param currentState any
 ---@return boolean
 local function validateStateBase(currentState)
-    return type(currentState) == "table"
-        and type(rawget(currentState, "schema")) == "number"
-        and type(rawget(currentState, "buses")) == "table"
-        and type(rawget(currentState, "busCount")) == "number"
-        and type(rawget(currentState, "busPrototype")) == "table"
-        and type(rawget(currentState, "busMetatable")) == "table"
-        and type(rawget(currentState, "scopePrototype")) == "table"
-        and type(rawget(currentState, "scopeMetatable")) == "table"
+  return type(currentState) == "table"
+    and type(rawget(currentState, "schema")) == "number"
+    and type(rawget(currentState, "buses")) == "table"
+    and type(rawget(currentState, "busCount")) == "number"
+    and type(rawget(currentState, "busPrototype")) == "table"
+    and type(rawget(currentState, "busMetatable")) == "table"
+    and type(rawget(currentState, "scopePrototype")) == "table"
+    and type(rawget(currentState, "scopeMetatable")) == "table"
 end
 
 ---Whether `value` is a finite integer from 1 to `ceiling`. `nan` fails every
@@ -243,11 +243,11 @@ end
 ---@param ceiling number `math.huge` for a limit without a ceiling
 ---@return boolean
 local function isIntegerUpTo(value, ceiling)
-    return type(value) == "number"
-        and value ~= math.huge
-        and value >= 1
-        and value <= ceiling
-        and value == math.floor(value)
+  return type(value) == "number"
+    and value ~= math.huge
+    and value >= 1
+    and value <= ceiling
+    and value == math.floor(value)
 end
 
 ---Whether `limits` holds every package-wide limit as an integer within its
@@ -255,16 +255,16 @@ end
 ---@param limits any
 ---@return boolean
 local function validateLimits(limits)
-    if type(limits) ~= "table" then
-        return false
+  if type(limits) ~= "table" then
+    return false
+  end
+  for index = 1, #LIMIT_NAMES do
+    local name = LIMIT_NAMES[index]
+    if not isIntegerUpTo(rawget(limits, name), LIMIT_CEILINGS[name]) then
+      return false
     end
-    for index = 1, #LIMIT_NAMES do
-        local name = LIMIT_NAMES[index]
-        if not isIntegerUpTo(rawget(limits, name), LIMIT_CEILINGS[name]) then
-            return false
-        end
-    end
-    return true
+  end
+  return true
 end
 
 ---Whether `currentState` has this revision's schema: the base fields, the
@@ -273,13 +273,13 @@ end
 ---@param currentState any
 ---@return boolean
 local function validateState(currentState)
-    return validateStateBase(currentState)
-        and rawget(currentState, "schema") == STATE_SCHEMA
-        and type(rawget(currentState, "unbounded")) == "table"
-        and type(rawget(currentState, "logoutWatch")) == "table"
-        and type(rawget(currentState, "journalPrototype")) == "table"
-        and type(rawget(currentState, "journalMetatable")) == "table"
-        and validateLimits(rawget(currentState, "limits"))
+  return validateStateBase(currentState)
+    and rawget(currentState, "schema") == STATE_SCHEMA
+    and type(rawget(currentState, "unbounded")) == "table"
+    and type(rawget(currentState, "logoutWatch")) == "table"
+    and type(rawget(currentState, "journalPrototype")) == "table"
+    and type(rawget(currentState, "journalMetatable")) == "table"
+    and validateLimits(rawget(currentState, "limits"))
 end
 
 ---Whether `implementation` carries package state of this revision's schema,
@@ -288,28 +288,28 @@ end
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    local currentState = rawget(implementation, "_state")
-    return validateState(currentState)
-        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
-        and type(rawget(currentState, "isolate")) == "function"
-        and type(rawget(rawget(currentState, "logoutWatch"), "close")) == "function"
-        and hasMethods(rawget(currentState, "busPrototype"), BUS_METHODS)
-        and hasMethods(rawget(currentState, "scopePrototype"), BUS_SCOPE_METHODS)
-        and hasMethods(rawget(currentState, "journalPrototype"), JOURNAL_METHODS)
+  local currentState = rawget(implementation, "_state")
+  return validateState(currentState)
+    and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
+    and type(rawget(currentState, "isolate")) == "function"
+    and type(rawget(rawget(currentState, "logoutWatch"), "close")) == "function"
+    and hasMethods(rawget(currentState, "busPrototype"), BUS_METHODS)
+    and hasMethods(rawget(currentState, "scopePrototype"), BUS_SCOPE_METHODS)
+    and hasMethods(rawget(currentState, "journalPrototype"), JOURNAL_METHODS)
 end
 
 local SignalKit, previousRevision, selected = bootstrapPackage(Registry, {
-    package = PACKAGE_NAME,
-    api = API_GENERATION,
-    revision = IMPLEMENTATION_REVISION,
-    label = "MoltenCodes SignalKit",
-    validatePublicSurface = validatePublicSurface,
-    validateState = validateCurrentState,
+  package = PACKAGE_NAME,
+  api = API_GENERATION,
+  revision = IMPLEMENTATION_REVISION,
+  label = "MoltenCodes SignalKit",
+  validatePublicSurface = validatePublicSurface,
+  validateState = validateCurrentState,
 })
 
 if type(SignalKit) == "nil" then
-    -- Equal or newer compatible revision already owns the shared package table.
-    return selected
+  -- Equal or newer compatible revision already owns the shared package table.
+  return selected
 end
 
 -- Shared state ---------------------------------------------------------------
@@ -439,50 +439,50 @@ local state = rawget(SignalKit, "_state")
 ---@return table journalPrototype
 ---@return table journalMetatable
 local function newJournalTables()
-    local journalPrototype = setmetatable({}, { __index = SignalKit })
-    return journalPrototype, { __index = journalPrototype }
+  local journalPrototype = setmetatable({}, { __index = SignalKit })
+  return journalPrototype, { __index = journalPrototype }
 end
 
 ---Build empty package state of the current schema.
 ---@return table
 local function newState()
-    local busPrototype = {}
-    local scopePrototype = {}
-    local journalPrototype, journalMetatable = newJournalTables()
-    return {
-        schema = STATE_SCHEMA,
-        -- Bus name to bus, and how many there are, for the `maxBuses` bound.
-        buses = {},
-        busCount = 0,
-        -- Buses and scopes are recognised by metatable identity, so the
-        -- metatables live here and survive upgrades; a newer copy refills the
-        -- prototypes they index.
-        busPrototype = busPrototype,
-        busMetatable = { __index = busPrototype },
-        scopePrototype = scopePrototype,
-        scopeMetatable = { __index = scopePrototype },
-        journalPrototype = journalPrototype,
-        journalMetatable = journalMetatable,
-        -- Delivery closures read the isolation function from here, so a newer
-        -- copy replaces it for subscriptions that already exist.
-        isolate = false,
-        -- `SignalKit.UNBOUNDED`. It lives in the state so that every revision
-        -- publishes the same table and a comparison against it keeps working
-        -- across an upgrade.
-        unbounded = {},
-        -- The package-wide limits `SetLimits` writes; a newer copy inherits
-        -- what a consumer set.
-        limits = {
-            maxBuses = DEFAULT_MAX_BUSES,
-            maxJournalCapacity = DEFAULT_MAX_JOURNAL_CAPACITY,
-            maxJournalArguments = DEFAULT_MAX_JOURNAL_ARGUMENTS,
-        },
-        -- The package-level `PLAYER_LOGOUT` watcher (see "Logout close"): the
-        -- EventKit scope that owns it, the connection once made, the
-        -- trampoline handed to EventKit, and the function it calls, which a
-        -- newer copy replaces.
-        logoutWatch = { scope = false, connection = false, trampoline = false, close = false },
-    }
+  local busPrototype = {}
+  local scopePrototype = {}
+  local journalPrototype, journalMetatable = newJournalTables()
+  return {
+    schema = STATE_SCHEMA,
+    -- Bus name to bus, and how many there are, for the `maxBuses` bound.
+    buses = {},
+    busCount = 0,
+    -- Buses and scopes are recognised by metatable identity, so the
+    -- metatables live here and survive upgrades; a newer copy refills the
+    -- prototypes they index.
+    busPrototype = busPrototype,
+    busMetatable = { __index = busPrototype },
+    scopePrototype = scopePrototype,
+    scopeMetatable = { __index = scopePrototype },
+    journalPrototype = journalPrototype,
+    journalMetatable = journalMetatable,
+    -- Delivery closures read the isolation function from here, so a newer
+    -- copy replaces it for subscriptions that already exist.
+    isolate = false,
+    -- `SignalKit.UNBOUNDED`. It lives in the state so that every revision
+    -- publishes the same table and a comparison against it keeps working
+    -- across an upgrade.
+    unbounded = {},
+    -- The package-wide limits `SetLimits` writes; a newer copy inherits
+    -- what a consumer set.
+    limits = {
+      maxBuses = DEFAULT_MAX_BUSES,
+      maxJournalCapacity = DEFAULT_MAX_JOURNAL_CAPACITY,
+      maxJournalArguments = DEFAULT_MAX_JOURNAL_ARGUMENTS,
+    },
+    -- The package-level `PLAYER_LOGOUT` watcher (see "Logout close"): the
+    -- EventKit scope that owns it, the connection once made, the
+    -- trampoline handed to EventKit, and the function it calls, which a
+    -- newer copy replaces.
+    logoutWatch = { scope = false, connection = false, trampoline = false, close = false },
+  }
 end
 
 ---Bring schema-1 state (revision 4) to schema 2 in place: add the sentinel
@@ -490,17 +490,17 @@ end
 ---per-bus limits it was created under.
 ---@param oldState table
 local function upgradeSchemaOne(oldState)
-    rawset(oldState, "unbounded", {})
-    rawset(oldState, "limits", { maxBuses = DEFAULT_MAX_BUSES })
-    for _, bus in pairs(rawget(oldState, "buses")) do
-        if type(bus) == "table" then
-            rawset(bus, "_maxTopics", DEFAULT_MAX_TOPICS)
-            rawset(bus, "_maxListeners", DEFAULT_MAX_LISTENERS)
-            rawset(bus, "_maxTopicsStated", false)
-            rawset(bus, "_maxListenersStated", false)
-        end
+  rawset(oldState, "unbounded", {})
+  rawset(oldState, "limits", { maxBuses = DEFAULT_MAX_BUSES })
+  for _, bus in pairs(rawget(oldState, "buses")) do
+    if type(bus) == "table" then
+      rawset(bus, "_maxTopics", DEFAULT_MAX_TOPICS)
+      rawset(bus, "_maxListeners", DEFAULT_MAX_LISTENERS)
+      rawset(bus, "_maxTopicsStated", false)
+      rawset(bus, "_maxListenersStated", false)
     end
-    rawset(oldState, "schema", 2)
+  end
+  rawset(oldState, "schema", 2)
 end
 
 ---Bring schema-2 state (revision 5) to schema 3 in place: add the logout
@@ -509,18 +509,18 @@ end
 ---bus until the next `ForAddon` names it.
 ---@param oldState table
 local function upgradeSchemaTwo(oldState)
-    rawset(
-        oldState,
-        "logoutWatch",
-        { scope = false, connection = false, trampoline = false, close = false }
-    )
-    for _, bus in pairs(rawget(oldState, "buses")) do
-        if type(bus) == "table" then
-            rawset(bus, "_logoutCloser", false)
-            rawset(bus, "_shutdownSubscription", false)
-        end
+  rawset(
+    oldState,
+    "logoutWatch",
+    { scope = false, connection = false, trampoline = false, close = false }
+  )
+  for _, bus in pairs(rawget(oldState, "buses")) do
+    if type(bus) == "table" then
+      rawset(bus, "_logoutCloser", false)
+      rawset(bus, "_shutdownSubscription", false)
     end
-    rawset(oldState, "schema", 3)
+  end
+  rawset(oldState, "schema", 3)
 end
 
 ---Bring schema-3 state (revision 6) to schema 4 in place: add the journal
@@ -531,50 +531,50 @@ end
 ---and refused here rather than indexed.
 ---@param oldState table
 local function upgradeSchemaThree(oldState)
-    local limits = rawget(oldState, "limits")
-    if type(limits) ~= "table" then
-        error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
-    end
-    local journalPrototype, journalMetatable = newJournalTables()
-    rawset(oldState, "journalPrototype", journalPrototype)
-    rawset(oldState, "journalMetatable", journalMetatable)
-    rawset(limits, "maxJournalCapacity", DEFAULT_MAX_JOURNAL_CAPACITY)
-    rawset(limits, "maxJournalArguments", DEFAULT_MAX_JOURNAL_ARGUMENTS)
-    rawset(oldState, "schema", STATE_SCHEMA)
+  local limits = rawget(oldState, "limits")
+  if type(limits) ~= "table" then
+    error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
+  end
+  local journalPrototype, journalMetatable = newJournalTables()
+  rawset(oldState, "journalPrototype", journalPrototype)
+  rawset(oldState, "journalMetatable", journalMetatable)
+  rawset(limits, "maxJournalCapacity", DEFAULT_MAX_JOURNAL_CAPACITY)
+  rawset(limits, "maxJournalArguments", DEFAULT_MAX_JOURNAL_ARGUMENTS)
+  rawset(oldState, "schema", STATE_SCHEMA)
 end
 
 if type(previousRevision) == "nil" then
-    if Connection ~= nil or state ~= nil then
-        error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
-    end
+  if Connection ~= nil or state ~= nil then
+    error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
+  end
 
-    Connection = {}
-    state = newState()
-    rawset(SignalKit, "Connection", Connection)
-    rawset(SignalKit, "_state", state)
+  Connection = {}
+  state = newState()
+  rawset(SignalKit, "Connection", Connection)
+  rawset(SignalKit, "_state", state)
 else
-    -- Revisions 1 to 3 had no buses and therefore no private state; a later
-    -- revision's state must already have this schema's shape.
-    if state == nil and type(Connection) == "table" then
-        state = newState()
-        rawset(SignalKit, "_state", state)
-    end
+  -- Revisions 1 to 3 had no buses and therefore no private state; a later
+  -- revision's state must already have this schema's shape.
+  if state == nil and type(Connection) == "table" then
+    state = newState()
+    rawset(SignalKit, "_state", state)
+  end
 
-    if type(Connection) ~= "table" or not validateStateBase(state) then
-        error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
-    end
-    if rawget(state, "schema") == 1 then
-        upgradeSchemaOne(state)
-    end
-    if rawget(state, "schema") == 2 then
-        upgradeSchemaTwo(state)
-    end
-    if rawget(state, "schema") == 3 then
-        upgradeSchemaThree(state)
-    end
-    if not validateState(state) then
-        error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
-    end
+  if type(Connection) ~= "table" or not validateStateBase(state) then
+    error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
+  end
+  if rawget(state, "schema") == 1 then
+    upgradeSchemaOne(state)
+  end
+  if rawget(state, "schema") == 2 then
+    upgradeSchemaTwo(state)
+  end
+  if rawget(state, "schema") == 3 then
+    upgradeSchemaThree(state)
+  end
+  if not validateState(state) then
+    error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
+  end
 end
 
 local SIGNAL_METATABLE = { __index = SignalKit }
@@ -607,22 +607,22 @@ local CONNECT_RECEIVER_MESSAGE = "SignalKit:Connect" .. RECEIVER_HINT .. "Connec
 local ONCE_RECEIVER_MESSAGE = "SignalKit:Once" .. RECEIVER_HINT .. "Once(callback)"
 local FIRE_RECEIVER_MESSAGE = "SignalKit:Fire" .. RECEIVER_HINT .. "Fire(...)"
 local DISCONNECT_ALL_RECEIVER_MESSAGE = "SignalKit:DisconnectAll"
-    .. RECEIVER_HINT
-    .. "DisconnectAll()"
+  .. RECEIVER_HINT
+  .. "DisconnectAll()"
 local GET_GENERATION_RECEIVER_MESSAGE = "SignalKit:GetGeneration"
-    .. RECEIVER_HINT
-    .. "GetGeneration()"
+  .. RECEIVER_HINT
+  .. "GetGeneration()"
 local JOURNAL_RECEIVER_HINT = " must be called on a journal; use journal:"
 local JOURNAL_FIRE_RECEIVER_MESSAGE = "SignalKit.Journal:Fire"
-    .. JOURNAL_RECEIVER_HINT
-    .. "Fire(...)"
+  .. JOURNAL_RECEIVER_HINT
+  .. "Fire(...)"
 local HISTORY_RECEIVER_MESSAGE = "SignalKit.Journal:History" .. JOURNAL_RECEIVER_HINT .. "History()"
 local DISCONNECT_RECEIVER_MESSAGE = "SignalKit:Disconnect"
-    .. CONNECTION_RECEIVER_HINT
-    .. "Disconnect()"
+  .. CONNECTION_RECEIVER_HINT
+  .. "Disconnect()"
 local IS_CONNECTED_RECEIVER_MESSAGE = "SignalKit:IsConnected"
-    .. CONNECTION_RECEIVER_HINT
-    .. "IsConnected()"
+  .. CONNECTION_RECEIVER_HINT
+  .. "IsConnected()"
 
 ---Returns the listener array of `self`, or `nil` when `self` is not a signal.
 ---
@@ -630,23 +630,23 @@ local IS_CONNECTED_RECEIVER_MESSAGE = "SignalKit:IsConnected"
 ---@param self any
 ---@return table|nil
 local function listenersOf(self)
-    if type(self) ~= "table" then
-        return nil
-    end
+  if type(self) ~= "table" then
+    return nil
+  end
 
-    local listeners = rawget(self, "_listeners")
-    if type(listeners) ~= "table" then
-        return nil
-    end
+  local listeners = rawget(self, "_listeners")
+  if type(listeners) ~= "table" then
+    return nil
+  end
 
-    return listeners
+  return listeners
 end
 
 ---Whether `self` looks like a connection handle owned by this package.
 ---@param self any
 ---@return boolean
 local function isConnectionHandle(self)
-    return type(self) == "table" and type(rawget(self, "_connected")) == "boolean"
+  return type(self) == "table" and type(rawget(self, "_connected")) == "boolean"
 end
 
 -- Listener storage -------------------------------------------------------------
@@ -677,38 +677,38 @@ end
 ---@param signal table
 ---@return integer
 local function tombstoneCount(signal)
-    local tombstones = rawget(signal, "_tombstones")
-    if type(tombstones) ~= "number" then
-        return 0
-    end
+  local tombstones = rawget(signal, "_tombstones")
+  if type(tombstones) ~= "number" then
+    return 0
+  end
 
-    return tombstones
+  return tombstones
 end
 
 ---@param tombstones integer
 ---@param total integer
 ---@return boolean
 local function shouldCompact(tombstones, total)
-    return tombstones > 0 and tombstones * 2 >= total
+  return tombstones > 0 and tombstones * 2 >= total
 end
 
 ---Replaces the listener array of `signal` with one holding only live entries.
 ---@param signal table
 ---@param listeners table
 local function compact(signal, listeners)
-    local compacted = {}
-    local nextIndex = 1
+  local compacted = {}
+  local nextIndex = 1
 
-    for index = 1, #listeners do
-        local connection = listeners[index]
-        if rawget(connection, "_connected") == true then
-            compacted[nextIndex] = connection
-            nextIndex = nextIndex + 1
-        end
+  for index = 1, #listeners do
+    local connection = listeners[index]
+    if rawget(connection, "_connected") == true then
+      compacted[nextIndex] = connection
+      nextIndex = nextIndex + 1
     end
+  end
 
-    rawset(signal, "_listeners", compacted)
-    rawset(signal, "_tombstones", 0)
+  rawset(signal, "_listeners", compacted)
+  rawset(signal, "_tombstones", 0)
 end
 
 -- Assigned in the bus scope section; a scope-owned connection reports its
@@ -723,46 +723,46 @@ local noteScopeDisconnect
 ---bus subscriptions; clearing an absent field is a no-op.
 ---@param connection table
 local function releaseConnection(connection)
-    rawset(connection, "_connected", false)
-    rawset(connection, "_signal", nil)
-    rawset(connection, "_callback", nil)
-    rawset(connection, "_busCallback", nil)
+  rawset(connection, "_connected", false)
+  rawset(connection, "_signal", nil)
+  rawset(connection, "_callback", nil)
+  rawset(connection, "_busCallback", nil)
 
-    local scope = rawget(connection, "_busScope")
-    if scope ~= nil then
-        rawset(connection, "_busScope", nil)
-        noteScopeDisconnect(scope)
-    end
+  local scope = rawget(connection, "_busScope")
+  if scope ~= nil then
+    rawset(connection, "_busScope", nil)
+    noteScopeDisconnect(scope)
+  end
 end
 
 ---@param connection table
 ---@return boolean disconnected `true` only for the call that transitioned the state.
 local function disconnectConnection(connection)
-    if rawget(connection, "_connected") ~= true then
-        return false
-    end
+  if rawget(connection, "_connected") ~= true then
+    return false
+  end
 
-    local signal = rawget(connection, "_signal")
-    releaseConnection(connection)
+  local signal = rawget(connection, "_signal")
+  releaseConnection(connection)
 
-    local listeners = rawget(signal, "_listeners")
-    local total = #listeners
-    local tombstones = tombstoneCount(signal) + 1
-    rawset(signal, "_tombstones", tombstones)
+  local listeners = rawget(signal, "_listeners")
+  local total = #listeners
+  local tombstones = tombstoneCount(signal) + 1
+  rawset(signal, "_tombstones", tombstones)
 
-    if shouldCompact(tombstones, total) then
-        compact(signal, listeners)
-    end
+  if shouldCompact(tombstones, total) then
+    compact(signal, listeners)
+  end
 
-    -- `total - tombstones` is the live count whether or not compaction ran.
-    -- A signal without hooks, or one created before hooks existed, stores
-    -- `false` or nothing here and pays only this test.
-    local onLast = rawget(signal, "_onLast")
-    if onLast and total - tombstones == 0 then
-        onLast(signal)
-    end
+  -- `total - tombstones` is the live count whether or not compaction ran.
+  -- A signal without hooks, or one created before hooks existed, stores
+  -- `false` or nothing here and pays only this test.
+  local onLast = rawget(signal, "_onLast")
+  if onLast and total - tombstones == 0 then
+    onLast(signal)
+  end
 
-    return true
+  return true
 end
 
 ---Shared implementation of `Connect`, `Once` and bus subscriptions.
@@ -775,36 +775,36 @@ end
 ---@param busScope table|nil the bus scope that owns the subscription
 ---@return SignalKit.Connection
 local function connect(signal, callback, once, methodName, receiverMessage, busCallback, busScope)
-    local listeners = listenersOf(signal)
-    if listeners == nil then
-        error(receiverMessage, 3)
-    end
+  local listeners = listenersOf(signal)
+  if listeners == nil then
+    error(receiverMessage, 3)
+  end
 
-    if type(callback) ~= "function" then
-        error("SignalKit:" .. methodName .. " callback must be a function", 3)
-    end
+  if type(callback) ~= "function" then
+    error("SignalKit:" .. methodName .. " callback must be a function", 3)
+  end
 
-    local connection = setmetatable({
-        _signal = signal,
-        _callback = callback,
-        _connected = true,
-        _once = once,
-        _busCallback = busCallback,
-        _busScope = busScope,
-    }, CONNECTION_METATABLE)
+  local connection = setmetatable({
+    _signal = signal,
+    _callback = callback,
+    _connected = true,
+    _once = once,
+    _busCallback = busCallback,
+    _busScope = busScope,
+  }, CONNECTION_METATABLE)
 
-    local nextIndex = #listeners + 1
-    rawset(listeners, nextIndex, connection)
+  local nextIndex = #listeners + 1
+  rawset(listeners, nextIndex, connection)
 
-    -- The listener is in place before the hook runs, so a hook that connects
-    -- again sees two live listeners and one that disconnects everything sees
-    -- the 1→0 transition. The subtraction is paid only when a hook exists.
-    local onFirst = rawget(signal, "_onFirst")
-    if onFirst and nextIndex - tombstoneCount(signal) == 1 then
-        onFirst(signal)
-    end
+  -- The listener is in place before the hook runs, so a hook that connects
+  -- again sees two live listeners and one that disconnects everything sees
+  -- the 1→0 transition. The subtraction is paid only when a hook exists.
+  local onFirst = rawget(signal, "_onFirst")
+  if onFirst and nextIndex - tombstoneCount(signal) == 1 then
+    onFirst(signal)
+  end
 
-    return connection
+  return connection
 end
 
 -- Signal methods ---------------------------------------------------------------
@@ -817,28 +817,28 @@ end
 ---@return SignalKit.SignalHook|false onFirst
 ---@return SignalKit.SignalHook|false onLast
 local function readSignalOptions(options, label, level)
-    if type(options) == "nil" then
-        return false, false
-    end
-    if type(options) ~= "table" then
-        error(label .. " options must be a table or nil", level)
-    end
+  if type(options) == "nil" then
+    return false, false
+  end
+  if type(options) ~= "table" then
+    error(label .. " options must be a table or nil", level)
+  end
 
-    local onFirst = rawget(options, "onFirst")
-    if type(onFirst) == "nil" then
-        onFirst = false
-    elseif type(onFirst) ~= "function" then
-        error(label .. " options.onFirst must be a function or nil", level)
-    end
+  local onFirst = rawget(options, "onFirst")
+  if type(onFirst) == "nil" then
+    onFirst = false
+  elseif type(onFirst) ~= "function" then
+    error(label .. " options.onFirst must be a function or nil", level)
+  end
 
-    local onLast = rawget(options, "onLast")
-    if type(onLast) == "nil" then
-        onLast = false
-    elseif type(onLast) ~= "function" then
-        error(label .. " options.onLast must be a function or nil", level)
-    end
+  local onLast = rawget(options, "onLast")
+  if type(onLast) == "nil" then
+    onLast = false
+  elseif type(onLast) ~= "function" then
+    error(label .. " options.onLast must be a function or nil", level)
+  end
 
-    return onFirst, onLast
+  return onFirst, onLast
 end
 
 ---Whether `receiver` is an options table handed to `SignalKit.New(options)`
@@ -848,12 +848,9 @@ end
 ---@param receiver any
 ---@return boolean
 local function isMisplacedOptionsTable(receiver)
-    return type(receiver) == "table"
-        and receiver ~= SignalKit
-        and (
-            type(rawget(receiver, "onFirst")) ~= "nil"
-            or type(rawget(receiver, "onLast")) ~= "nil"
-        )
+  return type(receiver) == "table"
+    and receiver ~= SignalKit
+    and (type(rawget(receiver, "onFirst")) ~= "nil" or type(rawget(receiver, "onLast")) ~= "nil")
 end
 
 ---Build a signal table with the shared listener layout.
@@ -861,14 +858,14 @@ end
 ---@param onLast SignalKit.SignalHook|false
 ---@return table
 local function newSignalTable(onFirst, onLast)
-    return {
-        _listeners = {},
-        _tombstones = 0,
-        -- Incremented by every `Fire`; a Lua 5.1 double counts exactly to 2^53.
-        _generation = 0,
-        _onFirst = onFirst,
-        _onLast = onLast,
-    }
+  return {
+    _listeners = {},
+    _tombstones = 0,
+    -- Incremented by every `Fire`; a Lua 5.1 double counts exactly to 2^53.
+    _generation = 0,
+    _onFirst = onFirst,
+    _onLast = onLast,
+  }
 end
 
 ---Creates an independent signal instance, with the `onFirst` and `onLast`
@@ -881,11 +878,11 @@ end
 ---@param options SignalKit.SignalOptions?
 ---@return SignalKit.Signal signal
 local function newSignal(self, options)
-    if type(options) == "nil" and isMisplacedOptionsTable(self) then
-        error("SignalKit:New options must be passed with a colon call: SignalKit:New(options)", 2)
-    end
-    local onFirst, onLast = readSignalOptions(options, "SignalKit:New", 3)
-    return setmetatable(newSignalTable(onFirst, onLast), SIGNAL_METATABLE)
+  if type(options) == "nil" and isMisplacedOptionsTable(self) then
+    error("SignalKit:New options must be passed with a colon call: SignalKit:New(options)", 2)
+  end
+  local onFirst, onLast = readSignalOptions(options, "SignalKit:New", 3)
+  return setmetatable(newSignalTable(onFirst, onLast), SIGNAL_METATABLE)
 end
 
 ---Connects `callback` for every future dispatch.
@@ -893,7 +890,7 @@ end
 ---@param callback fun(...: any)
 ---@return SignalKit.Connection connection
 local function connectListener(self, callback)
-    return connect(self, callback, false, "Connect", CONNECT_RECEIVER_MESSAGE)
+  return connect(self, callback, false, "Connect", CONNECT_RECEIVER_MESSAGE)
 end
 
 ---Connects `callback` for at most one dispatch.
@@ -901,50 +898,50 @@ end
 ---@param callback fun(...: any)
 ---@return SignalKit.Connection connection
 local function connectOnce(self, callback)
-    return connect(self, callback, true, "Once", ONCE_RECEIVER_MESSAGE)
+  return connect(self, callback, true, "Once", ONCE_RECEIVER_MESSAGE)
 end
 
 ---Invokes every currently eligible listener in connection order.
 ---@param self SignalKit.Signal
 ---@param ... any Forwarded to each listener exactly, including `nil` values.
 local function fire(self, ...)
-    -- Capture both the current listener array and its length. Connect appends
-    -- beyond this fixed boundary, while disconnect marks the shared connection
-    -- inactive. This makes the current dispatch stable without allocating a
-    -- per-Fire snapshot.
-    -- The receiver check is inlined rather than delegated to `listenersOf`:
-    -- Fire is the one hot path here, and the extra call frame costs more than
-    -- the two type tests it would hide.
-    if type(self) ~= "table" then
-        error(FIRE_RECEIVER_MESSAGE, 2)
+  -- Capture both the current listener array and its length. Connect appends
+  -- beyond this fixed boundary, while disconnect marks the shared connection
+  -- inactive. This makes the current dispatch stable without allocating a
+  -- per-Fire snapshot.
+  -- The receiver check is inlined rather than delegated to `listenersOf`:
+  -- Fire is the one hot path here, and the extra call frame costs more than
+  -- the two type tests it would hide.
+  if type(self) ~= "table" then
+    error(FIRE_RECEIVER_MESSAGE, 2)
+  end
+
+  local listeners = rawget(self, "_listeners")
+  if type(listeners) ~= "table" then
+    error(FIRE_RECEIVER_MESSAGE, 2)
+  end
+
+  -- The generation moves before any listener runs, so a listener reading it
+  -- sees the firing it is being delivered. A signal created before revision
+  -- 7 has no counter; `or 0` is its in-place upgrade path.
+  rawset(self, "_generation", (rawget(self, "_generation") or 0) + 1)
+
+  local count = #listeners
+
+  for index = 1, count do
+    local connection = listeners[index]
+    if rawget(connection, "_connected") == true then
+      local callback = rawget(connection, "_callback")
+
+      if rawget(connection, "_once") == true then
+        -- Disconnect before invocation so recursive Fire calls cannot
+        -- observe the once-listener a second time.
+        disconnectConnection(connection)
+      end
+
+      callback(...)
     end
-
-    local listeners = rawget(self, "_listeners")
-    if type(listeners) ~= "table" then
-        error(FIRE_RECEIVER_MESSAGE, 2)
-    end
-
-    -- The generation moves before any listener runs, so a listener reading it
-    -- sees the firing it is being delivered. A signal created before revision
-    -- 7 has no counter; `or 0` is its in-place upgrade path.
-    rawset(self, "_generation", (rawget(self, "_generation") or 0) + 1)
-
-    local count = #listeners
-
-    for index = 1, count do
-        local connection = listeners[index]
-        if rawget(connection, "_connected") == true then
-            local callback = rawget(connection, "_callback")
-
-            if rawget(connection, "_once") == true then
-                -- Disconnect before invocation so recursive Fire calls cannot
-                -- observe the once-listener a second time.
-                disconnectConnection(connection)
-            end
-
-            callback(...)
-        end
-    end
+  end
 end
 
 ---Disconnect every live listener of `signal`; the caller validated it.
@@ -952,44 +949,44 @@ end
 ---@param listeners table
 ---@return integer disconnected
 local function disconnectEveryListener(signal, listeners)
-    local disconnected = 0
+  local disconnected = 0
 
-    -- Replace the active array first. If a callback is currently dispatching
-    -- an older snapshot, marking these shared connection objects disconnected
-    -- prevents all remaining callbacks from that snapshot from running.
-    rawset(signal, "_listeners", {})
-    rawset(signal, "_tombstones", 0)
+  -- Replace the active array first. If a callback is currently dispatching
+  -- an older snapshot, marking these shared connection objects disconnected
+  -- prevents all remaining callbacks from that snapshot from running.
+  rawset(signal, "_listeners", {})
+  rawset(signal, "_tombstones", 0)
 
-    for index = 1, #listeners do
-        local connection = listeners[index]
-        if rawget(connection, "_connected") == true then
-            disconnected = disconnected + 1
-            releaseConnection(connection)
-        end
+  for index = 1, #listeners do
+    local connection = listeners[index]
+    if rawget(connection, "_connected") == true then
+      disconnected = disconnected + 1
+      releaseConnection(connection)
     end
+  end
 
-    -- One 1→0 transition however many listeners went, so `onLast` runs once,
-    -- after the signal is empty and ready for a hook that connects again.
-    if disconnected > 0 then
-        local onLast = rawget(signal, "_onLast")
-        if onLast then
-            onLast(signal)
-        end
+  -- One 1→0 transition however many listeners went, so `onLast` runs once,
+  -- after the signal is empty and ready for a hook that connects again.
+  if disconnected > 0 then
+    local onLast = rawget(signal, "_onLast")
+    if onLast then
+      onLast(signal)
     end
+  end
 
-    return disconnected
+  return disconnected
 end
 
 ---Disconnects every listener connected at the moment of the call.
 ---@param self SignalKit.Signal
 ---@return integer disconnected
 local function disconnectAll(self)
-    local listeners = listenersOf(self)
-    if listeners == nil then
-        error(DISCONNECT_ALL_RECEIVER_MESSAGE, 2)
-    end
+  local listeners = listenersOf(self)
+  if listeners == nil then
+    error(DISCONNECT_ALL_RECEIVER_MESSAGE, 2)
+  end
 
-    return disconnectEveryListener(self, listeners)
+  return disconnectEveryListener(self, listeners)
 end
 
 ---Returns how many times this signal has fired: `0` for a new signal, and for
@@ -997,33 +994,33 @@ end
 ---@param self SignalKit.Signal
 ---@return integer generation
 local function getGeneration(self)
-    if listenersOf(self) == nil then
-        error(GET_GENERATION_RECEIVER_MESSAGE, 2)
-    end
+  if listenersOf(self) == nil then
+    error(GET_GENERATION_RECEIVER_MESSAGE, 2)
+  end
 
-    return rawget(self, "_generation") or 0
+  return rawget(self, "_generation") or 0
 end
 
 ---Disconnects this connection.
 ---@param self SignalKit.Connection
 ---@return boolean disconnected `true` only for the call that transitioned the state.
 local function disconnect(self)
-    if not isConnectionHandle(self) then
-        error(DISCONNECT_RECEIVER_MESSAGE, 2)
-    end
+  if not isConnectionHandle(self) then
+    error(DISCONNECT_RECEIVER_MESSAGE, 2)
+  end
 
-    return disconnectConnection(self)
+  return disconnectConnection(self)
 end
 
 ---Whether this connection is still active.
 ---@param self SignalKit.Connection
 ---@return boolean connected
 local function isConnected(self)
-    if not isConnectionHandle(self) then
-        error(IS_CONNECTED_RECEIVER_MESSAGE, 2)
-    end
+  if not isConnectionHandle(self) then
+    error(IS_CONNECTED_RECEIVER_MESSAGE, 2)
+  end
 
-    return rawget(self, "_connected") == true
+  return rawget(self, "_connected") == true
 end
 
 -- Listener isolation -----------------------------------------------------------
@@ -1049,21 +1046,21 @@ local stagedPayload = {}
 ---Hand a failing listener's error to the host error handler.
 ---@param message any
 local function reportListenerError(message)
-    -- geterrorhandler is a World of Warcraft client API reachable only through the global table.
-    -- selene: allow(global_usage)
-    local getErrorHandler = rawget(_G, "geterrorhandler")
-    if type(getErrorHandler) == "function" then
-        local handler = getErrorHandler()
-        if type(handler) == "function" then
-            handler(message)
-            return
-        end
+  -- geterrorhandler is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
+  if type(getErrorHandler) == "function" then
+    local handler = getErrorHandler()
+    if type(handler) == "function" then
+      handler(message)
+      return
     end
+  end
 
-    -- Outside a WoW client there is no error handler to report through. Printing
-    -- is what the client's own default handler does, and staying silent would
-    -- turn a listener bug into an invisible one.
-    print(message)
+  -- Outside a WoW client there is no error handler to report through. Printing
+  -- is what the client's own default handler does, and staying silent would
+  -- turn a listener bug into an invisible one.
+  print(message)
 end
 
 ---Clear the staged payload slots and pass the values through unchanged.
@@ -1075,20 +1072,20 @@ end
 ---@param ... any
 ---@return any ...
 local function releaseStagedPayload(count, ...)
-    for index = 1, count do
-        stagedPayload[index] = nil
-    end
-    return ...
+  for index = 1, count do
+    stagedPayload[index] = nil
+  end
+  return ...
 end
 
 ---Reusable `xpcall` trampoline that forwards the staged payload.
 ---@return any ...
 local function invokeStaged()
-    -- Always set by `isolateWithXpcall` immediately before `xpcall` runs this.
-    local callback = stagedCallback --[[@as function]]
-    local count = stagedCount
-    stagedCallback = nil
-    return callback(releaseStagedPayload(count, unpackValues(stagedPayload, 1, count)))
+  -- Always set by `isolateWithXpcall` immediately before `xpcall` runs this.
+  local callback = stagedCallback --[[@as function]]
+  local count = stagedCount
+  stagedCallback = nil
+  return callback(releaseStagedPayload(count, unpackValues(stagedPayload, 1, count)))
 end
 
 ---Stage `...` into the reusable buffer.
@@ -1100,23 +1097,23 @@ end
 ---@param count integer
 ---@param ... any
 local function stagePayload(count, ...)
-    local payload = stagedPayload
-    payload[1], payload[2], payload[3], payload[4], payload[5], payload[6], payload[7], payload[8] =
-        ...
-    for index = MULTIPLE_ASSIGNMENT_SLOTS + 1, count do
-        payload[index] = select(index, ...)
-    end
+  local payload = stagedPayload
+  payload[1], payload[2], payload[3], payload[4], payload[5], payload[6], payload[7], payload[8] =
+    ...
+  for index = MULTIPLE_ASSIGNMENT_SLOTS + 1, count do
+    payload[index] = select(index, ...)
+  end
 end
 
 ---Call `callback` so a raised error is reported rather than propagated.
 ---@param callback function
 ---@param ... any published arguments
 local function isolateWithXpcall(callback, ...)
-    local count = select("#", ...)
-    stagedCallback = callback
-    stagedCount = count
-    stagePayload(count, ...)
-    xpcall(invokeStaged, reportListenerError)
+  local count = select("#", ...)
+  stagedCallback = callback
+  stagedCount = count
+  stagePayload(count, ...)
+  xpcall(invokeStaged, reportListenerError)
 end
 
 -- securecallfunction is a World of Warcraft client API reachable only through the global table.
@@ -1124,8 +1121,8 @@ end
 local secureCallFunction = rawget(_G, "securecallfunction")
 local isolate = isolateWithXpcall
 if type(secureCallFunction) == "function" then
-    -- Its signature is already `(callback, ...)`, so no adapter frame is needed.
-    isolate = secureCallFunction
+  -- Its signature is already `(callback, ...)`, so no adapter frame is needed.
+  isolate = secureCallFunction
 end
 
 ---Build the one delivery closure a bus subscription connects to its signal.
@@ -1136,9 +1133,9 @@ end
 ---@param callback function the subscriber's callback
 ---@return function delivery
 local function newDelivery(callback)
-    return function(...)
-        return rawget(state, "isolate")(callback, ...)
-    end
+  return function(...)
+    return rawget(state, "isolate")(callback, ...)
+  end
 end
 
 -- Bus validation ---------------------------------------------------------------
@@ -1156,10 +1153,10 @@ end
 ---@param value any
 ---@return boolean
 local function isSecret(value)
-    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-    -- selene: allow(global_usage)
-    local isSecretValue = rawget(_G, "issecretvalue")
-    return type(isSecretValue) == "function" and isSecretValue(value) == true
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local isSecretValue = rawget(_G, "issecretvalue")
+  return type(isSecretValue) == "function" and isSecretValue(value) == true
 end
 
 ---Raise at `level` when `value` is secret, naming `label`.
@@ -1167,60 +1164,57 @@ end
 ---@param label string qualified public name of the argument
 ---@param level integer stack level the failure is reported at
 local function refuseSecret(value, label, level)
-    if isSecret(value) then
-        error(label .. " must not be a secret value", level)
-    end
+  if isSecret(value) then
+    error(label .. " must not be a secret value", level)
+  end
 end
 
 ---@param value any
 ---@param label string qualified public name of the argument
 ---@param level integer stack level the failure is reported at
 local function validateNonEmptyString(value, label, level)
-    -- Refused before `== ""` could raise inside SignalKit instead of at the caller.
-    refuseSecret(value, label, level + 1)
-    if type(value) ~= "string" or value == "" then
-        error(label .. " must be a non-empty string", level)
-    end
+  -- Refused before `== ""` could raise inside SignalKit instead of at the caller.
+  refuseSecret(value, label, level + 1)
+  if type(value) ~= "string" or value == "" then
+    error(label .. " must be a non-empty string", level)
+  end
 end
 
 ---@param bus any receiver the public method was called on
 ---@param label string qualified public method name
 ---@param level integer stack level the failure is reported at
 local function validateBus(bus, label, level)
-    if type(bus) ~= "table" or getmetatable(bus) ~= BUS_METATABLE then
-        error(label .. " must be called on a SignalKit bus with a colon call", level)
-    end
+  if type(bus) ~= "table" or getmetatable(bus) ~= BUS_METATABLE then
+    error(label .. " must be called on a SignalKit bus with a colon call", level)
+  end
 end
 
 ---@param scope any receiver the public method was called on
 ---@param label string qualified public method name
 ---@param level integer stack level the failure is reported at
 local function validateScope(scope, label, level)
-    if type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE then
-        error(label .. " must be called on a SignalKit bus scope", level)
-    end
+  if type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE then
+    error(label .. " must be called on a SignalKit bus scope", level)
+  end
 end
 
 ---@param self any receiver the facade method was called on
 ---@param label string qualified public method name
 ---@param level integer stack level the failure is reported at
 local function validateFacade(self, label, level)
-    -- The type test comes first: a dot call can hand a secret in as `self`.
-    if type(self) ~= "table" or self ~= SignalKit then
-        error(label .. " must be called on the SignalKit facade; use " .. label .. "(...)", level)
-    end
+  -- The type test comes first: a dot call can hand a secret in as `self`.
+  if type(self) ~= "table" or self ~= SignalKit then
+    error(label .. " must be called on the SignalKit facade; use " .. label .. "(...)", level)
+  end
 end
 
 ---@param bus SignalKit.Bus
 ---@param label string qualified public method name
 ---@param level integer stack level the failure is reported at
 local function ensureBusOpen(bus, label, level)
-    if rawget(bus, "_closed") == true then
-        error(
-            label .. ' cannot subscribe on the closed bus "' .. rawget(bus, "_name") .. '"',
-            level
-        )
-    end
+  if rawget(bus, "_closed") == true then
+    error(label .. ' cannot subscribe on the closed bus "' .. rawget(bus, "_name") .. '"', level)
+  end
 end
 
 ---Validate a `DeclareTopic` options table and return its two policies.
@@ -1229,46 +1223,46 @@ end
 ---@return integer|function|false arguments
 ---@return string|false description
 local function readTopicOptions(options, level)
-    if type(options) == "nil" then
-        return false, false
-    end
-    if type(options) ~= "table" then
-        error("SignalKit.Bus:DeclareTopic options must be a table or nil", level)
-    end
+  if type(options) == "nil" then
+    return false, false
+  end
+  if type(options) ~= "table" then
+    error("SignalKit.Bus:DeclareTopic options must be a table or nil", level)
+  end
 
-    local arguments = rawget(options, "arguments")
-    if type(arguments) == "nil" then
-        arguments = false
-    elseif type(arguments) == "number" then
-        refuseSecret(arguments, "SignalKit.Bus:DeclareTopic options.arguments", level + 1)
-        -- `math.huge` passes the integer test and NaN fails every comparison,
-        -- so both are named explicitly.
-        if
-            arguments ~= arguments
-            or arguments == math.huge
-            or arguments < 0
-            or arguments ~= math.floor(arguments)
-        then
-            error(
-                "SignalKit.Bus:DeclareTopic options.arguments count must be a finite non-negative integer",
-                level
-            )
-        end
-    elseif type(arguments) ~= "function" then
-        error(
-            "SignalKit.Bus:DeclareTopic options.arguments must be a count, a validator function or nil",
-            level
-        )
+  local arguments = rawget(options, "arguments")
+  if type(arguments) == "nil" then
+    arguments = false
+  elseif type(arguments) == "number" then
+    refuseSecret(arguments, "SignalKit.Bus:DeclareTopic options.arguments", level + 1)
+    -- `math.huge` passes the integer test and NaN fails every comparison,
+    -- so both are named explicitly.
+    if
+      arguments ~= arguments
+      or arguments == math.huge
+      or arguments < 0
+      or arguments ~= math.floor(arguments)
+    then
+      error(
+        "SignalKit.Bus:DeclareTopic options.arguments count must be a finite non-negative integer",
+        level
+      )
     end
+  elseif type(arguments) ~= "function" then
+    error(
+      "SignalKit.Bus:DeclareTopic options.arguments must be a count, a validator function or nil",
+      level
+    )
+  end
 
-    local description = rawget(options, "description")
-    if type(description) == "nil" then
-        description = false
-    elseif type(description) ~= "string" then
-        error("SignalKit.Bus:DeclareTopic options.description must be a string or nil", level)
-    end
+  local description = rawget(options, "description")
+  if type(description) == "nil" then
+    description = false
+  elseif type(description) ~= "string" then
+    error("SignalKit.Bus:DeclareTopic options.description must be a string or nil", level)
+  end
 
-    return arguments, description
+  return arguments, description
 end
 
 ---Describe a validator's refusal reason or error without ever inspecting a
@@ -1278,13 +1272,13 @@ end
 ---@param fallback string text used when `reason` is not a non-empty string
 ---@return string
 local function describeRefusal(reason, fallback)
-    if isSecret(reason) then
-        return "the validator gave a secret reason"
-    end
-    if type(reason) == "string" and reason ~= "" then
-        return reason
-    end
-    return fallback
+  if isSecret(reason) then
+    return "the validator gave a secret reason"
+  end
+  if type(reason) == "string" and reason ~= "" then
+    return reason
+  end
+  return fallback
 end
 
 -- Journals ---------------------------------------------------------------------
@@ -1310,20 +1304,20 @@ end
 ---rehash a table whose array holds only `nil`s and shrink it back to nothing.
 ---@return SignalKit.HistoryEntry
 local function newJournalSlot()
-    -- The entry is documented as this exact mixed shape: `count`, `generation` and the arguments at `1` to `count`.
-    -- selene: allow(mixed_table)
-    return { nil, nil, nil, nil, nil, nil, nil, nil, count = 0, generation = 0 }
+  -- The entry is documented as this exact mixed shape: `count`, `generation` and the arguments at `1` to `count`.
+  -- selene: allow(mixed_table)
+  return { nil, nil, nil, nil, nil, nil, nil, nil, count = 0, generation = 0 }
 end
 
 ---Build the ring of `capacity` slots.
 ---@param capacity integer
 ---@return SignalKit.HistoryEntry[]
 local function newJournalSlots(capacity)
-    local slots = {}
-    for index = 1, capacity do
-        slots[index] = newJournalSlot()
-    end
-    return slots
+  local slots = {}
+  for index = 1, capacity do
+    slots[index] = newJournalSlot()
+  end
+  return slots
 end
 
 ---Validate a `NewJournal` capacity: `nil` for the default, otherwise an
@@ -1334,37 +1328,37 @@ end
 ---@param level integer stack level the failures are reported at
 ---@return integer
 local function readJournalCapacity(capacity, level)
-    local maxCapacity = rawget(sharedLimits, "maxJournalCapacity")
-    if type(capacity) == "nil" then
-        if DEFAULT_JOURNAL_CAPACITY > maxCapacity then
-            error(
-                "SignalKit:NewJournal default capacity "
-                    .. DEFAULT_JOURNAL_CAPACITY
-                    .. " exceeds maxJournalCapacity "
-                    .. maxCapacity
-                    .. "; pass a capacity",
-                level
-            )
-        end
-        return DEFAULT_JOURNAL_CAPACITY
+  local maxCapacity = rawget(sharedLimits, "maxJournalCapacity")
+  if type(capacity) == "nil" then
+    if DEFAULT_JOURNAL_CAPACITY > maxCapacity then
+      error(
+        "SignalKit:NewJournal default capacity "
+          .. DEFAULT_JOURNAL_CAPACITY
+          .. " exceeds maxJournalCapacity "
+          .. maxCapacity
+          .. "; pass a capacity",
+        level
+      )
     end
-    refuseSecret(capacity, "SignalKit:NewJournal capacity", level + 1)
-    if capacity == UNBOUNDED then
-        error(
-            "SignalKit:NewJournal capacity cannot be SignalKit.UNBOUNDED: "
-                .. LIMIT_UNBOUNDED_REFUSALS.maxJournalCapacity,
-            level
-        )
-    end
-    if not isIntegerUpTo(capacity, maxCapacity) then
-        error(
-            "SignalKit:NewJournal capacity must be an integer from 1 to "
-                .. maxCapacity
-                .. " (SignalKit:SetLimits maxJournalCapacity)",
-            level
-        )
-    end
-    return capacity
+    return DEFAULT_JOURNAL_CAPACITY
+  end
+  refuseSecret(capacity, "SignalKit:NewJournal capacity", level + 1)
+  if capacity == UNBOUNDED then
+    error(
+      "SignalKit:NewJournal capacity cannot be SignalKit.UNBOUNDED: "
+        .. LIMIT_UNBOUNDED_REFUSALS.maxJournalCapacity,
+      level
+    )
+  end
+  if not isIntegerUpTo(capacity, maxCapacity) then
+    error(
+      "SignalKit:NewJournal capacity must be an integer from 1 to "
+        .. maxCapacity
+        .. " (SignalKit:SetLimits maxJournalCapacity)",
+      level
+    )
+  end
+  return capacity
 end
 
 ---Store `...` into `slot`, clearing what a wider earlier firing left behind.
@@ -1375,19 +1369,19 @@ end
 ---@param count integer
 ---@param ... any
 local function recordArguments(slot, count, ...)
-    local previousCount = slot.count
-    slot[1], slot[2], slot[3], slot[4], slot[5], slot[6], slot[7], slot[8] = ...
-    for index = MULTIPLE_ASSIGNMENT_SLOTS + 1, count do
-        slot[index] = select(index, ...)
-    end
-    local clearFrom = count
-    if clearFrom < MULTIPLE_ASSIGNMENT_SLOTS then
-        clearFrom = MULTIPLE_ASSIGNMENT_SLOTS
-    end
-    for index = clearFrom + 1, previousCount do
-        slot[index] = nil
-    end
-    slot.count = count
+  local previousCount = slot.count
+  slot[1], slot[2], slot[3], slot[4], slot[5], slot[6], slot[7], slot[8] = ...
+  for index = MULTIPLE_ASSIGNMENT_SLOTS + 1, count do
+    slot[index] = select(index, ...)
+  end
+  local clearFrom = count
+  if clearFrom < MULTIPLE_ASSIGNMENT_SLOTS then
+    clearFrom = MULTIPLE_ASSIGNMENT_SLOTS
+  end
+  for index = clearFrom + 1, previousCount do
+    slot[index] = nil
+  end
+  slot.count = count
 end
 
 ---Record `...` as the newest entry, then dispatch it exactly as `signal:Fire`.
@@ -1398,44 +1392,44 @@ end
 ---@param self SignalKit.Journal
 ---@param ... any at most `maxJournalArguments` values (8 by default)
 local function journalFire(self, ...)
-    if type(self) ~= "table" then
-        error(JOURNAL_FIRE_RECEIVER_MESSAGE, 2)
-    end
-    local slots = rawget(self, "_journalSlots")
-    if type(slots) ~= "table" then
-        error(JOURNAL_FIRE_RECEIVER_MESSAGE, 2)
-    end
+  if type(self) ~= "table" then
+    error(JOURNAL_FIRE_RECEIVER_MESSAGE, 2)
+  end
+  local slots = rawget(self, "_journalSlots")
+  if type(slots) ~= "table" then
+    error(JOURNAL_FIRE_RECEIVER_MESSAGE, 2)
+  end
 
-    local count = select("#", ...)
-    local maxArguments = rawget(sharedLimits, "maxJournalArguments")
-    if count > maxArguments then
-        error(
-            "SignalKit.Journal:Fire records at most "
-                .. maxArguments
-                .. " arguments per firing; received "
-                .. count,
-            2
-        )
-    end
+  local count = select("#", ...)
+  local maxArguments = rawget(sharedLimits, "maxJournalArguments")
+  if count > maxArguments then
+    error(
+      "SignalKit.Journal:Fire records at most "
+        .. maxArguments
+        .. " arguments per firing; received "
+        .. count,
+      2
+    )
+  end
 
-    local head = rawget(self, "_journalHead")
-    local slot = slots[head]
-    recordArguments(slot, count, ...)
-    -- `fire` moves the generation to exactly this value before dispatching.
-    slot.generation = (rawget(self, "_generation") or 0) + 1
+  local head = rawget(self, "_journalHead")
+  local slot = slots[head]
+  recordArguments(slot, count, ...)
+  -- `fire` moves the generation to exactly this value before dispatching.
+  slot.generation = (rawget(self, "_generation") or 0) + 1
 
-    local capacity = rawget(self, "_journalCapacity")
-    if head == capacity then
-        rawset(self, "_journalHead", 1)
-    else
-        rawset(self, "_journalHead", head + 1)
-    end
-    local recorded = rawget(self, "_journalRecorded")
-    if recorded < capacity then
-        rawset(self, "_journalRecorded", recorded + 1)
-    end
+  local capacity = rawget(self, "_journalCapacity")
+  if head == capacity then
+    rawset(self, "_journalHead", 1)
+  else
+    rawset(self, "_journalHead", head + 1)
+  end
+  local recorded = rawget(self, "_journalRecorded")
+  if recorded < capacity then
+    rawset(self, "_journalRecorded", recorded + 1)
+  end
 
-    fire(self, ...)
+  fire(self, ...)
 end
 
 ---The stateless iterator `History` returns. `position` counts the entries
@@ -1447,15 +1441,15 @@ end
 ---@return integer|nil nextPosition
 ---@return SignalKit.HistoryEntry|nil entry
 local function nextHistoryEntry(journal, position)
-    local recorded = rawget(journal, "_journalRecorded")
-    if position >= recorded then
-        return nil
-    end
-    local index = rawget(journal, "_journalHead") - recorded + position
-    if index < 1 then
-        index = index + rawget(journal, "_journalCapacity")
-    end
-    return position + 1, rawget(journal, "_journalSlots")[index]
+  local recorded = rawget(journal, "_journalRecorded")
+  if position >= recorded then
+    return nil
+  end
+  local index = rawget(journal, "_journalHead") - recorded + position
+  if index < 1 then
+    index = index + rawget(journal, "_journalCapacity")
+  end
+  return position + 1, rawget(journal, "_journalSlots")[index]
 end
 
 ---Returns what a generic `for` needs to walk the recorded firings, oldest to
@@ -1466,10 +1460,10 @@ end
 ---@return SignalKit.Journal journal
 ---@return integer start
 local function journalHistory(self)
-    if type(self) ~= "table" or type(rawget(self, "_journalSlots")) ~= "table" then
-        error(HISTORY_RECEIVER_MESSAGE, 2)
-    end
-    return nextHistoryEntry, self, 0
+  if type(self) ~= "table" or type(rawget(self, "_journalSlots")) ~= "table" then
+    error(HISTORY_RECEIVER_MESSAGE, 2)
+  end
+  return nextHistoryEntry, self, 0
 end
 
 ---Creates a journal: a signal that also records its last `capacity` firings.
@@ -1478,17 +1472,17 @@ end
 ---@param options SignalKit.SignalOptions?
 ---@return SignalKit.Journal journal
 local function facadeNewJournal(self, capacity, options)
-    validateFacade(self, "SignalKit:NewJournal", 3)
-    local ringCapacity = readJournalCapacity(capacity, 3)
-    local onFirst, onLast = readSignalOptions(options, "SignalKit:NewJournal", 3)
+  validateFacade(self, "SignalKit:NewJournal", 3)
+  local ringCapacity = readJournalCapacity(capacity, 3)
+  local onFirst, onLast = readSignalOptions(options, "SignalKit:NewJournal", 3)
 
-    local journal = newSignalTable(onFirst, onLast)
-    rawset(journal, "_journalCapacity", ringCapacity)
-    rawset(journal, "_journalSlots", newJournalSlots(ringCapacity))
-    -- The slot the next firing writes, and how many slots hold a firing.
-    rawset(journal, "_journalHead", 1)
-    rawset(journal, "_journalRecorded", 0)
-    return setmetatable(journal, JOURNAL_METATABLE)
+  local journal = newSignalTable(onFirst, onLast)
+  rawset(journal, "_journalCapacity", ringCapacity)
+  rawset(journal, "_journalSlots", newJournalSlots(ringCapacity))
+  -- The slot the next firing writes, and how many slots hold a firing.
+  rawset(journal, "_journalHead", 1)
+  rawset(journal, "_journalRecorded", 0)
+  return setmetatable(journal, JOURNAL_METATABLE)
 end
 
 -- Bus topics -------------------------------------------------------------------
@@ -1498,22 +1492,22 @@ end
 ---@param topic string
 ---@return SignalKit.TopicRecord|nil record `nil` when the bus already knows `maxTopics` topics.
 local function obtainTopicRecord(bus, topic)
-    local topics = rawget(bus, "_topics")
-    local record = rawget(topics, topic)
-    if record ~= nil then
-        return record
-    end
-
-    local count = rawget(bus, "_topicCount")
-    local maxTopics = rawget(bus, "_maxTopics")
-    if maxTopics ~= UNBOUNDED and count >= maxTopics then
-        return nil
-    end
-
-    record = { declared = false, arguments = false, description = false, signal = false }
-    rawset(topics, topic, record)
-    rawset(bus, "_topicCount", count + 1)
+  local topics = rawget(bus, "_topics")
+  local record = rawget(topics, topic)
+  if record ~= nil then
     return record
+  end
+
+  local count = rawget(bus, "_topicCount")
+  local maxTopics = rawget(bus, "_maxTopics")
+  if maxTopics ~= UNBOUNDED and count >= maxTopics then
+    return nil
+  end
+
+  record = { declared = false, arguments = false, description = false, signal = false }
+  rawset(topics, topic, record)
+  rawset(bus, "_topicCount", count + 1)
+  return record
 end
 
 ---Validate and attach one bus subscription.
@@ -1527,43 +1521,43 @@ end
 ---@return SignalKit.Connection|nil connection
 ---@return "full"|nil reason
 local function subscribe(bus, label, level, topic, callback, once, scope)
-    validateNonEmptyString(topic, label .. " topic", level + 1)
-    if type(callback) ~= "function" then
-        error(label .. " callback must be a function", level)
-    end
-    ensureBusOpen(bus, label, level + 1)
+  validateNonEmptyString(topic, label .. " topic", level + 1)
+  if type(callback) ~= "function" then
+    error(label .. " callback must be a function", level)
+  end
+  ensureBusOpen(bus, label, level + 1)
 
-    local record = obtainTopicRecord(bus, topic)
-    if record == nil then
-        return nil, "full"
-    end
+  local record = obtainTopicRecord(bus, topic)
+  if record == nil then
+    return nil, "full"
+  end
 
-    local signal = rawget(record, "signal")
-    if signal == false then
-        -- A topic signal carries no hooks: the bus, not the topic, is what a
-        -- consumer observes.
-        signal = setmetatable(newSignalTable(false, false), SIGNAL_METATABLE)
-        rawset(record, "signal", signal)
-    end
+  local signal = rawget(record, "signal")
+  if signal == false then
+    -- A topic signal carries no hooks: the bus, not the topic, is what a
+    -- consumer observes.
+    signal = setmetatable(newSignalTable(false, false), SIGNAL_METATABLE)
+    rawset(record, "signal", signal)
+  end
 
-    local maxListeners = rawget(bus, "_maxListeners")
-    if maxListeners ~= UNBOUNDED then
-        local listeners = rawget(signal, "_listeners")
-        if #listeners - tombstoneCount(signal) >= maxListeners then
-            return nil, "full"
-        end
+  local maxListeners = rawget(bus, "_maxListeners")
+  if maxListeners ~= UNBOUNDED then
+    local listeners = rawget(signal, "_listeners")
+    if #listeners - tombstoneCount(signal) >= maxListeners then
+      return nil, "full"
     end
+  end
 
-    local connection = connect(
-        signal,
-        newDelivery(callback),
-        once,
-        "Connect",
-        CONNECT_RECEIVER_MESSAGE,
-        callback,
-        scope
-    )
-    return connection, nil
+  local connection = connect(
+    signal,
+    newDelivery(callback),
+    once,
+    "Connect",
+    CONNECT_RECEIVER_MESSAGE,
+    callback,
+    scope
+  )
+  return connection, nil
 end
 
 -- Bus methods ------------------------------------------------------------------
@@ -1579,56 +1573,56 @@ end
 ---@return true|nil declared `nil` when the bus already knows `maxTopics` topics.
 ---@return "full"|nil reason
 local function busDeclareTopic(self, topic, options)
-    validateBus(self, "SignalKit.Bus:DeclareTopic", 3)
-    validateNonEmptyString(topic, "SignalKit.Bus:DeclareTopic topic", 3)
-    local arguments, description = readTopicOptions(options, 3)
-    if rawget(self, "_closed") == true then
-        error(
-            'SignalKit.Bus:DeclareTopic cannot declare on the closed bus "'
-                .. rawget(self, "_name")
-                .. '"',
-            2
-        )
-    end
+  validateBus(self, "SignalKit.Bus:DeclareTopic", 3)
+  validateNonEmptyString(topic, "SignalKit.Bus:DeclareTopic topic", 3)
+  local arguments, description = readTopicOptions(options, 3)
+  if rawget(self, "_closed") == true then
+    error(
+      'SignalKit.Bus:DeclareTopic cannot declare on the closed bus "'
+        .. rawget(self, "_name")
+        .. '"',
+      2
+    )
+  end
 
-    local record = obtainTopicRecord(self, topic)
-    if record == nil then
-        return nil, "full"
-    end
+  local record = obtainTopicRecord(self, topic)
+  if record == nil then
+    return nil, "full"
+  end
 
-    if rawget(record, "declared") == true then
-        if rawget(record, "arguments") ~= arguments then
-            error(
-                'SignalKit.Bus:DeclareTopic topic "'
-                    .. topic
-                    .. '" is already declared on bus "'
-                    .. rawget(self, "_name")
-                    .. '" with a different arguments policy',
-                2
-            )
-        end
-        return true, nil
+  if rawget(record, "declared") == true then
+    if rawget(record, "arguments") ~= arguments then
+      error(
+        'SignalKit.Bus:DeclareTopic topic "'
+          .. topic
+          .. '" is already declared on bus "'
+          .. rawget(self, "_name")
+          .. '" with a different arguments policy',
+        2
+      )
     end
-
-    rawset(record, "declared", true)
-    rawset(record, "arguments", arguments)
-    rawset(record, "description", description)
     return true, nil
+  end
+
+  rawset(record, "declared", true)
+  rawset(record, "arguments", arguments)
+  rawset(record, "description", description)
+  return true, nil
 end
 
 ---Raise the refusal of an undeclared topic at the publisher's line.
 ---@param bus SignalKit.Bus
 ---@param topic string
 local function refuseUndeclared(bus, topic)
-    error(
-        'SignalKit.Bus:Publish topic "'
-            .. topic
-            .. '" is not declared on bus "'
-            .. rawget(bus, "_name")
-            .. '"; declare it with bus:DeclareTopic(topic, options)'
-            .. " or create the bus with options.openTopics = true",
-        3
-    )
+  error(
+    'SignalKit.Bus:Publish topic "'
+      .. topic
+      .. '" is not declared on bus "'
+      .. rawget(bus, "_name")
+      .. '"; declare it with bus:DeclareTopic(topic, options)'
+      .. " or create the bus with options.openTopics = true",
+    3
+  )
 end
 
 ---Raise the refusal of an argument list at the publisher's line.
@@ -1636,15 +1630,15 @@ end
 ---@param topic string
 ---@param detail string
 local function refuseArguments(bus, topic, detail)
-    error(
-        'SignalKit.Bus:Publish topic "'
-            .. topic
-            .. '" on bus "'
-            .. rawget(bus, "_name")
-            .. '" refused its arguments: '
-            .. detail,
-        3
-    )
+  error(
+    'SignalKit.Bus:Publish topic "'
+      .. topic
+      .. '" on bus "'
+      .. rawget(bus, "_name")
+      .. '" refused its arguments: '
+      .. detail,
+    3
+  )
 end
 
 ---Raise a validator's own failure as a refusal at the publisher's line.
@@ -1652,15 +1646,15 @@ end
 ---@param topic string
 ---@param detail string
 local function refuseFailedValidator(bus, topic, detail)
-    error(
-        'SignalKit.Bus:Publish validator for topic "'
-            .. topic
-            .. '" on bus "'
-            .. rawget(bus, "_name")
-            .. '" failed: '
-            .. detail,
-        3
-    )
+  error(
+    'SignalKit.Bus:Publish validator for topic "'
+      .. topic
+      .. '" on bus "'
+      .. rawget(bus, "_name")
+      .. '" failed: '
+      .. detail,
+    3
+  )
 end
 
 ---Deliver `...` to every subscriber of `topic`, in subscription order.
@@ -1672,55 +1666,47 @@ end
 ---@param topic string
 ---@param ... any
 local function busPublish(self, topic, ...)
-    validateBus(self, "SignalKit.Bus:Publish", 3)
-    validateNonEmptyString(topic, "SignalKit.Bus:Publish topic", 3)
-    if rawget(self, "_closed") == true then
-        -- A closed bus belongs to an addon that has shut down. Late publishes
-        -- from other addons' shutdown paths are expected and deliver nothing,
-        -- so the topic policy is not applied to them.
-        return
-    end
+  validateBus(self, "SignalKit.Bus:Publish", 3)
+  validateNonEmptyString(topic, "SignalKit.Bus:Publish topic", 3)
+  if rawget(self, "_closed") == true then
+    -- A closed bus belongs to an addon that has shut down. Late publishes
+    -- from other addons' shutdown paths are expected and deliver nothing,
+    -- so the topic policy is not applied to them.
+    return
+  end
 
-    local record = rawget(rawget(self, "_topics"), topic)
-    if record == nil or rawget(record, "declared") ~= true then
-        if rawget(self, "_openTopics") ~= true then
-            refuseUndeclared(self, topic)
-        end
-    else
-        local arguments = rawget(record, "arguments")
-        if type(arguments) == "number" then
-            local count = select("#", ...)
-            if count ~= arguments then
-                refuseArguments(
-                    self,
-                    topic,
-                    "expected " .. arguments .. " arguments, got " .. count
-                )
-            end
-        elseif arguments ~= false then
-            -- The validator may belong to another addon, so its failure is
-            -- turned into a refusal at the publisher's line. `pcall` with the
-            -- arguments passed through allocates nothing.
-            local ran, accepted, reason = pcall(arguments, ...)
-            if not ran then
-                refuseFailedValidator(self, topic, describeRefusal(accepted, "a non-string error"))
-            elseif isSecret(accepted) or accepted ~= true then
-                -- A secret verdict cannot be compared, so it is not an acceptance.
-                refuseArguments(
-                    self,
-                    topic,
-                    describeRefusal(reason, "the validator gave no reason")
-                )
-            end
-        end
+  local record = rawget(rawget(self, "_topics"), topic)
+  if record == nil or rawget(record, "declared") ~= true then
+    if rawget(self, "_openTopics") ~= true then
+      refuseUndeclared(self, topic)
     end
+  else
+    local arguments = rawget(record, "arguments")
+    if type(arguments) == "number" then
+      local count = select("#", ...)
+      if count ~= arguments then
+        refuseArguments(self, topic, "expected " .. arguments .. " arguments, got " .. count)
+      end
+    elseif arguments ~= false then
+      -- The validator may belong to another addon, so its failure is
+      -- turned into a refusal at the publisher's line. `pcall` with the
+      -- arguments passed through allocates nothing.
+      local ran, accepted, reason = pcall(arguments, ...)
+      if not ran then
+        refuseFailedValidator(self, topic, describeRefusal(accepted, "a non-string error"))
+      elseif isSecret(accepted) or accepted ~= true then
+        -- A secret verdict cannot be compared, so it is not an acceptance.
+        refuseArguments(self, topic, describeRefusal(reason, "the validator gave no reason"))
+      end
+    end
+  end
 
-    if record ~= nil then
-        local signal = rawget(record, "signal")
-        if signal ~= false then
-            fire(signal, ...)
-        end
+  if record ~= nil then
+    local signal = rawget(record, "signal")
+    if signal ~= false then
+      fire(signal, ...)
     end
+  end
 end
 
 ---Subscribe `callback` to every future publish of `topic`.
@@ -1733,9 +1719,9 @@ end
 ---@return SignalKit.Connection|nil connection
 ---@return "full"|nil reason
 local function busSubscribe(self, topic, callback)
-    validateBus(self, "SignalKit.Bus:Subscribe", 3)
-    local connection, reason = subscribe(self, "SignalKit.Bus:Subscribe", 3, topic, callback, false)
-    return connection, reason
+  validateBus(self, "SignalKit.Bus:Subscribe", 3)
+  local connection, reason = subscribe(self, "SignalKit.Bus:Subscribe", 3, topic, callback, false)
+  return connection, reason
 end
 
 ---Subscribe `callback` to at most one future publish of `topic`.
@@ -1745,10 +1731,10 @@ end
 ---@return SignalKit.Connection|nil connection
 ---@return "full"|nil reason
 local function busSubscribeOnce(self, topic, callback)
-    validateBus(self, "SignalKit.Bus:SubscribeOnce", 3)
-    local connection, reason =
-        subscribe(self, "SignalKit.Bus:SubscribeOnce", 3, topic, callback, true)
-    return connection, reason
+  validateBus(self, "SignalKit.Bus:SubscribeOnce", 3)
+  local connection, reason =
+    subscribe(self, "SignalKit.Bus:SubscribeOnce", 3, topic, callback, true)
+  return connection, reason
 end
 
 ---Disconnect every subscription of `callback` to `topic`.
@@ -1757,45 +1743,45 @@ end
 ---@param callback fun(...: any)
 ---@return integer disconnected
 local function busUnsubscribe(self, topic, callback)
-    validateBus(self, "SignalKit.Bus:Unsubscribe", 3)
-    validateNonEmptyString(topic, "SignalKit.Bus:Unsubscribe topic", 3)
-    if type(callback) ~= "function" then
-        error("SignalKit.Bus:Unsubscribe callback must be a function", 2)
-    end
+  validateBus(self, "SignalKit.Bus:Unsubscribe", 3)
+  validateNonEmptyString(topic, "SignalKit.Bus:Unsubscribe topic", 3)
+  if type(callback) ~= "function" then
+    error("SignalKit.Bus:Unsubscribe callback must be a function", 2)
+  end
 
-    local record = rawget(rawget(self, "_topics"), topic)
-    if record == nil or rawget(record, "signal") == false then
-        return 0
-    end
+  local record = rawget(rawget(self, "_topics"), topic)
+  if record == nil or rawget(record, "signal") == false then
+    return 0
+  end
 
-    -- A disconnect may compact and replace the array. This walk keeps the
-    -- array it started with; connection objects are shared, so the flags it
-    -- reads stay current.
-    local listeners = rawget(rawget(record, "signal"), "_listeners")
-    local disconnected = 0
-    for index = 1, #listeners do
-        local connection = listeners[index]
-        if rawget(connection, "_busCallback") == callback and disconnectConnection(connection) then
-            disconnected = disconnected + 1
-        end
+  -- A disconnect may compact and replace the array. This walk keeps the
+  -- array it started with; connection objects are shared, so the flags it
+  -- reads stay current.
+  local listeners = rawget(rawget(record, "signal"), "_listeners")
+  local disconnected = 0
+  for index = 1, #listeners do
+    local connection = listeners[index]
+    if rawget(connection, "_busCallback") == callback and disconnectConnection(connection) then
+      disconnected = disconnected + 1
     end
-    return disconnected
+  end
+  return disconnected
 end
 
 ---Return the declared topic names of this bus, sorted. Allocates the array.
 ---@param self SignalKit.Bus
 ---@return string[] topics
 local function busTopics(self)
-    validateBus(self, "SignalKit.Bus:Topics", 3)
+  validateBus(self, "SignalKit.Bus:Topics", 3)
 
-    local names = {}
-    for topic, record in pairs(rawget(self, "_topics")) do
-        if rawget(record, "declared") == true then
-            names[#names + 1] = topic
-        end
+  local names = {}
+  for topic, record in pairs(rawget(self, "_topics")) do
+    if rawget(record, "declared") == true then
+      names[#names + 1] = topic
     end
-    table.sort(names)
-    return names
+  end
+  table.sort(names)
+  return names
 end
 
 -- Bus scopes -------------------------------------------------------------------
@@ -1817,42 +1803,42 @@ end
 ---@param bus SignalKit.Bus
 ---@return SignalKit.BusScope
 local function newScope(bus)
-    return setmetatable({
-        _bus = bus,
-        _connections = {},
-        _count = 0,
-        _dead = 0,
-        _closed = false,
-    }, SCOPE_METATABLE)
+  return setmetatable({
+    _bus = bus,
+    _connections = {},
+    _count = 0,
+    _dead = 0,
+    _closed = false,
+  }, SCOPE_METATABLE)
 end
 
 ---Drop the entries of connections that are no longer connected.
 ---@param scope SignalKit.BusScope
 local function compactScope(scope)
-    local connections = rawget(scope, "_connections")
-    local count = rawget(scope, "_count")
-    local live = 0
-    for index = 1, count do
-        local connection = connections[index]
-        connections[index] = nil
-        if rawget(connection, "_connected") == true then
-            live = live + 1
-            connections[live] = connection
-        end
+  local connections = rawget(scope, "_connections")
+  local count = rawget(scope, "_count")
+  local live = 0
+  for index = 1, count do
+    local connection = connections[index]
+    connections[index] = nil
+    if rawget(connection, "_connected") == true then
+      live = live + 1
+      connections[live] = connection
     end
-    rawset(scope, "_count", live)
-    rawset(scope, "_dead", 0)
+  end
+  rawset(scope, "_count", live)
+  rawset(scope, "_dead", 0)
 end
 
 ---Count one disconnected entry of `scope`, compacting once dead entries
 ---outnumber live ones.
 ---@param scope SignalKit.BusScope
 function noteScopeDisconnect(scope)
-    local dead = rawget(scope, "_dead") + 1
-    rawset(scope, "_dead", dead)
-    if dead * 2 > rawget(scope, "_count") then
-        compactScope(scope)
-    end
+  local dead = rawget(scope, "_dead") + 1
+  rawset(scope, "_dead", dead)
+  if dead * 2 > rawget(scope, "_count") then
+    compactScope(scope)
+  end
 end
 
 ---Validate, subscribe through the scope's bus, and remember the connection.
@@ -1864,21 +1850,21 @@ end
 ---@return SignalKit.Connection|nil connection
 ---@return "full"|nil reason
 local function scopeSubscribeShared(scope, label, topic, callback, once)
-    validateScope(scope, label, 4)
-    if rawget(scope, "_closed") == true then
-        error(label .. " cannot subscribe in a closed scope", 3)
-    end
+  validateScope(scope, label, 4)
+  if rawget(scope, "_closed") == true then
+    error(label .. " cannot subscribe in a closed scope", 3)
+  end
 
-    local connection, reason =
-        subscribe(rawget(scope, "_bus"), label, 4, topic, callback, once, scope)
-    if connection == nil then
-        return nil, reason
-    end
+  local connection, reason =
+    subscribe(rawget(scope, "_bus"), label, 4, topic, callback, once, scope)
+  if connection == nil then
+    return nil, reason
+  end
 
-    local count = rawget(scope, "_count") + 1
-    rawget(scope, "_connections")[count] = connection
-    rawset(scope, "_count", count)
-    return connection, nil
+  local count = rawget(scope, "_count") + 1
+  rawget(scope, "_connections")[count] = connection
+  rawset(scope, "_count", count)
+  return connection, nil
 end
 
 ---Subscribe `callback` to `topic` inside this scope.
@@ -1888,9 +1874,9 @@ end
 ---@return SignalKit.Connection|nil connection
 ---@return "full"|nil reason
 local function scopeSubscribe(self, topic, callback)
-    local connection, reason =
-        scopeSubscribeShared(self, "SignalKit.BusScope:Subscribe", topic, callback, false)
-    return connection, reason
+  local connection, reason =
+    scopeSubscribeShared(self, "SignalKit.BusScope:Subscribe", topic, callback, false)
+  return connection, reason
 end
 
 ---Subscribe `callback` to at most one publish of `topic` inside this scope.
@@ -1900,75 +1886,75 @@ end
 ---@return SignalKit.Connection|nil connection
 ---@return "full"|nil reason
 local function scopeSubscribeOnce(self, topic, callback)
-    local connection, reason =
-        scopeSubscribeShared(self, "SignalKit.BusScope:SubscribeOnce", topic, callback, true)
-    return connection, reason
+  local connection, reason =
+    scopeSubscribeShared(self, "SignalKit.BusScope:SubscribeOnce", topic, callback, true)
+  return connection, reason
 end
 
 ---Disconnect every subscription of `scope` in creation order.
 ---@param scope SignalKit.BusScope
 ---@return integer disconnected
 local function disconnectScope(scope)
-    local connections = rawget(scope, "_connections")
-    local count = rawget(scope, "_count")
-    local disconnected = 0
-    for index = 1, count do
-        local connection = connections[index]
-        connections[index] = nil
-        -- Detach first, so this walk is never compacted underneath itself.
-        rawset(connection, "_busScope", nil)
-        if disconnectConnection(connection) then
-            disconnected = disconnected + 1
-        end
+  local connections = rawget(scope, "_connections")
+  local count = rawget(scope, "_count")
+  local disconnected = 0
+  for index = 1, count do
+    local connection = connections[index]
+    connections[index] = nil
+    -- Detach first, so this walk is never compacted underneath itself.
+    rawset(connection, "_busScope", nil)
+    if disconnectConnection(connection) then
+      disconnected = disconnected + 1
     end
-    rawset(scope, "_count", 0)
-    rawset(scope, "_dead", 0)
-    return disconnected
+  end
+  rawset(scope, "_count", 0)
+  rawset(scope, "_dead", 0)
+  return disconnected
 end
 
 ---Disconnect every subscription while keeping the scope reusable.
 ---@param self SignalKit.BusScope
 ---@return integer disconnected
 local function scopeDisconnectAll(self)
-    validateScope(self, "SignalKit.BusScope:DisconnectAll", 3)
-    return disconnectScope(self)
+  validateScope(self, "SignalKit.BusScope:DisconnectAll", 3)
+  return disconnectScope(self)
 end
 
 ---Terminally close the scope, disconnecting everything it owns.
 ---@param self SignalKit.BusScope
 ---@return boolean closed `false` when the scope was already closed.
 local function scopeClose(self)
-    validateScope(self, "SignalKit.BusScope:Close", 3)
-    if rawget(self, "_closed") == true then
-        return false
-    end
-    rawset(self, "_closed", true)
-    disconnectScope(self)
-    return true
+  validateScope(self, "SignalKit.BusScope:Close", 3)
+  if rawget(self, "_closed") == true then
+    return false
+  end
+  rawset(self, "_closed", true)
+  disconnectScope(self)
+  return true
 end
 
 ---Return whether the scope is terminally closed.
 ---@param self SignalKit.BusScope
 ---@return boolean closed
 local function scopeIsClosed(self)
-    validateScope(self, "SignalKit.BusScope:IsClosed", 3)
-    return rawget(self, "_closed") == true
+  validateScope(self, "SignalKit.BusScope:IsClosed", 3)
+  return rawget(self, "_closed") == true
 end
 
 ---Create an ownership scope for subscriptions on this bus.
 ---@param self SignalKit.Bus
 ---@return SignalKit.BusScope scope
 local function busCreateScope(self)
-    validateBus(self, "SignalKit.Bus:CreateScope", 3)
-    if rawget(self, "_closed") == true then
-        error(
-            'SignalKit.Bus:CreateScope cannot create a scope on the closed bus "'
-                .. rawget(self, "_name")
-                .. '"',
-            2
-        )
-    end
-    return newScope(self)
+  validateBus(self, "SignalKit.Bus:CreateScope", 3)
+  if rawget(self, "_closed") == true then
+    error(
+      'SignalKit.Bus:CreateScope cannot create a scope on the closed bus "'
+        .. rawget(self, "_name")
+        .. '"',
+      2
+    )
+  end
+  return newScope(self)
 end
 
 -- Logout close -----------------------------------------------------------------
@@ -2007,15 +1993,15 @@ local LogoutClose = {}
 ---@param api integer
 ---@return table|nil
 function LogoutClose.findOptional(packageName, api)
-    local findPackage = rawget(Registry, "Find")
-    if type(findPackage) ~= "function" then
-        return nil
-    end
-    local found = findPackage(Registry, packageName, api)
-    if type(found) == "table" then
-        return found
-    end
+  local findPackage = rawget(Registry, "Find")
+  if type(findPackage) ~= "function" then
     return nil
+  end
+  local found = findPackage(Registry, packageName, api)
+  if type(found) == "table" then
+    return found
+  end
+  return nil
 end
 
 ---Whether `LifecycleKit` announces that it closes SignalKit's addon buses.
@@ -2026,8 +2012,8 @@ end
 ---@param LifecycleKit table
 ---@return boolean
 function LogoutClose.lifecycleClosesBuses(LifecycleKit)
-    local closes = rawget(LifecycleKit, "CLOSES_ADDON_SCOPES")
-    return type(closes) == "table" and closes[PACKAGE_NAME] == true
+  local closes = rawget(LifecycleKit, "CLOSES_ADDON_SCOPES")
+  return type(closes) == "table" and closes[PACKAGE_NAME] == true
 end
 
 ---Make the package-level `PLAYER_LOGOUT` watcher exist, once per session.
@@ -2037,22 +2023,22 @@ end
 ---SignalKit revision replaces what an older revision's watcher does.
 ---@param EventKit table
 function LogoutClose.ensureWatch(EventKit)
-    if rawget(logoutWatch, "connection") ~= false then
-        return
+  if rawget(logoutWatch, "connection") ~= false then
+    return
+  end
+  local trampoline = rawget(logoutWatch, "trampoline")
+  if trampoline == false then
+    trampoline = function()
+      rawget(logoutWatch, "close")()
     end
-    local trampoline = rawget(logoutWatch, "trampoline")
-    if trampoline == false then
-        trampoline = function()
-            rawget(logoutWatch, "close")()
-        end
-        rawset(logoutWatch, "trampoline", trampoline)
-    end
-    local eventScope = rawget(logoutWatch, "scope")
-    if eventScope == false or eventScope:IsClosed() then
-        eventScope = EventKit:CreateScope()
-        rawset(logoutWatch, "scope", eventScope)
-    end
-    rawset(logoutWatch, "connection", eventScope:Once("PLAYER_LOGOUT", trampoline))
+    rawset(logoutWatch, "trampoline", trampoline)
+  end
+  local eventScope = rawget(logoutWatch, "scope")
+  if eventScope == false or eventScope:IsClosed() then
+    eventScope = EventKit:CreateScope()
+    rawset(logoutWatch, "scope", eventScope)
+  end
+  rawset(logoutWatch, "connection", eventScope:Once("PLAYER_LOGOUT", trampoline))
 end
 
 ---Subscribe to the addon's LifecycleKit shutdown and close its bus there.
@@ -2063,10 +2049,10 @@ end
 ---@param addonName string
 ---@return table subscription LifecycleKit subscription handle
 function LogoutClose.subscribeShutdown(LifecycleKit, addonName)
-    local instance = LifecycleKit:ForAddon(addonName)
-    return instance:OnShutdown(function()
-        SignalKit:CloseAddonBus(addonName)
-    end)
+  local instance = LifecycleKit:ForAddon(addonName)
+  return instance:OnShutdown(function()
+    SignalKit:CloseAddonBus(addonName)
+  end)
 end
 
 ---Arrange, once, who closes the addon bus `bus` at logout.
@@ -2076,35 +2062,35 @@ end
 ---@param addonName string
 ---@param bus SignalKit.Bus
 function LogoutClose.arrange(addonName, bus)
-    local closer = rawget(bus, "_logoutCloser")
-    if closer ~= LOGOUT.byNobody and closer ~= LOGOUT.byEvent then
-        return
-    end
-    if rawget(bus, "_closed") == true then
-        return
-    end
+  local closer = rawget(bus, "_logoutCloser")
+  if closer ~= LOGOUT.byNobody and closer ~= LOGOUT.byEvent then
+    return
+  end
+  if rawget(bus, "_closed") == true then
+    return
+  end
 
-    local LifecycleKit = LogoutClose.findOptional("lifecycleKit", LOGOUT.lifecycleKitApi)
-    if LifecycleKit ~= nil then
-        if LogoutClose.lifecycleClosesBuses(LifecycleKit) then
-            LifecycleKit:ForAddon(addonName)
-            rawset(bus, "_logoutCloser", LOGOUT.byLifecycle)
-        else
-            local subscription = LogoutClose.subscribeShutdown(LifecycleKit, addonName)
-            rawset(bus, "_shutdownSubscription", subscription)
-            rawset(bus, "_logoutCloser", LOGOUT.byShutdownCallback)
-        end
-        return
+  local LifecycleKit = LogoutClose.findOptional("lifecycleKit", LOGOUT.lifecycleKitApi)
+  if LifecycleKit ~= nil then
+    if LogoutClose.lifecycleClosesBuses(LifecycleKit) then
+      LifecycleKit:ForAddon(addonName)
+      rawset(bus, "_logoutCloser", LOGOUT.byLifecycle)
+    else
+      local subscription = LogoutClose.subscribeShutdown(LifecycleKit, addonName)
+      rawset(bus, "_shutdownSubscription", subscription)
+      rawset(bus, "_logoutCloser", LOGOUT.byShutdownCallback)
     end
+    return
+  end
 
-    if closer == LOGOUT.byEvent then
-        return
-    end
-    local EventKit = LogoutClose.findOptional("eventKit", LOGOUT.eventKitApi)
-    if EventKit ~= nil then
-        LogoutClose.ensureWatch(EventKit)
-        rawset(bus, "_logoutCloser", LOGOUT.byEvent)
-    end
+  if closer == LOGOUT.byEvent then
+    return
+  end
+  local EventKit = LogoutClose.findOptional("eventKit", LOGOUT.eventKitApi)
+  if EventKit ~= nil then
+    LogoutClose.ensureWatch(EventKit)
+    rawset(bus, "_logoutCloser", LOGOUT.byEvent)
+  end
 end
 
 ---Take `bus` for the addon bus of `addonName` and arrange its logout close,
@@ -2114,15 +2100,15 @@ end
 ---@param addonName string
 ---@param bus SignalKit.Bus
 function LogoutClose.arrangeProtected(addonName, bus)
-    local closer = rawget(bus, "_logoutCloser")
-    if closer == false or closer == nil then
-        rawset(bus, "_logoutCloser", LOGOUT.byNobody)
-        rawset(bus, "_shutdownSubscription", false)
-    end
-    local ok, failure = pcall(LogoutClose.arrange, addonName, bus)
-    if not ok then
-        reportListenerError(failure)
-    end
+  local closer = rawget(bus, "_logoutCloser")
+  if closer == false or closer == nil then
+    rawset(bus, "_logoutCloser", LOGOUT.byNobody)
+    rawset(bus, "_shutdownSubscription", false)
+  end
+  local ok, failure = pcall(LogoutClose.arrange, addonName, bus)
+  if not ok then
+    reportListenerError(failure)
+  end
 end
 
 ---Disconnect the `OnShutdown` subscription of an addon bus, if it has one.
@@ -2132,12 +2118,12 @@ end
 ---delivered.
 ---@param bus SignalKit.Bus
 function LogoutClose.releaseSubscription(bus)
-    local subscription = rawget(bus, "_shutdownSubscription")
-    if subscription == nil or subscription == false then
-        return
-    end
-    rawset(bus, "_shutdownSubscription", false)
-    subscription:Disconnect()
+  local subscription = rawget(bus, "_shutdownSubscription")
+  if subscription == nil or subscription == false then
+    return
+  end
+  rawset(bus, "_shutdownSubscription", false)
+  subscription:Disconnect()
 end
 
 ---The `PLAYER_LOGOUT` watcher's work: close every addon bus nobody else
@@ -2147,20 +2133,20 @@ end
 ---shutdown callbacks still run first. Every close is attempted; each failure
 ---goes to the host error handler.
 function LogoutClose.closeAtLogout()
-    local names = {}
-    for name, bus in pairs(rawget(state, "buses")) do
-        local closer = rawget(bus, "_logoutCloser")
-        if closer == LOGOUT.byEvent or closer == LOGOUT.byNobody then
-            names[#names + 1] = name
-        end
+  local names = {}
+  for name, bus in pairs(rawget(state, "buses")) do
+    local closer = rawget(bus, "_logoutCloser")
+    if closer == LOGOUT.byEvent or closer == LOGOUT.byNobody then
+      names[#names + 1] = name
     end
-    table.sort(names)
-    for index = 1, #names do
-        local ok, failure = pcall(SignalKit.CloseAddonBus, SignalKit, names[index])
-        if not ok then
-            reportListenerError(failure)
-        end
+  end
+  table.sort(names)
+  for index = 1, #names do
+    local ok, failure = pcall(SignalKit.CloseAddonBus, SignalKit, names[index])
+    if not ok then
+      reportListenerError(failure)
     end
+  end
 end
 
 ---Arrange the logout close of every open addon bus an upgrade inherited, in
@@ -2168,17 +2154,17 @@ end
 ---make again. Buses a revision before 6 created are not known to be addon
 ---buses and wait for their `ForAddon`.
 function LogoutClose.arrangeInherited()
-    local names = {}
-    for name, bus in pairs(rawget(state, "buses")) do
-        local closer = rawget(bus, "_logoutCloser")
-        if closer ~= false and closer ~= nil and rawget(bus, "_closed") ~= true then
-            names[#names + 1] = name
-        end
+  local names = {}
+  for name, bus in pairs(rawget(state, "buses")) do
+    local closer = rawget(bus, "_logoutCloser")
+    if closer ~= false and closer ~= nil and rawget(bus, "_closed") ~= true then
+      names[#names + 1] = name
     end
-    table.sort(names)
-    for index = 1, #names do
-        LogoutClose.arrangeProtected(names[index], rawget(rawget(state, "buses"), names[index]))
-    end
+  end
+  table.sort(names)
+  for index = 1, #names do
+    LogoutClose.arrangeProtected(names[index], rawget(rawget(state, "buses"), names[index]))
+  end
 end
 
 -- Facade methods ---------------------------------------------------------------
@@ -2195,16 +2181,16 @@ end
 ---@param name string option name, for the message
 ---@param level integer stack level the failure is reported at
 local function validateBusLimit(value, name, level)
-    if type(value) == "nil" then
-        return
-    end
-    refuseSecret(value, "SignalKit:Bus options." .. name, level + 1)
-    if value ~= UNBOUNDED and not isIntegerUpTo(value, math.huge) then
-        error(
-            "SignalKit:Bus options." .. name .. " must be a positive integer or SignalKit.UNBOUNDED",
-            level
-        )
-    end
+  if type(value) == "nil" then
+    return
+  end
+  refuseSecret(value, "SignalKit:Bus options." .. name, level + 1)
+  if value ~= UNBOUNDED and not isIntegerUpTo(value, math.huge) then
+    error(
+      "SignalKit:Bus options." .. name .. " must be a positive integer or SignalKit.UNBOUNDED",
+      level
+    )
+  end
 end
 
 ---Validate a `SignalKit:Bus` options table.
@@ -2214,22 +2200,22 @@ end
 ---@return integer|table|nil maxTopics `nil` when the caller did not state one.
 ---@return integer|table|nil maxListeners `nil` when the caller did not state one.
 local function readBusOptions(options, level)
-    if type(options) == "nil" then
-        return nil, nil, nil
-    end
-    if type(options) ~= "table" then
-        error("SignalKit:Bus options must be a table or nil", level)
-    end
-    local openTopics = rawget(options, "openTopics")
-    refuseSecret(openTopics, "SignalKit:Bus options.openTopics", level + 1)
-    if type(openTopics) ~= "nil" and type(openTopics) ~= "boolean" then
-        error("SignalKit:Bus options.openTopics must be a boolean or nil", level)
-    end
-    local maxTopics = rawget(options, "maxTopics")
-    validateBusLimit(maxTopics, "maxTopics", level + 1)
-    local maxListeners = rawget(options, "maxListeners")
-    validateBusLimit(maxListeners, "maxListeners", level + 1)
-    return openTopics, maxTopics, maxListeners
+  if type(options) == "nil" then
+    return nil, nil, nil
+  end
+  if type(options) ~= "table" then
+    error("SignalKit:Bus options must be a table or nil", level)
+  end
+  local openTopics = rawget(options, "openTopics")
+  refuseSecret(openTopics, "SignalKit:Bus options.openTopics", level + 1)
+  if type(openTopics) ~= "nil" and type(openTopics) ~= "boolean" then
+    error("SignalKit:Bus options.openTopics must be a boolean or nil", level)
+  end
+  local maxTopics = rawget(options, "maxTopics")
+  validateBusLimit(maxTopics, "maxTopics", level + 1)
+  local maxListeners = rawget(options, "maxListeners")
+  validateBusLimit(maxListeners, "maxListeners", level + 1)
+  return openTopics, maxTopics, maxListeners
 end
 
 ---Whether a caller stating `value` for `limitName` disagrees with what an
@@ -2244,9 +2230,9 @@ end
 ---@param value integer|table|nil
 ---@return boolean
 local function conflictsWithStatedLimit(bus, limitName, value)
-    return type(value) ~= "nil"
-        and rawget(bus, "_" .. limitName .. "Stated") == true
-        and rawget(bus, "_" .. limitName) ~= value
+  return type(value) ~= "nil"
+    and rawget(bus, "_" .. limitName .. "Stated") == true
+    and rawget(bus, "_" .. limitName) ~= value
 end
 
 ---Record `value` as the stated `limitName` of `bus` when the caller stated one.
@@ -2254,10 +2240,10 @@ end
 ---@param limitName "maxTopics"|"maxListeners"
 ---@param value integer|table|nil
 local function applyStatedLimit(bus, limitName, value)
-    if type(value) ~= "nil" then
-        rawset(bus, "_" .. limitName, value)
-        rawset(bus, "_" .. limitName .. "Stated", true)
-    end
+  if type(value) ~= "nil" then
+    rawset(bus, "_" .. limitName, value)
+    rawset(bus, "_" .. limitName .. "Stated", true)
+  end
 end
 
 ---Return the bus called `name`, creating it on the first request.
@@ -2270,53 +2256,50 @@ end
 ---@return SignalKit.Bus|nil bus
 ---@return "full"|nil reason
 local function obtainBus(name, openTopics, maxTopics, maxListeners, label, level)
-    local buses = rawget(state, "buses")
-    local bus = rawget(buses, name)
-    if bus ~= nil then
-        if type(openTopics) ~= "nil" and openTopics ~= rawget(bus, "_openTopics") then
-            error(
-                label .. ' bus "' .. name .. '" already exists with a different openTopics policy',
-                level
-            )
-        end
-        -- Both statements are checked before either is applied, so a refused
-        -- call changes nothing.
-        if conflictsWithStatedLimit(bus, "maxTopics", maxTopics) then
-            error(label .. ' bus "' .. name .. '" already exists with a different maxTopics', level)
-        end
-        if conflictsWithStatedLimit(bus, "maxListeners", maxListeners) then
-            error(
-                label .. ' bus "' .. name .. '" already exists with a different maxListeners',
-                level
-            )
-        end
-        applyStatedLimit(bus, "maxTopics", maxTopics)
-        applyStatedLimit(bus, "maxListeners", maxListeners)
-        return bus, nil
+  local buses = rawget(state, "buses")
+  local bus = rawget(buses, name)
+  if bus ~= nil then
+    if type(openTopics) ~= "nil" and openTopics ~= rawget(bus, "_openTopics") then
+      error(
+        label .. ' bus "' .. name .. '" already exists with a different openTopics policy',
+        level
+      )
     end
-
-    local count = rawget(state, "busCount")
-    if count >= rawget(sharedLimits, "maxBuses") then
-        return nil, "full"
+    -- Both statements are checked before either is applied, so a refused
+    -- call changes nothing.
+    if conflictsWithStatedLimit(bus, "maxTopics", maxTopics) then
+      error(label .. ' bus "' .. name .. '" already exists with a different maxTopics', level)
     end
-
-    bus = setmetatable({
-        _name = name,
-        _openTopics = openTopics == true,
-        _closed = false,
-        _topics = {},
-        _topicCount = 0,
-        _maxTopics = maxTopics or DEFAULT_MAX_TOPICS,
-        _maxTopicsStated = type(maxTopics) ~= "nil",
-        _maxListeners = maxListeners or DEFAULT_MAX_LISTENERS,
-        _maxListenersStated = type(maxListeners) ~= "nil",
-        -- See "Logout close": `false` until `ForAddon` names this bus.
-        _logoutCloser = false,
-        _shutdownSubscription = false,
-    }, BUS_METATABLE)
-    rawset(buses, name, bus)
-    rawset(state, "busCount", count + 1)
+    if conflictsWithStatedLimit(bus, "maxListeners", maxListeners) then
+      error(label .. ' bus "' .. name .. '" already exists with a different maxListeners', level)
+    end
+    applyStatedLimit(bus, "maxTopics", maxTopics)
+    applyStatedLimit(bus, "maxListeners", maxListeners)
     return bus, nil
+  end
+
+  local count = rawget(state, "busCount")
+  if count >= rawget(sharedLimits, "maxBuses") then
+    return nil, "full"
+  end
+
+  bus = setmetatable({
+    _name = name,
+    _openTopics = openTopics == true,
+    _closed = false,
+    _topics = {},
+    _topicCount = 0,
+    _maxTopics = maxTopics or DEFAULT_MAX_TOPICS,
+    _maxTopicsStated = type(maxTopics) ~= "nil",
+    _maxListeners = maxListeners or DEFAULT_MAX_LISTENERS,
+    _maxListenersStated = type(maxListeners) ~= "nil",
+    -- See "Logout close": `false` until `ForAddon` names this bus.
+    _logoutCloser = false,
+    _shutdownSubscription = false,
+  }, BUS_METATABLE)
+  rawset(buses, name, bus)
+  rawset(state, "busCount", count + 1)
+  return bus, nil
 end
 
 ---Return the named bus shared by everything in the session that asks for
@@ -2327,11 +2310,11 @@ end
 ---@return SignalKit.Bus|nil bus `nil` when `maxBuses` buses already exist.
 ---@return "full"|nil reason
 local function facadeBus(self, name, options)
-    validateFacade(self, "SignalKit:Bus", 3)
-    validateNonEmptyString(name, "SignalKit:Bus name", 3)
-    local openTopics, maxTopics, maxListeners = readBusOptions(options, 3)
-    local bus, reason = obtainBus(name, openTopics, maxTopics, maxListeners, "SignalKit:Bus", 3)
-    return bus, reason
+  validateFacade(self, "SignalKit:Bus", 3)
+  validateNonEmptyString(name, "SignalKit:Bus name", 3)
+  local openTopics, maxTopics, maxListeners = readBusOptions(options, 3)
+  local bus, reason = obtainBus(name, openTopics, maxTopics, maxListeners, "SignalKit:Bus", 3)
+  return bus, reason
 end
 
 ---Return the default bus of an addon: the bus named after it.
@@ -2345,13 +2328,13 @@ end
 ---@return SignalKit.Bus|nil bus `nil` when `maxBuses` buses already exist.
 ---@return "full"|nil reason
 local function facadeForAddon(self, addonName)
-    validateFacade(self, "SignalKit:ForAddon", 3)
-    validateNonEmptyString(addonName, "SignalKit:ForAddon addonName", 3)
-    local bus, reason = obtainBus(addonName, nil, nil, nil, "SignalKit:ForAddon", 3)
-    if bus ~= nil then
-        LogoutClose.arrangeProtected(addonName, bus)
-    end
-    return bus, reason
+  validateFacade(self, "SignalKit:ForAddon", 3)
+  validateNonEmptyString(addonName, "SignalKit:ForAddon addonName", 3)
+  local bus, reason = obtainBus(addonName, nil, nil, nil, "SignalKit:ForAddon", 3)
+  if bus ~= nil then
+    LogoutClose.arrangeProtected(addonName, bus)
+  end
+  return bus, reason
 end
 
 ---Close the bus named after an addon, disconnecting every subscription on it.
@@ -2362,23 +2345,23 @@ end
 ---@param addonName string addon folder name
 ---@return boolean closed `false` when there was no such bus or it was already closed.
 local function facadeCloseAddonBus(self, addonName)
-    validateFacade(self, "SignalKit:CloseAddonBus", 3)
-    validateNonEmptyString(addonName, "SignalKit:CloseAddonBus addonName", 3)
+  validateFacade(self, "SignalKit:CloseAddonBus", 3)
+  validateNonEmptyString(addonName, "SignalKit:CloseAddonBus addonName", 3)
 
-    local bus = rawget(rawget(state, "buses"), addonName)
-    if bus == nil or rawget(bus, "_closed") == true then
-        return false
-    end
+  local bus = rawget(rawget(state, "buses"), addonName)
+  if bus == nil or rawget(bus, "_closed") == true then
+    return false
+  end
 
-    rawset(bus, "_closed", true)
-    LogoutClose.releaseSubscription(bus)
-    for _, record in pairs(rawget(bus, "_topics")) do
-        local signal = rawget(record, "signal")
-        if signal ~= false then
-            disconnectEveryListener(signal, rawget(signal, "_listeners"))
-        end
+  rawset(bus, "_closed", true)
+  LogoutClose.releaseSubscription(bus)
+  for _, record in pairs(rawget(bus, "_topics")) do
+    local signal = rawget(record, "signal")
+    if signal ~= false then
+      disconnectEveryListener(signal, rawget(signal, "_listeners"))
     end
-    return true
+  end
+  return true
 end
 
 ---Validate one `SetLimits` entry: a recognised name, an integer within the
@@ -2387,26 +2370,26 @@ end
 ---@param value any
 ---@param level integer stack level the failures are reported at
 local function validateLimitEntry(key, value, level)
-    local ceiling = LIMIT_CEILINGS[key]
-    if ceiling == nil then
-        error("SignalKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
-    end
-    refuseSecret(value, "SignalKit:SetLimits limits." .. key, level + 1)
-    if value == UNBOUNDED then
-        error(
-            "SignalKit:SetLimits limits."
-                .. key
-                .. " cannot be SignalKit.UNBOUNDED: "
-                .. LIMIT_UNBOUNDED_REFUSALS[key],
-            level
-        )
-    end
-    if not isIntegerUpTo(value, ceiling) then
-        error(
-            "SignalKit:SetLimits limits." .. key .. " must be an integer from 1 to " .. ceiling,
-            level
-        )
-    end
+  local ceiling = LIMIT_CEILINGS[key]
+  if ceiling == nil then
+    error("SignalKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+  end
+  refuseSecret(value, "SignalKit:SetLimits limits." .. key, level + 1)
+  if value == UNBOUNDED then
+    error(
+      "SignalKit:SetLimits limits."
+        .. key
+        .. " cannot be SignalKit.UNBOUNDED: "
+        .. LIMIT_UNBOUNDED_REFUSALS[key],
+      level
+    )
+  end
+  if not isIntegerUpTo(value, ceiling) then
+    error(
+      "SignalKit:SetLimits limits." .. key .. " must be an integer from 1 to " .. ceiling,
+      level
+    )
+  end
 end
 
 ---Validate a whole `SetLimits` table before any of it is applied.
@@ -2418,14 +2401,14 @@ end
 ---@param limits any
 ---@param level integer stack level the failures are reported at
 local function validateLimitUpdate(limits, level)
-    if type(limits) ~= "table" then
-        error("SignalKit:SetLimits limits must be a table", level)
-    end
-    local key = next(limits)
-    while type(key) ~= "nil" do
-        validateLimitEntry(key, rawget(limits, key), level + 1)
-        key = next(limits, key)
-    end
+  if type(limits) ~= "table" then
+    error("SignalKit:SetLimits limits must be a table", level)
+  end
+  local key = next(limits)
+  while type(key) ~= "nil" do
+    validateLimitEntry(key, rawget(limits, key), level + 1)
+    key = next(limits, key)
+  end
 end
 
 ---Change any subset of the package-wide limits. The limits are shared by every
@@ -2435,28 +2418,28 @@ end
 ---@param self SignalKit
 ---@param limits table
 local function facadeSetLimits(self, limits)
-    validateFacade(self, "SignalKit:SetLimits", 3)
-    validateLimitUpdate(limits, 3)
-    for index = 1, #LIMIT_NAMES do
-        local name = LIMIT_NAMES[index]
-        local value = rawget(limits, name)
-        if type(value) ~= "nil" then
-            rawset(sharedLimits, name, value)
-        end
+  validateFacade(self, "SignalKit:SetLimits", 3)
+  validateLimitUpdate(limits, 3)
+  for index = 1, #LIMIT_NAMES do
+    local name = LIMIT_NAMES[index]
+    local value = rawget(limits, name)
+    if type(value) ~= "nil" then
+      rawset(sharedLimits, name, value)
     end
+  end
 end
 
 ---Return a fresh copy of the package-wide limits. Allocates one table.
 ---@param self SignalKit
 ---@return SignalKit.Limits
 local function facadeGetLimits(self)
-    validateFacade(self, "SignalKit:GetLimits", 3)
-    local copy = {}
-    for index = 1, #LIMIT_NAMES do
-        local name = LIMIT_NAMES[index]
-        copy[name] = rawget(sharedLimits, name)
-    end
-    return copy
+  validateFacade(self, "SignalKit:GetLimits", 3)
+  local copy = {}
+  for index = 1, #LIMIT_NAMES do
+    local name = LIMIT_NAMES[index]
+    copy[name] = rawget(sharedLimits, name)
+  end
+  return copy
 end
 
 -- Commit -----------------------------------------------------------------------
@@ -2506,11 +2489,11 @@ rawset(SignalKit, "SetLimits", facadeSetLimits)
 rawset(SignalKit, "GetLimits", facadeGetLimits)
 
 if not validatePublicSurface(SignalKit) or not validateCurrentState(SignalKit) then
-    error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
+  error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
 end
 
 if type(previousRevision) ~= "nil" then
-    LogoutClose.arrangeInherited()
+  LogoutClose.arrangeInherited()
 end
 
 return SignalKit

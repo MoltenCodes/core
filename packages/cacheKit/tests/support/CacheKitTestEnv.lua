@@ -12,32 +12,32 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local CacheKitTestEnv = FrameworkTestEnv.New({
-    modules = { "Registry", "SignalKit", "EventKit", "CacheKit" },
+  modules = { "Registry", "SignalKit", "EventKit", "CacheKit" },
 })
 
 ---Load Registry and CacheKit only, as a consumer that embeds no EventKit does.
 ---@return table CacheKit
 ---@return table Registry
 function CacheKitTestEnv.NewPackageWithoutEventKit()
-    CacheKitTestEnv.Reset()
-    CacheKitTestEnv.InstallWowApi()
-    local Registry = require("Registry")
-    local CacheKit = require("CacheKit")
-    return CacheKit, Registry
+  CacheKitTestEnv.Reset()
+  CacheKitTestEnv.InstallWowApi()
+  local Registry = require("Registry")
+  local CacheKit = require("CacheKit")
+  return CacheKit, Registry
 end
 
 ---Load the module chain on a host that has no `GetTimePreciseSec`.
 ---@return table CacheKit
 function CacheKitTestEnv.NewPackageWithoutClock()
-    CacheKitTestEnv.Reset()
-    CacheKitTestEnv.InstallWowApi()
-    -- The package reads this host global at load time, so the helper has to remove it from the global table.
-    -- selene: allow(global_usage)
-    rawset(_G, "GetTimePreciseSec", nil)
-    require("Registry")
-    require("SignalKit")
-    require("EventKit")
-    return require("CacheKit")
+  CacheKitTestEnv.Reset()
+  CacheKitTestEnv.InstallWowApi()
+  -- The package reads this host global at load time, so the helper has to remove it from the global table.
+  -- selene: allow(global_usage)
+  rawset(_G, "GetTimePreciseSec", nil)
+  require("Registry")
+  require("SignalKit")
+  require("EventKit")
+  return require("CacheKit")
 end
 
 ---Measure the allocation a workload causes, in kilobytes, with the collector
@@ -45,13 +45,13 @@ end
 ---@param workload fun()
 ---@return number kilobytes
 function CacheKitTestEnv.AllocatedKilobytes(workload)
-    collectgarbage()
-    collectgarbage("stop")
-    local before = collectgarbage("count")
-    workload()
-    local after = collectgarbage("count")
-    collectgarbage("restart")
-    return after - before
+  collectgarbage()
+  collectgarbage("stop")
+  local before = collectgarbage("count")
+  workload()
+  local after = collectgarbage("count")
+  collectgarbage("restart")
+  return after - before
 end
 
 ---Load the CacheKit source again as a copy carrying `revision`, the way a
@@ -59,36 +59,34 @@ end
 ---@param revision integer
 ---@return table CacheKit
 function CacheKitTestEnv.LoadRevision(revision)
-    -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
-    -- `require` does.
-    local path = nil
-    for template in package.path:gmatch("[^;]+") do
-        local candidate = template:gsub("%?", "CacheKit")
-        local file = io.open(candidate, "r")
-        if file ~= nil then
-            file:close()
-            path = candidate
-            break
-        end
+  -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
+  -- `require` does.
+  local path = nil
+  for template in package.path:gmatch("[^;]+") do
+    local candidate = template:gsub("%?", "CacheKit")
+    local file = io.open(candidate, "r")
+    if file ~= nil then
+      file:close()
+      path = candidate
+      break
     end
-    if path == nil then
-        error("CacheKitTestEnv.LoadRevision could not find CacheKit.lua on package.path", 2)
-    end
+  end
+  if path == nil then
+    error("CacheKitTestEnv.LoadRevision could not find CacheKit.lua on package.path", 2)
+  end
 
-    local file = assert(io.open(path, "r"))
-    local text = file:read("*a")
-    file:close()
+  local file = assert(io.open(path, "r"))
+  local text = file:read("*a")
+  file:close()
 
-    local patched, replacements = text:gsub(
-        "local IMPLEMENTATION_REVISION = %d+",
-        "local IMPLEMENTATION_REVISION = " .. revision
-    )
-    if replacements ~= 1 then
-        error("CacheKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
-    end
+  local patched, replacements =
+    text:gsub("local IMPLEMENTATION_REVISION = %d+", "local IMPLEMENTATION_REVISION = " .. revision)
+  if replacements ~= 1 then
+    error("CacheKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
+  end
 
-    local chunk = assert(loadstring(patched, "@" .. path))
-    return chunk()
+  local chunk = assert(loadstring(patched, "@" .. path))
+  return chunk()
 end
 
 return CacheKitTestEnv

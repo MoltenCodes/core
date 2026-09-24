@@ -14,20 +14,20 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local ReadinessKitTestEnv = FrameworkTestEnv.New({
-    modules = { "Registry", "SignalKit", "EventKit", "TimerKit", "ReadinessKit" },
+  modules = { "Registry", "SignalKit", "EventKit", "TimerKit", "ReadinessKit" },
 })
 
 ---Return how many native timers are still armed (neither cancelled nor spent).
 ---@return integer
 function ReadinessKitTestEnv.ArmedTimerCount()
-    local count = 0
-    local natives = ReadinessKitTestEnv.NativeTimers()
-    for index = 1, #natives do
-        if not natives[index].cancelled then
-            count = count + 1
-        end
+  local count = 0
+  local natives = ReadinessKitTestEnv.NativeTimers()
+  for index = 1, #natives do
+    if not natives[index].cancelled then
+      count = count + 1
     end
-    return count
+  end
+  return count
 end
 
 ---Advance the clock by `milliseconds` and fire every armed native timer once,
@@ -35,18 +35,18 @@ end
 ---@param milliseconds integer
 ---@return integer fired how many timers fired
 function ReadinessKitTestEnv.Poll(milliseconds)
-    ReadinessKitTestEnv.AdvanceMs(milliseconds)
-    local fired = 0
-    local natives = ReadinessKitTestEnv.NativeTimers()
-    -- Snapshot the count: a tick that restarts a timer appends a new native,
-    -- and that one belongs to the next interval.
-    local count = #natives
-    for index = 1, count do
-        if ReadinessKitTestEnv.FireNative(index) then
-            fired = fired + 1
-        end
+  ReadinessKitTestEnv.AdvanceMs(milliseconds)
+  local fired = 0
+  local natives = ReadinessKitTestEnv.NativeTimers()
+  -- Snapshot the count: a tick that restarts a timer appends a new native,
+  -- and that one belongs to the next interval.
+  local count = #natives
+  for index = 1, count do
+    if ReadinessKitTestEnv.FireNative(index) then
+      fired = fired + 1
     end
-    return fired
+  end
+  return fired
 end
 
 ---Load the minimum footprint, Registry, TimerKit and ReadinessKit, without
@@ -54,26 +54,26 @@ end
 ---@return table ReadinessKit
 ---@return table Registry
 function ReadinessKitTestEnv.NewPackageWithoutEventKit()
-    ReadinessKitTestEnv.Reset()
-    ReadinessKitTestEnv.InstallWowApi()
-    local Registry = require("Registry")
-    require("TimerKit")
-    return require("ReadinessKit"), Registry
+  ReadinessKitTestEnv.Reset()
+  ReadinessKitTestEnv.InstallWowApi()
+  local Registry = require("Registry")
+  require("TimerKit")
+  return require("ReadinessKit"), Registry
 end
 
 ---Load the module chain on a host that has no `GetTimePreciseSec`.
 ---@return table ReadinessKit
 function ReadinessKitTestEnv.NewPackageWithoutClock()
-    ReadinessKitTestEnv.Reset()
-    ReadinessKitTestEnv.InstallWowApi()
-    -- The package reads this host global at load time, so the helper has to remove it from the global table.
-    -- selene: allow(global_usage)
-    rawset(_G, "GetTimePreciseSec", nil)
-    require("Registry")
-    require("SignalKit")
-    require("EventKit")
-    require("TimerKit")
-    return require("ReadinessKit")
+  ReadinessKitTestEnv.Reset()
+  ReadinessKitTestEnv.InstallWowApi()
+  -- The package reads this host global at load time, so the helper has to remove it from the global table.
+  -- selene: allow(global_usage)
+  rawset(_G, "GetTimePreciseSec", nil)
+  require("Registry")
+  require("SignalKit")
+  require("EventKit")
+  require("TimerKit")
+  return require("ReadinessKit")
 end
 
 ---Measure the allocation a workload causes, in kilobytes, with the collector
@@ -81,13 +81,13 @@ end
 ---@param workload fun()
 ---@return number kilobytes
 function ReadinessKitTestEnv.AllocatedKilobytes(workload)
-    collectgarbage()
-    collectgarbage("stop")
-    local before = collectgarbage("count")
-    workload()
-    local after = collectgarbage("count")
-    collectgarbage("restart")
-    return after - before
+  collectgarbage()
+  collectgarbage("stop")
+  local before = collectgarbage("count")
+  workload()
+  local after = collectgarbage("count")
+  collectgarbage("restart")
+  return after - before
 end
 
 ---Load the ReadinessKit source again as a copy carrying `revision`, the way a
@@ -95,36 +95,34 @@ end
 ---@param revision integer
 ---@return table ReadinessKit
 function ReadinessKitTestEnv.LoadRevision(revision)
-    -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
-    -- `require` does.
-    local path = nil
-    for template in package.path:gmatch("[^;]+") do
-        local candidate = template:gsub("%?", "ReadinessKit")
-        local file = io.open(candidate, "r")
-        if file ~= nil then
-            file:close()
-            path = candidate
-            break
-        end
+  -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
+  -- `require` does.
+  local path = nil
+  for template in package.path:gmatch("[^;]+") do
+    local candidate = template:gsub("%?", "ReadinessKit")
+    local file = io.open(candidate, "r")
+    if file ~= nil then
+      file:close()
+      path = candidate
+      break
     end
-    if path == nil then
-        error("ReadinessKitTestEnv.LoadRevision could not find ReadinessKit.lua on package.path", 2)
-    end
+  end
+  if path == nil then
+    error("ReadinessKitTestEnv.LoadRevision could not find ReadinessKit.lua on package.path", 2)
+  end
 
-    local file = assert(io.open(path, "r"))
-    local text = file:read("*a")
-    file:close()
+  local file = assert(io.open(path, "r"))
+  local text = file:read("*a")
+  file:close()
 
-    local patched, replacements = text:gsub(
-        "local IMPLEMENTATION_REVISION = %d+",
-        "local IMPLEMENTATION_REVISION = " .. revision
-    )
-    if replacements ~= 1 then
-        error("ReadinessKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
-    end
+  local patched, replacements =
+    text:gsub("local IMPLEMENTATION_REVISION = %d+", "local IMPLEMENTATION_REVISION = " .. revision)
+  if replacements ~= 1 then
+    error("ReadinessKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
+  end
 
-    local chunk = assert(loadstring(patched, "@" .. path))
-    return chunk()
+  local chunk = assert(loadstring(patched, "@" .. path))
+  return chunk()
 end
 
 return ReadinessKitTestEnv

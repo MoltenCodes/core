@@ -13,7 +13,7 @@ MediaKit:Register("statusbar", "MyPack Smooth", PATH .. "Smooth.tga")
 MediaKit:Register("border", "MyPack Thin", PATH .. "Thin.tga")
 MediaKit:Register("sound", "MyPack Chime", 569593) -- a FileDataID from the client
 MediaKit:Register("font", "MyPack Sans", PATH .. "Sans.ttf", {
-    scripts = { "latin", "cyrillic" },
+  scripts = { "latin", "cyrillic" },
 })
 ```
 
@@ -33,12 +33,12 @@ bar:SetStatusBarTexture(MediaKit:Fetch("statusbar", defaults:Get("statusbar")))
 
 -- A dropdown: the names, sorted, fonts filtered to what this client can render.
 for _, name in ipairs(MediaKit:List("font")) do
-    dropdown:AddItem(name)
+  dropdown:AddItem(name)
 end
 
 -- Refresh the dropdown when a pack that loads later registers more.
 MediaKit:OnRegistered("font", function(_, name)
-    dropdown:AddItem(name)
+  dropdown:AddItem(name)
 end)
 ```
 

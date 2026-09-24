@@ -8,18 +8,18 @@ This document describes the private layout behind SettingsKit API generation 1: 
 
 ```lua
 MyAddonDB = {
-    version = 2,                                    -- options.version, owned by SettingsKit
-    global = { ... },                               -- db.global
-    profiles = {                                    -- db.profile is profiles[<current>]
-        Default = { ... },
-        ["Tester - Silvermoon"] = { ... },
-    },
-    profileKeys = { ["Tester - Silvermoon"] = "Default" }, -- written by SetProfile
-    char = { ["Tester - Silvermoon"] = { ... } },   -- db.char
-    realm = { Silvermoon = { ... } },               -- db.realm
-    class = { MAGE = { ... } },                     -- db.class
-    faction = { Alliance = { ... } },               -- db.faction
-    namespaces = {},                                -- reserved for v2 module namespaces
+  version = 2,                                    -- options.version, owned by SettingsKit
+  global = { ... },                               -- db.global
+  profiles = {                                    -- db.profile is profiles[<current>]
+    Default = { ... },
+    ["Tester - Silvermoon"] = { ... },
+  },
+  profileKeys = { ["Tester - Silvermoon"] = "Default" }, -- written by SetProfile
+  char = { ["Tester - Silvermoon"] = { ... } },   -- db.char
+  realm = { Silvermoon = { ... } },               -- db.realm
+  class = { MAGE = { ... } },                     -- db.class
+  faction = { Alliance = { ... } },               -- db.faction
+  namespaces = {},                                -- reserved for v2 module namespaces
 }
 ```
 

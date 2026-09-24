@@ -23,15 +23,15 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local LifecycleKitTestEnv = FrameworkTestEnv.New({
-    modules = {
-        "Registry",
-        "SignalKit",
-        "EventKit",
-        "HookKit",
-        "SchemaKit",
-        "CommandKit",
-        "LifecycleKit",
-    },
+  modules = {
+    "Registry",
+    "SignalKit",
+    "EventKit",
+    "HookKit",
+    "SchemaKit",
+    "CommandKit",
+    "LifecycleKit",
+  },
 })
 
 --- The host's combat lockdown, as `InCombatLockdown()` reports it.
@@ -53,32 +53,32 @@ local resetFixture = LifecycleKitTestEnv.Reset
 ---@param name string
 ---@return any
 local function getGlobal(name)
-    -- selene: allow(global_usage)
-    return rawget(_G, name)
+  -- selene: allow(global_usage)
+  return rawget(_G, name)
 end
 
 ---Write a host global, for the same reason.
 ---@param name string
 ---@param value any
 local function setGlobal(name, value)
-    -- selene: allow(global_usage)
-    rawset(_G, name, value)
+  -- selene: allow(global_usage)
+  rawset(_G, name, value)
 end
 
 ---Remove `SlashCmdList`, `SecureCmdList` and every `SLASH_*` global.
 local function removeSlashApi()
-    local names = {}
-    -- selene: allow(global_usage)
-    for name in pairs(_G) do
-        if type(name) == "string" and name:sub(1, 6) == "SLASH_" then
-            names[#names + 1] = name
-        end
+  local names = {}
+  -- selene: allow(global_usage)
+  for name in pairs(_G) do
+    if type(name) == "string" and name:sub(1, 6) == "SLASH_" then
+      names[#names + 1] = name
     end
-    for index = 1, #names do
-        setGlobal(names[index], nil)
-    end
-    setGlobal("SlashCmdList", nil)
-    setGlobal("SecureCmdList", nil)
+  end
+  for index = 1, #names do
+    setGlobal(names[index], nil)
+  end
+  setGlobal("SlashCmdList", nil)
+  setGlobal("SecureCmdList", nil)
 end
 
 ---Run a typed slash line the way the client does: find the key whose
@@ -87,24 +87,24 @@ end
 ---@param line string for example `"/myaddon status"`
 ---@return boolean found whether any registered key answered to the command
 local function runSlash(line)
-    local command, rest = line:match("^(/%S+)%s*(.*)$")
-    local slashCommands = getGlobal("SlashCmdList")
-    if command == nil or type(slashCommands) ~= "table" then
-        return false
-    end
-    for key, handler in pairs(slashCommands) do
-        local index = 1
-        local alias = getGlobal("SLASH_" .. key .. index)
-        while alias ~= nil do
-            if alias:lower() == command:lower() then
-                handler(rest, nil)
-                return true
-            end
-            index = index + 1
-            alias = getGlobal("SLASH_" .. key .. index)
-        end
-    end
+  local command, rest = line:match("^(/%S+)%s*(.*)$")
+  local slashCommands = getGlobal("SlashCmdList")
+  if command == nil or type(slashCommands) ~= "table" then
     return false
+  end
+  for key, handler in pairs(slashCommands) do
+    local index = 1
+    local alias = getGlobal("SLASH_" .. key .. index)
+    while alias ~= nil do
+      if alias:lower() == command:lower() then
+        handler(rest, nil)
+        return true
+      end
+      index = index + 1
+      alias = getGlobal("SLASH_" .. key .. index)
+    end
+  end
+  return false
 end
 
 LifecycleKitTestEnv.RunSlash = runSlash
@@ -123,43 +123,43 @@ local COMM_KIT_MODULES = { "TimerKit", "SchedulerKit", "PoolKit", "CommKit" }
 
 ---Clear the modules `LoadCommKit` added from `package.loaded`.
 local function unloadCommKit()
-    for index = #COMM_KIT_MODULES, 1, -1 do
-        package.loaded[COMM_KIT_MODULES[index]] = nil
-    end
+  for index = #COMM_KIT_MODULES, 1, -1 do
+    package.loaded[COMM_KIT_MODULES[index]] = nil
+  end
 end
 
 ---Load CommKit and its remaining dependencies after `NewPackage`.
 ---@return table CommKit
 function LifecycleKitTestEnv.LoadCommKit()
-    local loaded
-    for index = 1, #COMM_KIT_MODULES do
-        loaded = require(COMM_KIT_MODULES[index])
-    end
-    return loaded
+  local loaded
+  for index = 1, #COMM_KIT_MODULES do
+    loaded = require(COMM_KIT_MODULES[index])
+  end
+  return loaded
 end
 
 ---Install the shared fixture's WoW API plus an empty `SlashCmdList` and
 ---`InCombatLockdown`.
 function LifecycleKitTestEnv.InstallWowApi()
-    installFixtureWowApi()
-    setGlobal("SlashCmdList", {})
-    -- The fixture stands in for the World of Warcraft client, whose API only exists in the global table.
-    -- selene: allow(global_usage)
-    rawset(_G, "InCombatLockdown", function()
-        return combat.lockdown
-    end)
+  installFixtureWowApi()
+  setGlobal("SlashCmdList", {})
+  -- The fixture stands in for the World of Warcraft client, whose API only exists in the global table.
+  -- selene: allow(global_usage)
+  rawset(_G, "InCombatLockdown", function()
+    return combat.lockdown
+  end)
 end
 
 ---Reset the shared fixture, unload what `LoadCommKit` added, and remove the
 ---slash-command globals and the combat lockdown stub.
 function LifecycleKitTestEnv.Reset()
-    resetFixture()
-    unloadCommKit()
-    removeSlashApi()
-    combat.lockdown = false
-    -- The fixture stands in for the World of Warcraft client, whose API only exists in the global table.
-    -- selene: allow(global_usage)
-    rawset(_G, "InCombatLockdown", nil)
+  resetFixture()
+  unloadCommKit()
+  removeSlashApi()
+  combat.lockdown = false
+  -- The fixture stands in for the World of Warcraft client, whose API only exists in the global table.
+  -- selene: allow(global_usage)
+  rawset(_G, "InCombatLockdown", nil)
 end
 
 ---Load the module chain without HookKit and CommandKit, as an addon that
@@ -169,19 +169,19 @@ end
 ---@return table SignalKit
 ---@return table EventKit
 function LifecycleKitTestEnv.NewPackageWithoutHookKit()
-    LifecycleKitTestEnv.Reset()
-    LifecycleKitTestEnv.InstallWowApi()
-    local Registry = require("Registry")
-    local SignalKit = require("SignalKit")
-    local EventKit = require("EventKit")
-    local LifecycleKit = require("LifecycleKit")
-    return LifecycleKit, Registry, SignalKit, EventKit
+  LifecycleKitTestEnv.Reset()
+  LifecycleKitTestEnv.InstallWowApi()
+  local Registry = require("Registry")
+  local SignalKit = require("SignalKit")
+  local EventKit = require("EventKit")
+  local LifecycleKit = require("LifecycleKit")
+  return LifecycleKit, Registry, SignalKit, EventKit
 end
 
 ---Set what `InCombatLockdown()` answers, without sending any event.
 ---@param value boolean
 function LifecycleKitTestEnv.SetCombatLockdown(value)
-    combat.lockdown = value == true
+  combat.lockdown = value == true
 end
 
 ---Enter combat the way the client does.
@@ -189,15 +189,15 @@ end
 ---`PLAYER_REGEN_DISABLED` is sent just before lockdown begins, so handlers of
 ---the event still see `InCombatLockdown()` answer `false`.
 function LifecycleKitTestEnv.EnterCombat()
-    LifecycleKitTestEnv.Emit("PLAYER_REGEN_DISABLED")
-    combat.lockdown = true
+  LifecycleKitTestEnv.Emit("PLAYER_REGEN_DISABLED")
+  combat.lockdown = true
 end
 
 ---Leave combat the way the client does: lockdown lifts, then
 ---`PLAYER_REGEN_ENABLED` is sent.
 function LifecycleKitTestEnv.LeaveCombat()
-    combat.lockdown = false
-    LifecycleKitTestEnv.Emit("PLAYER_REGEN_ENABLED")
+  combat.lockdown = false
+  LifecycleKitTestEnv.Emit("PLAYER_REGEN_ENABLED")
 end
 
 ---Run the LifecycleKit source once more as a copy carrying `revision`, the way
@@ -207,32 +207,32 @@ end
 ---@param revision integer
 ---@return table LifecycleKit the facade the copy returned
 function LifecycleKitTestEnv.LoadSourceAtRevision(revision)
-    -- Lua 5.1 has no `package.searchpath`, so walk the templates by hand.
-    local path, file = nil, nil
-    for template in string.gmatch(package.path, "[^;]+") do
-        local candidate = string.gsub(template, "%?", "LifecycleKit")
-        file = io.open(candidate, "rb")
-        if file ~= nil then
-            path = candidate
-            break
-        end
+  -- Lua 5.1 has no `package.searchpath`, so walk the templates by hand.
+  local path, file = nil, nil
+  for template in string.gmatch(package.path, "[^;]+") do
+    local candidate = string.gsub(template, "%?", "LifecycleKit")
+    file = io.open(candidate, "rb")
+    if file ~= nil then
+      path = candidate
+      break
     end
-    if file == nil then
-        error("LifecycleKitTestEnv cannot find LifecycleKit.lua on package.path", 2)
-    end
-    local source = file:read("*a")
-    file:close()
+  end
+  if file == nil then
+    error("LifecycleKitTestEnv cannot find LifecycleKit.lua on package.path", 2)
+  end
+  local source = file:read("*a")
+  file:close()
 
-    local patched, count = source:gsub(
-        "local IMPLEMENTATION_REVISION = %d+",
-        "local IMPLEMENTATION_REVISION = " .. revision,
-        1
-    )
-    if count ~= 1 then
-        error("LifecycleKitTestEnv found no IMPLEMENTATION_REVISION in " .. path, 2)
-    end
-    local chunk = assert(loadstring(patched, "@" .. path))
-    return chunk()
+  local patched, count = source:gsub(
+    "local IMPLEMENTATION_REVISION = %d+",
+    "local IMPLEMENTATION_REVISION = " .. revision,
+    1
+  )
+  if count ~= 1 then
+    error("LifecycleKitTestEnv found no IMPLEMENTATION_REVISION in " .. path, 2)
+  end
+  local chunk = assert(loadstring(patched, "@" .. path))
+  return chunk()
 end
 
 return LifecycleKitTestEnv

@@ -105,7 +105,7 @@ A kind is one of `"secure"`, `"secureScript"`, `"hook"`, `"rawHook"`, `"hookScri
 local hooks = HookKit:ForAddon("MyAddon")
 
 hooks:SecureHook(GameTooltip, "SetUnit", function(tooltip, unit)
-    -- runs after the original, with the same arguments
+  -- runs after the original, with the same arguments
 end)
 hooks:SecureHook("ToggleWorldMap", function() end)
 hooks:SecureHookScript(PlayerFrame, "OnShow", function(frame) end)
@@ -119,7 +119,7 @@ The handler is called after the original with the same arguments; its return val
 
 ```lua
 hooks:Hook(MyOtherAddon, "Refresh", function(self, reason)
-    -- runs first; cannot change the arguments or the results
+  -- runs first; cannot change the arguments or the results
 end)
 hooks:HookScript(myFrame, "OnUpdate", function(frame, elapsed) end)
 ```
@@ -130,10 +130,10 @@ The handler runs first with the call's arguments. Its errors are reported to the
 
 ```lua
 hooks:RawHook(MyOtherAddon, "Format", function(original, self, value)
-    if value == nil then
-        return ""
-    end
-    return original(self, value)
+  if value == nil then
+    return ""
+  end
+  return original(self, value)
 end)
 ```
 

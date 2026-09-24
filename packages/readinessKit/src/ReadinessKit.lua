@@ -87,14 +87,14 @@ local REASON_FULL = "full"
 -- a checklist instead of a long boolean expression.
 local FACADE_METHODS = { "Gate", "Get", "WhenAll" }
 local GATE_METHODS = {
-    "IsReady",
-    "Await",
-    "Probe",
-    "Invalidate",
-    "ReprobeOn",
-    "Close",
-    "IsClosed",
-    "GetProbeErrorCount",
+  "IsReady",
+  "Await",
+  "Probe",
+  "Invalidate",
+  "ReprobeOn",
+  "Close",
+  "IsClosed",
+  "GetProbeErrorCount",
 }
 local WAITER_METHODS = { "Cancel", "IsPending" }
 
@@ -155,16 +155,16 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
 if type(Registry) == "nil" and type(namespace) == "table" then
-    Registry = rawget(namespace, "Registry")
+  Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
-    error("MoltenCodes ReadinessKit requires Registry API 2 to be loaded first", 2)
+  error("MoltenCodes ReadinessKit requires Registry API 2 to be loaded first", 2)
 end
 
 local bootstrapPackage = rawget(Registry, "Bootstrap")
 local getPackage = rawget(Registry, "Get")
 if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
-    error("MoltenCodes ReadinessKit requires a valid Registry API 2 facade", 2)
+  error("MoltenCodes ReadinessKit requires a valid Registry API 2 facade", 2)
 end
 
 -- TimerKit is a required dependency: it owns the polling timers. It is checked
@@ -174,22 +174,22 @@ local TimerKit, timerRevision = getPackage(Registry, "timerKit", REQUIRED_TIMERK
 local TimerScope = type(TimerKit) == "table" and rawget(TimerKit, "Scope") or nil
 local Timer = type(TimerKit) == "table" and rawget(TimerKit, "Timer") or nil
 if
-    type(TimerKit) ~= "table"
-    or type(timerRevision) ~= "number"
-    or rawget(TimerKit, "API") ~= REQUIRED_TIMERKIT_API
-    or type(rawget(TimerKit, "CreateScope")) ~= "function"
-    or type(TimerScope) ~= "table"
-    or type(rawget(TimerScope, "New")) ~= "function"
-    or type(rawget(TimerScope, "IsClosed")) ~= "function"
-    or type(Timer) ~= "table"
-    or type(rawget(Timer, "Start")) ~= "function"
-    or type(rawget(Timer, "Cancel")) ~= "function"
-    or type(rawget(Timer, "IsPending")) ~= "function"
-    or type(rawget(Timer, "GetScope")) ~= "function"
-    or type(rawget(Timer, "GetUserData")) ~= "function"
-    or type(rawget(Timer, "SetUserData")) ~= "function"
+  type(TimerKit) ~= "table"
+  or type(timerRevision) ~= "number"
+  or rawget(TimerKit, "API") ~= REQUIRED_TIMERKIT_API
+  or type(rawget(TimerKit, "CreateScope")) ~= "function"
+  or type(TimerScope) ~= "table"
+  or type(rawget(TimerScope, "New")) ~= "function"
+  or type(rawget(TimerScope, "IsClosed")) ~= "function"
+  or type(Timer) ~= "table"
+  or type(rawget(Timer, "Start")) ~= "function"
+  or type(rawget(Timer, "Cancel")) ~= "function"
+  or type(rawget(Timer, "IsPending")) ~= "function"
+  or type(rawget(Timer, "GetScope")) ~= "function"
+  or type(rawget(Timer, "GetUserData")) ~= "function"
+  or type(rawget(Timer, "SetUserData")) ~= "function"
 then
-    error("MoltenCodes ReadinessKit requires TimerKit API 1 to be loaded first", 2)
+  error("MoltenCodes ReadinessKit requires TimerKit API 1 to be loaded first", 2)
 end
 
 -- Negative answers and timeouts are measured on the monotonic wall clock
@@ -199,7 +199,7 @@ end
 -- selene: allow(global_usage)
 local nativeGetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 if type(nativeGetTimePreciseSec) ~= "function" then
-    nativeGetTimePreciseSec = nil
+  nativeGetTimePreciseSec = nil
 end
 
 -- Secret values (Retail 12.0.0 and later) raise when compared or tested as a
@@ -210,7 +210,7 @@ end
 -- selene: allow(global_usage)
 local nativeIsSecretValue = rawget(_G, "issecretvalue")
 if type(nativeIsSecretValue) ~= "function" then
-    nativeIsSecretValue = nil
+  nativeIsSecretValue = nil
 end
 
 ---Whether `value` is a secret value the host forbids comparing or testing as
@@ -218,40 +218,40 @@ end
 ---@param value any
 ---@return boolean
 local function isSecretValue(value)
-    if nativeIsSecretValue == nil then
-        return false
-    end
-    return nativeIsSecretValue(value) and true or false
+  if nativeIsSecretValue == nil then
+    return false
+  end
+  return nativeIsSecretValue(value) and true or false
 end
 
 ---Return the clock reading in seconds, or `false` on a host without the clock.
 ---@return number|false
 local function now()
-    if nativeGetTimePreciseSec == nil then
-        return false
-    end
-    return nativeGetTimePreciseSec()
+  if nativeGetTimePreciseSec == nil then
+    return false
+  end
+  return nativeGetTimePreciseSec()
 end
 
 ---Hand a failure nobody called for (a probe, a queued callback) to the host
 ---error handler.
 ---@param message any
 local function reportError(message)
-    -- geterrorhandler is a World of Warcraft client API reachable only through the global table.
-    -- selene: allow(global_usage)
-    local getErrorHandler = rawget(_G, "geterrorhandler")
-    if type(getErrorHandler) == "function" then
-        local handler = getErrorHandler()
-        if type(handler) == "function" then
-            handler(message)
-            return
-        end
+  -- geterrorhandler is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local getErrorHandler = rawget(_G, "geterrorhandler")
+  if type(getErrorHandler) == "function" then
+    local handler = getErrorHandler()
+    if type(handler) == "function" then
+      handler(message)
+      return
     end
+  end
 
-    -- Outside a WoW client there is no error handler to report through.
-    -- Printing is what the client's own default handler does, and staying
-    -- silent would turn a probe bug into an invisible one.
-    print(message)
+  -- Outside a WoW client there is no error handler to report through.
+  -- Printing is what the client's own default handler does, and staying
+  -- silent would turn a probe bug into an invisible one.
+  print(message)
 end
 
 -- Validation -----------------------------------------------------------------
@@ -261,44 +261,44 @@ end
 ---@param methodNames string[]
 ---@return boolean
 local function hasMethods(prototype, methodNames)
-    for index = 1, #methodNames do
-        if type(rawget(prototype, methodNames[index])) ~= "function" then
-            return false
-        end
+  for index = 1, #methodNames do
+    if type(rawget(prototype, methodNames[index])) ~= "function" then
+      return false
     end
-    return true
+  end
+  return true
 end
 
 ---Whether `implementation` exposes the complete ReadinessKit API 1 surface.
 ---@param implementation any shared package table handed back by Registry
 ---@return boolean
 local function validatePublicSurface(implementation)
-    if
-        type(implementation) ~= "table"
-        or rawget(implementation, "API") ~= API_GENERATION
-        or type(rawget(implementation, "REVISION")) ~= "number"
-        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
-    then
-        return false
-    end
+  if
+    type(implementation) ~= "table"
+    or rawget(implementation, "API") ~= API_GENERATION
+    or type(rawget(implementation, "REVISION")) ~= "number"
+    or type(rawget(implementation, "UNBOUNDED")) ~= "table"
+  then
+    return false
+  end
 
-    return hasMethods(implementation, FACADE_METHODS)
+  return hasMethods(implementation, FACADE_METHODS)
 end
 
 ---Whether `currentState` has the fields every API 1 revision shares.
 ---@param currentState any
 ---@return boolean
 local function validateStateBase(currentState)
-    return type(currentState) == "table"
-        and rawget(currentState, "schema") == STATE_SCHEMA
-        and type(rawget(currentState, "dispatch")) == "table"
-        and type(rawget(currentState, "runtimeRevision")) == "number"
-        and type(rawget(currentState, "gatePrototype")) == "table"
-        and type(rawget(currentState, "waiterPrototype")) == "table"
-        and type(rawget(currentState, "gateMetatable")) == "table"
-        and type(rawget(currentState, "waiterMetatable")) == "table"
-        and type(rawget(currentState, "gates")) == "table"
-        and type(rawget(currentState, "pollCallback")) == "function"
+  return type(currentState) == "table"
+    and rawget(currentState, "schema") == STATE_SCHEMA
+    and type(rawget(currentState, "dispatch")) == "table"
+    and type(rawget(currentState, "runtimeRevision")) == "number"
+    and type(rawget(currentState, "gatePrototype")) == "table"
+    and type(rawget(currentState, "waiterPrototype")) == "table"
+    and type(rawget(currentState, "gateMetatable")) == "table"
+    and type(rawget(currentState, "waiterMetatable")) == "table"
+    and type(rawget(currentState, "gates")) == "table"
+    and type(rawget(currentState, "pollCallback")) == "function"
 end
 
 ---Whether `implementation` carries package state of this revision's schema,
@@ -306,11 +306,11 @@ end
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    local currentState = rawget(implementation, "_state")
-    return validateStateBase(currentState)
-        and type(rawget(currentState, "unbounded")) == "table"
-        and hasMethods(rawget(currentState, "gatePrototype"), GATE_METHODS)
-        and hasMethods(rawget(currentState, "waiterPrototype"), WAITER_METHODS)
+  local currentState = rawget(implementation, "_state")
+  return validateStateBase(currentState)
+    and type(rawget(currentState, "unbounded")) == "table"
+    and hasMethods(rawget(currentState, "gatePrototype"), GATE_METHODS)
+    and hasMethods(rawget(currentState, "waiterPrototype"), WAITER_METHODS)
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -319,63 +319,63 @@ end
 -- look the package up, refuse to reinterpret state owned by a newer revision,
 -- and register this one. What stays here is what only ReadinessKit can answer.
 local ReadinessKit, previousRevision, selected = bootstrapPackage(Registry, {
-    package = PACKAGE_NAME,
-    api = API_GENERATION,
-    revision = IMPLEMENTATION_REVISION,
-    label = "MoltenCodes ReadinessKit",
-    validatePublicSurface = validatePublicSurface,
-    validateState = validateCurrentState,
+  package = PACKAGE_NAME,
+  api = API_GENERATION,
+  revision = IMPLEMENTATION_REVISION,
+  label = "MoltenCodes ReadinessKit",
+  validatePublicSurface = validatePublicSurface,
+  validateState = validateCurrentState,
 })
 
 if type(ReadinessKit) == "nil" then
-    -- An equal or newer compatible revision already owns the shared package table.
-    return selected
+  -- An equal or newer compatible revision already owns the shared package table.
+  return selected
 end
 
 local state = rawget(ReadinessKit, "_state")
 
 if type(previousRevision) == "nil" then
-    if state ~= nil then
-        error("MoltenCodes ReadinessKit package state is corrupted or incomplete", 2)
-    end
-
-    local dispatch = {}
-    state = {
-        schema = STATE_SCHEMA,
-        -- Closures ReadinessKit hands out (the poll callback, re-probe
-        -- callbacks, `WhenAll` callbacks) call through this table, so a newer
-        -- revision replaces the behaviour behind closures an older revision
-        -- created.
-        dispatch = dispatch,
-        runtimeRevision = 0,
-        -- The gate and waiter method tables. They live in package state rather
-        -- than on the facade because the facade's `Gate` is the constructor.
-        gatePrototype = {},
-        waiterPrototype = {},
-        gateMetatable = {},
-        waiterMetatable = {},
-        -- Gate name to gate. One gate per name for the whole client session.
-        gates = {},
-        -- The Kit-owned TimerKit scope every polling timer lives in, created
-        -- on the first gate that has to poll.
-        timerScope = false,
-        -- One TimerKit callback serves every gate: the gate travels on the
-        -- timer as TimerKit user data, so arming a poll allocates no closure.
-        pollCallback = function(timer)
-            local pollTick = rawget(dispatch, "pollTick")
-            pollTick(timer)
-        end,
-    }
-    rawset(ReadinessKit, "_state", state)
-elseif not validateStateBase(state) then
+  if state ~= nil then
     error("MoltenCodes ReadinessKit package state is corrupted or incomplete", 2)
+  end
+
+  local dispatch = {}
+  state = {
+    schema = STATE_SCHEMA,
+    -- Closures ReadinessKit hands out (the poll callback, re-probe
+    -- callbacks, `WhenAll` callbacks) call through this table, so a newer
+    -- revision replaces the behaviour behind closures an older revision
+    -- created.
+    dispatch = dispatch,
+    runtimeRevision = 0,
+    -- The gate and waiter method tables. They live in package state rather
+    -- than on the facade because the facade's `Gate` is the constructor.
+    gatePrototype = {},
+    waiterPrototype = {},
+    gateMetatable = {},
+    waiterMetatable = {},
+    -- Gate name to gate. One gate per name for the whole client session.
+    gates = {},
+    -- The Kit-owned TimerKit scope every polling timer lives in, created
+    -- on the first gate that has to poll.
+    timerScope = false,
+    -- One TimerKit callback serves every gate: the gate travels on the
+    -- timer as TimerKit user data, so arming a poll allocates no closure.
+    pollCallback = function(timer)
+      local pollTick = rawget(dispatch, "pollTick")
+      pollTick(timer)
+    end,
+  }
+  rawset(ReadinessKit, "_state", state)
+elseif not validateStateBase(state) then
+  error("MoltenCodes ReadinessKit package state is corrupted or incomplete", 2)
 end
 
 -- `ReadinessKit.UNBOUNDED`, the value `options.maxWaiters` takes to lift the
 -- waiter limit of one gate. It lives in the state so every revision publishes
 -- the same table; revision 1 had none, so its state is given one here.
 if type(rawget(state, "unbounded")) ~= "table" then
-    rawset(state, "unbounded", {})
+  rawset(state, "unbounded", {})
 end
 local UNBOUNDED = rawget(state, "unbounded")
 
@@ -402,39 +402,39 @@ rawset(WAITER_METATABLE, "__index", Waiter)
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateGate(gate, methodName, level)
-    if type(gate) ~= "table" or getmetatable(gate) ~= GATE_METATABLE then
-        error(methodName .. " must be called on a ReadinessKit gate", level)
-    end
+  if type(gate) ~= "table" or getmetatable(gate) ~= GATE_METATABLE then
+    error(methodName .. " must be called on a ReadinessKit gate", level)
+  end
 end
 
 ---@param waiter any receiver the public method was called on
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateWaiter(waiter, methodName, level)
-    if type(waiter) ~= "table" or getmetatable(waiter) ~= WAITER_METATABLE then
-        error(methodName .. " must be called on a ReadinessKit waiter", level)
-    end
+  if type(waiter) ~= "table" or getmetatable(waiter) ~= WAITER_METATABLE then
+    error(methodName .. " must be called on a ReadinessKit waiter", level)
+  end
 end
 
 ---@param value any
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateNonEmptyString(value, label, level)
-    if isSecretValue(value) then
-        error(label .. " must not be a secret value", level)
-    end
-    if type(value) ~= "string" or value == "" then
-        error(label .. " must be a non-empty string", level)
-    end
+  if isSecretValue(value) then
+    error(label .. " must not be a secret value", level)
+  end
+  if type(value) ~= "string" or value == "" then
+    error(label .. " must be a non-empty string", level)
+  end
 end
 
 ---@param value any
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFunction(value, label, level)
-    if type(value) ~= "function" then
-        error(label .. " must be a function", level)
-    end
+  if type(value) ~= "function" then
+    error(label .. " must be a function", level)
+  end
 end
 
 ---Whether `value` is a finite number greater than zero. The caller has
@@ -442,7 +442,7 @@ end
 ---@param value any
 ---@return boolean
 local function isPositiveFiniteNumber(value)
-    return type(value) == "number" and value == value and value > 0 and value ~= math.huge
+  return type(value) == "number" and value == value and value > 0 and value ~= math.huge
 end
 
 ---Refuse any field of an option table outside `GATE_OPTION_KEYS`. The caller
@@ -450,20 +450,20 @@ end
 ---@param options table
 ---@param level integer stack level the failures are reported at
 local function validateOptionKeys(options, level)
-    -- Report the alphabetically first unknown field without allocating: track
-    -- the smallest key seen instead of collecting and sorting every offender.
-    local firstUnknown = nil
-    for key in next, options do
-        if GATE_OPTION_KEYS[key] ~= true then
-            local text = tostring(key)
-            if firstUnknown == nil or text < firstUnknown then
-                firstUnknown = text
-            end
-        end
+  -- Report the alphabetically first unknown field without allocating: track
+  -- the smallest key seen instead of collecting and sorting every offender.
+  local firstUnknown = nil
+  for key in next, options do
+    if GATE_OPTION_KEYS[key] ~= true then
+      local text = tostring(key)
+      if firstUnknown == nil or text < firstUnknown then
+        firstUnknown = text
+      end
     end
-    if firstUnknown ~= nil then
-        error('ReadinessKit:Gate options contains unknown field "' .. firstUnknown .. '"', level)
-    end
+  end
+  if firstUnknown ~= nil then
+    error('ReadinessKit:Gate options contains unknown field "' .. firstUnknown .. '"', level)
+  end
 end
 
 ---Refuse a secret option value before any comparison touches it.
@@ -471,9 +471,9 @@ end
 ---@param field string option field name, used in the failure
 ---@param level integer stack level the failure is reported at
 local function refuseSecretOption(value, field, level)
-    if isSecretValue(value) then
-        error("ReadinessKit:Gate " .. field .. " must not be a secret value", level)
-    end
+  if isSecretValue(value) then
+    error("ReadinessKit:Gate " .. field .. " must not be a secret value", level)
+  end
 end
 
 ---Validate `Gate` options and return them with their defaults applied.
@@ -483,48 +483,48 @@ end
 ---@return number|false timeoutSeconds
 ---@return integer|table maxWaiters a positive integer or `UNBOUNDED`
 local function readGateOptions(options, level)
-    if type(options) == "nil" then
-        return DEFAULT_INTERVAL_SECONDS, DEFAULT_TIMEOUT_SECONDS, DEFAULT_MAX_WAITERS
-    end
-    if type(options) ~= "table" then
-        error("ReadinessKit:Gate options must be a table", level)
-    end
-    validateOptionKeys(options, level + 1)
+  if type(options) == "nil" then
+    return DEFAULT_INTERVAL_SECONDS, DEFAULT_TIMEOUT_SECONDS, DEFAULT_MAX_WAITERS
+  end
+  if type(options) ~= "table" then
+    error("ReadinessKit:Gate options must be a table", level)
+  end
+  validateOptionKeys(options, level + 1)
 
-    local intervalSeconds = options.intervalSeconds
-    refuseSecretOption(intervalSeconds, "intervalSeconds", level + 1)
-    if type(intervalSeconds) == "nil" then
-        intervalSeconds = DEFAULT_INTERVAL_SECONDS
-    elseif not isPositiveFiniteNumber(intervalSeconds) then
-        error("ReadinessKit:Gate intervalSeconds must be a finite number greater than zero", level)
-    end
+  local intervalSeconds = options.intervalSeconds
+  refuseSecretOption(intervalSeconds, "intervalSeconds", level + 1)
+  if type(intervalSeconds) == "nil" then
+    intervalSeconds = DEFAULT_INTERVAL_SECONDS
+  elseif not isPositiveFiniteNumber(intervalSeconds) then
+    error("ReadinessKit:Gate intervalSeconds must be a finite number greater than zero", level)
+  end
 
-    local timeoutSeconds = options.timeoutSeconds
-    refuseSecretOption(timeoutSeconds, "timeoutSeconds", level + 1)
-    if type(timeoutSeconds) == "nil" then
-        timeoutSeconds = DEFAULT_TIMEOUT_SECONDS
-    elseif timeoutSeconds ~= false and not isPositiveFiniteNumber(timeoutSeconds) then
-        error(
-            "ReadinessKit:Gate timeoutSeconds must be false or a finite number greater than zero",
-            level
-        )
-    end
+  local timeoutSeconds = options.timeoutSeconds
+  refuseSecretOption(timeoutSeconds, "timeoutSeconds", level + 1)
+  if type(timeoutSeconds) == "nil" then
+    timeoutSeconds = DEFAULT_TIMEOUT_SECONDS
+  elseif timeoutSeconds ~= false and not isPositiveFiniteNumber(timeoutSeconds) then
+    error(
+      "ReadinessKit:Gate timeoutSeconds must be false or a finite number greater than zero",
+      level
+    )
+  end
 
-    local maxWaiters = options.maxWaiters
-    refuseSecretOption(maxWaiters, "maxWaiters", level + 1)
-    if type(maxWaiters) == "nil" then
-        maxWaiters = DEFAULT_MAX_WAITERS
-    elseif
-        maxWaiters ~= UNBOUNDED
-        and (not isPositiveFiniteNumber(maxWaiters) or math.floor(maxWaiters) ~= maxWaiters)
-    then
-        error(
-            "ReadinessKit:Gate maxWaiters must be a positive integer or ReadinessKit.UNBOUNDED",
-            level
-        )
-    end
+  local maxWaiters = options.maxWaiters
+  refuseSecretOption(maxWaiters, "maxWaiters", level + 1)
+  if type(maxWaiters) == "nil" then
+    maxWaiters = DEFAULT_MAX_WAITERS
+  elseif
+    maxWaiters ~= UNBOUNDED
+    and (not isPositiveFiniteNumber(maxWaiters) or math.floor(maxWaiters) ~= maxWaiters)
+  then
+    error(
+      "ReadinessKit:Gate maxWaiters must be a positive integer or ReadinessKit.UNBOUNDED",
+      level
+    )
+  end
 
-    return intervalSeconds, timeoutSeconds, maxWaiters
+  return intervalSeconds, timeoutSeconds, maxWaiters
 end
 
 -- Waiter internals -----------------------------------------------------------
@@ -544,13 +544,13 @@ local stagedReason = nil
 ---this runs. Clearing the stage first keeps a callback that makes another gate
 ---ready from seeing stale arguments.
 local function invokeStaged()
-    local callback = stagedCallback --[[@as ReadinessKit.Callback]]
-    local ready = stagedReady
-    local reason = stagedReason
-    stagedCallback = nil
-    stagedReady = false
-    stagedReason = nil
-    callback(ready, reason)
+  local callback = stagedCallback --[[@as ReadinessKit.Callback]]
+  local ready = stagedReady
+  local reason = stagedReason
+  stagedCallback = nil
+  stagedReady = false
+  stagedReason = nil
+  callback(ready, reason)
 end
 
 ---Call one queued callback, reporting its failure instead of raising it.
@@ -558,13 +558,13 @@ end
 ---@param ready boolean
 ---@param reason string?
 local function callQueued(callback, ready, reason)
-    stagedCallback = callback
-    stagedReady = ready
-    stagedReason = reason
-    local ok, message = pcall(invokeStaged)
-    if not ok then
-        reportError(message)
-    end
+  stagedCallback = callback
+  stagedReady = ready
+  stagedReason = reason
+  local ok, message = pcall(invokeStaged)
+  if not ok then
+    reportError(message)
+  end
 end
 
 ---Build one waiter handle.
@@ -573,15 +573,15 @@ end
 ---@param status string
 ---@return ReadinessKit.Waiter
 local function newWaiter(gate, callback, status)
-    return setmetatable({
-        _gate = gate,
-        _callback = callback,
-        _status = status,
-        -- `WhenAll` only: the per-gate waiters and how many gates are not yet
-        -- ready. `false` and `0` for an ordinary waiter.
-        _children = false,
-        _remaining = 0,
-    }, WAITER_METATABLE)
+  return setmetatable({
+    _gate = gate,
+    _callback = callback,
+    _status = status,
+    -- `WhenAll` only: the per-gate waiters and how many gates are not yet
+    -- ready. `false` and `0` for an ordinary waiter.
+    _children = false,
+    _remaining = 0,
+  }, WAITER_METATABLE)
 end
 
 ---Remove `waiter` from its gate's live waiter array, keeping the order of the
@@ -590,18 +590,18 @@ end
 ---@param gate table
 ---@param waiter table
 local function removeQueued(gate, waiter)
-    local waiters = rawget(gate, "_waiters")
-    local count = rawget(gate, "_waiterCount")
-    for index = 1, count do
-        if waiters[index] == waiter then
-            for shift = index, count - 1 do
-                waiters[shift] = waiters[shift + 1]
-            end
-            waiters[count] = nil
-            rawset(gate, "_waiterCount", count - 1)
-            return
-        end
+  local waiters = rawget(gate, "_waiters")
+  local count = rawget(gate, "_waiterCount")
+  for index = 1, count do
+    if waiters[index] == waiter then
+      for shift = index, count - 1 do
+        waiters[shift] = waiters[shift + 1]
+      end
+      waiters[count] = nil
+      rawset(gate, "_waiterCount", count - 1)
+      return
     end
+  end
 end
 
 ---Call every queued waiter once, in the order they were queued.
@@ -616,34 +616,34 @@ end
 ---@param ready boolean
 ---@param reason string?
 local function flushWaiters(gate, ready, reason)
-    local count = rawget(gate, "_waiterCount")
-    if count == 0 then
-        return
-    end
+  local count = rawget(gate, "_waiterCount")
+  if count == 0 then
+    return
+  end
 
-    local batch = rawget(gate, "_waiters")
-    local spare = rawget(gate, "_spareWaiters")
-    if spare == false then
-        spare = {}
-    end
-    rawset(gate, "_waiters", spare)
-    rawset(gate, "_spareWaiters", false)
-    rawset(gate, "_waiterCount", 0)
+  local batch = rawget(gate, "_waiters")
+  local spare = rawget(gate, "_spareWaiters")
+  if spare == false then
+    spare = {}
+  end
+  rawset(gate, "_waiters", spare)
+  rawset(gate, "_spareWaiters", false)
+  rawset(gate, "_waiterCount", 0)
 
-    for index = 1, count do
-        local waiter = batch[index]
-        batch[index] = nil
-        if rawget(waiter, "_status") == WAITER_QUEUED then
-            local callback = rawget(waiter, "_callback")
-            rawset(waiter, "_status", WAITER_CALLED)
-            rawset(waiter, "_callback", false)
-            callQueued(callback, ready, reason)
-        end
+  for index = 1, count do
+    local waiter = batch[index]
+    batch[index] = nil
+    if rawget(waiter, "_status") == WAITER_QUEUED then
+      local callback = rawget(waiter, "_callback")
+      rawset(waiter, "_status", WAITER_CALLED)
+      rawset(waiter, "_callback", false)
+      callQueued(callback, ready, reason)
     end
+  end
 
-    if rawget(gate, "_spareWaiters") == false then
-        rawset(gate, "_spareWaiters", batch)
-    end
+  if rawget(gate, "_spareWaiters") == false then
+    rawset(gate, "_spareWaiters", batch)
+  end
 end
 
 -- Probing --------------------------------------------------------------------
@@ -654,7 +654,7 @@ end
 ---@param gate table
 ---@return boolean
 local function closedDuringProbe(gate)
-    return rawget(gate, "_status") == STATUS_CLOSED
+  return rawget(gate, "_status") == STATUS_CLOSED
 end
 
 ---Count one probe failure and decide whether it is the one to report. Only
@@ -665,21 +665,21 @@ end
 ---@param gate table
 ---@return boolean report whether this failure is the first of its round
 local function countProbeFailure(gate)
-    rawset(gate, "_probeErrorCount", rawget(gate, "_probeErrorCount") + 1)
-    if rawget(gate, "_probeErrorReported") then
-        return false
-    end
-    rawset(gate, "_probeErrorReported", true)
-    return true
+  rawset(gate, "_probeErrorCount", rawget(gate, "_probeErrorCount") + 1)
+  if rawget(gate, "_probeErrorReported") then
+    return false
+  end
+  rawset(gate, "_probeErrorReported", true)
+  return true
 end
 
 ---Record a probe that raised (see `countProbeFailure`).
 ---@param gate table
 ---@param message any the error value, handed on unchanged
 local function recordProbeError(gate, message)
-    if countProbeFailure(gate) then
-        reportError(message)
-    end
+  if countProbeFailure(gate) then
+    reportError(message)
+  end
 end
 
 ---Record a probe that answered a secret value. The client raises on a boolean
@@ -691,13 +691,13 @@ end
 ---the failure is the one reported, so an ignored failure allocates nothing.
 ---@param gate table
 local function recordSecretAnswer(gate)
-    if countProbeFailure(gate) then
-        reportError(
-            'ReadinessKit gate "'
-                .. rawget(gate, "_name")
-                .. '" probe answered a secret value; a probe must answer a plain true or false'
-        )
-    end
+  if countProbeFailure(gate) then
+    reportError(
+      'ReadinessKit gate "'
+        .. rawget(gate, "_name")
+        .. '" probe answered a secret value; a probe must answer a plain true or false'
+    )
+  end
 end
 
 ---Run the consumer's probe. A probe that raises, or answers a secret value, is
@@ -707,17 +707,17 @@ end
 ---@param gate table
 ---@return boolean ready
 local function runProbe(gate)
-    local ok, result = pcall(rawget(gate, "_probe"))
-    if not ok then
-        recordProbeError(gate, result)
-    elseif isSecretValue(result) then
-        recordSecretAnswer(gate)
-    elseif result then
-        return true
-    end
+  local ok, result = pcall(rawget(gate, "_probe"))
+  if not ok then
+    recordProbeError(gate, result)
+  elseif isSecretValue(result) then
+    recordSecretAnswer(gate)
+  elseif result then
+    return true
+  end
 
-    rawset(gate, "_negativeAt", now())
-    return false
+  rawset(gate, "_negativeAt", now())
+  return false
 end
 
 ---Whether the gate's last negative answer is younger than its interval.
@@ -725,15 +725,15 @@ end
 ---@param gate table
 ---@return boolean
 local function isNegativeCached(gate)
-    local negativeAt = rawget(gate, "_negativeAt")
-    if negativeAt == false then
-        return false
-    end
-    local current = now()
-    if current == false then
-        return false
-    end
-    return current - negativeAt < rawget(gate, "_intervalSeconds")
+  local negativeAt = rawget(gate, "_negativeAt")
+  if negativeAt == false then
+    return false
+  end
+  local current = now()
+  if current == false then
+    return false
+  end
+  return current - negativeAt < rawget(gate, "_intervalSeconds")
 end
 
 ---Whether the current polling round has lasted `timeoutSeconds`. Measured on
@@ -741,19 +741,19 @@ end
 ---@param gate table
 ---@return boolean
 local function hasTimedOut(gate)
-    local timeoutSeconds = rawget(gate, "_timeoutSeconds")
-    if timeoutSeconds == false then
-        return false
-    end
+  local timeoutSeconds = rawget(gate, "_timeoutSeconds")
+  if timeoutSeconds == false then
+    return false
+  end
 
-    local startedAt = rawget(gate, "_waitStartedAt")
-    local current = now()
-    if startedAt ~= false and current ~= false then
-        return current - startedAt >= timeoutSeconds
-    end
+  local startedAt = rawget(gate, "_waitStartedAt")
+  local current = now()
+  if startedAt ~= false and current ~= false then
+    return current - startedAt >= timeoutSeconds
+  end
 
-    local polled = rawget(gate, "_polls") * rawget(gate, "_intervalSeconds")
-    return polled >= timeoutSeconds - POLL_COUNT_TOLERANCE
+  local polled = rawget(gate, "_polls") * rawget(gate, "_intervalSeconds")
+  return polled >= timeoutSeconds - POLL_COUNT_TOLERANCE
 end
 
 -- Polling --------------------------------------------------------------------
@@ -763,12 +763,12 @@ end
 ---disable polling for good.
 ---@return TimerKit.Scope
 local function getTimerScope()
-    local scope = rawget(state, "timerScope")
-    if scope == false or scope:IsClosed() then
-        scope = TimerKit:CreateScope()
-        rawset(state, "timerScope", scope)
-    end
-    return scope
+  local scope = rawget(state, "timerScope")
+  if scope == false or scope:IsClosed() then
+    scope = TimerKit:CreateScope()
+    rawset(state, "timerScope", scope)
+  end
+  return scope
 end
 
 ---Start the gate's repeating poll timer, creating the timer on first use.
@@ -777,23 +777,23 @@ end
 ---and cancelled, never replaced, unless its scope was closed from outside.
 ---@param gate table
 local function startTimer(gate)
-    local timer = rawget(gate, "_timer")
-    if timer ~= false and timer:GetScope():IsClosed() then
-        timer:SetUserData(nil)
-        timer = false
-    end
-    if timer == false then
-        timer = getTimerScope():New({
-            delay = rawget(gate, "_intervalSeconds"),
-            callback = rawget(state, "pollCallback"),
-            repeating = true,
-        })
-        timer:SetUserData(gate)
-        rawset(gate, "_timer", timer)
-    end
-    if not timer:IsPending() then
-        timer:Start()
-    end
+  local timer = rawget(gate, "_timer")
+  if timer ~= false and timer:GetScope():IsClosed() then
+    timer:SetUserData(nil)
+    timer = false
+  end
+  if timer == false then
+    timer = getTimerScope():New({
+      delay = rawget(gate, "_intervalSeconds"),
+      callback = rawget(state, "pollCallback"),
+      repeating = true,
+    })
+    timer:SetUserData(gate)
+    rawset(gate, "_timer", timer)
+  end
+  if not timer:IsPending() then
+    timer:Start()
+  end
 end
 
 ---Cancel the gate's poll timer if it is running. A host failure while
@@ -801,13 +801,13 @@ end
 ---its waiters still have to be told.
 ---@param gate table
 local function stopTimer(gate)
-    local timer = rawget(gate, "_timer")
-    if timer ~= false and timer:IsPending() then
-        local ok, message = pcall(timer.Cancel, timer)
-        if not ok then
-            reportError(message)
-        end
+  local timer = rawget(gate, "_timer")
+  if timer ~= false and timer:IsPending() then
+    local ok, message = pcall(timer.Cancel, timer)
+    if not ok then
+      reportError(message)
     end
+  end
 end
 
 -- Transitions ----------------------------------------------------------------
@@ -815,10 +815,10 @@ end
 ---The probe answered: stop polling and release every waiter with `true`.
 ---@param gate table
 local function becomeReady(gate)
-    rawset(gate, "_status", STATUS_READY)
-    rawset(gate, "_negativeAt", false)
-    stopTimer(gate)
-    flushWaiters(gate, true, nil)
+  rawset(gate, "_status", STATUS_READY)
+  rawset(gate, "_negativeAt", false)
+  stopTimer(gate)
+  flushWaiters(gate, true, nil)
 end
 
 ---The polling round ran out: stop polling and release every waiter with
@@ -826,9 +826,9 @@ end
 ---re-probe event starts a new round.
 ---@param gate table
 local function timeOut(gate)
-    rawset(gate, "_status", STATUS_TIMED_OUT)
-    stopTimer(gate)
-    flushWaiters(gate, false, REASON_TIMEOUT)
+  rawset(gate, "_status", STATUS_TIMED_OUT)
+  stopTimer(gate)
+  flushWaiters(gate, false, REASON_TIMEOUT)
 end
 
 ---Begin a new polling round: status pending, a fresh timeout window, and the
@@ -837,13 +837,13 @@ end
 ---its defining probe began.
 ---@param gate table
 local function startPolling(gate)
-    if rawget(gate, "_status") ~= STATUS_PENDING then
-        rawset(gate, "_probeErrorReported", false)
-    end
-    rawset(gate, "_status", STATUS_PENDING)
-    rawset(gate, "_waitStartedAt", now())
-    rawset(gate, "_polls", 0)
-    startTimer(gate)
+  if rawget(gate, "_status") ~= STATUS_PENDING then
+    rawset(gate, "_probeErrorReported", false)
+  end
+  rawset(gate, "_status", STATUS_PENDING)
+  rawset(gate, "_waitStartedAt", now())
+  rawset(gate, "_polls", 0)
+  startTimer(gate)
 end
 
 ---One poll. Reached through the shared poll callback and the dispatch table,
@@ -851,31 +851,31 @@ end
 ---answering "not yet".
 ---@param timer TimerKit.Timer
 local function pollTick(timer)
-    local gate = timer:GetUserData()
-    if
-        type(gate) ~= "table"
-        or getmetatable(gate) ~= GATE_METATABLE
-        or rawget(gate, "_timer") ~= timer
-        or rawget(gate, "_status") ~= STATUS_PENDING
-    then
-        -- A tick for a gate that stopped polling: make sure it is the last.
-        local ok, message = pcall(timer.Cancel, timer)
-        if not ok then
-            reportError(message)
-        end
-        return
+  local gate = timer:GetUserData()
+  if
+    type(gate) ~= "table"
+    or getmetatable(gate) ~= GATE_METATABLE
+    or rawget(gate, "_timer") ~= timer
+    or rawget(gate, "_status") ~= STATUS_PENDING
+  then
+    -- A tick for a gate that stopped polling: make sure it is the last.
+    local ok, message = pcall(timer.Cancel, timer)
+    if not ok then
+      reportError(message)
     end
+    return
+  end
 
-    rawset(gate, "_polls", rawget(gate, "_polls") + 1)
-    local ready = runProbe(gate)
-    if closedDuringProbe(gate) then
-        return
-    end
-    if ready then
-        becomeReady(gate)
-    elseif hasTimedOut(gate) then
-        timeOut(gate)
-    end
+  rawset(gate, "_polls", rawget(gate, "_polls") + 1)
+  local ready = runProbe(gate)
+  if closedDuringProbe(gate) then
+    return
+  end
+  if ready then
+    becomeReady(gate)
+  elseif hasTimedOut(gate) then
+    timeOut(gate)
+  end
 end
 
 -- Re-probe on events ---------------------------------------------------------
@@ -886,25 +886,22 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return table EventKit
 local function resolveEventKit(methodName, level)
-    local findPackage = rawget(Registry, "Find")
-    if type(findPackage) ~= "function" then
-        error(methodName .. " requires Registry:Find (Registry API 2 revision 7 or newer)", level)
-    end
+  local findPackage = rawget(Registry, "Find")
+  if type(findPackage) ~= "function" then
+    error(methodName .. " requires Registry:Find (Registry API 2 revision 7 or newer)", level)
+  end
 
-    local EventKit, reason = findPackage(Registry, "eventKit", OPTIONAL_EVENTKIT_API)
-    if type(EventKit) == "nil" then
-        error(
-            methodName
-                .. " requires EventKit API 1, which is not loaded ("
-                .. tostring(reason)
-                .. ")",
-            level
-        )
-    end
-    if type(rawget(EventKit, "CreateScope")) ~= "function" then
-        error(methodName .. " requires a valid EventKit API 1 facade", level)
-    end
-    return EventKit
+  local EventKit, reason = findPackage(Registry, "eventKit", OPTIONAL_EVENTKIT_API)
+  if type(EventKit) == "nil" then
+    error(
+      methodName .. " requires EventKit API 1, which is not loaded (" .. tostring(reason) .. ")",
+      level
+    )
+  end
+  if type(rawget(EventKit, "CreateScope")) ~= "function" then
+    error(methodName .. " requires a valid EventKit API 1 facade", level)
+  end
+  return EventKit
 end
 
 ---Return an error value as text without the `file:line: ` prefix `error` adds,
@@ -912,15 +909,15 @@ end
 ---@param failure any
 ---@return string
 local function withoutPosition(failure)
-    -- A failure carrying a host reason could be a secret string, and the
-    -- `or` below is a boolean test, which raises on a secret. A fixed
-    -- placeholder keeps the re-raised message readable and plain.
-    if isSecretValue(failure) then
-        return "(secret value)"
-    end
-    local text = tostring(failure)
-    local stripped = text:match("^[^\n]-:%d+: (.*)$")
-    return stripped or text
+  -- A failure carrying a host reason could be a secret string, and the
+  -- `or` below is a boolean test, which raises on a secret. A fixed
+  -- placeholder keeps the re-raised message readable and plain.
+  if isSecretValue(failure) then
+    return "(secret value)"
+  end
+  local text = tostring(failure)
+  local stripped = text:match("^[^\n]-:%d+: (.*)$")
+  return stripped or text
 end
 
 ---Build the one callback a gate connects to every event it re-probes on. It
@@ -928,10 +925,10 @@ end
 ---@param gate table
 ---@return fun()
 local function newReprobeCallback(gate)
-    return function()
-        local reprobe = rawget(dispatch, "reprobe")
-        reprobe(gate)
-    end
+  return function()
+    local reprobe = rawget(dispatch, "reprobe")
+    reprobe(gate)
+  end
 end
 
 ---An event the gate re-probes on fired. The event is fresh information, so the
@@ -939,20 +936,20 @@ end
 ---with `Invalidate`), and so is a gate closed during the dispatch in flight.
 ---@param gate table
 local function reprobe(gate)
-    local status = rawget(gate, "_status")
-    if status == STATUS_READY or status == STATUS_CLOSED then
-        return
-    end
+  local status = rawget(gate, "_status")
+  if status == STATUS_READY or status == STATUS_CLOSED then
+    return
+  end
 
-    local ready = runProbe(gate)
-    if closedDuringProbe(gate) then
-        return
-    end
-    if ready then
-        becomeReady(gate)
-    elseif status == STATUS_TIMED_OUT then
-        startPolling(gate)
-    end
+  local ready = runProbe(gate)
+  if closedDuringProbe(gate) then
+    return
+  end
+  if ready then
+    becomeReady(gate)
+  elseif status == STATUS_TIMED_OUT then
+    startPolling(gate)
+  end
 end
 
 -- Gate methods ---------------------------------------------------------------
@@ -961,8 +958,8 @@ end
 ---@param self ReadinessKit.Gate
 ---@return boolean
 local function gateIsReady(self)
-    validateGate(self, "ReadinessKit.Gate:IsReady", 3)
-    return rawget(self, "_status") == STATUS_READY
+  validateGate(self, "ReadinessKit.Gate:IsReady", 3)
+  return rawget(self, "_status") == STATUS_READY
 end
 
 ---Queue `callback` for the gate's outcome, or call it at once when the gate
@@ -973,28 +970,28 @@ end
 ---@return ReadinessKit.Waiter? waiter
 ---@return string? reason `"full"` when the queue is at `maxWaiters`
 local function awaitGate(gate, callback)
-    local status = rawget(gate, "_status")
-    if status == STATUS_READY then
-        local waiter = newWaiter(gate, callback, WAITER_CALLED)
-        callback(true, nil)
-        return waiter
-    end
-    if status == STATUS_TIMED_OUT then
-        local waiter = newWaiter(gate, callback, WAITER_CALLED)
-        callback(false, REASON_TIMEOUT)
-        return waiter
-    end
-
-    local count = rawget(gate, "_waiterCount")
-    local maxWaiters = rawget(gate, "_maxWaiters")
-    if maxWaiters ~= UNBOUNDED and count >= maxWaiters then
-        return nil, REASON_FULL
-    end
-
-    local waiter = newWaiter(gate, callback, WAITER_QUEUED)
-    rawget(gate, "_waiters")[count + 1] = waiter
-    rawset(gate, "_waiterCount", count + 1)
+  local status = rawget(gate, "_status")
+  if status == STATUS_READY then
+    local waiter = newWaiter(gate, callback, WAITER_CALLED)
+    callback(true, nil)
     return waiter
+  end
+  if status == STATUS_TIMED_OUT then
+    local waiter = newWaiter(gate, callback, WAITER_CALLED)
+    callback(false, REASON_TIMEOUT)
+    return waiter
+  end
+
+  local count = rawget(gate, "_waiterCount")
+  local maxWaiters = rawget(gate, "_maxWaiters")
+  if maxWaiters ~= UNBOUNDED and count >= maxWaiters then
+    return nil, REASON_FULL
+  end
+
+  local waiter = newWaiter(gate, callback, WAITER_QUEUED)
+  rawget(gate, "_waiters")[count + 1] = waiter
+  rawset(gate, "_waiterCount", count + 1)
+  return waiter
 end
 
 ---Wait for the gate.
@@ -1011,12 +1008,12 @@ end
 ---@return ReadinessKit.Waiter? waiter
 ---@return string? reason
 local function gateAwait(self, callback)
-    validateGate(self, "ReadinessKit.Gate:Await", 3)
-    validateFunction(callback, "ReadinessKit.Gate:Await callback", 3)
-    if rawget(self, "_status") == STATUS_CLOSED then
-        error("ReadinessKit.Gate:Await cannot wait on a closed gate", 2)
-    end
-    return awaitGate(self, callback)
+  validateGate(self, "ReadinessKit.Gate:Await", 3)
+  validateFunction(callback, "ReadinessKit.Gate:Await callback", 3)
+  if rawget(self, "_status") == STATUS_CLOSED then
+    error("ReadinessKit.Gate:Await cannot wait on a closed gate", 2)
+  end
+  return awaitGate(self, callback)
 end
 
 ---Run the probe now and return whether the gate is ready.
@@ -1027,29 +1024,29 @@ end
 ---@param self ReadinessKit.Gate
 ---@return boolean ready
 local function gateProbe(self)
-    validateGate(self, "ReadinessKit.Gate:Probe", 3)
-    local status = rawget(self, "_status")
-    if status == STATUS_CLOSED then
-        error("ReadinessKit.Gate:Probe cannot probe a closed gate", 2)
-    end
-    if status == STATUS_READY then
-        return true
-    end
+  validateGate(self, "ReadinessKit.Gate:Probe", 3)
+  local status = rawget(self, "_status")
+  if status == STATUS_CLOSED then
+    error("ReadinessKit.Gate:Probe cannot probe a closed gate", 2)
+  end
+  if status == STATUS_READY then
+    return true
+  end
 
-    if not isNegativeCached(self) then
-        local ready = runProbe(self)
-        if closedDuringProbe(self) then
-            return false
-        end
-        if ready then
-            becomeReady(self)
-            return true
-        end
+  if not isNegativeCached(self) then
+    local ready = runProbe(self)
+    if closedDuringProbe(self) then
+      return false
     end
-    if status == STATUS_TIMED_OUT then
-        startPolling(self)
+    if ready then
+      becomeReady(self)
+      return true
     end
-    return false
+  end
+  if status == STATUS_TIMED_OUT then
+    startPolling(self)
+  end
+  return false
 end
 
 ---Declare that the data the gate guards is no longer usable.
@@ -1060,17 +1057,17 @@ end
 ---@param self ReadinessKit.Gate
 ---@return boolean wasReady
 local function gateInvalidate(self)
-    validateGate(self, "ReadinessKit.Gate:Invalidate", 3)
-    local status = rawget(self, "_status")
-    if status == STATUS_CLOSED then
-        error("ReadinessKit.Gate:Invalidate cannot invalidate a closed gate", 2)
-    end
+  validateGate(self, "ReadinessKit.Gate:Invalidate", 3)
+  local status = rawget(self, "_status")
+  if status == STATUS_CLOSED then
+    error("ReadinessKit.Gate:Invalidate cannot invalidate a closed gate", 2)
+  end
 
-    rawset(self, "_negativeAt", false)
-    if status ~= STATUS_PENDING then
-        startPolling(self)
-    end
-    return status == STATUS_READY
+  rawset(self, "_negativeAt", false)
+  if status ~= STATUS_PENDING then
+    startPolling(self)
+  end
+  return status == STATUS_READY
 end
 
 ---Re-run the probe whenever the host event `eventName` fires, ignoring the
@@ -1084,51 +1081,51 @@ end
 ---@param eventName string a World of Warcraft event name
 ---@return boolean connected
 local function gateReprobeOn(self, eventName)
-    validateGate(self, "ReadinessKit.Gate:ReprobeOn", 3)
-    validateNonEmptyString(eventName, "ReadinessKit.Gate:ReprobeOn eventName", 3)
-    if rawget(self, "_status") == STATUS_CLOSED then
-        error("ReadinessKit.Gate:ReprobeOn cannot subscribe a closed gate", 2)
-    end
+  validateGate(self, "ReadinessKit.Gate:ReprobeOn", 3)
+  validateNonEmptyString(eventName, "ReadinessKit.Gate:ReprobeOn eventName", 3)
+  if rawget(self, "_status") == STATUS_CLOSED then
+    error("ReadinessKit.Gate:ReprobeOn cannot subscribe a closed gate", 2)
+  end
 
-    local events = rawget(self, "_reprobeEvents")
-    if events ~= false and events[eventName] ~= nil then
-        return false
-    end
+  local events = rawget(self, "_reprobeEvents")
+  if events ~= false and events[eventName] ~= nil then
+    return false
+  end
 
-    local EventKit = resolveEventKit("ReadinessKit.Gate:ReprobeOn", 3)
+  local EventKit = resolveEventKit("ReadinessKit.Gate:ReprobeOn", 3)
 
-    local scope = rawget(self, "_eventScope")
-    if scope == false then
-        scope = EventKit:CreateScope()
-        rawset(self, "_eventScope", scope)
-    end
+  local scope = rawget(self, "_eventScope")
+  if scope == false then
+    scope = EventKit:CreateScope()
+    rawset(self, "_eventScope", scope)
+  end
 
-    local callback = rawget(self, "_reprobeCallback")
-    if callback == false then
-        callback = newReprobeCallback(self)
-        rawset(self, "_reprobeCallback", callback)
-    end
+  local callback = rawget(self, "_reprobeCallback")
+  if callback == false then
+    callback = newReprobeCallback(self)
+    rawset(self, "_reprobeCallback", callback)
+  end
 
-    -- EventKit reports a refused host registration at its own caller, which is
-    -- this line; re-raise it at the line that called `ReprobeOn` instead,
-    -- keeping the host's reason. The event is not recorded, so a later
-    -- `ReprobeOn` can try again.
-    local connected, connection = pcall(scope.Connect, scope, eventName, callback)
-    if not connected then
-        error(
-            "ReadinessKit.Gate:ReprobeOn could not connect "
-                .. eventName
-                .. ": "
-                .. withoutPosition(connection),
-            2
-        )
-    end
-    if events == false then
-        events = {}
-        rawset(self, "_reprobeEvents", events)
-    end
-    events[eventName] = connection
-    return true
+  -- EventKit reports a refused host registration at its own caller, which is
+  -- this line; re-raise it at the line that called `ReprobeOn` instead,
+  -- keeping the host's reason. The event is not recorded, so a later
+  -- `ReprobeOn` can try again.
+  local connected, connection = pcall(scope.Connect, scope, eventName, callback)
+  if not connected then
+    error(
+      "ReadinessKit.Gate:ReprobeOn could not connect "
+        .. eventName
+        .. ": "
+        .. withoutPosition(connection),
+      2
+    )
+  end
+  if events == false then
+    events = {}
+    rawset(self, "_reprobeEvents", events)
+  end
+  events[eventName] = connection
+  return true
 end
 
 ---Close the gate: stop polling, release the event connections, free its name
@@ -1140,42 +1137,42 @@ end
 ---@param self ReadinessKit.Gate
 ---@return boolean closed
 local function gateClose(self)
-    validateGate(self, "ReadinessKit.Gate:Close", 3)
-    if rawget(self, "_status") == STATUS_CLOSED then
-        return false
-    end
+  validateGate(self, "ReadinessKit.Gate:Close", 3)
+  if rawget(self, "_status") == STATUS_CLOSED then
+    return false
+  end
 
-    rawset(self, "_status", STATUS_CLOSED)
-    local name = rawget(self, "_name")
-    if gates[name] == self then
-        gates[name] = nil
-    end
+  rawset(self, "_status", STATUS_CLOSED)
+  local name = rawget(self, "_name")
+  if gates[name] == self then
+    gates[name] = nil
+  end
 
-    stopTimer(self)
-    local timer = rawget(self, "_timer")
-    if timer ~= false then
-        timer:SetUserData(nil)
-        rawset(self, "_timer", false)
-    end
+  stopTimer(self)
+  local timer = rawget(self, "_timer")
+  if timer ~= false then
+    timer:SetUserData(nil)
+    rawset(self, "_timer", false)
+  end
 
-    local scope = rawget(self, "_eventScope")
-    rawset(self, "_eventScope", false)
-    rawset(self, "_reprobeEvents", false)
+  local scope = rawget(self, "_eventScope")
+  rawset(self, "_eventScope", false)
+  rawset(self, "_reprobeEvents", false)
 
-    flushWaiters(self, false, REASON_CLOSED)
+  flushWaiters(self, false, REASON_CLOSED)
 
-    if scope ~= false then
-        scope:Close()
-    end
-    return true
+  if scope ~= false then
+    scope:Close()
+  end
+  return true
 end
 
 ---Return whether the gate is closed.
 ---@param self ReadinessKit.Gate
 ---@return boolean
 local function gateIsClosed(self)
-    validateGate(self, "ReadinessKit.Gate:IsClosed", 3)
-    return rawget(self, "_status") == STATUS_CLOSED
+  validateGate(self, "ReadinessKit.Gate:IsClosed", 3)
+  return rawget(self, "_status") == STATUS_CLOSED
 end
 
 ---Return how many times the probe has raised since the gate was defined.
@@ -1184,8 +1181,8 @@ end
 ---@param self ReadinessKit.Gate
 ---@return integer
 local function gateGetProbeErrorCount(self)
-    validateGate(self, "ReadinessKit.Gate:GetProbeErrorCount", 3)
-    return rawget(self, "_probeErrorCount")
+  validateGate(self, "ReadinessKit.Gate:GetProbeErrorCount", 3)
+  return rawget(self, "_probeErrorCount")
 end
 
 -- Waiter methods -------------------------------------------------------------
@@ -1196,34 +1193,34 @@ end
 ---@param self ReadinessKit.Waiter
 ---@return boolean cancelled
 local function waiterCancel(self)
-    validateWaiter(self, "ReadinessKit.Waiter:Cancel", 3)
-    if rawget(self, "_status") ~= WAITER_QUEUED then
-        return false
-    end
+  validateWaiter(self, "ReadinessKit.Waiter:Cancel", 3)
+  if rawget(self, "_status") ~= WAITER_QUEUED then
+    return false
+  end
 
-    rawset(self, "_status", WAITER_CANCELLED)
-    rawset(self, "_callback", false)
+  rawset(self, "_status", WAITER_CANCELLED)
+  rawset(self, "_callback", false)
 
-    local gate = rawget(self, "_gate")
-    if gate ~= false then
-        removeQueued(gate, self)
-    end
+  local gate = rawget(self, "_gate")
+  if gate ~= false then
+    removeQueued(gate, self)
+  end
 
-    local children = rawget(self, "_children")
-    if children ~= false then
-        for index = 1, #children do
-            waiterCancel(children[index])
-        end
+  local children = rawget(self, "_children")
+  if children ~= false then
+    for index = 1, #children do
+      waiterCancel(children[index])
     end
-    return true
+  end
+  return true
 end
 
 ---Return whether the callback is still due.
 ---@param self ReadinessKit.Waiter
 ---@return boolean
 local function waiterIsPending(self)
-    validateWaiter(self, "ReadinessKit.Waiter:IsPending", 3)
-    return rawget(self, "_status") == WAITER_QUEUED
+  validateWaiter(self, "ReadinessKit.Waiter:IsPending", 3)
+  return rawget(self, "_status") == WAITER_QUEUED
 end
 
 -- Package public API ---------------------------------------------------------
@@ -1237,27 +1234,27 @@ end
 ---@param maxWaiters integer|table a positive integer or `UNBOUNDED`
 ---@return ReadinessKit.Gate
 local function newGate(name, probe, intervalSeconds, timeoutSeconds, maxWaiters)
-    return setmetatable({
-        _schema = GATE_SCHEMA,
-        _name = name,
-        _probe = probe,
-        _intervalSeconds = intervalSeconds,
-        _timeoutSeconds = timeoutSeconds,
-        _maxWaiters = maxWaiters,
-        _status = STATUS_PENDING,
-        _waiters = {},
-        _spareWaiters = {},
-        _waiterCount = 0,
-        _timer = false,
-        _waitStartedAt = false,
-        _polls = 0,
-        _negativeAt = false,
-        _probeErrorCount = 0,
-        _probeErrorReported = false,
-        _eventScope = false,
-        _reprobeEvents = false,
-        _reprobeCallback = false,
-    }, GATE_METATABLE)
+  return setmetatable({
+    _schema = GATE_SCHEMA,
+    _name = name,
+    _probe = probe,
+    _intervalSeconds = intervalSeconds,
+    _timeoutSeconds = timeoutSeconds,
+    _maxWaiters = maxWaiters,
+    _status = STATUS_PENDING,
+    _waiters = {},
+    _spareWaiters = {},
+    _waiterCount = 0,
+    _timer = false,
+    _waitStartedAt = false,
+    _polls = 0,
+    _negativeAt = false,
+    _probeErrorCount = 0,
+    _probeErrorReported = false,
+    _eventScope = false,
+    _reprobeEvents = false,
+    _reprobeCallback = false,
+  }, GATE_METATABLE)
 end
 
 ---Return the gate called `name`, creating it when there is none.
@@ -1272,47 +1269,47 @@ end
 ---@param options ReadinessKit.GateOptions?
 ---@return ReadinessKit.Gate
 local function packageGate(_, name, probe, options)
-    validateNonEmptyString(name, "ReadinessKit:Gate name", 3)
-    validateFunction(probe, "ReadinessKit:Gate probe", 3)
-    local intervalSeconds, timeoutSeconds, maxWaiters = readGateOptions(options, 3)
+  validateNonEmptyString(name, "ReadinessKit:Gate name", 3)
+  validateFunction(probe, "ReadinessKit:Gate probe", 3)
+  local intervalSeconds, timeoutSeconds, maxWaiters = readGateOptions(options, 3)
 
-    local existing = gates[name]
-    if existing ~= nil then
-        return existing
-    end
+  local existing = gates[name]
+  if existing ~= nil then
+    return existing
+  end
 
-    local gate = newGate(name, probe, intervalSeconds, timeoutSeconds, maxWaiters)
-    -- Registered before the first probe, so a probe that looks its own gate
-    -- up finds it instead of defining a second one.
-    gates[name] = gate
+  local gate = newGate(name, probe, intervalSeconds, timeoutSeconds, maxWaiters)
+  -- Registered before the first probe, so a probe that looks its own gate
+  -- up finds it instead of defining a second one.
+  gates[name] = gate
 
-    local ready = runProbe(gate)
-    if closedDuringProbe(gate) then
-        -- The defining probe closed its own gate; hand back the closed gate
-        -- rather than reviving it.
-        return gate
-    end
-    if ready then
-        rawset(gate, "_status", STATUS_READY)
-        rawset(gate, "_negativeAt", false)
-        return gate
-    end
-
-    local ok, message = pcall(startPolling, gate)
-    if not ok then
-        rawset(gate, "_status", STATUS_CLOSED)
-        gates[name] = nil
-        error(message, 0)
-    end
+  local ready = runProbe(gate)
+  if closedDuringProbe(gate) then
+    -- The defining probe closed its own gate; hand back the closed gate
+    -- rather than reviving it.
     return gate
+  end
+  if ready then
+    rawset(gate, "_status", STATUS_READY)
+    rawset(gate, "_negativeAt", false)
+    return gate
+  end
+
+  local ok, message = pcall(startPolling, gate)
+  if not ok then
+    rawset(gate, "_status", STATUS_CLOSED)
+    gates[name] = nil
+    error(message, 0)
+  end
+  return gate
 end
 
 ---Return the open gate called `name`, or `nil`.
 ---@param name string
 ---@return ReadinessKit.Gate?
 local function packageGet(_, name)
-    validateNonEmptyString(name, "ReadinessKit:Get name", 3)
-    return gates[name]
+  validateNonEmptyString(name, "ReadinessKit:Get name", 3)
+  return gates[name]
 end
 
 ---Build the one callback a `WhenAll` group queues on every gate. It calls
@@ -1320,10 +1317,10 @@ end
 ---@param group table
 ---@return ReadinessKit.Callback
 local function newGroupCallback(group)
-    return function(ready, reason)
-        local settleGroup = rawget(dispatch, "settleGroup")
-        settleGroup(group, ready, reason)
-    end
+  return function(ready, reason)
+    local settleGroup = rawget(dispatch, "settleGroup")
+    settleGroup(group, ready, reason)
+  end
 end
 
 ---One gate of a `WhenAll` group reported. The group's callback runs once: with
@@ -1333,29 +1330,29 @@ end
 ---@param ready boolean
 ---@param reason string?
 local function settleGroup(group, ready, reason)
-    if rawget(group, "_status") ~= WAITER_QUEUED then
-        return
-    end
+  if rawget(group, "_status") ~= WAITER_QUEUED then
+    return
+  end
 
-    if ready then
-        local remaining = rawget(group, "_remaining") - 1
-        rawset(group, "_remaining", remaining)
-        if remaining > 0 then
-            return
-        end
+  if ready then
+    local remaining = rawget(group, "_remaining") - 1
+    rawset(group, "_remaining", remaining)
+    if remaining > 0 then
+      return
     end
+  end
 
-    local callback = rawget(group, "_callback")
-    rawset(group, "_status", WAITER_CALLED)
-    rawset(group, "_callback", false)
+  local callback = rawget(group, "_callback")
+  rawset(group, "_status", WAITER_CALLED)
+  rawset(group, "_callback", false)
 
-    if not ready then
-        local children = rawget(group, "_children")
-        for index = 1, #children do
-            waiterCancel(children[index])
-        end
+  if not ready then
+    local children = rawget(group, "_children")
+    for index = 1, #children do
+      waiterCancel(children[index])
     end
-    callback(ready, reason)
+  end
+  callback(ready, reason)
 end
 
 ---Wait for every gate in `gates`.
@@ -1370,46 +1367,46 @@ end
 ---@return ReadinessKit.Waiter? waiter
 ---@return string? reason
 local function packageWhenAll(_, gateList, callback)
-    if type(gateList) ~= "table" then
-        error("ReadinessKit:WhenAll gates must be an array of ReadinessKit gates", 2)
+  if type(gateList) ~= "table" then
+    error("ReadinessKit:WhenAll gates must be an array of ReadinessKit gates", 2)
+  end
+  validateFunction(callback, "ReadinessKit:WhenAll callback", 3)
+  local count = #gateList
+  for index = 1, count do
+    local gate = gateList[index]
+    if type(gate) ~= "table" or getmetatable(gate) ~= GATE_METATABLE then
+      error("ReadinessKit:WhenAll gates must be an array of ReadinessKit gates", 2)
     end
-    validateFunction(callback, "ReadinessKit:WhenAll callback", 3)
-    local count = #gateList
-    for index = 1, count do
-        local gate = gateList[index]
-        if type(gate) ~= "table" or getmetatable(gate) ~= GATE_METATABLE then
-            error("ReadinessKit:WhenAll gates must be an array of ReadinessKit gates", 2)
-        end
-        if rawget(gate, "_status") == STATUS_CLOSED then
-            error("ReadinessKit:WhenAll cannot wait on a closed gate", 2)
-        end
+    if rawget(gate, "_status") == STATUS_CLOSED then
+      error("ReadinessKit:WhenAll cannot wait on a closed gate", 2)
     end
+  end
 
-    local group = newWaiter(false, callback, WAITER_QUEUED)
-    local children = {}
-    rawset(group, "_children", children)
-    rawset(group, "_remaining", count)
-    if count == 0 then
-        rawset(group, "_status", WAITER_CALLED)
-        rawset(group, "_callback", false)
-        callback(true, nil)
-        return group
-    end
-
-    local groupCallback = newGroupCallback(group)
-    for index = 1, count do
-        local child, reason = awaitGate(gateList[index], groupCallback)
-        if child == nil then
-            waiterCancel(group)
-            return nil, reason
-        end
-        children[index] = child
-        if rawget(group, "_status") ~= WAITER_QUEUED then
-            -- A gate that had already timed out settled the group at once.
-            break
-        end
-    end
+  local group = newWaiter(false, callback, WAITER_QUEUED)
+  local children = {}
+  rawset(group, "_children", children)
+  rawset(group, "_remaining", count)
+  if count == 0 then
+    rawset(group, "_status", WAITER_CALLED)
+    rawset(group, "_callback", false)
+    callback(true, nil)
     return group
+  end
+
+  local groupCallback = newGroupCallback(group)
+  for index = 1, count do
+    local child, reason = awaitGate(gateList[index], groupCallback)
+    if child == nil then
+      waiterCancel(group)
+      return nil, reason
+    end
+    children[index] = child
+    if rawget(group, "_status") ~= WAITER_QUEUED then
+      -- A gate that had already timed out settled the group at once.
+      break
+    end
+  end
+  return group
 end
 
 -- Commit ---------------------------------------------------------------------
@@ -1439,7 +1436,7 @@ rawset(dispatch, "settleGroup", settleGroup)
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(ReadinessKit) or not validateCurrentState(ReadinessKit) then
-    error("MoltenCodes ReadinessKit package state is corrupted or incomplete", 2)
+  error("MoltenCodes ReadinessKit package state is corrupted or incomplete", 2)
 end
 
 return ReadinessKit

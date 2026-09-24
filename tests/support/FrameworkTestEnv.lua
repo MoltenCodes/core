@@ -79,18 +79,18 @@ FrameworkTestEnv.MAXIMUM_UNIT_TOKENS = Constants.MAXIMUM_UNIT_TOKENS
 ---@param moduleName string
 ---@return any
 function FrameworkTestEnv.requireAfterFailedLoad(moduleName)
-    package.loaded[moduleName] = nil
-    return require(moduleName)
+  package.loaded[moduleName] = nil
+  return require(moduleName)
 end
 
 ---Assert that `callback` fails with a message containing `expected`.
 ---@param expected string substring the failure must contain
 ---@param callback fun()
 function FrameworkTestEnv.expectErrorContaining(expected, callback)
-    local ok, message = pcall(callback)
+  local ok, message = pcall(callback)
 
-    assert.is_false(ok)
-    assert.is_not_nil(string.find(tostring(message), expected, 1, true))
+  assert.is_false(ok)
+  assert.is_not_nil(string.find(tostring(message), expected, 1, true))
 end
 
 ---Options accepted by `FrameworkTestEnv.New`.
@@ -104,132 +104,132 @@ end
 ---@param options any
 ---@return string[] modules, boolean installsWowApi, boolean clearsLegacyState, string? wowProfile
 local function readOptions(options)
-    if type(options) ~= "table" then
-        error("FrameworkTestEnv.New requires an options table", 3)
-    end
+  if type(options) ~= "table" then
+    error("FrameworkTestEnv.New requires an options table", 3)
+  end
 
-    local modules = options.modules
-    if modules == nil then
-        modules = {}
-    elseif type(modules) ~= "table" then
-        error("FrameworkTestEnv.New options.modules must be an array of module names", 3)
-    end
+  local modules = options.modules
+  if modules == nil then
+    modules = {}
+  elseif type(modules) ~= "table" then
+    error("FrameworkTestEnv.New options.modules must be an array of module names", 3)
+  end
 
-    ClientStub.ValidateProfileName(options.wowProfile, 4)
+  ClientStub.ValidateProfileName(options.wowProfile, 4)
 
-    return modules, options.wowApi ~= false, options.legacyRegistryState == true, options.wowProfile
+  return modules, options.wowApi ~= false, options.legacyRegistryState == true, options.wowProfile
 end
 
 ---Clear every global an environment owns, whether or not it installed it.
 ---@param clearsLegacyState boolean
 local function clearOwnedGlobals(clearsLegacyState)
+  -- The fixture stands in for the World of Warcraft client, whose API and shared namespace only exist in the global table.
+  -- selene: allow(global_usage)
+  rawset(_G, Constants.REGISTRY_STATE_KEY, nil)
+  -- The fixture stands in for the World of Warcraft client, whose API and shared namespace only exist in the global table.
+  -- selene: allow(global_usage)
+  rawset(_G, Constants.NAMESPACE_KEY, nil)
+  if clearsLegacyState then
     -- The fixture stands in for the World of Warcraft client, whose API and shared namespace only exist in the global table.
     -- selene: allow(global_usage)
-    rawset(_G, Constants.REGISTRY_STATE_KEY, nil)
+    rawset(_G, Constants.LEGACY_REGISTRY_STATE_KEY, nil)
+  end
+  for index = 1, #Constants.OWNED_GLOBALS do
     -- The fixture stands in for the World of Warcraft client, whose API and shared namespace only exist in the global table.
     -- selene: allow(global_usage)
-    rawset(_G, Constants.NAMESPACE_KEY, nil)
-    if clearsLegacyState then
-        -- The fixture stands in for the World of Warcraft client, whose API and shared namespace only exist in the global table.
-        -- selene: allow(global_usage)
-        rawset(_G, Constants.LEGACY_REGISTRY_STATE_KEY, nil)
-    end
-    for index = 1, #Constants.OWNED_GLOBALS do
-        -- The fixture stands in for the World of Warcraft client, whose API and shared namespace only exist in the global table.
-        -- selene: allow(global_usage)
-        rawset(_G, Constants.OWNED_GLOBALS[index], nil)
-    end
+    rawset(_G, Constants.OWNED_GLOBALS[index], nil)
+  end
 end
 
 ---Build one package's test environment.
 ---@param options FrameworkTestEnv.Options
 ---@return table environment
 function FrameworkTestEnv.New(options)
-    local modules, installsWowApi, clearsLegacyState, wowProfile = readOptions(options)
-    local packageModule = modules[#modules]
+  local modules, installsWowApi, clearsLegacyState, wowProfile = readOptions(options)
+  local packageModule = modules[#modules]
 
-    local environment = {}
+  local environment = {}
 
-    environment.REGISTRY_STATE_KEY = FrameworkTestEnv.REGISTRY_STATE_KEY
-    environment.LEGACY_REGISTRY_STATE_KEY = FrameworkTestEnv.LEGACY_REGISTRY_STATE_KEY
-    environment.NAMESPACE_KEY = FrameworkTestEnv.NAMESPACE_KEY
-    environment.MAXIMUM_UNIT_TOKENS = FrameworkTestEnv.MAXIMUM_UNIT_TOKENS
-    environment.requireAfterFailedLoad = FrameworkTestEnv.requireAfterFailedLoad
-    environment.expectErrorContaining = FrameworkTestEnv.expectErrorContaining
+  environment.REGISTRY_STATE_KEY = FrameworkTestEnv.REGISTRY_STATE_KEY
+  environment.LEGACY_REGISTRY_STATE_KEY = FrameworkTestEnv.LEGACY_REGISTRY_STATE_KEY
+  environment.NAMESPACE_KEY = FrameworkTestEnv.NAMESPACE_KEY
+  environment.MAXIMUM_UNIT_TOKENS = FrameworkTestEnv.MAXIMUM_UNIT_TOKENS
+  environment.requireAfterFailedLoad = FrameworkTestEnv.requireAfterFailedLoad
+  environment.expectErrorContaining = FrameworkTestEnv.expectErrorContaining
 
-    -- One state table per environment, owned jointly by the stub factories and
-    -- returned to its initial values by `Reset`. That reset is what keeps specs
-    -- independent of each other's execution order.
-    local state = { defaultWowProfile = wowProfile }
+  -- One state table per environment, owned jointly by the stub factories and
+  -- returned to its initial values by `Reset`. That reset is what keeps specs
+  -- independent of each other's execution order.
+  local state = { defaultWowProfile = wowProfile }
+  for index = 1, #STUBS do
+    STUBS[index].Reset(state)
+    STUBS[index].Attach(environment, state)
+  end
+
+  ---Install every World of Warcraft API the framework packages touch.
+  function environment.InstallWowApi()
     for index = 1, #STUBS do
-        STUBS[index].Reset(state)
-        STUBS[index].Attach(environment, state)
+      local installGlobals = STUBS[index].InstallGlobals
+      if installGlobals ~= nil then
+        installGlobals(state)
+      end
     end
 
-    ---Install every World of Warcraft API the framework packages touch.
-    function environment.InstallWowApi()
-        for index = 1, #STUBS do
-            local installGlobals = STUBS[index].InstallGlobals
-            if installGlobals ~= nil then
-                installGlobals(state)
-            end
-        end
+    environment.InstallHostErrorHandler()
+  end
 
-        environment.InstallHostErrorHandler()
+  ---Clear every module, global and stub this environment owns.
+  function environment.Reset()
+    for index = #modules, 1, -1 do
+      package.loaded[modules[index]] = nil
     end
 
-    ---Clear every module, global and stub this environment owns.
-    function environment.Reset()
-        for index = #modules, 1, -1 do
-            package.loaded[modules[index]] = nil
-        end
+    clearOwnedGlobals(clearsLegacyState)
 
-        clearOwnedGlobals(clearsLegacyState)
+    for index = 1, #STUBS do
+      STUBS[index].Reset(state)
+    end
+  end
 
-        for index = 1, #STUBS do
-            STUBS[index].Reset(state)
-        end
+  ---Reset, install the host stubs, then load the module chain in order.
+  ---
+  ---The package under test is returned first, then its dependencies in
+  ---load order, so a spec can name only what it needs.
+  ---@return ... loaded modules, package under test first
+  function environment.NewPackage()
+    if packageModule == nil then
+      error("this environment was built without a module chain to load", 2)
     end
 
-    ---Reset, install the host stubs, then load the module chain in order.
-    ---
-    ---The package under test is returned first, then its dependencies in
-    ---load order, so a spec can name only what it needs.
-    ---@return ... loaded modules, package under test first
-    function environment.NewPackage()
-        if packageModule == nil then
-            error("this environment was built without a module chain to load", 2)
-        end
-
-        environment.Reset()
-        if installsWowApi then
-            environment.InstallWowApi()
-        end
-
-        local loaded = {}
-        for index = 1, #modules do
-            loaded[index] = require(modules[index])
-        end
-
-        local ordered = { loaded[#loaded] }
-        for index = 1, #loaded - 1 do
-            ordered[index + 1] = loaded[index]
-        end
-        return unpack(ordered, 1, #ordered)
+    environment.Reset()
+    if installsWowApi then
+      environment.InstallWowApi()
     end
 
-    ---Re-run the package under test against the state it already published.
-    ---@return any
-    function environment.ReloadPackage()
-        if packageModule == nil then
-            error("this environment was built without a module chain to load", 2)
-        end
-
-        package.loaded[packageModule] = nil
-        return require(packageModule)
+    local loaded = {}
+    for index = 1, #modules do
+      loaded[index] = require(modules[index])
     end
 
-    return environment
+    local ordered = { loaded[#loaded] }
+    for index = 1, #loaded - 1 do
+      ordered[index + 1] = loaded[index]
+    end
+    return unpack(ordered, 1, #ordered)
+  end
+
+  ---Re-run the package under test against the state it already published.
+  ---@return any
+  function environment.ReloadPackage()
+    if packageModule == nil then
+      error("this environment was built without a module chain to load", 2)
+    end
+
+    package.loaded[packageModule] = nil
+    return require(packageModule)
+  end
+
+  return environment
 end
 
 return FrameworkTestEnv

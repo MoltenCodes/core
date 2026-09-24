@@ -102,18 +102,18 @@ local KIND_DESCRIPTION = "description"
 
 -- Kinds that carry a value, and so have a schema and a reader and writer.
 local VALUE_KINDS = {
-    [KIND_TOGGLE] = true,
-    [KIND_RANGE] = true,
-    [KIND_SELECT] = true,
-    [KIND_MULTISELECT] = true,
-    [KIND_INPUT] = true,
-    [KIND_COLOR] = true,
-    [KIND_KEYBINDING] = true,
+  [KIND_TOGGLE] = true,
+  [KIND_RANGE] = true,
+  [KIND_SELECT] = true,
+  [KIND_MULTISELECT] = true,
+  [KIND_INPUT] = true,
+  [KIND_COLOR] = true,
+  [KIND_KEYBINDING] = true,
 }
 
 -- Fields every option accepts.
 local COMMON_FIELDS =
-    { type = true, name = true, desc = true, order = true, disabled = true, hidden = true }
+  { type = true, name = true, desc = true, order = true, disabled = true, hidden = true }
 
 -- Fields every value-carrying option accepts on top of the common ones.
 local VALUE_FIELDS = { get = true, set = true, bind = true, validate = true }
@@ -122,37 +122,37 @@ local VALUE_FIELDS = { get = true, set = true, bind = true, validate = true }
 -- fields. An unknown field is refused at Define: a misspelt `witdh` fails
 -- loudly instead of being silently ignored.
 local KIND_FIELDS = {
-    [KIND_GROUP] = { args = true, inline = true },
-    [KIND_TOGGLE] = { tristate = true },
-    [KIND_RANGE] = {
-        min = true,
-        max = true,
-        step = true,
-        softMin = true,
-        softMax = true,
-        bigStep = true,
-        isPercent = true,
-    },
-    [KIND_SELECT] = { values = true, sorting = true },
-    [KIND_MULTISELECT] = { values = true, sorting = true },
-    [KIND_INPUT] = { pattern = true, multiline = true, usage = true },
-    [KIND_COLOR] = { hasAlpha = true },
-    [KIND_KEYBINDING] = {},
-    [KIND_EXECUTE] = { func = true, confirm = true },
-    [KIND_HEADER] = {},
-    [KIND_DESCRIPTION] = { fontSize = true },
+  [KIND_GROUP] = { args = true, inline = true },
+  [KIND_TOGGLE] = { tristate = true },
+  [KIND_RANGE] = {
+    min = true,
+    max = true,
+    step = true,
+    softMin = true,
+    softMax = true,
+    bigStep = true,
+    isPercent = true,
+  },
+  [KIND_SELECT] = { values = true, sorting = true },
+  [KIND_MULTISELECT] = { values = true, sorting = true },
+  [KIND_INPUT] = { pattern = true, multiline = true, usage = true },
+  [KIND_COLOR] = { hasAlpha = true },
+  [KIND_KEYBINDING] = {},
+  [KIND_EXECUTE] = { func = true, confirm = true },
+  [KIND_HEADER] = {},
+  [KIND_DESCRIPTION] = { fontSize = true },
 }
 
 -- The SettingsKit scopes a `bind` path may start with.
 local BIND_SCOPES =
-    { global = true, char = true, realm = true, class = true, faction = true, profile = true }
+  { global = true, char = true, realm = true, class = true, faction = true, profile = true }
 
 -- The accepted `description.fontSize` values.
 local FONT_SIZES = { small = true, medium = true, large = true }
 
 -- The complete set of fields `Define` options accept.
 local DEFINE_OPTION_KEYS =
-    { db = true, maxOptions = true, maxDepth = true, maxDynamicEntries = true }
+  { db = true, maxOptions = true, maxDepth = true, maxDynamicEntries = true }
 
 -- An option key or a bind path segment: an identifier, so a dotted path can
 -- never be ambiguous.
@@ -162,16 +162,16 @@ local KEY_PATTERN = "^[%a_][%w_]*$"
 -- a checklist instead of a long boolean expression.
 local FACADE_METHODS = { "Define", "Get", "Undefine", "ProfileOptions" }
 local TREE_METHODS = {
-    "Get",
-    "Set",
-    "Validate",
-    "Reset",
-    "Execute",
-    "IsDisabled",
-    "IsHidden",
-    "Walk",
-    "Describe",
-    "OnChange",
+  "Get",
+  "Set",
+  "Validate",
+  "Reset",
+  "Execute",
+  "IsDisabled",
+  "IsHidden",
+  "Walk",
+  "Describe",
+  "OnChange",
 }
 
 -- Public types ---------------------------------------------------------------
@@ -308,16 +308,16 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
 if type(Registry) == "nil" and type(namespace) == "table" then
-    Registry = rawget(namespace, "Registry")
+  Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
-    error("MoltenCodes OptionsKit requires Registry API 2 to be loaded first", 2)
+  error("MoltenCodes OptionsKit requires Registry API 2 to be loaded first", 2)
 end
 
 local bootstrapPackage = rawget(Registry, "Bootstrap")
 local getPackage = rawget(Registry, "Get")
 if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
-    error("MoltenCodes OptionsKit requires a valid Registry API 2 facade", 2)
+  error("MoltenCodes OptionsKit requires a valid Registry API 2 facade", 2)
 end
 
 -- SchemaKit and SignalKit are required: every value option has a schema and
@@ -325,31 +325,31 @@ end
 -- loudly at this file instead of at the first `Define`.
 local SchemaKit = getPackage(Registry, "schemaKit", REQUIRED_SCHEMAKIT_API)
 if
-    type(SchemaKit) ~= "table"
-    or rawget(SchemaKit, "API") ~= REQUIRED_SCHEMAKIT_API
-    or type(rawget(SchemaKit, "Seal")) ~= "function"
-    or type(rawget(SchemaKit, "boolean")) ~= "function"
-    or type(rawget(SchemaKit, "number")) ~= "function"
-    or type(rawget(SchemaKit, "string")) ~= "function"
-    or type(rawget(SchemaKit, "enum")) ~= "function"
-    or type(rawget(SchemaKit, "table")) ~= "function"
-    or type(rawget(SchemaKit, "map")) ~= "function"
-    or type(rawget(SchemaKit, "optional")) ~= "function"
-    or type(rawget(SchemaKit, "custom")) ~= "function"
+  type(SchemaKit) ~= "table"
+  or rawget(SchemaKit, "API") ~= REQUIRED_SCHEMAKIT_API
+  or type(rawget(SchemaKit, "Seal")) ~= "function"
+  or type(rawget(SchemaKit, "boolean")) ~= "function"
+  or type(rawget(SchemaKit, "number")) ~= "function"
+  or type(rawget(SchemaKit, "string")) ~= "function"
+  or type(rawget(SchemaKit, "enum")) ~= "function"
+  or type(rawget(SchemaKit, "table")) ~= "function"
+  or type(rawget(SchemaKit, "map")) ~= "function"
+  or type(rawget(SchemaKit, "optional")) ~= "function"
+  or type(rawget(SchemaKit, "custom")) ~= "function"
 then
-    error("MoltenCodes OptionsKit requires SchemaKit API 1 to be loaded first", 2)
+  error("MoltenCodes OptionsKit requires SchemaKit API 1 to be loaded first", 2)
 end
 
 local SignalKit = getPackage(Registry, "signalKit", REQUIRED_SIGNALKIT_API)
 if
-    type(SignalKit) ~= "table"
-    or rawget(SignalKit, "API") ~= REQUIRED_SIGNALKIT_API
-    or type(rawget(SignalKit, "New")) ~= "function"
-    or type(rawget(SignalKit, "Connect")) ~= "function"
-    or type(rawget(SignalKit, "Fire")) ~= "function"
-    or type(rawget(SignalKit, "DisconnectAll")) ~= "function"
+  type(SignalKit) ~= "table"
+  or rawget(SignalKit, "API") ~= REQUIRED_SIGNALKIT_API
+  or type(rawget(SignalKit, "New")) ~= "function"
+  or type(rawget(SignalKit, "Connect")) ~= "function"
+  or type(rawget(SignalKit, "Fire")) ~= "function"
+  or type(rawget(SignalKit, "DisconnectAll")) ~= "function"
 then
-    error("MoltenCodes OptionsKit requires SignalKit API 1 to be loaded first", 2)
+  error("MoltenCodes OptionsKit requires SignalKit API 1 to be loaded first", 2)
 end
 
 ---Whether `value` is a secret value (Retail 12.x).
@@ -360,10 +360,10 @@ end
 ---@param value any
 ---@return boolean
 local function isSecret(value)
-    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-    -- selene: allow(global_usage)
-    local probe = rawget(_G, "issecretvalue")
-    return type(probe) == "function" and probe(value) == true
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local probe = rawget(_G, "issecretvalue")
+  return type(probe) == "function" and probe(value) == true
 end
 
 -- Validation -----------------------------------------------------------------
@@ -373,44 +373,44 @@ end
 ---@param methodNames string[]
 ---@return boolean
 local function hasMethods(prototype, methodNames)
-    for index = 1, #methodNames do
-        if type(rawget(prototype, methodNames[index])) ~= "function" then
-            return false
-        end
+  for index = 1, #methodNames do
+    if type(rawget(prototype, methodNames[index])) ~= "function" then
+      return false
     end
-    return true
+  end
+  return true
 end
 
 ---Whether `implementation` exposes the complete OptionsKit API 1 surface.
 ---@param implementation any shared package table handed back by Registry
 ---@return boolean
 local function validatePublicSurface(implementation)
-    if
-        type(implementation) ~= "table"
-        or rawget(implementation, "API") ~= API_GENERATION
-        or type(rawget(implementation, "REVISION")) ~= "number"
-        or type(rawget(implementation, "MAX_OPTIONS")) ~= "number"
-        or type(rawget(implementation, "MAX_DEPTH")) ~= "number"
-        or type(rawget(implementation, "Tree")) ~= "table"
-        or type(rawget(implementation, "UNBOUNDED")) ~= "table"
-    then
-        return false
-    end
+  if
+    type(implementation) ~= "table"
+    or rawget(implementation, "API") ~= API_GENERATION
+    or type(rawget(implementation, "REVISION")) ~= "number"
+    or type(rawget(implementation, "MAX_OPTIONS")) ~= "number"
+    or type(rawget(implementation, "MAX_DEPTH")) ~= "number"
+    or type(rawget(implementation, "Tree")) ~= "table"
+    or type(rawget(implementation, "UNBOUNDED")) ~= "table"
+  then
+    return false
+  end
 
-    return hasMethods(implementation, FACADE_METHODS)
-        and hasMethods(rawget(implementation, "Tree"), TREE_METHODS)
+  return hasMethods(implementation, FACADE_METHODS)
+    and hasMethods(rawget(implementation, "Tree"), TREE_METHODS)
 end
 
 ---Whether `currentState` has the fields every API 1 revision shares.
 ---@param currentState any
 ---@return boolean
 local function validateStateBase(currentState)
-    return type(currentState) == "table"
-        and rawget(currentState, "schema") == STATE_SCHEMA
-        and type(rawget(currentState, "runtimeRevision")) == "number"
-        and type(rawget(currentState, "treeMetatable")) == "table"
-        and type(rawget(currentState, "trees")) == "table"
-        and type(rawget(currentState, "unbounded")) == "table"
+  return type(currentState) == "table"
+    and rawget(currentState, "schema") == STATE_SCHEMA
+    and type(rawget(currentState, "runtimeRevision")) == "number"
+    and type(rawget(currentState, "treeMetatable")) == "table"
+    and type(rawget(currentState, "trees")) == "table"
+    and type(rawget(currentState, "unbounded")) == "table"
 end
 
 ---Whether `implementation` carries package state of this revision's schema,
@@ -418,10 +418,10 @@ end
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
-    local currentState = rawget(implementation, "_state")
-    return validateStateBase(currentState)
-        and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
-        and type(rawget(currentState, "profileGroups")) == "table"
+  local currentState = rawget(implementation, "_state")
+  return validateStateBase(currentState)
+    and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
+    and type(rawget(currentState, "profileGroups")) == "table"
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -430,47 +430,47 @@ end
 -- look the package up, refuse to reinterpret state owned by a newer revision,
 -- and register this one. What stays here is what only OptionsKit can answer.
 local OptionsKit, previousRevision, selected = bootstrapPackage(Registry, {
-    package = PACKAGE_NAME,
-    api = API_GENERATION,
-    revision = IMPLEMENTATION_REVISION,
-    label = "MoltenCodes OptionsKit",
-    validatePublicSurface = validatePublicSurface,
-    validateState = validateCurrentState,
+  package = PACKAGE_NAME,
+  api = API_GENERATION,
+  revision = IMPLEMENTATION_REVISION,
+  label = "MoltenCodes OptionsKit",
+  validatePublicSurface = validatePublicSurface,
+  validateState = validateCurrentState,
 })
 
 if type(OptionsKit) == "nil" then
-    -- An equal or newer compatible revision already owns the shared package table.
-    return selected
+  -- An equal or newer compatible revision already owns the shared package table.
+  return selected
 end
 
 local Tree = rawget(OptionsKit, "Tree")
 local state = rawget(OptionsKit, "_state")
 
 if type(previousRevision) == "nil" then
-    if Tree ~= nil or state ~= nil then
-        error("MoltenCodes OptionsKit package state is corrupted or incomplete", 2)
-    end
-
-    Tree = {}
-    state = {
-        schema = STATE_SCHEMA,
-        runtimeRevision = 0,
-        treeMetatable = {},
-        -- Addon name to that addon's tree. At most one per addon name.
-        trees = {},
-        -- `OptionsKit.UNBOUNDED` lives here so every revision publishes the
-        -- same table and a `Define` option written against one copy keeps its
-        -- meaning after an upgrade.
-        unbounded = {},
-        -- The group table `ProfileOptions` returned to the link record behind
-        -- it, so `Define` recognises the group when it meets it in a tree.
-        -- Weak keys: a group the consumer dropped is forgotten with it.
-        profileGroups = setmetatable({}, { __mode = "k" }),
-    }
-    rawset(OptionsKit, "Tree", Tree)
-    rawset(OptionsKit, "_state", state)
-elseif type(Tree) ~= "table" or not validateStateBase(state) then
+  if Tree ~= nil or state ~= nil then
     error("MoltenCodes OptionsKit package state is corrupted or incomplete", 2)
+  end
+
+  Tree = {}
+  state = {
+    schema = STATE_SCHEMA,
+    runtimeRevision = 0,
+    treeMetatable = {},
+    -- Addon name to that addon's tree. At most one per addon name.
+    trees = {},
+    -- `OptionsKit.UNBOUNDED` lives here so every revision publishes the
+    -- same table and a `Define` option written against one copy keeps its
+    -- meaning after an upgrade.
+    unbounded = {},
+    -- The group table `ProfileOptions` returned to the link record behind
+    -- it, so `Define` recognises the group when it meets it in a tree.
+    -- Weak keys: a group the consumer dropped is forgotten with it.
+    profileGroups = setmetatable({}, { __mode = "k" }),
+  }
+  rawset(OptionsKit, "Tree", Tree)
+  rawset(OptionsKit, "_state", state)
+elseif type(Tree) ~= "table" or not validateStateBase(state) then
+  error("MoltenCodes OptionsKit package state is corrupted or incomplete", 2)
 end
 
 -- Revision 1 had no profile groups and built tree layout 1. The group map is
@@ -478,13 +478,13 @@ end
 -- detaches: a revision 1 tree cannot contain a profile group. Revisions 3
 -- and 4 changed no layout, so a revision 2 or 3 state needs nothing here.
 if rawget(state, "profileGroups") == nil then
-    rawset(state, "profileGroups", setmetatable({}, { __mode = "k" }))
+  rawset(state, "profileGroups", setmetatable({}, { __mode = "k" }))
 end
 for _, existingTree in next, rawget(state, "trees") do
-    if rawget(existingTree, "_schema") == 1 then
-        rawset(existingTree, "_profileLinks", {})
-        rawset(existingTree, "_schema", TREE_SCHEMA)
-    end
+  if rawget(existingTree, "_schema") == 1 then
+    rawset(existingTree, "_profileLinks", {})
+    rawset(existingTree, "_schema", TREE_SCHEMA)
+  end
 end
 
 -- The metatable and prototype are kept across upgrades, so trees built by an
@@ -507,24 +507,24 @@ rawset(TREE_METATABLE, "__index", Tree)
 ---@param label string qualified parameter name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateAddonName(addonName, label, level)
-    if isSecret(addonName) then
-        error(label .. " must not be a secret value", level)
-    end
-    if type(addonName) ~= "string" or addonName == "" then
-        error(label .. " must be a non-empty string", level)
-    end
+  if isSecret(addonName) then
+    error(label .. " must not be a secret value", level)
+  end
+  if type(addonName) ~= "string" or addonName == "" then
+    error(label .. " must be a non-empty string", level)
+  end
 end
 
 ---@param tree any receiver the public method was called on
 ---@param methodName string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateTree(tree, methodName, level)
-    if type(tree) ~= "table" or getmetatable(tree) ~= TREE_METATABLE then
-        error(methodName .. " must be called on an OptionsKit tree", level)
-    end
-    if rawget(tree, "_defined") ~= true then
-        error(methodName .. " cannot be called on an undefined tree", level)
-    end
+  if type(tree) ~= "table" or getmetatable(tree) ~= TREE_METATABLE then
+    error(methodName .. " must be called on an OptionsKit tree", level)
+  end
+  if rawget(tree, "_defined") ~= true then
+    error(methodName .. " cannot be called on an undefined tree", level)
+  end
 end
 
 ---Return the record at `path`, raising at the caller for a malformed or
@@ -535,17 +535,17 @@ end
 ---@param level integer
 ---@return table record
 local function findRecord(tree, path, methodName, level)
-    if isSecret(path) then
-        error(methodName .. " path must not be a secret value", level)
-    end
-    if type(path) ~= "string" then
-        error(methodName .. " path must be a string", level)
-    end
-    local record = rawget(rawget(tree, "_records"), path)
-    if record == nil then
-        error(methodName .. ' unknown path "' .. path .. '"', level)
-    end
-    return record
+  if isSecret(path) then
+    error(methodName .. " path must not be a secret value", level)
+  end
+  if type(path) ~= "string" then
+    error(methodName .. " path must be a string", level)
+  end
+  local record = rawget(rawget(tree, "_records"), path)
+  if record == nil then
+    error(methodName .. ' unknown path "' .. path .. '"', level)
+  end
+  return record
 end
 
 ---Return the value option at `path`, raising at the caller otherwise.
@@ -555,12 +555,12 @@ end
 ---@param level integer
 ---@return table record
 local function findValueRecord(tree, path, methodName, level)
-    local record = findRecord(tree, path, methodName, level + 1)
-    local kind = rawget(record, "_kind")
-    if VALUE_KINDS[kind] ~= true then
-        error(methodName .. ' path "' .. path .. '" is a ' .. kind .. ", not a value option", level)
-    end
-    return record
+  local record = findRecord(tree, path, methodName, level + 1)
+  local kind = rawget(record, "_kind")
+  if VALUE_KINDS[kind] ~= true then
+    error(methodName .. ' path "' .. path .. '" is a ' .. kind .. ", not a value option", level)
+  end
+  return record
 end
 
 -- Definition checks ----------------------------------------------------------
@@ -573,72 +573,72 @@ end
 ---@param label string
 ---@param level integer
 local function checkOptionalString(value, label, level)
-    local valueType = type(value)
-    if valueType ~= "nil" and valueType ~= "string" then
-        error(label .. " must be a string", level)
-    end
+  local valueType = type(value)
+  if valueType ~= "nil" and valueType ~= "string" then
+    error(label .. " must be a string", level)
+  end
 end
 
 ---@param value any
 ---@param label string
 ---@param level integer
 local function checkOptionalStringOrFunction(value, label, level)
-    local valueType = type(value)
-    if valueType ~= "nil" and valueType ~= "string" and valueType ~= "function" then
-        error(label .. " must be a string or a function", level)
-    end
+  local valueType = type(value)
+  if valueType ~= "nil" and valueType ~= "string" and valueType ~= "function" then
+    error(label .. " must be a string or a function", level)
+  end
 end
 
 ---@param value any
 ---@param label string
 ---@param level integer
 local function checkOptionalBoolean(value, label, level)
-    local valueType = type(value)
-    if valueType ~= "nil" and valueType ~= "boolean" then
-        error(label .. " must be a boolean", level)
-    end
+  local valueType = type(value)
+  if valueType ~= "nil" and valueType ~= "boolean" then
+    error(label .. " must be a boolean", level)
+  end
 end
 
 ---@param value any
 ---@param label string
 ---@param level integer
 local function checkOptionalFunction(value, label, level)
-    local valueType = type(value)
-    if valueType ~= "nil" and valueType ~= "function" then
-        error(label .. " must be a function", level)
-    end
+  local valueType = type(value)
+  if valueType ~= "nil" and valueType ~= "function" then
+    error(label .. " must be a function", level)
+  end
 end
 
 ---@param value any
 ---@param label string
 ---@param level integer
 local function checkNumber(value, label, level)
-    -- `value ~= value` is true for NaN only.
-    if type(value) ~= "number" or value ~= value then
-        error(label .. " must be a number", level)
-    end
+  -- `value ~= value` is true for NaN only.
+  if type(value) ~= "number" or value ~= value then
+    error(label .. " must be a number", level)
+  end
 end
 
 ---@param value any
 ---@param label string
 ---@param level integer
 local function checkPositiveNumber(value, label, level)
-    if type(value) ~= "nil" then
-        checkNumber(value, label, level + 1)
-        if value <= 0 then
-            error(label .. " must be greater than 0", level)
-        end
+  if type(value) ~= "nil" then
+    checkNumber(value, label, level + 1)
+    if value <= 0 then
+      error(label .. " must be greater than 0", level)
     end
+  end
 end
 
 ---@param value any
 ---@param label string
 ---@param level integer
 local function checkPredicate(value, label, level)
-    local valueType = type(value)
-    if valueType ~= "nil" and valueType ~= "boolean" and valueType ~= "function" then
-        error(label .. " must be a boolean or a function", level)
-    end
+  local valueType = type(value)
+  if valueType ~= "nil" and valueType ~= "boolean" and valueType ~= "function" then
+    error(label .. " must be a boolean or a function", level)
+  end
 end
 
 ---Refuse any field of `spec` that its kind does not accept.
@@ -647,28 +647,23 @@ end
 ---@param label string
 ---@param level integer
 local function checkKnownFields(spec, kind, label, level)
-    local kindFields = KIND_FIELDS[kind]
-    local isValueKind = VALUE_KINDS[kind] == true
-    for field, value in pairs(spec) do
-        if type(field) ~= "string" then
-            error(label .. " contains a field that is not a string", level)
-        end
-        -- Refused here, before any field is read: the checks and the record
-        -- below test flags such as `disabled`, `tristate` and `hasAlpha` for
-        -- truth, and compare numbers and strings, which raises inside
-        -- OptionsKit for a secret (Retail 12.x) instead of at the caller.
-        if isSecret(value) then
-            error(label .. "." .. field .. " must not be a secret value", level)
-        end
-        if
-            not (COMMON_FIELDS[field] or kindFields[field] or (isValueKind and VALUE_FIELDS[field]))
-        then
-            error(
-                label .. ' contains unknown field "' .. field .. '" for type "' .. kind .. '"',
-                level
-            )
-        end
+  local kindFields = KIND_FIELDS[kind]
+  local isValueKind = VALUE_KINDS[kind] == true
+  for field, value in pairs(spec) do
+    if type(field) ~= "string" then
+      error(label .. " contains a field that is not a string", level)
     end
+    -- Refused here, before any field is read: the checks and the record
+    -- below test flags such as `disabled`, `tristate` and `hasAlpha` for
+    -- truth, and compare numbers and strings, which raises inside
+    -- OptionsKit for a secret (Retail 12.x) instead of at the caller.
+    if isSecret(value) then
+      error(label .. "." .. field .. " must not be a secret value", level)
+    end
+    if not (COMMON_FIELDS[field] or kindFields[field] or (isValueKind and VALUE_FIELDS[field])) then
+      error(label .. ' contains unknown field "' .. field .. '" for type "' .. kind .. '"', level)
+    end
+  end
 end
 
 ---Check the fields every option shares.
@@ -677,17 +672,17 @@ end
 ---@param label string
 ---@param level integer
 local function checkCommonFields(spec, isRoot, label, level)
-    if isRoot then
-        checkOptionalString(spec.name, label .. ".name", level + 1)
-    elseif type(spec.name) ~= "string" then
-        error(label .. ".name must be a string", level)
-    end
-    checkOptionalStringOrFunction(spec.desc, label .. ".desc", level + 1)
-    if type(spec.order) ~= "nil" then
-        checkNumber(spec.order, label .. ".order", level + 1)
-    end
-    checkPredicate(spec.disabled, label .. ".disabled", level + 1)
-    checkPredicate(spec.hidden, label .. ".hidden", level + 1)
+  if isRoot then
+    checkOptionalString(spec.name, label .. ".name", level + 1)
+  elseif type(spec.name) ~= "string" then
+    error(label .. ".name must be a string", level)
+  end
+  checkOptionalStringOrFunction(spec.desc, label .. ".desc", level + 1)
+  if type(spec.order) ~= "nil" then
+    checkNumber(spec.order, label .. ".order", level + 1)
+  end
+  checkPredicate(spec.disabled, label .. ".disabled", level + 1)
+  checkPredicate(spec.hidden, label .. ".hidden", level + 1)
 end
 
 ---Check a `range` option's bounds.
@@ -695,31 +690,31 @@ end
 ---@param label string
 ---@param level integer
 local function checkRangeFields(spec, label, level)
-    checkNumber(spec.min, label .. ".min", level + 1)
-    checkNumber(spec.max, label .. ".max", level + 1)
-    if spec.min > spec.max then
-        error(label .. ".min must not be greater than max", level)
+  checkNumber(spec.min, label .. ".min", level + 1)
+  checkNumber(spec.max, label .. ".max", level + 1)
+  if spec.min > spec.max then
+    error(label .. ".min must not be greater than max", level)
+  end
+  checkPositiveNumber(spec.step, label .. ".step", level + 1)
+  checkPositiveNumber(spec.bigStep, label .. ".bigStep", level + 1)
+  local softMin = spec.softMin
+  local softMax = spec.softMax
+  if type(softMin) ~= "nil" then
+    checkNumber(softMin, label .. ".softMin", level + 1)
+    if softMin < spec.min or softMin > spec.max then
+      error(label .. ".softMin must lie between min and max", level)
     end
-    checkPositiveNumber(spec.step, label .. ".step", level + 1)
-    checkPositiveNumber(spec.bigStep, label .. ".bigStep", level + 1)
-    local softMin = spec.softMin
-    local softMax = spec.softMax
-    if type(softMin) ~= "nil" then
-        checkNumber(softMin, label .. ".softMin", level + 1)
-        if softMin < spec.min or softMin > spec.max then
-            error(label .. ".softMin must lie between min and max", level)
-        end
+  end
+  if type(softMax) ~= "nil" then
+    checkNumber(softMax, label .. ".softMax", level + 1)
+    if softMax < spec.min or softMax > spec.max then
+      error(label .. ".softMax must lie between min and max", level)
     end
-    if type(softMax) ~= "nil" then
-        checkNumber(softMax, label .. ".softMax", level + 1)
-        if softMax < spec.min or softMax > spec.max then
-            error(label .. ".softMax must lie between min and max", level)
-        end
-    end
-    if type(softMin) ~= "nil" and type(softMax) ~= "nil" and softMin > softMax then
-        error(label .. ".softMin must not be greater than softMax", level)
-    end
-    checkOptionalBoolean(spec.isPercent, label .. ".isPercent", level + 1)
+  end
+  if type(softMin) ~= "nil" and type(softMax) ~= "nil" and softMin > softMax then
+    error(label .. ".softMin must not be greater than softMax", level)
+  end
+  checkOptionalBoolean(spec.isPercent, label .. ".isPercent", level + 1)
 end
 
 ---Check and copy a `values` table: keys are strings or numbers, labels
@@ -731,26 +726,26 @@ end
 ---@return table copy
 ---@return (string|number)[] keys
 local function copyValues(values, maxEntries, label, level)
-    local copy = {}
-    local keys = {}
-    for key, text in pairs(values) do
-        local keyType = type(key)
-        if keyType ~= "string" and keyType ~= "number" then
-            error(label .. " keys must be strings or numbers", level)
-        end
-        if type(text) ~= "string" then
-            error(label .. " labels must be strings", level)
-        end
-        copy[key] = text
-        keys[#keys + 1] = key
+  local copy = {}
+  local keys = {}
+  for key, text in pairs(values) do
+    local keyType = type(key)
+    if keyType ~= "string" and keyType ~= "number" then
+      error(label .. " keys must be strings or numbers", level)
     end
-    if #keys == 0 then
-        error(label .. " must not be empty", level)
+    if type(text) ~= "string" then
+      error(label .. " labels must be strings", level)
     end
-    if #keys > maxEntries then
-        error(label .. " must have at most " .. maxEntries .. " entries", level)
-    end
-    return copy, keys
+    copy[key] = text
+    keys[#keys + 1] = key
+  end
+  if #keys == 0 then
+    error(label .. " must not be empty", level)
+  end
+  if #keys > maxEntries then
+    error(label .. " must have at most " .. maxEntries .. " entries", level)
+  end
+  return copy, keys
 end
 
 ---Check and copy a `sorting` array: every entry a string or number and, when
@@ -761,31 +756,31 @@ end
 ---@param level integer
 ---@return (string|number)[]|false copy
 local function copySorting(sorting, values, label, level)
-    if type(sorting) == "nil" then
-        return false
+  if type(sorting) == "nil" then
+    return false
+  end
+  if type(sorting) ~= "table" then
+    error(label .. " must be an array", level)
+  end
+  local copy = {}
+  local count = #sorting
+  for index = 1, count do
+    local key = sorting[index]
+    local keyType = type(key)
+    if keyType ~= "string" and keyType ~= "number" then
+      error(label .. " entries must be strings or numbers", level)
     end
-    if type(sorting) ~= "table" then
-        error(label .. " must be an array", level)
+    if values and values[key] == nil then
+      error(label .. " entries must be keys of values", level)
     end
-    local copy = {}
-    local count = #sorting
-    for index = 1, count do
-        local key = sorting[index]
-        local keyType = type(key)
-        if keyType ~= "string" and keyType ~= "number" then
-            error(label .. " entries must be strings or numbers", level)
-        end
-        if values and values[key] == nil then
-            error(label .. " entries must be keys of values", level)
-        end
-        copy[index] = key
+    copy[index] = key
+  end
+  for key in pairs(sorting) do
+    if type(key) ~= "number" or key < 1 or key > count or key % 1 ~= 0 then
+      error(label .. " must be an array", level)
     end
-    for key in pairs(sorting) do
-        if type(key) ~= "number" or key < 1 or key > count or key % 1 ~= 0 then
-            error(label .. " must be an array", level)
-        end
-    end
-    return copy
+  end
+  return copy
 end
 
 ---Parse `bind` into its scope and keys. Returns the scope name and an array of
@@ -796,34 +791,31 @@ end
 ---@return string scope
 ---@return string[] keys
 local function parseBind(bind, label, level)
-    if type(bind) ~= "string" then
-        error(label .. " must be a string", level)
+  if type(bind) ~= "string" then
+    error(label .. " must be a string", level)
+  end
+  local scope = nil
+  local keys = {}
+  for segment in (bind .. "."):gmatch("([^.]*)%.") do
+    if not segment:find(KEY_PATTERN) then
+      error(label .. ' "' .. bind .. '" must be dot-separated identifiers', level)
     end
-    local scope = nil
-    local keys = {}
-    for segment in (bind .. "."):gmatch("([^.]*)%.") do
-        if not segment:find(KEY_PATTERN) then
-            error(label .. ' "' .. bind .. '" must be dot-separated identifiers', level)
-        end
-        if scope == nil then
-            scope = segment
-        else
-            keys[#keys + 1] = segment
-        end
+    if scope == nil then
+      scope = segment
+    else
+      keys[#keys + 1] = segment
     end
-    if scope == nil or BIND_SCOPES[scope] ~= true then
-        error(
-            label
-                .. ' "'
-                .. bind
-                .. '" must start with global, char, realm, class, faction or profile',
-            level
-        )
-    end
-    if #keys == 0 then
-        error(label .. ' "' .. bind .. '" must name a value inside the scope', level)
-    end
-    return scope, keys
+  end
+  if scope == nil or BIND_SCOPES[scope] ~= true then
+    error(
+      label .. ' "' .. bind .. '" must start with global, char, realm, class, faction or profile',
+      level
+    )
+  end
+  if #keys == 0 then
+    error(label .. ' "' .. bind .. '" must name a value inside the scope', level)
+  end
+  return scope, keys
 end
 
 -- Schemas --------------------------------------------------------------------
@@ -836,14 +828,14 @@ local UNIT_INTERVAL = SchemaKit.number({ min = 0, max = 1 })
 ---@param info OptionsKit.Info
 ---@return fun(value: any): boolean
 local function newDynamicKeyCheck(valuesFunction, info)
-    return function(value)
-        local valueType = type(value)
-        if valueType ~= "string" and valueType ~= "number" then
-            return false
-        end
-        local values = valuesFunction(info)
-        return type(values) == "table" and type(values[value]) ~= "nil"
+  return function(value)
+    local valueType = type(value)
+    if valueType ~= "string" and valueType ~= "number" then
+      return false
     end
+    local values = valuesFunction(info)
+    return type(values) == "table" and type(values[value]) ~= "nil"
+  end
 end
 
 ---Build the SchemaKit node describing the keys of a `select` or `multiselect`.
@@ -852,14 +844,14 @@ end
 ---@param info OptionsKit.Info
 ---@return table node
 local function buildKeyNode(keys, valuesFunction, info)
-    if keys then
-        return SchemaKit.enum(keys)
-    end
-    ---@cast valuesFunction fun(info: OptionsKit.Info): table
-    return SchemaKit.custom(
-        newDynamicKeyCheck(valuesFunction, info),
-        "a key of the values of " .. info.path
-    )
+  if keys then
+    return SchemaKit.enum(keys)
+  end
+  ---@cast valuesFunction fun(info: OptionsKit.Info): table
+  return SchemaKit.custom(
+    newDynamicKeyCheck(valuesFunction, info),
+    "a key of the values of " .. info.path
+  )
 end
 
 ---Build the sealed schema of a value option.
@@ -873,44 +865,44 @@ end
 ---@param level integer
 ---@return table schema
 local function buildSchema(kind, spec, keys, valuesFunction, info, dynamicMax, label, level)
-    local node
-    if kind == KIND_TOGGLE then
-        node = SchemaKit.boolean()
-        if spec.tristate then
-            node = SchemaKit.optional(node)
-        end
-    elseif kind == KIND_RANGE then
-        node = SchemaKit.number({ min = spec.min, max = spec.max })
-    elseif kind == KIND_SELECT then
-        node = buildKeyNode(keys, valuesFunction, info)
-    elseif kind == KIND_MULTISELECT then
-        node = SchemaKit.map({
-            keys = buildKeyNode(keys, valuesFunction, info),
-            values = SchemaKit.boolean(),
-            max = keys and #keys or dynamicMax,
-        })
-    elseif kind == KIND_INPUT then
-        if type(spec.pattern) == "nil" then
-            node = SchemaKit.string()
-        else
-            -- SchemaKit validates the pattern and would report it at this
-            -- line; the protected call moves the report to the caller.
-            local built, result = pcall(SchemaKit.string, { pattern = spec.pattern })
-            if not built then
-                error(label .. ".pattern is not a valid Lua pattern", level)
-            end
-            node = result
-        end
-    elseif kind == KIND_COLOR then
-        local fields = { r = UNIT_INTERVAL, g = UNIT_INTERVAL, b = UNIT_INTERVAL }
-        if spec.hasAlpha then
-            fields.a = UNIT_INTERVAL
-        end
-        node = SchemaKit.table({ fields = fields })
-    else
-        node = SchemaKit.string()
+  local node
+  if kind == KIND_TOGGLE then
+    node = SchemaKit.boolean()
+    if spec.tristate then
+      node = SchemaKit.optional(node)
     end
-    return SchemaKit:Seal(node)
+  elseif kind == KIND_RANGE then
+    node = SchemaKit.number({ min = spec.min, max = spec.max })
+  elseif kind == KIND_SELECT then
+    node = buildKeyNode(keys, valuesFunction, info)
+  elseif kind == KIND_MULTISELECT then
+    node = SchemaKit.map({
+      keys = buildKeyNode(keys, valuesFunction, info),
+      values = SchemaKit.boolean(),
+      max = keys and #keys or dynamicMax,
+    })
+  elseif kind == KIND_INPUT then
+    if type(spec.pattern) == "nil" then
+      node = SchemaKit.string()
+    else
+      -- SchemaKit validates the pattern and would report it at this
+      -- line; the protected call moves the report to the caller.
+      local built, result = pcall(SchemaKit.string, { pattern = spec.pattern })
+      if not built then
+        error(label .. ".pattern is not a valid Lua pattern", level)
+      end
+      node = result
+    end
+  elseif kind == KIND_COLOR then
+    local fields = { r = UNIT_INTERVAL, g = UNIT_INTERVAL, b = UNIT_INTERVAL }
+    if spec.hasAlpha then
+      fields.a = UNIT_INTERVAL
+    end
+    node = SchemaKit.table({ fields = fields })
+  else
+    node = SchemaKit.string()
+  end
+  return SchemaKit:Seal(node)
 end
 
 -- Building -------------------------------------------------------------------
@@ -921,17 +913,17 @@ end
 ---@param right table
 ---@return boolean
 local function compareRecords(left, right)
-    local leftOrder = rawget(left, "_order")
-    local rightOrder = rawget(right, "_order")
-    if leftOrder ~= rightOrder then
-        return leftOrder < rightOrder
-    end
-    local leftName = rawget(left, "_name")
-    local rightName = rawget(right, "_name")
-    if leftName ~= rightName then
-        return leftName < rightName
-    end
-    return rawget(left, "_key") < rawget(right, "_key")
+  local leftOrder = rawget(left, "_order")
+  local rightOrder = rawget(right, "_order")
+  if leftOrder ~= rightOrder then
+    return leftOrder < rightOrder
+  end
+  local leftName = rawget(left, "_name")
+  local rightName = rawget(right, "_name")
+  if leftName ~= rightName then
+    return leftName < rightName
+  end
+  return rawget(left, "_key") < rawget(right, "_key")
 end
 
 ---Build the info table of an option: its key path, dotted path, kind and tree.
@@ -942,15 +934,15 @@ end
 ---@param tree OptionsKit.Tree
 ---@return OptionsKit.Info
 local function newInfo(parent, key, path, kind, tree)
-    local info = { path = path, kind = kind, tree = tree }
-    if parent then
-        local parentInfo = rawget(parent, "_info")
-        for index = 1, #parentInfo do
-            info[index] = parentInfo[index]
-        end
-        info[#parentInfo + 1] = key
+  local info = { path = path, kind = kind, tree = tree }
+  if parent then
+    local parentInfo = rawget(parent, "_info")
+    for index = 1, #parentInfo do
+      info[index] = parentInfo[index]
     end
-    return info
+    info[#parentInfo + 1] = key
+  end
+  return info
 end
 
 ---Fill the value fields of a record: schema, reader and writer, validator.
@@ -960,107 +952,99 @@ end
 ---@param label string
 ---@param level integer
 local function buildValueFields(context, record, spec, label, level)
-    local kind = rawget(record, "_kind")
-    local info = rawget(record, "_info")
+  local kind = rawget(record, "_kind")
+  local info = rawget(record, "_info")
 
-    if type(spec.bind) ~= "nil" then
-        if type(spec.get) ~= "nil" or type(spec.set) ~= "nil" then
-            error(label .. " must use either bind or get and set, not both", level)
+  if type(spec.bind) ~= "nil" then
+    if type(spec.get) ~= "nil" or type(spec.set) ~= "nil" then
+      error(label .. " must use either bind or get and set, not both", level)
+    end
+    local db = context.db
+    if not db then
+      error(label .. ".bind needs a SettingsKit database passed as options.db", level)
+    end
+    local scope, keys = parseBind(spec.bind, label .. ".bind", level + 1)
+    -- `rawget`: SettingsKit raises at its own line when an undeclared or
+    -- unavailable scope is read through the database's metatable.
+    if type(rawget(db, scope)) ~= "table" then
+      error(label .. '.bind scope "' .. scope .. '" is not an available scope of options.db', level)
+    end
+    rawset(record, "_bind", spec.bind)
+    rawset(record, "_bindScope", scope)
+    rawset(record, "_bindKeys", keys)
+    rawset(record, "_bindCount", #keys)
+  else
+    if type(spec.get) ~= "function" or type(spec.set) ~= "function" then
+      error(label .. " needs get and set functions, or bind", level)
+    end
+    rawset(record, "_get", spec.get)
+    rawset(record, "_set", spec.set)
+  end
+
+  checkOptionalFunction(spec.validate, label .. ".validate", level + 1)
+  rawset(record, "_validate", spec.validate or false)
+
+  local keys = false ---@type (string|number)[]|false
+  local valuesFunction = false ---@type function|false
+  if kind == KIND_TOGGLE then
+    checkOptionalBoolean(spec.tristate, label .. ".tristate", level + 1)
+  elseif kind == KIND_RANGE then
+    checkRangeFields(spec, label, level + 1)
+  elseif kind == KIND_SELECT or kind == KIND_MULTISELECT then
+    local values = spec.values
+    local copied = false ---@type table|false
+    if type(values) == "function" then
+      valuesFunction = values
+    elseif type(values) == "table" then
+      copied, keys = copyValues(values, context.maxDynamicEntries, label .. ".values", level + 1)
+      table.sort(keys, function(left, right)
+        if type(left) == type(right) then
+          return left < right
         end
-        local db = context.db
-        if not db then
-            error(label .. ".bind needs a SettingsKit database passed as options.db", level)
-        end
-        local scope, keys = parseBind(spec.bind, label .. ".bind", level + 1)
-        -- `rawget`: SettingsKit raises at its own line when an undeclared or
-        -- unavailable scope is read through the database's metatable.
-        if type(rawget(db, scope)) ~= "table" then
-            error(
-                label .. '.bind scope "' .. scope .. '" is not an available scope of options.db',
-                level
-            )
-        end
-        rawset(record, "_bind", spec.bind)
-        rawset(record, "_bindScope", scope)
-        rawset(record, "_bindKeys", keys)
-        rawset(record, "_bindCount", #keys)
+        return type(left) == "number"
+      end)
     else
-        if type(spec.get) ~= "function" or type(spec.set) ~= "function" then
-            error(label .. " needs get and set functions, or bind", level)
-        end
-        rawset(record, "_get", spec.get)
-        rawset(record, "_set", spec.set)
+      error(label .. ".values must be a table or a function", level)
     end
+    rawset(record, "_values", copied or valuesFunction)
+    rawset(record, "_sorting", copySorting(spec.sorting, copied, label .. ".sorting", level + 1))
+  elseif kind == KIND_INPUT then
+    checkOptionalString(spec.pattern, label .. ".pattern", level + 1)
+    checkOptionalBoolean(spec.multiline, label .. ".multiline", level + 1)
+    checkOptionalString(spec.usage, label .. ".usage", level + 1)
+  elseif kind == KIND_COLOR then
+    checkOptionalBoolean(spec.hasAlpha, label .. ".hasAlpha", level + 1)
+  end
 
-    checkOptionalFunction(spec.validate, label .. ".validate", level + 1)
-    rawset(record, "_validate", spec.validate or false)
-
-    local keys = false ---@type (string|number)[]|false
-    local valuesFunction = false ---@type function|false
-    if kind == KIND_TOGGLE then
-        checkOptionalBoolean(spec.tristate, label .. ".tristate", level + 1)
-    elseif kind == KIND_RANGE then
-        checkRangeFields(spec, label, level + 1)
-    elseif kind == KIND_SELECT or kind == KIND_MULTISELECT then
-        local values = spec.values
-        local copied = false ---@type table|false
-        if type(values) == "function" then
-            valuesFunction = values
-        elseif type(values) == "table" then
-            copied, keys =
-                copyValues(values, context.maxDynamicEntries, label .. ".values", level + 1)
-            table.sort(keys, function(left, right)
-                if type(left) == type(right) then
-                    return left < right
-                end
-                return type(left) == "number"
-            end)
-        else
-            error(label .. ".values must be a table or a function", level)
-        end
-        rawset(record, "_values", copied or valuesFunction)
-        rawset(
-            record,
-            "_sorting",
-            copySorting(spec.sorting, copied, label .. ".sorting", level + 1)
-        )
-    elseif kind == KIND_INPUT then
-        checkOptionalString(spec.pattern, label .. ".pattern", level + 1)
-        checkOptionalBoolean(spec.multiline, label .. ".multiline", level + 1)
-        checkOptionalString(spec.usage, label .. ".usage", level + 1)
-    elseif kind == KIND_COLOR then
-        checkOptionalBoolean(spec.hasAlpha, label .. ".hasAlpha", level + 1)
-    end
-
-    local dynamicMax = context.maxDynamicEntries
-    if dynamicMax == math.huge then
-        dynamicMax = UNBOUNDED_MAP_MAX
-    end
-    rawset(
-        record,
-        "_schema",
-        buildSchema(kind, spec, keys, valuesFunction, info, dynamicMax, label, level + 1)
-    )
-    -- Prebuilt so a failing `Set` names the option without building a string
-    -- on the valid path.
-    rawset(record, "_setArgument", "OptionsKit.Tree:Set " .. rawget(record, "_path"))
+  local dynamicMax = context.maxDynamicEntries
+  if dynamicMax == math.huge then
+    dynamicMax = UNBOUNDED_MAP_MAX
+  end
+  rawset(
+    record,
+    "_schema",
+    buildSchema(kind, spec, keys, valuesFunction, info, dynamicMax, label, level + 1)
+  )
+  -- Prebuilt so a failing `Set` names the option without building a string
+  -- on the valid path.
+  rawset(record, "_setArgument", "OptionsKit.Tree:Set " .. rawget(record, "_path"))
 end
 
 ---Copy the renderer hints of a kind into the record, for `Describe`.
 ---@param record table
 ---@param spec table
 local function copyHints(record, spec)
-    local kind = rawget(record, "_kind")
-    local hints = {}
-    local fields = KIND_FIELDS[kind]
-    for field in pairs(fields) do
-        -- `args` becomes the children, and `values`/`sorting` are copied on
-        -- their own; everything else is a plain value.
-        if field ~= "args" and field ~= "values" and field ~= "sorting" and field ~= "func" then
-            hints[field] = spec[field]
-        end
+  local kind = rawget(record, "_kind")
+  local hints = {}
+  local fields = KIND_FIELDS[kind]
+  for field in pairs(fields) do
+    -- `args` becomes the children, and `values`/`sorting` are copied on
+    -- their own; everything else is a plain value.
+    if field ~= "args" and field ~= "values" and field ~= "sorting" and field ~= "func" then
+      hints[field] = spec[field]
     end
-    rawset(record, "_hints", hints)
+  end
+  rawset(record, "_hints", hints)
 end
 
 ---When `spec` is a group `ProfileOptions` returned, remember its link and
@@ -1074,27 +1058,27 @@ end
 ---@param label string
 ---@param level integer
 local function collectProfileLink(context, spec, path, label, level)
-    local link = rawget(profileGroups, spec)
-    if link == nil then
-        return
+  local link = rawget(profileGroups, spec)
+  if link == nil then
+    return
+  end
+  if link.tree then
+    error(
+      label
+        .. ' is a profile group already defined in the tree of "'
+        .. rawget(link.tree, "_addonName")
+        .. '"; Undefine it first',
+      level
+    )
+  end
+  local links = context.profileLinks
+  for index = 1, #links do
+    if links[index] == link then
+      error(label .. " is a profile group that already appears in this tree", level)
     end
-    if link.tree then
-        error(
-            label
-                .. ' is a profile group already defined in the tree of "'
-                .. rawget(link.tree, "_addonName")
-                .. '"; Undefine it first',
-            level
-        )
-    end
-    local links = context.profileLinks
-    for index = 1, #links do
-        if links[index] == link then
-            error(label .. " is a profile group that already appears in this tree", level)
-        end
-    end
-    links[#links + 1] = link
-    context.profilePaths[#links] = path
+  end
+  links[#links + 1] = link
+  context.profilePaths[#links] = path
 end
 
 local buildOption
@@ -1106,19 +1090,19 @@ local buildOption
 ---@param label string
 ---@param level integer
 local function buildChildren(context, record, args, label, level)
-    if type(args) ~= "table" then
-        error(label .. ".args must be a table", level)
+  if type(args) ~= "table" then
+    error(label .. ".args must be a table", level)
+  end
+  local children = {}
+  for key, childSpec in pairs(args) do
+    if type(key) ~= "string" or not key:find(KEY_PATTERN) then
+      error(label .. ".args keys must be identifiers (letters, digits and _)", level)
     end
-    local children = {}
-    for key, childSpec in pairs(args) do
-        if type(key) ~= "string" or not key:find(KEY_PATTERN) then
-            error(label .. ".args keys must be identifiers (letters, digits and _)", level)
-        end
-        children[#children + 1] =
-            buildOption(context, childSpec, record, key, label .. ".args." .. key, level + 1)
-    end
-    table.sort(children, compareRecords)
-    rawset(record, "_children", children)
+    children[#children + 1] =
+      buildOption(context, childSpec, record, key, label .. ".args." .. key, level + 1)
+  end
+  table.sort(children, compareRecords)
+  rawset(record, "_children", children)
 end
 
 ---Build the record of one option and, for a group, of everything below it.
@@ -1130,95 +1114,95 @@ end
 ---@param level integer
 ---@return table record
 buildOption = function(context, spec, parent, key, label, level)
-    if type(spec) ~= "table" then
-        error(label .. " must be an option table", level)
-    end
-    local kind = spec.type
-    if isSecret(kind) then
-        error(label .. ".type must not be a secret value", level)
-    end
-    if type(kind) ~= "string" or KIND_FIELDS[kind] == nil then
-        error(label .. '.type must be an option type such as "group" or "toggle"', level)
-    end
-    checkKnownFields(spec, kind, label, level + 1)
+  if type(spec) ~= "table" then
+    error(label .. " must be an option table", level)
+  end
+  local kind = spec.type
+  if isSecret(kind) then
+    error(label .. ".type must not be a secret value", level)
+  end
+  if type(kind) ~= "string" or KIND_FIELDS[kind] == nil then
+    error(label .. '.type must be an option type such as "group" or "toggle"', level)
+  end
+  checkKnownFields(spec, kind, label, level + 1)
 
-    local isRoot = parent == false
-    if isRoot and kind ~= KIND_GROUP then
-        error(label .. '.type must be "group" at the root', level)
-    end
-    checkCommonFields(spec, isRoot, label, level + 1)
+  local isRoot = parent == false
+  if isRoot and kind ~= KIND_GROUP then
+    error(label .. '.type must be "group" at the root', level)
+  end
+  checkCommonFields(spec, isRoot, label, level + 1)
 
-    local depth = 0
-    local path = ""
-    if parent then
-        depth = rawget(parent, "_depth") + 1
-        if depth > context.maxDepth then
-            error(label .. " is deeper than " .. context.maxDepth .. " levels", level)
-        end
-        context.count = context.count + 1
-        if context.count > context.maxOptions then
-            error(context.label .. " has more than " .. context.maxOptions .. " options", level)
-        end
-        local parentPath = rawget(parent, "_path")
-        path = parentPath == "" and key or parentPath .. "." .. key
+  local depth = 0
+  local path = ""
+  if parent then
+    depth = rawget(parent, "_depth") + 1
+    if depth > context.maxDepth then
+      error(label .. " is deeper than " .. context.maxDepth .. " levels", level)
     end
-
-    local record = {
-        _kind = kind,
-        _key = key,
-        _path = path,
-        _depth = depth,
-        _parent = parent,
-        _info = newInfo(parent, key, path, kind, context.tree),
-        _name = spec.name or context.addonName,
-        _desc = spec.desc or false,
-        _order = spec.order or DEFAULT_ORDER,
-        _disabled = spec.disabled or false,
-        _hidden = spec.hidden or false,
-    }
-    copyHints(record, spec)
-
-    if kind == KIND_GROUP then
-        checkOptionalBoolean(spec.inline, label .. ".inline", level + 1)
-        collectProfileLink(context, spec, path, label, level + 1)
-        buildChildren(context, record, spec.args, label, level + 1)
-    elseif VALUE_KINDS[kind] then
-        buildValueFields(context, record, spec, label, level + 1)
-    elseif kind == KIND_EXECUTE then
-        if type(spec.func) ~= "function" then
-            error(label .. ".func must be a function", level)
-        end
-        local confirm = spec.confirm
-        local confirmType = type(confirm)
-        if confirmType ~= "nil" and confirmType ~= "boolean" and confirmType ~= "string" then
-            error(label .. ".confirm must be a boolean or a string", level)
-        end
-        rawset(record, "_func", spec.func)
-    elseif kind == KIND_DESCRIPTION then
-        if type(spec.fontSize) ~= "nil" and FONT_SIZES[spec.fontSize] ~= true then
-            error(label .. '.fontSize must be "small", "medium" or "large"', level)
-        end
+    context.count = context.count + 1
+    if context.count > context.maxOptions then
+      error(context.label .. " has more than " .. context.maxOptions .. " options", level)
     end
+    local parentPath = rawget(parent, "_path")
+    path = parentPath == "" and key or parentPath .. "." .. key
+  end
 
-    if parent then
-        rawset(context.records, path, record)
+  local record = {
+    _kind = kind,
+    _key = key,
+    _path = path,
+    _depth = depth,
+    _parent = parent,
+    _info = newInfo(parent, key, path, kind, context.tree),
+    _name = spec.name or context.addonName,
+    _desc = spec.desc or false,
+    _order = spec.order or DEFAULT_ORDER,
+    _disabled = spec.disabled or false,
+    _hidden = spec.hidden or false,
+  }
+  copyHints(record, spec)
+
+  if kind == KIND_GROUP then
+    checkOptionalBoolean(spec.inline, label .. ".inline", level + 1)
+    collectProfileLink(context, spec, path, label, level + 1)
+    buildChildren(context, record, spec.args, label, level + 1)
+  elseif VALUE_KINDS[kind] then
+    buildValueFields(context, record, spec, label, level + 1)
+  elseif kind == KIND_EXECUTE then
+    if type(spec.func) ~= "function" then
+      error(label .. ".func must be a function", level)
     end
-    return record
+    local confirm = spec.confirm
+    local confirmType = type(confirm)
+    if confirmType ~= "nil" and confirmType ~= "boolean" and confirmType ~= "string" then
+      error(label .. ".confirm must be a boolean or a string", level)
+    end
+    rawset(record, "_func", spec.func)
+  elseif kind == KIND_DESCRIPTION then
+    if type(spec.fontSize) ~= "nil" and FONT_SIZES[spec.fontSize] ~= true then
+      error(label .. '.fontSize must be "small", "medium" or "large"', level)
+    end
+  end
+
+  if parent then
+    rawset(context.records, path, record)
+  end
+  return record
 end
 
 ---Append `record`'s descendants to `walk` in pre-order.
 ---@param record table
 ---@param walk table[]
 local function flatten(record, walk)
-    local children = rawget(record, "_children")
-    if children == nil then
-        return
-    end
-    for index = 1, #children do
-        local child = children[index]
-        walk[#walk + 1] = child
-        flatten(child, walk)
-    end
+  local children = rawget(record, "_children")
+  if children == nil then
+    return
+  end
+  for index = 1, #children do
+    local child = children[index]
+    walk[#walk + 1] = child
+    flatten(child, walk)
+  end
 end
 
 -- Bound values ---------------------------------------------------------------
@@ -1229,15 +1213,15 @@ end
 ---@param key string
 ---@param value any
 local function assignField(container, key, value)
-    container[key] = value
+  container[key] = value
 end
 
 ---Strip the `file:line: ` position an error message carries, keeping its text.
 ---@param message any
 ---@return string
 local function withoutPosition(message)
-    local text = tostring(message)
-    return (text:gsub("^[^\n]-:%d+: ", "", 1))
+  local text = tostring(message)
+  return (text:gsub("^[^\n]-:%d+: ", "", 1))
 end
 
 ---Walk a bound option's path through the database's views, reading the scope
@@ -1255,33 +1239,30 @@ end
 ---@return table container
 ---@return integer index
 local function walkBound(tree, record, methodName, level)
-    local scope = rawget(record, "_bindScope")
-    local container = rawget(rawget(tree, "_db"), scope)
-    if type(container) ~= "table" then
-        error(
-            methodName .. ' bind scope "' .. scope .. '" is not an available scope of the database',
-            level
-        )
+  local scope = rawget(record, "_bindScope")
+  local container = rawget(rawget(tree, "_db"), scope)
+  if type(container) ~= "table" then
+    error(
+      methodName .. ' bind scope "' .. scope .. '" is not an available scope of the database',
+      level
+    )
+  end
+  local keys = rawget(record, "_bindKeys")
+  local count = rawget(record, "_bindCount")
+  for index = 1, count - 1 do
+    local nested = container[keys[index]]
+    if type(nested) == "nil" then
+      return container, index
     end
-    local keys = rawget(record, "_bindKeys")
-    local count = rawget(record, "_bindCount")
-    for index = 1, count - 1 do
-        local nested = container[keys[index]]
-        if type(nested) == "nil" then
-            return container, index
-        end
-        if type(nested) ~= "table" then
-            error(
-                methodName
-                    .. ' bind path "'
-                    .. rawget(record, "_bind")
-                    .. '" does not lead to a table',
-                level
-            )
-        end
-        container = nested
+    if type(nested) ~= "table" then
+      error(
+        methodName .. ' bind path "' .. rawget(record, "_bind") .. '" does not lead to a table',
+        level
+      )
     end
-    return container, count
+    container = nested
+  end
+  return container, count
 end
 
 ---Ask the database whether writing `value` at a bound option's path would be
@@ -1296,19 +1277,19 @@ end
 ---@return boolean accepted
 ---@return string|nil message
 local function validateBound(tree, record, value, methodName, level)
-    local db = rawget(tree, "_db")
-    local scope = rawget(record, "_bindScope")
-    if type(rawget(db, scope)) ~= "table" then
-        error(
-            methodName .. ' bind scope "' .. scope .. '" is not an available scope of the database',
-            level
-        )
-    end
-    local accepted, message = db:Validate(scope, rawget(record, "_bindKeys"), value)
-    if not isSecret(accepted) and accepted == true then
-        return true, nil
-    end
-    return false, withoutPosition(message)
+  local db = rawget(tree, "_db")
+  local scope = rawget(record, "_bindScope")
+  if type(rawget(db, scope)) ~= "table" then
+    error(
+      methodName .. ' bind scope "' .. scope .. '" is not an available scope of the database',
+      level
+    )
+  end
+  local accepted, message = db:Validate(scope, rawget(record, "_bindKeys"), value)
+  if not isSecret(accepted) and accepted == true then
+    return true, nil
+  end
+  return false, withoutPosition(message)
 end
 
 ---@param tree OptionsKit.Tree
@@ -1317,15 +1298,15 @@ end
 ---@param level integer
 ---@return any
 local function readValue(tree, record, methodName, level)
-    if rawget(record, "_bindScope") then
-        local container, index = walkBound(tree, record, methodName, level + 1)
-        local count = rawget(record, "_bindCount")
-        if index < count then
-            return nil
-        end
-        return container[rawget(record, "_bindKeys")[count]]
+  if rawget(record, "_bindScope") then
+    local container, index = walkBound(tree, record, methodName, level + 1)
+    local count = rawget(record, "_bindCount")
+    if index < count then
+      return nil
     end
-    return rawget(record, "_get")(rawget(record, "_info"))
+    return container[rawget(record, "_bindKeys")[count]]
+  end
+  return rawget(record, "_get")(rawget(record, "_info"))
 end
 
 ---Write a bound value through the database's views. A missing intermediate
@@ -1345,34 +1326,34 @@ end
 ---@param methodName string
 ---@param level integer
 local function writeBound(tree, record, value, methodName, level)
-    local container, index = walkBound(tree, record, methodName, level + 1)
-    local keys = rawget(record, "_bindKeys")
-    local count = rawget(record, "_bindCount")
-    local stored = value
-    if index < count then
-        if type(value) == "nil" then
-            return
-        end
-        for position = count, index + 1, -1 do
-            stored = { [keys[position]] = stored }
-        end
+  local container, index = walkBound(tree, record, methodName, level + 1)
+  local keys = rawget(record, "_bindKeys")
+  local count = rawget(record, "_bindCount")
+  local stored = value
+  if index < count then
+    if type(value) == "nil" then
+      return
     end
-    local written, failure = pcall(assignField, container, keys[index], stored)
-    if not written then
-        local db = rawget(tree, "_db")
-        local accepted = db:Validate(rawget(record, "_bindScope"), keys, value)
-        if not isSecret(accepted) and accepted == true then
-            error(failure, 0)
-        end
-        error(
-            methodName
-                .. " "
-                .. rawget(record, "_path")
-                .. " refused by the database: "
-                .. withoutPosition(failure),
-            level
-        )
+    for position = count, index + 1, -1 do
+      stored = { [keys[position]] = stored }
     end
+  end
+  local written, failure = pcall(assignField, container, keys[index], stored)
+  if not written then
+    local db = rawget(tree, "_db")
+    local accepted = db:Validate(rawget(record, "_bindScope"), keys, value)
+    if not isSecret(accepted) and accepted == true then
+      error(failure, 0)
+    end
+    error(
+      methodName
+        .. " "
+        .. rawget(record, "_path")
+        .. " refused by the database: "
+        .. withoutPosition(failure),
+      level
+    )
+  end
 end
 
 ---@param tree OptionsKit.Tree
@@ -1381,11 +1362,11 @@ end
 ---@param methodName string
 ---@param level integer
 local function writeValue(tree, record, value, methodName, level)
-    if rawget(record, "_bindScope") then
-        writeBound(tree, record, value, methodName, level + 1)
-        return
-    end
-    rawget(record, "_set")(rawget(record, "_info"), value)
+  if rawget(record, "_bindScope") then
+    writeBound(tree, record, value, methodName, level + 1)
+    return
+  end
+  rawget(record, "_set")(rawget(record, "_info"), value)
 end
 
 ---Run the option's own `validate`. Returns `true`, or `false` and a message.
@@ -1394,18 +1375,18 @@ end
 ---@return boolean accepted
 ---@return string|nil message
 local function runValidate(record, value)
-    local validate = rawget(record, "_validate")
-    if not validate then
-        return true, nil
-    end
-    local accepted, message = validate(rawget(record, "_info"), value)
-    if not isSecret(accepted) and accepted == true then
-        return true, nil
-    end
-    if type(message) ~= "string" then
-        message = "refused by validate"
-    end
-    return false, message
+  local validate = rawget(record, "_validate")
+  if not validate then
+    return true, nil
+  end
+  local accepted, message = validate(rawget(record, "_info"), value)
+  if not isSecret(accepted) and accepted == true then
+    return true, nil
+  end
+  if type(message) ~= "string" then
+    message = "refused by validate"
+  end
+  return false, message
 end
 
 ---Evaluate one `disabled`/`hidden` field on `record` and its ancestors.
@@ -1413,23 +1394,23 @@ end
 ---@param field string `"_disabled"` or `"_hidden"`
 ---@return boolean
 local function effectiveFlag(record, field)
-    while record do
-        local flag = rawget(record, field)
-        if flag == true then
-            return true
-        end
-        -- A predicate's answer is consumer code's and may be secret (Retail
-        -- 12.x); testing a secret for truth raises, so a secret answer counts
-        -- as "no", the answer that keeps the option usable.
-        if flag then
-            local answer = flag(rawget(record, "_info"))
-            if not isSecret(answer) and answer then
-                return true
-            end
-        end
-        record = rawget(record, "_parent")
+  while record do
+    local flag = rawget(record, field)
+    if flag == true then
+      return true
     end
-    return false
+    -- A predicate's answer is consumer code's and may be secret (Retail
+    -- 12.x); testing a secret for truth raises, so a secret answer counts
+    -- as "no", the answer that keeps the option usable.
+    if flag then
+      local answer = flag(rawget(record, "_info"))
+      if not isSecret(answer) and answer then
+        return true
+      end
+    end
+    record = rawget(record, "_parent")
+  end
+  return false
 end
 
 -- Tree methods ---------------------------------------------------------------
@@ -1440,9 +1421,9 @@ end
 ---@param path string
 ---@return any value
 local function treeGet(self, path)
-    validateTree(self, "OptionsKit.Tree:Get", 3)
-    local record = findValueRecord(self, path, "OptionsKit.Tree:Get", 3)
-    return readValue(self, record, "OptionsKit.Tree:Get", 3)
+  validateTree(self, "OptionsKit.Tree:Get", 3)
+  local record = findValueRecord(self, path, "OptionsKit.Tree:Get", 3)
+  return readValue(self, record, "OptionsKit.Tree:Get", 3)
 end
 
 ---Write the option at `path`: the schema is asserted at the caller's line,
@@ -1454,19 +1435,19 @@ end
 ---@return boolean written
 ---@return string|nil message why `validate` refused
 local function treeSet(self, path, value)
-    validateTree(self, "OptionsKit.Tree:Set", 3)
-    local record = findValueRecord(self, path, "OptionsKit.Tree:Set", 3)
-    if isSecret(value) then
-        error("OptionsKit.Tree:Set value must not be a secret value", 2)
-    end
-    rawget(record, "_schema"):Assert(value, rawget(record, "_setArgument"), 2)
-    local accepted, message = runValidate(record, value)
-    if not accepted then
-        return false, message
-    end
-    writeValue(self, record, value, "OptionsKit.Tree:Set", 3)
-    rawget(self, "_changed"):Fire(self, path, value)
-    return true, nil
+  validateTree(self, "OptionsKit.Tree:Set", 3)
+  local record = findValueRecord(self, path, "OptionsKit.Tree:Set", 3)
+  if isSecret(value) then
+    error("OptionsKit.Tree:Set value must not be a secret value", 2)
+  end
+  rawget(record, "_schema"):Assert(value, rawget(record, "_setArgument"), 2)
+  local accepted, message = runValidate(record, value)
+  if not accepted then
+    return false, message
+  end
+  writeValue(self, record, value, "OptionsKit.Tree:Set", 3)
+  rawget(self, "_changed"):Fire(self, path, value)
+  return true, nil
 end
 
 ---Whether `value` would be accepted at `path`, without writing it: the schema
@@ -1478,21 +1459,21 @@ end
 ---@return boolean accepted
 ---@return string|nil message
 local function treeValidate(self, path, value)
-    validateTree(self, "OptionsKit.Tree:Validate", 3)
-    local record = findValueRecord(self, path, "OptionsKit.Tree:Validate", 3)
-    if isSecret(value) then
-        return false, "secret value"
-    end
-    local valid, failure = rawget(record, "_schema"):Check(value)
-    if not valid then
-        local where = failure.path == "" and "" or failure.path .. ": "
-        return false, where .. "expected " .. failure.expected .. ", found " .. failure.found
-    end
-    local accepted, message = runValidate(record, value)
-    if not accepted or not rawget(record, "_bindScope") then
-        return accepted, message
-    end
-    return validateBound(self, record, value, "OptionsKit.Tree:Validate", 3)
+  validateTree(self, "OptionsKit.Tree:Validate", 3)
+  local record = findValueRecord(self, path, "OptionsKit.Tree:Validate", 3)
+  if isSecret(value) then
+    return false, "secret value"
+  end
+  local valid, failure = rawget(record, "_schema"):Check(value)
+  if not valid then
+    local where = failure.path == "" and "" or failure.path .. ": "
+    return false, where .. "expected " .. failure.expected .. ", found " .. failure.found
+  end
+  local accepted, message = runValidate(record, value)
+  if not accepted or not rawget(record, "_bindScope") then
+    return accepted, message
+  end
+  return validateBound(self, record, value, "OptionsKit.Tree:Validate", 3)
 end
 
 ---Reset a bound option to its SettingsKit default by clearing the stored
@@ -1502,20 +1483,18 @@ end
 ---@param path string
 ---@return any value the default now in effect
 local function treeReset(self, path)
-    validateTree(self, "OptionsKit.Tree:Reset", 3)
-    local record = findValueRecord(self, path, "OptionsKit.Tree:Reset", 3)
-    if not rawget(record, "_bindScope") then
-        error(
-            'OptionsKit.Tree:Reset path "'
-                .. path
-                .. '" is not bound to a database and has no default',
-            2
-        )
-    end
-    writeValue(self, record, nil, "OptionsKit.Tree:Reset", 3)
-    local value = readValue(self, record, "OptionsKit.Tree:Reset", 3)
-    rawget(self, "_changed"):Fire(self, path, value)
-    return value
+  validateTree(self, "OptionsKit.Tree:Reset", 3)
+  local record = findValueRecord(self, path, "OptionsKit.Tree:Reset", 3)
+  if not rawget(record, "_bindScope") then
+    error(
+      'OptionsKit.Tree:Reset path "' .. path .. '" is not bound to a database and has no default',
+      2
+    )
+  end
+  writeValue(self, record, nil, "OptionsKit.Tree:Reset", 3)
+  local value = readValue(self, record, "OptionsKit.Tree:Reset", 3)
+  rawget(self, "_changed"):Fire(self, path, value)
+  return value
 end
 
 ---Run the `func` of the `execute` option at `path`. `confirm` is a renderer's
@@ -1523,12 +1502,12 @@ end
 ---@param self OptionsKit.Tree
 ---@param path string
 local function treeExecute(self, path)
-    validateTree(self, "OptionsKit.Tree:Execute", 3)
-    local record = findRecord(self, path, "OptionsKit.Tree:Execute", 3)
-    if rawget(record, "_kind") ~= KIND_EXECUTE then
-        error('OptionsKit.Tree:Execute path "' .. path .. '" is not an execute option', 2)
-    end
-    rawget(record, "_func")(rawget(record, "_info"))
+  validateTree(self, "OptionsKit.Tree:Execute", 3)
+  local record = findRecord(self, path, "OptionsKit.Tree:Execute", 3)
+  if rawget(record, "_kind") ~= KIND_EXECUTE then
+    error('OptionsKit.Tree:Execute path "' .. path .. '" is not an execute option', 2)
+  end
+  rawget(record, "_func")(rawget(record, "_info"))
 end
 
 ---Whether the option at `path`, or a group above it, is disabled.
@@ -1536,8 +1515,8 @@ end
 ---@param path string
 ---@return boolean
 local function treeIsDisabled(self, path)
-    validateTree(self, "OptionsKit.Tree:IsDisabled", 3)
-    return effectiveFlag(findRecord(self, path, "OptionsKit.Tree:IsDisabled", 3), "_disabled")
+  validateTree(self, "OptionsKit.Tree:IsDisabled", 3)
+  return effectiveFlag(findRecord(self, path, "OptionsKit.Tree:IsDisabled", 3), "_disabled")
 end
 
 ---Whether the option at `path`, or a group above it, is hidden.
@@ -1545,8 +1524,8 @@ end
 ---@param path string
 ---@return boolean
 local function treeIsHidden(self, path)
-    validateTree(self, "OptionsKit.Tree:IsHidden", 3)
-    return effectiveFlag(findRecord(self, path, "OptionsKit.Tree:IsHidden", 3), "_hidden")
+  validateTree(self, "OptionsKit.Tree:IsHidden", 3)
+  return effectiveFlag(findRecord(self, path, "OptionsKit.Tree:IsHidden", 3), "_hidden")
 end
 
 ---Visit every option below the root depth-first, siblings in `order` then
@@ -1555,17 +1534,17 @@ end
 ---@param visitor fun(path: string, kind: OptionsKit.Kind, depth: integer)
 ---@return integer visited
 local function treeWalk(self, visitor)
-    validateTree(self, "OptionsKit.Tree:Walk", 3)
-    if type(visitor) ~= "function" then
-        error("OptionsKit.Tree:Walk visitor must be a function", 2)
-    end
-    local walk = rawget(self, "_walk")
-    local count = #walk
-    for index = 1, count do
-        local record = walk[index]
-        visitor(rawget(record, "_path"), rawget(record, "_kind"), rawget(record, "_depth"))
-    end
-    return count
+  validateTree(self, "OptionsKit.Tree:Walk", 3)
+  if type(visitor) ~= "function" then
+    error("OptionsKit.Tree:Walk visitor must be a function", 2)
+  end
+  local walk = rawget(self, "_walk")
+  local count = #walk
+  for index = 1, count do
+    local record = walk[index]
+    visitor(rawget(record, "_path"), rawget(record, "_kind"), rawget(record, "_depth"))
+  end
+  return count
 end
 
 ---Connect `callback(tree, path, value)` to every `Set` and `Reset`, and to
@@ -1574,11 +1553,11 @@ end
 ---@param callback OptionsKit.ChangeCallback
 ---@return table connection a SignalKit connection
 local function treeOnChange(self, callback)
-    validateTree(self, "OptionsKit.Tree:OnChange", 3)
-    if type(callback) ~= "function" then
-        error("OptionsKit.Tree:OnChange callback must be a function", 2)
-    end
-    return rawget(self, "_changed"):Connect(callback)
+  validateTree(self, "OptionsKit.Tree:OnChange", 3)
+  if type(callback) ~= "function" then
+    error("OptionsKit.Tree:OnChange callback must be a function", 2)
+  end
+  return rawget(self, "_changed"):Connect(callback)
 end
 
 -- Describe -------------------------------------------------------------------
@@ -1608,29 +1587,29 @@ local CYCLE = "<cycle>"
 ---@param ancestors table<table, true>|nil the tables being copied above this one
 ---@return any
 local function snapshotValue(value, db, depth, ancestors)
-    if isSecret(value) or type(value) ~= "table" then
-        return value
+  if isSecret(value) or type(value) ~= "table" then
+    return value
+  end
+  if ancestors ~= nil and ancestors[value] then
+    return CYCLE
+  end
+  if depth > MAX_DEPTH then
+    return DEPTH_EXCEEDED
+  end
+  ancestors = ancestors or {}
+  ancestors[value] = true
+  local copy = {}
+  if db and getmetatable(value) == SETTINGS_VIEW then
+    for key, item in db:Pairs(value) do
+      copy[key] = snapshotValue(item, db, depth + 1, ancestors)
     end
-    if ancestors ~= nil and ancestors[value] then
-        return CYCLE
+  else
+    for key, item in pairs(value) do
+      copy[key] = snapshotValue(item, db, depth + 1, ancestors)
     end
-    if depth > MAX_DEPTH then
-        return DEPTH_EXCEEDED
-    end
-    ancestors = ancestors or {}
-    ancestors[value] = true
-    local copy = {}
-    if db and getmetatable(value) == SETTINGS_VIEW then
-        for key, item in db:Pairs(value) do
-            copy[key] = snapshotValue(item, db, depth + 1, ancestors)
-        end
-    else
-        for key, item in pairs(value) do
-            copy[key] = snapshotValue(item, db, depth + 1, ancestors)
-        end
-    end
-    ancestors[value] = nil
-    return copy
+  end
+  ancestors[value] = nil
+  return copy
 end
 
 ---Copy a `values` table, calling the function first when the values are one.
@@ -1638,23 +1617,23 @@ end
 ---@param level integer
 ---@return table
 local function describeValues(record, level)
-    local values = rawget(record, "_values")
-    if type(values) == "function" then
-        values = values(rawget(record, "_info"))
-        if type(values) ~= "table" then
-            error(
-                'OptionsKit.Tree:Describe values function of "'
-                    .. rawget(record, "_path")
-                    .. '" returned no table',
-                level
-            )
-        end
+  local values = rawget(record, "_values")
+  if type(values) == "function" then
+    values = values(rawget(record, "_info"))
+    if type(values) ~= "table" then
+      error(
+        'OptionsKit.Tree:Describe values function of "'
+          .. rawget(record, "_path")
+          .. '" returned no table',
+        level
+      )
     end
-    local copy = {}
-    for key, text in pairs(values) do
-        copy[key] = text
-    end
-    return copy
+  end
+  local copy = {}
+  for key, text in pairs(values) do
+    copy[key] = text
+  end
+  return copy
 end
 
 ---Build the description of `record` and everything below it.
@@ -1663,74 +1642,70 @@ end
 ---@param level integer
 ---@return OptionsKit.Description
 local function describeRecord(tree, record, level)
-    local kind = rawget(record, "_kind")
-    local node = {
-        kind = kind,
-        path = rawget(record, "_path"),
-        depth = rawget(record, "_depth"),
-        name = rawget(record, "_name"),
-        order = rawget(record, "_order"),
-        disabled = effectiveFlag(record, "_disabled"),
-        hidden = effectiveFlag(record, "_hidden"),
-    }
-    local key = rawget(record, "_key")
-    if key then
-        node.key = key
+  local kind = rawget(record, "_kind")
+  local node = {
+    kind = kind,
+    path = rawget(record, "_path"),
+    depth = rawget(record, "_depth"),
+    name = rawget(record, "_name"),
+    order = rawget(record, "_order"),
+    disabled = effectiveFlag(record, "_disabled"),
+    hidden = effectiveFlag(record, "_hidden"),
+  }
+  local key = rawget(record, "_key")
+  if key then
+    node.key = key
+  end
+  local desc = rawget(record, "_desc")
+  if type(desc) == "function" then
+    desc = desc(rawget(record, "_info"))
+    if type(desc) ~= "string" then
+      error(
+        'OptionsKit.Tree:Describe desc function of "'
+          .. rawget(record, "_path")
+          .. '" returned no string',
+        level
+      )
     end
-    local desc = rawget(record, "_desc")
-    if type(desc) == "function" then
-        desc = desc(rawget(record, "_info"))
-        if type(desc) ~= "string" then
-            error(
-                'OptionsKit.Tree:Describe desc function of "'
-                    .. rawget(record, "_path")
-                    .. '" returned no string',
-                level
-            )
-        end
-    end
-    -- A type test, not a truth test: a `desc` function may return a secret
-    -- string, which is passed through like a getter's secret value.
-    if type(desc) == "string" then
-        node.desc = desc
-    end
-    for field, value in pairs(rawget(record, "_hints")) do
-        node[field] = value
-    end
+  end
+  -- A type test, not a truth test: a `desc` function may return a secret
+  -- string, which is passed through like a getter's secret value.
+  if type(desc) == "string" then
+    node.desc = desc
+  end
+  for field, value in pairs(rawget(record, "_hints")) do
+    node[field] = value
+  end
 
-    if kind == KIND_GROUP then
-        local children = rawget(record, "_children")
-        local described = {}
-        for index = 1, #children do
-            described[index] = describeRecord(tree, children[index], level + 1)
-        end
-        node.children = described
-    elseif VALUE_KINDS[kind] then
-        local bound = rawget(record, "_bindScope") and rawget(tree, "_db") or false
-        node.value = snapshotValue(
-            readValue(tree, record, "OptionsKit.Tree:Describe", level + 1),
-            bound,
-            1,
-            nil
-        )
-        node.schema = rawget(record, "_schema"):Describe()
-        local bind = rawget(record, "_bind")
-        if bind then
-            node.bind = bind
-        end
-        if kind == KIND_SELECT or kind == KIND_MULTISELECT then
-            node.values = describeValues(record, level + 1)
-            local sorting = rawget(record, "_sorting")
-            if sorting then
-                local copy = {}
-                for index = 1, #sorting do
-                    copy[index] = sorting[index]
-                end
-                node.sorting = copy
-            end
-        end
+  if kind == KIND_GROUP then
+    local children = rawget(record, "_children")
+    local described = {}
+    for index = 1, #children do
+      described[index] = describeRecord(tree, children[index], level + 1)
     end
-    return node
+    node.children = described
+  elseif VALUE_KINDS[kind] then
+    local bound = rawget(record, "_bindScope") and rawget(tree, "_db") or false
+    node.value =
+      snapshotValue(readValue(tree, record, "OptionsKit.Tree:Describe", level + 1), bound, 1, nil)
+    node.schema = rawget(record, "_schema"):Describe()
+    local bind = rawget(record, "_bind")
+    if bind then
+      node.bind = bind
+    end
+    if kind == KIND_SELECT or kind == KIND_MULTISELECT then
+      node.values = describeValues(record, level + 1)
+      local sorting = rawget(record, "_sorting")
+      if sorting then
+        local copy = {}
+        for index = 1, #sorting do
+          copy[index] = sorting[index]
+        end
+        node.sorting = copy
+      end
+    end
+  end
+  return node
 end
 
 ---A fresh plain description of the whole tree, for renderers: every option's
@@ -1739,10 +1714,10 @@ end
 ---@param self OptionsKit.Tree
 ---@return OptionsKit.Description root
 local function treeDescribe(self)
-    validateTree(self, "OptionsKit.Tree:Describe", 3)
-    local root = describeRecord(self, rawget(self, "_root"), 3)
-    root.addonName = rawget(self, "_addonName")
-    return root
+  validateTree(self, "OptionsKit.Tree:Describe", 3)
+  local root = describeRecord(self, rawget(self, "_root"), 3)
+  root.addonName = rawget(self, "_addonName")
+  return root
 end
 
 -- Profile options ------------------------------------------------------------
@@ -1765,16 +1740,16 @@ end
 -- The methods the group calls on the database. Checked structurally, as
 -- `options.db` is: SettingsKit API 1 publishes no predicate for its databases.
 local PROFILE_DATABASE_METHODS = {
-    "GetProfile",
-    "SetProfile",
-    "GetProfiles",
-    "CopyProfile",
-    "ResetProfile",
-    "DeleteProfile",
-    "OnProfileChanged",
-    "OnProfileCopied",
-    "OnProfileReset",
-    "OnProfileDeleted",
+  "GetProfile",
+  "SetProfile",
+  "GetProfiles",
+  "CopyProfile",
+  "ResetProfile",
+  "DeleteProfile",
+  "OnProfileChanged",
+  "OnProfileCopied",
+  "OnProfileReset",
+  "OnProfileDeleted",
 }
 
 -- The complete set of fields `ProfileOptions` options accept.
@@ -1787,34 +1762,34 @@ local PROFILE_OPTION_FIELDS = { "name", "order", "description", "localize" }
 -- hook receives, in English. `%s` stands for the current profile's name in
 -- quotes, except in `new.long`, where it is the byte limit.
 local PROFILE_STRINGS = {
-    ["group.name"] = "Profiles",
-    ["group.desc"] = "This character uses the profile %s.",
-    ["intro"] = "Profiles keep separate sets of settings. Choose the one this character uses, "
-        .. "create a new one, copy another profile's settings into it, reset it, or delete one "
-        .. "you no longer need.",
-    ["current.name"] = "Current profile",
-    ["current.desc"] = "The profile this character uses, now %s. Choosing a name that has no "
-        .. "profile yet creates an empty one.",
-    ["new.name"] = "New profile",
-    ["new.desc"] = "Type a name to create an empty profile and switch to it. The name of an "
-        .. "existing profile switches to that profile.",
-    ["new.usage"] = "<profile name>",
-    ["new.blank"] = "a profile name needs a character other than whitespace",
-    ["new.long"] = "a profile name has at most %s bytes",
-    ["copySource.name"] = "Copy from",
-    ["copySource.desc"] = "The profile whose settings replace those of %s when you copy.",
-    ["copy.name"] = "Copy",
-    ["copy.desc"] = "Replace every setting of %s with a copy of the profile chosen above.",
-    ["copy.confirm"] = "Replace the current profile's settings with a copy of the chosen profile?",
-    ["reset.name"] = "Reset profile",
-    ["reset.desc"] = "Return every setting of %s to its default.",
-    ["reset.confirm"] = "Reset the current profile to its defaults?",
-    ["deleteTarget.name"] = "Delete",
-    ["deleteTarget.desc"] = "A profile other than %s, to delete.",
-    ["delete.name"] = "Delete profile",
-    ["delete.desc"] = "Delete the profile chosen above. Characters that used it start on the "
-        .. "default profile next time.",
-    ["delete.confirm"] = "Delete the chosen profile? Its settings cannot be recovered.",
+  ["group.name"] = "Profiles",
+  ["group.desc"] = "This character uses the profile %s.",
+  ["intro"] = "Profiles keep separate sets of settings. Choose the one this character uses, "
+    .. "create a new one, copy another profile's settings into it, reset it, or delete one "
+    .. "you no longer need.",
+  ["current.name"] = "Current profile",
+  ["current.desc"] = "The profile this character uses, now %s. Choosing a name that has no "
+    .. "profile yet creates an empty one.",
+  ["new.name"] = "New profile",
+  ["new.desc"] = "Type a name to create an empty profile and switch to it. The name of an "
+    .. "existing profile switches to that profile.",
+  ["new.usage"] = "<profile name>",
+  ["new.blank"] = "a profile name needs a character other than whitespace",
+  ["new.long"] = "a profile name has at most %s bytes",
+  ["copySource.name"] = "Copy from",
+  ["copySource.desc"] = "The profile whose settings replace those of %s when you copy.",
+  ["copy.name"] = "Copy",
+  ["copy.desc"] = "Replace every setting of %s with a copy of the profile chosen above.",
+  ["copy.confirm"] = "Replace the current profile's settings with a copy of the chosen profile?",
+  ["reset.name"] = "Reset profile",
+  ["reset.desc"] = "Return every setting of %s to its default.",
+  ["reset.confirm"] = "Reset the current profile to its defaults?",
+  ["deleteTarget.name"] = "Delete",
+  ["deleteTarget.desc"] = "A profile other than %s, to delete.",
+  ["delete.name"] = "Delete profile",
+  ["delete.desc"] = "Delete the profile chosen above. Characters that used it start on the "
+    .. "default profile next time.",
+  ["delete.confirm"] = "Delete the chosen profile? Its settings cannot be recovered.",
 }
 
 -- The keys of the group's options, so the paths built at attach and the
@@ -1827,15 +1802,15 @@ local PROFILE_KEY_DELETE_TARGET = "deleteTarget"
 ---dependency, so it is looked up at call time, never at load.
 ---@return table|nil SettingsKit
 local function findSettingsKit()
-    local findPackage = rawget(Registry, "Find")
-    if type(findPackage) ~= "function" then
-        return nil
-    end
-    local SettingsKit = findPackage(Registry, "settingsKit", OPTIONAL_SETTINGSKIT_API)
-    if type(SettingsKit) ~= "table" then
-        return nil
-    end
-    return SettingsKit
+  local findPackage = rawget(Registry, "Find")
+  if type(findPackage) ~= "function" then
+    return nil
+  end
+  local SettingsKit = findPackage(Registry, "settingsKit", OPTIONAL_SETTINGSKIT_API)
+  if type(SettingsKit) ~= "table" then
+    return nil
+  end
+  return SettingsKit
 end
 
 ---Refuse anything but a table offering every method the group calls.
@@ -1843,14 +1818,14 @@ end
 ---@param label string
 ---@param level integer
 local function validateProfileDatabase(db, label, level)
-    if type(db) ~= "table" then
-        error(label .. " must be a SettingsKit database", level)
+  if type(db) ~= "table" then
+    error(label .. " must be a SettingsKit database", level)
+  end
+  for index = 1, #PROFILE_DATABASE_METHODS do
+    if type(db[PROFILE_DATABASE_METHODS[index]]) ~= "function" then
+      error(label .. " must be a SettingsKit database", level)
     end
-    for index = 1, #PROFILE_DATABASE_METHODS do
-        if type(db[PROFILE_DATABASE_METHODS[index]]) ~= "function" then
-            error(label .. " must be a SettingsKit database", level)
-        end
-    end
+  end
 end
 
 ---Read the `ProfileOptions` options into `link`.
@@ -1858,61 +1833,54 @@ end
 ---@param link table
 ---@param level integer
 local function readProfileOptions(options, link, level)
-    if type(options) == "nil" then
-        return
+  if type(options) == "nil" then
+    return
+  end
+  if type(options) ~= "table" then
+    error("OptionsKit:ProfileOptions options must be a table", level)
+  end
+  local firstUnknown = nil
+  for key in pairs(options) do
+    if PROFILE_OPTION_KEYS[key] ~= true then
+      local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
+      if firstUnknown == nil or text < firstUnknown then
+        firstUnknown = text
+      end
     end
-    if type(options) ~= "table" then
-        error("OptionsKit:ProfileOptions options must be a table", level)
-    end
-    local firstUnknown = nil
-    for key in pairs(options) do
-        if PROFILE_OPTION_KEYS[key] ~= true then
-            local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
-            if firstUnknown == nil or text < firstUnknown then
-                firstUnknown = text
-            end
-        end
-    end
-    if firstUnknown ~= nil then
-        error(
-            'OptionsKit:ProfileOptions options contains unknown field "' .. firstUnknown .. '"',
-            level
-        )
-    end
-    -- Refused before the checks below compare them or test them for truth,
-    -- which raises inside OptionsKit for a secret (Retail 12.x).
-    for index = 1, #PROFILE_OPTION_FIELDS do
-        local field = PROFILE_OPTION_FIELDS[index]
-        if isSecret(rawget(options, field)) then
-            error(
-                "OptionsKit:ProfileOptions options." .. field .. " must not be a secret value",
-                level
-            )
-        end
-    end
-    checkOptionalString(
-        rawget(options, "name"),
-        "OptionsKit:ProfileOptions options.name",
-        level + 1
+  end
+  if firstUnknown ~= nil then
+    error(
+      'OptionsKit:ProfileOptions options contains unknown field "' .. firstUnknown .. '"',
+      level
     )
-    local order = rawget(options, "order")
-    if type(order) ~= "nil" then
-        checkNumber(order, "OptionsKit:ProfileOptions options.order", level + 1)
+  end
+  -- Refused before the checks below compare them or test them for truth,
+  -- which raises inside OptionsKit for a secret (Retail 12.x).
+  for index = 1, #PROFILE_OPTION_FIELDS do
+    local field = PROFILE_OPTION_FIELDS[index]
+    if isSecret(rawget(options, field)) then
+      error("OptionsKit:ProfileOptions options." .. field .. " must not be a secret value", level)
     end
-    checkOptionalString(
-        rawget(options, "description"),
-        "OptionsKit:ProfileOptions options.description",
-        level + 1
-    )
-    checkOptionalFunction(
-        rawget(options, "localize"),
-        "OptionsKit:ProfileOptions options.localize",
-        level + 1
-    )
-    link.name = rawget(options, "name") or false
-    link.order = order or false
-    link.description = rawget(options, "description") or false
-    link.localize = rawget(options, "localize") or false
+  end
+  checkOptionalString(rawget(options, "name"), "OptionsKit:ProfileOptions options.name", level + 1)
+  local order = rawget(options, "order")
+  if type(order) ~= "nil" then
+    checkNumber(order, "OptionsKit:ProfileOptions options.order", level + 1)
+  end
+  checkOptionalString(
+    rawget(options, "description"),
+    "OptionsKit:ProfileOptions options.description",
+    level + 1
+  )
+  checkOptionalFunction(
+    rawget(options, "localize"),
+    "OptionsKit:ProfileOptions options.localize",
+    level + 1
+  )
+  link.name = rawget(options, "name") or false
+  link.order = order or false
+  link.description = rawget(options, "description") or false
+  link.localize = rawget(options, "localize") or false
 end
 
 ---The text for `key`: the hook's answer when it is a string, else the English
@@ -1921,15 +1889,15 @@ end
 ---@param key string
 ---@return string
 local function translate(link, key)
-    local default = PROFILE_STRINGS[key]
-    local localize = link.localize
-    if localize then
-        local text = localize(key, default)
-        if type(text) == "string" then
-            return text
-        end
+  local default = PROFILE_STRINGS[key]
+  local localize = link.localize
+  if localize then
+    local text = localize(key, default)
+    if type(text) == "string" then
+      return text
     end
-    return default
+  end
+  return default
 end
 
 ---Put `value` where `template` says `%s`. A function replacement, so a `%` in
@@ -1938,9 +1906,9 @@ end
 ---@param value string
 ---@return string
 local function fill(template, value)
-    return (template:gsub("%%s", function()
-        return value
-    end))
+  return (template:gsub("%%s", function()
+    return value
+  end))
 end
 
 ---The text for `key` with the current profile's name, quoted, filled in.
@@ -1948,7 +1916,7 @@ end
 ---@param key string
 ---@return string
 local function withCurrentProfile(link, key)
-    return fill(translate(link, key), '"' .. link.db:GetProfile() .. '"')
+  return fill(translate(link, key), '"' .. link.db:GetProfile() .. '"')
 end
 
 ---The per-character profile name SettingsKit builds, `"<name> - <realm>"`, or
@@ -1956,23 +1924,23 @@ end
 ---`ProfileOptions`, the way SettingsKit reads it once at `Open`.
 ---@return string|false
 local function readCharacterProfile()
-    -- UnitName and GetRealmName are World of Warcraft client APIs reachable only through the global table.
-    -- selene: allow(global_usage)
-    local unitName = rawget(_G, "UnitName")
-    -- selene: allow(global_usage)
-    local getRealmName = rawget(_G, "GetRealmName")
-    if type(unitName) ~= "function" or type(getRealmName) ~= "function" then
-        return false
-    end
-    local name = unitName("player")
-    local realm = getRealmName()
-    if isSecret(name) or isSecret(realm) then
-        return false
-    end
-    if type(name) ~= "string" or name == "" or type(realm) ~= "string" or realm == "" then
-        return false
-    end
-    return name .. " - " .. realm
+  -- UnitName and GetRealmName are World of Warcraft client APIs reachable only through the global table.
+  -- selene: allow(global_usage)
+  local unitName = rawget(_G, "UnitName")
+  -- selene: allow(global_usage)
+  local getRealmName = rawget(_G, "GetRealmName")
+  if type(unitName) ~= "function" or type(getRealmName) ~= "function" then
+    return false
+  end
+  local name = unitName("player")
+  local realm = getRealmName()
+  if isSecret(name) or isSecret(realm) then
+    return false
+  end
+  if type(name) ~= "string" or name == "" or type(realm) ~= "string" or realm == "" then
+    return false
+  end
+  return name .. " - " .. realm
 end
 
 ---The choices of the current-profile select: every profile, the current one
@@ -1984,33 +1952,33 @@ end
 ---@param link table
 ---@return table<string, string>
 local function currentChoices(link)
-    local choices = {}
-    local names = link.db:GetProfiles()
-    for index = 1, #names do
-        choices[names[index]] = names[index]
-    end
-    local current = link.db:GetProfile()
-    choices[current] = current
-    if link.characterProfile then
-        choices[link.characterProfile] = link.characterProfile
-    end
-    return choices
+  local choices = {}
+  local names = link.db:GetProfiles()
+  for index = 1, #names do
+    choices[names[index]] = names[index]
+  end
+  local current = link.db:GetProfile()
+  choices[current] = current
+  if link.characterProfile then
+    choices[link.characterProfile] = link.characterProfile
+  end
+  return choices
 end
 
 ---Every profile but the current one: what can be copied from or deleted.
 ---@param link table
 ---@return table<string, string>
 local function otherChoices(link)
-    local choices = {}
-    local current = link.db:GetProfile()
-    local names = link.db:GetProfiles()
-    for index = 1, #names do
-        local name = names[index]
-        if name ~= current then
-            choices[name] = name
-        end
+  local choices = {}
+  local current = link.db:GetProfile()
+  local names = link.db:GetProfiles()
+  for index = 1, #names do
+    local name = names[index]
+    if name ~= current then
+      choices[name] = name
     end
-    return choices
+  end
+  return choices
 end
 
 ---Whether `name` is a profile that exists and is not the current one. Walks
@@ -2020,16 +1988,16 @@ end
 ---@param name any a profile name the group stored itself, or `false`
 ---@return boolean
 local function isOtherProfile(link, name)
-    if type(name) ~= "string" or name == link.db:GetProfile() then
-        return false
-    end
-    local names = link.db:GetProfiles()
-    for index = 1, #names do
-        if names[index] == name then
-            return true
-        end
-    end
+  if type(name) ~= "string" or name == link.db:GetProfile() then
     return false
+  end
+  local names = link.db:GetProfiles()
+  for index = 1, #names do
+    if names[index] == name then
+      return true
+    end
+  end
+  return false
 end
 
 ---Switch the database to `name` without the link's own listener firing the
@@ -2041,14 +2009,14 @@ end
 ---@param link table
 ---@param name string
 local function switchProfile(link, name)
-    local db = link.db
-    local outer = link.suppress
-    link.suppress = true
-    local switched, failure = pcall(db.SetProfile, db, name)
-    link.suppress = outer
-    if not switched then
-        error(failure, 0)
-    end
+  local db = link.db
+  local outer = link.suppress
+  link.suppress = true
+  local switched, failure = pcall(db.SetProfile, db, name)
+  link.suppress = outer
+  if not switched then
+    error(failure, 0)
+  end
 end
 
 ---The check the new-profile input runs: SettingsKit's own rules for a profile
@@ -2058,14 +2026,14 @@ end
 ---@return boolean accepted
 ---@return string|nil message
 local function validateNewProfileName(link, name)
-    if not name:find("%S") then
-        return false, translate(link, "new.blank")
-    end
-    local maxLength = link.SettingsKit:GetLimits().maxProfileNameLength
-    if #name > maxLength then
-        return false, fill(translate(link, "new.long"), tostring(maxLength))
-    end
-    return true, nil
+  if not name:find("%S") then
+    return false, translate(link, "new.blank")
+  end
+  local maxLength = link.SettingsKit:GetLimits().maxProfileNameLength
+  if #name > maxLength then
+    return false, fill(translate(link, "new.long"), tostring(maxLength))
+  end
+  return true, nil
 end
 
 ---Raise, at the caller of `Execute`, for a button pressed before its select
@@ -2073,13 +2041,13 @@ end
 ---@param info OptionsKit.Info
 ---@param selectKey string
 local function refuseUnchosen(info, selectKey)
-    local parentPath = info.path:match("^(.*)%.[^.]+$") or ""
-    local selectPath = parentPath == "" and selectKey or parentPath .. "." .. selectKey
-    -- refuseUnchosen <- func <- Execute <- the caller
-    error(
-        "OptionsKit.Tree:Execute " .. info.path .. ' needs "' .. selectPath .. '" to be set first',
-        4
-    )
+  local parentPath = info.path:match("^(.*)%.[^.]+$") or ""
+  local selectPath = parentPath == "" and selectKey or parentPath .. "." .. selectKey
+  -- refuseUnchosen <- func <- Execute <- the caller
+  error(
+    "OptionsKit.Tree:Execute " .. info.path .. ' needs "' .. selectPath .. '" to be set first',
+    4
+  )
 end
 
 ---Build the group's options. Every callback closes over `link` only, so the
@@ -2087,147 +2055,147 @@ end
 ---@param link table
 ---@return table<string, OptionsKit.Option> args
 local function buildProfileArgs(link)
-    local db = link.db
-    return {
-        intro = {
-            type = KIND_DESCRIPTION,
-            name = link.description or translate(link, "intro"),
-            fontSize = "medium",
-            order = 1,
-        },
-        [PROFILE_KEY_CURRENT] = {
-            type = KIND_SELECT,
-            name = translate(link, "current.name"),
-            desc = function()
-                return withCurrentProfile(link, "current.desc")
-            end,
-            order = 2,
-            values = function()
-                return currentChoices(link)
-            end,
-            get = function()
-                return db:GetProfile()
-            end,
-            set = function(_, name)
-                switchProfile(link, name)
-            end,
-        },
-        new = {
-            type = KIND_INPUT,
-            name = translate(link, "new.name"),
-            desc = translate(link, "new.desc"),
-            usage = translate(link, "new.usage"),
-            order = 3,
-            get = function()
-                return ""
-            end,
-            validate = function(_, name)
-                return validateNewProfileName(link, name)
-            end,
-            -- Not suppressed: the current profile changed, so the link fires
-            -- `current` as for any other switch, beside `Set`'s own `new`.
-            set = function(_, name)
-                db:SetProfile(name)
-            end,
-        },
-        [PROFILE_KEY_COPY_SOURCE] = {
-            type = KIND_SELECT,
-            name = translate(link, "copySource.name"),
-            desc = function()
-                return withCurrentProfile(link, "copySource.desc")
-            end,
-            order = 4,
-            values = function()
-                return otherChoices(link)
-            end,
-            get = function()
-                return isOtherProfile(link, link.copySource) and link.copySource or nil
-            end,
-            set = function(_, name)
-                link.copySource = name
-            end,
-        },
-        copy = {
-            type = KIND_EXECUTE,
-            name = translate(link, "copy.name"),
-            desc = function()
-                return withCurrentProfile(link, "copy.desc")
-            end,
-            confirm = translate(link, "copy.confirm"),
-            order = 5,
-            disabled = function()
-                return not isOtherProfile(link, link.copySource)
-            end,
-            func = function(info)
-                local source = link.copySource
-                if not isOtherProfile(link, source) then
-                    refuseUnchosen(info, PROFILE_KEY_COPY_SOURCE)
-                end
-                db:CopyProfile(source)
-            end,
-        },
-        reset = {
-            type = KIND_EXECUTE,
-            name = translate(link, "reset.name"),
-            desc = function()
-                return withCurrentProfile(link, "reset.desc")
-            end,
-            confirm = translate(link, "reset.confirm"),
-            order = 6,
-            func = function()
-                db:ResetProfile()
-            end,
-        },
-        [PROFILE_KEY_DELETE_TARGET] = {
-            type = KIND_SELECT,
-            name = translate(link, "deleteTarget.name"),
-            desc = function()
-                return withCurrentProfile(link, "deleteTarget.desc")
-            end,
-            order = 7,
-            values = function()
-                return otherChoices(link)
-            end,
-            get = function()
-                return isOtherProfile(link, link.deleteTarget) and link.deleteTarget or nil
-            end,
-            set = function(_, name)
-                link.deleteTarget = name
-            end,
-        },
-        delete = {
-            type = KIND_EXECUTE,
-            name = translate(link, "delete.name"),
-            desc = translate(link, "delete.desc"),
-            confirm = translate(link, "delete.confirm"),
-            order = 8,
-            disabled = function()
-                return not isOtherProfile(link, link.deleteTarget)
-            end,
-            func = function(info)
-                local target = link.deleteTarget
-                if not isOtherProfile(link, target) then
-                    refuseUnchosen(info, PROFILE_KEY_DELETE_TARGET)
-                end
-                -- Forgotten first: the deletion fires the tree's `OnChange`,
-                -- and a listener may choose the next target.
-                link.deleteTarget = false
-                db:DeleteProfile(target)
-            end,
-        },
-    }
+  local db = link.db
+  return {
+    intro = {
+      type = KIND_DESCRIPTION,
+      name = link.description or translate(link, "intro"),
+      fontSize = "medium",
+      order = 1,
+    },
+    [PROFILE_KEY_CURRENT] = {
+      type = KIND_SELECT,
+      name = translate(link, "current.name"),
+      desc = function()
+        return withCurrentProfile(link, "current.desc")
+      end,
+      order = 2,
+      values = function()
+        return currentChoices(link)
+      end,
+      get = function()
+        return db:GetProfile()
+      end,
+      set = function(_, name)
+        switchProfile(link, name)
+      end,
+    },
+    new = {
+      type = KIND_INPUT,
+      name = translate(link, "new.name"),
+      desc = translate(link, "new.desc"),
+      usage = translate(link, "new.usage"),
+      order = 3,
+      get = function()
+        return ""
+      end,
+      validate = function(_, name)
+        return validateNewProfileName(link, name)
+      end,
+      -- Not suppressed: the current profile changed, so the link fires
+      -- `current` as for any other switch, beside `Set`'s own `new`.
+      set = function(_, name)
+        db:SetProfile(name)
+      end,
+    },
+    [PROFILE_KEY_COPY_SOURCE] = {
+      type = KIND_SELECT,
+      name = translate(link, "copySource.name"),
+      desc = function()
+        return withCurrentProfile(link, "copySource.desc")
+      end,
+      order = 4,
+      values = function()
+        return otherChoices(link)
+      end,
+      get = function()
+        return isOtherProfile(link, link.copySource) and link.copySource or nil
+      end,
+      set = function(_, name)
+        link.copySource = name
+      end,
+    },
+    copy = {
+      type = KIND_EXECUTE,
+      name = translate(link, "copy.name"),
+      desc = function()
+        return withCurrentProfile(link, "copy.desc")
+      end,
+      confirm = translate(link, "copy.confirm"),
+      order = 5,
+      disabled = function()
+        return not isOtherProfile(link, link.copySource)
+      end,
+      func = function(info)
+        local source = link.copySource
+        if not isOtherProfile(link, source) then
+          refuseUnchosen(info, PROFILE_KEY_COPY_SOURCE)
+        end
+        db:CopyProfile(source)
+      end,
+    },
+    reset = {
+      type = KIND_EXECUTE,
+      name = translate(link, "reset.name"),
+      desc = function()
+        return withCurrentProfile(link, "reset.desc")
+      end,
+      confirm = translate(link, "reset.confirm"),
+      order = 6,
+      func = function()
+        db:ResetProfile()
+      end,
+    },
+    [PROFILE_KEY_DELETE_TARGET] = {
+      type = KIND_SELECT,
+      name = translate(link, "deleteTarget.name"),
+      desc = function()
+        return withCurrentProfile(link, "deleteTarget.desc")
+      end,
+      order = 7,
+      values = function()
+        return otherChoices(link)
+      end,
+      get = function()
+        return isOtherProfile(link, link.deleteTarget) and link.deleteTarget or nil
+      end,
+      set = function(_, name)
+        link.deleteTarget = name
+      end,
+    },
+    delete = {
+      type = KIND_EXECUTE,
+      name = translate(link, "delete.name"),
+      desc = translate(link, "delete.desc"),
+      confirm = translate(link, "delete.confirm"),
+      order = 8,
+      disabled = function()
+        return not isOtherProfile(link, link.deleteTarget)
+      end,
+      func = function(info)
+        local target = link.deleteTarget
+        if not isOtherProfile(link, target) then
+          refuseUnchosen(info, PROFILE_KEY_DELETE_TARGET)
+        end
+        -- Forgotten first: the deletion fires the tree's `OnChange`,
+        -- and a listener may choose the next target.
+        link.deleteTarget = false
+        db:DeleteProfile(target)
+      end,
+    },
+  }
 end
 
 -- The database methods a link connects to, in connection order.
 local PROFILE_SIGNAL_METHODS =
-    { "OnProfileChanged", "OnProfileCopied", "OnProfileReset", "OnProfileDeleted" }
+  { "OnProfileChanged", "OnProfileCopied", "OnProfileReset", "OnProfileDeleted" }
 
 ---Disconnect every connection in `connections`.
 ---@param connections table
 local function disconnectAll(connections)
-    for index = 1, #connections do
-        connections[index]:Disconnect()
-    end
+  for index = 1, #connections do
+    connections[index]:Disconnect()
+  end
 end
 
 ---Attach `link` to the tree `Define` placed its group in, at `path`: connect
@@ -2241,38 +2209,38 @@ end
 ---@param tree OptionsKit.Tree
 ---@param path string the group's path, `""` when the group is the root
 local function attachProfileLink(link, tree, path)
-    local currentPath = path == "" and PROFILE_KEY_CURRENT or path .. "." .. PROFILE_KEY_CURRENT
-    local db = link.db
-    local function notify()
-        if link.suppress then
-            return
-        end
-        rawget(tree, "_changed"):Fire(tree, currentPath, db:GetProfile())
+  local currentPath = path == "" and PROFILE_KEY_CURRENT or path .. "." .. PROFILE_KEY_CURRENT
+  local db = link.db
+  local function notify()
+    if link.suppress then
+      return
     end
-    local connections = {}
-    for index = 1, #PROFILE_SIGNAL_METHODS do
-        local connected, result = pcall(db[PROFILE_SIGNAL_METHODS[index]], db, notify)
-        if not connected then
-            disconnectAll(connections)
-            error(result, 0)
-        end
-        connections[index] = result
+    rawget(tree, "_changed"):Fire(tree, currentPath, db:GetProfile())
+  end
+  local connections = {}
+  for index = 1, #PROFILE_SIGNAL_METHODS do
+    local connected, result = pcall(db[PROFILE_SIGNAL_METHODS[index]], db, notify)
+    if not connected then
+      disconnectAll(connections)
+      error(result, 0)
     end
-    link.connections = connections
-    link.tree = tree
+    connections[index] = result
+  end
+  link.connections = connections
+  link.tree = tree
 end
 
 ---Detach `link` from its tree: disconnect the profile signals, so the group
 ---can be defined again elsewhere.
 ---@param link table
 local function detachProfileLink(link)
-    local connections = link.connections
-    if not connections then
-        return
-    end
-    disconnectAll(connections)
-    link.connections = false
-    link.tree = false
+  local connections = link.connections
+  if not connections then
+    return
+  end
+  disconnectAll(connections)
+  link.connections = false
+  link.tree = false
 end
 
 ---Build a ready-made options group over the profiles of a SettingsKit
@@ -2282,44 +2250,44 @@ end
 ---@param options OptionsKit.ProfileOptionsOptions?
 ---@return OptionsKit.Option group
 local function profileOptions(_, db, options)
-    local SettingsKit = findSettingsKit()
-    if SettingsKit == nil then
-        error("OptionsKit:ProfileOptions needs SettingsKit API 1 to be loaded", 2)
-    end
-    validateProfileDatabase(db, "OptionsKit:ProfileOptions db", 3)
-    local link = {
-        db = db,
-        SettingsKit = SettingsKit,
-        characterProfile = readCharacterProfile(),
-        -- The `ProfileOptions` options, `false` when absent.
-        name = false,
-        order = false,
-        description = false,
-        localize = false,
-        -- The profiles chosen in the copy and delete selects, `false` for none.
-        copySource = false,
-        deleteTarget = false,
-        -- `true` while the group's own `Set` switches the profile.
-        suppress = false,
-        -- Set by `attachProfileLink`, cleared by `detachProfileLink`.
-        tree = false,
-        connections = false,
-    }
-    readProfileOptions(options, link, 3)
+  local SettingsKit = findSettingsKit()
+  if SettingsKit == nil then
+    error("OptionsKit:ProfileOptions needs SettingsKit API 1 to be loaded", 2)
+  end
+  validateProfileDatabase(db, "OptionsKit:ProfileOptions db", 3)
+  local link = {
+    db = db,
+    SettingsKit = SettingsKit,
+    characterProfile = readCharacterProfile(),
+    -- The `ProfileOptions` options, `false` when absent.
+    name = false,
+    order = false,
+    description = false,
+    localize = false,
+    -- The profiles chosen in the copy and delete selects, `false` for none.
+    copySource = false,
+    deleteTarget = false,
+    -- `true` while the group's own `Set` switches the profile.
+    suppress = false,
+    -- Set by `attachProfileLink`, cleared by `detachProfileLink`.
+    tree = false,
+    connections = false,
+  }
+  readProfileOptions(options, link, 3)
 
-    local group = {
-        type = KIND_GROUP,
-        name = link.name or translate(link, "group.name"),
-        desc = function()
-            return withCurrentProfile(link, "group.desc")
-        end,
-        args = buildProfileArgs(link),
-    }
-    if link.order then
-        group.order = link.order
-    end
-    rawset(profileGroups, group, link)
-    return group
+  local group = {
+    type = KIND_GROUP,
+    name = link.name or translate(link, "group.name"),
+    desc = function()
+      return withCurrentProfile(link, "group.desc")
+    end,
+    args = buildProfileArgs(link),
+  }
+  if link.order then
+    group.order = link.order
+  end
+  rawset(profileGroups, group, link)
+  return group
 end
 
 -- Package public API ---------------------------------------------------------
@@ -2333,32 +2301,30 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return number capacity
 local function readCapacityOption(value, default, name, level)
-    if type(value) == "nil" then
-        return default
-    end
-    -- Refused before any comparison: the checks below compare numbers, and a
-    -- secret compared with a number raises inside OptionsKit, not at the caller.
-    if isSecret(value) then
-        error("OptionsKit:Define options." .. name .. " must not be a secret value", level)
-    end
-    if value == UNBOUNDED then
-        return math.huge
-    end
-    if
-        type(value) ~= "number"
-        or value ~= value
-        or value < 1
-        or value == math.huge
-        or math.floor(value) ~= value
-    then
-        error(
-            "OptionsKit:Define options."
-                .. name
-                .. " must be a positive integer or OptionsKit.UNBOUNDED",
-            level
-        )
-    end
-    return value
+  if type(value) == "nil" then
+    return default
+  end
+  -- Refused before any comparison: the checks below compare numbers, and a
+  -- secret compared with a number raises inside OptionsKit, not at the caller.
+  if isSecret(value) then
+    error("OptionsKit:Define options." .. name .. " must not be a secret value", level)
+  end
+  if value == UNBOUNDED then
+    return math.huge
+  end
+  if
+    type(value) ~= "number"
+    or value ~= value
+    or value < 1
+    or value == math.huge
+    or math.floor(value) ~= value
+  then
+    error(
+      "OptionsKit:Define options." .. name .. " must be a positive integer or OptionsKit.UNBOUNDED",
+      level
+    )
+  end
+  return value
 end
 
 ---Read the `maxDepth` option: absent means `MAX_DEPTH`; otherwise an integer
@@ -2367,32 +2333,32 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return integer maxDepth
 local function readMaxDepthOption(value, level)
-    if type(value) == "nil" then
-        return MAX_DEPTH
-    end
-    if isSecret(value) then
-        error("OptionsKit:Define options.maxDepth must not be a secret value", level)
-    end
-    if value == UNBOUNDED then
-        error(
-            "OptionsKit:Define options.maxDepth cannot be OptionsKit.UNBOUNDED: the tree is built on the Lua stack, so the ceiling is "
-                .. MAX_DEPTH_CEILING,
-            level
-        )
-    end
-    if
-        type(value) ~= "number"
-        or value ~= value
-        or value < 1
-        or value > MAX_DEPTH_CEILING
-        or math.floor(value) ~= value
-    then
-        error(
-            "OptionsKit:Define options.maxDepth must be an integer from 1 to " .. MAX_DEPTH_CEILING,
-            level
-        )
-    end
-    return value
+  if type(value) == "nil" then
+    return MAX_DEPTH
+  end
+  if isSecret(value) then
+    error("OptionsKit:Define options.maxDepth must not be a secret value", level)
+  end
+  if value == UNBOUNDED then
+    error(
+      "OptionsKit:Define options.maxDepth cannot be OptionsKit.UNBOUNDED: the tree is built on the Lua stack, so the ceiling is "
+        .. MAX_DEPTH_CEILING,
+      level
+    )
+  end
+  if
+    type(value) ~= "number"
+    or value ~= value
+    or value < 1
+    or value > MAX_DEPTH_CEILING
+    or math.floor(value) ~= value
+  then
+    error(
+      "OptionsKit:Define options.maxDepth must be an integer from 1 to " .. MAX_DEPTH_CEILING,
+      level
+    )
+  end
+  return value
 end
 
 ---Read the `Define` options: `options.db`, checked for the SettingsKit
@@ -2402,54 +2368,50 @@ end
 ---@param level integer
 ---@return table|false db
 local function readDefineOptions(options, context, level)
-    context.maxOptions = MAX_OPTIONS
-    context.maxDepth = MAX_DEPTH
-    context.maxDynamicEntries = MAX_DYNAMIC_ENTRIES
-    if type(options) == "nil" then
-        return false
+  context.maxOptions = MAX_OPTIONS
+  context.maxDepth = MAX_DEPTH
+  context.maxDynamicEntries = MAX_DYNAMIC_ENTRIES
+  if type(options) == "nil" then
+    return false
+  end
+  if type(options) ~= "table" then
+    error("OptionsKit:Define options must be a table", level)
+  end
+  -- Name the alphabetically first unknown field, so the message does not
+  -- depend on hash order, and name a key that is not a string by its type:
+  -- `tostring` could run a caller's `__tostring`.
+  local firstUnknown = nil
+  for key in pairs(options) do
+    if DEFINE_OPTION_KEYS[key] ~= true then
+      local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
+      if firstUnknown == nil or text < firstUnknown then
+        firstUnknown = text
+      end
     end
-    if type(options) ~= "table" then
-        error("OptionsKit:Define options must be a table", level)
-    end
-    -- Name the alphabetically first unknown field, so the message does not
-    -- depend on hash order, and name a key that is not a string by its type:
-    -- `tostring` could run a caller's `__tostring`.
-    local firstUnknown = nil
-    for key in pairs(options) do
-        if DEFINE_OPTION_KEYS[key] ~= true then
-            local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
-            if firstUnknown == nil or text < firstUnknown then
-                firstUnknown = text
-            end
-        end
-    end
-    if firstUnknown ~= nil then
-        error('OptionsKit:Define options contains unknown field "' .. firstUnknown .. '"', level)
-    end
-    context.maxOptions =
-        readCapacityOption(rawget(options, "maxOptions"), MAX_OPTIONS, "maxOptions", level + 1)
-    context.maxDepth = readMaxDepthOption(rawget(options, "maxDepth"), level + 1)
-    context.maxDynamicEntries = readCapacityOption(
-        rawget(options, "maxDynamicEntries"),
-        MAX_DYNAMIC_ENTRIES,
-        "maxDynamicEntries",
-        level + 1
-    )
-    local db = options.db
-    if type(db) == "nil" then
-        return false
-    end
-    if findSettingsKit() == nil then
-        error("OptionsKit:Define options.db needs SettingsKit API 1 to be loaded", level)
-    end
-    if
-        type(db) ~= "table"
-        or type(db.OnChange) ~= "function"
-        or type(db.Validate) ~= "function"
-    then
-        error("OptionsKit:Define options.db must be a SettingsKit database", level)
-    end
-    return db
+  end
+  if firstUnknown ~= nil then
+    error('OptionsKit:Define options contains unknown field "' .. firstUnknown .. '"', level)
+  end
+  context.maxOptions =
+    readCapacityOption(rawget(options, "maxOptions"), MAX_OPTIONS, "maxOptions", level + 1)
+  context.maxDepth = readMaxDepthOption(rawget(options, "maxDepth"), level + 1)
+  context.maxDynamicEntries = readCapacityOption(
+    rawget(options, "maxDynamicEntries"),
+    MAX_DYNAMIC_ENTRIES,
+    "maxDynamicEntries",
+    level + 1
+  )
+  local db = options.db
+  if type(db) == "nil" then
+    return false
+  end
+  if findSettingsKit() == nil then
+    error("OptionsKit:Define options.db needs SettingsKit API 1 to be loaded", level)
+  end
+  if type(db) ~= "table" or type(db.OnChange) ~= "function" or type(db.Validate) ~= "function" then
+    error("OptionsKit:Define options.db must be a SettingsKit database", level)
+  end
+  return db
 end
 
 ---Define the options tree of an addon. The tree is checked in full and copied:
@@ -2460,66 +2422,66 @@ end
 ---@param options OptionsKit.DefineOptions?
 ---@return OptionsKit.Tree tree
 local function define(_, addonName, spec, options)
-    validateAddonName(addonName, "OptionsKit:Define addonName", 3)
-    if rawget(trees, addonName) ~= nil then
-        error('OptionsKit:Define "' .. addonName .. '" already has a tree; Undefine it first', 2)
-    end
-    local context = {
-        db = false,
-        tree = false,
-        addonName = addonName,
-        label = "OptionsKit:Define tree",
-        count = 0,
-        records = {},
-        -- The profile groups met while building, and the path of each.
-        profileLinks = {},
-        profilePaths = {},
-        -- Filled in by `readDefineOptions`: numbers, `math.huge` for
-        -- `OptionsKit.UNBOUNDED`.
-        maxOptions = MAX_OPTIONS,
-        maxDepth = MAX_DEPTH,
-        maxDynamicEntries = MAX_DYNAMIC_ENTRIES,
-    }
-    local db = readDefineOptions(options, context, 3)
+  validateAddonName(addonName, "OptionsKit:Define addonName", 3)
+  if rawget(trees, addonName) ~= nil then
+    error('OptionsKit:Define "' .. addonName .. '" already has a tree; Undefine it first', 2)
+  end
+  local context = {
+    db = false,
+    tree = false,
+    addonName = addonName,
+    label = "OptionsKit:Define tree",
+    count = 0,
+    records = {},
+    -- The profile groups met while building, and the path of each.
+    profileLinks = {},
+    profilePaths = {},
+    -- Filled in by `readDefineOptions`: numbers, `math.huge` for
+    -- `OptionsKit.UNBOUNDED`.
+    maxOptions = MAX_OPTIONS,
+    maxDepth = MAX_DEPTH,
+    maxDynamicEntries = MAX_DYNAMIC_ENTRIES,
+  }
+  local db = readDefineOptions(options, context, 3)
 
-    local tree = setmetatable({
-        _schema = TREE_SCHEMA,
-        _addonName = addonName,
-        _defined = false,
-        _db = db,
-        -- The limits the tree was defined under, `math.huge` for unbounded.
-        -- Only `Define` enforces them; they are kept for inspection.
-        _maxOptions = context.maxOptions,
-        _maxDepth = context.maxDepth,
-        _maxDynamicEntries = context.maxDynamicEntries,
-    }, TREE_METATABLE)
-    context.db = db
-    context.tree = tree
-    local root = buildOption(context, spec, false, false, context.label, 3)
-    local walk = {}
-    flatten(root, walk)
+  local tree = setmetatable({
+    _schema = TREE_SCHEMA,
+    _addonName = addonName,
+    _defined = false,
+    _db = db,
+    -- The limits the tree was defined under, `math.huge` for unbounded.
+    -- Only `Define` enforces them; they are kept for inspection.
+    _maxOptions = context.maxOptions,
+    _maxDepth = context.maxDepth,
+    _maxDynamicEntries = context.maxDynamicEntries,
+  }, TREE_METATABLE)
+  context.db = db
+  context.tree = tree
+  local root = buildOption(context, spec, false, false, context.label, 3)
+  local walk = {}
+  flatten(root, walk)
 
-    rawset(tree, "_root", root)
-    rawset(tree, "_records", context.records)
-    rawset(tree, "_walk", walk)
-    rawset(tree, "_changed", SignalKit:New())
-    -- Attached last: a refusal above leaves no link pointing at this tree,
-    -- and a link that fails to attach frees the ones attached before it.
-    local links = context.profileLinks
-    local paths = context.profilePaths
-    for index = 1, #links do
-        local attached, failure = pcall(attachProfileLink, links[index], tree, paths[index])
-        if not attached then
-            for previous = 1, index - 1 do
-                detachProfileLink(links[previous])
-            end
-            error(failure, 0)
-        end
+  rawset(tree, "_root", root)
+  rawset(tree, "_records", context.records)
+  rawset(tree, "_walk", walk)
+  rawset(tree, "_changed", SignalKit:New())
+  -- Attached last: a refusal above leaves no link pointing at this tree,
+  -- and a link that fails to attach frees the ones attached before it.
+  local links = context.profileLinks
+  local paths = context.profilePaths
+  for index = 1, #links do
+    local attached, failure = pcall(attachProfileLink, links[index], tree, paths[index])
+    if not attached then
+      for previous = 1, index - 1 do
+        detachProfileLink(links[previous])
+      end
+      error(failure, 0)
     end
-    rawset(tree, "_profileLinks", links)
-    rawset(tree, "_defined", true)
-    rawset(trees, addonName, tree)
-    return tree
+  end
+  rawset(tree, "_profileLinks", links)
+  rawset(tree, "_defined", true)
+  rawset(trees, addonName, tree)
+  return tree
 end
 
 ---Return the tree defined for `addonName`, or `nil`.
@@ -2527,8 +2489,8 @@ end
 ---@param addonName string
 ---@return OptionsKit.Tree|nil
 local function getTree(_, addonName)
-    validateAddonName(addonName, "OptionsKit:Get addonName", 3)
-    return rawget(trees, addonName)
+  validateAddonName(addonName, "OptionsKit:Get addonName", 3)
+  return rawget(trees, addonName)
 end
 
 ---Forget the tree of `addonName` and disconnect its `OnChange` listeners. The
@@ -2538,19 +2500,19 @@ end
 ---@param addonName string
 ---@return boolean removed `false` when there was no tree.
 local function undefine(_, addonName)
-    validateAddonName(addonName, "OptionsKit:Undefine addonName", 3)
-    local tree = rawget(trees, addonName)
-    if tree == nil then
-        return false
-    end
-    rawset(trees, addonName, nil)
-    rawset(tree, "_defined", false)
-    rawget(tree, "_changed"):DisconnectAll()
-    local links = rawget(tree, "_profileLinks")
-    for index = 1, #links do
-        detachProfileLink(links[index])
-    end
-    return true
+  validateAddonName(addonName, "OptionsKit:Undefine addonName", 3)
+  local tree = rawget(trees, addonName)
+  if tree == nil then
+    return false
+  end
+  rawset(trees, addonName, nil)
+  rawset(tree, "_defined", false)
+  rawget(tree, "_changed"):DisconnectAll()
+  local links = rawget(tree, "_profileLinks")
+  for index = 1, #links do
+    detachProfileLink(links[index])
+  end
+  return true
 end
 
 -- Commit ---------------------------------------------------------------------
@@ -2579,7 +2541,7 @@ rawset(OptionsKit, "ProfileOptions", profileOptions)
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(OptionsKit) or not validateCurrentState(OptionsKit) then
-    error("MoltenCodes OptionsKit package state is corrupted or incomplete", 2)
+  error("MoltenCodes OptionsKit package state is corrupted or incomplete", 2)
 end
 
 return OptionsKit

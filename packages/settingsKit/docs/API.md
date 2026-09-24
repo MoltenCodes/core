@@ -99,67 +99,67 @@ local S = SchemaKit
 
 -- Every field is optional: a saved variable starts empty.
 local Aura = S.table({
-    fields = {
-        shown = S.optional(S.boolean(), true),
-        color = S.optional(S.array({ of = S.number({ min = 0, max = 1 }), min = 3, max = 4 }), { 1, 1, 1 }),
-        sound = S.optional(S.string({ max = 64 })),
-    },
+  fields = {
+    shown = S.optional(S.boolean(), true),
+    color = S.optional(S.array({ of = S.number({ min = 0, max = 1 }), min = 3, max = 4 }), { 1, 1, 1 }),
+    sound = S.optional(S.string({ max = 64 })),
+  },
 })
 
 local schema = {
-    global = S.table({ fields = { installs = S.optional(S.number({ integer = true, min = 0 }), 0) } }),
-    char = S.table({ fields = { lastZone = S.optional(S.string({ max = 64 })) } }),
-    profile = S.table({
-        fields = {
-            scale = S.optional(S.number({ min = 0.5, max = 2 }), 1),
-            anchor = S.optional(S.enum({ "TOP", "CENTER", "BOTTOM" }), "CENTER"),
-            frame = S.optional(S.table({
-                fields = { x = S.optional(S.number(), 0), y = S.optional(S.number(), 0) },
-            }), {}),
-            -- A keyed section: every spell ID reads as the Aura defaults until set.
-            auras = S.optional(S.map({
-                keys = S.number({ integer = true, min = 1 }),
-                values = S.optional(Aura, {}),
-                max = 256,
-            }), {}),
-        },
-    }),
+  global = S.table({ fields = { installs = S.optional(S.number({ integer = true, min = 0 }), 0) } }),
+  char = S.table({ fields = { lastZone = S.optional(S.string({ max = 64 })) } }),
+  profile = S.table({
+    fields = {
+      scale = S.optional(S.number({ min = 0.5, max = 2 }), 1),
+      anchor = S.optional(S.enum({ "TOP", "CENTER", "BOTTOM" }), "CENTER"),
+      frame = S.optional(S.table({
+        fields = { x = S.optional(S.number(), 0), y = S.optional(S.number(), 0) },
+      }), {}),
+      -- A keyed section: every spell ID reads as the Aura defaults until set.
+      auras = S.optional(S.map({
+        keys = S.number({ integer = true, min = 1 }),
+        values = S.optional(Aura, {}),
+        max = 256,
+      }), {}),
+    },
+  }),
 }
 
 local migrations = {
-    -- Version 2 moved the scale out of the old flat table into the profile.
-    [2] = function(raw)
-        if raw.scale ~= nil then
-            raw.profiles = raw.profiles or {}
-            raw.profiles.Default = raw.profiles.Default or {}
-            raw.profiles.Default.scale = raw.scale
-            raw.scale = nil
-        end
-    end,
+  -- Version 2 moved the scale out of the old flat table into the profile.
+  [2] = function(raw)
+    if raw.scale ~= nil then
+      raw.profiles = raw.profiles or {}
+      raw.profiles.Default = raw.profiles.Default or {}
+      raw.profiles.Default.scale = raw.scale
+      raw.scale = nil
+    end
+  end,
 }
 
 local lifecycle = LifecycleKit:ForAddon(ADDON_NAME)
 
 lifecycle:OnLoaded(function()
-    local db = SettingsKit:Open("MyAddonDB", schema, {
-        defaultProfile = "Default",
-        version = 2,
-        migrations = migrations,
-    })
+  local db = SettingsKit:Open("MyAddonDB", schema, {
+    defaultProfile = "Default",
+    version = 2,
+    migrations = migrations,
+  })
 
-    db.global.installs = db.global.installs + 1
+  db.global.installs = db.global.installs + 1
 
-    db:OnChange("profile", function(_, _, key, value, path)
-        -- path is "" for db.profile.scale, "frame" for db.profile.frame.x,
-        -- "auras[118]" for db.profile.auras[118].shown.
-        MyAddon:ApplySetting(path, key, value)
-    end)
+  db:OnChange("profile", function(_, _, key, value, path)
+    -- path is "" for db.profile.scale, "frame" for db.profile.frame.x,
+    -- "auras[118]" for db.profile.auras[118].shown.
+    MyAddon:ApplySetting(path, key, value)
+  end)
 
-    db:OnProfileChanged(function(_, name, previous)
-        MyAddon:ApplyAll()
-    end)
+  db:OnProfileChanged(function(_, name, previous)
+    MyAddon:ApplyAll()
+  end)
 
-    MyAddon.db = db
+  MyAddon.db = db
 end)
 
 -- Later, anywhere:

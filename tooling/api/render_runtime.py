@@ -12,16 +12,16 @@ The file is `packages/apiKit/src/flavours/<Flavour>.lua`. It resolves the
 installer:
 
     ApiKit:RegisterFlavor("retail", function(api, host)
-        do
-            local source = host.C_AddOnProfiler
-            if source then
-                local target = {}
-                api.addOnProfiler = target
-                api.profiler = target
-                target.measureCall = source.MeasureCall
-            end
+      do
+        local source = host.C_AddOnProfiler
+        if source then
+          local target = {}
+          api.addOnProfiler = target
+          api.profiler = target
+          target.measureCall = source.MeasureCall
         end
-        ...
+      end
+      ...
     end)
 
 The facade runs the installer only when the running client is that flavour
@@ -41,8 +41,10 @@ installer:
 - object types (methods on host objects) produce nothing: they are types.
 
 The output is deterministic and already in the shape StyLua 2.5 produces for
-the repository's configuration (four-space indentation, double quotes), so
-the formatter is a check rather than a step.
+the repository's configuration (two-space indentation, double quotes), so
+the formatter is a check rather than a step. Every nesting level is built from
+`INDENT`, and the wrapping decisions measure the indented line against
+`STYLUA_COLUMN_WIDTH`, so both follow `stylua.toml` from one place each.
 """
 
 from __future__ import annotations
@@ -67,6 +69,11 @@ RESERVED_WRAPPER_NAMES = frozenset({"events", "enums", "constants"})
 #: `column_width` from `stylua.toml`; lines longer than this are wrapped as
 #: StyLua would wrap them.
 STYLUA_COLUMN_WIDTH = 100
+
+#: One level of indentation: `indent_type = "Spaces"` with `indent_width = 2`
+#: from `stylua.toml`. Every nesting level of the generated file is a multiple
+#: of it, so a change to the formatter's width is a change to this one value.
+INDENT = "  "
 
 #: A Lua identifier, which is what a `target.<name>` field access needs.
 LUA_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -95,25 +102,41 @@ def _table_key(name: str) -> str:
     return f"[{_lua_string(name)}]"
 
 
-def _assignment(indent: str, left: str, right: str) -> list[str]:
+def _indent(depth: int) -> str:
+    """The leading whitespace of a line `depth` nesting levels deep."""
+    return INDENT * depth
+
+
+def _assignment(depth: int, left: str, right: str) -> list[str]:
     """`left = right` on one line, or wrapped after `=` the way StyLua wraps a long one.
 
     The column width is the repository's (`stylua.toml`), so the generated file
     is already what the formatter would produce and the format gate stays a
-    check.
+    check. The wrapped right-hand side hangs one level deeper than the
+    statement.
     """
-    line = f"{indent}{left} = {right}"
+    line = f"{_indent(depth)}{left} = {right}"
     if len(line) <= STYLUA_COLUMN_WIDTH:
         return [line]
-    return [f"{indent}{left} =", f"{indent}    {right}"]
+    return [f"{_indent(depth)}{left} =", f"{_indent(depth + 1)}{right}"]
 
 
-def _error_call(indent: str, message: str, level: int) -> list[str]:
-    """`error("...", level)` on one line, or spread over lines the way StyLua spreads a long call."""
-    line = f"{indent}error({message}, {level})"
+def _error_call(depth: int, message: str, level: int) -> list[str]:
+    """`error("...", level)` on one line, or spread over lines the way StyLua spreads a long call.
+
+    A spread call puts each argument one level deeper than the call and the
+    closing parenthesis back at the call's own level.
+    """
+    line = f"{_indent(depth)}error({message}, {level})"
     if len(line) <= STYLUA_COLUMN_WIDTH:
         return [line]
-    return [f"{indent}error(", f"{indent}    {message},", f"{indent}    {level}", f"{indent})"]
+    argument = _indent(depth + 1)
+    return [
+        f"{_indent(depth)}error(",
+        f"{argument}{message},",
+        f"{argument}{level}",
+        f"{_indent(depth)})",
+    ]
 
 
 def _lua_string(text: str) -> str:
@@ -159,27 +182,43 @@ def _dependency_block(flavour: flavours.Flavour) -> list[str]:
         'local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil',
         f'local Registry = type(generations) == "table" and rawget(generations, {REQUIRED_REGISTRY_API}) or nil',
         'if Registry == nil and type(namespace) == "table" then',
-        '    Registry = rawget(namespace, "Registry")',
+        f'{_indent(1)}Registry = rawget(namespace, "Registry")',
         "end",
         f'if type(Registry) ~= "table" or rawget(Registry, "API") ~= {REQUIRED_REGISTRY_API} then',
-        *_error_call("    ", registry_missing, 2),
+        *_error_call(1, registry_missing, 2),
         "end",
         "",
         'local getPackage = rawget(Registry, "Get")',
         'if type(getPackage) ~= "function" then',
-        *_error_call("    ", registry_invalid, 2),
+        *_error_call(1, registry_invalid, 2),
         "end",
         f'local ApiKit = getPackage(Registry, "apiKit", {REQUIRED_API_KIT_API})',
-        "if",
-        '    type(ApiKit) ~= "table"',
-        f'    or rawget(ApiKit, "API") ~= {REQUIRED_API_KIT_API}',
-        '    or type(rawget(ApiKit, "RegisterFlavor")) ~= "function"',
-        "then",
-        *_error_call("    ", facade_missing, 2),
+        *_facade_condition(),
+        *_error_call(1, facade_missing, 2),
         "end",
         "",
         f"ApiKit:RegisterFlavor({_lua_string(flavour.id)}, function(api, host)",
     ]
+
+
+def _facade_condition() -> list[str]:
+    """The `if ... then` that refuses a missing or foreign ApiKit facade.
+
+    StyLua keeps a condition on the `if` line while the whole line fits in
+    `STYLUA_COLUMN_WIDTH` and otherwise puts `if` and `then` on lines of their
+    own with one operand per line, one level deeper; the same decision is made
+    here so the format gate stays a check.
+    """
+    operands = [
+        'type(ApiKit) ~= "table"',
+        f'rawget(ApiKit, "API") ~= {REQUIRED_API_KIT_API}',
+        'type(rawget(ApiKit, "RegisterFlavor")) ~= "function"',
+    ]
+    line = f"if {' or '.join(operands)} then"
+    if len(line) <= STYLUA_COLUMN_WIDTH:
+        return [line]
+    first, *rest = operands
+    return ["if", f"{_indent(1)}{first}", *(f"{_indent(1)}or {operand}" for operand in rest), "then"]
 
 
 def _registration_close(metadata: model.FlavourMetadata) -> list[str]:
@@ -203,53 +242,53 @@ def _namespace_block(namespace: model.Namespace) -> list[str]:
     """Bind one `C_*`-style namespace: only when the host has it, function by function."""
     assert namespace.blizzard_namespace is not None
     lines = [
-        "    do",
-        f"        local source = {_field_access('host', namespace.blizzard_namespace)}",
-        "        if source then",
-        "            local target = {}",
-        f"            {_field_access('api', namespace.wrapper)} = target",
+        f"{_indent(1)}do",
+        f"{_indent(2)}local source = {_field_access('host', namespace.blizzard_namespace)}",
+        f"{_indent(2)}if source then",
+        f"{_indent(3)}local target = {{}}",
+        f"{_indent(3)}{_field_access('api', namespace.wrapper)} = target",
     ]
     if namespace.alias is not None:
-        lines.append(f"            {_field_access('api', namespace.alias)} = target")
+        lines.append(f"{_indent(3)}{_field_access('api', namespace.alias)} = target")
     for function in namespace.functions:
         lines.extend(
             _assignment(
-                "            ",
+                3,
                 _field_access("target", function.wrapper),
                 _field_access("source", function.name),
             )
         )
-    lines.extend(["        end", "    end"])
+    lines.extend([f"{_indent(2)}end", f"{_indent(1)}end"])
     return lines
 
 
 def _global_block(namespace: model.Namespace) -> list[str]:
     """Bind a group of global functions: each read from the host by name."""
     lines = [
-        "    do",
-        "        local target = {}",
-        f"        {_field_access('api', namespace.wrapper)} = target",
+        f"{_indent(1)}do",
+        f"{_indent(2)}local target = {{}}",
+        f"{_indent(2)}{_field_access('api', namespace.wrapper)} = target",
     ]
     if namespace.alias is not None:
-        lines.append(f"        {_field_access('api', namespace.alias)} = target")
+        lines.append(f"{_indent(2)}{_field_access('api', namespace.alias)} = target")
     for function in namespace.functions:
         lines.extend(
             _assignment(
-                "        ", _field_access("target", function.wrapper), _field_access("host", function.name)
+                2, _field_access("target", function.wrapper), _field_access("host", function.name)
             )
         )
-    lines.append("    end")
+    lines.append(f"{_indent(1)}end")
     return lines
 
 
 def _events_block(events: Iterable[model.Event]) -> list[str]:
     events = list(events)
     if not events:
-        return ["    api.events = {}"]
-    lines = ["    api.events = {"]
+        return [f"{_indent(1)}api.events = {{}}"]
+    lines = [f"{_indent(1)}api.events = {{"]
     for event in sorted(events, key=lambda item: item.wrapper):
-        lines.append(f"        {_table_key(event.wrapper)} = {_lua_string(event.literal_name)},")
-    lines.append("    }")
+        lines.append(f"{_indent(2)}{_table_key(event.wrapper)} = {_lua_string(event.literal_name)},")
+    lines.append(f"{_indent(1)}}}")
     return lines
 
 
@@ -263,16 +302,16 @@ def _host_table_block(
     raising.
     """
     lines = [
-        "    do",
-        f"        local source = {_field_access('host', host_table)} or {{}}",
-        "        local target = {}",
-        f"        {_field_access('api', label)} = target",
+        f"{_indent(1)}do",
+        f"{_indent(2)}local source = {_field_access('host', host_table)} or {{}}",
+        f"{_indent(2)}local target = {{}}",
+        f"{_indent(2)}{_field_access('api', label)} = target",
     ]
     for wrapper, name in sorted(entries):
         lines.extend(
-            _assignment("        ", _field_access("target", wrapper), _field_access("source", name))
+            _assignment(2, _field_access("target", wrapper), _field_access("source", name))
         )
-    lines.append("    end")
+    lines.append(f"{_indent(1)}end")
     return lines
 
 

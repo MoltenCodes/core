@@ -43,11 +43,11 @@ local Registry = MoltenCodes.Registry
 
 local EventKit, previousRevision = Registry:Register("eventKit", 1, 7)
 if EventKit == nil then
-    return
+  return
 end
 
 EventKit.Dispatch = function(self, eventName)
-    -- revision 7 implementation
+  -- revision 7 implementation
 end
 ```
 

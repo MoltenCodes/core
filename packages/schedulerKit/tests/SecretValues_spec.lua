@@ -5,7 +5,7 @@ local SOURCE = debug.getinfo(1, "S").short_src
 ---Return the line number of the statement that called this helper.
 ---@return integer line
 local function currentLine()
-    return debug.getinfo(2, "l").currentline
+  return debug.getinfo(2, "l").currentline
 end
 
 ---Assert that a call failed with `message` reported at `expectedLine` of this
@@ -15,8 +15,8 @@ end
 ---@param ok boolean
 ---@param value any
 local function assertReportedAt(expectedLine, message, ok, value)
-    assert.is_false(ok)
-    assert.are.equal(SOURCE .. ":" .. expectedLine .. ": " .. message, value)
+  assert.is_false(ok)
+  assert.are.equal(SOURCE .. ":" .. expectedLine .. ": " .. message, value)
 end
 
 local function noop() end
@@ -25,231 +25,221 @@ local function noop() end
 ---the values `NewSecretValue` returns.
 ---@return table SchedulerKit
 local function loadOnSecretHost()
-    TestEnv.Reset()
-    TestEnv.SetWowProfile("mainline")
-    TestEnv.InstallWowApi()
-    require("Registry")
-    require("TimerKit")
-    return require("SchedulerKit")
+  TestEnv.Reset()
+  TestEnv.SetWowProfile("mainline")
+  TestEnv.InstallWowApi()
+  require("Registry")
+  require("TimerKit")
+  return require("SchedulerKit")
 end
 
 describe("SchedulerKit and secret values", function()
-    local SchedulerKit
-    before_each(function()
-        SchedulerKit = loadOnSecretHost()
+  local SchedulerKit
+  before_each(function()
+    SchedulerKit = loadOnSecretHost()
+  end)
+  after_each(TestEnv.Reset)
+
+  ---Each case calls one public method with a secret where a check would
+  ---compare it, and names the message expected at the caller's line.
+  local cases = {
+    {
+      label = "SchedulerKit:ForAddon addonName",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:ForAddon(secret)
+      end,
+    },
+    {
+      label = "SchedulerKit:CloseAddonScopes addonName",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:CloseAddonScopes(secret)
+      end,
+    },
+    {
+      label = "SchedulerKit:Schedule priority",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Schedule(noop, { priority = secret })
+      end,
+    },
+    {
+      label = "SchedulerKit:Schedule name",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Schedule(noop, { name = secret })
+      end,
+    },
+    {
+      label = "SchedulerKit:After delay",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:After(secret, noop)
+      end,
+    },
+    {
+      label = "SchedulerKit:NextFrame priority",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:NextFrame(noop, { priority = secret })
+      end,
+    },
+    {
+      label = "SchedulerKit:Every interval",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Every(secret, noop)
+      end,
+    },
+    {
+      label = "SchedulerKit.Scope:Schedule priority",
+      call = function(secret, mark)
+        local scope = SchedulerKit:CreateScope()
+        mark()
+        scope:Schedule(noop, { priority = secret })
+      end,
+    },
+    {
+      label = "SchedulerKit.Scope:NextFrame name",
+      call = function(secret, mark)
+        local scope = SchedulerKit:CreateScope()
+        mark()
+        scope:NextFrame(noop, { name = secret })
+      end,
+    },
+    {
+      label = "SchedulerKit.Scope:After delay",
+      call = function(secret, mark)
+        local scope = SchedulerKit:CreateScope()
+        mark()
+        scope:After(secret, noop)
+      end,
+    },
+    {
+      label = "SchedulerKit.Scope:Every interval",
+      call = function(secret, mark)
+        local scope = SchedulerKit:CreateScope()
+        mark()
+        scope:Every(secret, noop)
+      end,
+    },
+    {
+      label = "SchedulerKit:SetFrameBudget milliseconds",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:SetFrameBudget(secret)
+      end,
+    },
+    {
+      label = "SchedulerKit:SetMaxResumesPerFrame count",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:SetMaxResumesPerFrame(secret)
+      end,
+    },
+    {
+      label = "SchedulerKit:Lane name",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Lane(secret)
+      end,
+    },
+    {
+      label = "SchedulerKit:Lane maxInFlight",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Lane("secret-lane", { maxInFlight = secret })
+      end,
+    },
+    {
+      label = "SchedulerKit:Lane retry.attempts",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Lane("secret-lane", { retry = { attempts = secret } })
+      end,
+    },
+    {
+      label = "SchedulerKit:Debounce leading",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Debounce(noop, 1, { leading = secret })
+      end,
+    },
+    {
+      label = "SchedulerKit:Coalesce maxKeys",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Coalesce(noop, 1, { maxKeys = secret })
+      end,
+    },
+    {
+      label = "SchedulerKit:Watch intervalSeconds",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Watch(noop, secret, noop)
+      end,
+    },
+    {
+      label = "SchedulerKit:SetLimits limits.maxLanes",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:SetLimits({ maxLanes = secret })
+      end,
+    },
+  }
+
+  for _, case in ipairs(cases) do
+    local label, call = case.label, case.call
+    it("refuses a secret " .. label .. " at the caller's line", function()
+      local line
+      ---Record the line after the caller's, where each case calls the method.
+      local function mark()
+        line = debug.getinfo(2, "l").currentline + 1
+      end
+      local ok, value = pcall(call, TestEnv.NewSecretValue(), mark)
+      assertReportedAt(line, label .. " must not be a secret value", ok, value)
     end)
-    after_each(TestEnv.Reset)
+  end
 
-    ---Each case calls one public method with a secret where a check would
-    ---compare it, and names the message expected at the caller's line.
-    local cases = {
-        {
-            label = "SchedulerKit:ForAddon addonName",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:ForAddon(secret)
-            end,
-        },
-        {
-            label = "SchedulerKit:CloseAddonScopes addonName",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:CloseAddonScopes(secret)
-            end,
-        },
-        {
-            label = "SchedulerKit:Schedule priority",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:Schedule(noop, { priority = secret })
-            end,
-        },
-        {
-            label = "SchedulerKit:Schedule name",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:Schedule(noop, { name = secret })
-            end,
-        },
-        {
-            label = "SchedulerKit:After delay",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:After(secret, noop)
-            end,
-        },
-        {
-            label = "SchedulerKit:NextFrame priority",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:NextFrame(noop, { priority = secret })
-            end,
-        },
-        {
-            label = "SchedulerKit:Every interval",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:Every(secret, noop)
-            end,
-        },
-        {
-            label = "SchedulerKit.Scope:Schedule priority",
-            call = function(secret, mark)
-                local scope = SchedulerKit:CreateScope()
-                mark()
-                scope:Schedule(noop, { priority = secret })
-            end,
-        },
-        {
-            label = "SchedulerKit.Scope:NextFrame name",
-            call = function(secret, mark)
-                local scope = SchedulerKit:CreateScope()
-                mark()
-                scope:NextFrame(noop, { name = secret })
-            end,
-        },
-        {
-            label = "SchedulerKit.Scope:After delay",
-            call = function(secret, mark)
-                local scope = SchedulerKit:CreateScope()
-                mark()
-                scope:After(secret, noop)
-            end,
-        },
-        {
-            label = "SchedulerKit.Scope:Every interval",
-            call = function(secret, mark)
-                local scope = SchedulerKit:CreateScope()
-                mark()
-                scope:Every(secret, noop)
-            end,
-        },
-        {
-            label = "SchedulerKit:SetFrameBudget milliseconds",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:SetFrameBudget(secret)
-            end,
-        },
-        {
-            label = "SchedulerKit:SetMaxResumesPerFrame count",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:SetMaxResumesPerFrame(secret)
-            end,
-        },
-        {
-            label = "SchedulerKit:Lane name",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:Lane(secret)
-            end,
-        },
-        {
-            label = "SchedulerKit:Lane maxInFlight",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:Lane("secret-lane", { maxInFlight = secret })
-            end,
-        },
-        {
-            label = "SchedulerKit:Lane retry.attempts",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:Lane("secret-lane", { retry = { attempts = secret } })
-            end,
-        },
-        {
-            label = "SchedulerKit:Debounce leading",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:Debounce(noop, 1, { leading = secret })
-            end,
-        },
-        {
-            label = "SchedulerKit:Coalesce maxKeys",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:Coalesce(noop, 1, { maxKeys = secret })
-            end,
-        },
-        {
-            label = "SchedulerKit:Watch intervalSeconds",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:Watch(noop, secret, noop)
-            end,
-        },
-        {
-            label = "SchedulerKit:SetLimits limits.maxLanes",
-            call = function(secret, mark)
-                mark()
-                SchedulerKit:SetLimits({ maxLanes = secret })
-            end,
-        },
-    }
+  it("refuses a secret coalesce key at the caller's line and stores a secret value", function()
+    local delivered
+    local handle = SchedulerKit:Coalesce(function(set)
+      delivered = set.key
+    end, 1)
 
-    for _, case in ipairs(cases) do
-        local label, call = case.label, case.call
-        it("refuses a secret " .. label .. " at the caller's line", function()
-            local line
-            ---Record the line after the caller's, where each case calls the method.
-            local function mark()
-                line = debug.getinfo(2, "l").currentline + 1
-            end
-            local ok, value = pcall(call, TestEnv.NewSecretValue(), mark)
-            assertReportedAt(line, label .. " must not be a secret value", ok, value)
-        end)
-    end
-
-    it("refuses a secret coalesce key at the caller's line and stores a secret value", function()
-        local delivered
-        local handle = SchedulerKit:Coalesce(function(set)
-            delivered = set.key
-        end, 1)
-
-        local line
-        local ok, value = pcall(function()
-            line = currentLine() + 1
-            handle(TestEnv.NewSecretValue())
-        end)
-        assertReportedAt(
-            line,
-            "SchedulerKit coalesce handle key must not be a secret value",
-            ok,
-            value
-        )
-
-        local secretValue = TestEnv.NewSecretValue()
-        assert.is_true(handle("key", secretValue))
-        TestEnv.FireNative(#TestEnv.NativeTimers())
-        assert.are.equal(secretValue, delivered)
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      handle(TestEnv.NewSecretValue())
     end)
+    assertReportedAt(line, "SchedulerKit coalesce handle key must not be a secret value", ok, value)
 
-    it("reports a secret facade-method argument at the caller's own line", function()
-        local line
-        local ok, value = pcall(function()
-            line = currentLine() + 1
-            SchedulerKit:ForAddon(TestEnv.NewSecretValue())
-        end)
-        assertReportedAt(
-            line,
-            "SchedulerKit:ForAddon addonName must not be a secret value",
-            ok,
-            value
-        )
-    end)
+    local secretValue = TestEnv.NewSecretValue()
+    assert.is_true(handle("key", secretValue))
+    TestEnv.FireNative(#TestEnv.NativeTimers())
+    assert.are.equal(secretValue, delivered)
+  end)
 
-    it("still accepts ordinary arguments on a host with secret values", function()
-        local scope = SchedulerKit:ForAddon("SecretHostAddon")
-        local lane = SchedulerKit:Lane("ordinary", { maxInFlight = 2, retry = { attempts = 1 } })
-        local ran = false
-        scope:Schedule(function()
-            ran = true
-        end, { priority = SchedulerKit.Priority.HIGH, name = "ordinary" })
-        SchedulerKit:SetLimits({ maxLanes = SchedulerKit.UNBOUNDED })
-        TestEnv.Tick()
-        assert.is_true(ran)
-        assert.are.equal(lane, SchedulerKit:Lane("ordinary"))
+  it("reports a secret facade-method argument at the caller's own line", function()
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      SchedulerKit:ForAddon(TestEnv.NewSecretValue())
     end)
+    assertReportedAt(line, "SchedulerKit:ForAddon addonName must not be a secret value", ok, value)
+  end)
+
+  it("still accepts ordinary arguments on a host with secret values", function()
+    local scope = SchedulerKit:ForAddon("SecretHostAddon")
+    local lane = SchedulerKit:Lane("ordinary", { maxInFlight = 2, retry = { attempts = 1 } })
+    local ran = false
+    scope:Schedule(function()
+      ran = true
+    end, { priority = SchedulerKit.Priority.HIGH, name = "ordinary" })
+    SchedulerKit:SetLimits({ maxLanes = SchedulerKit.UNBOUNDED })
+    TestEnv.Tick()
+    assert.is_true(ran)
+    assert.are.equal(lane, SchedulerKit:Lane("ordinary"))
+  end)
 end)

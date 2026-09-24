@@ -270,27 +270,27 @@ Saved variables: defaults for everything the user did not change, per-entry defa
 local S = SchemaKit
 
 local Aura = S.table({
-    fields = {
-        shown = S.optional(S.boolean(), true),
-        color = S.optional(S.array({ of = S.number({ min = 0, max = 1 }), min = 3, max = 4 }), { 1, 1, 1 }),
-        sound = S.optional(S.string({ max = 64 })),
-    },
+  fields = {
+    shown = S.optional(S.boolean(), true),
+    color = S.optional(S.array({ of = S.number({ min = 0, max = 1 }), min = 3, max = 4 }), { 1, 1, 1 }),
+    sound = S.optional(S.string({ max = 64 })),
+  },
 })
 
 local Settings = SchemaKit:Seal(S.table({
-    fields = {
-        version = S.optional(S.number({ integer = true, min = 1 }), 1),
-        scale = S.optional(S.number({ min = 0.5, max = 2 }), 1),
-        anchor = S.optional(S.string({ oneOf = { "TOP", "CENTER", "BOTTOM" } }), "CENTER"),
-        auras = S.optional(S.map({ keys = S.number({ integer = true }), values = S.optional(Aura, {}), max = 256 }), {}),
-    },
+  fields = {
+    version = S.optional(S.number({ integer = true, min = 1 }), 1),
+    scale = S.optional(S.number({ min = 0.5, max = 2 }), 1),
+    anchor = S.optional(S.string({ oneOf = { "TOP", "CENTER", "BOTTOM" } }), "CENTER"),
+    auras = S.optional(S.map({ keys = S.number({ integer = true }), values = S.optional(Aura, {}), max = 256 }), {}),
+  },
 }))
 
 local ok, settings = Settings:Apply(MyAddonDB)
 if not ok then
-    local failure = settings
-    print("MyAddon settings ignored at " .. failure.path .. ": " .. failure.rule)
-    ok, settings = Settings:Apply({}) -- every default
+  local failure = settings
+  print("MyAddon settings ignored at " .. failure.path .. ": " .. failure.rule)
+  ok, settings = Settings:Apply({}) -- every default
 end
 ```
 
@@ -302,29 +302,29 @@ An options screen needs the type, the bounds and the default of each setting, an
 
 ```lua
 local Options = SchemaKit:Seal(S.table({
-    fields = {
-        fontSize = S.optional(S.number({ integer = true, min = 8, max = 32 }), 12),
-        outline = S.optional(S.enum({ "NONE", "OUTLINE", "THICKOUTLINE" }), "NONE"),
-        label = S.optional(S.string({ max = 24, pattern = "^[%w ]*$" }), ""),
-    },
+  fields = {
+    fontSize = S.optional(S.number({ integer = true, min = 8, max = 32 }), 12),
+    outline = S.optional(S.enum({ "NONE", "OUTLINE", "THICKOUTLINE" }), "NONE"),
+    label = S.optional(S.string({ max = 24, pattern = "^[%w ]*$" }), ""),
+  },
 }))
 
 local description = Options:Describe()
 for _, name in ipairs(description.fieldNames) do
-    local field = description.fields[name]
-    -- field.kind == "number": a slider from field.min to field.max, step 1 when field.integer
-    -- field.kind == "enum":   a dropdown over field.values
-    -- field.kind == "string": an edit box limited to field.max characters
-    -- field.default:          the reset value
+  local field = description.fields[name]
+  -- field.kind == "number": a slider from field.min to field.max, step 1 when field.integer
+  -- field.kind == "enum":   a dropdown over field.values
+  -- field.kind == "string": an edit box limited to field.max characters
+  -- field.default:          the reset value
 end
 
 local FontSize = SchemaKit:Seal(S.number({ integer = true, min = 8, max = 32 }))
 local function onFontSizeEntered(value)
-    local ok, failure = FontSize:Check(tonumber(value))
-    if not ok then
-        return false, "expected " .. failure.expected
-    end
-    return true
+  local ok, failure = FontSize:Check(tonumber(value))
+  if not ok then
+    return false, "expected " .. failure.expected
+  end
+  return true
 end
 ```
 
@@ -334,26 +334,26 @@ A received message is hostile until checked: every string and collection is boun
 
 ```lua
 local Payload = SchemaKit:Seal(S.table({
-    fields = {
-        kind = S.enum({ "hello", "cooldowns" }),
-        version = S.number({ integer = true, min = 1, max = 1000 }),
-        sender = S.string({ min = 2, max = 64 }),
-        cooldowns = S.optional(S.map({
-            keys = S.number({ integer = true, min = 1 }),
-            values = S.number({ min = 0, max = 86400 }),
-            max = 64,
-        })),
-    },
+  fields = {
+    kind = S.enum({ "hello", "cooldowns" }),
+    version = S.number({ integer = true, min = 1, max = 1000 }),
+    sender = S.string({ min = 2, max = 64 }),
+    cooldowns = S.optional(S.map({
+      keys = S.number({ integer = true, min = 1 }),
+      values = S.number({ min = 0, max = 86400 }),
+      max = 64,
+    })),
+  },
 }))
 
 local function onPayload(payload)
-    local ok, failure = Payload:Check(payload)
-    if not ok then
-        -- Safe to log: the failure never contains the payload's values.
-        debugLog("dropped message: " .. failure.path .. " " .. failure.rule .. " (" .. failure.found .. ")")
-        return
-    end
-    handle(payload)
+  local ok, failure = Payload:Check(payload)
+  if not ok then
+    -- Safe to log: the failure never contains the payload's values.
+    debugLog("dropped message: " .. failure.path .. " " .. failure.rule .. " (" .. failure.found .. ")")
+    return
+  end
+  handle(payload)
 end
 ```
 

@@ -75,7 +75,7 @@ Callbacks receive `(ready, reason)`: `true` when the gate became ready, otherwis
 
 ```lua
 local talents = ReadinessKit:Gate("MyAddon.talents", function()
-    return C_ClassTalents.GetActiveConfigID() ~= nil
+  return C_ClassTalents.GetActiveConfigID() ~= nil
 end, { intervalSeconds = 1, timeoutSeconds = 20 })
 ```
 
@@ -170,9 +170,9 @@ After `Close`, `IsReady()` returns `false`, and `Await`, `Probe`, `Invalidate` a
 
 ```lua
 ReadinessKit:WhenAll({ spellbook, items, talents }, function(ready, reason)
-    if ready then
-        Initialise()
-    end
+  if ready then
+    Initialise()
+  end
 end)
 ```
 

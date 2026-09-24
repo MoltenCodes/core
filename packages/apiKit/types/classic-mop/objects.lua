@@ -260,9 +260,9 @@ function FrameAPICharacterModelBase:SetItem(itemID, appearanceModID, itemVisualI
 ---@param itemVisualID? number
 ---@param itemSubclass? Enum.ItemWeaponSubclass
 function FrameAPICharacterModelBase:SetItemAppearance(
-    itemAppearanceID,
-    itemVisualID,
-    itemSubclass
+  itemAppearanceID,
+  itemVisualID,
+  itemSubclass
 )
 end
 
@@ -345,12 +345,12 @@ function FrameAPICinematicModel:SetTargetDistance(scale) end
 ---@param startPositionScale? number
 ---@param speedMultiplier? number
 function FrameAPICinematicModel:StartPan(
-    panType,
-    durationSeconds,
-    doFade,
-    visKitID,
-    startPositionScale,
-    speedMultiplier
+  panType,
+  durationSeconds,
+  doFade,
+  visKitID,
+  startPositionScale,
+  speedMultiplier
 )
 end
 
@@ -592,9 +592,9 @@ function FrameAPIDressUpModel:SetAutoDress(enabled) end
 ---@param ignoreChildItems? boolean
 ---@return Enum.ItemTryOnReason result
 function FrameAPIDressUpModel:SetItemTransmogInfo(
-    itemTransmogInfo,
-    inventorySlot,
-    ignoreChildItems
+  itemTransmogInfo,
+  inventorySlot,
+  ignoreChildItems
 )
 end
 
@@ -614,9 +614,9 @@ function FrameAPIDressUpModel:SetUseTransmogSkin(enabled) end
 ---@param handSlotName? string
 ---@param spellEnchantID? number
 function FrameAPIDressUpModel:TryOn(
-    linkOrItemModifiedAppearanceID,
-    handSlotName,
-    spellEnchantID
+  linkOrItemModifiedAppearanceID,
+  handSlotName,
+  spellEnchantID
 )
 end
 
@@ -793,15 +793,15 @@ function FrameAPIModelSceneFrame:SetCameraNearClip(nearClip) end
 ---@param upY number
 ---@param upZ number
 function FrameAPIModelSceneFrame:SetCameraOrientationByAxisVectors(
-    forwardX,
-    forwardY,
-    forwardZ,
-    rightX,
-    rightY,
-    rightZ,
-    upX,
-    upY,
-    upZ
+  forwardX,
+  forwardY,
+  forwardZ,
+  rightX,
+  rightY,
+  rightZ,
+  upX,
+  upY,
+  upZ
 )
 end
 
@@ -940,9 +940,9 @@ function FrameAPIModelSceneFrameActor:SetAutoDress(autoDress) end
 ---@param ignoreChildItems? boolean
 ---@return Enum.ItemTryOnReason result
 function FrameAPIModelSceneFrameActor:SetItemTransmogInfo(
-    transmogInfo,
-    inventorySlots,
-    ignoreChildItems
+  transmogInfo,
+  inventorySlots,
+  ignoreChildItems
 )
 end
 
@@ -1067,10 +1067,10 @@ function FrameAPIModelSceneFrameActorBase:SetAlpha(alpha) end
 ---@param animSpeed? number
 ---@param animOffsetSeconds? number
 function FrameAPIModelSceneFrameActorBase:SetAnimation(
-    animation,
-    variation,
-    animSpeed,
-    animOffsetSeconds
+  animation,
+  variation,
+  animSpeed,
+  animOffsetSeconds
 )
 end
 
@@ -1085,10 +1085,10 @@ function FrameAPIModelSceneFrameActorBase:SetDesaturation(strength) end
 ---@param gradientIndex2 number
 ---@param gradientIndex3 number
 function FrameAPIModelSceneFrameActorBase:SetGradientMask(
-    gradientIndex0,
-    gradientIndex1,
-    gradientIndex2,
-    gradientIndex3
+  gradientIndex0,
+  gradientIndex1,
+  gradientIndex2,
+  gradientIndex3
 )
 end
 
@@ -1096,9 +1096,9 @@ end
 ---@param grad1DyeColorID? number
 ---@param grad2DyeColorID? number
 function FrameAPIModelSceneFrameActorBase:SetGradientMaskWithDyes(
-    grad0DyeColorID,
-    grad1DyeColorID,
-    grad2DyeColorID
+  grad0DyeColorID,
+  grad1DyeColorID,
+  grad2DyeColorID
 )
 end
 
@@ -1106,8 +1106,8 @@ end
 ---@param useActivePlayerCustomizations? boolean
 ---@return boolean success
 function FrameAPIModelSceneFrameActorBase:SetModelByCreatureDisplayID(
-    creatureDisplayID,
-    useActivePlayerCustomizations
+  creatureDisplayID,
+  useActivePlayerCustomizations
 )
 end
 
@@ -1131,13 +1131,13 @@ function FrameAPIModelSceneFrameActorBase:SetModelByPath(asset, useMips) end
 ---@param customRaceID? number
 ---@return boolean success
 function FrameAPIModelSceneFrameActorBase:SetModelByUnit(
-    unit,
-    sheatheWeapons,
-    autoDress,
-    hideWeapons,
-    usePlayerNativeForm,
-    holdBowString,
-    customRaceID
+  unit,
+  sheatheWeapons,
+  autoDress,
+  hideWeapons,
+  usePlayerNativeForm,
+  holdBowString,
+  customRaceID
 )
 end
 
@@ -1155,12 +1155,12 @@ function FrameAPIModelSceneFrameActorBase:SetPitch(pitch) end
 ---@param customRaceID? number
 ---@return boolean success
 function FrameAPIModelSceneFrameActorBase:SetPlayerModelFromGlues(
-    characterIndex,
-    sheatheWeapons,
-    autoDress,
-    hideWeapons,
-    usePlayerNativeForm,
-    customRaceID
+  characterIndex,
+  sheatheWeapons,
+  autoDress,
+  hideWeapons,
+  usePlayerNativeForm,
+  customRaceID
 )
 end
 
@@ -1204,9 +1204,9 @@ function FrameAPIModelSceneFrameActorBase:StopAnimationKit() end
 ---@param spellEnchantmentID? number
 ---@return Enum.ItemTryOnReason? reason
 function FrameAPIModelSceneFrameActorBase:TryOn(
-    itemLinkOrItemModifiedAppearanceID,
-    handSlotName,
-    spellEnchantmentID
+  itemLinkOrItemModifiedAppearanceID,
+  handSlotName,
+  spellEnchantmentID
 )
 end
 
@@ -1379,16 +1379,16 @@ local FrameAPIUnitPositionFrame = {}
 ---@param sublayer? number
 ---@param showFacing? boolean
 function FrameAPIUnitPositionFrame:AddUnit(
-    unitTokenString,
-    asset,
-    width,
-    height,
-    r,
-    g,
-    b,
-    a,
-    sublayer,
-    showFacing
+  unitTokenString,
+  asset,
+  width,
+  height,
+  r,
+  g,
+  b,
+  a,
+  sublayer,
+  showFacing
 )
 end
 
@@ -5126,12 +5126,12 @@ function SimpleTextureBase:ResetTexCoord() end
 ---@param wrapModeHorizontal? string
 ---@param wrapModeVertical? string
 function SimpleTextureBase:SetAtlas(
-    atlas,
-    useAtlasSize,
-    filterMode,
-    resetTexCoords,
-    wrapModeHorizontal,
-    wrapModeVertical
+  atlas,
+  useAtlasSize,
+  filterMode,
+  resetTexCoords,
+  wrapModeHorizontal,
+  wrapModeVertical
 )
 end
 
@@ -5193,10 +5193,10 @@ function SimpleTextureBase:SetTexelSnappingBias(bias) end
 ---@param filterMode? string
 ---@return boolean success
 function SimpleTextureBase:SetTexture(
-    textureAsset,
-    wrapModeHorizontal,
-    wrapModeVertical,
-    filterMode
+  textureAsset,
+  wrapModeHorizontal,
+  wrapModeVertical,
+  filterMode
 )
 end
 
@@ -5357,7 +5357,7 @@ function UnitHealPredictionCalculator:SetIncomingHealClampMode(incomingHealClamp
 ---1.0 will mean that incoming heals can extend beyond maximum health.
 ---@param incomingHealOverflowPercent number
 function UnitHealPredictionCalculator:SetIncomingHealOverflowPercent(
-    incomingHealOverflowPercent
+  incomingHealOverflowPercent
 )
 end
 

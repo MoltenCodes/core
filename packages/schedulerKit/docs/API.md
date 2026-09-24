@@ -112,8 +112,8 @@ Priority controls **service preference**, not correctness. A consumer must never
 
 ```lua
 {
-    priority = SchedulerKit.Priority.NORMAL,
-    name = "human-readable diagnostic name",
+  priority = SchedulerKit.Priority.NORMAL,
+  name = "human-readable diagnostic name",
 }
 ```
 
@@ -127,13 +127,13 @@ A scheduled callback receives one Context:
 
 ```lua
 SchedulerKit:Schedule(function(context)
-    for index = 1, #records do
-        process(records[index])
+  for index = 1, #records do
+    process(records[index])
 
-        if context:ShouldYield() then
-            context:Yield()
-        end
+    if context:ShouldYield() then
+      context:Yield()
     end
+  end
 end)
 ```
 
@@ -166,12 +166,12 @@ The fix is always the same: move the yield point out of the C-called function.
 ```lua
 -- Wrong: the yield is inside the protected call.
 SchedulerKit:Schedule(function(context)
-    for index = 1, #records do
-        pcall(process, records[index])
-        if context:ShouldYield() then
-            context:Yield()
-        end
+  for index = 1, #records do
+    pcall(process, records[index])
+    if context:ShouldYield() then
+      context:Yield()
     end
+  end
 end)
 ```
 
@@ -281,7 +281,7 @@ Use `NextFrame()` when the current rendered frame must be excluded:
 
 ```lua
 SchedulerKit:NextFrame(function(context)
-    updateLayout()
+  updateLayout()
 end)
 ```
 
@@ -291,7 +291,7 @@ end)
 
 ```lua
 SchedulerKit:After(0.5, function(context)
-    refresh()
+  refresh()
 end)
 ```
 
@@ -305,7 +305,7 @@ When the TimerKit delay fires, the job moves to `pending` and enters its priorit
 
 ```lua
 local poller = SchedulerKit:Every(5, function(context)
-    refreshRemoteState()
+  refreshRemoteState()
 end)
 ```
 
@@ -350,7 +350,7 @@ The failing job becomes `failed`, preserves the original Lua error object, and u
 
 ```lua
 if job:HasError() then
-    local value = job:GetError()
+  local value = job:GetError()
 end
 ```
 
@@ -360,8 +360,8 @@ SchedulerKit captures the failing coroutine's stack **while that coroutine is st
 
 ```lua
 if job:HasError() then
-    print(job:GetError())            -- the original Lua error object
-    print(job:GetErrorTraceback())   -- where it was raised
+  print(job:GetError())            -- the original Lua error object
+  print(job:GetErrorTraceback())   -- where it was raised
 end
 ```
 
@@ -538,7 +538,7 @@ with the arguments of the **last** call.
 
 ```lua
 local refresh = SchedulerKit:ForAddon("MyAddon"):Debounce(function(reason)
-    rebuildBagIndex(reason)
+  rebuildBagIndex(reason)
 end, 0.2)
 
 refresh("BAG_UPDATE")  -- returns true; call it as often as you like
@@ -584,9 +584,9 @@ collected".
 
 ```lua
 local changed = SchedulerKit:Coalesce(function(units)
-    for unit in pairs(units) do
-        updateFrame(unit)
-    end
+  for unit in pairs(units) do
+    updateFrame(unit)
+  end
 end, 0.1)
 
 changed("player")
@@ -676,17 +676,17 @@ return the same lane, and a call with different options raises.
 
 ```lua
 local inspect = SchedulerKit:Lane("inspect", {
-    maxInFlight = 1,
-    minIntervalSeconds = 1.5,
-    retry = { attempts = 2, backoffSeconds = 2, multiplier = 2, maxBackoffSeconds = 10 },
-    maxQueued = 64,
+  maxInFlight = 1,
+  minIntervalSeconds = 1.5,
+  retry = { attempts = 2, backoffSeconds = 2, multiplier = 2, maxBackoffSeconds = 10 },
+  maxQueued = 64,
 })
 
 local job, reason = inspect:Submit(function(context)
-    NotifyInspect(unit)
-    while not inspectReady(unit) do
-        context:Yield() -- the lane's slot stays taken until this returns
-    end
+  NotifyInspect(unit)
+  while not inspectReady(unit) do
+    context:Yield() -- the lane's slot stays taken until this returns
+  end
 end, { scope = work, name = "inspect " .. unit })
 ```
 

@@ -174,17 +174,17 @@ Records that `key` has **no** value, for `ttlSeconds` from now. The use is a sou
 local versions = CacheKit:NewTtl({ maxEntries = 64, ttlSeconds = 300 })
 
 local function versionOf(peerName)
-    local version, outcome = versions:Get(peerName)
-    if version ~= nil or outcome == "negative" then
-        return version              -- known, or known to be nothing
-    end
-    version = AskPeer(peerName)     -- an ordinary miss
-    if version == nil then
-        versions:PutNegative(peerName, 60)
-    else
-        versions:Set(peerName, version)
-    end
-    return version
+  local version, outcome = versions:Get(peerName)
+  if version ~= nil or outcome == "negative" then
+    return version              -- known, or known to be nothing
+  end
+  version = AskPeer(peerName)     -- an ordinary miss
+  if version == nil then
+    versions:PutNegative(peerName, 60)
+  else
+    versions:Set(peerName, version)
+  end
+  return version
 end
 ```
 
@@ -239,7 +239,7 @@ A closed cache reads as empty: `Get` and `Peek` return `nil` and count nothing, 
 
 ```lua
 local spellName, cache = CacheKit:Memoize(function(spellId)
-    return C_Spell.GetSpellName(spellId) or false
+  return C_Spell.GetSpellName(spellId) or false
 end, { maxEntries = 512, ttlSeconds = 60 })
 
 spellName(133)                 -- computed
@@ -264,12 +264,12 @@ Some answers are complete only later: `C_Item.GetItemInfo` returns `nil` fields 
 
 ```lua
 local itemInfo, cache = CacheKit:Memoize(function(itemId)
-    local name, link = C_Item.GetItemInfo(itemId)
-    return { name = name, link = link }
+  local name, link = C_Item.GetItemInfo(itemId)
+  return { name = name, link = link }
 end, {
-    cacheable = function(info, itemId)
-        return info.name ~= nil
-    end,
+  cacheable = function(info, itemId)
+    return info.name ~= nil
+  end,
 })
 ```
 
@@ -281,32 +281,32 @@ A snapshot is a key-to-value map that `read` rebuilds on every `Refresh`, report
 
 ```lua
 local isSecret = issecretvalue or function()
-    return false
+  return false
 end
 
 -- In a raid every member is "raidN"; in a party the player is "player" and the
 -- others are "party1" to "party4".
 local function groupUnit(index)
-    if IsInRaid() then
-        return "raid" .. index
-    end
-    return index == 1 and "player" or "party" .. (index - 1)
+  if IsInRaid() then
+    return "raid" .. index
+  end
+  return index == 1 and "player" or "party" .. (index - 1)
 end
 
 local roster = CacheKit:NewSnapshot(function(fill)
-    for index = 1, math.max(GetNumGroupMembers(), 1) do
-        local unit = groupUnit(index)
-        local guid = UnitGUID(unit)
-        -- A GUID can be a secret value on Retail 12.x; fill refuses secrets.
-        if guid and not isSecret(guid) then
-            fill(guid, unit)
-        end
+  for index = 1, math.max(GetNumGroupMembers(), 1) do
+    local unit = groupUnit(index)
+    local guid = UnitGUID(unit)
+    -- A GUID can be a secret value on Retail 12.x; fill refuses secrets.
+    if guid and not isSecret(guid) then
+      fill(guid, unit)
     end
+  end
 end, { maxEntries = 40 })
 
 local added, removed, changed = roster:Refresh()
 for index = 1, #added do
-    print("joined", added[index], roster:Get(added[index]))
+  print("joined", added[index], roster:Get(added[index]))
 end
 ```
 
@@ -347,8 +347,8 @@ A lazy tree is a namespace whose values exist compactly (a saved-variables table
 
 ```lua
 local settings = CacheKit:Lazy(function(profileName, section, key)
-    -- Called once per distinct path; the first result is kept unless nil.
-    return ExpandSetting(SavedProfiles[profileName], section, key)
+  -- Called once per distinct path; the first result is kept unless nil.
+  return ExpandSetting(SavedProfiles[profileName], section, key)
 end, { maxEntries = 256 })
 
 local scale = settings:Get("Default", "unitFrames", "scale")   -- resolved
@@ -405,7 +405,7 @@ A bounded first-in, first-out queue over a ring of `capacity` slots allocated on
 local recent = CacheKit:NewQueue(50, "dropOldest")
 recent:Push(message)                -- true, or true plus the message dropped
 for position, kept in recent:Iterate() do
-    print(position, kept)           -- oldest first
+  print(position, kept)           -- oldest first
 end
 local oldest = recent:Pop()
 ```
@@ -437,7 +437,7 @@ On Retail 12.x the client hands tainted code **secret values** in combat and ins
 
 ```lua
 local isSecret = issecretvalue or function()
-    return false
+  return false
 end
 ```
 

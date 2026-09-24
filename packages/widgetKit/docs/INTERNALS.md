@@ -63,10 +63,10 @@ record with `releasing` set.
 
 ```lua
 PoolKit:New({
-    create = function() return dispatch.build(typeRecord) end,
-    destroy = function(widget) dispatch.retire(widget) end,
-    maxCreated = options.maxCreated or 256,
-    generation = version,
+  create = function() return dispatch.build(typeRecord) end,
+  destroy = function(widget) dispatch.retire(widget) end,
+  maxCreated = options.maxCreated or 256,
+  generation = version,
 })
 ```
 

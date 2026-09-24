@@ -135,7 +135,7 @@ The first `GetLocale` for an addon fixes its mode. A later call that names a dif
 
 ```lua
 for _, key in ipairs(LocaleKit:MissingKeys("MyAddon")) do
-    print("untranslated:", key)
+  print("untranslated:", key)
 end
 ```
 

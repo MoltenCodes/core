@@ -77,6 +77,11 @@ TYPES_FILES: tuple[str, ...] = (
 #: `column_width` from `stylua.toml`; no generated line may exceed it.
 STYLUA_COLUMN_WIDTH = 100
 
+#: One level of indentation: `indent_type = "Spaces"` with `indent_width = 2`
+#: from `stylua.toml`. Parameters of a broken function stub and fields of an
+#: enum table sit one level deep.
+INDENT = "  "
+
 #: Documentation lines are wrapped a little short of the StyLua width so that
 #: a prefix (`---`) and an indentation level inside an enum table still fit.
 DOC_COLUMN_WIDTH = 96
@@ -311,7 +316,7 @@ def function_stub_lines(qualified_name: str, parameters: Sequence[str]) -> list[
     lines = [f"function {qualified_name}("]
     for position, parameter in enumerate(parameters):
         separator = "," if position < len(parameters) - 1 else ""
-        lines.append(f"    {parameter}{separator}")
+        lines.append(f"{INDENT}{parameter}{separator}")
     lines.extend([")", "end"])
     return lines
 
@@ -476,8 +481,8 @@ def _write_enum_table(writer: _Writer, enum: model.Enum) -> None:
         return
     writer.line(f"{ENUM_TABLE}.{enum.name} = {{")
     for field in enum.fields:
-        writer.doc(field.documentation, indent="    ")
-        writer.line(f"    {_enum_field_key(field.name)} = {field.value},")
+        writer.doc(field.documentation, indent=INDENT)
+        writer.line(f"{INDENT}{_enum_field_key(field.name)} = {field.value},")
     writer.line("}")
 
 

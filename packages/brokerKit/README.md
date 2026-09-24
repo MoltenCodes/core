@@ -9,18 +9,18 @@ An addon publishing an object:
 local BrokerKit = MoltenCodes.Registries[2]:Get("brokerKit", 1)
 
 local status = BrokerKit:New("MyAddon", {
-    type = "data source",
-    text = "0 ms",
-    icon = [[Interface\AddOns\MyAddon\Icon]],
-    OnClick = function(frame, button)
-        if button == "LeftButton" then
-            MyAddon:ToggleWindow()
-        end
-    end,
-    OnTooltipShow = function(tooltip)
-        tooltip:AddLine("MyAddon")
-        tooltip:AddLine("Click to open the window")
-    end,
+  type = "data source",
+  text = "0 ms",
+  icon = [[Interface\AddOns\MyAddon\Icon]],
+  OnClick = function(frame, button)
+    if button == "LeftButton" then
+      MyAddon:ToggleWindow()
+    end
+  end,
+  OnTooltipShow = function(tooltip)
+    tooltip:AddLine("MyAddon")
+    tooltip:AddLine("Click to open the window")
+  end,
 })
 
 -- Later, as plain fields (the LibDataBroker idiom) or through Set.
@@ -40,19 +40,19 @@ local BrokerKit = MoltenCodes.Registries[2]:Get("brokerKit", 1)
 BrokerKit:AdoptFromLibDataBroker()
 
 local function attach(object)
-    local button = MyPanel:AddButton(object.name, object.icon, object.text)
-    button:SetScript("OnClick", function(frame, mouseButton)
-        if object.OnClick then
-            object.OnClick(frame, mouseButton)
-        end
-    end)
-    object:OnChange("text", function(_, _, text)
-        button:SetText(text)
-    end)
+  local button = MyPanel:AddButton(object.name, object.icon, object.text)
+  button:SetScript("OnClick", function(frame, mouseButton)
+    if object.OnClick then
+      object.OnClick(frame, mouseButton)
+    end
+  end)
+  object:OnChange("text", function(_, _, text)
+    button:SetText(text)
+  end)
 end
 
 for _, object in BrokerKit:Iterate() do
-    attach(object)
+  attach(object)
 end
 BrokerKit:OnObjectAdded(attach)
 ```

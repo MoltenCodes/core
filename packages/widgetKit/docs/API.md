@@ -396,62 +396,62 @@ local WidgetKit = MoltenCodes.Registries[2]:Get("widgetKit", 1)
 
 -- Methods defined once, stored on every widget.
 local function setProgress(self, fraction)
-    self._fraction = fraction
-    self.bar:SetWidth(math.max(1, self.frame:GetWidth() * fraction))
+  self._fraction = fraction
+  self.bar:SetWidth(math.max(1, self.frame:GetWidth() * fraction))
 end
 
 local function onAcquire(self)          -- every default, on every Create
-    self.frame:SetSize(200, 12)
-    self._fraction = 0
-    self.bar:SetWidth(1)
+  self.frame:SetSize(200, 12)
+  self._fraction = 0
+  self.bar:SetWidth(1)
 end
 
 local function onRelease(self)          -- nothing shown survives
-    self._fraction = 0
+  self._fraction = 0
 end
 
 local function onWidthSet(self)         -- a layout resized the widget
-    self.bar:SetWidth(math.max(1, self.frame:GetWidth() * self._fraction))
+  self.bar:SetWidth(math.max(1, self.frame:GetWidth() * self._fraction))
 end
 
 WidgetKit:RegisterType("MyAddonProgress", function()
-    local frame = CreateFrame("Frame")
-    local bar = frame:CreateTexture(nil, "ARTWORK")
-    bar:SetColorTexture(0.2, 0.8, 0.2, 1)
-    bar:SetPoint("TOPLEFT")
-    bar:SetPoint("BOTTOMLEFT")
-    return {
-        frame = frame,
-        bar = bar,
-        _fraction = 0,
-        OnAcquire = onAcquire,
-        OnRelease = onRelease,
-        OnWidthSet = onWidthSet,
-        SetProgress = setProgress,
-    }
+  local frame = CreateFrame("Frame")
+  local bar = frame:CreateTexture(nil, "ARTWORK")
+  bar:SetColorTexture(0.2, 0.8, 0.2, 1)
+  bar:SetPoint("TOPLEFT")
+  bar:SetPoint("BOTTOMLEFT")
+  return {
+    frame = frame,
+    bar = bar,
+    _fraction = 0,
+    OnAcquire = onAcquire,
+    OnRelease = onRelease,
+    OnWidthSet = onWidthSet,
+    SetProgress = setProgress,
+  }
 end, 1)
 
 -- Two equal columns, filled left then right, row by row.
 WidgetKit:RegisterLayout("MyAddonColumns", function(content, children)
-    local half = content:GetWidth() / 2
-    local top = 0
-    for index = 1, #children, 2 do
-        local rowHeight = 0
-        for column = 0, 1 do
-            local child = children[index + column]
-            if child then
-                child.frame:ClearAllPoints()
-                child.frame:SetPoint("TOPLEFT", content, "TOPLEFT", column * half, -top)
-                child:SetWidth(half)
-                if child.content then
-                    child:PerformLayout()
-                end
-                rowHeight = math.max(rowHeight, child:GetHeight())
-            end
+  local half = content:GetWidth() / 2
+  local top = 0
+  for index = 1, #children, 2 do
+    local rowHeight = 0
+    for column = 0, 1 do
+      local child = children[index + column]
+      if child then
+        child.frame:ClearAllPoints()
+        child.frame:SetPoint("TOPLEFT", content, "TOPLEFT", column * half, -top)
+        child:SetWidth(half)
+        if child.content then
+          child:PerformLayout()
         end
-        top = top + rowHeight
+        rowHeight = math.max(rowHeight, child:GetHeight())
+      end
     end
-    return content:GetWidth(), top
+    top = top + rowHeight
+  end
+  return content:GetWidth(), top
 end)
 
 local group = WidgetKit:Create("Group")

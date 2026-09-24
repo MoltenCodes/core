@@ -26,7 +26,7 @@
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local CompatKitTestEnv = FrameworkTestEnv.New({
-    modules = { "Registry", "CompatKit" },
+  modules = { "Registry", "CompatKit" },
 })
 
 --- Path of the runtime source, relative to the repository root the runner
@@ -46,20 +46,20 @@ local sharedReset = CompatKitTestEnv.Reset
 ---@param name string
 ---@param value any
 local function setGlobal(name, value)
-    -- selene: allow(global_usage)
-    rawset(_G, name, value)
+  -- selene: allow(global_usage)
+  rawset(_G, name, value)
 end
 
 ---Clear everything the shared fixture clears, plus the optional Kits'
 ---modules and globals.
 function CompatKitTestEnv.Reset()
-    sharedReset()
-    for index = 1, #OPTIONAL_MODULES do
-        package.loaded[OPTIONAL_MODULES[index]] = nil
-    end
-    for index = 1, #OWNED_GLOBALS do
-        setGlobal(OWNED_GLOBALS[index], nil)
-    end
+  sharedReset()
+  for index = 1, #OPTIONAL_MODULES do
+    package.loaded[OPTIONAL_MODULES[index]] = nil
+  end
+  for index = 1, #OWNED_GLOBALS do
+    setGlobal(OWNED_GLOBALS[index], nil)
+  end
 end
 
 ---Reset, select the client profile `profile` (see `framework/ClientStub.lua`;
@@ -69,19 +69,19 @@ end
 ---@return table CompatKit
 ---@return table Registry
 function CompatKitTestEnv.NewPackageFor(profile)
-    CompatKitTestEnv.Reset()
-    CompatKitTestEnv.SetWowProfile(profile)
-    CompatKitTestEnv.InstallWowApi()
-    local Registry = require("Registry")
-    local CompatKit = require("CompatKit")
-    return CompatKit, Registry
+  CompatKitTestEnv.Reset()
+  CompatKitTestEnv.SetWowProfile(profile)
+  CompatKitTestEnv.InstallWowApi()
+  local Registry = require("Registry")
+  local CompatKit = require("CompatKit")
+  return CompatKit, Registry
 end
 
 ---Load ClientKit over the chain already loaded, as a `.toc` listing it after
 ---CompatKit would.
 ---@return table ClientKit
 function CompatKitTestEnv.LoadClientKit()
-    return require("ClientKit")
+  return require("ClientKit")
 end
 
 ---Load ApiKit over the chain already loaded and, when asked, one committed
@@ -91,20 +91,20 @@ end
 ---@param flavourModule string?
 ---@return table ApiKit
 function CompatKitTestEnv.LoadApiKit(flavourModule)
-    local ApiKit = require("ApiKit")
-    if flavourModule ~= nil then
-        require(flavourModule)
-    end
-    return ApiKit
+  local ApiKit = require("ApiKit")
+  if flavourModule ~= nil then
+    require(flavourModule)
+  end
+  return ApiKit
 end
 
 ---Make the host's `issecretvalue` report `secret` (compared with `rawequal`)
 ---as a secret value. The shared fixture owns and clears this global.
 ---@param secret any
 function CompatKitTestEnv.InstallSecretProbe(secret)
-    setGlobal("issecretvalue", function(value)
-        return rawequal(value, secret)
-    end)
+  setGlobal("issecretvalue", function(value)
+    return rawequal(value, secret)
+  end)
 end
 
 ---Measure the allocation a workload causes, in kilobytes, with the collector
@@ -112,26 +112,26 @@ end
 ---@param workload fun()
 ---@return number kilobytes
 function CompatKitTestEnv.AllocatedKilobytes(workload)
-    collectgarbage()
-    collectgarbage("stop")
-    local before = collectgarbage("count")
-    workload()
-    local after = collectgarbage("count")
-    collectgarbage("restart")
-    return after - before
+  collectgarbage()
+  collectgarbage("stop")
+  local before = collectgarbage("count")
+  workload()
+  local after = collectgarbage("count")
+  collectgarbage("restart")
+  return after - before
 end
 
 ---Read a file relative to the repository root.
 ---@param path string
 ---@return string
 function CompatKitTestEnv.ReadFile(path)
-    local file = io.open(path, "r")
-    if file == nil then
-        error("CompatKitTestEnv cannot read " .. path, 2)
-    end
-    local text = file:read("*a")
-    file:close()
-    return text
+  local file = io.open(path, "r")
+  if file == nil then
+    error("CompatKitTestEnv cannot read " .. path, 2)
+  end
+  local text = file:read("*a")
+  file:close()
+  return text
 end
 
 ---Load the CompatKit source again as a copy carrying `revision`, the way a
@@ -139,19 +139,19 @@ end
 ---@param revision integer
 ---@return table CompatKit
 function CompatKitTestEnv.LoadSourceAtRevision(revision)
-    local patched, replacements = CompatKitTestEnv.ReadFile(SOURCE_PATH):gsub(
-        "local IMPLEMENTATION_REVISION = %d+",
-        "local IMPLEMENTATION_REVISION = " .. revision,
-        1
-    )
-    if replacements ~= 1 then
-        error("CompatKitTestEnv found no IMPLEMENTATION_REVISION in the source", 2)
-    end
-    local chunk, message = loadstring(patched, "@" .. SOURCE_PATH)
-    if chunk == nil then
-        error(message, 2)
-    end
-    return chunk()
+  local patched, replacements = CompatKitTestEnv.ReadFile(SOURCE_PATH):gsub(
+    "local IMPLEMENTATION_REVISION = %d+",
+    "local IMPLEMENTATION_REVISION = " .. revision,
+    1
+  )
+  if replacements ~= 1 then
+    error("CompatKitTestEnv found no IMPLEMENTATION_REVISION in the source", 2)
+  end
+  local chunk, message = loadstring(patched, "@" .. SOURCE_PATH)
+  if chunk == nil then
+    error(message, 2)
+  end
+  return chunk()
 end
 
 return CompatKitTestEnv

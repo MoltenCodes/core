@@ -66,10 +66,10 @@ local SUITE_OPTION_NAMES = { timeoutSeconds = true }
 
 --- How each TestKit status is printed, coloured so a failure stands out.
 local STATUS_LABELS = {
-    passed = "|cff00ff00PASS|r",
-    failed = "|cffff3333FAIL|r",
-    skipped = "|cffffff00SKIP|r",
-    timeout = "|cffff9900TIMEOUT|r",
+  passed = "|cff00ff00PASS|r",
+  failed = "|cffff3333FAIL|r",
+  skipped = "|cffffff00SKIP|r",
+  timeout = "|cffff9900TIMEOUT|r",
 }
 
 -- Public types ----------------------------------------------------------------
@@ -89,22 +89,22 @@ local STATUS_LABELS = {
 ---@param name string
 ---@return any
 local function readHost(name)
-    -- Chat, slash commands, build facts and saved variables are World of
-    -- Warcraft client globals, reachable only through the global table.
-    -- selene: allow(global_usage)
-    return rawget(_G, name)
+  -- Chat, slash commands, build facts and saved variables are World of
+  -- Warcraft client globals, reachable only through the global table.
+  -- selene: allow(global_usage)
+  return rawget(_G, name)
 end
 
 ---Return Registry API 2, raising a load error that names the fix when absent.
 ---@return Registry
 local function resolveRegistry()
-    local namespace = readHost("MoltenCodes")
-    local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
-    local registry = type(generations) == "table" and rawget(generations, REGISTRY_API) or nil
-    if type(registry) ~= "table" or rawget(registry, "API") ~= REGISTRY_API then
-        error(ADDON_NAME .. " requires the MoltenCodes addon (Registry API 2); reinstall it", 0)
-    end
-    return registry
+  local namespace = readHost("MoltenCodes")
+  local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
+  local registry = type(generations) == "table" and rawget(generations, REGISTRY_API) or nil
+  if type(registry) ~= "table" or rawget(registry, "API") ~= REGISTRY_API then
+    error(ADDON_NAME .. " requires the MoltenCodes addon (Registry API 2); reinstall it", 0)
+  end
+  return registry
 end
 
 local Registry = resolveRegistry()
@@ -114,7 +114,7 @@ local TestKit = Registry:Get("testKit", TEST_KIT_API)
 ---@type LifecycleKit|nil
 local LifecycleKit = Registry:Get("lifecycleKit", LIFECYCLE_KIT_API)
 if type(TestKit) == "nil" or type(LifecycleKit) == "nil" then
-    error(ADDON_NAME .. " requires TestKit API 1 and LifecycleKit API 1; reinstall it", 0)
+  error(ADDON_NAME .. " requires TestKit API 1 and LifecycleKit API 1; reinstall it", 0)
 end
 
 --- TestKit keeps at most 64 suites per session by default. Every package test
@@ -160,20 +160,20 @@ local activeRun = nil
 ---replaced, or `false` when SchedulerKit is not loaded.
 ---@return number|false previous
 local function relaxRunawayThreshold()
-    if type(SchedulerKit) == "nil" then
-        return false
-    end
-    local previous = SchedulerKit:GetRunawayThreshold()
-    SchedulerKit:SetRunawayThreshold(RUN_RUNAWAY_THRESHOLD_MS)
-    return previous
+  if type(SchedulerKit) == "nil" then
+    return false
+  end
+  local previous = SchedulerKit:GetRunawayThreshold()
+  SchedulerKit:SetRunawayThreshold(RUN_RUNAWAY_THRESHOLD_MS)
+  return previous
 end
 
 ---Put back the threshold `relaxRunawayThreshold` replaced.
 ---@param previous number|false
 local function restoreRunawayThreshold(previous)
-    if previous ~= false and type(SchedulerKit) ~= "nil" then
-        SchedulerKit:SetRunawayThreshold(previous)
-    end
+  if previous ~= false and type(SchedulerKit) ~= "nil" then
+    SchedulerKit:SetRunawayThreshold(previous)
+  end
 end
 
 -- Chat output -------------------------------------------------------------------
@@ -181,19 +181,19 @@ end
 ---Print one line to the default chat frame, falling back to `print`.
 ---@param text string
 local function say(text)
-    local chatFrame = readHost("DEFAULT_CHAT_FRAME")
-    if type(chatFrame) == "table" and type(chatFrame.AddMessage) == "function" then
-        chatFrame:AddMessage(CHAT_PREFIX .. text)
-    else
-        print(CHAT_PREFIX .. text)
-    end
+  local chatFrame = readHost("DEFAULT_CHAT_FRAME")
+  if type(chatFrame) == "table" and type(chatFrame.AddMessage) == "function" then
+    chatFrame:AddMessage(CHAT_PREFIX .. text)
+  else
+    print(CHAT_PREFIX .. text)
+  end
 end
 
 ---Join a list of strings with commas.
 ---@param names string[]
 ---@return string
 local function joinNames(names)
-    return table.concat(names, ", ")
+  return table.concat(names, ", ")
 end
 
 -- Expected packages ---------------------------------------------------------------
@@ -201,11 +201,11 @@ end
 ---The packages Expected.lua lists, or `nil` when the file was not installed.
 ---@return MoltenCodesTest.ExpectedPackage[]|nil
 local function expectedPackages()
-    local packages = type(private) == "table" and private.expectedPackages or nil
-    if type(packages) ~= "table" then
-        return nil
-    end
-    return packages
+  local packages = type(private) == "table" and private.expectedPackages or nil
+  if type(packages) ~= "table" then
+    return nil
+  end
+  return packages
 end
 
 -- Client facts --------------------------------------------------------------------
@@ -214,11 +214,11 @@ end
 ---@param value any
 ---@return string|number|boolean|nil
 local function plainValue(value)
-    local valueType = type(value)
-    if valueType == "string" or valueType == "number" or valueType == "boolean" then
-        return value
-    end
-    return nil
+  local valueType = type(value)
+  if valueType == "string" or valueType == "number" or valueType == "boolean" then
+    return value
+  end
+  return nil
 end
 
 ---Every Registry entry with the `REVISION` its live facade publishes.
@@ -229,62 +229,62 @@ end
 ---another addon embeds without running anything.
 ---@return table[]
 local function describeLoadedPackages()
-    local expectedById = {}
-    for _, expected in ipairs(expectedPackages() or {}) do
-        expectedById[expected.id] = expected.revision
-    end
+  local expectedById = {}
+  for _, expected in ipairs(expectedPackages() or {}) do
+    expectedById[expected.id] = expected.revision
+  end
 
-    local rows = {}
-    for _, row in ipairs(Registry:Packages()) do
-        local implementation = Registry:Find(row.package, row.api)
-        local facadeRevision = nil
-        if type(implementation) == "table" then
-            facadeRevision = plainValue(rawget(implementation, "REVISION"))
-        end
-        rows[#rows + 1] = {
-            package = row.package,
-            api = row.api,
-            revision = row.revision,
-            status = row.status,
-            facadeRevision = facadeRevision,
-            expectedRevision = expectedById[row.package],
-        }
+  local rows = {}
+  for _, row in ipairs(Registry:Packages()) do
+    local implementation = Registry:Find(row.package, row.api)
+    local facadeRevision = nil
+    if type(implementation) == "table" then
+      facadeRevision = plainValue(rawget(implementation, "REVISION"))
     end
-    return rows
+    rows[#rows + 1] = {
+      package = row.package,
+      api = row.api,
+      revision = row.revision,
+      status = row.status,
+      facadeRevision = facadeRevision,
+      expectedRevision = expectedById[row.package],
+    }
+  end
+  return rows
 end
 
 ---The facts of the client a run happened on: build, flavour, locale, date and
 ---the MoltenCodes packages loaded, taken when the run starts.
 ---@return table
 local function collectClientFacts()
-    local facts = {}
+  local facts = {}
 
-    local getBuildInfo = readHost("GetBuildInfo")
-    if type(getBuildInfo) == "function" then
-        local version, build, buildDate, interface = getBuildInfo()
-        facts.version = plainValue(version)
-        facts.build = plainValue(build)
-        facts.buildDate = plainValue(buildDate)
-        facts.interface = plainValue(interface)
-    end
+  local getBuildInfo = readHost("GetBuildInfo")
+  if type(getBuildInfo) == "function" then
+    local version, build, buildDate, interface = getBuildInfo()
+    facts.version = plainValue(version)
+    facts.build = plainValue(build)
+    facts.buildDate = plainValue(buildDate)
+    facts.interface = plainValue(interface)
+  end
 
-    facts.projectId = plainValue(readHost("WOW_PROJECT_ID"))
+  facts.projectId = plainValue(readHost("WOW_PROJECT_ID"))
 
-    local getLocale = readHost("GetLocale")
-    if type(getLocale) == "function" then
-        facts.locale = plainValue(getLocale())
-    end
+  local getLocale = readHost("GetLocale")
+  if type(getLocale) == "function" then
+    facts.locale = plainValue(getLocale())
+  end
 
-    -- `date` is the client's name for Lua's `os.date`; the client has no `os`.
-    local formatDate = readHost("date")
-    if type(formatDate) == "function" then
-        facts.date = plainValue(formatDate("%Y-%m-%d %H:%M:%S"))
-    end
+  -- `date` is the client's name for Lua's `os.date`; the client has no `os`.
+  local formatDate = readHost("date")
+  if type(formatDate) == "function" then
+    facts.date = plainValue(formatDate("%Y-%m-%d %H:%M:%S"))
+  end
 
-    facts.registryRevision = plainValue(rawget(Registry, "REVISION"))
-    facts.expectedInstalled = expectedPackages() ~= nil
-    facts.packages = describeLoadedPackages()
-    return facts
+  facts.registryRevision = plainValue(rawget(Registry, "REVISION"))
+  facts.expectedInstalled = expectedPackages() ~= nil
+  facts.packages = describeLoadedPackages()
+  return facts
 end
 
 -- Saved results ---------------------------------------------------------------------
@@ -295,27 +295,27 @@ end
 ---table just before this addon's `ADDON_LOADED`, after this file ran.
 ---@return table
 local function savedResults()
-    local saved = readHost(SAVED_VARIABLES_NAME)
-    if type(saved) ~= "table" then
-        saved = {}
-        -- The saved variable is this addon's own global, named in its .toc.
-        -- selene: allow(global_usage)
-        rawset(_G, SAVED_VARIABLES_NAME, saved)
-    end
-    return saved
+  local saved = readHost(SAVED_VARIABLES_NAME)
+  if type(saved) ~= "table" then
+    saved = {}
+    -- The saved variable is this addon's own global, named in its .toc.
+    -- selene: allow(global_usage)
+    rawset(_G, SAVED_VARIABLES_NAME, saved)
+  end
+  return saved
 end
 
 ---Package IDs with saved results, sorted.
 ---@return string[]
 local function savedPackageIds()
-    local ids = {}
-    for packageId in pairs(savedResults()) do
-        if type(packageId) == "string" then
-            ids[#ids + 1] = packageId
-        end
+  local ids = {}
+  for packageId in pairs(savedResults()) do
+    if type(packageId) == "string" then
+      ids[#ids + 1] = packageId
     end
-    table.sort(ids)
-    return ids
+  end
+  table.sort(ids)
+  return ids
 end
 
 -- Reporting a finished run ------------------------------------------------------------
@@ -324,10 +324,10 @@ end
 ---@param totals table
 ---@param status string
 local function countResult(totals, status)
-    totals.tests = totals.tests + 1
-    if type(totals[status]) == "number" then
-        totals[status] = totals[status] + 1
-    end
+  totals.tests = totals.tests + 1
+  if type(totals[status]) == "number" then
+    totals[status] = totals[status] + 1
+  end
 end
 
 ---Turn a failure `Harness:SkipTest` raised into the skip it stands for: the
@@ -335,15 +335,15 @@ end
 ---The report is TestKit's fresh copy, so changing it in place is safe.
 ---@param test table one test of a `TestKit.Report` suite
 local function reclassifyRuntimeSkip(test)
-    if test.status ~= "failed" or type(test.message) ~= "string" then
-        return
-    end
-    local _, markerEnd = test.message:find(RUNTIME_SKIP_MARKER, 1, true)
-    if type(markerEnd) == "nil" then
-        return
-    end
-    test.status = "skipped"
-    test.message = test.message:sub(markerEnd + 1)
+  if test.status ~= "failed" or type(test.message) ~= "string" then
+    return
+  end
+  local _, markerEnd = test.message:find(RUNTIME_SKIP_MARKER, 1, true)
+  if type(markerEnd) == "nil" then
+    return
+  end
+  test.status = "skipped"
+  test.message = test.message:sub(markerEnd + 1)
 end
 
 ---Split a TestKit report into one report per package, each shaped like the
@@ -352,100 +352,98 @@ end
 ---@param report TestKit.Report
 ---@return table<string, table>
 local function reportsByPackage(report)
-    local byPackage = {}
-    for _, suite in ipairs(report.suites) do
-        local packageId = packageBySuiteName[suite.name]
-        if packageId ~= nil then
-            local packageReport = byPackage[packageId]
-            if packageReport == nil then
-                packageReport = {
-                    suites = {},
-                    totals = {
-                        suites = 0,
-                        tests = 0,
-                        passed = 0,
-                        failed = 0,
-                        skipped = 0,
-                        timeout = 0,
-                    },
-                }
-                byPackage[packageId] = packageReport
-            end
-            packageReport.suites[#packageReport.suites + 1] = suite
-            packageReport.totals.suites = packageReport.totals.suites + 1
-            for _, test in ipairs(suite.tests) do
-                reclassifyRuntimeSkip(test)
-                countResult(packageReport.totals, test.status)
-            end
-        end
+  local byPackage = {}
+  for _, suite in ipairs(report.suites) do
+    local packageId = packageBySuiteName[suite.name]
+    if packageId ~= nil then
+      local packageReport = byPackage[packageId]
+      if packageReport == nil then
+        packageReport = {
+          suites = {},
+          totals = {
+            suites = 0,
+            tests = 0,
+            passed = 0,
+            failed = 0,
+            skipped = 0,
+            timeout = 0,
+          },
+        }
+        byPackage[packageId] = packageReport
+      end
+      packageReport.suites[#packageReport.suites + 1] = suite
+      packageReport.totals.suites = packageReport.totals.suites + 1
+      for _, test in ipairs(suite.tests) do
+        reclassifyRuntimeSkip(test)
+        countResult(packageReport.totals, test.status)
+      end
     end
-    return byPackage
+  end
+  return byPackage
 end
 
 ---Print one line per test of a package report.
 ---@param packageReport table
 local function printTestLines(packageReport)
-    for _, suite in ipairs(packageReport.suites) do
-        for _, test in ipairs(suite.tests) do
-            local line = (STATUS_LABELS[test.status] or test.status)
-                .. " "
-                .. suite.name
-                .. ": "
-                .. test.name
-            if type(test.message) == "string" then
-                line = line .. " -- " .. test.message
-            end
-            say(line)
-        end
+  for _, suite in ipairs(packageReport.suites) do
+    for _, test in ipairs(suite.tests) do
+      local line = (STATUS_LABELS[test.status] or test.status)
+        .. " "
+        .. suite.name
+        .. ": "
+        .. test.name
+      if type(test.message) == "string" then
+        line = line .. " -- " .. test.message
+      end
+      say(line)
     end
+  end
 end
 
 ---Print the totals line of one package.
 ---@param packageId string
 ---@param totals table
 local function printTotalsLine(packageId, totals)
-    say(
-        ("%s: %d passed, %d failed, %d skipped, %d timed out (%d tests)"):format(
-            packageId,
-            totals.passed,
-            totals.failed,
-            totals.skipped,
-            totals.timeout,
-            totals.tests
-        )
+  say(
+    ("%s: %d passed, %d failed, %d skipped, %d timed out (%d tests)"):format(
+      packageId,
+      totals.passed,
+      totals.failed,
+      totals.skipped,
+      totals.timeout,
+      totals.tests
     )
+  )
 end
 
 ---Print and save the results of the run `/mct run` started.
 ---@param report TestKit.Report
 local function recordFinishedRun(report)
-    local run = activeRun
-    if run == nil then
-        return
-    end
-    activeRun = nil
-    restoreRunawayThreshold(run.previousRunawayThreshold)
+  local run = activeRun
+  if run == nil then
+    return
+  end
+  activeRun = nil
+  restoreRunawayThreshold(run.previousRunawayThreshold)
 
-    local byPackage = reportsByPackage(report)
-    local saved = savedResults()
-    for _, packageId in ipairs(run.packageIds) do
-        local packageReport = byPackage[packageId]
-            or {
-                suites = {},
-                totals = { suites = 0, tests = 0, passed = 0, failed = 0, skipped = 0, timeout = 0 },
-            }
-        printTestLines(packageReport)
-        printTotalsLine(packageId, packageReport.totals)
-        saved[packageId] = {
-            schema = RESULTS_SCHEMA,
-            package = packageId,
-            client = run.client,
-            report = packageReport,
-        }
-    end
-    say(
-        "results saved in " .. SAVED_VARIABLES_NAME .. "; /reload or log out to write them to disk."
-    )
+  local byPackage = reportsByPackage(report)
+  local saved = savedResults()
+  for _, packageId in ipairs(run.packageIds) do
+    local packageReport = byPackage[packageId]
+      or {
+        suites = {},
+        totals = { suites = 0, tests = 0, passed = 0, failed = 0, skipped = 0, timeout = 0 },
+      }
+    printTestLines(packageReport)
+    printTotalsLine(packageId, packageReport.totals)
+    saved[packageId] = {
+      schema = RESULTS_SCHEMA,
+      package = packageId,
+      client = run.client,
+      report = packageReport,
+    }
+  end
+  say("results saved in " .. SAVED_VARIABLES_NAME .. "; /reload or log out to write them to disk.")
 end
 
 -- Commands ----------------------------------------------------------------------------
@@ -454,162 +452,153 @@ end
 ---@param packageId string
 ---@return boolean
 local function hasSuites(packageId)
-    return suiteNamesByPackage[packageId] ~= nil
+  return suiteNamesByPackage[packageId] ~= nil
 end
 
 ---Queue every suite of the given packages and remember the run.
 ---@param selectedIds string[]
 local function startRun(selectedIds)
-    if activeRun ~= nil then
-        say(
-            "a run is still in progress ("
-                .. joinNames(activeRun.packageIds)
-                .. "); wait for its totals line."
-        )
-        return
-    end
-
-    -- Earlier results would otherwise be part of the next report.
-    TestKit:Reset()
-    activeRun = {
-        packageIds = selectedIds,
-        client = collectClientFacts(),
-        previousRunawayThreshold = relaxRunawayThreshold(),
-    }
-
-    local suiteCount = 0
-    for _, packageId in ipairs(selectedIds) do
-        for _, suiteName in ipairs(suiteNamesByPackage[packageId]) do
-            local queued = TestKit:Run(suiteName)
-            if type(queued) == "number" then
-                suiteCount = suiteCount + queued
-            end
-        end
-    end
-
-    if suiteCount == 0 then
-        restoreRunawayThreshold(activeRun.previousRunawayThreshold)
-        activeRun = nil
-        say("nothing was queued for " .. joinNames(selectedIds) .. ".")
-        return
-    end
+  if activeRun ~= nil then
     say(
-        ("running %s: %d suites. Results follow when every test has finished."):format(
-            joinNames(selectedIds),
-            suiteCount
-        )
+      "a run is still in progress ("
+        .. joinNames(activeRun.packageIds)
+        .. "); wait for its totals line."
     )
+    return
+  end
+
+  -- Earlier results would otherwise be part of the next report.
+  TestKit:Reset()
+  activeRun = {
+    packageIds = selectedIds,
+    client = collectClientFacts(),
+    previousRunawayThreshold = relaxRunawayThreshold(),
+  }
+
+  local suiteCount = 0
+  for _, packageId in ipairs(selectedIds) do
+    for _, suiteName in ipairs(suiteNamesByPackage[packageId]) do
+      local queued = TestKit:Run(suiteName)
+      if type(queued) == "number" then
+        suiteCount = suiteCount + queued
+      end
+    end
+  end
+
+  if suiteCount == 0 then
+    restoreRunawayThreshold(activeRun.previousRunawayThreshold)
+    activeRun = nil
+    say("nothing was queued for " .. joinNames(selectedIds) .. ".")
+    return
+  end
+  say(
+    ("running %s: %d suites. Results follow when every test has finished."):format(
+      joinNames(selectedIds),
+      suiteCount
+    )
+  )
 end
 
 ---`/mct run [package]`.
 ---@param argument string
 local function commandRun(argument)
-    if #packageIds == 0 then
-        say("no package test addon is loaded, so there is nothing to run.")
-        return
-    end
-    if argument == "" then
-        startRun(packageIds)
-        return
-    end
-    if not hasSuites(argument) then
-        say(
-            ('no test suites for package "%s"; loaded: %s.'):format(argument, joinNames(packageIds))
-        )
-        return
-    end
-    startRun({ argument })
+  if #packageIds == 0 then
+    say("no package test addon is loaded, so there is nothing to run.")
+    return
+  end
+  if argument == "" then
+    startRun(packageIds)
+    return
+  end
+  if not hasSuites(argument) then
+    say(('no test suites for package "%s"; loaded: %s.'):format(argument, joinNames(packageIds)))
+    return
+  end
+  startRun({ argument })
 end
 
 ---`/mct list`.
 local function commandList()
-    if #packageIds == 0 then
-        say("no package test addon is loaded.")
-    end
-    for _, packageId in ipairs(packageIds) do
-        say(packageId .. ": " .. joinNames(suiteNamesByPackage[packageId]))
-    end
-    if expectedPackages() == nil then
-        say("Expected.lua is missing; install with python3 -m tooling.client.install.")
-    end
+  if #packageIds == 0 then
+    say("no package test addon is loaded.")
+  end
+  for _, packageId in ipairs(packageIds) do
+    say(packageId .. ": " .. joinNames(suiteNamesByPackage[packageId]))
+  end
+  if expectedPackages() == nil then
+    say("Expected.lua is missing; install with python3 -m tooling.client.install.")
+  end
 end
 
 ---`/mct report`: the totals and failures kept in the saved variable.
 local function commandReport()
-    local ids = savedPackageIds()
-    if #ids == 0 then
-        say("no saved results; run /mct run first.")
-        return
-    end
-    local saved = savedResults()
-    for _, packageId in ipairs(ids) do
-        local entry = saved[packageId]
-        local report = type(entry) == "table" and entry.report or nil
-        if type(report) == "table" and type(report.totals) == "table" then
-            printTotalsLine(packageId, report.totals)
-            for _, suite in ipairs(report.suites or {}) do
-                for _, test in ipairs(suite.tests or {}) do
-                    if test.status ~= "passed" then
-                        local label = STATUS_LABELS[test.status] or tostring(test.status)
-                        say(
-                            "  "
-                                .. label
-                                .. " "
-                                .. tostring(suite.name)
-                                .. ": "
-                                .. tostring(test.name)
-                        )
-                    end
-                end
-            end
+  local ids = savedPackageIds()
+  if #ids == 0 then
+    say("no saved results; run /mct run first.")
+    return
+  end
+  local saved = savedResults()
+  for _, packageId in ipairs(ids) do
+    local entry = saved[packageId]
+    local report = type(entry) == "table" and entry.report or nil
+    if type(report) == "table" and type(report.totals) == "table" then
+      printTotalsLine(packageId, report.totals)
+      for _, suite in ipairs(report.suites or {}) do
+        for _, test in ipairs(suite.tests or {}) do
+          if test.status ~= "passed" then
+            local label = STATUS_LABELS[test.status] or tostring(test.status)
+            say("  " .. label .. " " .. tostring(suite.name) .. ": " .. tostring(test.name))
+          end
         end
+      end
     end
+  end
 end
 
 ---`/mct clear`: forget every saved result.
 local function commandClear()
-    -- The saved variable is this addon's own global, named in its .toc.
-    -- selene: allow(global_usage)
-    rawset(_G, SAVED_VARIABLES_NAME, {})
-    say("saved results cleared; /reload or log out to write the empty table to disk.")
+  -- The saved variable is this addon's own global, named in its .toc.
+  -- selene: allow(global_usage)
+  rawset(_G, SAVED_VARIABLES_NAME, {})
+  say("saved results cleared; /reload or log out to write the empty table to disk.")
 end
 
 ---`/mct help`.
 local function commandHelp()
-    say(SLASH_COMMAND .. " run -- run every loaded package's suites")
-    say(
-        SLASH_COMMAND
-            .. " run <package> -- run one package's suites, for example "
-            .. SLASH_COMMAND
-            .. " run registry"
-    )
-    say(SLASH_COMMAND .. " list -- the loaded packages and their suites")
-    say(SLASH_COMMAND .. " report -- the saved totals and every test that did not pass")
-    say(SLASH_COMMAND .. " clear -- forget every saved result")
-    say(SLASH_COMMAND .. " help -- this list")
+  say(SLASH_COMMAND .. " run -- run every loaded package's suites")
+  say(
+    SLASH_COMMAND
+      .. " run <package> -- run one package's suites, for example "
+      .. SLASH_COMMAND
+      .. " run registry"
+  )
+  say(SLASH_COMMAND .. " list -- the loaded packages and their suites")
+  say(SLASH_COMMAND .. " report -- the saved totals and every test that did not pass")
+  say(SLASH_COMMAND .. " clear -- forget every saved result")
+  say(SLASH_COMMAND .. " help -- this list")
 end
 
 --- `/mct` subcommands by name.
 ---@type table<string, fun(argument: string)>
 local COMMANDS = {
-    run = commandRun,
-    list = commandList,
-    report = commandReport,
-    clear = commandClear,
-    help = commandHelp,
+  run = commandRun,
+  list = commandList,
+  report = commandReport,
+  clear = commandClear,
+  help = commandHelp,
 }
 
 ---Dispatch one `/mct` line.
 ---@param input string
 local function handleSlashCommand(input)
-    local text = type(input) == "string" and input or ""
-    local name, argument = text:match("^%s*(%S*)%s*(.-)%s*$")
-    local command = COMMANDS[(name or ""):lower()]
-    if command == nil then
-        commandHelp()
-        return
-    end
-    command(argument or "")
+  local text = type(input) == "string" and input or ""
+  local name, argument = text:match("^%s*(%S*)%s*(.-)%s*$")
+  local command = COMMANDS[(name or ""):lower()]
+  if command == nil then
+    commandHelp()
+    return
+  end
+  command(argument or "")
 end
 
 -- Public API for package test addons ------------------------------------------------------
@@ -630,29 +619,29 @@ local Harness = { RESULTS_SCHEMA = RESULTS_SCHEMA }
 ---@param options MoltenCodesTest.SuiteOptions|nil
 ---@return table testKitOptions
 local function suiteOptions(addonName, options)
-    local testKitOptions = { phase = "ready", addonName = addonName }
-    if type(options) == "nil" then
-        return testKitOptions
-    end
-    if type(options) ~= "table" then
-        error("MoltenCodesTest:Suite options must be a table or nil", 3)
-    end
-    for name in pairs(options) do
-        if not SUITE_OPTION_NAMES[name] then
-            error("MoltenCodesTest:Suite options." .. tostring(name) .. " is not an option", 3)
-        end
-    end
-    local timeoutSeconds = options.timeoutSeconds
-    if type(timeoutSeconds) ~= "nil" then
-        if
-            type(timeoutSeconds) ~= "number"
-            or not (timeoutSeconds > 0 and timeoutSeconds < math.huge)
-        then
-            error("MoltenCodesTest:Suite options.timeoutSeconds must be a finite number above 0", 3)
-        end
-        testKitOptions.timeoutSeconds = timeoutSeconds
-    end
+  local testKitOptions = { phase = "ready", addonName = addonName }
+  if type(options) == "nil" then
     return testKitOptions
+  end
+  if type(options) ~= "table" then
+    error("MoltenCodesTest:Suite options must be a table or nil", 3)
+  end
+  for name in pairs(options) do
+    if not SUITE_OPTION_NAMES[name] then
+      error("MoltenCodesTest:Suite options." .. tostring(name) .. " is not an option", 3)
+    end
+  end
+  local timeoutSeconds = options.timeoutSeconds
+  if type(timeoutSeconds) ~= "nil" then
+    if
+      type(timeoutSeconds) ~= "number"
+      or not (timeoutSeconds > 0 and timeoutSeconds < math.huge)
+    then
+      error("MoltenCodesTest:Suite options.timeoutSeconds must be a finite number above 0", 3)
+    end
+    testKitOptions.timeoutSeconds = timeoutSeconds
+  end
+  return testKitOptions
 end
 
 ---Register a TestKit suite that tests `packageId`.
@@ -668,41 +657,38 @@ end
 ---@param options MoltenCodesTest.SuiteOptions|nil
 ---@return TestKit.Suite
 function Harness:Suite(packageId, part, addonName, options)
-    if self ~= Harness then
-        error("MoltenCodesTest:Suite must be called on the MoltenCodesTest harness", 2)
-    end
-    if type(packageId) ~= "string" or not packageId:match(IDENTIFIER_PATTERN) then
-        error("MoltenCodesTest:Suite packageId must match " .. IDENTIFIER_PATTERN, 2)
-    end
-    if type(part) ~= "string" or not part:match(IDENTIFIER_PATTERN) then
-        error("MoltenCodesTest:Suite part must match " .. IDENTIFIER_PATTERN, 2)
-    end
-    if type(addonName) ~= "string" or addonName == "" then
-        error("MoltenCodesTest:Suite addonName must be the test addon's folder name", 2)
-    end
+  if self ~= Harness then
+    error("MoltenCodesTest:Suite must be called on the MoltenCodesTest harness", 2)
+  end
+  if type(packageId) ~= "string" or not packageId:match(IDENTIFIER_PATTERN) then
+    error("MoltenCodesTest:Suite packageId must match " .. IDENTIFIER_PATTERN, 2)
+  end
+  if type(part) ~= "string" or not part:match(IDENTIFIER_PATTERN) then
+    error("MoltenCodesTest:Suite part must match " .. IDENTIFIER_PATTERN, 2)
+  end
+  if type(addonName) ~= "string" or addonName == "" then
+    error("MoltenCodesTest:Suite addonName must be the test addon's folder name", 2)
+  end
 
-    local testKitOptions = suiteOptions(addonName, options)
+  local testKitOptions = suiteOptions(addonName, options)
 
-    local suiteName = packageId .. "." .. part
-    local suite, problem = TestKit:Suite(suiteName, testKitOptions)
-    if type(suite) == "nil" then
-        error(
-            ('MoltenCodesTest:Suite could not register "%s" (%s)'):format(
-                suiteName,
-                tostring(problem)
-            ),
-            2
-        )
-    end
+  local suiteName = packageId .. "." .. part
+  local suite, problem = TestKit:Suite(suiteName, testKitOptions)
+  if type(suite) == "nil" then
+    error(
+      ('MoltenCodesTest:Suite could not register "%s" (%s)'):format(suiteName, tostring(problem)),
+      2
+    )
+  end
 
-    if suiteNamesByPackage[packageId] == nil then
-        suiteNamesByPackage[packageId] = {}
-        packageIds[#packageIds + 1] = packageId
-    end
-    local names = suiteNamesByPackage[packageId]
-    names[#names + 1] = suiteName
-    packageBySuiteName[suiteName] = packageId
-    return suite
+  if suiteNamesByPackage[packageId] == nil then
+    suiteNamesByPackage[packageId] = {}
+    packageIds[#packageIds + 1] = packageId
+  end
+  local names = suiteNamesByPackage[packageId]
+  names[#names + 1] = suiteName
+  packageBySuiteName[suiteName] = packageId
+  return suite
 end
 
 ---End the running test as skipped, naming why: for a test whose precondition
@@ -716,39 +702,39 @@ end
 ---@param ctx TestKit.Context The context of the running test.
 ---@param reason string Why the test was not exercised.
 function Harness:SkipTest(ctx, reason)
-    if self ~= Harness then
-        error("MoltenCodesTest:SkipTest must be called on the MoltenCodesTest harness", 2)
-    end
-    if type(reason) ~= "string" or reason == "" then
-        error("MoltenCodesTest:SkipTest reason must be a non-empty string", 2)
-    end
-    ctx:Fail(RUNTIME_SKIP_MARKER .. reason)
+  if self ~= Harness then
+    error("MoltenCodesTest:SkipTest must be called on the MoltenCodesTest harness", 2)
+  end
+  if type(reason) ~= "string" or reason == "" then
+    error("MoltenCodesTest:SkipTest reason must be a non-empty string", 2)
+  end
+  ctx:Fail(RUNTIME_SKIP_MARKER .. reason)
 end
 
 ---The packages Expected.lua lists, or `nil` when it was not installed. The
 ---array is shared: read it, do not change it.
 ---@return MoltenCodesTest.ExpectedPackage[]|nil
 function Harness:GetExpectedPackages()
-    return expectedPackages()
+  return expectedPackages()
 end
 
 ---The names of every global the harness itself publishes, so a test of the
 ---framework's globals can tell the harness's apart.
 ---@return string[]
 function Harness:GetOwnGlobalNames()
-    return { PUBLIC_NAME, SAVED_VARIABLES_NAME, "SLASH_" .. SLASH_KEY .. "1" }
+  return { PUBLIC_NAME, SAVED_VARIABLES_NAME, "SLASH_" .. SLASH_KEY .. "1" }
 end
 
 -- Wiring ------------------------------------------------------------------------------------
 
 if type(readHost(PUBLIC_NAME)) ~= "nil" then
-    error(
-        ADDON_NAME
-            .. ": the global "
-            .. PUBLIC_NAME
-            .. " is already taken; is the harness installed twice?",
-        0
-    )
+  error(
+    ADDON_NAME
+      .. ": the global "
+      .. PUBLIC_NAME
+      .. " is already taken; is the harness installed twice?",
+    0
+  )
 end
 -- Package test addons reach the harness through this one documented global.
 -- selene: allow(global_usage)
@@ -759,7 +745,7 @@ rawset(_G, PUBLIC_NAME, Harness)
 rawset(_G, "SLASH_" .. SLASH_KEY .. "1", SLASH_COMMAND)
 local slashCommandList = readHost("SlashCmdList")
 if type(slashCommandList) == "table" then
-    slashCommandList[SLASH_KEY] = handleSlashCommand
+  slashCommandList[SLASH_KEY] = handleSlashCommand
 end
 
 TestKit:OnFinished(recordFinishedRun)
@@ -767,21 +753,21 @@ TestKit:OnFinished(recordFinishedRun)
 -- Package test addons depend on this addon, so they load after it and before
 -- the login: by the ready phase every suite is registered.
 LifecycleKit:ForAddon(ADDON_NAME):OnReady(function()
-    if #packageIds == 0 then
-        say(
-            "no package test addon is loaded; install one with python3 -m tooling.client.install --package <id>."
-        )
-        return
-    end
+  if #packageIds == 0 then
     say(
-        ("test suites loaded for %s. Type %s run %s to run them; %s help lists every command."):format(
-            joinNames(packageIds),
-            SLASH_COMMAND,
-            #packageIds == 1 and packageIds[1] or "<package>",
-            SLASH_COMMAND
-        )
+      "no package test addon is loaded; install one with python3 -m tooling.client.install --package <id>."
     )
-    if expectedPackages() == nil then
-        say("Expected.lua is missing; install with python3 -m tooling.client.install.")
-    end
+    return
+  end
+  say(
+    ("test suites loaded for %s. Type %s run %s to run them; %s help lists every command."):format(
+      joinNames(packageIds),
+      SLASH_COMMAND,
+      #packageIds == 1 and packageIds[1] or "<package>",
+      SLASH_COMMAND
+    )
+  )
+  if expectedPackages() == nil then
+    say("Expected.lua is missing; install with python3 -m tooling.client.install.")
+  end
 end)

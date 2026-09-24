@@ -8,7 +8,7 @@ local hooks = HookKit:ForAddon("MyAddon")
 
 -- Secure post-hook: runs after the original, taints nothing but your handler.
 hooks:SecureHook(GameTooltip, "SetUnit", function(tooltip, unit)
-    -- ...
+  -- ...
 end)
 hooks:SecureHookScript(PlayerFrame, "OnShow", function(frame) end)
 
@@ -17,7 +17,7 @@ hooks:Hook(OtherAddon, "Refresh", function(self, reason) end)
 
 -- Raw replacement: runs instead of the original, which it receives first.
 hooks:RawHook(OtherAddon, "Format", function(original, self, value)
-    return original(self, value or "")
+  return original(self, value or "")
 end)
 
 hooks:Unhook(OtherAddon, "Refresh") -- restores the original if it is still ours

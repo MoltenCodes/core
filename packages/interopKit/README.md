@@ -45,10 +45,10 @@ local EventKit = Registry:Get("eventKit", 1)
 
 local broker = InteropKit:AdoptFromLibStub("LibDataBroker-1.1")
 if broker ~= nil then
-    local feed = broker:NewDataObject("MyAddon", { type = "data source", text = "0" })
-    EventKit:Connect("PLAYER_MONEY", function()
-        feed.text = tostring(GetMoney())
-    end)
+  local feed = broker:NewDataObject("MyAddon", { type = "data source", text = "0" })
+  EventKit:Connect("PLAYER_MONEY", function()
+    feed.text = tostring(GetMoney())
+  end)
 end
 ```
 
@@ -57,7 +57,7 @@ end
 -- Registry:Find, without asking LibStub again.
 local broker = InteropKit:Find("LibDataBroker-1.1")
 if broker ~= nil then
-    local feed = broker:GetDataObjectByName("MyAddon")
+  local feed = broker:GetDataObjectByName("MyAddon")
 end
 ```
 

@@ -165,12 +165,12 @@ when the level is known where the code is written.
 
 ```lua
 local handle = LogKit:AddSink(function(record)
-    MyPanel:Append(record.levelName, record.message)
+  MyPanel:Append(record.levelName, record.message)
 end)
 
 local capture = { lines = {} }
 function capture:Write(record)
-    self.lines[#self.lines + 1] = record.message
+  self.lines[#self.lines + 1] = record.message
 end
 LogKit:AddSink(capture)
 
@@ -244,10 +244,10 @@ line. Pass the result to `AddSink`.
 
 ```lua
 for position, addon, levelName, message, time in LogKit:History() do
-    -- oldest first
+  -- oldest first
 end
 for position, addon, levelName, message in LogKit:History("MyAddon", "warn") do
-    -- only MyAddon's entries at warn and error
+  -- only MyAddon's entries at warn and error
 end
 ```
 
@@ -276,12 +276,12 @@ reused.
 
 ```lua
 if LogKit:RegisterCommand() then
-    -- /log MyAddon debug      set MyAddon's override
-    -- /log MyAddon default    clear it
-    -- /log * info             set the global level
-    -- /log * default          clear it
-    -- /log show               global level and every logger's level
-    -- /log show MyAddon       one addon's level
+  -- /log MyAddon debug      set MyAddon's override
+  -- /log MyAddon default    clear it
+  -- /log * info             set the global level
+  -- /log * default          clear it
+  -- /log show               global level and every logger's level
+  -- /log show MyAddon       one addon's level
 end
 ```
 
@@ -313,14 +313,14 @@ may.
 ```lua
 local S = SchemaKit
 local db = SettingsKit:Open("MyAddonDB", {
-    global = S.table({
-        fields = {
-            logLevels = S.optional(
-                S.map({ keys = S.string(), values = S.string(), max = 64 }),
-                {}
-            ),
-        },
-    }),
+  global = S.table({
+    fields = {
+      logLevels = S.optional(
+        S.map({ keys = S.string(), values = S.string(), max = 64 }),
+        {}
+      ),
+    },
+  }),
 })
 LogKit:BindLevels(db)
 ```

@@ -264,7 +264,7 @@ way every Kit resolves a dependency, then makes one call:
 
 ```lua
 ApiKit:RegisterFlavor("retail", function(api, host)
-    -- one direct alias per documented function, guarded by the host namespace
+  -- one direct alias per documented function, guarded by the host namespace
 end, { version = "12.1.0", build = 69933 })
 ```
 

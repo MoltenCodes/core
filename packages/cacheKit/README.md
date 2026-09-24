@@ -19,19 +19,19 @@ local version, outcome = versions:Get(peerName) -- nil, "negative"
 -- A one-key function computed once per key. `cacheable` keeps an answer the
 -- client has not finished loading out of the cache, so it is asked again.
 local itemInfo, itemInfos = CacheKit:Memoize(function(itemId)
-    return { name = C_Item.GetItemNameByID(itemId) }
+  return { name = C_Item.GetItemNameByID(itemId) }
 end, {
-    maxEntries = 512,
-    cacheable = function(info)
-        return info.name ~= nil
-    end,
+  maxEntries = 512,
+  cacheable = function(info)
+    return info.name ~= nil
+  end,
 })
 itemInfos:ClearOn("GET_ITEM_INFO_RECEIVED")
 
 -- A namespace expanded on demand: `resolve` runs once per path, and
 -- invalidating a path forgets it, everything under it and the values above it.
 local settings = CacheKit:Lazy(function(profileName, section, key)
-    return LoadSetting(profileName, section, key)
+  return LoadSetting(profileName, section, key)
 end, { maxEntries = 256 })
 local value = settings:Get("Default", "unitFrames", "scale")
 settings:Invalidate("Default", "unitFrames")
@@ -40,22 +40,22 @@ settings:Invalidate("Default", "unitFrames")
 local recentMessages = CacheKit:NewQueue(50, "dropOldest")
 recentMessages:Push(message)
 for position, kept in recentMessages:Iterate() do
-    print(position, kept)
+  print(position, kept)
 end
 
 -- A key-to-value map rebuilt on demand, reporting what changed.
 local isSecret = issecretvalue or function()
-    return false
+  return false
 end
 local roster = CacheKit:NewSnapshot(function(fill)
-    for index = 1, math.max(GetNumGroupMembers(), 1) do
-        local unit = IsInRaid() and "raid" .. index
-            or (index == 1 and "player" or "party" .. (index - 1))
-        local guid = UnitGUID(unit)
-        if guid and not isSecret(guid) then
-            fill(guid, unit)
-        end
+  for index = 1, math.max(GetNumGroupMembers(), 1) do
+    local unit = IsInRaid() and "raid" .. index
+      or (index == 1 and "player" or "party" .. (index - 1))
+    local guid = UnitGUID(unit)
+    if guid and not isSecret(guid) then
+      fill(guid, unit)
     end
+  end
 end, { maxEntries = 40 })
 local added, removed, changed = roster:Refresh()
 ```

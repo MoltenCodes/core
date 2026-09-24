@@ -10,26 +10,26 @@ local comm = CommKit:ForAddon("MyAddon") -- closed by CommKit:CloseAddonScopes("
 
 -- Receiving: the callback only ever sees whole messages.
 comm:Register("MyAddon", function(prefix, text, distribution, sender)
-    local ok, message = CodecKit:Decode(text, { channel = "addon" })
-    if not ok or not MessageSchema:Check(message) then
-        return -- received data is untrusted: drop anything malformed
-    end
-    handle(message, sender)
+  local ok, message = CodecKit:Decode(text, { channel = "addon" })
+  if not ok or not MessageSchema:Check(message) then
+    return -- received data is untrusted: drop anything malformed
+  end
+  handle(message, sender)
 end)
 
 -- Sending: any length; a bound that would be passed is a return value.
 local ok, text = CodecKit:Encode({ kind = "hello", version = 3 }, { channel = "addon" })
 local send, reason = comm:Send({
-    prefix = "MyAddon",
-    text = text,
-    distribution = "RAID",
-    priority = CommKit.Priority.BULK,
-    onComplete = function(send, state, why)
-        -- "sent", or "cancelled" / "failed" with a reason
-    end,
+  prefix = "MyAddon",
+  text = text,
+  distribution = "RAID",
+  priority = CommKit.Priority.BULK,
+  onComplete = function(send, state, why)
+    -- "sent", or "cancelled" / "failed" with a reason
+  end,
 })
 if not send then
-    print("not queued: " .. reason) -- "queueFull", "tooLarge", "forbiddenByte", ...
+  print("not queued: " .. reason) -- "queueFull", "tooLarge", "forbiddenByte", ...
 end
 ```
 

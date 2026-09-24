@@ -6,6 +6,28 @@ Keep changes small, explicit, documented, and testable.
 
 StyLua is the authoritative Lua formatter for this repository. LuaLS formatting is disabled in [`.luarc.json`](../.luarc.json) to avoid competing formatters.
 
+Lua is indented with **two spaces** per level, at a column width of 100:
+`indent_width = 2` and `column_width = 100` in [`stylua.toml`](../stylua.toml),
+mirrored for editors by the `[*.lua]` section of
+[`.editorconfig`](../.editorconfig). Python tooling follows PEP 8 and keeps four
+spaces. Lua shown in Markdown code blocks (READMEs, `docs/`, package
+documentation) is indented the same way as the code, and each such block still
+compiles with `luac -p` unless it is deliberately a fragment. Generated Lua
+follows the same configuration: the apiKit renderers build every nesting level
+from one `INDENT` constant (`tooling/api/render_runtime.py`,
+`tooling/api/render_types.py`), and `python3 -m tooling.api.generate` refuses an
+output StyLua would reformat.
+
+The two-space width was decided with the project owner on 2026-09-24; until
+then the repository used four. The switch was one repository-wide change:
+every Lua file was reformatted with `stylua .`, the generated apiKit files
+were regenerated from unchanged metadata, and the Lua blocks in the Markdown
+were re-indented. It changed whitespace only (plus the line breaks of the
+generated enum documentation, which wraps two columns later): the stripped
+`luac -s -l -l` listing of every Lua file is identical before and after. Being
+whitespace only, it bumped no package `version`, `revision` or `api` and added
+no package changelog entry; this paragraph is its record.
+
 Before submitting a change:
 
 1. Run `python3 -m tooling.validation.validate_repository`.
@@ -145,7 +167,10 @@ runtime Lua, check it against this list:
 Releases are cut by a maintainer following the procedure in
 [`RELEASES.md`](RELEASES.md#release-procedure). A contribution bumps the
 `version` of the packages it changes and updates their changelogs; it does not
-add a release section or a tag.
+add a release section or a tag. The one exception is a repository-wide,
+whitespace-only reformat whose stripped `luac -s -l -l` listings are unchanged:
+it is recorded once, as the two-space switch is under
+[Development principles](#development-principles), not in every package.
 
 ## Commit scope
 

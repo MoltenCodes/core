@@ -15,9 +15,9 @@ local ok, exportString = CodecKit:Encode(profile, { compress = "deflate", channe
 -- Importing: the header says which stages to reverse.
 local ok, value = CodecKit:Decode(pastedText, { channel = "print" })
 if not ok then
-    print("Import failed: " .. value) -- a reason such as "malformedPrint" or "truncated"
+  print("Import failed: " .. value) -- a reason such as "malformedPrint" or "truncated"
 elseif not ProfileSchema:Check(value) then
-    print("Import failed: not a profile")
+  print("Import failed: not a profile")
 end
 ```
 

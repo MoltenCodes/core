@@ -28,16 +28,16 @@ SchedulerKit is **not** a preemptive thread scheduler. A Lua callback must eithe
 local work = SchedulerKit:ForAddon("MyAddon")
 
 work:Schedule(function(context)
-    for index = 1, #items do
-        rebuild(items[index])
+  for index = 1, #items do
+    rebuild(items[index])
 
-        if context:ShouldYield() then
-            context:Yield()
-        end
+    if context:ShouldYield() then
+      context:Yield()
     end
+  end
 end, {
-    priority = SchedulerKit.Priority.NORMAL,
-    name = "rebuild item cache",
+  priority = SchedulerKit.Priority.NORMAL,
+  name = "rebuild item cache",
 })
 ```
 
