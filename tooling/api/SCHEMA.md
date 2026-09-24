@@ -202,8 +202,11 @@ give a reference or arithmetic (`Enum.CalendarGetEventType.Get`,
 
 ## Files the generator owns
 
-Two more files live in a flavour's metadata directory, written by
+`history.json` lives in a flavour's metadata directory, written by
 `python3 -m tooling.api.generate` and left alone by the normaliser.
+`search.json` is written beside the reference pages (`generate
+--reference-out DIR` puts it at `DIR/<flavour>/search.json`) and is not
+committed.
 
 `search.json` is the search index of the reference: `{"schema": 1,
 "generator": "tooling.api.generate", "commit": <sha>, "flavour": <id>,

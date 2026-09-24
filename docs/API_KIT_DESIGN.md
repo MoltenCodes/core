@@ -398,14 +398,25 @@ From one metadata capture per flavour the tooling produces:
 | Normalised metadata (source of truth) | `packages/apiKit/metadata/<flavour>/*.json` | yes |
 | Runtime bindings | `packages/apiKit/src/flavours/<Flavour>.lua` | yes |
 | LuaCATS definitions | `packages/apiKit/types/<flavour>/*.lua` | yes |
-| Markdown reference | `packages/apiKit/docs/reference/<flavour>/` | yes, provisionally; decided with the owner after the Retail capture (H4) shows its size |
-| Search index | `packages/apiKit/metadata/<flavour>/search.json` (names its generator and commit) | yes |
+| Markdown reference | built by `generate --reference-out DIR` into `DIR/<flavour>/`; attached to releases | no (decided 2026-09-24) |
+| Search index | `DIR/<flavour>/search.json` beside the reference (names its generator and commit) | no (decided 2026-09-24) |
 | Build-to-build change report | `packages/apiKit/docs/changes/<flavour>/<from>-<to>.md` | yes |
 | Build history | `packages/apiKit/metadata/<flavour>/history.json` | yes |
 
 Every generated file identifies itself as generated in its first lines, names
 the generator, the flavour, the source commit and the build, and is never
 edited by hand. Generated documentation states flavour and availability.
+
+The Retail capture measured 14 MB of outputs per flavour, of which the
+reference and the search index were 6 MB and are largely rewritten on every
+build refresh. Decided with the project owner on 2026-09-24: the metadata,
+the runtime file, the types, the change reports and the history are
+committed; the reference and the search index are not. They are rendered on
+every generation run (so their link check still gates the run) and written
+only where `--reference-out` says; the release workflow builds them from the
+tagged metadata and attaches them to the release, and a maintainer builds
+them locally the same way. Because generation is deterministic, the committed
+metadata is enough to reproduce them for any build.
 
 ## 14. Update pipeline
 
@@ -477,8 +488,8 @@ packages/apiKit/
 │   ├── API.md                 # the facade contract (handwritten)
 │   ├── NAMING.md              # the naming rules and the exception table
 │   ├── UPDATING.md            # procedure for a new Blizzard build
-│   ├── changes/<flavour>/     # generated change reports
-│   └── reference/<flavour>/   # generated Markdown reference
+│   └── changes/<flavour>/     # generated change reports (the reference is
+│                              #   built into a release asset, not committed)
 ├── metadata/
 │   └── <flavour>/             # generated: namespaces, events, enums,
 │                              #   structures, callbacks, constants,

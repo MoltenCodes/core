@@ -1128,10 +1128,22 @@ begins; H4 to H6 may overlap where they do not share files.
       embedded script's package from its directory; the generated runtime
       file passes the metadata's version and build to `RegisterFlavor`
       (2026-09-24).
-- [ ] **H4 — Retail.** First capture at a pinned mirror commit and build;
-      metadata, runtime file, types, reference and search index committed
-      together; the sampled generated-output spec; the naming exception table
-      filled from the real collisions; load-cost measurement recorded.
+- [x] **H4 — Retail.** First capture at `Gethe/wow-ui-source@09b9db79`
+      (live, client 12.1.0, build 69933, 612 tables, captured 2026-09-24);
+      metadata (7.9 MB with the search index), runtime file (`flavours/
+      Retail.lua`, 9,824 lines), types (7 files, 1.8 MB), reference (320
+      files, 4.0 MB) and the first history entry committed together. The
+      generated-output check is exhaustive rather than sampled: a tooling
+      test builds a stub host from the metadata and proves the committed file
+      binds every documented function and nothing else, and a Busted spec
+      loads the file against the real facade and the shared fixture. CI runs
+      `generate --all --check`. The real tables produced no naming
+      collision, so the exception tables stay empty. Load cost recorded in
+      `packages/apiKit/docs/API.md` (parse about 3.5 ms, install under
+      0.5 ms). The reference and the search index (6 MB of the 14 MB the
+      capture produced) are not committed: decided with the owner on
+      2026-09-24, they are built by `generate --reference-out` and attached
+      to releases; the release workflow does so.
 - [ ] **H5 — Classic Era and Mists of Pandaria Classic.** Same as H4 per
       flavour; flavour-isolation checks across the three captures.
 - [ ] **H6 — PTR and Beta.** Same as H4 when the mirror branches carry the
@@ -1147,9 +1159,10 @@ documentation prose is carried into hover text and the reference with
 provenance; a metadata refresh is a minor version with the change report in
 the changelog, a removal noted as breaking for that flavour, the API
 generation unchanged because the facade contract does not move (design
-document, section 12.1). Still open: whether the generated Markdown reference
-stays committed, decided in H4 once the Retail capture shows its size.
-Implementation starts only on the owner's explicit go.
+document, section 12.1). The last question was settled in H4 on 2026-09-24:
+the generated reference and search index are not committed but built into a
+release asset (design document, section 13). Implementation started on the
+owner's go on 2026-09-24.
 
 ### Standing obligations
 

@@ -1,0 +1,14 @@
+{
+  "branch": "live",
+  "build": 69933,
+  "capturedOn": "2026-09-24",
+  "commit": "09b9db7948abc9b9648dedaab51eb0cf3ee67b31",
+  "committedAt": "2026-09-22T14:31:12Z",
+  "documentationPath": "Interface/AddOns/Blizzard_APIDocumentationGenerated",
+  "fileCount": 612,
+  "flavour": "retail",
+  "repository": "Gethe/wow-ui-source",
+  "schema": 1,
+  "subject": "12.1.0 (69933)",
+  "version": "12.1.0"
+}

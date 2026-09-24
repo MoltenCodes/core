@@ -391,6 +391,16 @@ package's `src/`, and so is the packager's zip after `.pkgmeta`'s
 `move-folders`, which moves the whole `src/` directory. The same `.toc`
 therefore serves both.
 
+## The apiKit reference asset
+
+Every release also carries `MoltenCodes-ApiKit-reference.zip`: the Markdown
+reference and the search index of every flavour whose metadata is committed,
+rendered from that metadata by `python3 -m tooling.api.generate --all
+--reference-out`. They are not committed to the repository (decided
+2026-09-24; see `docs/API_KIT_DESIGN.md`, section 13) because they are large
+and mostly rewritten on every build refresh, and generation is deterministic,
+so the tagged metadata reproduces them exactly.
+
 ## Publishing to CurseForge, Wago and WoWInterface
 
 [`.pkgmeta`](../.pkgmeta) at the repository root is the metadata the BigWigs

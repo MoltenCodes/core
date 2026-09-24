@@ -55,6 +55,7 @@ python3 -m tooling.api.validate packages/apiKit/metadata/retail
 python3 -m tooling.api.diff <previous metadata> packages/apiKit/metadata/retail
 python3 -m tooling.api.generate --flavour retail --previous <previous metadata>
 python3 -m tooling.api.generate --all --check
+python3 -m tooling.api.generate --all --reference-out build/reference
 ```
 
 Build a distributable bundle:

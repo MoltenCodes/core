@@ -27,6 +27,7 @@ ARIALN
 CLEU
 CURSEFORGE
 FRIZQT
+Gethe
 langmask
 libstub
 MAXEMOTEINDEX
@@ -47,6 +48,7 @@ collectgarbage
 frexp
 getmetatable
 gsub
+ipairs
 luac
 metamethod
 metatable

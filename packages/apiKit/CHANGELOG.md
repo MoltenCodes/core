@@ -17,5 +17,11 @@
   are recorded for `GetMetadataBuild`.
 - `SUPPORTED_FLAVORS`, a read-only list of the flavour ids in the order of
   `tooling/api/flavours.json`; a spec holds the facade's table to that file.
-- No generated flavour files ship yet; they arrive with the Retail capture
-  (step H4).
+- Retail bindings generated from the client's documentation tables at
+  `Gethe/wow-ui-source@09b9db7948abc9b9648dedaab51eb0cf3ee67b31` (live,
+  client 12.1.0, build 69933, captured 2026-09-24): 391 namespaces, 6,338
+  functions, 1,782 events, 844 enumerations, 752 structures, 20 callbacks,
+  60 constants tables, 57 restriction predicates; the LuaCATS definitions
+  under `types/retail/` and the first history entry. The reference and the
+  search index are built into a release asset rather than committed. Flavour
+  files for the other clients follow with their captures.

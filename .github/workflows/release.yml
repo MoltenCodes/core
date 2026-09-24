@@ -266,6 +266,27 @@ jobs:
             --out "dist/release/${PACKAGE_ID}" --zip --verify
           (cd "dist/release/${PACKAGE_ID}" && sha256sum --check --strict CHECKSUMS.txt)
 
+      # The apiKit reference and search index are generated from the committed
+      # metadata and are not committed themselves (they are large and mostly
+      # rewritten on every build refresh); a release carries them as an asset
+      # instead. With no metadata committed the generator has nothing to do
+      # and the step produces no zip.
+      - name: Build the apiKit reference
+        run: |
+          set -euo pipefail
+          python3 -m tooling.api.generate --all --check
+          python3 -m tooling.api.generate --all --reference-out dist/apiKit-reference
+          if [ -d dist/apiKit-reference ]; then
+            (cd dist && zip -qr MoltenCodes-ApiKit-reference.zip apiKit-reference)
+          fi
+
+      - name: Upload the apiKit reference
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: apikit-reference
+          path: dist/MoltenCodes-ApiKit-reference.zip
+          if-no-files-found: ignore
+
       - name: Upload the framework bundle
         if: env.KIND == 'bundle'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

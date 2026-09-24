@@ -1,21 +1,28 @@
 """Generate every apiKit output of one flavour from its metadata.
 
     python3 -m tooling.api.generate --flavour retail [--package-dir packages/apiKit]
-        [--metadata DIR] [--previous DIR] [--check]
-    python3 -m tooling.api.generate --all [--check]
+        [--metadata DIR] [--previous DIR] [--reference-out DIR] [--check]
+    python3 -m tooling.api.generate --all [--reference-out DIR] [--check]
 
 This is steps 3 to 5 of the update pipeline (`docs/API_KIT_DESIGN.md`,
-section 14). From one flavour's metadata directory it writes:
+section 14). From one flavour's metadata directory it writes into the
+repository:
 
 - the runtime bindings, `<package>/src/flavours/<Flavour>.lua`
   (`render_runtime`);
 - the LuaCATS definitions, `<package>/types/<flavour>/*.lua` (`render_types`);
-- the Markdown reference, `<package>/docs/reference/<flavour>/`
-  (`render_reference`), refused when a link it wrote does not resolve;
-- the search index, `<metadata>/search.json`;
 - with `--previous DIR` (the metadata of the build being replaced), the
   change report `<package>/docs/changes/<flavour>/<old>-<new>.md` and an
   entry in `<metadata>/history.json` (`diff`).
+
+The Markdown reference and the search index are not committed (decided with
+the project owner on 2026-09-24, after the Retail capture showed them at
+about 6 MB per flavour, most of it rewritten on every build refresh). They
+are rendered on every run, so a reference whose links do not resolve still
+refuses the run, but they are written only where `--reference-out DIR` says:
+`DIR/<flavour>/` for the reference pages and `DIR/<flavour>/search.json`
+for the index. The release workflow builds them there and attaches them to
+the release; a maintainer builds them locally the same way.
 
 Everything is validated before anything is written: the metadata itself
 (`validate`), the generated Lua with `luac -p` and the repository's StyLua
@@ -51,7 +58,7 @@ from tooling.validation.validate_manifests import ROOT
 #: The package directory the outputs belong to, relative to the repository.
 DEFAULT_PACKAGE_DIR = Path("packages") / "apiKit"
 
-#: The search index file inside a flavour's metadata directory.
+#: The search index file, written beside the reference pages of a flavour.
 SEARCH_INDEX_FILE = "search.json"
 
 
@@ -180,13 +187,16 @@ def plan_flavour(
     package_dir: Path,
     metadata_dir: Path | None = None,
     previous_dir: Path | None = None,
+    reference_out: Path | None = None,
     host_types: model.HostTypes | None = None,
     flavours_table: flavours.Flavours | None = None,
 ) -> GenerateResult:
     """Render every output of `flavour` and compare it with the package on disk.
 
-    Nothing is written; `write_result` does that. Raises `GenerateError` when
-    the metadata is invalid, a generated Lua file does not compile or is not
+    Nothing is written; `write_result` does that. The reference and the search
+    index are rendered and checked always and planned only when
+    `reference_out` names a directory. Raises `GenerateError` when the
+    metadata is invalid, a generated Lua file does not compile or is not
     formatted, or the reference's links do not resolve.
     """
     metadata_dir = metadata_dir or _metadata_directory(package_dir, flavour)
@@ -227,8 +237,9 @@ def plan_flavour(
 
     _plan_directory(runtime_path.parent, {runtime_path.name: runtime_text}, False, result)
     _plan_directory(types_dir, type_files, True, result)
-    _plan_directory(package_dir / "docs" / "reference" / flavour.id, reference_files, True, result)
-    _plan_directory(metadata_dir, {SEARCH_INDEX_FILE: search_index}, False, result)
+    if reference_out is not None:
+        reference_files[SEARCH_INDEX_FILE] = search_index
+        _plan_directory(reference_out / flavour.id, reference_files, True, result)
 
     _plan_history(metadata, metadata_dir, previous_dir, package_dir, flavour, result)
     _plan_stale_runtime_files(package_dir, flavours_table or flavours.load_flavours(), result)
@@ -345,6 +356,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--package-dir", type=Path, default=ROOT / DEFAULT_PACKAGE_DIR, metavar="DIR", help="the apiKit package directory (default: packages/apiKit)")
     parser.add_argument("--metadata", type=Path, metavar="DIR", help="the metadata directory (default: <package>/metadata/<flavour>); with --flavour only")
     parser.add_argument("--previous", type=Path, metavar="DIR", help="the metadata of the build being replaced, for the change report and the history; with --flavour only")
+    parser.add_argument("--reference-out", type=Path, metavar="DIR", help="also write the Markdown reference and the search index under DIR/<flavour>/ (they are never committed)")
     parser.add_argument("--check", action="store_true", help="compare with the files on disk and change nothing; exit 1 when they differ")
     arguments = parser.parse_args(argv)
     if arguments.all and (arguments.metadata or arguments.previous):
@@ -365,6 +377,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 package_dir=arguments.package_dir,
                 metadata_dir=arguments.metadata,
                 previous_dir=arguments.previous,
+                reference_out=arguments.reference_out,
                 host_types=host_types,
                 flavours_table=table,
             )

@@ -44,10 +44,18 @@ class PlanTests(GeneratorFixture):
         changed = {path.relative_to(self.package_dir).as_posix() for path in result.changed}
         self.assertIn("src/flavours/Retail.lua", changed)
         self.assertIn("types/retail/api.lua", changed)
-        self.assertIn("docs/reference/retail/README.md", changed)
-        self.assertIn("metadata/retail/search.json", changed)
         self.assertIn("metadata/retail/history.json", changed)
+        self.assertFalse(any("reference" in path or "search.json" in path for path in changed))
         self.assertEqual([], result.removed)
+
+    def test_reference_and_search_index_go_where_asked(self):
+        out = Path(self.tempdir.name) / "reference"
+        result = module.plan_flavour(RETAIL, package_dir=self.package_dir, reference_out=out)
+
+        changed = {path.relative_to(out).as_posix() for path in result.changed if out in path.parents}
+        self.assertIn("retail/README.md", changed)
+        self.assertIn("retail/search.json", changed)
+        self.assertFalse((self.package_dir / "docs" / "reference").exists())
 
     def test_invalid_metadata_is_refused(self):
         metadata = sample_metadata()
@@ -75,8 +83,8 @@ class WriteTests(GeneratorFixture):
         self.assertEqual(0, status, errors)
         self.assertTrue((self.package_dir / "src" / "flavours" / "Retail.lua").is_file())
         self.assertTrue((self.package_dir / "types" / "retail" / "api.lua").is_file())
-        self.assertTrue((self.package_dir / "docs" / "reference" / "retail" / "README.md").is_file())
-        self.assertTrue((self.metadata_dir / "search.json").is_file())
+        self.assertFalse((self.package_dir / "docs" / "reference").exists())
+        self.assertFalse((self.metadata_dir / "search.json").exists())
         history = json.loads((self.metadata_dir / "history.json").read_text(encoding="utf-8"))
         self.assertEqual(1, len(history["entries"]))
         self.assertEqual(69933, history["entries"][0]["build"])
@@ -86,6 +94,17 @@ class WriteTests(GeneratorFixture):
 
         self.assertEqual(0, status, errors)
         self.assertIn("would change 0 file(s)", output)
+
+    def test_reference_out_writes_the_reference_and_the_index(self):
+        out = Path(self.tempdir.name) / "reference"
+
+        status, output, errors = self.run_main("--flavour", "retail", "--reference-out", str(out))
+
+        self.assertEqual(0, status, errors)
+        self.assertTrue((out / "retail" / "README.md").is_file())
+        self.assertTrue((out / "retail" / "search.json").is_file())
+        index = json.loads((out / "retail" / "search.json").read_text(encoding="utf-8"))
+        self.assertEqual("retail", index["flavour"])
 
     def test_check_fails_when_an_output_is_stale(self):
         self.run_main("--flavour", "retail")

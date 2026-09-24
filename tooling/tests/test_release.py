@@ -429,7 +429,9 @@ class LibraryTocTests(unittest.TestCase):
         text = library_toc.standalone_toc().text
         ordered = self.release_load_order()
 
-        expected = [f"{name}\\{build.facade_file_name(name)}" for name in ordered]
+        expected = [
+            toc.toc_entry(name, relative) for name in ordered for relative in build.runtime_files(name)
+        ]
         self.assertEqual(expected, toc.listed_files(text))
         self.assertEqual("registry\\Registry.lua", toc.listed_files(text)[0])
 

@@ -54,8 +54,8 @@ METADATA_FILES = {
 PROVENANCE_FILE = "provenance.json"
 
 #: Files inside a metadata directory that other tools own and `write_metadata`
-#: must leave alone: the generator's search index and the build history.
-FILES_OWNED_ELSEWHERE = frozenset({"search.json", "history.json"})
+#: must leave alone: the build history the generator appends to.
+FILES_OWNED_ELSEWHERE = frozenset({"history.json"})
 
 #: Location of the host type table relative to the repository root.
 HOST_TYPES_PATH = Path("tooling") / "api" / "types.json"

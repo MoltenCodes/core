@@ -3,9 +3,10 @@
 ApiKit API generation **1** publishes the flavour namespaces of the generated
 World of Warcraft API wrapper, detects the running client's flavour and installs
 the matching generated bindings. The wrapper surface itself
-(`api.<namespace>.<function>`) is data: the generated reference under
-`reference/<flavour>/` describes it per flavour once a flavour's capture is
-committed, and the rules that name it are in [`NAMING.md`](NAMING.md).
+(`api.<namespace>.<function>`) is data: the generated reference, attached to
+every release and built locally with `tooling.api.generate --reference-out`,
+describes it per flavour, and the rules that name it are in
+[`NAMING.md`](NAMING.md).
 
 ```lua
 local ApiKit = MoltenCodes.Registries[2]:Get("apiKit", 1)
@@ -125,6 +126,22 @@ ApiKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`
 five namespace tables, the installed flavour's bindings (one table per
 Blizzard namespace, one entry per function) and the `info` of each registered
 flavour. Nothing grows with use.
+
+## Load cost
+
+Measured on the committed Retail file (client 12.1.0, build 69933; 9,824
+lines, 556 KB) with Lua 5.1.5 on a 2026 desktop, so the numbers are an order
+of magnitude, not a promise:
+
+| Step | Cost |
+|---|---|
+| Parsing the flavour file | about 3.5 ms |
+| Running the installer (391 namespaces, 6,338 bindings) | under 0.5 ms |
+| Retained by the installed surface | about 316 tables holding 6,000 function references |
+| A flavour file on a client of another flavour | its parse and one registration call; the installer is dropped |
+
+A call through the wrapper is one table index more than the raw call and
+allocates nothing. Nothing in the package grows with use.
 
 ## Embedded identity and upgrades
 

@@ -45,7 +45,8 @@ author needs to predict a name from the Blizzard one.
 
 ## Finding a name
 
-The generated reference under `reference/<flavour>/` lists every
+The generated reference (a release asset, or built locally with
+`tooling.api.generate --reference-out`) lists every
 namespace with its raw Blizzard name and every function with the expression
 it binds to, so a raw name can be looked up and a wrapper name traced back.
 The LuaCATS definitions under `types/<flavour>/` give the same in the editor.

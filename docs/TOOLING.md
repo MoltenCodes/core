@@ -253,6 +253,7 @@ python3 -m tooling.api.validate packages/apiKit/metadata/retail   # what normali
 python3 -m tooling.api.diff <previous metadata> packages/apiKit/metadata/retail   # step 3: what changed
 python3 -m tooling.api.generate --flavour retail --previous <previous metadata>    # steps 4 and 5
 python3 -m tooling.api.generate --all --check                     # CI: outputs match the metadata
+python3 -m tooling.api.generate --all --reference-out build/reference   # the reference, locally
 ```
 
 `fetch` records the branch, commit, date, client version and build of the
@@ -271,14 +272,16 @@ yields 391 namespaces with 6,338 functions, 1,782 events, 844 enumerations,
 predicates, about 6 MB of JSON.
 
 `generate` reads one flavour's metadata and writes everything derived from
-it: the runtime bindings (`src/flavours/<Flavour>.lua`, one direct alias per
-function, bound only when the running client has the namespace), the LuaCATS
-definitions (`types/<flavour>/`), the Markdown reference
-(`docs/reference/<flavour>/`, refused when a link it wrote does not resolve),
-the search index (`metadata/<flavour>/search.json`) and, when `--previous`
-names the metadata of the build being replaced, the change report
-(`docs/changes/<flavour>/<old build>-<new build>.md`) and an entry in
-`metadata/<flavour>/history.json`. Generated Lua is checked with `luac -p`
+it into the package: the runtime bindings (`src/flavours/<Flavour>.lua`, one
+direct alias per function, bound only when the running client has the
+namespace), the LuaCATS definitions (`types/<flavour>/`) and, when
+`--previous` names the metadata of the build being replaced, the change
+report (`docs/changes/<flavour>/<old build>-<new build>.md`) and an entry in
+`metadata/<flavour>/history.json`. The Markdown reference and the search
+index are rendered on every run (a link that does not resolve refuses the
+run) but written only where `--reference-out DIR` says, as `DIR/<flavour>/`
+and `DIR/<flavour>/search.json`; they are not committed, and the release
+workflow attaches them to each release instead. Generated Lua is checked with `luac -p`
 and the repository's StyLua configuration before anything is written, a
 directory of generated files is replaced as a whole, and `--check` compares
 without writing so CI can refuse a metadata change that was committed without
@@ -313,10 +316,11 @@ The builder, the standalone-addon `.toc` and the validator support the layout
 `apiKit` needs: a package's `src/` holds one top-level facade and may hold
 further runtime files in subdirectories, which load after the facade
 ([`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md#minimum-package-layout)). Two
-package documentation directories are generated from data rather than written,
-`packages/<name>/docs/reference/` and `packages/<name>/docs/changes/`; the
-spell check and the Markdown link check leave them alone, because the
-generator that writes them (roadmap step H2) validates its own output.
+package documentation directories are generated from data rather than written:
+`packages/<name>/docs/changes/` (committed change reports) and
+`packages/<name>/docs/reference/` (where a maintainer may build the reference
+locally; it is never committed). The spell check and the Markdown link check
+leave both alone, because the generator validates its own output.
 
 ## Spell check
 

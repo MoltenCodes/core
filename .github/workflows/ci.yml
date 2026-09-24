@@ -322,6 +322,12 @@ jobs:
       - name: Validate repository
         run: python3 -m tooling.validation.validate_repository
 
+      # The apiKit runtime files, types, reference and search index are
+      # generated from the committed metadata; a metadata change committed
+      # without regenerating them would ship bindings that disagree with it.
+      - name: Check generated apiKit outputs are current
+        run: python3 -m tooling.api.generate --all --check
+
       - name: Run tooling unit tests
         run: python3 -m unittest discover -s tooling/tests -p "test_*.py"
 
