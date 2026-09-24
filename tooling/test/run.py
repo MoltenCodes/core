@@ -31,8 +31,8 @@ ROOT = Path(__file__).resolve().parents[2]
 PACKAGES = ROOT / "packages"
 
 #: Test support shared by every package suite. It carries the World of Warcraft
-#: stubs, the ``package.loaded`` bookkeeping and the error capture that used to
-#: be copied into each ``packages/*/tests/support`` directory. It is repository
+#: stubs, the ``package.loaded`` bookkeeping and the error capture, once for
+#: every suite instead of once per ``packages/*/tests/support`` directory. It is repository
 #: test scaffolding rather than package-owned code, so it is never published
 #: with a package and never reachable from runtime source.
 SHARED_SUPPORT = ROOT / "tests" / "support"
@@ -65,8 +65,8 @@ error: Busted was not found on PATH.
 Busted runs on Lua 5.1 because that is the World of Warcraft client runtime.
 Homebrew does not package Lua 5.1, so install a private interpreter, for example:
 
-    pipx install hererocks
-    hererocks ~/.local/lua51 --lua 5.1.5 --luarocks latest
+    pipx install hererocks==0.25.1
+    hererocks ~/.local/lua51 --lua 5.1.5 --luarocks 3.13.0
     export PATH="$HOME/.local/lua51/bin:$PATH"
     luarocks install busted 2.3.0-1
 
@@ -433,6 +433,7 @@ def run(package_names: Sequence[str], busted_args: Sequence[str] = ()) -> int:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse the runner's command line."""
     parser = argparse.ArgumentParser(
+        prog="python3 -m tooling.test.run",
         description="Run Busted for every monorepo test target or a selected subset."
     )
     parser.add_argument(

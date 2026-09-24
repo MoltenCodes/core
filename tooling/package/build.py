@@ -548,6 +548,7 @@ def build(
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse the builder's command line."""
     parser = argparse.ArgumentParser(
+        prog="python3 -m tooling.package.build",
         description="Assemble a distributable MoltenCodes bundle from package sources."
     )
     selection = parser.add_mutually_exclusive_group(required=True)

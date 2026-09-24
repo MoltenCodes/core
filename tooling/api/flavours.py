@@ -5,7 +5,7 @@ client flavours `apiKit` exposes (`docs/API_KIT_DESIGN.md`, section 5). Each
 entry records the flavour's id and namespace, the runtime file its generated
 bindings live in, the mirror branches its documentation tables are fetched
 from, and the facts the runtime facade reads to recognise that flavour. The
-fetch, the generators and the facade's specs (roadmap steps H1 to H4) read this
+fetch, the generators and the facade's specs read this
 table, so a flavour is added or renamed in one place.
 
     python3 -m tooling.api.flavours            # print the table
@@ -54,7 +54,7 @@ DEFAULT_FLAVOURS_FILE = ROOT / FLAVOURS_PATH
 
 #: `verified` must be a calendar date written as YYYY-MM-DD. `date.fromisoformat`
 #: alone is not enough: Python 3.11 and later also accept `20260924` and week
-#: dates, and the tooling runs on 3.10 and 3.13 alike.
+#: dates, and the tooling runs on 3.10 and 3.14 alike.
 ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 #: The keys the table itself carries, and nothing else.

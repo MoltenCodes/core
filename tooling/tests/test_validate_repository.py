@@ -73,6 +73,11 @@ class RepositoryValidatorTests(unittest.TestCase):
         (package / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
         (package / "src" / f"{display_name}.lua").write_text("return {}\n", encoding="utf-8")
         (package / "tests" / f"{name}_spec.lua").write_text("", encoding="utf-8")
+        (package / "tests" / "README.md").write_text("# Tests\n", encoding="utf-8")
+        (package / "tests" / "support").mkdir()
+        (package / "tests" / "support" / f"{display_name}TestEnv.lua").write_text(
+            "return {}\n", encoding="utf-8"
+        )
 
         manifest = {
             "name": name,
@@ -313,6 +318,34 @@ class RepositoryValidatorTests(unittest.TestCase):
         errors = module.validate_package_layout()
 
         self.assertTrue(any("API package is missing docs/API.md" in error for error in errors))
+
+    def test_package_layout_requires_the_tests_readme(self):
+        package = self.create_package("registry")
+        (package / "tests" / "README.md").unlink()
+
+        errors = module.validate_package_layout()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("tests/README.md", errors[0])
+        self.assertIn("required package file is missing", errors[0])
+
+    def test_package_layout_requires_the_suite_test_environment(self):
+        package = self.create_package("timerKit")
+        (package / "tests" / "support" / "TimerKitTestEnv.lua").unlink()
+
+        errors = module.validate_package_layout()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("tests/support/TimerKitTestEnv.lua", errors[0])
+        self.assertIn("required package test environment is missing", errors[0])
+
+    def test_package_layout_accepts_further_test_support_files(self):
+        package = self.create_package("widgetKit")
+        (package / "tests" / "support" / "WidgetKitHostTestEnv.lua").write_text(
+            "return {}\n", encoding="utf-8"
+        )
+
+        self.assertEqual([], module.validate_package_layout())
 
     def test_package_requires_busted_specs(self):
         package = self.create_package("registry")
@@ -716,6 +749,400 @@ move-folders:
         self.assertEqual(
             [], module.validate_development_packages_ignored({"registry": {"dependencies": {}}})
         )
+
+
+class PkgmetaPackageTests(unittest.TestCase):
+    """`.pkgmeta` moves every release package exactly once, and nothing else."""
+
+    MANIFESTS = {
+        "registry": {"dependencies": {}},
+        "timerKit": {"dependencies": {}},
+        "testKit": {"dependencies": {}, "distribution": "development"},
+    }
+
+    COMPLETE = """\
+package-as: MoltenCodes
+ignore:
+  - packages/testKit
+move-folders:
+  MoltenCodes/packages/registry/src: MoltenCodes/registry
+  MoltenCodes/packages/registry/docs: MoltenCodes/registry/docs
+  MoltenCodes/packages/timerKit/src: MoltenCodes/timerKit
+  MoltenCodes/packages/timerKit/docs: MoltenCodes/timerKit/docs
+"""
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        self.original_root = module.ROOT
+        module.ROOT = self.root
+
+    def tearDown(self):
+        module.ROOT = self.original_root
+        self.tempdir.cleanup()
+
+    def validate(self, text: str) -> list[str]:
+        (self.root / module.PKGMETA).write_text(text, encoding="utf-8")
+        return module.validate_pkgmeta_packages(self.MANIFESTS)
+
+    def test_every_release_package_moved_once_is_accepted(self):
+        self.assertEqual([], self.validate(self.COMPLETE))
+
+    def test_a_release_package_without_its_moves_is_reported_with_the_lines_to_add(self):
+        text = self.COMPLETE.replace(
+            "  MoltenCodes/packages/timerKit/docs: MoltenCodes/timerKit/docs\n", ""
+        )
+
+        errors = self.validate(text)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('release package "timerKit" is not moved', errors[0])
+        self.assertIn('"  MoltenCodes/packages/timerKit/docs: MoltenCodes/timerKit/docs"', errors[0])
+
+    def test_a_repeated_move_is_reported(self):
+        text = self.COMPLETE + "  MoltenCodes/packages/registry/src: MoltenCodes/registry\n"
+
+        errors = self.validate(text)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("repeats", errors[0])
+
+    def test_moving_a_development_package_is_reported(self):
+        text = self.COMPLETE + "  MoltenCodes/packages/testKit/src: MoltenCodes/testKit\n"
+
+        errors = self.validate(text)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('ships development package "testKit"', errors[0])
+
+    def test_moving_an_unknown_package_is_reported(self):
+        text = self.COMPLETE + "  MoltenCodes/packages/goneKit/src: MoltenCodes/goneKit\n"
+
+        errors = self.validate(text)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('unknown package "goneKit"', errors[0])
+
+    def test_a_missing_file_is_left_to_the_root_file_check(self):
+        self.assertEqual([], module.validate_pkgmeta_packages(self.MANIFESTS))
+
+
+class PkgmetaRootEntryTests(unittest.TestCase):
+    """`.pkgmeta` ignores every root entry except the licence and the packages."""
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        self.original_root = module.ROOT
+        module.ROOT = self.root
+        for name in ("LICENSE", "README.md", ".pkgmeta"):
+            (self.root / name).write_text("", encoding="utf-8")
+        for name in ("packages", "docs", ".git"):
+            (self.root / name).mkdir()
+
+    def tearDown(self):
+        module.ROOT = self.original_root
+        self.tempdir.cleanup()
+
+    def write_pkgmeta(self, *ignored: str) -> None:
+        lines = "".join(f"  - {name}\n" for name in ignored)
+        (self.root / module.PKGMETA).write_text(f"ignore:\n{lines}", encoding="utf-8")
+
+    def test_every_root_entry_ignored_is_accepted(self):
+        self.write_pkgmeta(".pkgmeta", "README.md", "docs")
+
+        self.assertEqual([], module.validate_pkgmeta_root_entries())
+
+    def test_a_root_entry_that_would_ship_is_reported_with_the_line_to_add(self):
+        self.write_pkgmeta(".pkgmeta", "docs")
+
+        errors = module.validate_pkgmeta_root_entries()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('root entry "README.md" would ship; add "  - README.md"', errors[0])
+
+    def test_entries_gitignore_names_at_the_root_are_skipped(self):
+        self.write_pkgmeta(".pkgmeta", "README.md", "docs", ".gitignore")
+        (self.root / ".gitignore").write_text(
+            "# Local output\n.DS_Store\nbuild/\n*.swp\npackages/*/docs/reference/\n", encoding="utf-8"
+        )
+        (self.root / ".DS_Store").write_text("", encoding="utf-8")
+        (self.root / "build").mkdir()
+        (self.root / "notes.swp").write_text("", encoding="utf-8")
+
+        self.assertEqual([], module.validate_pkgmeta_root_entries())
+
+    def test_gitignore_patterns_with_an_inner_slash_are_not_root_patterns(self):
+        text = "# comment\n!keep\n.DS_Store\ncoverage/\npackages/*/docs/reference/\n"
+
+        self.assertEqual([".DS_Store", "coverage"], module.gitignored_root_patterns(text))
+
+
+class NavigationIndexTests(unittest.TestCase):
+    """`docs/README.md` and `packages/README.md` name every document and package."""
+
+    MANIFESTS = {"registry": {"dependencies": {}}, "timerKit": {"dependencies": {}}}
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        self.original_root = module.ROOT
+        module.ROOT = self.root
+        (self.root / "docs").mkdir()
+        (self.root / "packages").mkdir()
+        (self.root / "docs" / "TESTING.md").write_text("# Testing\n", encoding="utf-8")
+        self.write_indexes()
+
+    def tearDown(self):
+        module.ROOT = self.original_root
+        self.tempdir.cleanup()
+
+    def write_indexes(self, *, documents=("TESTING.md",), packages=("registry", "timerKit")):
+        document_links = "".join(f"- [{name}]({name}#section)\n" for name in documents)
+        package_readmes = "".join(
+            f"- [{name}](../packages/{name}/README.md)\n" for name in packages
+        )
+        (self.root / module.DOCUMENTATION_INDEX).write_text(
+            "# Documentation\n\n" + document_links + package_readmes, encoding="utf-8"
+        )
+        (self.root / module.PACKAGE_INDEX).write_text(
+            "# Packages\n\n" + "".join(f"- [`{name}`]({name}/)\n" for name in packages),
+            encoding="utf-8",
+        )
+
+    def test_complete_indexes_are_accepted(self):
+        self.assertEqual([], module.validate_navigation_indexes(self.MANIFESTS))
+
+    def test_an_unlisted_document_is_reported(self):
+        self.write_indexes(documents=())
+
+        errors = module.validate_navigation_indexes(self.MANIFESTS)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn('does not link "TESTING.md"', errors[0])
+
+    def test_an_unlisted_package_is_reported_in_both_indexes(self):
+        self.write_indexes(packages=("registry",))
+
+        errors = module.validate_navigation_indexes(self.MANIFESTS)
+
+        self.assertEqual(2, len(errors))
+        self.assertIn('"../packages/timerKit/README.md"', errors[0])
+        self.assertIn('"timerKit/"', errors[1])
+
+    def test_a_missing_package_index_is_reported(self):
+        (self.root / module.PACKAGE_INDEX).unlink()
+
+        errors = module.validate_navigation_indexes(self.MANIFESTS)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("required package index is missing", errors[0])
+
+
+class DocumentedLoadOrderTests(unittest.TestCase):
+    """The load order `docs/EMBEDDING.md` quotes is the one the builder computes."""
+
+    MANIFESTS = {
+        "registry": {"dependencies": {}},
+        "signalKit": {"dependencies": {"registry": {}}},
+        "cacheKit": {"dependencies": {"registry": {}}},
+    }
+
+    DOCUMENT = """\
+Any order consistent with that graph works. This one is what the release
+artifact's `manifest.json` records under `loadOrder`:
+
+```text
+{lines}
+```
+
+```text
+not the load order
+```
+"""
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        self.original_root = module.ROOT
+        self.original_build_root = module.build.ROOT
+        module.ROOT = self.root
+        module.build.ROOT = self.root
+        for name in self.MANIFESTS:
+            source = self.root / "packages" / name / "src"
+            source.mkdir(parents=True)
+            (source / f"{name[0].upper()}{name[1:]}.lua").write_text("", encoding="utf-8")
+        (self.root / "docs").mkdir()
+
+    def tearDown(self):
+        module.ROOT = self.original_root
+        module.build.ROOT = self.original_build_root
+        self.tempdir.cleanup()
+
+    def write_document(self, *lines: str) -> None:
+        (self.root / module.LOAD_ORDER_DOCUMENT).write_text(
+            self.DOCUMENT.format(lines="\n".join(lines)), encoding="utf-8"
+        )
+
+    def test_the_builders_order_is_accepted(self):
+        self.write_document(
+            "registry/Registry.lua", "cacheKit/CacheKit.lua", "signalKit/SignalKit.lua"
+        )
+
+        self.assertEqual([], module.validate_documented_load_order(self.MANIFESTS))
+
+    def test_a_different_order_is_reported_with_the_block_to_paste(self):
+        self.write_document(
+            "registry/Registry.lua", "signalKit/SignalKit.lua", "cacheKit/CacheKit.lua"
+        )
+
+        errors = module.validate_documented_load_order(self.MANIFESTS)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn(
+            "replace the block with:\nregistry/Registry.lua\ncacheKit/CacheKit.lua\n"
+            "signalKit/SignalKit.lua",
+            errors[0],
+        )
+
+    def test_a_missing_package_is_reported(self):
+        self.write_document("registry/Registry.lua", "cacheKit/CacheKit.lua")
+
+        self.assertEqual(1, len(module.validate_documented_load_order(self.MANIFESTS)))
+
+    def test_a_document_without_the_quote_is_reported(self):
+        (self.root / module.LOAD_ORDER_DOCUMENT).write_text("# Embedding\n", encoding="utf-8")
+
+        errors = module.validate_documented_load_order(self.MANIFESTS)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("no fenced load order follows", errors[0])
+
+
+class QuotedExampleFileTests(unittest.TestCase):
+    """`docs/EMBEDDING.md` quotes the example `.toc` and `embeds.xml` verbatim."""
+
+    FILES = {"ExampleAddon.toc": "## Title: Example\nembeds.xml\n", "embeds.xml": "<Ui>\n</Ui>\n"}
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        self.original_root = module.ROOT
+        module.ROOT = self.root
+        (self.root / "examples").mkdir()
+        (self.root / "docs").mkdir()
+        for name, text in self.FILES.items():
+            (self.root / "examples" / name).write_text(text, encoding="utf-8")
+
+    def tearDown(self):
+        module.ROOT = self.original_root
+        self.tempdir.cleanup()
+
+    def write_document(self, quotes: dict[str, str]) -> None:
+        sections = "".join(
+            f"### `{name}`\n\nIntroduction.\n\n```text\n{body}```\n\nAfter.\n\n"
+            for name, body in quotes.items()
+        )
+        (self.root / module.LOAD_ORDER_DOCUMENT).write_text(
+            "# Embedding\n\n" + sections, encoding="utf-8"
+        )
+
+    def test_verbatim_quotes_are_accepted(self):
+        self.write_document(self.FILES)
+
+        self.assertEqual([], module.validate_quoted_example_files())
+
+    def test_a_drifted_quote_is_reported(self):
+        self.write_document({**self.FILES, "embeds.xml": "<Ui>\n    <Script />\n</Ui>\n"})
+
+        errors = module.validate_quoted_example_files()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("the quote of examples/embeds.xml differs from the file", errors[0])
+
+    def test_a_missing_quote_is_reported(self):
+        self.write_document({"ExampleAddon.toc": self.FILES["ExampleAddon.toc"]})
+
+        errors = module.validate_quoted_example_files()
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("no fenced quote follows the heading for embeds.xml", errors[0])
+
+
+class GithubKitListTests(unittest.TestCase):
+    """The labels, the labeler and the issue forms name every Kit, and no other."""
+
+    MANIFESTS = {"registry": {"dependencies": {}}, "timerKit": {"dependencies": {}}}
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        self.original_root = module.ROOT
+        module.ROOT = self.root
+        (self.root / ".github" / "ISSUE_TEMPLATE").mkdir(parents=True)
+        self.write_lists(("registry", "timerKit"))
+
+    def tearDown(self):
+        module.ROOT = self.original_root
+        self.tempdir.cleanup()
+
+    def write_lists(self, names) -> None:
+        labels = "".join(
+            f'- name: "kit: {name}"\n  color: "5319e7"\n  description: "The {name} package."\n'
+            for name in names
+        )
+        labeler = "".join(
+            f'"kit: {name}":\n  - changed-files:\n'
+            f'      - any-glob-to-any-file: "packages/{name}/**"\n\n'
+            for name in names
+        )
+        dropdown = "      options:\n" + "".join(f"        - {name}\n" for name in names)
+        github = self.root / ".github"
+        (github / "labels.yml").write_text(labels, encoding="utf-8")
+        (github / "labeler.yml").write_text(labeler, encoding="utf-8")
+        for form in ("bug_report.yml", "feature_request.yml"):
+            (github / "ISSUE_TEMPLATE" / form).write_text(dropdown, encoding="utf-8")
+
+    def test_complete_lists_are_accepted(self):
+        self.assertEqual([], module.validate_github_kit_lists(self.MANIFESTS))
+
+    def test_a_kit_missing_everywhere_is_reported_once_per_place(self):
+        self.write_lists(("registry",))
+
+        errors = module.validate_github_kit_lists(self.MANIFESTS)
+
+        self.assertEqual(5, len(errors))
+        self.assertTrue(all("timerKit" in item for item in errors), errors)
+
+    def test_a_label_for_a_removed_package_is_reported(self):
+        self.write_lists(("registry", "timerKit", "goneKit"))
+
+        errors = module.validate_github_kit_lists(self.MANIFESTS)
+
+        self.assertEqual(2, len(errors))
+        self.assertTrue(all('"kit: goneKit", which is not a package' in item for item in errors))
+
+    def test_a_missing_file_is_reported(self):
+        (self.root / ".github" / "labels.yml").unlink()
+
+        errors = module.validate_github_kit_lists(self.MANIFESTS)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("required GitHub metadata file is missing", errors[0])
+
+
+class RepositoryIndexTests(unittest.TestCase):
+    """The committed tree passes the index, packager and GitHub-list checks."""
+
+    def test_repository_indexes_and_lists_are_complete(self):
+        manifests, errors = validate_manifests.load_manifests()
+        self.assertEqual([], errors)
+        self.assertEqual([], module.validate_pkgmeta_packages(manifests))
+        self.assertEqual([], module.validate_pkgmeta_root_entries())
+        self.assertEqual([], module.validate_navigation_indexes(manifests))
+        self.assertEqual([], module.validate_documented_load_order(manifests))
+        self.assertEqual([], module.validate_quoted_example_files())
+        self.assertEqual([], module.validate_github_kit_lists(manifests))
 
 
 if __name__ == "__main__":

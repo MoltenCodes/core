@@ -76,15 +76,6 @@ def parse_tag(tag: str) -> ParsedTag:
     )
 
 
-def validate_tag_format(tag: str) -> list[str]:
-    """Return the reason `tag` has neither release-tag form, or nothing."""
-    try:
-        parse_tag(tag)
-    except TagError as failure:
-        return [str(failure)]
-    return []
-
-
 def _check_listed_versions(
     entries: Sequence[history.PackageVersion],
     manifests: dict[str, dict[str, Any]],

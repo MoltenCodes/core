@@ -12,6 +12,7 @@ hide the state of the other.
 
 from __future__ import annotations
 
+import argparse
 import shutil
 import subprocess
 import sys
@@ -119,7 +120,21 @@ def run(extra_args: Sequence[str] = ()) -> int:
     return status
 
 
-def main() -> int:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse the command line; the linter takes no options beyond `--help`."""
+    parser = argparse.ArgumentParser(
+        prog="python3 -m tooling.lint",
+        description=(
+            "Run Selene over runtime Lua (selene.toml) and test Lua "
+            "(selene-tests.toml); both scopes always run."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Lint both scopes and return the first non-zero Selene exit status."""
+    parse_args(argv)
     return run()
 
 

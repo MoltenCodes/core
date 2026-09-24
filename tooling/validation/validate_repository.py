@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import argparse
+import fnmatch
 import json
 import re
 import sys
 from pathlib import Path
+from typing import Sequence
 from urllib.parse import unquote
 
 from tooling.api import flavours
 from tooling.package import toc
+from tooling.package import build
 from tooling.package.build import top_level_lua_files
+from tooling.release import pkgmeta
 from tooling.validation.interface_numbers import (
     SupportedClients,
     load_supported_clients,
@@ -71,6 +76,7 @@ PACKAGE_REQUIRED_FILES = (
     Path("README.md"),
     Path("CHANGELOG.md"),
     Path("package.manifest.json"),
+    Path("tests/README.md"),
 )
 
 #: Oldest Python the repository tooling supports. Keep this in step with
@@ -115,6 +121,55 @@ SUPPORTED_CLIENT_ROW_RE = re.compile(r"^\|.*\|[ \t]*`[0-9]+`[ \t]*\|.*\|[ \t]*$"
 #: The packager metadata whose `ignore:` list must hold every development package.
 PKGMETA = Path(".pkgmeta")
 
+#: The name of the addon folder `.pkgmeta` packages every release Kit into.
+PKGMETA_ADDON = "MoltenCodes"
+
+#: Root entries the packager ships: the licence (written as `license-output`)
+#: and the package sources `move-folders` rearranges. Every other root entry
+#: must be under `.pkgmeta`'s `ignore:`, so the addon-site zip carries only the
+#: Kits and the licence, like the builder's bundle.
+PKGMETA_SHIPPED_ROOT_ENTRIES = {"LICENSE", "packages"}
+
+#: Git's own directory, which the packager never copies.
+VERSION_CONTROL_DIRECTORY = ".git"
+
+#: The repository's ignore file; a root entry it names is local output, not
+#: repository content, and is not required in `.pkgmeta`.
+GITIGNORE = Path(".gitignore")
+
+#: The embedding guide, which quotes the builder's load order in full.
+LOAD_ORDER_DOCUMENT = Path("docs/EMBEDDING.md")
+
+#: The sentence that introduces the quoted load order in `LOAD_ORDER_DOCUMENT`;
+#: the first fenced block after it is the quote.
+LOAD_ORDER_INTRODUCTION = "records under `loadOrder`:"
+
+#: Example addon files `docs/EMBEDDING.md` quotes in full, each under a
+#: "### `<file name>`" heading, as the files a reader copies.
+QUOTED_EXAMPLE_FILES = ("ExampleAddon.toc", "embeds.xml")
+
+#: The repository-wide documentation index, which links every document under
+#: `docs/` and every package README.
+DOCUMENTATION_INDEX = Path("docs/README.md")
+
+#: The package index, which links every package directory.
+PACKAGE_INDEX = Path("packages/README.md")
+
+#: The GitHub metadata that names every Kit, as `docs/TOOLING.md`
+#: ("Continuous integration") requires of a new Kit. Each entry is the file and
+#: the line (compared without surrounding whitespace) that must appear in it
+#: for every package ID, with `{id}` replaced.
+GITHUB_KIT_LISTS = (
+    (Path(".github/labels.yml"), '- name: "kit: {id}"'),
+    (Path(".github/labeler.yml"), '"kit: {id}":'),
+    (Path(".github/labeler.yml"), '- any-glob-to-any-file: "packages/{id}/**"'),
+    (Path(".github/ISSUE_TEMPLATE/bug_report.yml"), "- {id}"),
+    (Path(".github/ISSUE_TEMPLATE/feature_request.yml"), "- {id}"),
+)
+
+#: A `kit: <id>` label name anywhere in the GitHub metadata.
+KIT_LABEL_RE = re.compile(r'"kit: ([A-Za-z0-9]+)"')
+
 #: A YAML comment after a value: a `#` preceded by whitespace, to the line end.
 TRAILING_YAML_COMMENT_RE = re.compile(r"\s+#.*$")
 
@@ -122,8 +177,8 @@ MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 
 #: Package documentation directories whose Markdown is generated from data
 #: rather than written: the API reference and the build-to-build change reports
-#: of `apiKit` (`docs/API_KIT_DESIGN.md`, section 13). The generator that will
-#: write them (roadmap step H2) validates its own output, so the link check
+#: of `apiKit` (`docs/API_KIT_DESIGN.md`, section 13). `tooling.api.generate`,
+#: which writes them, validates its own output, so the link check
 #: (and, through `cspell.json`, the spell check) leaves them alone. Each entry
 #: is the two path segments under `packages/<name>/`.
 GENERATED_DOCUMENT_DIRECTORIES = {
@@ -245,16 +300,6 @@ def validate_workspace_library(path: Path, expected: list[str]) -> list[str]:
         return [error(path, f"workspace.library must be {json.dumps(expected)}")]
 
     return []
-
-
-def embedded_script_names(embeds: Path) -> list[str]:
-    """Return the Lua file names an `embeds.xml` loads, in the order it loads them.
-
-    A reference is written the way the client reads it, as a path under the
-    consuming addon (`Libs\\MoltenCodes\\signalKit\\SignalKit.lua`).
-    """
-    references = EMBEDDED_SCRIPT_RE.findall(embeds.read_text(encoding="utf-8"))
-    return [reference.replace("\\", "/").rsplit("/", 1)[-1] for reference in references]
 
 
 def package_id_for(script_name: str) -> str:
@@ -403,6 +448,23 @@ def validate_facade_file(package_dir: Path) -> list[str]:
     return []
 
 
+def validate_test_support(package_dir: Path) -> list[str]:
+    """Check that the suite keeps its environment at `tests/support/<displayName>TestEnv.lua`.
+
+    `docs/TESTING.md` ("Test support") gives every package suite one entry
+    point built on the shared fixture, named after the facade, so a reader
+    finds any suite's fake client in the same place. The check is skipped when
+    the manifest cannot be read, because the manifest checks report that.
+    """
+    display_name = read_display_name(package_dir)
+    if display_name is None:
+        return []
+    support = package_dir / "tests" / "support" / f"{display_name}TestEnv.lua"
+    if support.is_file():
+        return []
+    return [error(support, "required package test environment is missing")]
+
+
 def validate_package_layout() -> list[str]:
     """Check the minimum self-contained layout of every publishable package."""
     errors: list[str] = []
@@ -426,6 +488,8 @@ def validate_package_layout() -> list[str]:
             errors.append(error(tests_dir, "required package tests directory is missing"))
         elif not any(tests_dir.rglob("*_spec.lua")):
             errors.append(error(tests_dir, "no Busted *_spec.lua tests were found"))
+        else:
+            errors.extend(validate_test_support(package_dir))
 
         manifest_path = package_dir / "package.manifest.json"
         if manifest_path.is_file():
@@ -660,6 +724,288 @@ def validate_api_flavours() -> list[str]:
     return []
 
 
+def validate_pkgmeta_packages(manifests: dict[str, dict[str, object]]) -> list[str]:
+    """Check that `.pkgmeta` moves every release package exactly once, and nothing else.
+
+    The BigWigs packager ships a package only through its two `move-folders`
+    entries (`src` and `docs`). A release package without them would be
+    missing from the addon-site zip while the local bundle still carries it; a
+    repeated entry or one for a development or unknown package would ship the
+    wrong tree. `tooling.release.pkgmeta` reads the same file with the same
+    parser.
+    """
+    path = ROOT / PKGMETA
+    if not path.is_file():
+        # `validate_required_root_files` already reports the missing file.
+        return []
+    try:
+        data = pkgmeta.parse_pkgmeta(path.read_text(encoding="utf-8"))
+    except pkgmeta.PkgmetaError as failure:
+        return [error(path, str(failure))]
+
+    moves = data.get("move-folders")
+    if not isinstance(moves, list):
+        return [error(path, "`move-folders` must be a map")]
+
+    errors: list[str] = []
+    seen: dict[str, int] = {}
+    for source, target in moves:
+        if not isinstance(source, str):
+            continue
+        seen[source] = seen.get(source, 0) + 1
+        parts = source.split("/")
+        package = parts[2] if len(parts) >= 3 and parts[1] == "packages" else None
+        if package is None:
+            continue
+        if package not in manifests:
+            errors.append(error(path, f'move-folders names unknown package "{package}"'))
+        elif is_development(manifests[package]):
+            errors.append(error(path, f'move-folders ships development package "{package}"'))
+
+    for source, count in sorted(seen.items()):
+        if count > 1:
+            errors.append(error(path, f'move-folders repeats "{source}" {count} times'))
+
+    for name in sorted(manifests):
+        if is_development(manifests[name]):
+            continue
+        for directory, destination in (("src", name), ("docs", f"{name}/docs")):
+            expected = (
+                f"{PKGMETA_ADDON}/packages/{name}/{directory}",
+                f"{PKGMETA_ADDON}/{destination}",
+            )
+            if expected not in moves:
+                errors.append(
+                    error(
+                        path,
+                        f'release package "{name}" is not moved; add '
+                        f'"  {expected[0]}: {expected[1]}" under "move-folders:"',
+                    )
+                )
+    return errors
+
+
+def gitignored_root_patterns(text: str) -> list[str]:
+    """Return the `.gitignore` patterns that can match a root entry by name.
+
+    Only the simple forms the file uses are read: a name or glob (`*.swp`,
+    `.DS_Store`), optionally ending in `/` for a directory. Patterns with a
+    slash inside (`packages/*/docs/reference/`), negations and comments never
+    name a root entry and are skipped.
+    """
+    patterns: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", "!")):
+            continue
+        name = stripped.rstrip("/")
+        if "/" not in name:
+            patterns.append(name)
+    return patterns
+
+
+def validate_pkgmeta_root_entries() -> list[str]:
+    """Check that `.pkgmeta` ignores every root entry the addon does not ship.
+
+    The BigWigs packager copies the whole checkout and drops only what
+    `ignore:` names, while the local builder assembles its bundle from the
+    packages and the licence alone. A new root file missing from
+    `ignore:` would therefore ship in the addon-site zip and nowhere else.
+    Entries `.gitignore` names at the root (build output, editor files) are
+    never in a checkout and are skipped.
+    """
+    path = ROOT / PKGMETA
+    if not path.is_file():
+        # `validate_required_root_files` already reports the missing file.
+        return []
+
+    ignored = set(pkgmeta_ignore_entries(path.read_text(encoding="utf-8")))
+    gitignore = ROOT / GITIGNORE
+    local_patterns = (
+        gitignored_root_patterns(gitignore.read_text(encoding="utf-8")) if gitignore.is_file() else []
+    )
+
+    errors: list[str] = []
+    for entry in sorted(ROOT.iterdir(), key=lambda item: item.name):
+        name = entry.name
+        if name == VERSION_CONTROL_DIRECTORY or name in PKGMETA_SHIPPED_ROOT_ENTRIES:
+            continue
+        if any(fnmatch.fnmatchcase(name, pattern) for pattern in local_patterns):
+            continue
+        if name not in ignored:
+            errors.append(
+                error(path, f'root entry "{name}" would ship; add "  - {name}" under "ignore:"')
+            )
+    return errors
+
+
+def quoted_load_order(text: str) -> list[str] | None:
+    """Return the lines of the fenced block after `LOAD_ORDER_INTRODUCTION`, or `None`."""
+    _, found, rest = text.partition(LOAD_ORDER_INTRODUCTION)
+    if not found:
+        return None
+    lines = rest.splitlines()
+    fences = [index for index, line in enumerate(lines) if line.strip().startswith("```")]
+    if len(fences) < 2:
+        return None
+    return [line.strip() for line in lines[fences[0] + 1 : fences[1]] if line.strip()]
+
+
+def validate_documented_load_order(manifests: dict[str, dict[str, object]]) -> list[str]:
+    """Check that the load order quoted in `docs/EMBEDDING.md` is the builder's.
+
+    The guide tells addon authors that its list is what the bundle's
+    `manifest.json` records under `loadOrder`. A new Kit or a new dependency
+    changes that order, so the quote is compared with the order the builder
+    computes from the manifests, file by file.
+    """
+    path = ROOT / LOAD_ORDER_DOCUMENT
+    if not path.is_file():
+        # `validate_required_root_files` already reports the missing file.
+        return []
+    quoted = quoted_load_order(path.read_text(encoding="utf-8"))
+    if quoted is None:
+        return [error(path, f'no fenced load order follows "{LOAD_ORDER_INTRODUCTION}"')]
+
+    try:
+        ordered = build.select_packages(manifests).ordered
+        expected = [
+            f"{name}/{relative}" for name in ordered for relative in build.runtime_files(name)
+        ]
+    except build.BuildError:
+        # The manifest and layout checks report why the order cannot be computed.
+        return []
+    if quoted == expected:
+        return []
+    return [
+        error(
+            path,
+            "quoted load order differs from the builder's; replace the block with:\n"
+            + "\n".join(expected),
+        )
+    ]
+
+
+def quoted_block_after_heading(text: str, heading: str) -> str | None:
+    """Return the body of the first fenced block after a heading line, or `None`.
+
+    The body is returned exactly, with its final newline, so it can be compared
+    with the file it quotes byte for byte.
+    """
+    lines = text.splitlines(keepends=True)
+    try:
+        start = next(index for index, line in enumerate(lines) if line.rstrip("\n") == heading)
+    except StopIteration:
+        return None
+    fences = [
+        index
+        for index, line in enumerate(lines[start + 1 :], start=start + 1)
+        if line.startswith("```")
+    ]
+    if len(fences) < 2:
+        return None
+    return "".join(lines[fences[0] + 1 : fences[1]])
+
+
+def validate_quoted_example_files() -> list[str]:
+    """Check that `docs/EMBEDDING.md` quotes the example `.toc` and `embeds.xml` verbatim.
+
+    The guide presents them as the files a reader copies, and the example addon's
+    own tests keep the real files in the builder's load order; a quote that
+    drifted from them would teach a stale order.
+    """
+    document = ROOT / LOAD_ORDER_DOCUMENT
+    if not document.is_file():
+        return []
+    text = document.read_text(encoding="utf-8")
+    errors: list[str] = []
+    for name in QUOTED_EXAMPLE_FILES:
+        example = ROOT / "examples" / name
+        if not example.is_file():
+            continue
+        quoted = quoted_block_after_heading(text, f"### `{name}`")
+        if quoted is None:
+            errors.append(error(document, f"no fenced quote follows the heading for {name}"))
+        elif quoted != example.read_text(encoding="utf-8"):
+            errors.append(
+                error(document, f"the quote of examples/{name} differs from the file; paste the file")
+            )
+    return errors
+
+
+def _markdown_link_targets(path: Path) -> set[str]:
+    """Return every link target in a Markdown file, without its `#fragment`."""
+    text = path.read_text(encoding="utf-8")
+    return {
+        match.group(1).strip().split("#", 1)[0] for match in MARKDOWN_LINK_RE.finditer(text)
+    }
+
+
+def validate_navigation_indexes(manifests: dict[str, dict[str, object]]) -> list[str]:
+    """Check that the two indexes a reader starts from name everything they index.
+
+    `docs/README.md` must link every other document under `docs/` and every
+    package README; `packages/README.md` must link every package directory.
+    The link check proves each link resolves; this proves none is missing, so
+    a new Kit or document cannot land without being findable.
+    """
+    errors: list[str] = []
+
+    documentation_index = ROOT / DOCUMENTATION_INDEX
+    if documentation_index.is_file():
+        targets = _markdown_link_targets(documentation_index)
+        for document in sorted((ROOT / "docs").glob("*.md")):
+            if document.name != documentation_index.name and document.name not in targets:
+                errors.append(
+                    error(documentation_index, f'does not link "{document.name}"')
+                )
+        for name in sorted(manifests):
+            target = f"../packages/{name}/README.md"
+            if target not in targets:
+                errors.append(error(documentation_index, f'does not link "{target}"'))
+
+    package_index = ROOT / PACKAGE_INDEX
+    if package_index.is_file():
+        targets = {target.rstrip("/") for target in _markdown_link_targets(package_index)}
+        for name in sorted(manifests):
+            if name not in targets:
+                errors.append(error(package_index, f'does not link "{name}/"'))
+    else:
+        errors.append(error(package_index, "required package index is missing"))
+
+    return errors
+
+
+def validate_github_kit_lists(manifests: dict[str, dict[str, object]]) -> list[str]:
+    """Check that the labels, the labeler and the issue forms name every Kit, and no other.
+
+    Each package needs a `kit: <id>` label, a labeler rule for its directory
+    and an option in the Kit dropdown of the bug report and feature request
+    forms. A missing one means pull requests go unlabelled and reporters
+    cannot choose the Kit; a label for a package that no longer exists would be
+    applied by nothing.
+    """
+    errors: list[str] = []
+    texts: dict[Path, str] = {}
+    for relative, pattern in GITHUB_KIT_LISTS:
+        path = ROOT / relative
+        if relative not in texts:
+            if not path.is_file():
+                errors.append(error(path, "required GitHub metadata file is missing"))
+                texts[relative] = ""
+                continue
+            texts[relative] = path.read_text(encoding="utf-8")
+            for name in sorted(set(KIT_LABEL_RE.findall(texts[relative]))):
+                if name not in manifests:
+                    errors.append(error(path, f'names "kit: {name}", which is not a package'))
+        present = {line.strip() for line in texts[relative].splitlines()}
+        for name in sorted(manifests):
+            expected = pattern.format(id=name).strip()
+            if expected not in present:
+                errors.append(error(path, f'is missing "{expected}"'))
+    return errors
+
+
 def _is_external_link(target: str) -> bool:
     lowered = target.lower()
     return (
@@ -717,11 +1063,33 @@ def validate_repository() -> tuple[dict[str, dict[str, object]], list[str]]:
     errors.extend(validate_interface_numbers())
     errors.extend(validate_api_flavours())
     errors.extend(validate_development_packages_ignored(manifests))
+    errors.extend(validate_pkgmeta_packages(manifests))
+    errors.extend(validate_pkgmeta_root_entries())
+    errors.extend(validate_navigation_indexes(manifests))
+    errors.extend(validate_documented_load_order(manifests))
+    errors.extend(validate_quoted_example_files())
+    errors.extend(validate_github_kit_lists(manifests))
     errors.extend(validate_markdown_links())
     return manifests, errors
 
 
-def main() -> int:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse the command line; the validator takes no options beyond `--help`."""
+    parser = argparse.ArgumentParser(
+        prog="python3 -m tooling.validation.validate_repository",
+        description=(
+            "Check the repository: manifests and dependency graph, root files, "
+            "package layout, lua-language-server configurations, Interface "
+            "numbers, .pkgmeta, the documentation and package indexes, the GitHub "
+            "Kit lists and repository-relative Markdown links."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run every repository check and print the result."""
+    parse_args(argv)
     manifests, errors = validate_repository()
 
     if errors:

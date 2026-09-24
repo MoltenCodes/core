@@ -22,10 +22,17 @@ Run one package's tests:
 python3 -m tooling.test.run registry
 ```
 
-Lint runtime Lua:
+Lint runtime and test Lua (both scopes always run):
 
 ```bash
 python3 -m tooling.lint
+```
+
+Measure line coverage of the package sources with LuaCov (needs `luarocks
+install luacov`; a report, not a gate):
+
+```bash
+python3 -m tooling.test.coverage
 ```
 
 Spell-check the documentation (needs Node 22.18 or newer; skips with a note
@@ -56,6 +63,16 @@ python3 -m tooling.api.diff <previous metadata> packages/apiKit/metadata/retail
 python3 -m tooling.api.generate --flavour retail --previous <previous metadata>
 python3 -m tooling.api.generate --all --check
 python3 -m tooling.api.generate --all --reference-out build/reference
+python3 -m tooling.api.heads
+```
+
+`tooling.api.heads` compares every flavour's committed metadata build with the
+newest build on its mirror branches; a scheduled workflow runs it daily.
+
+Check commit subjects (the pull request gate runs the same command):
+
+```bash
+python3 -m tooling.ci.check_commits origin/main..HEAD
 ```
 
 Build a distributable bundle:
@@ -65,10 +82,12 @@ python3 -m tooling.package.build --all --out dist
 python3 -m tooling.package.build --package signalKit --out dist --zip
 ```
 
-List the package IDs (`--release` leaves out development packages):
+List the package IDs, and validate the manifests on their own (`--release`
+leaves out development packages):
 
 ```bash
 python3 -m tooling.package.list --release
+python3 -m tooling.validation.validate_manifests
 ```
 
 The release workflow also runs the commands in `release/`: `check_tag` checks a
@@ -95,6 +114,7 @@ is which for anyone who lands in the wrong one.
 `pyproject.toml` declares the floor as `requires-python = ">=3.10"`.
 `python3 -m tooling.validation.validate_repository` refuses to run on anything
 older and checks that the declaration and the tooling's own constant agree. CI
-runs the tooling unit tests on both the floor and the current release.
+runs every job that uses the tooling on both the floor (3.10) and the current
+release (3.14).
 
 See [`../docs/TOOLING.md`](../docs/TOOLING.md) for architecture and [`../docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md) for local setup.

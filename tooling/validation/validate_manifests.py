@@ -7,11 +7,12 @@ its schema small and strict so typos and undeclared conventions fail early.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -391,8 +392,21 @@ def _find_cycles(manifests: dict[str, dict[str, Any]]) -> list[str]:
     return errors
 
 
-def main() -> int:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse the command line; the validator takes no options beyond `--help`."""
+    parser = argparse.ArgumentParser(
+        prog="python3 -m tooling.validation.validate_manifests",
+        description=(
+            "Validate every package.manifest.json and the dependency graph, then "
+            "print each package's version, licence, API generation and revision."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     """Validate manifests and print a concise package summary."""
+    parse_args(argv)
     manifests, errors = load_manifests()
     errors.extend(validate_graph(manifests))
 

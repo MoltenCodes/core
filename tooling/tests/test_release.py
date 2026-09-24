@@ -171,10 +171,11 @@ class ParseTagTests(unittest.TestCase):
             with self.subTest(tag=tag), self.assertRaises(check_tag.TagError):
                 check_tag.parse_tag(tag)
 
-    def test_validate_tag_format_accepts_both_kinds(self):
-        self.assertEqual([], check_tag.validate_tag_format("v1.0.0"))
-        self.assertEqual([], check_tag.validate_tag_format("registry-v0.6.1"))
-        self.assertIn("neither", check_tag.validate_tag_format("latest")[0])
+    def test_parse_tag_names_both_forms_when_it_refuses(self):
+        self.assertEqual(check_tag.BUNDLE, check_tag.parse_tag("v1.0.0").kind)
+        self.assertEqual(check_tag.PACKAGE, check_tag.parse_tag("registry-v0.6.1").kind)
+        with self.assertRaisesRegex(check_tag.TagError, "neither"):
+            check_tag.parse_tag("latest")
 
     def test_github_outputs_lists_every_key(self):
         self.assertEqual(
@@ -655,7 +656,8 @@ class RepositoryReleaseHistoryTests(unittest.TestCase):
 
     def test_recorded_releases_have_a_valid_tag_format(self):
         for tag in history.release_sections(history.read_releases()):
-            self.assertEqual([], check_tag.validate_tag_format(tag), tag)
+            with self.subTest(tag=tag):
+                check_tag.parse_tag(tag)
 
 
 if __name__ == "__main__":

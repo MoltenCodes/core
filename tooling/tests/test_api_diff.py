@@ -566,8 +566,12 @@ class HistoryTests(unittest.TestCase):
     def test_missing_file_is_empty(self):
         self.assertEqual([], module.read_history(self.path))
 
-    def test_append_writes_camel_case_json(self):
-        module.append_history(self.path, self.first_entry())
+    def write_history(self, *entries: module.HistoryEntry) -> None:
+        """Write the history the way `tooling.api.generate` does."""
+        self.path.write_text(model.dump_json(module.history_to_json(list(entries))), encoding="utf-8")
+
+    def test_history_is_written_as_camel_case_json(self):
+        self.write_history(self.first_entry())
 
         data = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(1, data["schema"])
@@ -576,21 +580,10 @@ class HistoryTests(unittest.TestCase):
             data["entries"],
         )
 
-    def test_append_then_read_round_trips(self):
-        module.append_history(self.path, self.first_entry())
-        entries = module.append_history(self.path, self.second_entry())
+    def test_written_history_reads_back(self):
+        self.write_history(self.first_entry(), self.second_entry())
 
-        self.assertEqual([self.first_entry(), self.second_entry()], entries)
-        self.assertEqual(entries, module.read_history(self.path))
-
-    def test_append_is_idempotent_for_the_same_commit(self):
-        module.append_history(self.path, self.first_entry())
-        first_bytes = self.path.read_bytes()
-
-        entries = module.append_history(self.path, self.first_entry())
-
-        self.assertEqual([self.first_entry()], entries)
-        self.assertEqual(first_bytes, self.path.read_bytes())
+        self.assertEqual([self.first_entry(), self.second_entry()], module.read_history(self.path))
 
     def test_malformed_history_is_reported(self):
         self.path.write_text("{", encoding="utf-8")

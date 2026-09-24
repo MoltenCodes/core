@@ -844,7 +844,11 @@ class _Counts:
 
 
 def reference_counts(metadata: model.FlavourMetadata) -> dict[str, int]:
-    """The counts the entry page shows, by row key, for tests and the change report."""
+    """The counts the entry page shows, by row key.
+
+    The reference corpus test holds the rendered entry page, the namespace
+    pages and the search index to these numbers.
+    """
     counts = _counts(metadata)
     return {
         "namespaces": counts.namespaces,

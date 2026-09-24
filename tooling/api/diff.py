@@ -700,23 +700,6 @@ def read_history(path: Path) -> list[HistoryEntry]:
     return history_from_json(data)
 
 
-def append_history(path: Path, entry: HistoryEntry) -> list[HistoryEntry]:
-    """Append `entry` to the history at `path` and return the new list.
-
-    Re-running the pipeline on the same capture must not grow the history, so
-    an entry whose commit matches the last one is not appended again; the
-    file is still rewritten with `model.dump_json`, which keeps its bytes
-    deterministic whatever wrote it before.
-    """
-    entries = read_history(path)
-    already_recorded = bool(entries) and entries[-1].commit == entry.commit
-    if not already_recorded:
-        entries.append(entry)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(model.dump_json(history_to_json(entries)), encoding="utf-8")
-    return entries
-
-
 # --- Command line -----------------------------------------------------------
 
 

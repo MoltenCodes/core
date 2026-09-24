@@ -19,7 +19,12 @@ The modules, in pipeline order:
 - `model`: the metadata model and its JSON form (`SCHEMA.md`), plus the host
   type table `types.json`;
 - `normalize`: turns a capture into a flavour's metadata directory;
-- `validate`: the checks a metadata directory must pass.
-
-The generators (roadmap step H2) follow.
+- `validate`: the checks a metadata directory must pass;
+- `diff`: compares two metadata directories of one flavour, writes the change
+  report and keeps `history.json`;
+- `render_runtime`, `render_types`, `render_reference`: the generated Lua
+  bindings, the LuaCATS definitions, and the Markdown reference with its
+  search index;
+- `generate`: writes every output of a flavour from its metadata, or checks
+  that the committed outputs are current (`--check`).
 """

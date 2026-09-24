@@ -13,7 +13,3 @@ readme = "tooling/README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = []
-
-[tool.moltencodes]
-# Kept in step with `requires-python` above; the validator reads this value.
-python-floor = "3.10"
