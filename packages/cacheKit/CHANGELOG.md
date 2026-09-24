@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 — 2026-09-24
+
+- LuaCATS: the `Memoize` field of the `CacheKit` class parenthesises its `fn` type, `(fun(key: string|number): any)`. Without parentheses, a `fun(...)` return list is greedy, so the language server read `, options: CacheKit.MemoizeOptions?` as a second return of `fn` and the method appeared to take no `options`. Annotation only: `luac -s -l` gives the same instruction listing before and after, so implementation revision 4 is unchanged.
+
 ## 0.2.2 — 2026-09-24
 
 - Implementation revision 4 applies the repository nil rule: the absence of a caller's key, value, option table, option field or limit, and of what a memoised function or a lazy tree's resolver returned, is tested with `type(value) == "nil"`, never by comparing the value with `nil`. The Registry lookup, the results of `Registry:Bootstrap` and the EventKit that `Registry:Find` returns are tested the same way.

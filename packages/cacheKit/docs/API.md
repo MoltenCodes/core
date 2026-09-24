@@ -2,7 +2,7 @@
 
 CacheKit API generation **1** provides bounded caches: least-recently-used caches bounded by count, the same caches with an age limit and negative entries, memoisation of a one-key function, snapshots that report what changed between two reads, a namespace tree expanded on demand, a ring queue with an explicit overflow policy, and clearing a cache when a host event fires.
 
-Implementation revision: **3**.
+Implementation revision: **4**.
 
 ## Loading
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 — 2026-09-24
+
+- LuaCATS: the `Derive` fields of the `EventKit` and `EventKit.Scope` classes parenthesise their `compute` type, `(fun(): any)`. Without parentheses, a `fun(...)` return list is greedy, so the language server read `, options: EventKit.DeriveOptions?` as a second return of `compute` and the method appeared to take no `options`. Annotation only: `luac -s -l` gives the same instruction listing before and after, so implementation revision 15 is unchanged.
+
 ## 0.9.0 — 2026-09-24
 
 - Added `EventKit:IsCombatLogAvailable()`. It answers whether EventKit can read the combat log on this client, which is whether `ConnectCombatLog` can connect: `true` when the global `CombatLogGetCurrentEventInfo` or `C_CombatLog.GetCurrentEventInfo` exists, `false` otherwise. It is looked up on every call, costs two table reads and allocates nothing.

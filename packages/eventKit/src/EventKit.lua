@@ -319,7 +319,7 @@ end
 ---@field GetAddonName fun(self: EventKit.Scope): string?
 ---@field GetActiveCount fun(self: EventKit.Scope): integer
 ---@field Coalesce fun(self: EventKit.Scope, events: string|string[], intervalSeconds: number, callback: fun(set: table<any, any>), options: EventKit.CoalesceOptions?): EventKit.CoalesceHandle
----@field Derive fun(self: EventKit.Scope, events: string|string[], compute: fun(): any, options: EventKit.DeriveOptions?): EventKit.DeriveHandle
+---@field Derive fun(self: EventKit.Scope, events: string|string[], compute: (fun(): any), options: EventKit.DeriveOptions?): EventKit.DeriveHandle
 
 ---Options accepted by `Coalesce`.
 ---@class EventKit.CoalesceOptions
@@ -405,7 +405,7 @@ end
 ---@field ForAddon fun(self: EventKit, addonName: string): EventKit.Scope
 ---@field CloseAddonScopes fun(self: EventKit, addonName: string): boolean
 ---@field Coalesce fun(self: EventKit, events: string|string[], intervalSeconds: number, callback: fun(set: table<any, any>), options: EventKit.CoalesceOptions?): EventKit.CoalesceHandle
----@field Derive fun(self: EventKit, events: string|string[], compute: fun(): any, options: EventKit.DeriveOptions?): EventKit.DeriveHandle
+---@field Derive fun(self: EventKit, events: string|string[], compute: (fun(): any), options: EventKit.DeriveOptions?): EventKit.DeriveHandle
 
 local Connection = rawget(EventKit, "Connection")
 local Scope = rawget(EventKit, "Scope")

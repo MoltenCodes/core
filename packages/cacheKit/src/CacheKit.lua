@@ -258,7 +258,7 @@ local QUEUE_METHODS = { "Push", "Pop", "Peek", "Iterate", "Clear", "GetCount", "
 ---@field UNBOUNDED table Sentinel a `maxEntries` option accepts to lift the bound; one table shared by every revision.
 ---@field NewLru fun(self: CacheKit, options: CacheKit.LruOptions): CacheKit.Cache
 ---@field NewTtl fun(self: CacheKit, options: CacheKit.TtlOptions): CacheKit.Cache
----@field Memoize fun(self: CacheKit, fn: fun(key: string|number): any, options: CacheKit.MemoizeOptions?): CacheKit.Memoized, CacheKit.Cache
+---@field Memoize fun(self: CacheKit, fn: (fun(key: string|number): any), options: CacheKit.MemoizeOptions?): CacheKit.Memoized, CacheKit.Cache
 ---@field NewSnapshot fun(self: CacheKit, read: CacheKit.Read, options: CacheKit.SnapshotOptions?): CacheKit.Snapshot
 ---@field Lazy fun(self: CacheKit, resolve: CacheKit.Resolve, options: CacheKit.LazyOptions?): CacheKit.LazyTree
 ---@field NewQueue fun(self: CacheKit, capacity: integer, overflow: CacheKit.OverflowPolicy): CacheKit.Queue
