@@ -177,7 +177,7 @@ describe("OptionsKit ProfileOptions", function()
         assert.are.equal(9, tree:Walk(function() end))
     end)
 
-    it("offers every profile and the built-in choices, and switches on Set", function()
+    it("offers every profile and the character profile, and switches on Set", function()
         local OptionsKit, db = openDatabase()
         db:SetProfile("Alt")
         db:SetProfile("Default")
@@ -193,7 +193,7 @@ describe("OptionsKit ProfileOptions", function()
             [CHARACTER_PROFILE] = CHARACTER_PROFILE,
         }, current.values)
 
-        -- A built-in choice that has no profile yet is created by the switch.
+        -- The character profile does not exist yet: the switch creates it.
         assert.is_true(tree:Set("profiles.current", CHARACTER_PROFILE))
         assert.are.equal(CHARACTER_PROFILE, db:GetProfile())
         assert.are.same({ "Alt", "Default", CHARACTER_PROFILE }, db:GetProfiles())
@@ -335,6 +335,53 @@ describe("OptionsKit ProfileOptions", function()
         assert.is_nil(tree:Get("profiles.deleteTarget"))
         assert.is_true(tree:IsDisabled("profiles.delete"))
         assert.are.same({ { "profiles.current", "Default" } }, changes)
+    end)
+
+    it("keeps a delete target a listener chooses while the deletion is announced", function()
+        local OptionsKit, db = openDatabase()
+        db:SetProfile("Old")
+        db:SetProfile("Next")
+        db:SetProfile("Default")
+        local tree = defineProfiles(OptionsKit, db)
+        tree:Set("profiles.deleteTarget", "Old")
+        -- The deletion is announced as a change of `current`.
+        tree:OnChange(function(changed, path)
+            if path == "profiles.current" then
+                changed:Set("profiles.deleteTarget", "Next")
+            end
+        end)
+
+        tree:Execute("profiles.delete")
+        assert.are.same({ "Default", "Next" }, db:GetProfiles())
+        assert.are.equal("Next", tree:Get("profiles.deleteTarget"))
+        assert.is_false(tree:IsDisabled("profiles.delete"))
+    end)
+
+    it("fires once per Set when a SettingsKit listener switches again inside a switch", function()
+        local OptionsKit, db = openDatabase()
+        db:SetProfile("First")
+        db:SetProfile("Second")
+        db:SetProfile("Default")
+        local tree
+        local switchedAgain = false
+        -- Connected before Define, so it runs before the group's own listener.
+        db:OnProfileChanged(function(_, name)
+            if name == "First" and not switchedAgain then
+                switchedAgain = true
+                tree:Set("profiles.current", "Second")
+            end
+        end)
+        tree = defineProfiles(OptionsKit, db)
+        local changes = recordChanges(tree)
+
+        assert.is_true(tree:Set("profiles.current", "First"))
+        assert.are.equal("Second", db:GetProfile())
+        -- The inner Set fires for itself; the outer switch stays suppressed
+        -- after the inner one returns, so only the outer Set follows.
+        assert.are.same({
+            { "profiles.current", "Second" },
+            { "profiles.current", "First" },
+        }, changes)
     end)
 
     it("disables copy and delete when the chosen profile stops qualifying", function()

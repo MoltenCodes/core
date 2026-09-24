@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1 — 2026-09-24
+
+- Fixed a switch through the profile group's `current` select made from a SettingsKit `OnProfileChanged` listener of another such switch: the inner `Set` cleared the outer one's suppression, so the tree's `OnChange` fired an extra time for the outer switch. The suppression is now restored to its previous value.
+- Fixed `delete` forgetting a delete target chosen by an `OnChange` listener while the deletion was announced: the choice is now forgotten before `db:DeleteProfile` runs.
+- The profile group's `disabled` predicates and select getters walk the name array `db:GetProfiles()` returns instead of building a choice map on every call.
+- Removed the link record's unused `path` field.
+- `docs/API.md` no longer says OptionsKit never listens to the database: a tree holding a profile group forwards the database's profile signals to `OnChange`, as the `OnChange` section and the tree-handle table now say; the renderer contract names WidgetKit's `RenderOptions` and CommandKit's `BindOptions`; the upgrade section says a profile group keeps the callbacks of the revision that built it. `tests/README.md` no longer lists a constant `"Default"` among the current-profile choices.
+- Implementation revision 3. No layout changed: a revision 2 state is taken over in place, and its profile groups stay attached.
+- 143 specs: a nested switch firing once per `Set`, a delete target chosen during the deletion kept, and the upgrade of a revision 2 state with an attached profile group.
+
 ## 0.2.0 — 2026-09-24
 
 - Added `OptionsKit:ProfileOptions(db, options?)`, the AceDBOptions group over a SettingsKit database: a `description`, a `select` of the current profile (every profile, the current one included, plus this character's `"<name> - <realm>"` profile, created on switch; no constant `"Default"`, since a database may be opened with another default), an `input` that creates a profile by name and switches to it after checking SettingsKit's name rules as a `validate` message, a `select` and a confirmed `execute` to copy another profile into the current one, a confirmed `execute` to reset it, and a `select` and a confirmed `execute` to delete one. Built from existing kinds only, so every renderer shows it. The copy and delete buttons are `disabled` until their select names a profile that exists and is not current, the selects read `nil` while their choice does not qualify, and `Execute` of one still unset raises at the caller.

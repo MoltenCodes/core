@@ -352,6 +352,7 @@ describe("OptionsKit error levels", function()
             end
         )
     end)
+
     it("points a desc refusal and a failing desc function at the caller", function()
         assertReportedAtCaller(
             "OptionsKit:Define tree.args.note.desc must be a string or a function",

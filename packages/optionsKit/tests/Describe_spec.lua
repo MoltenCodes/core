@@ -182,6 +182,7 @@ describe("OptionsKit tree Describe", function()
             end
         )
     end)
+
     it("calls a desc function at Describe with the option's info", function()
         local calls = 0
         local other = OptionsKit:Define("Other", {

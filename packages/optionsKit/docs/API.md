@@ -2,7 +2,7 @@
 
 OptionsKit API generation **1** provides a typed, validated, introspectable options tree with no renderer: what an addon exposes as configurable, how each option is read and written, and what a dialog or a command line needs to present it.
 
-Implementation revision: **2**.
+Implementation revision: **3**.
 
 ## Loading
 
@@ -60,7 +60,9 @@ Tree handle:
 | `IsDisabled(path)`, `IsHidden(path)` | The effective flag, a group's included. | no |
 | `Walk(visitor)` | Visit every option in order. Returns the count. | no |
 | `Describe()` | A fresh plain description of the whole tree. | yes, by design |
-| `OnChange(callback)` | Connect `callback(tree, path, value)`; return a SignalKit connection. | one connection |
+| `OnChange(callback)` | Connect `callback(tree, path, value)` to every `Set`, `Reset` and, while the tree holds a profile group, its database's profile signals; return a SignalKit connection. | one connection |
+
+The options of a [profile group](#profile-options-optionskitprofileoptionsdb-options) are the exception to the "no" column: their getters, predicates and values functions call `db:GetProfiles()`, which allocates (see [Performance](#performance)).
 
 ## `OptionsKit:Define(addonName, tree, options?)`
 
@@ -359,7 +361,7 @@ Give the record a default (`S.optional(S.table{...}, {})`) when its leaf default
 
 If the walk meets something that is not a table, the call raises at your line: `OptionsKit.Tree:Get bind path "profile.frame.anchor" does not lead to a table`. A scope the database no longer provides raises `OptionsKit.Tree:Get bind scope "profile" is not an available scope of the database`.
 
-OptionsKit does not listen to the database. A value changed by SettingsKit directly — a profile switch, `db:ResetProfile()` — fires SettingsKit's signals, not `OnChange`; a renderer that shows bound options listens to `db:OnChange` and `db:OnProfileChanged` as well.
+OptionsKit does not listen to the database for bound values. A value changed by SettingsKit directly fires SettingsKit's `OnChange`, not the tree's, so a renderer that shows bound options listens to `db:OnChange` as well. A profile switch, copy, reset or deletion reaches the tree's `OnChange` only while the tree holds a [profile group](#refresh) over that database; otherwise listen to `db:OnProfileChanged` too.
 
 ### Paths
 
@@ -371,7 +373,7 @@ Calls `visitor(path, kind, depth)` for every option below the root, depth-first,
 
 ## `tree:OnChange(callback)`
 
-Connects `callback(tree, path, value)` to every successful `Set` and every `Reset`, and returns the SignalKit connection (`connection:Disconnect()`). Dispatch follows SignalKit's rules: listeners run in connection order, and a listener error propagates to the caller of `Set` after the value was written. `Undefine` disconnects every listener.
+Connects `callback(tree, path, value)` to every successful `Set` and every `Reset` — and, while the tree holds a profile group, to its database's profile signals ([Refresh](#refresh)) — and returns the SignalKit connection (`connection:Disconnect()`). Dispatch follows SignalKit's rules: listeners run in connection order, and a listener error propagates to the caller of `Set` after the value was written. `Undefine` disconnects every listener.
 
 ## `tree:Describe()`
 
@@ -400,12 +402,12 @@ Functions never appear in a description. Everything a renderer does goes back th
 
 ### How a renderer consumes `Describe`
 
-This is the contract WidgetKit (package E) and CommandKit build on.
+This is the contract WidgetKit's `RenderOptions` and CommandKit's `BindOptions` build on.
 
 1. **Build** the screen from `tree:Describe()`: one widget per node, chosen by `kind`; a `group` becomes a page, a tab or — with `inline` — a box inside its parent; children are already in display order. Skip nodes whose `hidden` is `true`; grey out nodes whose `disabled` is `true`.
 2. **Configure** each widget from the node's hints: a slider from `min`/`max`/`step`/`softMin`/`softMax`/`isPercent`; a dropdown over `values` in `sorting` order (or sorted by label when there is none); an edit box that is multi-line for `multiline`; a colour swatch with an alpha slider for `hasAlpha`; a confirmation dialog before `Execute` for `confirm`. `schema` carries the same bounds in SchemaKit's vocabulary for a generic widget.
 3. **Write** through `tree:Set(node.path, value)`. For typed text, call `tree:Validate(node.path, value)` first and show its message; call `Set` only when it returns `true`, and show the message `Set` returns when `validate` refuses. Run buttons with `tree:Execute(node.path)`.
-4. **Refresh** by connecting `tree:OnChange` (and, for bound options, the database's `OnChange` and `OnProfileChanged`), then calling `Describe` again — or, for one widget, `tree:Get(path)`, `tree:IsDisabled(path)` and `tree:IsHidden(path)`, which allocate nothing. Coalesce a burst of changes into one rebuild; `Describe` allocates the whole description each time.
+4. **Refresh** by connecting `tree:OnChange` (and, for bound options, the database's `OnChange`, and `OnProfileChanged` unless the tree holds a profile group), then calling `Describe` again — or, for one widget, `tree:Get(path)`, `tree:IsDisabled(path)` and `tree:IsHidden(path)`, which allocate nothing. Coalesce a burst of changes into one rebuild; `Describe` allocates the whole description each time.
 
 A command line needs no widgets: `Walk` lists the paths, `Describe` gives each one's help (`name`, `desc`, `usage`, `values`), `Validate` answers a typed value and `Set` stores it.
 
@@ -436,7 +438,7 @@ The returned table is a `group` to place in a tree's `args` (or to pass as the r
 | `copy` | `execute`, `confirm` | `db:CopyProfile(copySource)`: replaces the current profile's settings. Disabled until `copySource` names a profile that exists and is not current. |
 | `reset` | `execute`, `confirm` | `db:ResetProfile()`: every setting of the current profile reads its default again. |
 | `deleteTarget` | `select` | Every profile but the current one. Remembers the choice for `delete`, with the same `nil` rule. |
-| `delete` | `execute`, `confirm` | `db:DeleteProfile(deleteTarget)`, then forgets the choice. Disabled until `deleteTarget` names a profile that exists and is not current. |
+| `delete` | `execute`, `confirm` | Forgets the choice, then `db:DeleteProfile(deleteTarget)`, so a target chosen while the deletion is announced is kept. Disabled until `deleteTarget` names a profile that exists and is not current. |
 
 The `select` options take their choices from a values function, so `Describe` and every check see the profiles as they are now; the group's `desc` and those of `current`, `copySource`, `copy`, `reset` and `deleteTarget` are `desc` functions that name the current profile (`Return every setting of "Raid" to its default.`). Both are read when `Describe` runs: a renderer that redraws from `Describe` shows the current names, one that caches its last description shows them as of that call.
 
@@ -444,7 +446,7 @@ The three buttons carry `confirm` questions; whether the user is asked is the re
 
 ### Refresh
 
-While a defined tree holds the group, it is connected to the database's `OnProfileChanged`, `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` signals. Each fires the tree's `OnChange` with the `current` option's path and the current profile's name — `("profiles.current", "Raid")` — so a renderer connected to `tree:OnChange` redraws after a switch made anywhere, by the group's own buttons or by the addon. A switch through `current` fires `OnChange` once, for that `Set`. Creating through `new` fires twice: `("profiles.current", name)` from the database's signal, because the current profile changed, then `("profiles.new", name)` from the `Set`. `db:ResetDatabase()` fires `profiles.current` once when the database was already on its default profile (`OnProfileReset`) and twice otherwise (`OnProfileReset`, then `OnProfileChanged` for the switch back).
+While a defined tree holds the group, it is connected to the database's `OnProfileChanged`, `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` signals. Each fires the tree's `OnChange` with the `current` option's path and the current profile's name — `("profiles.current", "Raid")` — so a renderer connected to `tree:OnChange` redraws after a switch made anywhere, by the group's own buttons or by the addon. A switch through `current` fires `OnChange` once, for that `Set`, even when a listener of that switch switches again through `current` (each `Set` then fires once, the inner one first). Creating through `new` fires twice: `("profiles.current", name)` from the database's signal, because the current profile changed, then `("profiles.new", name)` from the `Set`. `db:ResetDatabase()` fires `profiles.current` once when the database was already on its default profile (`OnProfileReset`) and twice otherwise (`OnProfileReset`, then `OnProfileChanged` for the switch back).
 
 The connections are made at the end of `Define`, after the whole tree was checked, and disconnected at `Undefine`. A `Define` that raises leaves every group free: a connect that fails (a table that passed the structural check but is no SettingsKit database) undoes the connections made before it, and the groups attached earlier in the same tree are detached, before the error reaches your line. The connections live with the tree, which lives for the session, so nothing needs closing at logout.
 
@@ -548,6 +550,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 ## Embedded copies and upgrades
 
-Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when revision 2 loads over it, and a profile group defined before an upgrade keeps its database connections.
+Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revision 3 changed no layout. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads.
 
 Nothing survives `/reload`: trees are defined again when the addon loads.

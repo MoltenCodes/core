@@ -7,11 +7,11 @@
 --- allocation measurement and an in-place upgrade.
 ---
 --- SettingsKit is an optional dependency, declared under
---- `optionalDependencies`. Until its package lands, `InstallSettingsKitStub`
---- registers a stand-in under `settingsKit` API 1 so `Registry:Find` answers,
---- and `NewDatabase` builds a database with the documented shape: six scope
---- tables whose reads fall back to defaults through a metatable, and an
---- `OnChange` method.
+--- `optionalDependencies`. For the specs that do not need the real package,
+--- `InstallSettingsKitStub` registers a stand-in under `settingsKit` API 1 so
+--- `Registry:Find` answers, and `NewDatabase` builds a database with the
+--- documented shape: six scope tables whose reads fall back to defaults
+--- through a metatable, and `OnChange` and `Validate` methods.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local OptionsKitTestEnv = FrameworkTestEnv.New({

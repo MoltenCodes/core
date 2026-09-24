@@ -43,7 +43,7 @@
 
 local PACKAGE_NAME = "optionsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -475,7 +475,8 @@ end
 
 -- Revision 1 had no profile groups and built tree layout 1. The group map is
 -- added, and every tree gains the (empty) list of profile links `Undefine`
--- detaches: a revision 1 tree cannot contain a profile group.
+-- detaches: a revision 1 tree cannot contain a profile group. Revision 3
+-- changed no layout, so a revision 2 state needs nothing here.
 if rawget(state, "profileGroups") == nil then
     rawset(state, "profileGroups", setmetatable({}, { __mode = "k" }))
 end
@@ -1546,7 +1547,8 @@ local function treeWalk(self, visitor)
     return count
 end
 
----Connect `callback(tree, path, value)` to every `Set` and `Reset`.
+---Connect `callback(tree, path, value)` to every `Set` and `Reset`, and to
+---the profile signals of each profile group's database while the tree holds it.
 ---@param self OptionsKit.Tree
 ---@param callback OptionsKit.ChangeCallback
 ---@return table connection a SignalKit connection
@@ -1974,28 +1976,39 @@ local function otherChoices(link)
     return choices
 end
 
----Whether `name` is a profile that exists and is not the current one.
+---Whether `name` is a profile that exists and is not the current one. Walks
+---the name array `GetProfiles` returns rather than building a choice map, so
+---the `disabled` predicates and the select getters allocate that array only.
 ---@param link table
----@param name any
+---@param name any a profile name the group stored itself, or `false`
 ---@return boolean
 local function isOtherProfile(link, name)
-    if type(name) ~= "string" then
+    if type(name) ~= "string" or name == link.db:GetProfile() then
         return false
     end
-    return otherChoices(link)[name] ~= nil
+    local names = link.db:GetProfiles()
+    for index = 1, #names do
+        if names[index] == name then
+            return true
+        end
+    end
+    return false
 end
 
 ---Switch the database to `name` without the link's own listener firing the
----tree: `Set` fires `OnChange` for this write itself. The flag is cleared even
----when SettingsKit or one of its listeners raises; the error then propagates
----as it is.
+---tree: `Set` fires `OnChange` for this write itself. The flag is restored to
+---what it was, not cleared, so a switch made from a listener of an outer
+---switch leaves the outer one suppressed until it returns; it is restored
+---even when SettingsKit or one of its listeners raises, and the error then
+---propagates as it is.
 ---@param link table
 ---@param name string
 local function switchProfile(link, name)
     local db = link.db
+    local outer = link.suppress
     link.suppress = true
     local switched, failure = pcall(db.SetProfile, db, name)
-    link.suppress = false
+    link.suppress = outer
     if not switched then
         error(failure, 0)
     end
@@ -2159,8 +2172,10 @@ local function buildProfileArgs(link)
                 if not isOtherProfile(link, target) then
                     refuseUnchosen(info, PROFILE_KEY_DELETE_TARGET)
                 end
-                db:DeleteProfile(target)
+                -- Forgotten first: the deletion fires the tree's `OnChange`,
+                -- and a listener may choose the next target.
                 link.deleteTarget = false
+                db:DeleteProfile(target)
             end,
         },
     }
@@ -2208,7 +2223,6 @@ local function attachProfileLink(link, tree, path)
     end
     link.connections = connections
     link.tree = tree
-    link.path = path
 end
 
 ---Detach `link` from its tree: disconnect the profile signals, so the group
@@ -2222,7 +2236,6 @@ local function detachProfileLink(link)
     disconnectAll(connections)
     link.connections = false
     link.tree = false
-    link.path = false
 end
 
 ---Build a ready-made options group over the profiles of a SettingsKit
@@ -2253,7 +2266,6 @@ local function profileOptions(_, db, options)
         suppress = false,
         -- Set by `attachProfileLink`, cleared by `detachProfileLink`.
         tree = false,
-        path = false,
         connections = false,
     }
     readProfileOptions(options, link, 3)

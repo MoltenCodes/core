@@ -1,5 +1,9 @@
 local TestEnv = require("OptionsKitTestEnv")
 
+-- The saved variable the revision 2 upgrade spec opens with the real
+-- SettingsKit, an optional dependency the runner puts on `LUA_PATH`.
+local PROFILE_SAVED_VARIABLE = "OptionsKitBootstrapDB"
+
 ---A tree with one toggle over `store.enabled`.
 local function toggleTree(store)
     return {
@@ -20,7 +24,12 @@ local function toggleTree(store)
 end
 
 describe("OptionsKit bootstrap", function()
-    after_each(TestEnv.Reset)
+    after_each(function()
+        package.loaded["SettingsKit"] = nil
+        -- selene: allow(global_usage)
+        rawset(_G, PROFILE_SAVED_VARIABLE, nil)
+        TestEnv.Reset()
+    end)
 
     it("returns the same facade and keeps trees on duplicate embedded load", function()
         local OptionsKit = TestEnv.NewPackage()
@@ -69,7 +78,7 @@ describe("OptionsKit bootstrap", function()
         assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(tree, upgraded:Get("Addon"))
 
-        -- The tree built by revision 1 is served by revision 2's methods.
+        -- The tree built by the older copy is served by the newer copy's methods.
         assert.are.equal(upgraded.Tree.Set, tree.Set)
         assert.is_true(tree:Set("enabled", true))
         assert.is_true(store.enabled)
@@ -92,15 +101,51 @@ describe("OptionsKit bootstrap", function()
         rawset(tree, "_profileLinks", nil)
         rawset(tree, "_schema", 1)
 
-        local upgraded = TestEnv.LoadRevision(2)
+        -- The shipped file, at its own revision, loads over revision 1.
+        local upgraded = require("OptionsKit")
         assert.are.equal(OptionsKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.is_true(upgraded.REVISION > 1)
         local groups = rawget(state, "profileGroups")
         assert.are.equal("table", type(groups))
         assert.are.equal("k", getmetatable(groups).__mode)
         assert.are.equal(2, rawget(tree, "_schema"))
         assert.are.same({}, rawget(tree, "_profileLinks"))
         assert.is_true(upgraded:Undefine("Addon"))
+    end)
+
+    it("upgrades a revision 2 state in place and keeps its profile groups attached", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("SchemaKit")
+        local OptionsKit = TestEnv.LoadRevision(2)
+        local SettingsKit = require("SettingsKit")
+        local S = require("SchemaKit")
+        local db = SettingsKit:Open(PROFILE_SAVED_VARIABLE, {
+            profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),
+        })
+        local group = OptionsKit:ProfileOptions(db)
+        local tree = OptionsKit:Define("Addon", { type = "group", args = { profiles = group } })
+
+        local upgraded = require("OptionsKit")
+        assert.are.equal(OptionsKit, upgraded)
+        assert.is_true(upgraded.REVISION > 2)
+        assert.are.equal(tree, upgraded:Get("Addon"))
+        assert.are.equal(2, rawget(tree, "_schema"))
+
+        -- The link made under revision 2 still reaches the tree.
+        local changes = {}
+        tree:OnChange(function(_, path, value)
+            changes[#changes + 1] = { path, value }
+        end)
+        db:SetProfile("Raid")
+        assert.are.same({ { "profiles.current", "Raid" } }, changes)
+
+        -- Undefine under the new revision frees the group for another tree.
+        assert.is_true(upgraded:Undefine("Addon"))
+        local again = upgraded:Define("Again", { type = "group", args = { profiles = group } })
+        assert.are.equal("Raid", again:Get("profiles.current"))
     end)
 
     it("requires Registry", function()
