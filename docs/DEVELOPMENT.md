@@ -9,7 +9,7 @@ Repository tooling requires:
 | Tool | Version | Why |
 |---|---|---|
 | Python | 3.10 or newer (CI runs 3.10 and 3.14) | repository tooling, validation, test orchestration |
-| hererocks | 0.25.1 | builds the private Lua 5.1 tree below |
+| hererocks | commit `5d77b0b` | builds the private Lua 5.1 tree below; the latest PyPI release (0.25.1) stops at LuaRocks 3.8.0 |
 | Lua | 5.1.5 | the World of Warcraft client runtime; runtime code must stay 5.1-compatible |
 | LuaRocks | 3.13.0 | installs Busted and LuaCov |
 | Busted | 2.3.0-1 | pure-Lua test framework |
@@ -47,7 +47,7 @@ it builds the interpreter with readline, so install the headers first
 nothing extra:
 
 ```bash
-pipx install hererocks==0.25.1
+pipx install git+https://github.com/luarocks/hererocks@5d77b0bafc8b96f82355ca2ce5637c00d78a065c
 hererocks ~/.local/lua51 --lua 5.1.5 --luarocks 3.13.0
 export PATH="$HOME/.local/lua51/bin:$PATH"
 luarocks install busted 2.3.0-1

@@ -16,8 +16,10 @@ inputs:
     description: The LuaRocks release hererocks installs.
     default: "3.13.0"
   hererocks-version:
-    description: The hererocks release, from PyPI, that builds the tree.
-    default: "0.25.1"
+    description: >-
+      The hererocks commit that builds the tree. A commit rather than a PyPI
+      release because the latest release (0.25.1) knows LuaRocks up to 3.8.0.
+    default: "5d77b0bafc8b96f82355ca2ce5637c00d78a065c"
   busted-version:
     description: The Busted rock.
     default: "2.3.0-1"
@@ -74,7 +76,7 @@ runs:
         LUACOV_VERSION: ${{ inputs.luacov-version }}
       run: |
         set -euo pipefail
-        pipx run --spec "hererocks==${HEREROCKS_VERSION}" hererocks "${HOME}/.local/lua51" \
+        pipx run --spec "git+https://github.com/luarocks/hererocks@${HEREROCKS_VERSION}" hererocks "${HOME}/.local/lua51" \
           --lua "${LUA_VERSION}" --luarocks "${LUAROCKS_VERSION}"
         "${HOME}/.local/lua51/bin/luarocks" install busted "${BUSTED_VERSION}"
         "${HOME}/.local/lua51/bin/luarocks" install luacov "${LUACOV_VERSION}"

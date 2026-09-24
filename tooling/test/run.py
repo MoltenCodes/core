@@ -65,7 +65,7 @@ error: Busted was not found on PATH.
 Busted runs on Lua 5.1 because that is the World of Warcraft client runtime.
 Homebrew does not package Lua 5.1, so install a private interpreter, for example:
 
-    pipx install hererocks==0.25.1
+    pipx install git+https://github.com/luarocks/hererocks@5d77b0bafc8b96f82355ca2ce5637c00d78a065c
     hererocks ~/.local/lua51 --lua 5.1.5 --luarocks 3.13.0
     export PATH="$HOME/.local/lua51/bin:$PATH"
     luarocks install busted 2.3.0-1
