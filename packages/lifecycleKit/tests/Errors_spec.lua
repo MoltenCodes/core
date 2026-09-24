@@ -1,10 +1,6 @@
 local TestEnv = require("LifecycleKitTestEnv")
 
-local function expectErrorContaining(expected, callback)
-    local ok, message = pcall(callback)
-    assert.is_false(ok)
-    assert.is_not_nil(string.find(tostring(message), expected, 1, true))
-end
+local expectErrorContaining = TestEnv.expectErrorContaining
 
 -- EventKit isolates listener errors at the event-bus boundary, so an error that
 -- LifecycleKit re-raises from inside a host event dispatch is reported through

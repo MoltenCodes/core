@@ -31,6 +31,35 @@ describe("LifecycleKit event scopes", function()
         assert.are.equal(1, calls)
     end)
 
+    it("closes the scope's combat-log listeners with the rest of the scope", function()
+        -- EventKit resolves the combat-log API when the first combat-log
+        -- listener connects, so the host function is installed before that.
+        local subEvent = nil
+        -- The spec stands in for the World of Warcraft client, whose API only exists in the global table.
+        -- selene: allow(global_usage)
+        rawset(_G, "CombatLogGetCurrentEventInfo", function()
+            return 1, subEvent
+        end)
+        local life = LifecycleKit:ForAddon("MyAddon")
+        local scope = EventKit:ForAddon("MyAddon")
+        local calls = 0
+        local connection = scope:ConnectCombatLog("SPELL_DAMAGE", function()
+            calls = calls + 1
+        end)
+        subEvent = "SPELL_DAMAGE"
+        TestEnv.Emit("COMBAT_LOG_EVENT_UNFILTERED")
+
+        TestEnv.Logout()
+        TestEnv.Emit("COMBAT_LOG_EVENT_UNFILTERED")
+        -- selene: allow(global_usage)
+        rawset(_G, "CombatLogGetCurrentEventInfo", nil)
+
+        assert.is_true(life:IsShutdown())
+        assert.is_true(scope:IsClosed())
+        assert.is_false(connection:IsConnected())
+        assert.are.equal(1, calls)
+    end)
+
     it("still delivers PLAYER_LOGOUT to a scope listener connected after LifecycleKit", function()
         -- LifecycleKit's logout watcher is connected by the first ForAddon, so
         -- it runs before this listener and closes the scope mid-dispatch. The

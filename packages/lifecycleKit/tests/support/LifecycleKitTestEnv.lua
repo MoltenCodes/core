@@ -12,8 +12,8 @@
 --- closures on `LUA_PATH`. The module
 --- chain loads HookKit and CommandKit (and SchemaKit, which CommandKit
 --- requires) before LifecycleKit, as an addon that embeds them would;
---- `NewPackageWithoutHookKit` loads the chain without either. CommKit requires
---- LifecycleKit, so `LoadCommKit` adds it afterwards. The slash-command section
+--- `NewPackageWithoutHookKit` loads the chain without either. CommKit is kept
+--- out of the chain, so `LoadCommKit` adds it afterwards. The slash-command section
 --- below models the host surface CommandKit writes to.
 ---
 --- The shared fixture does not model `InCombatLockdown` yet, so this file adds

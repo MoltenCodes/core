@@ -418,8 +418,9 @@ if LifecycleKit == nil then
     return selected
 end
 
--- Past this point the facade is always a table: Registry either handed one back
--- or the branch above adopted the validated `existing` implementation.
+-- Past this point the facade is always a table: Registry handed back the one
+-- this copy fills in, whether fresh, inherited from an older revision or
+-- resumed at this revision.
 ---@cast LifecycleKit table
 
 -- Registry keeps the identity of the prototype tables below stable across

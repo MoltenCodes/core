@@ -1,10 +1,6 @@
 local TestEnv = require("LifecycleKitTestEnv")
 
-local function expectErrorContaining(expected, callback)
-    local ok, message = pcall(callback)
-    assert.is_false(ok)
-    assert.is_not_nil(string.find(tostring(message), expected, 1, true))
-end
+local expectErrorContaining = TestEnv.expectErrorContaining
 
 -- Lua 5.1 leaves a sentinel in `package.loaded` when a `require` raises, so a
 -- second `require` of the same module reports "loop or previous error loading
@@ -255,6 +251,7 @@ describe("LifecycleKit package bootstrap", function()
             require("LifecycleKit")
         end)
     end)
+
     it("releases the retired revision-3 capture slot during an in-place upgrade", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
@@ -309,6 +306,7 @@ describe("LifecycleKit package bootstrap", function()
         assert.is_true(instance:IsReady())
         assert.are.equal(1, readyCalls)
     end)
+
     -- Models the shared state a revision 6 copy leaves behind: schema 2, no
     -- combat flag or instance list, instances without the gate fields, and
     -- host watchers that call revision 6's handlers.

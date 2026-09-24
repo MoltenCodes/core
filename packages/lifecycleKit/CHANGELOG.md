@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 — 2026-09-24
+
+- Documentation: `docs/API.md` no longer says CommKit depends on LifecycleKit and closes its own addon scope from an `OnShutdown` subscription; CommKit 0.2.0 does neither and leaves the closing to this shutdown step, as every Kit named in `CLOSES_ADDON_SCOPES` does. The "Addon-scope capability" and "Dependencies" sections now name all seven readers of the field with the version each started reading it (SignalKit 0.6.0, HookKit, CommandKit and CommKit 0.2.0 were missing), and the EventKit paragraph states in current form that `CloseAddonScopes` answers `false` for an addon without a scope, and that the scope's `ConnectCombatLog` listeners (EventKit 0.8.0) close with it.
+- Corrected the same CommKit claim in `tests/README.md` and in the test environment's header, and a stale source comment on the bootstrap result.
+- Specs: `EventScopes_spec.lua` checks that a scoped combat-log listener is disconnected at logout; `Bootstrap_spec.lua` and `Errors_spec.lua` use the shared `TestEnv.expectErrorContaining` instead of private copies.
+- No executed-code change (`luac -s -l` listing identical): implementation revision 13 and API generation 1 are unchanged.
+
 ## 0.6.0 — 2026-09-23
 
 - Added `LifecycleKit.CLOSES_ADDON_SCOPES`, the read-only set of package ids whose addon scopes (for `signalKit`, the addon bus) shutdown closes: `timerKit`, `schedulerKit`, `eventKit`, `hookKit`, `commandKit`, `commKit`, `signalKit`. It is the contract the scope-owning Kits read to learn that LifecycleKit closes their addon scopes at logout; a revision without the field closes none as far as a reader is concerned, and the Kit then arranges the closing itself. With TimerKit 0.6.0, SchedulerKit 0.8.0 and EventKit 0.7.0, an addon scope closes at logout whatever revisions are paired, where pairing TimerKit 0.5.0 or SchedulerKit 0.6.0/0.7.0 with a LifecycleKit older than 0.5.0 used to leave it open. LifecycleKit 0.6.0 pairs with any revision of the other Kits.
