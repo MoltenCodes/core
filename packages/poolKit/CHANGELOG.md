@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.5 — 2026-09-24
+
+- `ReleaseAfter` accepted any table or userdata with a `HookScript` method as its animation group. Every Frame has one, so a Frame passed by mistake got past the documented refusal, and the client's own `OnFinished` error then came from inside PoolKit (found by the PoolKit client suite on Retail 12.1.0 build 69933). The group must now have `HookScript`, `IsPlaying`, `Play` and `Stop` methods, which a Frame lacks; anything else is refused at the caller's line with the documented `PoolKit.Pool:ReleaseAfter animationGroup must be an animation group`. The fields are read under `pcall`, so a userdata without `__index`, or one whose `__index` raises, is refused with that message too. `IsPlaying` is no longer optional; `Play` and `Stop` are read, never called.
+- Implementation revision 8, because the executed implementation changed. No state changed: an in-place upgrade from revision 7 keeps its pools, parked releases and hooks, and a hook revision 7 installed completes its release under revision 8.
+- Docs: `docs/API.md` names the four methods in the `ReleaseAfter` reference and under "Deferred release".
+- Specs: `Deferred_spec.lua` refuses a Frame-shaped table at the caller's line without hooking it, refuses a group missing any one of the four methods, an opaque userdata and a raising `__index`, and still accepts a userdata group; `Bootstrap_spec.lua` upgrades revision 7 with a parked release. The test animation group gained `Stop`. The client suite refuses a real Frame passed to `ReleaseAfter` at the calling line.
+
 ## 0.4.4 — 2026-09-24
 
 - Nil rule (decision of 2026-09-24): absence of a value that comes from outside the Kit (constructor options, `Acquire`'s `onAvailable`, `Trim`'s `retainCount`, the `reset` callback `strictReset` needs, the Registry lookups) is tested with `type(value) == "nil"`, never by comparing it with `nil`, because comparing a secret value raises inside the Kit instead of at the caller.

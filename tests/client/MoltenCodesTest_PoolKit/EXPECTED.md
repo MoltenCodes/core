@@ -52,12 +52,13 @@ MoltenCodes Test: PASS poolKit.errors: a pool method called with UIParent instea
 MoltenCodes Test: PASS poolKit.errors: Prewarm with a negative count names PoolKitSuite.lua at the calling line
 MoltenCodes Test: PASS poolKit.errors: Prewarm beyond maxCreated is refused at the calling line and builds no Frame
 MoltenCodes Test: PASS poolKit.errors: ReleaseAfter with a table that is not an animation group is refused at the calling line and the Frame stays borrowed
+MoltenCodes Test: PASS poolKit.errors: ReleaseAfter with a Frame instead of its animation group is refused at the calling line and both Frames stay borrowed
 MoltenCodes Test: PASS poolKit.secrets: a secret maxRetained is refused by PoolKit:New at the calling line
 MoltenCodes Test: PASS poolKit.secrets: a secret maxCreated is refused by PoolKit:New at the calling line
 MoltenCodes Test: PASS poolKit.secrets: a secret strictReset is refused by PoolKit:New at the calling line
 MoltenCodes Test: PASS poolKit.secrets: a secret Prewarm count is refused at the calling line and builds no Frame
 MoltenCodes Test: PASS poolKit.secrets: secret Trim, SetMaxRetained, SetGeneration and SetMaxCreated arguments are each refused at the calling line
-MoltenCodes Test: poolKit: 35 passed, 0 failed, 0 skipped, 0 timed out (35 tests)
+MoltenCodes Test: poolKit: 36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -96,7 +97,7 @@ that time is passed on to the handler it replaced.
 The client plays no animation under a hidden `UIParent`, so the six
 animation tests that need one to play end as skipped when the interface is
 hidden (Alt+Z) at the moment they run. They print these lines instead, and the
-totals line reads `29 passed, 0 failed, 6 skipped, 0 timed out (35 tests)`:
+totals line reads `30 passed, 0 failed, 6 skipped, 0 timed out (36 tests)`:
 
 ```text
 MoltenCodes Test: SKIP poolKit.animation: ReleaseAfter a playing Alpha animation parks the Frame, and the client's OnFinished returns it to the pool -- the interface is hidden (Alt+Z); an animation does not play under a hidden UIParent
@@ -116,7 +117,7 @@ out of combat without side effects: the client's own API documentation
 `packages/apiKit/metadata/retail/namespaces.json`) lists it with no
 restriction, and it only converts the values handed to it. Retail 12.1 has
 both. A client without them prints these five lines instead, and the totals
-line reads `30 passed, 0 failed, 5 skipped, 0 timed out (35 tests)`:
+line reads `31 passed, 0 failed, 5 skipped, 0 timed out (36 tests)`:
 
 ```text
 MoltenCodes Test: SKIP poolKit.secrets: a secret maxRetained is refused by PoolKit:New at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -159,7 +160,8 @@ MoltenCodes Test: SKIP poolKit.secrets: secret Trim, SetMaxRetained, SetGenerati
 | `a pool method called with UIParent instead of a pool ...` | The receiver check refuses a real Frame table at the calling line and builds nothing. |
 | `Prewarm with a negative count ...` | A count error names this file at the calling line. |
 | `Prewarm beyond maxCreated ...` | The creation cap bounds `Prewarm` before any Frame is built. |
-| `ReleaseAfter with a table that is not an animation group ...` | A value without `HookScript` is refused at the calling line and the Frame stays borrowed, not parked. |
+| `ReleaseAfter with a table that is not an animation group ...` | A table without the animation-group methods is refused at the calling line and the Frame stays borrowed, not parked. |
+| `ReleaseAfter with a Frame instead of its animation group ...` | A second borrowed Frame passed as the group (it has `HookScript` but no `IsPlaying`, `Play` or `Stop`) is refused at the calling line with `PoolKit.Pool:ReleaseAfter animationGroup must be an animation group`; both Frames stay borrowed and nothing is parked. Before PoolKit 0.4.5 the Frame was accepted and the client's own `OnFinished` error came from inside PoolKit. |
 | `a secret maxRetained is refused ...`, `a secret maxCreated ...`, `a secret strictReset ...` | A genuine secret option is refused at the calling line before PoolKit compares it. |
 | `a secret Prewarm count ...` | A secret count is refused at the calling line and no Frame is built. |
 | `secret Trim, SetMaxRetained, SetGeneration and SetMaxCreated ...` | Each of the four refuses a secret at the calling line and leaves the pool's settings as they were. |
@@ -168,7 +170,7 @@ MoltenCodes Test: SKIP poolKit.secrets: secret Trim, SetMaxRetained, SetGenerati
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1 with the
   interface shown, or a totals line other than
-  `35 passed, 0 failed, 0 skipped, 0 timed out (35 tests)`.
+  `36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - Anything drawn on screen, or a Lua error window or a BugSack entry naming

@@ -178,7 +178,9 @@ Returns `true` when the release was deferred, `false` when it happened at once.
 Cost: O(1); a pool's first `ReleaseAfter` allocates its parked map, and a
 group's first one installs the hook. Errors:
 `PoolKit.Pool:ReleaseAfter object must be a table or userdata`,
-`PoolKit.Pool:ReleaseAfter animationGroup must be an animation group`,
+`PoolKit.Pool:ReleaseAfter animationGroup must be an animation group` (a
+value without `HookScript`, `IsPlaying`, `Play` and `Stop` methods, such as a
+Frame),
 `PoolKit.Pool:ReleaseAfter animationGroup already has a pending release`, the
 `Release` ownership errors with `PoolKit.Pool:ReleaseAfter` in their place,
 `PoolKit.Pool:ReleaseAfter release is already pending for this object` for a
@@ -582,8 +584,17 @@ deferred.
   reported through the host error handler.
 - `Close()` completes every parked release immediately.
 
-PoolKit stays free of any WoW dependency: it calls only the two methods of the
-group it is handed.
+- **Pass the animation group, not the Frame.** `animationGroup` must have
+  `HookScript`, `IsPlaying`, `Play` and `Stop` methods. Every Frame has
+  `HookScript` but none of the other three, so a Frame passed by mistake is
+  refused at the caller's line with
+  `PoolKit.Pool:ReleaseAfter animationGroup must be an animation group`. Before
+  0.4.5 only `HookScript` was checked, the Frame was accepted, and the client
+  raised later from inside PoolKit.
+
+PoolKit stays free of any WoW dependency: it calls only two methods of the
+group it is handed, `HookScript` and `IsPlaying`, and checks that `Play` and
+`Stop` exist without calling them.
 
 ## Limits
 

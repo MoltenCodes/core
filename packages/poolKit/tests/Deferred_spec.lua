@@ -188,12 +188,101 @@ describe("PoolKit deferred release", function()
             pool:ReleaseAfter({}, fadeOut)
         end)
 
-        pool:ReleaseAfter(frame, fadeOut)
+        assert.is_true(pool:ReleaseAfter(frame, fadeOut))
         expectErrorAtThisSpec("release is already pending for this object", function()
             pool:ReleaseAfter(frame, Env.NewAnimationGroup())
         end)
         expectErrorAtThisSpec("animationGroup already has a pending release", function()
             pool:ReleaseAfter(other, fadeOut)
         end)
+    end)
+
+    it(
+        "refuses a Frame, which has HookScript but no animation methods, at the caller's line",
+        function()
+            local frame = pool:Acquire()
+            local hooked = 0
+            -- The part of a client Frame the old check looked at: `HookScript`,
+            -- plus methods every Frame has. It has no `IsPlaying`, `Play` or `Stop`.
+            local notAGroup = {
+                HookScript = function()
+                    hooked = hooked + 1
+                end,
+                GetObjectType = function()
+                    return "Frame"
+                end,
+                Show = function() end,
+            }
+
+            local line
+            local ok, message = pcall(function()
+                line = debug.getinfo(1, "l").currentline + 1
+                pool:ReleaseAfter(frame, notAGroup)
+            end)
+            assert.is_false(ok)
+            assert.are.equal(
+                "packages/poolKit/tests/Deferred_spec.lua:"
+                    .. line
+                    .. ": PoolKit.Pool:ReleaseAfter animationGroup must be an animation group",
+                message
+            )
+            assert.are.equal(0, hooked)
+            assert.is_true(pool:IsActive(frame))
+            assert.are.equal(0, pool:GetParkedCount())
+        end
+    )
+
+    it("requires every animation-group method and refuses an unreadable userdata", function()
+        local frame = pool:Acquire()
+        for _, missing in ipairs({ "HookScript", "IsPlaying", "Play", "Stop" }) do
+            local group = Env.NewAnimationGroup()
+            group[missing] = nil
+            expectErrorAtThisSpec("animationGroup must be an animation group", function()
+                pool:ReleaseAfter(frame, group)
+            end)
+        end
+
+        -- Indexing a userdata without `__index` raises; the check catches that
+        -- and refuses it with the documented message instead.
+        local opaque = newproxy(false)
+        expectErrorAtThisSpec("animationGroup must be an animation group", function()
+            pool:ReleaseAfter(frame, opaque)
+        end)
+
+        -- A metatable whose `__index` raises is refused the same way.
+        local raising = setmetatable({}, {
+            __index = function()
+                error("no fields here")
+            end,
+        })
+        expectErrorAtThisSpec("animationGroup must be an animation group", function()
+            pool:ReleaseAfter(frame, raising)
+        end)
+        assert.is_true(pool:IsActive(frame))
+        assert.are.equal(0, pool:GetParkedCount())
+    end)
+
+    it("still accepts a userdata animation group whose methods come from its metatable", function()
+        local frame = pool:Acquire()
+        local stub = Env.NewAnimationGroup()
+        local group = newproxy(true)
+        getmetatable(group).__index = {
+            HookScript = function(_, scriptName, handler)
+                stub:HookScript(scriptName, function()
+                    handler(group, false)
+                end)
+            end,
+            IsPlaying = function()
+                return stub:IsPlaying()
+            end,
+            Play = function() end,
+            Stop = function() end,
+        }
+
+        assert.is_true(pool:ReleaseAfter(frame, group))
+        assert.are.equal(1, pool:GetParkedCount())
+        stub:Finish()
+        assert.are.equal(0, pool:GetParkedCount())
+        assert.are.equal(1, resets)
     end)
 end)

@@ -21,8 +21,10 @@ end
 
 ---A stand-in for a World of Warcraft AnimationGroup, reduced to what
 ---`Pool:ReleaseAfter` touches: `HookScript("OnFinished", handler)` and
----`IsPlaying()`. `Finish()` ends the animation the way the client does, calling
----every hooked `OnFinished` handler with the group and `requested = false`.
+---`IsPlaying()`, plus the `Play` and `Stop` methods its shape check requires.
+---`Finish()` ends the animation the way the client does, calling every hooked
+---`OnFinished` handler with the group and `requested = false`; `Stop()` ends it
+---without firing `OnFinished`, as the client does.
 ---
 ---The shared fixture has no animation stubs because only PoolKit needs one.
 ---@return table group
@@ -45,6 +47,10 @@ function PoolKitTestEnv.NewAnimationGroup()
 
     function group:Play()
         self.playing = true
+    end
+
+    function group:Stop()
+        self.playing = false
     end
 
     function group:Finish()

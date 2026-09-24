@@ -222,6 +222,41 @@ describe("PoolKit bootstrap", function()
         assert.are.equal(1, pool:GetAvailableCount())
     end)
 
+    it("upgrades revision 7, whose parked release completes, and then refuses a Frame", function()
+        local current = currentRevision()
+        require("Registry")
+        local previous = Env.LoadRevision(7)
+        assert.are.equal(7, previous.REVISION)
+        local pool = previous:NewTablePool()
+        local parked, borrowed = pool:Acquire(), pool:Acquire()
+        local group = Env.NewAnimationGroup()
+        assert.is_true(pool:ReleaseAfter(parked, group))
+
+        local PoolKit = Env.ReloadPackage()
+        assert.are.equal(previous, PoolKit)
+        assert.are.equal(current, PoolKit.REVISION)
+
+        -- The hook revision 7 installed completes the release under this one.
+        group:Finish()
+        assert.are.equal(0, pool:GetParkedCount())
+        assert.is_false(pool:IsActive(parked))
+
+        -- A Frame-shaped table (HookScript only) is refused by the new check.
+        local ok, message = pcall(pool.ReleaseAfter, pool, borrowed, {
+            HookScript = function() end,
+        })
+        assert.is_false(ok)
+        assert.is_not_nil(
+            string.find(
+                tostring(message),
+                "PoolKit.Pool:ReleaseAfter animationGroup must be an animation group",
+                1,
+                true
+            )
+        )
+        assert.is_true(pool:IsActive(borrowed))
+    end)
+
     it("rejects same-revision UNBOUNDED sentinel drift", function()
         local PoolKit = Env.NewPackage()
         rawset(PoolKit, "UNBOUNDED", {})

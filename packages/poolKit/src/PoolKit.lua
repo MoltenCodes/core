@@ -36,7 +36,7 @@
 
 local PACKAGE_NAME = "poolKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 2
 local DEFAULT_MAX_RETAINED = 128
@@ -104,7 +104,9 @@ local REASON_CLOSED = "closed"
 ---The part of a World of Warcraft AnimationGroup that `ReleaseAfter` uses.
 ---@class PoolKit.AnimationGroup
 ---@field HookScript fun(self: PoolKit.AnimationGroup, scriptName: string, handler: function)
----@field IsPlaying (fun(self: PoolKit.AnimationGroup): boolean)?
+---@field IsPlaying fun(self: PoolKit.AnimationGroup): boolean
+---@field Play fun(self: PoolKit.AnimationGroup, ...)
+---@field Stop fun(self: PoolKit.AnimationGroup, ...)
 
 ---A reusable object pool.
 ---@class PoolKit.Pool
@@ -1391,6 +1393,24 @@ local function completeDeferredRelease(group)
     end
 end
 
+---Whether `value` has the shape of an animation group: `HookScript`,
+---`IsPlaying`, `Play` and `Stop` methods.
+---
+---`HookScript` alone is not enough: every Frame has it, and a Frame passed by
+---mistake would get past the check and fail later inside the client's own
+---`OnFinished` handling instead of at the caller. A Frame has none of the other
+---three. Only `HookScript` and `IsPlaying` are ever called; `Play` and `Stop`
+---are read, never called. Run under `pcall`, because indexing a userdata
+---without an `__index` raises.
+---@param value table|userdata
+---@return boolean
+local function hasAnimationGroupShape(value)
+    return type(value.HookScript) == "function"
+        and type(value.IsPlaying) == "function"
+        and type(value.Play) == "function"
+        and type(value.Stop) == "function"
+end
+
 ---Install PoolKit's `OnFinished` hook on `group`, once per group ever.
 ---
 ---`HookScript` cannot be undone, so hooking per release would stack one more
@@ -1942,12 +1962,16 @@ local function poolReleaseAfter(self, object, animationGroup)
     validatePoolObject(object, "PoolKit.Pool:ReleaseAfter object", 3)
 
     local groupType = type(animationGroup)
-    if
-        (groupType ~= "table" and groupType ~= "userdata")
-        or type(animationGroup.HookScript) ~= "function"
-    then
+    local isGroup = false
+    if groupType == "table" or groupType == "userdata" then
+        local readable, shaped = pcall(hasAnimationGroupShape, animationGroup)
+        isGroup = readable and shaped
+    end
+    if not isGroup then
         error("PoolKit.Pool:ReleaseAfter animationGroup must be an animation group", 2)
     end
+    -- The shape check above is what makes it one, whatever its Lua type.
+    ---@cast animationGroup PoolKit.AnimationGroup
 
     local status = rawget(rawget(self, "_active"), object)
     if status ~= ACTIVE then
@@ -1957,8 +1981,7 @@ local function poolReleaseAfter(self, object, animationGroup)
         error("PoolKit.Pool:ReleaseAfter animationGroup already has a pending release", 2)
     end
 
-    local isPlaying = animationGroup.IsPlaying
-    if type(isPlaying) == "function" and not isPlaying(animationGroup) then
+    if not animationGroup:IsPlaying() then
         releaseActive(self, object)
         return false
     end

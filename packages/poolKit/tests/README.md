@@ -24,9 +24,9 @@ They also cover the contracts a caller is most likely to get wrong:
 | `Generation_spec.lua` | Generation defaults, `SetGeneration`, stale retained and borrowed objects, side-table stamps. |
 | `Unfreeable_spec.lua` | `maxCreated`, `maxActive`, `SetMaxCreated`, the waiting ring (FIFO, wrap-around, cancellation, refusal, close, failures, zero allocation). |
 | `Children_spec.lua` | `AttachChild`/`DetachChild`, cascade order, cycles, child and parent reset failures, a child's reset releasing its parent mid-release. |
-| `Deferred_spec.lua` | `ReleaseAfter`: parking, one hook per group, early completion, close, live limit, reported failures. |
+| `Deferred_spec.lua` | `ReleaseAfter`: parking, one hook per group, early completion, close, live limit, reported failures; a Frame (`HookScript` without `IsPlaying`, `Play` and `Stop`), a group missing any of the four methods and an unreadable userdata refused at the caller's line; a userdata group accepted. |
 | `Allocation_spec.lua` | Zero allocation for steady-state acquire/release through generic, table and capped pools, and for attach-and-cascade. |
-| `Bootstrap_spec.lua` | Duplicate loads, newer-revision refusal, in-place upgrades from revisions 1, 3 and 5 and from the previous revision, sentinel drift. |
+| `Bootstrap_spec.lua` | Duplicate loads, newer-revision refusal, in-place upgrades from revisions 1, 3, 5 and 7 and from the previous revision, sentinel drift. |
 | `SecretValues_spec.lua` | Secret options and pool-method arguments refused at the caller's line on the `mainline` host; ordinary and absent ones still accepted. |
 | `Manifest_spec.lua` | Manifest API and revision agree with the runtime. |
 

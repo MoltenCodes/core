@@ -1206,6 +1206,25 @@ errors:Test(
     end
 )
 
+errors:Test(
+    "ReleaseAfter with a Frame instead of its animation group is refused at the calling line and both Frames stay borrowed",
+    function(ctx)
+        local pool = newFramePool({ reset = stripFrame })
+        local frame = pool:Acquire()
+        -- A real Frame has HookScript, which the check before PoolKit 0.4.5
+        -- was satisfied with, but no IsPlaying, Play or Stop.
+        local mistaken = pool:Acquire() --[[@as any]]
+        local lines = { start = 0 }
+        expectErrorAtCallingLine(ctx, function()
+            lines.start = currentLine()
+            pool:ReleaseAfter(frame, mistaken)
+        end, lines, "PoolKit.Pool:ReleaseAfter animationGroup must be an animation group")
+        ctx:Expect(pool:IsActive(frame)):ToBe(true)
+        ctx:Expect(pool:IsActive(mistaken)):ToBe(true)
+        ctx:Expect(pool:GetParkedCount()):ToBe(0)
+    end
+)
+
 -- poolKit.secrets ------------------------------------------------------------------------------
 
 local secrets = newSuite("secrets")
