@@ -454,8 +454,8 @@ python3 -m tooling.client.install --wow-dir DIR [--flavour-dir _retail_] --remov
   these folders are replaced when they exist; only `.toc` and `.lua` files are
   copied from the repository's addon folders.
 - **Remove** deletes `MoltenCodes`, `MoltenCodesTest` and every
-  `MoltenCodesTest_*` entry of `AddOns`, and every `MoltenCodesTest.lua` and
-  `MoltenCodesTest.lua.bak` under `WTF/Account/*/SavedVariables/` and
+  `MoltenCodesTest_*` entry of `AddOns`, and every `MoltenCodesTest.lua`,
+  `MoltenCodesTest_*.lua` and their `.bak` copies under `WTF/Account/*/SavedVariables/` and
   `WTF/Account/*/*/*/SavedVariables/`, so no saved results stay behind.
 - **Safety.** Both refuse, with exit status 1, when the `AddOns` folder does
   not exist. A symbolic link is removed as a link and never followed; a
@@ -553,7 +553,11 @@ of every version; a second file would be a second list to keep in step.
 `--coverage` flag, then runs `luacov` and prints one row per package: lines hit,
 lines missed and the percentage. [`../.luacov`](../.luacov) limits the
 measurement to `packages/*/src/`, so specs, the shared fixture and the example
-addon do not dilute a package's figure. LuaCov adds every process to one
+addon do not dilute a package's figure. It also excludes apiKit's generated
+flavour files: a session loads only one of them, so which flavour a spec loads
+moved apiKit's figure by whole points with no code change; the bindings specs
+and `tooling.api.generate --check` prove those files, and coverage measures the
+hand-written facade. LuaCov adds every process to one
 statistics file; the command deletes the previous `luacov.stats.out` and
 `luacov.report.out` first, and both are ignored by Git. `--summary FILE` appends
 the table as Markdown, which is how CI fills its job summary.

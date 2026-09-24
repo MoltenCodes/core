@@ -5,9 +5,16 @@
 -- Only runtime package source is measured. Specs, the shared fixture under
 -- tests/support/, package test support and the example addon are loaded by the
 -- same Busted processes and would otherwise dilute every package's figure.
+--
+-- apiKit's generated flavour files are excluded: they are tens of thousands of
+-- direct aliases, a session loads only one of them, and which one a spec loads
+-- moved the package figure by whole points without any code change. Their
+-- correctness is proved by the bindings specs and `tooling.api.generate
+-- --check`; coverage measures the hand-written facade.
 -- Patterns are Lua patterns over the file path without its `.lua` extension.
 return {
-    statsfile = "luacov.stats.out",
-    reportfile = "luacov.report.out",
-    include = { "packages/[^/]+/src/" },
+  statsfile = "luacov.stats.out",
+  reportfile = "luacov.report.out",
+  include = { "packages/[^/]+/src/" },
+  exclude = { "packages/apiKit/src/flavours/" },
 }
