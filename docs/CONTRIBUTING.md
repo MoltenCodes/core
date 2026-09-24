@@ -107,6 +107,13 @@ runtime Lua, check it against this list:
       in arithmetic, measured with `#`, indexed, called or used as a table key
       without `issecretvalue` first (see
       [Secret Values](https://warcraft.wiki.gg/wiki/Secret_Values)).
+- [ ] Absence of a value the Kit did not create (caller arguments and their
+      fields, host returns, callback, probe and factory results, values read
+      from foreign libraries or saved variables) is tested with
+      `type(x) == "nil"` or `type(x) ~= "nil"`, never with `== nil` or
+      `~= nil`: comparing a secret raises, `nil` included. Where a contract
+      refuses secrets, the refusal comes before any comparison, key use or
+      string operation. Values the Kit created itself may keep `== nil`.
 - [ ] New error messages describe a value that may be secret with a fixed
       placeholder rather than formatting it in, because a message built from a
       secret is itself secret. Existing Kits adopt this with `clientKit`'s
@@ -176,9 +183,21 @@ Public API changes require:
 
 A breaking public contract must not be hidden behind an implementation revision.
 
+## Tests and coverage
+
+Before submitting a change with specs, check it against this list:
+
+- [ ] Every spec that measures allocation carries the `#allocation` tag in its
+      `it` or `describe` description ([`TESTING.md`](TESTING.md#allocation-guards-carry-the-allocation-tag)).
+- [ ] `python3 -m tooling.test.coverage <id>` passes: no spec fails under
+      LuaCov and the package meets its floor. A change that raises coverage, or
+      a new package, updates `tooling/test/coverage-floors.json` with
+      `--update-floors`; a floor is lowered only by hand, with the reason in the
+      pull request ([`TOOLING.md`](TOOLING.md#coverage)).
+
 ## New packages
 
-New packages must satisfy the package layout and manifest contract in [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md), which includes a `src/.luarc.json`, a `tests/README.md` and a `tests/support/<Facade>TestEnv.lua`, and, for a package consumers embed, its two `move-folders` lines in [`.pkgmeta`](../.pkgmeta) and an "Embedding" section in its README. A new package is also listed in `docs/README.md`, `packages/README.md`, the quoted load order in `EMBEDDING.md` and the Kit lists under `.github/`; repository validation names every place still missing ([`TOOLING.md`](TOOLING.md#repository-validation)).
+New packages must satisfy the package layout and manifest contract in [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md), which includes a `src/.luarc.json`, a `tests/README.md` and a `tests/support/<Facade>TestEnv.lua`, and, for a package consumers embed, its two `move-folders` lines in [`.pkgmeta`](../.pkgmeta) and an "Embedding" section in its README. A new package is also listed in `docs/README.md`, `packages/README.md`, the quoted load order in `EMBEDDING.md` and the Kit lists under `.github/`; repository validation names every place still missing ([`TOOLING.md`](TOOLING.md#repository-validation)). It also needs a line-coverage floor in `tooling/test/coverage-floors.json`, set with `python3 -m tooling.test.coverage --update-floors`; the `coverage` job fails without one.
 
 Public framework capability packages use a lowerCamelCase `Kit` package ID and matching PascalCase Lua facade/module name (for example `eventKit` / `EventKit`). `registry` / `Registry` is the infrastructure exception.
 

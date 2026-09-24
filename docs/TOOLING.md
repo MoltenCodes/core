@@ -39,7 +39,8 @@ tooling/
 │   └── publish_mode.py            # decides dry run or upload, and whether to draft a release
 ├── test/
 │   ├── run.py                     # package-aware Busted orchestration
-│   └── coverage.py                # the same run under LuaCov, with a per-package report
+│   ├── coverage.py                # the same run under LuaCov, gated on per-package floors
+│   └── coverage-floors.json       # each package's line-coverage floor, a whole percent
 ├── tests/                         # Python unit tests for repository tooling
 └── validation/
     ├── interface_numbers.py       # reads the supported-client table, prints the .toc line
@@ -518,13 +519,39 @@ the table as Markdown, which is how CI fills its job summary.
 It needs LuaCov in the same Lua 5.1 tree as Busted (`luarocks install luacov
 0.17.0-1`, see [`DEVELOPMENT.md`](DEVELOPMENT.md)).
 
-The figure is a report, not a gate, for two reasons. LuaCov's line hook
-allocates on every line it counts, so the allocation specs, which prove that a
-hot path allocates nothing, fail while it is active; the command prints the
-suite's result but exits 0 whenever a report was produced (1 when `luacov`
-fails, 127 when a tool is missing). And a percentage threshold would reward
-specs that execute lines over specs that assert behaviour. The per-package
-table is there to show where a Kit's specs leave code unexercised.
+The run is a gate, in two parts.
+
+- **Every spec passes.** LuaCov's line hook allocates on every line it counts,
+  so the allocation specs, which prove that a hot path allocates nothing, would
+  fail while it is active. Each of them carries the Busted tag `#allocation`
+  ([`TESTING.md`](TESTING.md#allocation-guards-carry-the-allocation-tag)), and
+  the command passes `--exclude-tags=allocation` through the test runner
+  (`ALLOCATION_TAG` in `tooling/test/run.py`). Every other spec must pass;
+  `python3 -m tooling.test.run` still runs the tagged ones, so the `test` job
+  keeps judging them.
+- **Every package meets its floor.**
+  [`../tooling/test/coverage-floors.json`](../tooling/test/coverage-floors.json)
+  holds one whole percentage per package, its line coverage when the floor was
+  last set, rounded down. A package below its floor fails the run, and so does
+  a measured package without a floor. On a run of every target, a floor whose
+  package produced no measured line fails too. The printed table (and the job
+  summary) has a floor column that marks a failing row `below` or `missing`.
+
+Floors are a ratchet, not a target: they record what the specs already reach
+so that coverage cannot silently fall, and they only move up.
+`--update-floors` raises each judged package's floor to its measured value
+rounded down, adds any package without one, and never lowers a floor; it
+refuses to write after a run with failing specs. Run it after a change that
+adds specs, and once for a new package, and commit the file with the change.
+Lowering a floor is a deliberate hand edit that the pull request explains
+(for example, code moved to another Kit).
+
+A run of selected targets judges only those packages: `timerKit`'s suite also
+executes part of `registry`, but not `registry`'s own specs, so that partial
+figure is shown as `not judged`. The command exits 0 when every spec passed and
+every judged package met its floor, 1 when a spec failed, a floor was missed or
+missing, or `luacov` wrote no report, 2 when the floors file is missing or
+malformed or a target is unknown, and 127 when Busted or `luacov` is missing.
 
 ## Continuous integration
 
@@ -535,7 +562,7 @@ timeout:
 | Job | What it checks |
 |---|---|
 | `test` | `python3 -m tooling.test.run`: every package suite and the example addon, under Lua 5.1.5 and Busted |
-| `coverage` | `python3 -m tooling.test.coverage`: the per-package table in the job summary, the LuaCov report as the `luacov-report` artefact |
+| `coverage` | `python3 -m tooling.test.coverage`: every spec but the `#allocation` ones passes under LuaCov and every package meets its floor; the per-package table with floors in the job summary, the LuaCov report as the `luacov-report` artefact |
 | `types` | `lua-language-server --check` for every package source directory and `examples/` |
 | `format` | `stylua --check .` |
 | `lint` | `python3 -m tooling.lint`, both scopes |
@@ -554,13 +581,14 @@ leave the required check waiting. Jobs that run repository tooling use both
 supported Pythons, as described above; `coverage` runs once, on 3.14, because
 it measures Lua, not Python.
 
-Why the jobs that are not plain gates are there:
+Why some jobs do more than pass or fail:
 
-- **`coverage`** shows, per Kit, which lines no spec reaches, at no cost to
-  anyone who does not look. It stays inside the repository (an artefact and a
-  job summary, no external service or token) and is a report for the reasons
-  given under "Coverage"; it fails only when the tooling cannot produce a
-  report, which is why it is still in `ci`'s `needs`.
+- **`coverage`** is a gate (see "Coverage") and also shows, per Kit, which
+  lines no spec reaches. It stays inside the repository (an artefact and a job
+  summary, no external service or token). The summary and the artefact are
+  written even when the gate fails, so a missed floor can be read from the run
+  itself. Its 45-minute timeout leaves room for the instrumented suites, which
+  run several times slower than the `test` job's.
 - **The `package` artefact** makes every merged commit installable without a
   release: download `MoltenCodes-<commit>`, drop its `MoltenCodes/` folder into
   `Interface/AddOns`. It is uploaded from one matrix row (the builds are

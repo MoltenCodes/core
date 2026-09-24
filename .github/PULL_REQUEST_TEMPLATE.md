@@ -27,6 +27,7 @@ land separately. -->
 - [ ] `python3 -m tooling.lint` (zero errors and zero warnings in both scopes)
 - [ ] `stylua --check .`
 - [ ] `python3 -m tooling.spell`
+- [ ] `python3 -m tooling.test.coverage` (every package at or above its floor in `tooling/test/coverage-floors.json`)
 - [ ] `lua-language-server --check packages/<name>/src --checklevel=Warning` for every Kit touched, and `lua-language-server --check examples --checklevel=Warning` when the public surface changed
 - [ ] `actionlint`, when `.github/workflows/` or `.github/actions/` changed
 - [ ] `python3 -m tooling.ci.check_commits origin/main..HEAD`

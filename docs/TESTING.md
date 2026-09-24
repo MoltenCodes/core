@@ -16,8 +16,39 @@ in the repository and one command:
 | Fixture fidelity | the shared fake client behaves like the real one | `packages/testKit/fidelity/` (runs under Busted and in the client) | `python3 -m tooling.test.run testKit`, and testKit in the client |
 | In-client suites | what only the client shows: event order and payloads, combat lockdown, taint | testKit suites | the game client, by hand |
 
-Line coverage (`python3 -m tooling.test.coverage`) is a report over the first
-four layers, not a layer of its own; see [`TOOLING.md`](TOOLING.md#coverage).
+Line coverage (`python3 -m tooling.test.coverage`) is a gate over the first
+four layers, not a layer of its own: every spec except the allocation guards
+must pass under LuaCov, and every package must stay at or above its floor in
+`tooling/test/coverage-floors.json`; see [`TOOLING.md`](TOOLING.md#coverage).
+
+### Allocation guards carry the `#allocation` tag
+
+Every spec that measures allocation (`collectgarbage("count")` around a
+workload, a TestEnv's `AllocatedKilobytes`, or a local helper doing the same)
+carries the Busted tag `#allocation` in its description, on the `it` or on
+the `describe` that holds only such specs:
+
+```lua
+describe("TimerKit allocation #allocation", function()
+    it("allocates nothing to deliver a repeating tick", function()
+        -- ...
+    end)
+end)
+
+it("allocates nothing per event in steady state #allocation", function()
+    -- ...
+end)
+```
+
+The rule holds for every new allocation spec, in `Allocation_spec.lua` or any
+other file. `python3 -m tooling.test.run` runs tagged specs like any other, so
+the `test` job still judges them. The coverage run leaves them out with
+`--exclude-tags=allocation`, because LuaCov's line hook allocates on every
+line and would fail each of them; an untagged allocation spec therefore fails
+the `coverage` job. Keep behavioural assertions out of a tagged `describe`,
+because they would stop counting toward coverage: put them in a spec of their
+own. To run only the guards, pass `--busted-arg=--tags=allocation` to the
+runner.
 
 ### In-client suites
 
@@ -266,8 +297,9 @@ CI validates formatting, Lua linting for runtime and test code, the
 lua-language-server check for every source directory, repository structure,
 that the generated `apiKit` outputs match their committed metadata
 (`python3 -m tooling.api.generate --all --check`), repository-tooling unit
-tests on the supported Python floor and the current release, and the Lua
-package and example test suites.
+tests on the supported Python floor and the current release, the Lua
+package and example test suites, and line coverage: the same suites under
+LuaCov without the `#allocation` specs, held to per-package floors.
 
 The generated data of `apiKit` has tests of its own in the tooling suite:
 for every committed flavour a stub host is built from the metadata and the

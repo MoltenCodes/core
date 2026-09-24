@@ -44,6 +44,13 @@ SHARED_SUPPORT = ROOT / "tests" / "support"
 EXAMPLES_TARGET = "examples"
 EXAMPLES_TESTS = ROOT / "examples" / "tests"
 
+#: The Busted tag every allocation-measuring spec carries (``#allocation`` in
+#: its ``describe`` or ``it`` description, docs/TESTING.md). A plain run keeps
+#: them, because Busted runs every tag unless told otherwise; the coverage run
+#: excludes them with ``--exclude-tags``, because LuaCov's line hook allocates
+#: on every line and would fail each of them by design.
+ALLOCATION_TAG = "allocation"
+
 ManifestMap = dict[str, dict[str, Any]]
 
 #: Busted's final line, for example ``48 successes / 0 failures / 0 errors / 0 pending``.

@@ -262,7 +262,7 @@ jobs:
   coverage:
     name: Line coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
 
@@ -280,12 +280,13 @@ jobs:
       - name: Set up Lua 5.1, Busted and LuaCov
         uses: ./.github/actions/setup-lua
 
-      # A report, not a gate: the per-package table goes to the job summary
-      # and the full LuaCov report to an artefact. Specs that fail only under
-      # LuaCov's line hook (the allocation specs) do not fail this job; the
-      # `test` job judges the suite. The job fails when the tooling cannot
-      # produce a report.
-      - name: Measure line coverage
+      # A gate: every spec except the `#allocation`-tagged ones (LuaCov's line
+      # hook allocates, so they are excluded here and judged by `test`) must
+      # pass under coverage, and every package must meet its floor in
+      # `tooling/test/coverage-floors.json`. The per-package table, with the
+      # floors, goes to the job summary and the full LuaCov report to an
+      # artefact, also when the gate fails.
+      - name: Measure line coverage and check the floors
         run: python3 -m tooling.test.coverage --summary "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload the LuaCov report

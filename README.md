@@ -161,7 +161,8 @@ Every push to `main` and every pull request runs one required check, `ci`,
 which needs every gate: the Lua 5.1 tests, lua-language-server type checks,
 StyLua, Selene, the bundle build with checksum verification, the spell check,
 repository validation and the tooling tests on Python 3.10 and 3.14, commit
-subjects, a secret scan and actionlint, plus a line-coverage report. Separate
+subjects, a secret scan, actionlint, and line coverage held to a per-package
+floor. Separate
 workflows check Markdown links, watch the community mirror for new client
 builds for apiKit, keep labels in sync and build releases. Every action is
 pinned to a commit SHA and every downloaded binary to a SHA-256;

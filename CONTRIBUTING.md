@@ -22,6 +22,7 @@ checklist and the rules for new packages, is
    python3 -m tooling.lint
    stylua --check .
    python3 -m tooling.spell
+   python3 -m tooling.test.coverage   # slow; CI gates on per-package floors
    lua-language-server --check packages/<name>/src --checklevel=Warning
    actionlint
    ```

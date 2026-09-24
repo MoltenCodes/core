@@ -29,7 +29,10 @@ python3 -m tooling.lint
 ```
 
 Measure line coverage of the package sources with LuaCov (needs `luarocks
-install luacov`; a report, not a gate):
+install luacov`). It is a CI gate: specs tagged `#allocation` are excluded,
+every other spec must pass and every package must meet its floor in
+`tooling/test/coverage-floors.json`; `--update-floors` raises floors, never
+lowers them:
 
 ```bash
 python3 -m tooling.test.coverage

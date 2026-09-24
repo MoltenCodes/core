@@ -13,7 +13,7 @@ Repository tooling requires:
 | Lua | 5.1.5 | the World of Warcraft client runtime; runtime code must stay 5.1-compatible |
 | LuaRocks | 3.13.0 | installs Busted and LuaCov |
 | Busted | 2.3.0-1 | pure-Lua test framework |
-| LuaCov | 0.17.0-1 | line coverage (`python3 -m tooling.test.coverage`); optional locally |
+| LuaCov | 0.17.0-1 | line coverage and its floors (`python3 -m tooling.test.coverage`), a CI gate; optional locally |
 | StyLua | 2.5.2 | the authoritative Lua formatter |
 | Selene | 0.31.0 | runtime and test Lua linting |
 | lua-language-server | 3.19.0 | type-checking with `--check`, and editor support |
@@ -222,12 +222,21 @@ normalising, diffing and generating) is described in
 [`TOOLING.md`](TOOLING.md#api-metadata-tooling); the refresh procedure for a
 new client build is `packages/apiKit/docs/UPDATING.md`.
 
-Measure line coverage of the package sources (a report, not a gate; see
-[`TOOLING.md`](TOOLING.md#coverage)):
+Measure line coverage of the package sources and check each package against
+its floor in `tooling/test/coverage-floors.json` (a CI gate; see
+[`TOOLING.md`](TOOLING.md#coverage)). The run skips the `#allocation` specs and
+takes several minutes for every target:
 
 ```bash
 python3 -m tooling.test.coverage
 python3 -m tooling.test.coverage timerKit
+```
+
+After adding specs, or for a new package, raise the floors to the measured
+values (never lowered) and commit the file with the change:
+
+```bash
+python3 -m tooling.test.coverage --update-floors
 ```
 
 Check whether any apiKit flavour's committed metadata is behind the mirror
