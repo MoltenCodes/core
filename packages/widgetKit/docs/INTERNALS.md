@@ -12,7 +12,8 @@ an upgrade hangs off it, under `_state`, and is never replaced:
 | Field | Holds |
 |---|---|
 | `schema`, `runtimeRevision` | the state layout version (`1`) and the revision that last committed its functions |
-| `types` | type name → type record `{ name, version, constructor, pool, borrowed }`; `borrowed` counts the widgets of each version currently acquired |
+| `unbounded`, `limits` | the `UNBOUNDED` sentinel and the package-wide limits `maxCreatedCeiling` and `maxDropdownEntries` |
+| `types` | type name → type record `{ name, version, constructor, maxCallbacks, pool, borrowed }`; `maxCallbacks` is `math.huge` for `UNBOUNDED`, and `borrowed` counts the widgets of each version currently acquired |
 | `layouts` | layout name → layout function |
 | `records` | widget → widget record, weak-keyed |
 | `dispatch` | `build` and `retire`, the pool callbacks, and `closeOpenDropdown`, the catcher's script; rewritten by every copy |

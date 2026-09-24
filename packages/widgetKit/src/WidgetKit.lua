@@ -56,7 +56,7 @@
 
 local PACKAGE_NAME = "widgetKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -525,7 +525,7 @@ local WEAK_KEYS = { __mode = "k" }
 ---@field MAX_CREATED integer Default frame cap per widget type (256).
 ---@field MAX_CHILDREN integer Children per container (256).
 ---@field MAX_CALLBACKS integer Named callbacks per widget (16).
----@field UNBOUNDED table Sentinel `maxCallbacks` and `SetMaxChildren` accept to lift the bound; one table shared by every revision.
+---@field UNBOUNDED table Sentinel `maxCallbacks`, `SetMaxChildren` and the `maxDropdownEntries` limit accept to lift the bound; one table shared by every revision.
 ---@field SetLimits fun(self: WidgetKit, limits: WidgetKit.Limits)
 ---@field GetLimits fun(self: WidgetKit): WidgetKit.Limits
 ---@field Widget table Shared widget base prototype.
@@ -973,11 +973,12 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateLimitOrUnbounded(value, label, level)
-    if value == UNBOUNDED then
-        return
-    end
+    -- Before the sentinel comparison, which would raise on a secret.
     if isSecret(value) then
         error(label .. " must not be a secret value", level)
+    end
+    if value == UNBOUNDED then
+        return
     end
     if
         type(value) ~= "number"
@@ -1234,10 +1235,11 @@ end
 ---@param value any
 function WidgetBase:SetUserData(key, value)
     local record = activeRecord(self, "WidgetKit.Widget:SetUserData", 3)
+    -- Before the nil test, which would raise on a secret.
+    refuseSecret(key, "WidgetKit.Widget:SetUserData key", 3)
     if key == nil then
         error("WidgetKit.Widget:SetUserData key must not be nil", 2)
     end
-    refuseSecret(key, "WidgetKit.Widget:SetUserData key", 3)
     local userData = record.userData
     if userData == nil then
         if value == nil then
@@ -1253,10 +1255,11 @@ end
 ---@return any
 function WidgetBase:GetUserData(key)
     local record = activeRecord(self, "WidgetKit.Widget:GetUserData", 3)
+    -- Before the nil test, which would raise on a secret.
+    refuseSecret(key, "WidgetKit.Widget:GetUserData key", 3)
     if key == nil then
         return nil
     end
-    refuseSecret(key, "WidgetKit.Widget:GetUserData key", 3)
     local userData = record.userData
     if userData == nil then
         return nil
@@ -1320,7 +1323,8 @@ end
 ---@param fraction number? of the container's width, above 0 and at most 1; `nil` clears it
 function WidgetBase:SetRelativeWidth(fraction)
     local record = activeRecord(self, "WidgetKit.Widget:SetRelativeWidth", 3)
-    if fraction ~= nil then
+    -- `type`, not `~= nil`: comparing a secret raises before validation refuses it.
+    if type(fraction) ~= "nil" then
         validateNumber(fraction, "WidgetKit.Widget:SetRelativeWidth fraction", 3)
         if fraction <= 0 or fraction > 1 then
             error("WidgetKit.Widget:SetRelativeWidth fraction must be above 0 and at most 1", 2)
@@ -2082,7 +2086,9 @@ local function registerType(self, name, constructor, version, options)
     local maxCallbacks = MAX_CALLBACKS
     if options ~= nil then
         validateOptionKeys(options, TYPE_OPTION_KEYS, "WidgetKit:RegisterType options", 3)
-        if options.maxCreated ~= nil then
+        if type(options.maxCreated) ~= "nil" then
+            -- Before the sentinel comparison, which would raise on a secret.
+            refuseSecret(options.maxCreated, "WidgetKit:RegisterType options.maxCreated", 3)
             if options.maxCreated == UNBOUNDED then
                 error(
                     "WidgetKit:RegisterType options.maxCreated cannot be WidgetKit.UNBOUNDED:"
@@ -2105,7 +2111,7 @@ local function registerType(self, name, constructor, version, options)
             end
             maxCreated = options.maxCreated
         end
-        if options.maxCallbacks ~= nil then
+        if type(options.maxCallbacks) ~= "nil" then
             validateLimitOrUnbounded(
                 options.maxCallbacks,
                 "WidgetKit:RegisterType options.maxCallbacks",
@@ -2410,24 +2416,38 @@ local function setLimits(self, limits)
     local key = next(limits)
     while key ~= nil do
         if key ~= "maxCreatedCeiling" and key ~= "maxDropdownEntries" then
-            error("WidgetKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", 2)
+            -- A key that is not a string, number or boolean is named by its
+            -- type, so no `__tostring` of the caller's runs here.
+            local kind = type(key)
+            local keyText = "<" .. kind .. ">"
+            if kind == "string" or kind == "number" or kind == "boolean" then
+                keyText = tostring(key)
+            end
+            error("WidgetKit:SetLimits limits." .. keyText .. " is not a recognised limit", 2)
         end
         key = next(limits, key)
     end
+
+    -- Every value is checked for a secret before it is compared with the
+    -- sentinel or a bound: comparing a secret raises.
 
     -- `maxDropdownEntries`: a positive integer or `WidgetKit.UNBOUNDED`, since
     -- the entries are the consumer's own keys and labels, not frames.
     local dropdownEntries = rawget(limits, "maxDropdownEntries")
     if
-        dropdownEntries ~= nil
-        and dropdownEntries ~= UNBOUNDED
+        type(dropdownEntries) ~= "nil"
         and (
             isSecret(dropdownEntries)
-            or type(dropdownEntries) ~= "number"
-            or dropdownEntries ~= dropdownEntries
-            or dropdownEntries < 1
-            or dropdownEntries == math.huge
-            or dropdownEntries ~= math.floor(dropdownEntries)
+            or (
+                dropdownEntries ~= UNBOUNDED
+                and (
+                    type(dropdownEntries) ~= "number"
+                    or dropdownEntries ~= dropdownEntries
+                    or dropdownEntries < 1
+                    or dropdownEntries == math.huge
+                    or dropdownEntries ~= math.floor(dropdownEntries)
+                )
+            )
         )
     then
         error(
@@ -2437,13 +2457,13 @@ local function setLimits(self, limits)
         )
     end
     local ceiling = rawget(limits, "maxCreatedCeiling")
-    if ceiling == nil then
-        if dropdownEntries ~= nil then
+    if type(ceiling) == "nil" then
+        if type(dropdownEntries) ~= "nil" then
             rawset(rawget(state, "limits"), "maxDropdownEntries", dropdownEntries)
         end
         return
     end
-    if ceiling == UNBOUNDED then
+    if not isSecret(ceiling) and ceiling == UNBOUNDED then
         error(
             "WidgetKit:SetLimits limits.maxCreatedCeiling cannot be WidgetKit.UNBOUNDED:"
                 .. " the client never frees a frame",
@@ -2466,7 +2486,7 @@ local function setLimits(self, limits)
         )
     end
     rawset(rawget(state, "limits"), "maxCreatedCeiling", ceiling)
-    if dropdownEntries ~= nil then
+    if type(dropdownEntries) ~= "nil" then
         rawset(rawget(state, "limits"), "maxDropdownEntries", dropdownEntries)
     end
 end
@@ -3566,7 +3586,7 @@ do
         validateNumber(red, "WidgetKit Label:SetColor red", 3)
         validateNumber(green, "WidgetKit Label:SetColor green", 3)
         validateNumber(blue, "WidgetKit Label:SetColor blue", 3)
-        if alpha ~= nil then
+        if type(alpha) ~= "nil" then
             validateNumber(alpha, "WidgetKit Label:SetColor alpha", 3)
         end
         self._red, self._green, self._blue, self._alpha = red, green, blue, alpha or 1
@@ -3578,6 +3598,7 @@ do
     ---@param justify string `"LEFT"`, `"CENTER"` or `"RIGHT"`
     local function labelSetJustifyH(self, justify)
         activeRecord(self, "WidgetKit Label:SetJustifyH", 3)
+        refuseSecret(justify, "WidgetKit Label:SetJustifyH justify", 3)
         if justify ~= "LEFT" and justify ~= "CENTER" and justify ~= "RIGHT" then
             error('WidgetKit Label:SetJustifyH justify must be "LEFT", "CENTER" or "RIGHT"', 2)
         end
@@ -4215,7 +4236,7 @@ do
         if type(multiLine) ~= "boolean" then
             error("WidgetKit EditBox:SetMultiLine multiLine must be a boolean", 2)
         end
-        if lines ~= nil then
+        if type(lines) ~= "nil" then
             validatePositiveInteger(lines, "WidgetKit EditBox:SetMultiLine lines", 3)
         end
         local text = activeEditBox(self):GetText()
@@ -4576,7 +4597,7 @@ do --
         if type(values) ~= "table" then
             error("WidgetKit Dropdown:SetList values must be a table", 2)
         end
-        if order ~= nil and type(order) ~= "table" then
+        if type(order) ~= "nil" and type(order) ~= "table" then
             error("WidgetKit Dropdown:SetList order must be an array or nil", 2)
         end
 
@@ -4613,6 +4634,8 @@ do --
             labels[count] = label
         end
 
+        -- The staged position of each displayed entry, when sorting reorders them.
+        local displayOrder = nil
         if order ~= nil then
             for index = 1, #order do
                 local key = order[index]
@@ -4625,36 +4648,33 @@ do --
             for key, label in next, values do
                 add(key, label)
             end
-            -- Sort the parallel arrays by label, then key, through an index array.
-            local indices = {}
+            -- Sort by label, then key, through an index array over the staged
+            -- entries; the widget's arrays are then filled in that order.
+            displayOrder = {}
             for index = 1, count do
-                indices[index] = index
+                displayOrder[index] = index
             end
-            local sortedKeys, sortedLabels = {}, {}
-            for index = 1, count do
-                sortedKeys[index], sortedLabels[index] = keys[index], labels[index]
-            end
-            table.sort(indices, function(first, second)
-                local firstLabel, secondLabel = sortedLabels[first], sortedLabels[second]
+            table.sort(displayOrder, function(first, second)
+                local firstLabel, secondLabel = labels[first], labels[second]
                 if firstLabel ~= secondLabel then
                     return firstLabel < secondLabel
                 end
-                local firstKey, secondKey = sortedKeys[first], sortedKeys[second]
+                local firstKey, secondKey = keys[first], keys[second]
                 if type(firstKey) ~= type(secondKey) then
                     return type(firstKey) == "number"
                 end
                 return firstKey < secondKey
             end)
-            for index = 1, count do
-                keys[index] = sortedKeys[indices[index]]
-                labels[index] = sortedLabels[indices[index]]
-            end
         end
 
         local ownKeys, ownLabels = self._keys, self._labels
         for index = 1, count do
-            ownKeys[index] = keys[index]
-            ownLabels[index] = labels[index]
+            local staged = index
+            if displayOrder ~= nil then
+                staged = displayOrder[index]
+            end
+            ownKeys[index] = keys[staged]
+            ownLabels[index] = labels[staged]
         end
         for index = count + 1, self._count do
             ownKeys[index] = nil
@@ -4890,7 +4910,7 @@ do --
         validateNumber(red, "WidgetKit ColorPicker:SetColor red", 3)
         validateNumber(green, "WidgetKit ColorPicker:SetColor green", 3)
         validateNumber(blue, "WidgetKit ColorPicker:SetColor blue", 3)
-        if alpha ~= nil then
+        if type(alpha) ~= "nil" then
             validateNumber(alpha, "WidgetKit ColorPicker:SetColor alpha", 3)
         end
         self._red, self._green, self._blue, self._alpha = red, green, blue, alpha or 1
@@ -5201,6 +5221,19 @@ local function createMediaPicker(self, mediaType)
     local probe, names = pcall(MediaKit.List, MediaKit, mediaType)
     if not probe or type(names) ~= "table" then
         error("WidgetKit:CreateMediaPicker mediaType must be a MediaKit media type", 2)
+    end
+    -- Checked before a Dropdown is acquired: a list `SetList` would refuse must
+    -- not leave a borrowed widget behind.
+    local maxEntries = rawget(rawget(state, "limits"), "maxDropdownEntries")
+    if maxEntries ~= UNBOUNDED and #names > maxEntries then
+        error(
+            "WidgetKit:CreateMediaPicker MediaKit lists more "
+                .. mediaType
+                .. " names than a Dropdown holds ("
+                .. maxEntries
+                .. "; WidgetKit:SetLimits maxDropdownEntries)",
+            2
+        )
     end
 
     local dropdown, reason = WidgetKit:Create("Dropdown")

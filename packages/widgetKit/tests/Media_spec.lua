@@ -21,6 +21,27 @@ describe("WidgetKit media pickers with MediaKit", function()
         assert.are.equal("Spec Smooth", picker.button:GetText())
     end)
 
+    it("refuses a MediaKit list longer than a Dropdown holds without borrowing one", function()
+        local MediaKit = modules.MediaKit
+        for index = 1, 4 do
+            MediaKit:Register("statusbar", "Spec Bar " .. index, "Interface\\Spec\\Bar" .. index)
+        end
+        WidgetKit:SetLimits({ maxDropdownEntries = 4 })
+        local before = WidgetKit:GetStatistics().byType.Dropdown.active
+        TestEnv.expectErrorContaining(
+            "WidgetKit:CreateMediaPicker MediaKit lists more statusbar names than a Dropdown holds"
+                .. " (4; WidgetKit:SetLimits maxDropdownEntries)",
+            function()
+                WidgetKit:CreateMediaPicker("statusbar")
+            end
+        )
+        assert.are.equal(before, WidgetKit:GetStatistics().byType.Dropdown.active)
+
+        WidgetKit:SetLimits({ maxDropdownEntries = WidgetKit.UNBOUNDED })
+        local picker = WidgetKit:CreateMediaPicker("statusbar")
+        assert.are.equal(#MediaKit:List("statusbar"), picker:GetNumEntries())
+    end)
+
     it("refuses a type MediaKit does not know at the caller", function()
         TestEnv.expectErrorContaining("mediaType must be a MediaKit media type", function()
             WidgetKit:CreateMediaPicker("statusBar")

@@ -2,7 +2,7 @@
 
 WidgetKit API generation **1** provides pooled, versioned widgets on frames WidgetKit creates itself, containers with explicit layouts, a normalised anchor value type with position persistence, and a renderer for OptionsKit trees.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -55,13 +55,13 @@ Package facade:
 | `GetStatistics()` | Counters per type and in total (allocates). |
 | `BindPosition(frame, storageTable, options?)` | Bind a frame's position to a storage table; returns a binding. |
 | `RenderOptions(tree, container, options?)` | Render an OptionsKit tree; returns a rendering. |
-| `CreateMediaPicker(mediaType)` | A `Dropdown` over MediaKit's names. |
+| `CreateMediaPicker(mediaType)` | A `Dropdown` over MediaKit's names, or `nil, "exhausted"`. Raises at the caller without MediaKit, for a type MediaKit does not know, and, before any `Dropdown` is acquired, when MediaKit lists more names than `maxDropdownEntries` allows. |
 | `Anchor` | `FromRect`, `Normalize`, `Apply`, `Read`, `POINTS`. |
 | `Widget`, `Container`, `Binding`, `Rendering` | The shared prototypes, for introspection. |
 | `MAX_CREATED`, `MAX_CHILDREN`, `MAX_CALLBACKS` | `256`, `256`, `16`: the defaults. See [Limits](#limits). |
 | `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits `maxCreatedCeiling` and `maxDropdownEntries`; `GetLimits` returns a fresh table. |
-| `UNBOUNDED` | Sentinel `maxCallbacks` and `SetMaxChildren` accept to lift a bound. |
-| `API`, `REVISION` | `1`, `1`. |
+| `UNBOUNDED` | Sentinel `maxCallbacks`, `SetMaxChildren` and the `maxDropdownEntries` limit accept to lift a bound. |
+| `API`, `REVISION` | `1`, `2`. |
 
 Widget base (`WidgetKit.Widget`), on every widget:
 
@@ -188,7 +188,7 @@ local list = WidgetKit:Create("ScrollFrame")
 list:SetMaxChildren(WidgetKit.UNBOUNDED)
 ```
 
-`SetLimits` accepts any subset and raises at the caller on an unknown name, on `WidgetKit.UNBOUNDED`, and on a value outside its range, before changing anything. **The limit is shared by every consumer in the session**: every embedded copy and every addon uses one value, so a library should rely on the default. Lowering it never shrinks a cap a type already has; it applies to later registrations and upgrades. `GetLimits` returns a fresh table.
+`SetLimits` accepts any subset and raises at the caller on an unknown name (a key that is not a string, number or boolean is named by its type, `limits.<table>`, so no `__tostring` runs), on `WidgetKit.UNBOUNDED` for `maxCreatedCeiling`, and on a secret value or one outside its range, before changing anything. **The limit is shared by every consumer in the session**: every embedded copy and every addon uses one value, so a library should rely on the default. Lowering it never shrinks a cap a type already has; it applies to later registrations and upgrades. `GetLimits` returns a fresh table.
 
 `maxCallbacks` belongs to a type and applies to every widget of it; a newer version's registration sets it again. Base types keep 16; register your own type to ask for more. `SetMaxChildren` belongs to one container and is reset to 256 when the container is released, because pooled containers are reused by other code.
 
@@ -199,7 +199,7 @@ list:SetMaxChildren(WidgetKit.UNBOUNDED)
 An anchor is a plain table:
 
 ```lua
-{ point = "TOPLEFT", relativeTo = "UIParent", relativePoint = "TOPLEFT", x = 20, y = -20, scale = 1 }
+local anchor = { point = "TOPLEFT", relativeTo = "UIParent", relativePoint = "TOPLEFT", x = 20, y = -20, scale = 1 }
 ```
 
 `relativeTo` is the relative frame's global name when it has one, the frame itself when it has none, or `nil` for the frame's parent; `scale` is the frame's own scale. Every field is plain, so an anchor can be saved as it is.
@@ -352,7 +352,7 @@ local slider = WidgetKit:Create("Slider") --[[@as WidgetKit.Slider]]
 
 ## Secret values
 
-A font string can display a secret value, but whether one should appear is the caller's decision (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every text setter refuses a secret at your line — `WidgetKit Label:SetText text must not be a secret value unless options.allowSecret is true` — unless you pass `{ allowSecret = true }`. A secret text is never measured (a `Label` showing one is one line high). Values a widget would compare (`CheckBox:SetValue`, `Dropdown:SetValue`, `Dropdown:SetList`, numbers, counts and indices such as `SetMaxLetters` and `PickIndex`, names, user-data keys) are refused when secret. Released widgets clear their texts. The renderer never inspects a secret value: an `input` shows it only with `allowSecret`, every other kind is disabled.
+A font string can display a secret value, but whether one should appear is the caller's decision (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every text setter refuses a secret at your line — `WidgetKit Label:SetText text must not be a secret value unless options.allowSecret is true` — unless you pass `{ allowSecret = true }`. A secret text is never measured (a `Label` showing one is one line high). Values a widget would compare (`CheckBox:SetValue`, `Dropdown:SetValue`, `Dropdown:SetList`, `Label:SetJustifyH`, numbers and optional numbers such as an `alpha` or a relative width, counts and indices such as `SetMaxLetters` and `PickIndex`, limits and caps, names, user-data keys) are refused when secret, before they are compared with anything, `nil` included. Released widgets clear their texts. The renderer never inspects a secret value: an `input` shows it only with `allowSecret`, every other kind is disabled.
 
 ## Error behaviour
 
@@ -446,7 +446,7 @@ To change `MyAddonProgress` later, register the new constructor with version `2`
 
 ## Embedded copies and upgrades
 
-Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets.
+Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revision 2 keeps the revision 1 state as it is and replaces the methods only; every base widget stays at version 1.
 
 Nothing survives `/reload`: widgets are created again when the addon loads.
 

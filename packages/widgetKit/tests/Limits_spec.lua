@@ -141,6 +141,27 @@ describe("WidgetKit limits", function()
             unknownValue
         )
 
+        -- A table key is named by its type; its `__tostring` never runs.
+        local ran = false
+        local key = setmetatable({}, {
+            __tostring = function()
+                ran = true
+                return "caller text"
+            end,
+        })
+        local keyLine
+        local keyOk, keyValue = pcall(function()
+            keyLine = currentLine() + 1
+            WidgetKit:SetLimits({ [key] = 1 })
+        end)
+        assertReportedAt(
+            keyLine,
+            "WidgetKit:SetLimits limits.<table> is not a recognised limit",
+            keyOk,
+            keyValue
+        )
+        assert.is_false(ran)
+
         local tableLine
         local tableOk, tableValue = pcall(function()
             tableLine = currentLine() + 1
@@ -277,8 +298,9 @@ describe("WidgetKit limits", function()
         local group = WidgetKit:Create("Group") ---@cast group -nil
         group:SetMaxChildren(sentinel)
 
-        local upgraded = TestEnv.LoadRevision(2)
-        assert.are.equal(2, upgraded.REVISION)
+        local nextRevision = WidgetKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
         assert.are.equal(sentinel, upgraded._state.unbounded)
         assert.are.same(

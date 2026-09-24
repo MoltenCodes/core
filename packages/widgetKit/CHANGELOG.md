@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1 — 2026-09-24
+
+- Fixed: `WidgetKit:CreateMediaPicker` acquired a `Dropdown` before it knew the list fitted, so a MediaKit type holding more names than `maxDropdownEntries` raised from inside WidgetKit and left that `Dropdown` borrowed for the session. The length is now checked first and refused at the caller: `WidgetKit:CreateMediaPicker MediaKit lists more <type> names than a Dropdown holds (<n>; WidgetKit:SetLimits maxDropdownEntries)`.
+- Fixed: arguments that may be secret were compared before the secret check the API promises. `Label:SetJustifyH` compared `justify` with its three words, `SetUserData` and `GetUserData` compared the key with `nil`, `SetRelativeWidth`, the `alpha` of `Label:SetColor` and `ColorPicker:SetColor`, the `lines` of `EditBox:SetMultiLine` and the `maxCreated` and `maxCallbacks` registration options were compared with `nil`, and `SetMaxChildren`, `maxCallbacks` and both `SetLimits` values were compared with `WidgetKit.UNBOUNDED`; on the client each of those raises on a secret. They are now refused at the caller first (`... must not be a secret value`, or the limit's range message for `SetLimits`).
+- Fixed: `SetLimits` named an unknown key with `tostring`, running a table key's `__tostring`; such a key is now named by its type (`limits.<table>`).
+- `Dropdown:SetList` without `order` sorts an index array over the staged entries and fills the widget's arrays from it, instead of copying the staged entries into two further arrays first. The order is unchanged.
+- The `UNBOUNDED` description (API.md and its LuaCATS field) names the `maxDropdownEntries` limit beside `maxCallbacks` and `SetMaxChildren`; the README's list of openable bounds gains its missing comma; INTERNALS.md lists the type record's `maxCallbacks` and the state's `unbounded` and `limits`; the anchor example in API.md is an assignment, so it compiles.
+- Implementation revision 2. No state changed and every base widget stays at version 1: an in-place upgrade from revision 1 keeps the types, pools, live widgets and their records, the limits and the sentinel, and replaces the methods only.
+- Specs: the upgrade specs load the next revision relative to the current one (the earlier fixed `2` became a same-revision load once the file itself was revision 2); a new spec upgrades a revision 1 copy with the current file; new specs cover the secret refusals, the table key and the oversized media list. 154 specs.
+- `WidgetKit` API generation 1 is unchanged.
+
 ## 0.1.0 — 2026-09-23
 
 - Added WidgetKit API generation 1, implementation revision 1: pooled, versioned widgets on frames WidgetKit creates itself, explicit layouts, a saveable anchor value type with position persistence, and a renderer for OptionsKit trees.
