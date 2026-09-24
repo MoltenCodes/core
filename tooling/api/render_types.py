@@ -319,8 +319,16 @@ def function_stub_lines(qualified_name: str, parameters: Sequence[str]) -> list[
 def _write_function_annotations(
     writer: _Writer, function: model.Function, context: _TypeContext
 ) -> list[str]:
-    """Write the doc, `@param` and `@return` lines of a function; return its parameter names."""
+    """Write the doc, `@param` and `@return` lines of a function; return its parameter names.
+
+    The restrictions line is part of the description and goes before the first
+    annotation: a plain `---` line after an `@param` or `@return` is read by the
+    language server as that annotation's description, not the function's.
+    """
     writer.doc(function.documentation)
+    restrictions = _restrictions_text(function)
+    if restrictions is not None:
+        writer.doc((restrictions,))
     parameter_names: list[str] = []
     for argument in function.arguments:
         name = lua_identifier(argument.name)
@@ -333,9 +341,6 @@ def _write_function_annotations(
         else:
             type_expression = context.type_of(value)
         writer.line(f"{DOC_PREFIX}@return {type_expression} {lua_identifier(value.name)}")
-    restrictions = _restrictions_text(function)
-    if restrictions is not None:
-        writer.doc((restrictions,))
     return parameter_names
 
 
@@ -357,6 +362,13 @@ def _write_flavour_root(writer: _Writer, flavour: flavours.Flavour) -> None:
     writer.line(f"{DOC_PREFIX}@class {segments[0]}")
     writer.line(f"{DOC_PREFIX}@field {segments[1]} {'.'.join(segments[:2])}")
     writer.line(f"{segments[0]} = {{}}")
+    # The same root is always reachable as `MoltenCodes.wow`, the way in when
+    # another addon owns the short global; the fallback keeps completion too.
+    writer.blank()
+    writer.line(f"{DOC_PREFIX}The MoltenCodes namespace; `{segments[0]}` is always reachable here.")
+    writer.line(f"{DOC_PREFIX}@class MoltenCodes")
+    writer.line(f"{DOC_PREFIX}@field {segments[0]} {segments[0]}")
+    writer.line("MoltenCodes = {}")
 
 
 def _write_api_class(

@@ -12,6 +12,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
+from tooling.validation.validate_manifests import ROOT
 from tooling.api import diff as module
 from tooling.api import model
 from tooling.tests.test_api_model import sample_metadata, sample_provenance
@@ -19,7 +20,10 @@ from tooling.tests.test_api_model import sample_metadata, sample_provenance
 
 #: A real metadata directory to self-diff, when one is available on this machine.
 CORPUS_ENV = "MOLTENCODES_API_METADATA"
-CORPUS_DIRECTORY = Path(os.environ.get(CORPUS_ENV, "")) if os.environ.get(CORPUS_ENV) else None
+#: The metadata the corpus tests run against: the directory `MOLTENCODES_API_METADATA`
+#: names, else the committed Retail metadata, so the checks run in CI too.
+COMMITTED_RETAIL_METADATA = ROOT / "packages" / "apiKit" / "metadata" / "retail"
+CORPUS_DIRECTORY = Path(os.environ[CORPUS_ENV]) if os.environ.get(CORPUS_ENV) else COMMITTED_RETAIL_METADATA
 
 
 def later_provenance() -> model.Provenance:

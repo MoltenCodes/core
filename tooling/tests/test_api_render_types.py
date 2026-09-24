@@ -27,7 +27,10 @@ from tooling.validation.validate_manifests import ROOT
 #: Names a real normalised Retail metadata directory, when this machine has one.
 #: The same variable serves the diff tests, so one setting covers both.
 CORPUS_ENV = "MOLTENCODES_API_METADATA"
-CORPUS_DIRECTORY = Path(os.environ.get(CORPUS_ENV, "")) if os.environ.get(CORPUS_ENV) else None
+#: The metadata the corpus tests run against: the directory `MOLTENCODES_API_METADATA`
+#: names, else the committed Retail metadata, so the checks run in CI too.
+COMMITTED_RETAIL_METADATA = ROOT / "packages" / "apiKit" / "metadata" / "retail"
+CORPUS_DIRECTORY = Path(os.environ[CORPUS_ENV]) if os.environ.get(CORPUS_ENV) else COMMITTED_RETAIL_METADATA
 
 HOST_TYPES = model.parse_host_types(
     {
@@ -258,10 +261,10 @@ class ApiFileTests(unittest.TestCase):
             "---@class wow.retail.api.addOnProfiler\n"
             "api.addOnProfiler = {}\n"
             "\n"
+            "---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized\n"
             "---@param callback MeasureCallback\n"
             "---@param label? string\n"
             "---@return number? elapsed\n"
-            "---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized\n"
             "function api.addOnProfiler.measureCall(callback, label) end\n"
         )
         self.assertIn(expected, self.text)
@@ -274,10 +277,10 @@ class ApiFileTests(unittest.TestCase):
             "\n"
             "---The unit's name.\n"
             "---Realm follows when the unit is elsewhere.\n"
+            "---Restrictions: hasRestrictions, isProtected\n"
             "---@param end_ string\n"
             "---@return string name\n"
             "---@return string? realm\n"
-            "---Restrictions: hasRestrictions, isProtected\n"
             "function api.unit.name(end_) end\n"
         )
         self.assertIn(expected, self.text)

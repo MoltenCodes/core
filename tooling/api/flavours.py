@@ -22,8 +22,10 @@ Detection facts are the values a client of that flavour reports for the probes
 named at the top of the table: `WOW_PROJECT_ID` (1 Retail and its test
 builds, 2 Classic Era, 19 Mists of Pandaria Classic), `IsTestBuild()` (true on
 the PTR and on Beta) and `IsBetaBuild()` (true on Beta only). Every flavour
-states all three facts, so a client matches exactly one flavour or none; a
-client matching none (a Burning Crusade Classic client, for example) gets no
+states all three facts, but the build facts are consulted for Retail's project
+id alone: only Retail's test realm and beta builds are flavours of their own,
+and a Classic test realm client runs its Classic flavour's surface. A client
+matching no row (a Burning Crusade Classic client, for example) gets no
 surface. Both probes are documented functions of the Retail client (its
 `System` tables at build 69933 list `IsTestBuild` and `IsBetaBuild`), the
 only client whose project id needs them.

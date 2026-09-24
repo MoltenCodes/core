@@ -13,6 +13,11 @@
 ---@field beta wow.beta
 wow = {}
 
+---The MoltenCodes namespace; `wow` is always reachable here.
+---@class MoltenCodes
+---@field wow wow
+MoltenCodes = {}
+
 ---The Beta World of Warcraft API: `local api = wow.beta.api`.
 ---@class wow.beta.api
 ---@field accessibilityOptions wow.beta.api.accessibilityOptions
@@ -335,77 +340,77 @@ api.accessibilityOptions = {}
 ---@class wow.beta.api.accountInfo
 api.accountInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param battleNetAccountGUID string
 ---@return number battleNetAccountID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountInfo.getIDFromBattleNetAccountGUID(battleNetAccountGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@return boolean isBNet
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountInfo.isGUIDBattleNetAccountType(guid) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@return boolean isLocalUser
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountInfo.isGUIDRelatedToLocalAccount(guid) end
 
 ---Wraps `C_AccountStore`.
 ---@class wow.beta.api.accountStore
 api.accountStore = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return boolean purchaseStarted
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountStore.beginPurchase(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param storeFrontID number
 ---@return number[] categories
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountStore.getCategories(storeFrontID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@return AccountStoreCategoryInfo info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountStore.getCategoryInfo(categoryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@return number[] itemIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountStore.getCategoryItems(categoryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@return number amount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountStore.getCurrencyAvailable(currencyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param storeFrontID number
 ---@return number? currencyID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountStore.getCurrencyIDForStore(storeFrontID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@return AccountStoreCurrencyInfo info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountStore.getCurrencyInfo(currencyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return AccountStoreItemInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountStore.getItemInfo(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param storeFrontID number
 ---@return any state
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountStore.getStoreFrontState(storeFrontID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return boolean refundStarted
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.accountStore.refundItem(itemID) end
 
----@param storeFrontID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param storeFrontID number
 function api.accountStore.requestStoreFrontInfoUpdate(storeFrontID) end
 
 ---Wraps `C_AchievementInfo`.
@@ -415,40 +420,40 @@ api.achievementInfo = {}
 ---@return boolean enabled
 function api.achievementInfo.areGuildAchievementsEnabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param achievementID number
 ---@return number? rewardItemID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.achievementInfo.getRewardItemID(achievementID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param achievementID number
 ---@return number[] supercedingAchievements
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.achievementInfo.getSupercedingAchievements(achievementID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param achievementId number
 ---@return boolean isGuild
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.achievementInfo.isGuildAchievement(achievementId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param achievementId number
 ---@return boolean isValidAchievement
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.achievementInfo.isValidAchievement(achievementId) end
 
----@param textureObject SimpleTexture
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param textureObject SimpleTexture
 function api.achievementInfo.setPortraitTexture(textureObject) end
 
 ---Wraps `C_AchievementTelemetry`.
 ---@class wow.beta.api.achievementTelemetry
 api.achievementTelemetry = {}
 
----@param achievementID number
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param achievementID number
 function api.achievementTelemetry.linkAchievementInClub(achievementID) end
 
----@param achievementID number
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param achievementID number
 function api.achievementTelemetry.linkAchievementInWhisper(achievementID) end
 
 function api.achievementTelemetry.showAchievements() end
@@ -459,116 +464,116 @@ api.actionBar = {}
 
 ---Used in conjunction with ActionRangeCheckUpdate to inform the UI when an action goes in or
 ---out of range with its current target.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param actionID integer
 ---@param enable boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.enableActionRangeCheck(actionID, enable) end
 
 ---Returns the list of action bar slots that contain the Assisted Combat action spell.
 ---@return integer[]? slots
 function api.actionBar.findAssistedCombatActionButtons() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param flyoutID number
 ---@return integer[]? slots
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.findFlyoutActionButtons(flyoutID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param petActionID number
 ---@return integer[]? slots
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.findPetActionButtons(petActionID) end
 
 ---Returns the list of action bar slots that contain a specified spell.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@return integer[]? slots
----Restrictions: secretArguments=AllowedWhenTainted
 function api.actionBar.findSpellActionButtons(spellID) end
 
 ---Force updates some internals for an action button slot.
----@param slotID integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param slotID integer
 function api.actionBar.forceUpdateAction(slotID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean autocastAllowed
 ---@return boolean autocastEnabled
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.getActionAutocast(actionID) end
 
 ---@return integer currentPage
 function api.actionBar.getActionBarPage() end
 
 ---Returns a duration object describing the active recharge time for an action.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return LuaDurationObject duration
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.getActionChargeDuration(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot,
+---SecretWhenActionCooldownRestricted
 ---@param actionID integer
 ---@return ActionBarChargeInfo chargeInfo
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot,
----SecretWhenActionCooldownRestricted
 function api.actionBar.getActionCharges(actionID) end
 
----@param actionID integer
----@return ActionBarCooldownInfo cooldownInfo
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot,
 ---SecretWhenActionCooldownRestricted
+---@param actionID integer
+---@return ActionBarCooldownInfo cooldownInfo
 function api.actionBar.getActionCooldown(actionID) end
 
 ---Returns a duration object describing the active cooldown duration for an action.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return LuaDurationObject duration
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.getActionCooldownDuration(actionID) end
 
 ---Depending on the action type, return a string that is either the use count or number of
 ---charges. If value is beyond the display count parameter, returns the replacementString
 ---(defaults to '*').
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot,
+---SecretWhenActionCooldownRestricted
 ---@param actionID integer
 ---@param maxDisplayCount? number
 ---@param replacementString? string
 ---@return string displayCount
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot,
----SecretWhenActionCooldownRestricted
 function api.actionBar.getActionDisplayCount(actionID, maxDisplayCount, replacementString) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot,
+---SecretWhenActionCooldownRestricted
 ---@param actionID integer
 ---@return number startTime
 ---@return number duration
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot,
----SecretWhenActionCooldownRestricted
 function api.actionBar.getActionLossOfControlCooldown(actionID) end
 
 ---Returns a duration object describing the active loss of control cooldown duration for an
 ---action.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return LuaDurationObject duration
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.getActionLossOfControlCooldownDuration(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return string? text
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.getActionText(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return integer textureFileID
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.getActionTexture(actionID) end
 
----@param actionID integer
----@return number count
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot,
 ---SecretWhenActionCooldownRestricted
+---@param actionID integer
+---@return number count
 function api.actionBar.getActionUseCount(actionID) end
 
 ---@return integer bonusBarIndex
 function api.actionBar.getBonusBarIndex() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slotID integer
 ---@return integer? bonusBarIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.getBonusBarIndexForSlot(slotID) end
 
 ---@return number bonusBarOffset
@@ -577,9 +582,9 @@ function api.actionBar.getBonusBarOffset() end
 ---@return integer extraBarIndex
 function api.actionBar.getExtraBarIndex() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param actionID integer
 ---@return number? onEquipSpellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.getItemActionOnEquipSpellID(actionID) end
 
 ---@return integer multiCastBarIndex
@@ -591,24 +596,24 @@ function api.actionBar.getOverrideBarIndex() end
 ---@return integer? textureFileID
 function api.actionBar.getOverrideBarSkin() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param petActionID number
 ---@return integer[]? slots
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.getPetActionPetBarIndices(petActionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param actionID integer
 ---@return number? quality
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.getProfessionQuality(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param actionID integer
 ---@return CraftingQualityInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.getProfessionQualityInfo(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param actionID integer
 ---@return number spellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.getSpell(actionID) end
 
 ---@return integer tempShapeshiftBarIndex
@@ -618,9 +623,9 @@ function api.actionBar.getTempShapeshiftBarIndex() end
 function api.actionBar.getVehicleBarIndex() end
 
 ---Returns true if an actionbar slot is populated with an action.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean hasAction
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.hasAction(actionID) end
 
 ---@return boolean hasButtons
@@ -632,32 +637,32 @@ function api.actionBar.hasBonusActionBar() end
 ---@return boolean hasExtraActionBar
 function api.actionBar.hasExtraActionBar() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param flyoutID number
 ---@return boolean hasFlyoutActionButtons
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.hasFlyoutActionButtons(flyoutID) end
 
 ---@return boolean hasOverrideActionBar
 function api.actionBar.hasOverrideActionBar() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param petActionID number
 ---@return boolean hasPetActionButtons
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.hasPetActionButtons(petActionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param petActionID number
 ---@return boolean hasPetActionPetBarIndices
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.hasPetActionPetBarIndices(petActionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean hasRangeRequirements
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.hasRangeRequirements(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@return boolean hasSpellActionButtons
----Restrictions: secretArguments=AllowedWhenTainted
 function api.actionBar.hasSpellActionButtons(spellID) end
 
 ---@return boolean hasTempShapeshiftActionBar
@@ -666,112 +671,112 @@ function api.actionBar.hasTempShapeshiftActionBar() end
 ---@return boolean hasVehicleActionBar
 function api.actionBar.hasVehicleActionBar() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@param target? string
 ---@return boolean? isInRange
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.isActionInRange(actionID, target) end
 
 ---Returns whether the given action button contains the Assisted Combat action spell.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slotID integer
 ---@return boolean isAssistedCombatAction
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.isAssistedCombatAction(slotID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isAttackAction
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.isAttackAction(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slotID integer
 ---@return boolean isAutoCastPetAction
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.isAutoCastPetAction(slotID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isAutoRepeatAction
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.isAutoRepeatAction(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isConsumableAction
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.isConsumableAction(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isCurrentAction
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.isCurrentAction(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slotID integer
 ---@return boolean isEnabledAutoCastPetAction
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.isEnabledAutoCastPetAction(slotID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isEquippedAction
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.isEquippedAction(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slotID integer
 ---@return boolean isEquippedGearOutfitAction
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.isEquippedGearOutfitAction(slotID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param actionID integer
 ---@param useNeutral boolean
 ---@return boolean isHarmful
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.isHarmfulAction(actionID, useNeutral) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param actionID integer
 ---@param useNeutral boolean
 ---@return boolean isHelpful
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.isHelpfulAction(actionID, useNeutral) end
 
 ---Returns whether the given action button contains a spell that can interrupt spellcasting.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slotID integer
 ---@return boolean isInterruptAction
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.actionBar.isInterruptAction(slotID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isItemAction
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.isItemAction(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@return boolean isOnBarOrSpecialBar
----Restrictions: secretArguments=AllowedWhenTainted
 function api.actionBar.isOnBarOrSpecialBar(spellID) end
 
 ---@return boolean isPossessBarVisible
 function api.actionBar.isPossessBarVisible() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isStackableAction
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.isStackableAction(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isUsable
 ---@return boolean isLackingResources
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.isUsableAction(actionID) end
 
----@param slotID integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param slotID integer
 function api.actionBar.putActionInSlot(slotID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 ---@param checkboxFrame SimpleCheckbox
 ---@param actionID integer
 ---@param cooldownFrame CooldownFrame
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidActionSlot
 function api.actionBar.registerActionUIButton(checkboxFrame, actionID, cooldownFrame) end
 
----@param pageIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param pageIndex integer
 function api.actionBar.setActionBarPage(pageIndex) end
 
 ---@return boolean showHealthBar
@@ -780,12 +785,12 @@ function api.actionBar.shouldOverrideBarShowHealthBar() end
 ---@return boolean showManaBar
 function api.actionBar.shouldOverrideBarShowManaBar() end
 
----@param slotID integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param slotID integer
 function api.actionBar.toggleAutoCastPetAction(slotID) end
 
----@param checkboxFrame SimpleCheckbox
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param checkboxFrame SimpleCheckbox
 function api.actionBar.unregisterActionUIButton(checkboxFrame) end
 
 ---Wraps `C_AddOnProfiler`.
@@ -794,13 +799,13 @@ api.addOnProfiler = {}
 
 ---Adds a measured event to any ongoing measured calls. If no such calls are currently taking
 ---place, this function does nothing.
----@param name string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param name string
 function api.addOnProfiler.addMeasuredCallEvent(name) end
 
 ---Internal API for telemetry.
----@param msg AddOnPerformanceMessage
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param msg AddOnPerformanceMessage
 function api.addOnProfiler.addPerformanceMessageShown(msg) end
 
 ---Optimized check for determining if AddOns are severely impacting UI performance.
@@ -808,22 +813,22 @@ function api.addOnProfiler.addPerformanceMessageShown(msg) end
 function api.addOnProfiler.checkForPerformanceMessage() end
 
 ---Gets an AddOn profiler value - all times returned are in milliseconds.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@param metric Enum.AddOnProfilerMetric
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOnProfiler.getAddOnMetric(name, metric) end
 
 ---Overall profiling data for the entire application (not just the UI)
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param metric Enum.AddOnProfilerMetric
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOnProfiler.getApplicationMetric(metric) end
 
 ---Overall profiling data for all addons
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param metric Enum.AddOnProfilerMetric
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOnProfiler.getOverallMetric(metric) end
 
 ---Returns the number of profiling clock ticks that occur within a single real-time second.
@@ -831,10 +836,10 @@ function api.addOnProfiler.getOverallMetric(metric) end
 function api.addOnProfiler.getTicksPerSecond() end
 
 ---Gets top K AddOns for a given metric.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param metric Enum.AddOnProfilerMetric
 ---@param k number
 ---@return AddOnProfilerResult[] results
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOnProfiler.getTopKAddOnsForMetric(metric, k) end
 
 ---AddOn profiler will be enabled for all users, but this will return false if it ever isn't
@@ -842,56 +847,57 @@ function api.addOnProfiler.getTopKAddOnsForMetric(metric, k) end
 function api.addOnProfiler.isEnabled() end
 
 ---Performs a profiled measurement of a single function call with any supplied arguments.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param func any
 ---@param arguments any
 ---@return AddOnProfilerCallResults results
 ---@return any returns
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOnProfiler.measureCall(func, arguments) end
 
 ---Wraps `C_AddOns`.
 ---@class wow.beta.api.addOns
 api.addOns = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@param character? string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.disableAddOn(name, character) end
 
----@param character? string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param character? string
 function api.addOns.disableAllAddOns(character) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return boolean exists
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.doesAddOnExist(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return boolean hadError
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.doesAddOnHaveLoadError(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@param character? string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.enableAddOn(name, character) end
 
----@param character? string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param character? string
 function api.addOns.enableAllAddOns(character) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return string deps
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.getAddOnDependencies(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@param character? string
 ---@return Enum.AddOnEnableState state
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.getAddOnEnableState(name, character) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return string name
 ---@return string title
@@ -899,51 +905,50 @@ function api.addOns.getAddOnEnableState(name, character) end
 ---@return boolean loadable
 ---@return string reason
 ---@return string security
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.getAddOnInfo(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return number interfaceVersion
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.getAddOnInterfaceVersion(name) end
 
 ---Returns the addon table (passed as the second argument of ... to files) for any addon that
 ---opts in through setting AllowAddOnTableAccess: 1 in the toc file. Insecure code cannot query
 ---addon tables from Blizzard addons.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return any table
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.getAddOnLocalTable(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@param variable string
 ---@return string value
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.getAddOnMetadata(name, variable) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index number|string
 ---@return string name
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.getAddOnName(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return string notes
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.getAddOnNotes(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return string deps
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.getAddOnOptionalDependencies(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return Enum.AddOnSecurityStatus security
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.getAddOnSecurity(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return string title
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.getAddOnTitle(name) end
 
 ---@return number numAddOns
@@ -952,37 +957,37 @@ function api.addOns.getNumAddOns() end
 ---@return boolean disallowed
 function api.addOns.getScriptsDisallowedForBeta() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return boolean defaultEnabled
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.isAddOnDefaultEnabled(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return boolean loadOnDemand
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.isAddOnLoadOnDemand(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@param character? string
 ---@param demandLoaded? boolean
 ---@return boolean loadable
 ---@return string reason
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.isAddOnLoadable(name, character, demandLoaded) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return boolean loadedOrLoading
 ---@return boolean loaded
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.isAddOnLoaded(name) end
 
 ---@return boolean isEnabled
 function api.addOns.isAddonVersionCheckEnabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return boolean? loaded
 ---@return string? value
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.addOns.loadAddOn(name) end
 
 function api.addOns.resetAddOns() end
@@ -991,8 +996,8 @@ function api.addOns.resetDisabledAddOns() end
 
 function api.addOns.saveAddOns() end
 
----@param enabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled boolean
 function api.addOns.setAddonVersionCheck(enabled) end
 
 ---Wraps `C_AdventureJournal`.
@@ -1006,23 +1011,23 @@ api.adventureMap = {}
 ---@return string adventureMapTextureKit
 function api.adventureMap.getAdventureMapTextureKit() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return AdventureMapQuestPortraitInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.adventureMap.getQuestPortraitInfo(questID) end
 
 ---Wraps `C_AlliedRaces`.
 ---@class wow.beta.api.alliedRaces
 api.alliedRaces = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param raceID number
 ---@return AlliedRaceRacialAbility[]? allDisplayInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.alliedRaces.getAllRacialAbilitiesFromID(raceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param raceID number
 ---@return AlliedRaceInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.alliedRaces.getRaceInfoByID(raceID) end
 
 ---Wraps `C_AnimaDiversion`.
@@ -1045,9 +1050,9 @@ function api.animaDiversion.getTextureKit() end
 
 function api.animaDiversion.openAnimaDiversionUI() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param talentID number
 ---@param temporary boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.animaDiversion.selectAnimaNode(talentID, temporary) end
 
 ---Wraps `C_ArdenwealdGardening`.
@@ -1064,89 +1069,89 @@ function api.ardenwealdGardening.isGardenAccessible() end
 ---@class wow.beta.api.areaPoiInfo
 api.areaPoiInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number[] areaPoiIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.areaPoiInfo.getAreaPOIForMap(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID? number
 ---@param areaPoiID number
 ---@return AreaPOIInfo? poiInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.areaPoiInfo.getAreaPOIInfo(uiMapID, areaPoiID) end
 
 ---Returns the number of seconds until the POI expires.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param areaPoiID number
 ---@return number? secondsLeft
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.areaPoiInfo.getAreaPOISecondsLeft(areaPoiID) end
 
 ---Returns all area POIInfos flagged as delves for the given map.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number[] areaPoiIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.areaPoiInfo.getDelvesForMap(uiMapID) end
 
 ---Returns all area POIInfos flagged as dragonriding races for the given map.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number[] areaPoiIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.areaPoiInfo.getDragonridingRacesForMap(uiMapID) end
 
 ---Returns all area POIInfos flagged as events for the given map.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number[] areaPoiIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.areaPoiInfo.getEventsForMap(uiMapID) end
 
 ---Returns all area POIInfos flagged as quest hubs for the given map.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number[] areaPoiIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.areaPoiInfo.getQuestHubsForMap(uiMapID) end
 
 ---This statically determines if the POI is timed, GetAreaPOITimeLeft retrieves the value from
 ---the server and may return nothing for long intervals
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param areaPoiID number
 ---@return boolean isTimed
 ---@return boolean? hideTimerInTooltip
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.areaPoiInfo.isAreaPOITimed(areaPoiID) end
 
 ---Wraps `C_ArtifactUI`.
 ---@class wow.beta.api.artifactUI
 api.artifactUI = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.addPower(powerID) end
 
----@param relicSlotIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param relicSlotIndex integer
 function api.artifactUI.applyCursorRelicToSlot(relicSlotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relicItemID number
 ---@param onlyUnlocked boolean
 ---@return boolean canApply
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.canApplyArtifactRelic(relicItemID, onlyUnlocked) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relicSlotIndex integer
 ---@return boolean canApply
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.canApplyCursorRelicToSlot(relicSlotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relicItemID number
 ---@param relicSlotIndex integer
 ---@return boolean canApply
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.canApplyRelicItemIDToEquippedArtifactSlot(relicItemID, relicSlotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relicItemID number
 ---@param relicSlotIndex integer
 ---@return boolean canApply
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.canApplyRelicItemIDToSlot(relicItemID, relicSlotIndex) end
 
 ---@return boolean canRespec
@@ -1161,6 +1166,7 @@ function api.artifactUI.confirmRespec() end
 ---@return boolean hasAnyRelicsSlotted
 function api.artifactUI.doesEquippedArtifactHaveAnyRelicsSlotted() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param appearanceSetIndex number
 ---@param appearanceIndex number
 ---@return number? artifactAppearanceID
@@ -1176,9 +1182,9 @@ function api.artifactUI.doesEquippedArtifactHaveAnyRelicsSlotted() end
 ---@return number? modelOpacity
 ---@return number? modelSaturation
 ---@return boolean? obtainable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getAppearanceInfo(appearanceSetIndex, appearanceIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param artifactAppearanceID number
 ---@return number? artifactAppearanceSetID
 ---@return number? artifactAppearanceID
@@ -1194,15 +1200,14 @@ function api.artifactUI.getAppearanceInfo(appearanceSetIndex, appearanceIndex) e
 ---@return number? modelOpacity
 ---@return number? modelSaturation
 ---@return boolean? obtainable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getAppearanceInfoByID(artifactAppearanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param appearanceSetIndex number
 ---@return number? artifactAppearanceSetID
 ---@return string? appearanceSetName
 ---@return string? appearanceSetDescription
 ---@return number? numAppearances
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getAppearanceSetInfo(appearanceSetIndex) end
 
 ---@return ArtifactArtInfo? artifactArtInfo
@@ -1229,16 +1234,16 @@ function api.artifactUI.getArtifactItemID() end
 ---@return string? tier
 function api.artifactUI.getArtifactTier() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param artifactCategoryID number
 ---@return string? name
 ---@return integer? icon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getArtifactXPRewardTargetInfo(artifactCategoryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param rank number
 ---@param tier string
 ---@return number cost
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getCostForPointAtRank(rank, tier) end
 
 ---@return ArtifactArtInfo? artifactArtInfo
@@ -1262,22 +1267,22 @@ function api.artifactUI.getEquippedArtifactInfo() end
 ---@return number? itemID
 function api.artifactUI.getEquippedArtifactItemID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param onlyUnlocked? boolean
 ---@return number numRelicSlots
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getEquippedArtifactNumRelicSlots(onlyUnlocked) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relicSlotIndex integer
 ---@return string? name
 ---@return integer? icon
 ---@return string? slotTypeName
 ---@return string? link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getEquippedArtifactRelicInfo(relicSlotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relicSlotIndex integer
 ---@return string? lockedReason
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getEquippedRelicLockedReason(relicSlotIndex) end
 
 ---@return number forgeRotationX
@@ -1285,9 +1290,9 @@ function api.artifactUI.getEquippedRelicLockedReason(relicSlotIndex) end
 ---@return number forgeRotationZ
 function api.artifactUI.getForgeRotation() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLinkOrID ItemInfo
 ---@return number? itemIevelIncrease
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getItemLevelIncreaseProvidedByRelic(itemLinkOrID) end
 
 ---@return number spellID
@@ -1301,69 +1306,69 @@ function api.artifactUI.getNumAppearanceSets() end
 ---@return number numObtainedArtifacts
 function api.artifactUI.getNumObtainedArtifacts() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param onlyUnlocked? boolean
 ---@return number numRelicSlots
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getNumRelicSlots(onlyUnlocked) end
 
 ---@return number pointsRemaining
 function api.artifactUI.getPointsRemaining() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerID number
 ---@return string link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getPowerHyperlink(powerID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerID number
 ---@return ArtifactPowerInfo? powerInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getPowerInfo(powerID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerID number
 ---@return number[] linkingPowerID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getPowerLinks(powerID) end
 
 ---@return number[]? powerID
 function api.artifactUI.getPowers() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relicSlotIndex integer
 ---@return number powerIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getPowersAffectedByRelic(relicSlotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relicItemInfo ItemInfo
 ---@return number powerIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getPowersAffectedByRelicItemLink(relicItemInfo) end
 
 ---@return number? artifactAppearanceID
 function api.artifactUI.getPreviewAppearance() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relicSlotIndex integer
 ---@return string? name
 ---@return integer? icon
 ---@return string? slotTypeName
 ---@return string? link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getRelicInfo(relicSlotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return string? name
 ---@return integer? icon
 ---@return string? slotTypeName
 ---@return string? link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getRelicInfoByItemID(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relicSlotIndex integer
 ---@return string? lockedReason
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getRelicLockedReason(relicSlotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relicSlotIndex integer
 ---@return string? slotTypeName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getRelicSlotType(relicSlotIndex) end
 
 ---@return ArtifactArtInfo? artifactArtInfo
@@ -1387,11 +1392,11 @@ function api.artifactUI.getRespecArtifactInfo() end
 ---@return number cost
 function api.artifactUI.getRespecCost() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param startingTrait integer
 ---@param numTraits number
 ---@param artifactTier string
 ---@return number? totalArtifactPowerCost
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.getTotalPowerCost(startingTrait, numTraits, artifactTier) end
 
 ---@return number totalPurchasedRanks
@@ -1400,9 +1405,9 @@ function api.artifactUI.getTotalPurchasedRanks() end
 ---@return boolean artifactDisabled
 function api.artifactUI.isArtifactDisabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return boolean isArtifact
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.isArtifactItem(itemLocation) end
 
 ---@return boolean isAtForge
@@ -1417,29 +1422,29 @@ function api.artifactUI.isEquippedArtifactMaxed() end
 ---@return boolean isEffectivelyMaxed
 function api.artifactUI.isMaxedByRulesOrEffect() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerID number
 ---@return boolean known
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.isPowerKnown(powerID) end
 
 ---@return boolean isViewedArtifactEquipped
 function api.artifactUI.isViewedArtifactEquipped() end
 
----@param artifactAppearanceID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param artifactAppearanceID number
 function api.artifactUI.setAppearance(artifactAppearanceID) end
 
 function api.artifactUI.setForgeCamera() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param forgeRotationX number
 ---@param forgeRotationY number
 ---@param forgeRotationZ number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.artifactUI.setForgeRotation(forgeRotationX, forgeRotationY, forgeRotationZ) end
 
 ---Call without an argument to clear the preview.
----@param artifactAppearanceID? number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param artifactAppearanceID? number
 function api.artifactUI.setPreviewAppearance(artifactAppearanceID) end
 
 ---@return boolean shouldSuppressForgeRotation
@@ -1452,9 +1457,9 @@ api.assistedCombat = {}
 ---@return number? spellID
 function api.assistedCombat.getActionSpell() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param checkForVisibleButton? boolean
 ---@return number? spellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.assistedCombat.getNextCastSpell(checkForVisibleButton) end
 
 ---@return number[] spellIDs
@@ -1468,27 +1473,27 @@ function api.assistedCombat.isAvailable() end
 ---@class wow.beta.api.auctionHouse
 api.auctionHouse = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param duration integer
 ---@param quantity number
 ---@return number? depositCost
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.calculateCommodityDeposit(itemID, duration, quantity) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param item ItemLocation
 ---@param duration integer
 ---@param quantity number
 ---@return number? depositCost
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.calculateItemDeposit(item, duration, quantity) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param ownedAuctionID number
 ---@return boolean canCancelAuction
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.canCancelAuction(ownedAuctionID) end
 
----@param ownedAuctionID number
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param ownedAuctionID number
 function api.auctionHouse.cancelAuction(ownedAuctionID) end
 
 function api.auctionHouse.cancelCommoditiesPurchase() end
@@ -1497,52 +1502,52 @@ function api.auctionHouse.cancelSell() end
 
 function api.auctionHouse.closeAuctionHouse() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param quantity number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.confirmCommoditiesPurchase(itemID, quantity) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param item ItemLocation
 ---@param duration integer
 ---@param quantity number
 ---@param unitPrice integer
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.auctionHouse.confirmPostCommodity(item, duration, quantity, unitPrice) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param item ItemLocation
 ---@param duration integer
 ---@param quantity number
 ---@param bid? integer
 ---@param buyout? integer
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.auctionHouse.confirmPostItem(item, duration, quantity, bid, buyout) end
 
 ---@return boolean favoritesAreAvailable
 function api.auctionHouse.favoritesAreAvailable() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param auctionID number
 ---@return AuctionInfo? priceInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getAuctionInfoByID(auctionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param classID number
 ---@return number[] subClasses
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getAuctionItemSubClasses(classID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param item ItemLocation
 ---@return number listCount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getAvailablePostCount(item) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bidIndex integer
 ---@return BidInfo? bid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getBidInfo(bidIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bidTypeIndex integer
 ---@return ItemKey? typeItemKey
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getBidType(bidTypeIndex) end
 
 ---@return BidInfo[] bids
@@ -1551,60 +1556,60 @@ function api.auctionHouse.getBids() end
 ---@return BrowseResultInfo[] browseResults
 function api.auctionHouse.getBrowseResults() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param ownedAuctionID number
 ---@return integer cancelCost
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getCancelCost(ownedAuctionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param commoditySearchResultIndex integer
 ---@return CommoditySearchResultInfo? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getCommoditySearchResultInfo(itemID, commoditySearchResultIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return number totalQuantity
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getCommoditySearchResultsQuantity(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@return number? extraInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getExtraBrowseInfo(itemKey) end
 
 ---@return AuctionHouseFilterGroup[] filterGroups
 function api.auctionHouse.getFilterGroups() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param item ItemLocation
 ---@return Enum.ItemCommodityStatus isCommodity
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getItemCommodityStatus(item) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param item ItemLocation
 ---@return ItemKey itemKey
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getItemKeyFromItem(item) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@param restrictQualityToFilter? boolean
 ---@return ItemKeyInfo? itemKeyInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getItemKeyInfo(itemKey, restrictQualityToFilter) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@return number? requiredLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getItemKeyRequiredLevel(itemKey) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@param itemSearchResultIndex integer
 ---@return ItemSearchResultInfo? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getItemSearchResultInfo(itemKey, itemSearchResultIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@return number totalQuantity
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getItemSearchResultsQuantity(itemKey) end
 
 ---@return integer? maxBid
@@ -1613,19 +1618,19 @@ function api.auctionHouse.getMaxBidItemBid() end
 ---@return integer? maxBuyout
 function api.auctionHouse.getMaxBidItemBuyout() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return integer? maxUnitPrice
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getMaxCommoditySearchResultPrice(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@return integer? maxBid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getMaxItemSearchResultBid(itemKey) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@return integer? maxBuyout
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getMaxItemSearchResultBuyout(itemKey) end
 
 ---@return integer? maxBid
@@ -1640,14 +1645,14 @@ function api.auctionHouse.getNumBidTypes() end
 ---@return number numBids
 function api.auctionHouse.getNumBids() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return number numSearchResults
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getNumCommoditySearchResults(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@return number numItemSearchResults
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getNumItemSearchResults(itemKey) end
 
 ---@return number numOwnedAuctionTypes
@@ -1659,14 +1664,14 @@ function api.auctionHouse.getNumOwnedAuctions() end
 ---@return number numReplicateItems
 function api.auctionHouse.getNumReplicateItems() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param ownedAuctionIndex integer
 ---@return OwnedAuctionInfo? ownedAuction
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getOwnedAuctionInfo(ownedAuctionIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param ownedAuctionTypeIndex integer
 ---@return ItemKey? typeItemKey
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getOwnedAuctionType(ownedAuctionTypeIndex) end
 
 ---@return OwnedAuctionInfo[] ownedAuctions
@@ -1675,12 +1680,13 @@ function api.auctionHouse.getOwnedAuctions() end
 ---@return number quoteDurationSeconds
 function api.auctionHouse.getQuoteDurationRemaining() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index number
 ---@return number? creatureID
 ---@return number? displayID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getReplicateItemBattlePetInfo(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index number
 ---@return string? name
 ---@return integer? texture
@@ -1700,23 +1706,22 @@ function api.auctionHouse.getReplicateItemBattlePetInfo(index) end
 ---@return number saleStatus
 ---@return number itemID
 ---@return boolean? hasAllInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getReplicateItemInfo(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index number
 ---@return string? itemLink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getReplicateItemLink(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index number
 ---@return number timeLeft
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getReplicateItemTimeLeft(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param timeLeftBand Enum.AuctionHouseTimeLeftBand
 ---@return number timeLeftMinSeconds
 ---@return number timeLeftMaxSeconds
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.getTimeLeftBandInfo(timeLeftBand) end
 
 ---@return boolean hasFavorites
@@ -1728,14 +1733,14 @@ function api.auctionHouse.hasFullBidResults() end
 ---@return boolean hasFullBrowseResults
 function api.auctionHouse.hasFullBrowseResults() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return boolean hasFullResults
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.hasFullCommoditySearchResults(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@return boolean hasFullResults
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.hasFullItemSearchResults(itemKey) end
 
 ---@return boolean hasFullOwnedAuctionResults
@@ -1744,72 +1749,72 @@ function api.auctionHouse.hasFullOwnedAuctionResults() end
 ---@return boolean hasMaxFavorites
 function api.auctionHouse.hasMaxFavorites() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@return boolean hasSearchResults
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.hasSearchResults(itemKey) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@return boolean isFavorite
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.isFavoriteItem(itemKey) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param item ItemLocation
 ---@param displayError? boolean
 ---@return boolean valid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.isSellItemValid(item, displayError) end
 
 ---@return boolean canSendThrottledMessage
 function api.auctionHouse.isThrottledMessageSystemReady() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param itemLevel? number
 ---@param itemSuffix? number
 ---@param battlePetSpeciesID? number
 ---@return ItemKey itemKey
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.makeItemKey(itemID, itemLevel, itemSuffix, battlePetSpeciesID) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param auctionID number
 ---@param bidAmount integer
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.auctionHouse.placeBid(auctionID, bidAmount) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param item ItemLocation
 ---@param duration integer
 ---@param quantity number
 ---@param unitPrice integer
 ---@return boolean needsConfirmation
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.auctionHouse.postCommodity(item, duration, quantity, unitPrice) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param item ItemLocation
 ---@param duration integer
 ---@param quantity number
 ---@param bid? integer
 ---@param buyout? integer
 ---@return boolean needsConfirmation
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.auctionHouse.postItem(item, duration, quantity, bid, buyout) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sorts AuctionHouseSortType[]
 ---@param auctionIDs number[]
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.queryBids(sorts, auctionIDs) end
 
----@param sorts AuctionHouseSortType[]
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param sorts AuctionHouseSortType[]
 function api.auctionHouse.queryOwnedAuctions(sorts) end
 
----@param itemID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemID number
 function api.auctionHouse.refreshCommoditySearchResults(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@param minLevelFilter? number
 ---@param maxLevelFilter? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.refreshItemSearchResults(itemKey, minLevelFilter, maxLevelFilter) end
 
 ---This function should be used in place of an 'allItem' QueryAuctionItems call to query the
@@ -1818,42 +1823,42 @@ function api.auctionHouse.replicateItems() end
 
 function api.auctionHouse.requestMoreBrowseResults() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return boolean hasFullResults
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.requestMoreCommoditySearchResults(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@return boolean hasFullResults
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.requestMoreItemSearchResults(itemKey) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param auctionID number
 ---@return string bidderName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.requestOwnedAuctionBidderInfo(auctionID) end
 
----@param sorts AuctionHouseSortType[]
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param sorts AuctionHouseSortType[]
 function api.auctionHouse.searchForFavorites(sorts) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKeys ItemKey[]
 ---@param sorts AuctionHouseSortType[]
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.searchForItemKeys(itemKeys, sorts) end
 
----@param query AuctionHouseBrowseQuery
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param query AuctionHouseBrowseQuery
 function api.auctionHouse.sendBrowseQuery(query) end
 
 ---Search queries are restricted to 100 calls per minute. These should not be used to query the
 ---entire auction house. See ReplicateItems
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@param sorts AuctionHouseSortType[]
 ---@param separateOwnerItems boolean
 ---@param minLevelFilter? number
 ---@param maxLevelFilter? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.sendSearchQuery(
     itemKey,
     sorts,
@@ -1866,23 +1871,23 @@ end
 ---Search queries are restricted to 100 calls per minute. These should not be used to query the
 ---entire auction house. See ReplicateItems. ItemKey should have its iLVL and suffix cleared
 ---before calling.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@param sorts AuctionHouseSortType[]
 ---@param separateOwnerItems boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.sendSellSearchQuery(itemKey, sorts, separateOwnerItems) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemKey ItemKey
 ---@param setFavorite boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.auctionHouse.setFavoriteItem(itemKey, setFavorite) end
 
 ---@return boolean shouldAutoPopulatePrice
 function api.auctionHouse.shouldAutoPopulatePrice() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param quantity number
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.auctionHouse.startCommoditiesPurchase(itemID, quantity) end
 
 ---@return boolean supportsCopperValues
@@ -1892,119 +1897,119 @@ function api.auctionHouse.supportsCopperValues() end
 ---@class wow.beta.api.azeriteEmpoweredItem
 api.azeriteEmpoweredItem = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 ---@param powerID number
 ---@return boolean canSelect
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.canSelectPower(azeriteEmpoweredItemLocation, powerID) end
 
----@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 function api.azeriteEmpoweredItem.confirmAzeriteEmpoweredItemRespec(
     azeriteEmpoweredItemLocation
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 ---@return AzeriteEmpoweredItemTierInfo[] tierInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.getAllTierInfo(azeriteEmpoweredItemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@param classID? number
 ---@return AzeriteEmpoweredItemTierInfo[] tierInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.getAllTierInfoByItemID(itemInfo, classID) end
 
 ---@return number cost
 function api.azeriteEmpoweredItem.getAzeriteEmpoweredItemRespecCost() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerID number
 ---@return AzeriteEmpoweredItemPowerInfo? powerInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.getPowerInfo(powerID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 ---@param powerID number
 ---@param level Enum.AzeritePowerLevel
 ---@return AzeriteEmpoweredItemPowerText? powerText
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.getPowerText(azeriteEmpoweredItemLocation, powerID, level) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerID number
 ---@return AzeriteSpecInfo[]? specInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.getSpecsForPower(powerID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 ---@return boolean hasAnyUnselectedPowers
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.hasAnyUnselectedPowers(azeriteEmpoweredItemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 ---@return boolean hasBeenViewed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.hasBeenViewed(azeriteEmpoweredItemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return boolean isAzeriteEmpoweredItem
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.isAzeriteEmpoweredItem(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean isAzeriteEmpoweredItem
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.isAzeriteEmpoweredItemByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@param classID? number
 ---@return boolean isAzeritePreviewSourceDisplayable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.isAzeritePreviewSourceDisplayable(itemInfo, classID) end
 
 ---@return boolean isHeartOfAzerothEquipped
 function api.azeriteEmpoweredItem.isHeartOfAzerothEquipped() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerID number
 ---@param specID number
 ---@return boolean isPowerAvailableForSpec
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.isPowerAvailableForSpec(powerID, specID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 ---@param powerID number
 ---@return boolean isSelected
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.isPowerSelected(azeriteEmpoweredItemLocation, powerID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 ---@param powerID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEmpoweredItem.selectPower(azeriteEmpoweredItemLocation, powerID) end
 
----@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param azeriteEmpoweredItemLocation AzeriteEmpoweredItemLocation
 function api.azeriteEmpoweredItem.setHasBeenViewed(azeriteEmpoweredItemLocation) end
 
 ---Wraps `C_AzeriteEssence`.
 ---@class wow.beta.api.azeriteEssence
 api.azeriteEssence = {}
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param essenceID number
 ---@param milestoneID number
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.azeriteEssence.activateEssence(essenceID, milestoneID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param essenceID number
 ---@param milestoneID number
 ---@return boolean canActivate
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEssence.canActivateEssence(essenceID, milestoneID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param milestoneID number
 ---@return boolean canDeactivate
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEssence.canDeactivateEssence(milestoneID) end
 
 ---@return boolean canOpen
@@ -2014,33 +2019,33 @@ function api.azeriteEssence.clearPendingActivationEssence() end
 
 function api.azeriteEssence.closeForge() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param essenceID number
 ---@param rank number
 ---@return string link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEssence.getEssenceHyperlink(essenceID, rank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param essenceID number
 ---@return AzeriteEssenceInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEssence.getEssenceInfo(essenceID) end
 
 ---@return AzeriteEssenceInfo[]? essences
 function api.azeriteEssence.getEssences() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param milestoneID number
 ---@return number? essenceID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEssence.getMilestoneEssence(milestoneID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param milestoneID number
 ---@return AzeriteMilestoneInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEssence.getMilestoneInfo(milestoneID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param milestoneID number
 ---@return number? spellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteEssence.getMilestoneSpell(milestoneID) end
 
 ---@return AzeriteMilestoneInfo[]? milestones
@@ -2064,12 +2069,12 @@ function api.azeriteEssence.hasPendingActivationEssence() end
 ---@return boolean isAtForge
 function api.azeriteEssence.isAtForge() end
 
----@param essenceID number
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param essenceID number
 function api.azeriteEssence.setPendingActivationEssence(essenceID) end
 
----@param milestoneID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param milestoneID number
 function api.azeriteEssence.unlockMilestone(milestoneID) end
 
 ---Wraps `C_AzeriteItem`.
@@ -2079,41 +2084,41 @@ api.azeriteItem = {}
 ---@return AzeriteItemLocation? activeAzeriteItemLocation
 function api.azeriteItem.findActiveAzeriteItem() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param azeriteItemLocation AzeriteItemLocation
 ---@return number? xp
 ---@return number? totalLevelXP
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteItem.getAzeriteItemXPInfo(azeriteItemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param azeriteItemLocation AzeriteItemLocation
 ---@return number powerLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteItem.getPowerLevel(azeriteItemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param azeriteItemLocation AzeriteItemLocation
 ---@return number powerLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteItem.getUnlimitedPowerLevel(azeriteItemLocation) end
 
 ---@return boolean hasActiveAzeriteItem
 function api.azeriteItem.hasActiveAzeriteItem() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return boolean isAzeriteItem
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteItem.isAzeriteItem(itemLocation) end
 
 ---@return boolean isAtMax
 function api.azeriteItem.isAzeriteItemAtMaxLevel() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean isAzeriteItem
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteItem.isAzeriteItemByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param azeriteItemLocation AzeriteItemLocation
 ---@return boolean isEnabled
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.azeriteItem.isAzeriteItemEnabled(azeriteItemLocation) end
 
 ---@return boolean isUnlimitedLevelingUnlocked
@@ -2130,111 +2135,111 @@ api.bank = {}
 ---@return boolean areAnyBankTypesViewable
 function api.bank.areAnyBankTypesViewable() end
 
----@param bankType Enum.BankType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param bankType Enum.BankType
 function api.bank.autoDepositItemsIntoBank(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return boolean canDepositMoney
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.canDepositMoney(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return boolean canPurchaseBankTab
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.canPurchaseBankTab(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return boolean canUseBank
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.canUseBank(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return boolean canViewBank
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.canViewBank(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return boolean canWithdrawMoney
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.canWithdrawMoney(bankType) end
 
 function api.bank.closeBankFrame() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@param amount integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.depositMoney(bankType, amount) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return boolean doesBankTypeSupportAutoDeposit
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.doesBankTypeSupportAutoDeposit(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return boolean doesBankTypeSupportMoneyTransfer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.doesBankTypeSupportMoneyTransfer(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return Enum.BankLockedReason? reason
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.fetchBankLockedReason(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return integer amount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.fetchDepositedMoney(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return PurchasableBankTabData? nextPurchasableTabData
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.fetchNextPurchasableBankTabData(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return number numPurchasedBankTabs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.fetchNumPurchasedBankTabs(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return BankTabData[] purchasedBankTabData
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.fetchPurchasedBankTabData(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return Enum.BagIndex[] purchasedBankTabIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.fetchPurchasedBankTabIDs(bankType) end
 
 ---@return Enum.BankType[] viewableBankTypes
 function api.bank.fetchViewableBankTypes() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@return boolean hasMaxBankTabs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.hasMaxBankTabs(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@param itemLocation ItemLocation
 ---@return boolean isItemAllowedInBankType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.isItemAllowedInBankType(bankType, itemLocation) end
 
----@param bankType Enum.BankType
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param bankType Enum.BankType
 function api.bank.purchaseBankTab(bankType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@param tabID Enum.BagIndex
 ---@param tabName string
 ---@param tabIcon string
 ---@param depositFlags Enum.BagSlotFlags
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.updateBankTabSettings(bankType, tabID, tabName, tabIcon, depositFlags) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bankType Enum.BankType
 ---@param amount integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.bank.withdrawMoney(bankType, amount) end
 
 ---Wraps `C_BarberShop`.
@@ -2246,8 +2251,8 @@ function api.barberShop.applyCustomizationChoices() end
 
 function api.barberShop.cancel() end
 
----@param clearSavedChoices? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param clearSavedChoices? boolean
 function api.barberShop.clearPreviewChoices(clearSavedChoices) end
 
 ---@return CharCustomizationCategory[]? categories
@@ -2271,25 +2276,25 @@ function api.barberShop.hasAlteredForm() end
 ---@return boolean hasChanges
 function api.barberShop.hasAnyChanges() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param featureMask Enum.ChrModelFeatureFlags
 ---@return boolean hasCustomizationFeature
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.barberShop.hasCustomizationFeature(featureMask) end
 
 ---@return boolean isViewingAlteredForm
 function api.barberShop.isViewingAlteredForm() end
 
----@param choiceID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param choiceID number
 function api.barberShop.markCustomizationChoiceAsSeen(choiceID) end
 
----@param optionID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param optionID number
 function api.barberShop.markCustomizationOptionAsSeen(optionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param optionID number
 ---@param choiceID number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.barberShop.previewCustomizationChoice(optionID, choiceID) end
 
 function api.barberShop.randomizeCustomizationChoices() end
@@ -2298,132 +2303,132 @@ function api.barberShop.resetCameraRotation() end
 
 function api.barberShop.resetCustomizationChoices() end
 
----@param diffDegrees number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param diffDegrees number
 function api.barberShop.rotateCamera(diffDegrees) end
 
 function api.barberShop.saveSeenChoices() end
 
----@param offset number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param offset number
 function api.barberShop.setCameraDistanceOffset(offset) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param zoomLevel number
 ---@param keepCustomZoom? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.barberShop.setCameraZoomLevel(zoomLevel, keepCustomZoom) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param optionID number
 ---@param choiceID number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.barberShop.setCustomizationChoice(optionID, choiceID) end
 
----@param dressedState boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param dressedState boolean
 function api.barberShop.setModelDressState(dressedState) end
 
----@param sex Enum.UnitSex
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param sex Enum.UnitSex
 function api.barberShop.setSelectedSex(sex) end
 
----@param isViewingAlteredForm boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isViewingAlteredForm boolean
 function api.barberShop.setViewingAlteredForm(isViewingAlteredForm) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param chrModelID? number
 ---@param spellShapeshiftFormID? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.barberShop.setViewingChrModel(chrModelID, spellShapeshiftFormID) end
 
----@param shapeshiftFormID? number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param shapeshiftFormID? number
 function api.barberShop.setViewingShapeshiftForm(shapeshiftFormID) end
 
----@param zoomAmount number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param zoomAmount number
 function api.barberShop.zoomCamera(zoomAmount) end
 
 ---Wraps `C_BarberShopInternal`.
 ---@class wow.beta.api.barberShopInternal
 api.barberShopInternal = {}
 
----@param qaModeEnabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param qaModeEnabled boolean
 function api.barberShopInternal.setQAMode(qaModeEnabled) end
 
 ---Wraps `C_BattleNet`.
 ---@class wow.beta.api.battleNet
 api.battleNet = {}
 
----@param recentAllyGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param recentAllyGUID string
 function api.battleNet.bnCheckBattleTagInviteToRecentAlly(recentAllyGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@return BNetAccountInfo? accountInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.battleNet.getAccountInfoByGUID(guid) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param id number
 ---@param wowAccountGUID? string
 ---@return BNetAccountInfo? accountInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.battleNet.getAccountInfoByID(id, wowAccountGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param friendIndex integer
 ---@param wowAccountGUID? string
 ---@return BNetAccountInfo? accountInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.battleNet.getFriendAccountInfo(friendIndex, wowAccountGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param friendIndex integer
 ---@param accountIndex integer
 ---@return BNetGameAccountInfo? gameAccountInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.battleNet.getFriendGameAccountInfo(friendIndex, accountIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param friendIndex integer
 ---@return number numGameAccounts
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.battleNet.getFriendNumGameAccounts(friendIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@return BNetGameAccountInfo? gameAccountInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.battleNet.getGameAccountInfoByGUID(guid) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param id number
 ---@return BNetGameAccountInfo? gameAccountInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.battleNet.getGameAccountInfoByID(id) end
 
 ---Restrictions: hasRestrictions
 function api.battleNet.installHighResTextures() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param gameAccountID number
 ---@param prefix string
 ---@param data string
 ---@return Enum.SendAddonMessageResult result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.battleNet.sendGameData(gameAccountID, prefix, data) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param bnetAccountID number
 ---@param text string
 ---@return boolean success
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.battleNet.sendWhisper(bnetAccountID, text) end
 
----@param isAFK? boolean
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param isAFK? boolean
 function api.battleNet.setAFK(isAFK) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param text string
 ---@return boolean success
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.battleNet.setCustomMessage(text) end
 
----@param isDND? boolean
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param isDND? boolean
 function api.battleNet.setDND(isDND) end
 
 ---Wraps `C_BattlePet`.
@@ -2434,10 +2439,10 @@ api.battlePet = {}
 ---@class wow.beta.api.behavioralMessaging
 api.behavioralMessaging = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param dbId integer
 ---@param openTimeSeconds number
 ---@param readTimeSeconds number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.behavioralMessaging.sendNotificationReceipt(dbId, openTimeSeconds, readTimeSeconds) end
 
 ---Wraps `C_BlackMarketInfo`.
@@ -2519,25 +2524,25 @@ function api.calendar.canSendInvite() end
 
 function api.calendar.closeEvent() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetMonths number
 ---@param monthDay integer
 ---@param eventIndex integer
 ---@return boolean canComplain
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.contextMenuEventCanComplain(offsetMonths, monthDay, eventIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetMonths number
 ---@param monthDay integer
 ---@param eventIndex integer
 ---@return boolean canEdit
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.contextMenuEventCanEdit(offsetMonths, monthDay, eventIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetMonths number
 ---@param monthDay integer
 ---@param eventIndex integer
 ---@return boolean canRemove
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.contextMenuEventCanRemove(offsetMonths, monthDay, eventIndex) end
 
 ---@return boolean exists
@@ -2548,9 +2553,9 @@ function api.calendar.contextMenuEventCopy() end
 ---@return string? calendarType
 function api.calendar.contextMenuEventGetCalendarType() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetMonths number
 ---@param monthDay integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.contextMenuEventPaste(offsetMonths, monthDay) end
 
 function api.calendar.contextMenuEventRemove() end
@@ -2568,10 +2573,10 @@ function api.calendar.contextMenuInviteRemove() end
 
 function api.calendar.contextMenuInviteTentative() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetMonths number
 ---@param monthDay integer
 ---@param eventIndex integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.contextMenuSelectEvent(offsetMonths, monthDay, eventIndex) end
 
 function api.calendar.createCommunitySignUpEvent() end
@@ -2591,8 +2596,8 @@ function api.calendar.eventClearAutoApprove() end
 
 function api.calendar.eventClearLocked() end
 
----@param inviteIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param inviteIndex integer
 function api.calendar.eventClearModerator(inviteIndex) end
 
 function api.calendar.eventDecline() end
@@ -2603,14 +2608,14 @@ function api.calendar.eventGetCalendarType() end
 ---@return string? info
 function api.calendar.eventGetClubId() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param eventIndex integer
 ---@return CalendarEventInviteInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.calendar.eventGetInvite(eventIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param eventIndex integer
 ---@return CalendarTime? time
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.calendar.eventGetInviteResponseTime(eventIndex) end
 
 ---@return string criterion
@@ -2620,14 +2625,14 @@ function api.calendar.eventGetInviteSortCriterion() end
 ---@return integer? inviteIndex
 function api.calendar.eventGetSelectedInvite() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventIndex integer
 ---@return CalendarEventStatusOption[] options
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.eventGetStatusOptions(eventIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventType Enum.CalendarEventType
 ---@return CalendarEventTextureInfo[] textures
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.eventGetTextures(eventType) end
 
 ---@return string[] types
@@ -2642,87 +2647,87 @@ function api.calendar.eventHasPendingInvite() end
 ---@return boolean haveSettingsChanged
 function api.calendar.eventHaveSettingsChanged() end
 
----@param name string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param name string
 function api.calendar.eventInvite(name) end
 
----@param inviteIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param inviteIndex integer
 function api.calendar.eventRemoveInvite(inviteIndex) end
 
----@param guid string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param guid string
 function api.calendar.eventRemoveInviteByGuid(guid) end
 
----@param inviteIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param inviteIndex integer
 function api.calendar.eventSelectInvite(inviteIndex) end
 
 function api.calendar.eventSetAutoApprove() end
 
----@param clubId? string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param clubId? string
 function api.calendar.eventSetClubId(clubId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param month integer
 ---@param monthDay integer
 ---@param year number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.eventSetDate(month, monthDay, year) end
 
----@param description string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param description string
 function api.calendar.eventSetDescription(description) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventIndex integer
 ---@param status Enum.CalendarStatus
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.eventSetInviteStatus(eventIndex, status) end
 
 function api.calendar.eventSetLocked() end
 
----@param inviteIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param inviteIndex integer
 function api.calendar.eventSetModerator(inviteIndex) end
 
----@param textureIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param textureIndex integer
 function api.calendar.eventSetTextureID(textureIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param hour number
 ---@param minute number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.eventSetTime(hour, minute) end
 
----@param title string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param title string
 function api.calendar.eventSetTitle(title) end
 
----@param typeIndex Enum.CalendarEventType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param typeIndex Enum.CalendarEventType
 function api.calendar.eventSetType(typeIndex) end
 
 function api.calendar.eventSignUp() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param criterion string
 ---@param reverse boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.eventSortInvites(criterion, reverse) end
 
 function api.calendar.eventTentative() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param clubId string
 ---@param startTime CalendarTime
 ---@param endTime CalendarTime
 ---@return CalendarDayEvent[] events
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.calendar.getClubCalendarEvents(clubId, startTime, endTime) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param monthOffset number
 ---@param monthDay integer
 ---@param index integer
 ---@return CalendarDayEvent? event
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.calendar.getDayEvent(monthOffset, monthDay, index) end
 
 ---@return CalendarGuildFilterInfo info
@@ -2731,37 +2736,37 @@ function api.calendar.getDefaultGuildFilter() end
 ---@return CalendarEventIndexInfo? info
 function api.calendar.getEventIndex() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventID integer
 ---@param monthOffset? number
 ---@param monthDay? number
 ---@return CalendarEventIndexInfo? eventIndexInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.getEventIndexInfo(eventID, monthOffset, monthDay) end
 
 ---@return CalendarEventInfo? info
 function api.calendar.getEventInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetMonths number
 ---@param monthDay integer
 ---@return integer? firstPendingInvite
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.getFirstPendingInvite(offsetMonths, monthDay) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return CalendarGuildEventInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.getGuildEventInfo(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return CalendarEventIndexInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.getGuildEventSelectionInfo(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param monthOffset number
 ---@param monthDay integer
 ---@param index integer
 ---@return CalendarHolidayInfo? event
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.getHolidayInfo(monthOffset, monthDay, index) end
 
 ---@return CalendarTime maxCreateDate
@@ -2770,18 +2775,18 @@ function api.calendar.getMaxCreateDate() end
 ---@return CalendarTime minDate
 function api.calendar.getMinDate() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetMonths? number
 ---@return CalendarMonthInfo monthInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.getMonthInfo(offsetMonths) end
 
 ---@return string? clubId
 function api.calendar.getNextClubId() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetMonths number
 ---@param monthDay integer
 ---@return number numDayEvents
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.getNumDayEvents(offsetMonths, monthDay) end
 
 ---@return number numGuildEvents
@@ -2793,11 +2798,11 @@ function api.calendar.getNumInvites() end
 ---@return number num
 function api.calendar.getNumPendingInvites() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetMonths number
 ---@param monthDay integer
 ---@param eventIndex integer
 ---@return CalendarRaidInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.getRaidInfo(offsetMonths, monthDay, eventIndex) end
 
 ---@return boolean actionPending
@@ -2806,41 +2811,41 @@ function api.calendar.isActionPending() end
 ---@return boolean isOpen
 function api.calendar.isEventOpen() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubId string
 ---@param minLevel number
 ---@param maxLevel number
 ---@param maxRankOrder? integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.massInviteCommunity(clubId, minLevel, maxLevel, maxRankOrder) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param minLevel number
 ---@param maxLevel number
 ---@param maxRankOrder integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.massInviteGuild(minLevel, maxLevel, maxRankOrder) end
 
 function api.calendar.openCalendar() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetMonths number
 ---@param monthDay integer
 ---@param index integer
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.openEvent(offsetMonths, monthDay, index) end
 
 function api.calendar.removeEvent() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param month integer
 ---@param year number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.calendar.setAbsMonth(month, year) end
 
----@param offsetMonths number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param offsetMonths number
 function api.calendar.setMonth(offsetMonths) end
 
----@param clubId? string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param clubId? string
 function api.calendar.setNextClubId(clubId) end
 
 ---Restrictions: hasRestrictions
@@ -2855,6 +2860,7 @@ api.camera = {}
 ---@return number fieldOfViewDegreesPlayerMax
 function api.camera.getCameraFOVDefaults() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiCameraID number
 ---@return number posX
 ---@return number posY
@@ -2866,7 +2872,6 @@ function api.camera.getCameraFOVDefaults() end
 ---@return number animVariation
 ---@return number animFrame
 ---@return boolean useModelCenter
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.camera.getUICameraInfo(uiCameraID) end
 
 ---Wraps `C_CampaignInfo`.
@@ -2876,74 +2881,74 @@ api.campaignInfo = {}
 ---@return number[] campaignIDs
 function api.campaignInfo.getAvailableCampaigns() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param campaignChapterID number
 ---@return CampaignChapterInfo? campaignChapterInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.campaignInfo.getCampaignChapterInfo(campaignChapterID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number campaignID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.campaignInfo.getCampaignID(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param campaignID number
 ---@return CampaignInfo? campaignInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.campaignInfo.getCampaignInfo(campaignID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param campaignID number
 ---@return number[]? chapterIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.campaignInfo.getChapterIDs(campaignID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param campaignID number
 ---@return number? currentChapterID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.campaignInfo.getCurrentChapterID(campaignID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param campaignID number
 ---@return CampaignFailureReason? failureReason
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.campaignInfo.getFailureReason(campaignID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param campaignID number
 ---@return Enum.CampaignState state
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.campaignInfo.getState(campaignID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isCampaignQuest
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.campaignInfo.isCampaignQuest(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param campaignID number
 ---@return boolean sortAsNormalQuest
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.campaignInfo.sortAsNormalQuest(campaignID) end
 
 ---Wraps `C_CatalogShop`.
 ---@class wow.beta.api.catalogShop
 api.catalogShop = {}
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param productIDs number[]
 ---@return boolean canPurchaseProducts
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.catalogShop.bulkPurchaseProducts(productIDs) end
 
----@param decorGUIDs string[]
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param decorGUIDs string[]
 function api.catalogShop.bulkRefundDecors(decorGUIDs) end
 
 function api.catalogShop.closeCatalogShopInteraction() end
 
----@param productIDs number[]
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param productIDs number[]
 function api.catalogShop.confirmHousingPurchase(productIDs) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vcCurrencyCode string
 ---@param amountNeeded number
 ---@return number? vcProductID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.findBestCurrencyProductForNeededAmount(vcCurrencyCode, amountNeeded) end
 
 ---@return number[] categoryIDs
@@ -2952,89 +2957,89 @@ function api.catalogShop.getAvailableCategoryIDs() end
 ---@return AvailableRaceInfo[] raceIDs
 function api.catalogShop.getAvailableTransmogRaceInfos() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param catalogShopProductID number
 ---@return CatalogShopProductDisplayInfo item
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getCatalogShopProductDisplayInfo(catalogShopProductID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@return CatalogShopCategoryInfo categoryInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getCategoryInfo(categoryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@param sectionID number
 ---@return CatalogShopSectionInfo sectionInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getCategorySectionInfo(categoryID, sectionID) end
 
 ---@return any? errorResultEnum
 ---@return number? errorResultRaw
 function api.catalogShop.getFailureInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param productID number
 ---@return CatalogShopCategoryInfo? categoryInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getFirstCategoryByProductID(productID) end
 
 ---@return number[] newProducts
 function api.catalogShop.getNewProducts() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param catalogShopProductID number
 ---@return number? timeRemainingSecs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getProductAvailabilityTimeRemainingSecs(catalogShopProductID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bundleProductID number
 ---@return CatalogShopBundleChildInfo[] childIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getProductIDsForBundle(bundleProductID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@return number[] productIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getProductIDsForCategory(categoryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@param sectionID number
 ---@return number[] productIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getProductIDsForCategorySection(categoryID, sectionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param productID number
 ---@return CatalogShopProductInfo? productInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getProductInfo(productID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@param sectionID number
 ---@param productID number
 ---@return number? sortOrder
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getProductSortOrder(categoryID, sectionID, productID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param productIdFilterOpt? number
 ---@return RefundableDecorInfo[] refundableDecorInfos
 ---@return integer minTimeRemainingSeconds
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getRefundableDecors(productIdFilterOpt) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@return number[] sectionIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getSectionIDsForCategory(categoryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellVisualID number
 ---@return CatalogShopSpellVisualInfo spellVisualInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getSpellVisualInfoForMount(spellVisualID) end
 
 ---@return CatalogShopVCProductInfo[] vcProductInfos
 function api.catalogShop.getVCProductInfos() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyCode string
 ---@return string? balance
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.getVirtualCurrencyBalance(currencyCode) end
 
 ---@return boolean hasNewProducts
@@ -3043,8 +3048,8 @@ function api.catalogShop.hasNewProducts() end
 ---@return boolean? value
 function api.catalogShop.isShop2Enabled() end
 
----@param catalogShopProductID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param catalogShopProductID number
 function api.catalogShop.onLegalDisclaimerClicked(catalogShopProductID) end
 
 function api.catalogShop.onLegalPersonalizedOptOutClicked() end
@@ -3055,17 +3060,17 @@ function api.catalogShop.openCatalogShopInteractionFromHouse() end
 ---@return string shoppingSessionUUIDStr
 function api.catalogShop.openCatalogShopInteractionFromShop() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param categoryId number
 ---@param sectionId number
 ---@param catalogShopProductID number
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.catalogShop.productDisplayedTelemetry(categoryId, sectionId, catalogShopProductID) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param categoryId number
 ---@param sectionId number
 ---@param catalogShopProductID number
 ---@param wasCodeSelection boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.catalogShop.productSelectedTelemetry(
     categoryId,
     sectionId,
@@ -3074,31 +3079,31 @@ function api.catalogShop.productSelectedTelemetry(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param productID number
 ---@return boolean canPurchase
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.catalogShop.purchaseProduct(productID) end
 
 function api.catalogShop.refreshRefundableDecors() end
 
----@param currencyCode string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param currencyCode string
 function api.catalogShop.refreshVirtualCurrencyBalance(currencyCode) end
 
 ---@return boolean shouldShowHousingWarning
 function api.catalogShop.shouldShowHousingWarning() end
 
----@param productID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param productID number
 function api.catalogShop.startHousingVCPurchaseConfirmation(productID) end
 
 ---Wraps `C_ChallengeMode`.
 ---@class wow.beta.api.challengeMode
 api.challengeMode = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return boolean canUse
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.challengeMode.canUseKeystoneInCurrentMap(itemLocation) end
 
 function api.challengeMode.clearKeystone() end
@@ -3113,11 +3118,11 @@ function api.challengeMode.getActiveChallengeMapID() end
 ---@return boolean wasActiveKeystoneCharged
 function api.challengeMode.getActiveKeystoneInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param affixID number
 ---@return string? name
 ---@return string? description
 ---@return number? filedataid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.challengeMode.getAffixInfo(affixID) end
 
 ---@return ChallengeCompletionInfo info
@@ -3128,18 +3133,18 @@ function api.challengeMode.getChallengeCompletionInfo() end
 function api.challengeMode.getDeathCount() end
 
 ---Returns a color value from the passed in overall season M+ rating.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param dungeonScore number
 ---@return colorRGB scoreColor
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.challengeMode.getDungeonScoreRarityColor(dungeonScore) end
 
 ---@return ChallengeModeGuildTopAttempt[]? topAttempt
 function api.challengeMode.getGuildLeaders() end
 
 ---Returns a color value from the passed in keystone level.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param level number
 ---@return colorRGB levelScore
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.challengeMode.getKeystoneLevelRarityColor(level) end
 
 ---Returns how much time is left before player is automatically flagged as a leaver (and removed
@@ -3153,6 +3158,7 @@ function api.challengeMode.getMapScoreInfo() end
 ---@return number[] mapChallengeModeIDs
 function api.challengeMode.getMapTable() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapChallengeModeID number
 ---@return string? name
 ---@return number? id
@@ -3160,17 +3166,16 @@ function api.challengeMode.getMapTable() end
 ---@return number? texture
 ---@return number? backgroundTexture
 ---@return number? mapID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.challengeMode.getMapUIInfo(mapChallengeModeID) end
 
 ---Gets the overall season mythic+ rating for the player.
 ---@return number overallDungeonScore
 function api.challengeMode.getOverallDungeonScore() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerLevel number
 ---@return number? damageMod
 ---@return number? healthMod
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.challengeMode.getPowerLevelDamageHealthMod(powerLevel) end
 
 ---@return number? mapChallengeModeID
@@ -3180,18 +3185,18 @@ function api.challengeMode.getSlottedKeystoneInfo() end
 
 ---Returns a color value from the passed in mythic+ rating from the combined affix scores for a
 ---specific dungeon
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specificDungeonOverallScore number
 ---@return colorRGB specificDungeonOverallScoreColor
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.challengeMode.getSpecificDungeonOverallScoreRarityColor(
     specificDungeonOverallScore
 )
 end
 
 ---Returns a color value from the passed in mythic+ rating for a specific dungeon.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specificDungeonScore number
 ---@return colorRGB specificDungeonScoreColor
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.challengeMode.getSpecificDungeonScoreRarityColor(specificDungeonScore) end
 
 ---@return number startTime
@@ -3209,8 +3214,8 @@ function api.challengeMode.isChallengeModeResettable() end
 ---@return boolean removalSuccessful
 function api.challengeMode.removeKeystone() end
 
----@param mapChallengeModeID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param mapChallengeModeID number
 function api.challengeMode.requestLeaders(mapChallengeModeID) end
 
 function api.challengeMode.reset() end
@@ -3224,88 +3229,88 @@ function api.challengeMode.startChallengeMode() end
 ---@class wow.beta.api.chatBubbles
 api.chatBubbles = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param includeForbidden? boolean
 ---@return ChatBubbleFrame[] chatBubbles
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatBubbles.getAllChatBubbles(includeForbidden) end
 
 ---Wraps `C_ChatInfo`.
 ---@class wow.beta.api.chatInfo
 api.chatInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param languageId number
 ---@return boolean canSpeakLanguage
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.canPlayerSpeakLanguage(languageId) end
 
 function api.chatInfo.cancelEmote() end
 
----@param confirmNumber number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param confirmNumber number
 function api.chatInfo.dropCautionaryChatMessage(confirmNumber) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelIdentifier string
 ---@return ChatChannelInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.getChannelInfoFromIdentifier(channelIdentifier) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelIndex integer
 ---@param rosterIndex integer
 ---@return string? name
 ---@return boolean? owner
 ---@return boolean? moderator
 ---@return string? guid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.getChannelRosterInfo(channelIndex, rosterIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelIndex integer
 ---@return Enum.ChatChannelRuleset ruleset
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.getChannelRuleset(channelIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelID number
 ---@return Enum.ChatChannelRuleset ruleset
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.getChannelRulesetForChannelID(channelID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelIndex integer
 ---@return string shortcut
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.getChannelShortcut(channelIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelID number
 ---@return string shortcut
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.getChannelShortcutForChannelID(channelID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param chatLine number
 ---@return string guid
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.chatInfo.getChatLineSenderGUID(chatLine) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param chatLine number
 ---@return string name
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.chatInfo.getChatLineSenderName(chatLine) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param chatLine number
 ---@return string text
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.chatInfo.getChatLineText(chatLine) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param typeID number
 ---@return string? name
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.getChatTypeName(typeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubID string
 ---@return string[] ids
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.getClubStreamIDs(clubID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param chatType string
 ---@return colorRGB? color
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.getColorForChatType(chatType) end
 
 ---@return number channelID
@@ -3331,24 +3336,24 @@ function api.chatInfo.getRegisteredAddonMessagePrefixes() end
 ---@return Enum.ChatMessagingLockdownReason? lockdownReason
 function api.chatInfo.inChatMessagingLockdown() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param prefix string
 ---@return boolean isRegistered
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.isAddonMessagePrefixRegistered(prefix) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelIndex integer
 ---@return boolean isRegional
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.isChannelRegional(channelIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelID number
 ---@return boolean isRegional
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.isChannelRegionalForChannelID(channelID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param chatLine number
 ---@return boolean isCensored
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.isChatLineCensored(chatLine) end
 
 ---@return boolean enabled
@@ -3358,47 +3363,47 @@ function api.chatInfo.isLoggingChat() end
 ---@return boolean advanced
 function api.chatInfo.isLoggingCombat() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelType Enum.ChatChannelType
 ---@return boolean isPartyChannelType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.isPartyChannelType(channelType) end
 
 ---@return boolean available
 function api.chatInfo.isRegionalServiceAvailable() end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param playerGUID string
 ---@return boolean isTimerunning
----Restrictions: secretArguments=AllowedWhenTainted
 function api.chatInfo.isTimerunningPlayer(playerGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param chatLine? number
 ---@return boolean isValid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.isValidChatLine(chatLine) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return boolean isApproved
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.isValidCombatFilterName(name) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param emoteName string
 ---@param targetName? string
 ---@param suppressMoveError? boolean
 ---@return boolean success
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.chatInfo.performEmote(emoteName, targetName, suppressMoveError) end
 
 ---Registers interest in addon messages with this prefix, cannot be an empty string.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param prefix string
 ---@return Enum.RegisterAddonMessagePrefixResult result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.registerAddonMessagePrefix(prefix) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param input string
 ---@param noIconReplacement? boolean
 ---@param noGroupReplacement? boolean
 ---@return string output
----Restrictions: secretArguments=AllowedWhenTainted
 function api.chatInfo.replaceIconAndGroupExpressions(
     input,
     noIconReplacement,
@@ -3406,51 +3411,51 @@ function api.chatInfo.replaceIconAndGroupExpressions(
 )
 end
 
----@param whisperTarget string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param whisperTarget string
 function api.chatInfo.requestCanLocalWhisperTarget(whisperTarget) end
 
 function api.chatInfo.resetDefaultZoneChannels() end
 
 ---Sends a text payload to other clients specified by chatChannel and target which are
 ---registered to listen for prefix.
+---Restrictions: secretArguments=NotAllowed
 ---@param prefix string
 ---@param message string
 ---@param chatType? string
 ---@param target? string
 ---@return Enum.SendAddonMessageResult result
----Restrictions: secretArguments=NotAllowed
 function api.chatInfo.sendAddonMessage(prefix, message, chatType, target) end
 
 ---Sends a text payload to other clients specified by chatChannel and target which are
 ---registered to listen for prefix. Intended for plain text payloads; logged and throttled.
+---Restrictions: secretArguments=NotAllowed
 ---@param prefix string
 ---@param message string
 ---@param chatType? string
 ---@param target? string
 ---@return Enum.SendAddonMessageResult? result
----Restrictions: secretArguments=NotAllowed
 function api.chatInfo.sendAddonMessageLogged(prefix, message, chatType, target) end
 
----@param confirmNumber number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param confirmNumber number
 function api.chatInfo.sendCautionaryChatMessage(confirmNumber) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted,
+---RestrictedForMacroChatMessages
 ---@param message string
 ---@param chatType? string
 ---@param languageID? number
 ---@param target? string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted,
----RestrictedForMacroChatMessages
 function api.chatInfo.sendChatMessage(message, chatType, languageID, target) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param firstChannelIndex integer
 ---@param secondChannelIndex integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chatInfo.swapChatChannelsByChannelIndex(firstChannelIndex, secondChannelIndex) end
 
----@param chatLine number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param chatLine number
 function api.chatInfo.uncensorChatLine(chatLine) end
 
 ---Wraps `C_ChromieTime`.
@@ -3459,41 +3464,41 @@ api.chromieTime = {}
 
 function api.chromieTime.closeUI() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param expansionRecID number
 ---@return ChromieTimeExpansionInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.chromieTime.getChromieTimeExpansionOption(expansionRecID) end
 
 ---@return ChromieTimeExpansionInfo[] expansionOptions
 function api.chromieTime.getChromieTimeExpansionOptions() end
 
----@param chromieTimeExpansionInfoId number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param chromieTimeExpansionInfoId number
 function api.chromieTime.selectChromieTimeOption(chromieTimeExpansionInfoId) end
 
 ---Wraps the global functions of the `Cinematic` system.
 ---@class wow.beta.api.cinematic
 api.cinematic = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param movieType Enum.CinematicType
 ---@param userCanceled? boolean
 ---@param didError? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.cinematic.finished(movieType, userCanceled, didError) end
 
 ---@return boolean inCinematic
 function api.cinematic.inCinematic() end
 
----@param doOverride? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param doOverride? boolean
 function api.cinematic.mouseOverrideCinematicDisable(doOverride) end
 
 function api.cinematic.openingCinematic() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param movieType Enum.CinematicType
 ---@param movieID number
 ---@param canCancel? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.cinematic.started(movieType, movieID, canCancel) end
 
 function api.cinematic.stopCinematic() end
@@ -3509,9 +3514,9 @@ function api.cinematicList.getUICinematicList() end
 ---@class wow.beta.api.classColor
 api.classColor = {}
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param className string
 ---@return colorRGB? classColor
----Restrictions: secretArguments=AllowedWhenTainted
 function api.classColor.getClassColor(className) end
 
 ---Wraps `C_ClassTalents`.
@@ -3533,14 +3538,14 @@ function api.classTalents.canCreateNewConfig() end
 ---@return string changeError
 function api.classTalents.canEditTalents() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param savedConfigID? number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.commitConfig(savedConfigID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.deleteConfig(configID) end
 
 ---@return number? activeConfigID
@@ -3550,9 +3555,9 @@ function api.classTalents.getActiveConfigID() end
 ---@return number? heroSpecID
 function api.classTalents.getActiveHeroTalentSpec() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID? number
 ---@return number[] configIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.getConfigIDsBySpecID(specID) end
 
 ---@return boolean hasStarterBuild
@@ -3560,16 +3565,16 @@ function api.classTalents.getHasStarterBuild() end
 
 ---Returns the SubTreeIDs of the Hero Talent Specializations available to a Class Specialization
 ---and config; Returns nothing if none available
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID? number
 ---@param classSpecID? number
 ---@return number[]? subTreeIDs
 ---@return number? requiredPlayerLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.getHeroTalentSpecsForClassSpec(configID, classSpecID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID number
 ---@return number? configID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.getLastSelectedSavedConfigID(specID) end
 
 ---@return number? nodeID
@@ -3579,9 +3584,9 @@ function api.classTalents.getNextStarterBuildPurchase() end
 ---@return boolean isActive
 function api.classTalents.getStarterBuildActive() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID number
 ---@return number? treeID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.getTraitTreeForSpec(specID) end
 
 ---Returns whether the player has any unspent talent points in their active hero talent tree. If
@@ -3598,70 +3603,70 @@ function api.classTalents.hasUnspentHeroTalentPoints() end
 ---@return number numSpecPoints
 function api.classTalents.hasUnspentTalentPoints() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param entries ImportLoadoutEntryInfo[]
 ---@param name string
 ---@param importString? string
 ---@return boolean success
 ---@return string importError
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.importLoadout(configID, entries, name, importString) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID number
 ---@param level number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.initializeViewLoadout(specID, level) end
 
 ---New configs may or may not be populated and ready to load immediately after creation. Avoid
 ---calling for configs intentionally created empty.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return boolean isPopulated
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.isConfigPopulated(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param autoApply boolean
 ---@return Enum.LoadConfigResult result
 ---@return string? changeError
 ---@return number[] newLearnedNodeIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.loadConfig(configID, autoApply) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param name string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.renameConfig(configID, name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.requestNewConfig(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.saveConfig(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param active boolean
 ---@return Enum.LoadConfigResult result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.setStarterBuildActive(active) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param usesShared boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.setUsesSharedActionBars(configID, usesShared) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID number
 ---@param configID? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.updateLastSelectedSavedConfigID(specID, configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param entries ImportLoadoutEntryInfo[]
 ---@param importString? string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.classTalents.viewLoadout(entries, importString) end
 
 ---Wraps `C_ClassTrial`.
@@ -3672,35 +3677,35 @@ api.classTrial = {}
 ---@class wow.beta.api.clickBindings
 api.clickBindings = {}
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@return boolean canBeBound
----Restrictions: secretArguments=AllowedWhenTainted
 function api.clickBindings.canSpellBeClickBound(spellID) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param targetToken string
 ---@param button string
 ---@param modifiers number
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.clickBindings.executeBinding(targetToken, button, modifiers) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param button string
 ---@param modifiers number
 ---@return Enum.ClickBindingType type
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clickBindings.getBindingType(button, modifiers) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param button string
 ---@param modifiers number
 ---@return string effectiveButton
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clickBindings.getEffectiveInteractionButton(button, modifiers) end
 
 ---@return ClickBindingInfo[] infoVec
 function api.clickBindings.getProfileInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modifiers number
 ---@return string modifierString
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clickBindings.getStringFromModifiers(modifiers) end
 
 ---@return boolean tutorialShown
@@ -3712,8 +3717,8 @@ function api.clickBindings.makeModifiers() end
 ---Restrictions: hasRestrictions
 function api.clickBindings.resetCurrentProfile() end
 
----@param infoVec ClickBindingInfo[]
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param infoVec ClickBindingInfo[]
 function api.clickBindings.setProfileByInfo(infoVec) end
 
 function api.clickBindings.setTutorialShown() end
@@ -3722,16 +3727,16 @@ function api.clickBindings.setTutorialShown() end
 ---@class wow.beta.api.client
 api.client = {}
 
----@param briefly? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param briefly? boolean
 function api.client.flashClientIcon(briefly) end
 
 ---@return number billingTimeRested
 function api.client.getBillingTimeRested() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param filePath string
 ---@return integer fileID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.client.getFileIDFromPath(filePath) end
 
 ---@return number framerate
@@ -3740,12 +3745,12 @@ function api.client.getFramerate() end
 ---@return boolean? isCpuBound
 function api.client.isCpuBound() end
 
----@param description string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param description string
 function api.client.reportBug(description) end
 
----@param description string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param description string
 function api.client.reportSuggestion(description) end
 
 function api.client.restartGx() end
@@ -3762,37 +3767,37 @@ api.clientScene = {}
 ---@class wow.beta.api.club
 api.club = {}
 
----@param clubId string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param clubId string
 function api.club.acceptInvitation(clubId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.addClubStreamChatChannel(clubId, streamId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.advanceStreamViewMarker(clubId, streamId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@return boolean membersReady
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.areMembersReady(clubId) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId number
 ---@param roleId Enum.ClubRoleIdentifier
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.assignMemberRole(clubId, memberId, roleId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param epoch integer
 ---@param position integer
 ---@return boolean canResolve
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.canResolvePlayerLocationFromClubMessageData(clubId, streamId, epoch, position) end
 
 ---Restrictions: RequiresClubsInitialized
@@ -3801,37 +3806,37 @@ function api.club.clearAutoAdvanceStreamViewMarker() end
 ---Restrictions: RequiresClubsInitialized
 function api.club.clearClubPresenceSubscription() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param lhsMemberId number
 ---@param rhsMemberId number
 ---@return number comparison
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.compareBattleNetDisplayName(clubId, lhsMemberId, rhsMemberId) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param name string
 ---@param shortName? string
 ---@param description string
 ---@param clubType Enum.ClubType
 ---@param avatarId number
 ---@param isCrossFaction? boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.createClub(name, shortName, description, clubType, avatarId, isCrossFaction) end
 
 ---Check the canCreateStream privilege.
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param name string
 ---@param subject string
 ---@param leadersAndModeratorsOnly boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.createStream(clubId, name, subject, leadersAndModeratorsOnly) end
 
 ---Check canCreateTicket privilege.
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param allowedRedeemCount? number
 ---@param duration? number
 ---@param defaultStreamId? string
 ---@param isCrossFaction? boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.createTicket(
     clubId,
     allowedRedeemCount,
@@ -3841,43 +3846,44 @@ function api.club.createTicket(
 )
 end
 
----@param clubId string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param clubId string
 function api.club.declineInvitation(clubId) end
 
 ---Check the canDestroy privilege.
----@param clubId string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param clubId string
 function api.club.destroyClub(clubId) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param messageId ClubMessageIdentifier
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.destroyMessage(clubId, streamId, messageId) end
 
 ---Check canDestroyStream privilege.
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.destroyStream(clubId, streamId) end
 
 ---Check canDestroyTicket privilege.
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param ticketId string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.destroyTicket(clubId, ticketId) end
 
----@return boolean hasUnreadMessages
 ---Restrictions: RequiresClubsInitialized
+---@return boolean hasUnreadMessages
 function api.club.doesAnyCommunityHaveUnreadMessages() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@return boolean hasMembersOfOppositeFaction
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.doesCommunityHaveMembersOfTheOppositeFaction(clubId) end
 
 ---nil arguments will not change existing club data
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param name? string
 ---@param shortName? string
@@ -3885,7 +3891,6 @@ function api.club.doesCommunityHaveMembersOfTheOppositeFaction(clubId) end
 ---@param avatarId? number
 ---@param broadcast? string
 ---@param crossFaction? boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.editClub(
     clubId,
     name,
@@ -3897,21 +3902,21 @@ function api.club.editClub(
 )
 end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param messageId ClubMessageIdentifier
 ---@param message string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.editMessage(clubId, streamId, messageId, message) end
 
 ---Check the canSetStreamName, canSetStreamSubject, canSetStreamAccess privileges. nil arguments
 ---will not change existing stream data.
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param name? string
 ---@param subject? string
 ---@param leadersAndModeratorsOnly? boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.editStream(clubId, streamId, name, subject, leadersAndModeratorsOnly) end
 
 ---Restrictions: RequiresClubsInitialized
@@ -3920,87 +3925,87 @@ function api.club.flush() end
 ---Restrictions: RequiresClubsInitialized
 function api.club.focusCommunityStreams() end
 
----@param clubId string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param clubId string
 function api.club.focusMembers(clubId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@return boolean focused
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.focusStream(clubId, streamId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId number
 ---@return Enum.ClubRoleIdentifier[] assignableRoles
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getAssignableRoles(clubId, memberId) end
 
 ---listen for AVATAR_LIST_UPDATED event. This can happen if we haven't downloaded the battle.net
 ---avatar list yet
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubType Enum.ClubType
 ---@return number[]? avatarIds
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getAvatarIdList(clubType) end
 
----@return number capacity
 ---Restrictions: RequiresClubsInitialized
+---@return number capacity
 function api.club.getClubCapacity() end
 
----@param clubId string
----@return ClubInfo? info
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
 ---SecretInChatMessagingLockdown
+---@param clubId string
+---@return ClubInfo? info
 function api.club.getClubInfo(clubId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubType Enum.ClubType
 ---@return ClubLimits clubLimits
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getClubLimits(clubType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
+---SecretInChatMessagingLockdown
 ---@param clubId string
 ---@param streamId? string
 ---@return number[] members
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
----SecretInChatMessagingLockdown
 function api.club.getClubMembers(clubId, streamId) end
 
 ---The privileges for the logged in user for this club
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubPrivilegeInfo privilegeInfo
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getClubPrivileges(clubId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubStreamNotificationSetting[] settings
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getClubStreamNotificationSettings(clubId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param result Enum.ValidateNameResult
 ---@return string? errorCode
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getCommunityNameResultText(result) end
 
----@return string? guildClubId
 ---Restrictions: RequiresClubsInitialized
+---@return string? guildClubId
 function api.club.getGuildClubId() end
 
+---Restrictions: RequiresClubsInitialized, SecretInChatMessagingLockdown
 ---@return ClubMessageInfo? messageInfo
 ---@return string? clubId
 ---@return string? streamId
 ---@return Enum.ClubType? clubType
----Restrictions: RequiresClubsInitialized, SecretInChatMessagingLockdown
 function api.club.getInfoFromLastCommunityChatLine() end
 
 ---Returns a list of players that you can send a request to a Battle.net club. Returns an empty
 ---list for Character based clubs
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param filter? string
 ---@param maxResults? number
 ---@param cursorPosition? number
 ---@param allowFullMatch? boolean
 ---@param clubId string
 ---@return ClubInvitationCandidateInfo[] candidates
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getInvitationCandidates(
     filter,
     maxResults,
@@ -4011,291 +4016,291 @@ function api.club.getInvitationCandidates(
 end
 
 ---Get info about a specific club the active player has been invited to.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubSelfInvitationInfo? invitation
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getInvitationInfo(clubId) end
 
 ---Get the pending invitations for this club. Call RequestInvitationsForClub() to retrieve
 ---invitations from server.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubInvitationInfo[] invitations
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getInvitationsForClub(clubId) end
 
 ---These are the clubs the active player has been invited to.
----@return ClubSelfInvitationInfo[] invitations
 ---Restrictions: RequiresClubsInitialized
+---@return ClubSelfInvitationInfo[] invitations
 function api.club.getInvitationsForSelf() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param ticket string
 ---@return Enum.ClubErrorType? error
 ---@return ClubInfo? info
 ---@return boolean? showError
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getLastTicketResponse(ticket) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
+---SecretInChatMessagingLockdown
 ---@param clubId string
 ---@param memberId number
 ---@return ClubMemberInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
----SecretInChatMessagingLockdown
 function api.club.getMemberInfo(clubId, memberId) end
 
 ---Info for the logged in user for this club
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubMemberInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getMemberInfoForSelf(clubId) end
 
 ---Get info about a particular message.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
+---SecretInChatMessagingLockdown
 ---@param clubId string
 ---@param streamId string
 ---@param messageId ClubMessageIdentifier
 ---@return ClubMessageInfo? message
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
----SecretInChatMessagingLockdown
 function api.club.getMessageInfo(clubId, streamId, messageId) end
 
 ---Get the ranges of the messages currently downloaded.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
+---SecretInChatMessagingLockdown
 ---@param clubId string
 ---@param streamId string
 ---@return ClubMessageRange[] ranges
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
----SecretInChatMessagingLockdown
 function api.club.getMessageRanges(clubId, streamId) end
 
 ---Get downloaded messages before (and including) the specified messageId limited by count.
 ---These are filtered by ignored players
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
+---SecretInChatMessagingLockdown
 ---@param clubId string
 ---@param streamId string
 ---@param newest ClubMessageIdentifier
 ---@param count number
 ---@return ClubMessageInfo[] messages
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
----SecretInChatMessagingLockdown
 function api.club.getMessagesBefore(clubId, streamId, newest, count) end
 
 ---Get downloaded messages in the given range. These are filtered by ignored players
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
+---SecretInChatMessagingLockdown
 ---@param clubId string
 ---@param streamId string
 ---@param oldest ClubMessageIdentifier
 ---@param newest ClubMessageIdentifier
 ---@return ClubMessageInfo[] messages
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
----SecretInChatMessagingLockdown
 function api.club.getMessagesInRange(clubId, streamId, oldest, newest) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
+---SecretInChatMessagingLockdown
 ---@param clubId string
 ---@param streamId string
 ---@return ClubStreamInfo? streamInfo
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
----SecretInChatMessagingLockdown
 function api.club.getStreamInfo(clubId, streamId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@return integer? lastReadTime
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getStreamViewMarker(clubId, streamId) end
 
----@param clubId string
----@return ClubStreamInfo[] streams
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
 ---SecretInChatMessagingLockdown
+---@param clubId string
+---@return ClubStreamInfo[] streams
 function api.club.getStreams(clubId) end
 
----@return ClubInfo[] clubs
 ---Restrictions: RequiresClubsInitialized, SecretInChatMessagingLockdown
+---@return ClubInfo[] clubs
 function api.club.getSubscribedClubs() end
 
 ---Get the existing tickets for this club. Call RequestTickets() to retrieve tickets from
 ---server.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubTicketInfo[] tickets
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.getTickets(clubId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@return boolean accountMuted
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.isAccountMuted(clubId) end
 
 ---Returns whether the given message is the first message in the stream, taking into account
 ---ignored messages
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
+---SecretInChatMessagingLockdown
 ---@param clubId string
 ---@param streamId string
 ---@param messageId ClubMessageIdentifier
 ---@return boolean isBeginningOfStream
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
----SecretInChatMessagingLockdown
 function api.club.isBeginningOfStream(clubId, streamId, messageId) end
 
----@return boolean clubsEnabled
 ---Restrictions: RequiresClubsInitialized
+---@return boolean clubsEnabled
 function api.club.isEnabled() end
 
----@return Enum.ClubRestrictionReason restrictionReason
 ---Restrictions: RequiresClubsInitialized
+---@return Enum.ClubRestrictionReason restrictionReason
 function api.club.isRestricted() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@return boolean subscribed
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.isSubscribedToStream(clubId, streamId) end
 
 ---Check kickableRoleIds privilege.
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId number
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.kickMember(clubId, memberId) end
 
----@param clubId string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param clubId string
 function api.club.leaveClub(clubId) end
 
----@param ticketId string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param ticketId string
 function api.club.redeemTicket(ticketId) end
 
 ---Request invitations for this club from server. Check canGetInvitation privilege.
----@param clubId string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param clubId string
 function api.club.requestInvitationsForClub(clubId) end
 
 ---Call this when the user scrolls near the top of the message view, and more need to be
 ---displayed. The history will be downloaded backwards (newest to oldest).
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
+---SecretInChatMessagingLockdown
 ---@param clubId string
 ---@param streamId string
 ---@param messageId? ClubMessageIdentifier
 ---@param count? number
 ---@return boolean alreadyHasMessages
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized,
----SecretInChatMessagingLockdown
 function api.club.requestMoreMessagesBefore(clubId, streamId, messageId, count) end
 
----@param ticketId string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param ticketId string
 function api.club.requestTicket(ticketId) end
 
 ---Request tickets from server. Check canGetTicket privilege.
----@param clubId string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param clubId string
 function api.club.requestTickets(clubId) end
 
 ---Check canRevokeOwnInvitation or canRevokeOtherInvitation
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId number
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.revokeInvitation(clubId, memberId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param guildClubId string
 ---@param memberId number
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.sendBattleTagFriendRequest(guildClubId, memberId) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param character string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.sendCharacterInvitation(clubId, character) end
 
 ---Check the canSendInvitation privilege.
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId number
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.sendInvitation(clubId, memberId) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param message string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.sendMessage(clubId, streamId, message) end
 
 ---Only one stream can be set for auto-advance at a time. Focused streams will have their view
 ---times advanced automatically.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.setAutoAdvanceStreamViewMarker(clubId, streamId) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param texture SimpleTexture
 ---@param avatarId number
 ---@param clubType Enum.ClubType
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.setAvatarTexture(texture, avatarId, clubType) end
 
 ---Check the canSetOwnMemberNote and canSetOtherMemberNote privileges.
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId number
 ---@param note string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.setClubMemberNote(clubId, memberId, note) end
 
 ---You can only be subscribed to 0 or 1 clubs for presence.  Subscribing to a new club
 ---automatically unsuscribes you to existing subscription.
----@param clubId string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param clubId string
 function api.club.setClubPresenceSubscription(clubId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param settings ClubStreamNotificationSetting[]
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.setClubStreamNotificationSettings(clubId, settings) end
 
----@param communityID integer
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param communityID integer
 function api.club.setCommunityID(communityID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param isFavorite boolean
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.setFavorite(clubId, isFavorite) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param enabled boolean
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.setSocialQueueingEnabled(clubId, enabled) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubType Enum.ClubType
 ---@return boolean clubTypeIsAllowed
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.shouldAllowClubType(clubType) end
 
----@param unsubscribe boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param unsubscribe boolean
 function api.club.unfocusAllStreams(unsubscribe) end
 
----@param clubId string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
+---@param clubId string
 function api.club.unfocusMembers(clubId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.unfocusStream(clubId, streamId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 ---@param clubType Enum.ClubType
 ---@param text string
 ---@param clubFieldType Enum.ClubFieldType
 ---@return Enum.ValidateNameResult result
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresClubsInitialized
 function api.club.validateText(clubType, text, clubFieldType) end
 
 ---Wraps `C_ClubFinder`.
 ---@class wow.beta.api.clubFinder
 api.clubFinder = {}
 
----@param clubFinderGUID string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param clubFinderGUID string
 function api.clubFinder.applicantAcceptClubInvite(clubFinderGUID) end
 
----@param clubFinderGUID string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param clubFinderGUID string
 function api.clubFinder.applicantDeclineClubInvite(clubFinderGUID) end
 
----@param clubFinderGUID string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param clubFinderGUID string
 function api.clubFinder.cancelMembershipRequest(clubFinderGUID) end
 
 function api.clubFinder.checkAllPlayerApplicantSettings() end
@@ -4306,9 +4311,9 @@ function api.clubFinder.clearClubApplicantsCache() end
 
 function api.clubFinder.clearClubFinderPostingsCache() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubFinderGUID string
 ---@return boolean belongsToClub
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.doesPlayerBelongToClubFromClubGUID(clubFinderGUID) end
 
 ---@return Enum.ClubFinderDisableReason? disableReason
@@ -4317,14 +4322,14 @@ function api.clubFinder.getClubFinderDisableReason() end
 ---@return ClubSettingsInfo settings
 function api.clubFinder.getClubRecruitmentSettings() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubFinderGUID string
 ---@return Enum.ClubFinderRequestType? clubType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.getClubTypeFromFinderGUID(clubFinderGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param flags number
 ---@return number index
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.getFocusIndexFromFlag(flags) end
 
 ---@return number localeFlags
@@ -4333,32 +4338,32 @@ function api.clubFinder.getPlayerApplicantLocaleFlags() end
 ---@return ClubSettingsInfo settings
 function api.clubFinder.getPlayerApplicantSettings() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubFinderGUID string
 ---@return Enum.PlayerClubRequestStatus clubStatus
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.getPlayerClubApplicationStatus(clubFinderGUID) end
 
 ---@return number focusCount
 function api.clubFinder.getPlayerSettingsFocusFlagsSelectedCount() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubFinderGUID string
 ---@return number? postingID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.getPostingIDFromClubFinderGUID(clubFinderGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubId string
 ---@return RecruitingClubInfo? clubInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.getRecruitingClubInfoFromClubID(clubId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubFinderGUID string
 ---@return RecruitingClubInfo clubInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.getRecruitingClubInfoFromFinderGUID(clubFinderGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param postingID string
 ---@return Enum.ClubFinderClubPostingStatusFlags[] postingFlags
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.getStatusOfPostingFromClubId(postingID) end
 
 ---@return number totalSize
@@ -4367,14 +4372,14 @@ function api.clubFinder.getTotalMatchingCommunityListSize() end
 ---@return number totalSize
 function api.clubFinder.getTotalMatchingGuildListSize() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubFinderGUID string
 ---@return boolean hasAlreadyApplied
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.hasAlreadyAppliedToLinkedPosting(clubFinderGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param postingID string
 ---@return boolean postingDelisted
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.hasPostingBeenDelisted(postingID) end
 
 ---@return boolean isEnabled
@@ -4383,31 +4388,31 @@ function api.clubFinder.isCommunityFinderEnabled() end
 ---@return boolean isEnabled
 function api.clubFinder.isEnabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param flags number
 ---@return boolean isListed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.isListingEnabledFromFlags(flags) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param postingID string
 ---@return boolean postingBanned
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.isPostingBanned(postingID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return boolean isApproved
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.isValidSearchString(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubFinderGUID string
 ---@param isLinkedPosting boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.lookupClubPostingFromClubFinderGUID(clubFinderGUID, isLinkedPosting) end
 
 ---@return RecruitingClubInfo[]? inviteList
 function api.clubFinder.playerGetClubInvitationList() end
 
----@param type Enum.ClubFinderRequestType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param type Enum.ClubFinderRequestType
 function api.clubFinder.playerRequestPendingClubsList(type) end
 
 ---@return RecruitingClubInfo[] info
@@ -4416,6 +4421,7 @@ function api.clubFinder.playerReturnPendingCommunitiesList() end
 ---@return RecruitingClubInfo[] info
 function api.clubFinder.playerReturnPendingGuildsList() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param clubId string
 ---@param itemLevelRequirement number
 ---@param name string
@@ -4425,7 +4431,6 @@ function api.clubFinder.playerReturnPendingGuildsList() end
 ---@param type Enum.ClubFinderRequestType
 ---@param crossFaction? boolean
 ---@return boolean succesful
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.clubFinder.postClub(
     clubId,
     itemLevelRequirement,
@@ -4438,41 +4443,42 @@ function api.clubFinder.postClub(
 )
 end
 
----@param type Enum.ClubFinderRequestType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param type Enum.ClubFinderRequestType
 function api.clubFinder.requestApplicantList(type) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param guildListRequested boolean
 ---@param searchString string
 ---@param specIDs number[]
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.clubFinder.requestClubsList(guildListRequested, searchString, specIDs) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param clubFinderGUID string
 ---@param comment string
 ---@param specIDs number[]
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.clubFinder.requestMembershipToClub(clubFinderGUID, comment, specIDs) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param startingIndex number
 ---@param pageSize number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.requestNextCommunityPage(startingIndex, pageSize) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param startingIndex number
 ---@param pageSize number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.requestNextGuildPage(startingIndex, pageSize) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubId string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.requestPostingInformationFromClubId(clubId) end
 
 function api.clubFinder.requestSubscribedClubPostingIDs() end
 
 function api.clubFinder.resetClubPostingMapCache() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param clubFinderGUID string
 ---@param playerGUID string
 ---@param shouldAccept boolean
@@ -4480,7 +4486,6 @@ function api.clubFinder.resetClubPostingMapCache() end
 ---@param playerName string
 ---@param forceAccept boolean
 ---@param reported? boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.clubFinder.respondToApplicant(
     clubFinderGUID,
     playerGUID,
@@ -4492,9 +4497,9 @@ function api.clubFinder.respondToApplicant(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubId string
 ---@return ClubFinderApplicantInfo[] info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.returnClubApplicantList(clubId) end
 
 ---@return RecruitingClubInfo[] recruitingClubs
@@ -4503,38 +4508,38 @@ function api.clubFinder.returnMatchingCommunityList() end
 ---@return RecruitingClubInfo[] recruitingClubs
 function api.clubFinder.returnMatchingGuildList() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubId string
 ---@return ClubFinderApplicantInfo[] info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.returnPendingClubApplicantList(clubId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubFinderGUID string
 ---@param playerGUID string
 ---@param applicantType Enum.ClubFinderRequestType
 ---@param name string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.sendChatWhisper(clubFinderGUID, playerGUID, applicantType, name) end
 
----@param value number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param value number
 function api.clubFinder.setAllRecruitmentSettings(value) end
 
----@param localeFlags number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param localeFlags number
 function api.clubFinder.setPlayerApplicantLocaleFlags(localeFlags) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index number
 ---@param checked boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.setPlayerApplicantSettings(index, checked) end
 
----@param locale number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param locale number
 function api.clubFinder.setRecruitmentLocale(locale) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index number
 ---@param checked boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.clubFinder.setRecruitmentSettings(index, checked) end
 
 ---@return boolean shouldShow
@@ -4546,28 +4551,28 @@ api.colorOverrides = {}
 
 function api.colorOverrides.clearColorOverrides() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param quality Enum.ItemQuality
 ---@return colorRGBA color
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.colorOverrides.getColorForQuality(quality) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param overrideType Enum.ColorOverride
 ---@return ColorOverrideInfo? overrideInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.colorOverrides.getColorOverrideInfo(overrideType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param quality Enum.ItemQuality
 ---@return colorRGBA color
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.colorOverrides.getDefaultColorForQuality(quality) end
 
----@param overrideType Enum.ColorOverride
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param overrideType Enum.ColorOverride
 function api.colorOverrides.removeColorOverride(overrideType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param overrideType Enum.ColorOverride
 ---@param color colorRGBA
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.colorOverrides.setColorOverride(overrideType, color) end
 
 ---Wraps `C_ColorUtil`.
@@ -4575,149 +4580,149 @@ function api.colorOverrides.setColorOverride(overrideType, color) end
 api.colorUtil = {}
 
 ---Converts an unpacked HSL color to HSV.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param hslH number
 ---@param hslS number
 ---@param hslL number
 ---@return number hsvH
 ---@return number hsvS
 ---@return number hsvV
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.colorUtil.convertHSLToHSV(hslH, hslS, hslL) end
 
 ---Converts an unpacked HSV color to HSL.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param hsvH number
 ---@param hsvS number
 ---@param hsvV number
 ---@return number hslH
 ---@return number hslS
 ---@return number hslL
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.colorUtil.convertHSVToHSL(hsvH, hsvS, hsvV) end
 
 ---Converts an unpacked HSV color to RGB.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param hsvH number
 ---@param hsvS number
 ---@param hsvV number
 ---@return number rgbR
 ---@return number rgbG
 ---@return number rgbB
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.colorUtil.convertHSVToRGB(hsvH, hsvS, hsvV) end
 
 ---Converts an unpacked RGB color to HSV. For achromatic inputs, the returned hue will be -1.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param rgbR number
 ---@param rgbG number
 ---@param rgbB number
 ---@return number hsvH
 ---@return number hsvS
 ---@return number hsvV
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.colorUtil.convertRGBToHSV(rgbR, rgbG, rgbB) end
 
 ---Generates a hex color code suitable for use in text color code markup.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param color colorRGB
 ---@return string textColorCode
----Restrictions: secretArguments=AllowedWhenTainted
 function api.colorUtil.generateTextColorCode(color) end
 
 ---Wraps a given string with color code markup.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@param color colorRGB
 ---@return string coloredText
----Restrictions: secretArguments=AllowedWhenTainted
 function api.colorUtil.wrapTextInColor(text, color) end
 
 ---Wraps a given string with color code markup.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@param textColorCode string
 ---@return string coloredText
----Restrictions: secretArguments=AllowedWhenTainted
 function api.colorUtil.wrapTextInColorCode(text, textColorCode) end
 
 ---Wraps `C_CombatAudioAlert`.
 ---@class wow.beta.api.combatAudioAlert
 api.combatAudioAlert = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category Enum.CombatAudioAlertCategory
 ---@return number voice
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatAudioAlert.getCategoryVoice(category) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category Enum.CombatAudioAlertCategory
 ---@return number volume
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatAudioAlert.getCategoryVolume(category) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit Enum.CombatAudioAlertUnit
 ---@param alertType Enum.CombatAudioAlertType
 ---@return number formatVal
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatAudioAlert.getFormatSetting(unit, alertType) end
 
 ---@return number speed
 function api.combatAudioAlert.getSpeakerSpeed() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param setting Enum.CombatAudioAlertSpecSetting
 ---@return number value
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatAudioAlert.getSpecSetting(setting) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param throttleType Enum.CombatAudioAlertThrottle
 ---@return number throttle
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatAudioAlert.getThrottle(throttleType) end
 
 ---@return boolean isEnabled
 function api.combatAudioAlert.isEnabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category Enum.CombatAudioAlertCategory
 ---@param newVal number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatAudioAlert.setCategoryVoice(category, newVal) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category Enum.CombatAudioAlertCategory
 ---@param newVal number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatAudioAlert.setCategoryVolume(category, newVal) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit Enum.CombatAudioAlertUnit
 ---@param alertType Enum.CombatAudioAlertType
 ---@param newVal number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatAudioAlert.setFormatSetting(unit, alertType, newVal) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param newVal number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatAudioAlert.setSpeakerSpeed(newVal) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param setting Enum.CombatAudioAlertSpecSetting
 ---@param newVal number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatAudioAlert.setSpecSetting(setting, newVal) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param throttleType Enum.CombatAudioAlertThrottle
 ---@param newVal number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatAudioAlert.setThrottle(throttleType, newVal) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param text string
 ---@param category Enum.CombatAudioAlertCategory
 ---@param allowOverlap? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatAudioAlert.speakText(text, category, allowOverlap) end
 
 ---Wraps `C_CombatLog`.
 ---@class wow.beta.api.combatLog
 api.combatLog = {}
 
----@param filterSettings any
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param filterSettings any
 function api.combatLog.applyFilterSettings(filterSettings) end
 
 ---@return boolean enabled
@@ -4725,10 +4730,10 @@ function api.combatLog.areFilteredEventsEnabled() end
 
 function api.combatLog.clearEntries() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mask Enum.CombatLogObject
 ---@param flags Enum.CombatLogObject
 ---@return boolean matches
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.combatLog.doesObjectMatchFilter(mask, flags) end
 
 ---@return number retentionTime
@@ -4742,16 +4747,16 @@ function api.combatLog.isCombatLogRestricted() end
 
 function api.combatLog.refilterEntries() end
 
----@param retentionTime number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param retentionTime number
 function api.combatLog.setEntryRetentionTime(retentionTime) end
 
----@param enabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled boolean
 function api.combatLog.setFilteredEventsEnabled(enabled) end
 
----@param messageLimit number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param messageLimit number
 function api.combatLog.setMessageLimit(messageLimit) end
 
 ---Wraps `C_CombatLogInternal`.
@@ -4770,12 +4775,12 @@ function api.combatLogSecure.addEventFilter() end
 ---Restrictions: hasRestrictions
 function api.combatLogSecure.clearEventFilters() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param message string
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param order Enum.CombatLogMessageOrder
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.combatLogSecure.createCombatLogMessage(message, colorR, colorG, colorB, order) end
 
 ---Restrictions: hasRestrictions
@@ -4784,23 +4789,23 @@ function api.combatLogSecure.getCurrentEntryInfo() end
 ---Restrictions: hasRestrictions
 function api.combatLogSecure.getCurrentEventInfo() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param ignoreFilter? boolean
 ---@return number count
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.combatLogSecure.getEntryCount(ignoreFilter) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param ignoreFilter? boolean
 ---@return boolean isValidEntry
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.combatLogSecure.seekToNewestEntry(ignoreFilter) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param ignoreFilter? boolean
 ---@return boolean isValidEntry
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.combatLogSecure.seekToPreviousEntry(ignoreFilter) end
 
----@return boolean shouldShow
 ---Restrictions: hasRestrictions
+---@return boolean shouldShow
 function api.combatLogSecure.shouldShowCurrentEntry() end
 
 ---Wraps `C_CombatText`.
@@ -4813,43 +4818,43 @@ function api.combatText.getActiveUnit() end
 ---Restrictions: SecretReturns
 function api.combatText.getCurrentEventInfo() end
 
----@param unitToken string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param unitToken string
 function api.combatText.setActiveUnit(unitToken) end
 
 ---Wraps `C_Commentator`.
 ---@class wow.beta.api.commentator
 api.commentator = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerName string
 ---@param overrideName string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.addPlayerOverrideName(playerName, overrideName) end
 
----@param spellIDs number[]
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
+---@param spellIDs number[]
 function api.commentator.addTrackedDefensiveAuras(spellIDs) end
 
----@param spellIDs number[]
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
+---@param spellIDs number[]
 function api.commentator.addTrackedOffensiveAuras(spellIDs) end
 
 ---@return boolean teamsAreSwapped
 function api.commentator.areTeamsSwapped() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerName string
 ---@param teamName string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.assignPlayerToTeam(playerName, teamName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerName string[]
 ---@param teamName string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.assignPlayersToTeam(playerName, teamName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param teamIndex integer
 ---@param teamName string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.assignPlayersToTeamInCurrentInstance(teamIndex, teamName) end
 
 ---@return boolean canUseCommentatorCheats
@@ -4861,8 +4866,8 @@ function api.commentator.clearCameraTarget() end
 ---Restrictions: RequiresActiveCommentator
 function api.commentator.clearFollowTarget() end
 
----@param lookAtIndex? integer
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
+---@param lookAtIndex? integer
 function api.commentator.clearLookAtTarget(lookAtIndex) end
 
 ---Restrictions: RequiresCommentator
@@ -4871,52 +4876,53 @@ function api.commentator.enterInstance() end
 ---Restrictions: RequiresCommentator
 function api.commentator.exitInstance() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param unitToken string
 ---@return integer? playerIndex
 ---@return integer? teamIndex
 ---@return boolean? isPet
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.findSpectatedUnit(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param teamIndex integer
 ---@return string? teamName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.findTeamNameInCurrentInstance(teamIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerNames string[]
 ---@return string? teamName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.findTeamNameInDirectory(playerNames) end
 
 function api.commentator.flushCommentatorHistory() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param factionIndex integer
 ---@param playerIndex integer
 ---@param forceInstantTransition? boolean
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.followPlayer(factionIndex, playerIndex, forceInstantTransition) end
 
----@param token string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
+---@param token string
 function api.commentator.followUnit(token) end
 
 ---Restrictions: RequiresActiveCommentator
 function api.commentator.forceFollowTransition() end
 
+---Restrictions: RequiresActiveCommentator
 ---@return integer teamIndex
 ---@return integer playerIndex
----Restrictions: RequiresActiveCommentator
 function api.commentator.getAdditionalCameraWeight() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param unitToken string
 ---@return number? weight
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getAdditionalCameraWeightByToken(unitToken) end
 
----@return NameOverrideEntry[] nameEntries
 ---Restrictions: RequiresActiveCommentator
+---@return NameOverrideEntry[] nameEntries
 function api.commentator.getAllPlayerOverrideNames() end
 
+---Restrictions: RequiresActiveCommentator
 ---@return number? xPos
 ---@return number? yPos
 ---@return number? zPos
@@ -4924,16 +4930,15 @@ function api.commentator.getAllPlayerOverrideNames() end
 ---@return number? pitch
 ---@return number? roll
 ---@return number? fov
----Restrictions: RequiresActiveCommentator
 function api.commentator.getCamera() end
 
 ---@return boolean isColliding
 function api.commentator.getCameraCollision() end
 
+---Restrictions: RequiresActiveCommentator
 ---@return number? xPos
 ---@return number? yPos
 ---@return number? zPos
----Restrictions: RequiresActiveCommentator
 function api.commentator.getCameraPosition() end
 
 ---Restrictions: RequiresActiveCommentator
@@ -4942,8 +4947,8 @@ function api.commentator.getCombatEventInfo() end
 ---@return CommentatorHistory history
 function api.commentator.getCommentatorHistory() end
 
----@return number? mapID
 ---Restrictions: RequiresCommentator
+---@return number? mapID
 function api.commentator.getCurrentMapID() end
 
 ---@return number percentage
@@ -4964,11 +4969,12 @@ function api.commentator.getHardlockWeight() end
 ---@return number angle
 function api.commentator.getHorizontalAngleThresholdToSmooth() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param trackedSpellID number
 ---@return number indirectSpellID
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getIndirectSpellID(trackedSpellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresCommentator
 ---@param mapIndex integer
 ---@param instanceIndex integer
 ---@return number? mapID
@@ -4976,18 +4982,17 @@ function api.commentator.getIndirectSpellID(trackedSpellID) end
 ---@return number? status
 ---@return number? instanceIDLow
 ---@return number? instanceIDHigh
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresCommentator
 function api.commentator.getInstanceInfo(mapIndex, instanceIndex) end
 
 ---@return number amount
 function api.commentator.getLookAtLerpAmount() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresCommentator
 ---@param mapIndex integer
 ---@return number? teamSize
 ---@return number? minLevel
 ---@return number? maxLevel
 ---@return number? numInstances
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresCommentator
 function api.commentator.getMapInfo(mapIndex) end
 
 ---@return integer seconds
@@ -5017,105 +5022,106 @@ function api.commentator.getMsToSmoothVerticalChange() end
 ---@return number numMaps
 function api.commentator.getNumMaps() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param factionIndex integer
 ---@return number? numPlayers
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getNumPlayers(factionIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param teamName1 string
 ---@param teamName2 string
 ---@return CommentatorSeries data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.getOrCreateSeries(teamName1, teamName2) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param spellID number
 ---@return number? startTime
 ---@return number? duration
 ---@return boolean? enable
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerAuraInfo(teamIndex, playerIndex, spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param token string
 ---@param spellID number
 ---@return number? startTime
 ---@return number? duration
 ---@return boolean? enable
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerAuraInfoByUnit(token, spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param spellID number
 ---@return number? startTime
 ---@return number? duration
 ---@return boolean? enable
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerCooldownInfo(teamIndex, playerIndex, spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param unitToken string
 ---@param spellID number
 ---@return number? startTime
 ---@return number? duration
 ---@return boolean? enable
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerCooldownInfoByUnit(unitToken, spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@return number? spellID
 ---@return number? expiration
 ---@return number? duration
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerCrowdControlInfo(teamIndex, playerIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param token string
 ---@return number? spellID
 ---@return number? expiration
 ---@return number? duration
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerCrowdControlInfoByUnit(token) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@return CommentatorPlayerData? info
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerData(teamIndex, playerIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@return boolean hasFlag
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerFlagInfo(teamIndex, playerIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param unitToken string
 ---@return boolean hasFlag
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerFlagInfoByUnit(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param itemID number
 ---@return number? startTime
 ---@return number? duration
 ---@return boolean? enable
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerItemCooldownInfo(teamIndex, playerIndex, itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param unitToken string
 ---@param itemID number
 ---@return number? startTime
 ---@return number? duration
 ---@return boolean? enable
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerItemCooldownInfoByUnit(unitToken, itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param originalName string
 ---@return string? overrideName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.getPlayerOverrideName(originalName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param spellID number
@@ -5123,23 +5129,22 @@ function api.commentator.getPlayerOverrideName(originalName) end
 ---@return number? maxCharges
 ---@return number? startTime
 ---@return number? duration
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerSpellCharges(teamIndex, playerIndex, spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param unitToken string
 ---@param spellID number
 ---@return number? charges
 ---@return number? maxCharges
 ---@return number? startTime
 ---@return number? duration
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getPlayerSpellChargesByUnit(unitToken, spellID) end
 
 ---@return number amount
 function api.commentator.getPositionLerpAmount() end
 
----@return boolean enabled
 ---Restrictions: RequiresActiveCommentator
+---@return boolean enabled
 function api.commentator.getSmoothFollowTransitioning() end
 
 ---@return number weight
@@ -5148,59 +5153,59 @@ function api.commentator.getSoftlockWeight() end
 ---@return number factor
 function api.commentator.getSpeedFactor() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapID number
 ---@return vector3? pos
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.getStartLocation(mapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param teamIndex integer
 ---@return colorRGB color
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.getTeamColor(teamIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return colorRGB color
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.getTeamColorByUnit(unitToken) end
 
 ---@return number? timeLeft
 function api.commentator.getTimeLeftInMatch() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param indirectSpellID number
 ---@return number trackedSpellID
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getTrackedSpellID(indirectSpellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param category Enum.TrackedSpellCategory
 ---@return number[]? spells
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getTrackedSpells(teamIndex, playerIndex, category) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param unitToken string
 ---@param category Enum.TrackedSpellCategory
 ---@return number[]? spells
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getTrackedSpellsByUnit(unitToken, category) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param unitToken string
 ---@return CommentatorUnitData data
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.getUnitData(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresCommentator
 ---@param listID number
 ---@return string? name
 ---@return number? minPlayers
 ---@return number? maxPlayers
 ---@return boolean? isArena
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresCommentator
 function api.commentator.getWargameInfo(listID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param token string
 ---@return boolean hasOffensiveAura
 ---@return boolean hasDefensiveAura
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.hasTrackedAuras(token) end
 
 ---@return boolean isSmartCameraLocked
@@ -5209,56 +5214,56 @@ function api.commentator.isSmartCameraLocked() end
 ---@return boolean isSpectating
 function api.commentator.isSpectating() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param spellID number
 ---@return boolean isDefensiveTrigger
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.isTrackedDefensiveAura(spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param spellID number
 ---@return boolean isOffensiveTrigger
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.isTrackedOffensiveAura(spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param spellID number
 ---@param category Enum.TrackedSpellCategory
 ---@return boolean isTracked
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.isTrackedSpell(teamIndex, playerIndex, spellID, category) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param unitToken string
 ---@param spellID number
 ---@param category Enum.TrackedSpellCategory
 ---@return boolean isTracked
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.isTrackedSpellByUnit(unitToken, spellID, category) end
 
 ---@return boolean isUsingSmartCamera
 function api.commentator.isUsingSmartCamera() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param factionIndex integer
 ---@param playerIndex integer
 ---@param lookAtIndex? integer
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.lookAtPlayer(factionIndex, playerIndex, lookAtIndex) end
 
 function api.commentator.removeAllOverrideNames() end
 
----@param originalPlayerName string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param originalPlayerName string
 function api.commentator.removePlayerOverrideName(originalPlayerName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.requestPlayerCooldownInfo(teamIndex, playerIndex) end
 
 function api.commentator.resetFoVTarget() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param teamName1 string
 ---@param teamName2 string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.resetSeriesScores(teamName1, teamName2) end
 
 function api.commentator.resetSettings() end
@@ -5266,30 +5271,31 @@ function api.commentator.resetSettings() end
 ---Restrictions: RequiresActiveCommentator
 function api.commentator.resetTrackedAuras() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param weight number
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.setAdditionalCameraWeight(teamIndex, playerIndex, weight) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param unitToken string
 ---@param weight number
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.setAdditionalCameraWeightByToken(unitToken, weight) end
 
----@param spellIDs number[]
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param spellIDs number[]
 function api.commentator.setBlocklistedAuras(spellIDs) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID number
 ---@param spellIDs number[]
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.setBlocklistedCooldowns(specID, spellIDs) end
 
----@param itemIDs number[]
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemIDs number[]
 function api.commentator.setBlocklistedItemCooldowns(itemIDs) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param xPos number
 ---@param yPos number
 ---@param zPos number
@@ -5297,161 +5303,160 @@ function api.commentator.setBlocklistedItemCooldowns(itemIDs) end
 ---@param pitch number
 ---@param roll number
 ---@param fov number
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.setCamera(xPos, yPos, zPos, yaw, pitch, roll, fov) end
 
----@param collide boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
+---@param collide boolean
 function api.commentator.setCameraCollision(collide) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param xPos number
 ---@param yPos number
 ---@param zPos number
 ---@param snapToLocation boolean
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.setCameraPosition(xPos, yPos, zPos, snapToLocation) end
 
----@param enableCheats boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enableCheats boolean
 function api.commentator.setCheatsEnabled(enableCheats) end
 
----@param history CommentatorHistory
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param history CommentatorHistory
 function api.commentator.setCommentatorHistory(history) end
 
----@param distance number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param distance number
 function api.commentator.setDistanceBeforeForcedHorizontalConvergence(distance) end
 
----@param ms number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param ms number
 function api.commentator.setDurationToForceHorizontalConvergence(ms) end
 
----@param excludeDistance number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param excludeDistance number
 function api.commentator.setExcludeDistance(excludeDistance) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 ---@param elasticSpeed number
 ---@param minSpeed number
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
 function api.commentator.setFollowCameraSpeeds(elasticSpeed, minSpeed) end
 
----@param weight number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param weight number
 function api.commentator.setHardlockWeight(weight) end
 
----@param angle number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param angle number
 function api.commentator.setHorizontalAngleThresholdToSmooth(angle) end
 
----@param amount number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param amount number
 function api.commentator.setLookAtLerpAmount(amount) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresCommentator
 ---@param mapIndex integer
 ---@param instanceIndex integer
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresCommentator
 function api.commentator.setMapAndInstanceIndex(mapIndex, instanceIndex) end
 
----@param disabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param disabled boolean
 function api.commentator.setMouseDisabled(disabled) end
 
----@param newSpeed number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param newSpeed number
 function api.commentator.setMoveSpeed(newSpeed) end
 
----@param ms number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param ms number
 function api.commentator.setMsToHoldForHorizontalMovement(ms) end
 
----@param ms number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param ms number
 function api.commentator.setMsToHoldForVerticalMovement(ms) end
 
----@param ms number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param ms number
 function api.commentator.setMsToSmoothHorizontalChange(ms) end
 
----@param ms number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param ms number
 function api.commentator.setMsToSmoothVerticalChange(ms) end
 
----@param amount number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param amount number
 function api.commentator.setPositionLerpAmount(amount) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID number
 ---@param spellIDs number[]
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.setRequestedDebuffCooldowns(specID, spellIDs) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID number
 ---@param spellIDs number[]
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.setRequestedDefensiveCooldowns(specID, spellIDs) end
 
----@param itemIDs number[]
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemIDs number[]
 function api.commentator.setRequestedItemCooldowns(itemIDs) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID number
 ---@param spellIDs number[]
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.setRequestedOffensiveCooldowns(specID, spellIDs) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param teamName1 string
 ---@param teamName2 string
 ---@param scoringTeamName string
 ---@param score number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.setSeriesScore(teamName1, teamName2, scoringTeamName, score) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param teamName1 string
 ---@param teamName2 string
 ---@param score1 number
 ---@param score2 number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.setSeriesScores(teamName1, teamName2, score1, score2) end
 
----@param locked boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param locked boolean
 function api.commentator.setSmartCameraLocked(locked) end
 
----@param enabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
+---@param enabled boolean
 function api.commentator.setSmoothFollowTransitioning(enabled) end
 
----@param weight number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param weight number
 function api.commentator.setSoftlockWeight(weight) end
 
----@param factor number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param factor number
 function api.commentator.setSpeedFactor(factor) end
 
----@param offset number
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresActiveCommentator
+---@param offset number
 function api.commentator.setTargetHeightOffset(offset) end
 
----@param useSmartCamera boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param useSmartCamera boolean
 function api.commentator.setUseSmartCamera(useSmartCamera) end
 
 ---Restrictions: RequiresActiveCommentator
 function api.commentator.snapCameraLookAtPoint() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return boolean spellUsesItemCharges
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.commentator.spellUsesItemCharges(spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresCommentator
 ---@param listID number
 ---@param teamSize number
 ---@param tournamentRules boolean
 ---@param teamOneCaptain string
 ---@param teamTwoCaptain string
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresCommentator
 function api.commentator.startWargame(
     listID,
     teamSize,
@@ -5465,8 +5470,8 @@ function api.commentator.swapTeamSides() end
 
 function api.commentator.toggleCheats() end
 
----@param targetPlayer? string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresCommentator
+---@param targetPlayer? string
 function api.commentator.updateMapInfo(targetPlayer) end
 
 ---Restrictions: RequiresCommentator
@@ -5474,14 +5479,14 @@ function api.commentator.updatePlayerInfo() end
 
 function api.commentator.zoomIn() end
 
----@param zoomAmount? number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param zoomAmount? number
 function api.commentator.zoomInPosition(zoomAmount) end
 
 function api.commentator.zoomOut() end
 
----@param zoomAmount? number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param zoomAmount? number
 function api.commentator.zoomOutPosition(zoomAmount) end
 
 ---Wraps `C_CompactUnitFrames`.
@@ -5492,23 +5497,23 @@ api.compactUnitFrames = {}
 ---@class wow.beta.api.configurationWarnings
 api.configurationWarnings = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configurationWarning Enum.ConfigurationWarning
 ---@return boolean hasSeenConfigurationWarning
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.configurationWarnings.getConfigurationWarningSeen(configurationWarning) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configurationWarning Enum.ConfigurationWarning
 ---@return string? configurationWarningString
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.configurationWarnings.getConfigurationWarningString(configurationWarning) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param includeSeenWarnings? boolean
 ---@return Enum.ConfigurationWarning[] configurationWarnings
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.configurationWarnings.getConfigurationWarnings(includeSeenWarnings) end
 
----@param configurationWarning Enum.ConfigurationWarning
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param configurationWarning Enum.ConfigurationWarning
 function api.configurationWarnings.setConfigurationWarningSeen(configurationWarning) end
 
 ---Wraps the global functions of the `ConnectionScript` system.
@@ -5552,31 +5557,31 @@ function api.connectionScript.selectedRealmName() end
 ---@class wow.beta.api.console
 api.console = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param firstString string
 ---@param secondString string
 ---@return number distance
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.console.calculateStringEditDistance(firstString, secondString) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param command string
 ---@param addToHistory? boolean
 ---@param prefix? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.console.echo(command, addToHistory, prefix) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param command string
 ---@param addToHistory? boolean
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.console.exec(command, addToHistory) end
 
 ---@return ConsoleCommandInfo[] commands
 function api.console.getAllCommands() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorType Enum.ConsoleColorType
 ---@return colorRGB color
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.console.getColorFromType(colorType) end
 
 ---@return number fontHeightInPixels
@@ -5585,55 +5590,55 @@ function api.console.getFontHeight() end
 ---@return boolean consoleIsActive
 function api.console.isActive() end
 
----@param partialCommandText string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param partialCommandText string
 function api.console.printAllMatchingCommands(partialCommandText) end
 
----@param keystring string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param keystring string
 function api.console.setConsoleKey(keystring) end
 
----@param fontHeightInPixels number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fontHeightInPixels number
 function api.console.setFontHeight(fontHeightInPixels) end
 
 ---Wraps `C_ConsoleScriptCollection`.
 ---@class wow.beta.api.consoleScriptCollection
 api.consoleScriptCollection = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param collectionID number
 ---@return ConsoleScriptCollectionData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.consoleScriptCollection.getCollectionDataByID(collectionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param collectionTag string
 ---@return ConsoleScriptCollectionData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.consoleScriptCollection.getCollectionDataByTag(collectionTag) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param collectionID number
 ---@return ConsoleScriptCollectionElementData[] elementIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.consoleScriptCollection.getElements(collectionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param consoleScriptID number
 ---@return ConsoleScriptData data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.consoleScriptCollection.getScriptData(consoleScriptID) end
 
 ---Wraps `C_Container`.
 ---@class wow.beta.api.container
 api.container = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerID Enum.BagIndex
 ---@return integer? inventoryID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.containerIDToInventoryID(containerID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@param isEquipped? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.containerRefundItemPurchase(containerIndex, slotIndex, isEquipped) end
 
 ---@return boolean isDisabled
@@ -5642,71 +5647,71 @@ function api.container.getBackpackAutosortDisabled() end
 ---@return boolean isDisabled
 function api.container.getBackpackSellJunkDisabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bagIndex Enum.BagIndex
 ---@return string name
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getBagName(bagIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bagIndex Enum.BagIndex
 ---@param flag Enum.BagSlotFlags
 ---@return boolean isSet
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getBagSlotFlag(bagIndex, flag) end
 
 ---@return boolean isDisabled
 function api.container.getBankAutosortDisabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@return integer[]? freeSlots
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerFreeSlots(containerIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@return number startTime
 ---@return number duration
 ---@return number enable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerItemCooldown(containerIndex, slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@return number? durability
 ---@return number? maxDurability
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerItemDurability(containerIndex, slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@return boolean inSet
 ---@return string setList
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerItemEquipmentSetInfo(containerIndex, slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@return number? containerID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerItemID(containerIndex, slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@return ContainerItemInfo? containerInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerItemInfo(containerIndex, slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@return string itemLink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerItemLink(containerIndex, slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@param itemIndex integer
 ---@param isEquipped boolean
 ---@return ItemPurchaseCurrency? currencyInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerItemPurchaseCurrency(
     containerIndex,
     slotIndex,
@@ -5715,19 +5720,19 @@ function api.container.getContainerItemPurchaseCurrency(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@param isEquipped boolean
 ---@return ItemPurchaseInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerItemPurchaseInfo(containerIndex, slotIndex, isEquipped) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@param itemIndex integer
 ---@param isEquipped boolean
 ---@return ItemPurchaseItem? itemInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerItemPurchaseItem(
     containerIndex,
     slotIndex,
@@ -5736,31 +5741,31 @@ function api.container.getContainerItemPurchaseItem(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@return ItemQuestInfo questInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerItemQuestInfo(containerIndex, slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bagIndex Enum.BagIndex
 ---@return number numFreeSlots
 ---@return number? bagFamily
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerNumFreeSlots(bagIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@return number numSlots
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getContainerNumSlots(containerIndex) end
 
 ---@return boolean isEnabled
 function api.container.getInsertItemsLeftToRight() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return number? startTime
 ---@return number? duration
 ---@return number? enable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.getItemCooldown(itemID) end
 
 ---@return number maxCurrency
@@ -5769,99 +5774,99 @@ function api.container.getMaxArenaCurrency() end
 ---@return boolean isEnabled
 function api.container.getSortBagsRightToLeft() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@return boolean hasItem
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.hasContainerItem(containerIndex, slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@return boolean isBattlePayItem
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.isBattlePayItem(containerIndex, slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@return boolean isFiltered
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.isContainerFiltered(containerIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.pickupContainerItem(containerIndex, slotIndex) end
 
 ---@return number? itemID
 function api.container.playerHasHearthstone() end
 
----@param disable boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param disable boolean
 function api.container.setBackpackAutosortDisabled(disable) end
 
----@param disable boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param disable boolean
 function api.container.setBackpackSellJunkDisabled(disable) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param texture SimpleTexture
 ---@param bagIndex Enum.BagIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.setBagPortraitTexture(texture, bagIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bagIndex Enum.BagIndex
 ---@param flag Enum.BagSlotFlags
 ---@param isSet boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.setBagSlotFlag(bagIndex, flag, isSet) end
 
----@param disable boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param disable boolean
 function api.container.setBankAutosortDisabled(disable) end
 
----@param enable boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enable boolean
 function api.container.setInsertItemsLeftToRight(enable) end
 
----@param searchString string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param searchString string
 function api.container.setItemSearch(searchString) end
 
----@param enable boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enable boolean
 function api.container.setSortBagsRightToLeft(enable) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.showContainerSellCursor(containerIndex, slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.socketContainerItem(containerIndex, slotIndex) end
 
 function api.container.sortAccountBankBags() end
 
 function api.container.sortBags() end
 
----@param bankType Enum.BankType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param bankType Enum.BankType
 function api.container.sortBank(bankType) end
 
 function api.container.sortBankBags() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@param amount number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.splitContainerItem(containerIndex, slotIndex, amount) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@param unitToken? string
 ---@param bankType? Enum.BankType
 ---@param reagentBankOpen? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.container.useContainerItem(
     containerIndex,
     slotIndex,
@@ -5878,12 +5883,12 @@ function api.container.useHearthstone() end
 ---@class wow.beta.api.contentTracking
 api.contentTracking = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param trackableType Enum.ContentTrackingType
 ---@param trackableID number
 ---@param ignoreWaypoint? boolean
 ---@return Enum.ContentTrackingResult result
 ---@return number? mapID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.getBestMapForTrackable(trackableType, trackableID, ignoreWaypoint) end
 
 ---@return boolean isEnabled
@@ -5892,100 +5897,100 @@ function api.contentTracking.getCollectableSourceTrackingEnabled() end
 ---@return Enum.ContentTrackingType[] collectableSourceTypes
 function api.contentTracking.getCollectableSourceTypes() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.ContentTrackingType
 ---@param id number
 ---@return Enum.ContentTrackingTargetType? targetType
 ---@return number? targetID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.getCurrentTrackingTarget(type, id) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param journalEncounterID number
 ---@return EncounterTrackingInfo? trackingInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.getEncounterTrackingInfo(journalEncounterID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param trackableType Enum.ContentTrackingType
 ---@param trackableID number
 ---@param uiMapID number
 ---@return Enum.ContentTrackingResult result
 ---@return ContentTrackingMapInfo? mapInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.getNextWaypointForTrackable(trackableType, trackableID, uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param targetType Enum.ContentTrackingTargetType
 ---@param targetID number
 ---@param includeHyperlinks? boolean
 ---@return string? objectiveText
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.getObjectiveText(targetType, targetID, includeHyperlinks) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param trackableType Enum.ContentTrackingType
 ---@param trackableID number
 ---@return string? title
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.getTitle(trackableType, trackableID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param trackableType Enum.ContentTrackingType
 ---@param uiMapID number
 ---@return Enum.ContentTrackingResult result
 ---@return ContentTrackingMapInfo[] trackableMapInfos
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.getTrackablesOnMap(trackableType, uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param trackableType Enum.ContentTrackingType
 ---@return number[] entryIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.getTrackedIDs(trackableType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param collectableEntryID number
 ---@return VendorTrackingInfo? vendorTrackingInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.getVendorTrackingInfo(collectableEntryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param trackableType Enum.ContentTrackingType
 ---@param trackableID number
 ---@return string? waypointText
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.getWaypointText(trackableType, trackableID) end
 
 ---If successful, returns if the trackable is either on your current map, or if we're able to
 ---determine a route to that map from your location via waypoints.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param trackableType Enum.ContentTrackingType
 ---@param trackableID number
 ---@return Enum.ContentTrackingResult result
 ---@return boolean isNavigable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.isNavigable(trackableType, trackableID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.ContentTrackingType
 ---@param id number
 ---@return boolean isTrackable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.isTrackable(type, id) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.ContentTrackingType
 ---@param id number
 ---@return boolean isTracking
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.isTracking(type, id) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.ContentTrackingType
 ---@param id number
 ---@return Enum.ContentTrackingError? error
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.startTracking(type, id) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.ContentTrackingType
 ---@param id number
 ---@param stopType Enum.ContentTrackingStopType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.stopTracking(type, id, stopType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.ContentTrackingType
 ---@param id number
 ---@param stopType Enum.ContentTrackingStopType
 ---@return Enum.ContentTrackingError? error
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contentTracking.toggleTracking(type, id, stopType) end
 
 ---Wraps `C_ContributionCollector`.
@@ -5994,123 +5999,123 @@ api.contributionCollector = {}
 
 function api.contributionCollector.close() end
 
----@param contributionID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param contributionID number
 function api.contributionCollector.contribute(contributionID) end
 
 ---@return number contributionID
 function api.contributionCollector.getActive() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@return string[] atlasName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getAtlases(contributionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@return number spellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getBuffs(contributionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@param contributionState Enum.ContributionState
 ---@return ContributionAppearance? appearance
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getContributionAppearance(contributionID, contributionState) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return ContributionMapInfo[] contributionCollectors
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getContributionCollectorsForMap(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@return Enum.ContributionResult result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getContributionResult(contributionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@return string description
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getDescription(contributionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param creatureID number
 ---@return number contributionID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getManagedContributionsForCreatureID(creatureID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@return string name
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getName(contributionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@return number orderIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getOrderIndex(contributionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@return number? currencyID
 ---@return number? currencyAmount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getRequiredContributionCurrency(contributionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@return number? itemID
 ---@return number? itemCount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getRequiredContributionItem(contributionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@return number questID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getRewardQuestID(contributionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@return Enum.ContributionState contributionState
 ---@return number contributionPercentageComplete
 ---@return integer? timeOfNextStateChange
 ---@return integer startTime
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.getState(contributionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@return boolean hasPending
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.hasPendingContribution(contributionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param contributionID number
 ---@return boolean awaitingData
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.contributionCollector.isAwaitingRewardQuestData(contributionID) end
 
 ---Wraps `C_CooldownViewer`.
 ---@class wow.beta.api.cooldownViewer
 api.cooldownViewer = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category Enum.CooldownViewerCategory
 ---@param allowUnlearned? boolean
 ---@return number[] cooldownIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.cooldownViewer.getCooldownViewerCategorySet(category, allowUnlearned) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param cooldownID number
 ---@return CooldownViewerCooldown? cooldownInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.cooldownViewer.getCooldownViewerCooldownInfo(cooldownID) end
 
 ---@return string data
 function api.cooldownViewer.getLayoutData() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param cooldownID number
 ---@return Enum.CooldownViewerAlertEventType[] validAlertTypes
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.cooldownViewer.getValidAlertTypes(cooldownID) end
 
 ---@return boolean isAvailable
 ---@return string failureReason
 function api.cooldownViewer.isCooldownViewerAvailable() end
 
----@param data string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param data string
 function api.cooldownViewer.setLayoutData(data) end
 
 ---Wraps `C_CovenantCallings`.
@@ -6128,9 +6133,9 @@ api.covenantPreview = {}
 
 function api.covenantPreview.closeFromUI() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerChoiceResponseID number
 ---@return CovenantPreviewInfo? previewInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.covenantPreview.getCovenantInfoForPlayerChoiceResponseID(playerChoiceResponseID) end
 
 ---Wraps `C_CovenantSanctumUI`.
@@ -6160,15 +6165,15 @@ function api.covenantSanctumUI.getFeatures() end
 ---@return number level
 function api.covenantSanctumUI.getRenownLevel() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param covenantID number
 ---@return CovenantSanctumRenownLevelInfo[] levels
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.covenantSanctumUI.getRenownLevels(covenantID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param covenantID number
 ---@param renownLevel number
 ---@return CovenantSanctumRenownRewardInfo[] rewards
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.covenantSanctumUI.getRenownRewardsForLevel(covenantID, renownLevel) end
 
 ---@return Enum.GarrTalentFeatureSubtype? sanctumType
@@ -6195,9 +6200,9 @@ api.covenants = {}
 ---@return number covenantID
 function api.covenants.getActiveCovenantID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param covenantID number
 ---@return CovenantData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.covenants.getCovenantData(covenantID) end
 
 ---@return number[] covenantID
@@ -6210,11 +6215,11 @@ api.craftingOrders = {}
 ---@return boolean areNotesDisabled
 function api.craftingOrders.areOrderNotesDisabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineAbilityID number
 ---@param orderType Enum.CraftingOrderType
 ---@param orderDuration Enum.CraftingOrderDuration
 ---@return integer deposit
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.craftingOrders.calculateCraftingOrderPostingFee(
     skillLineAbilityID,
     orderType,
@@ -6222,28 +6227,28 @@ function api.craftingOrders.calculateCraftingOrderPostingFee(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineAbilityID number
 ---@return boolean canOrder
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.craftingOrders.canOrderSkillAbility(skillLineAbilityID) end
 
----@param orderID integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param orderID integer
 function api.craftingOrders.cancelOrder(orderID) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param orderID integer
 ---@param profession Enum.Profession
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.craftingOrders.claimOrder(orderID, profession) end
 
 function api.craftingOrders.closeCrafterCraftingOrders() end
 
 function api.craftingOrders.closeCustomerCraftingOrders() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param orderID integer
 ---@param crafterNote string
 ---@param profession Enum.Profession
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.craftingOrders.fulfillOrder(orderID, crafterNote, profession) end
 
 ---@return CraftingOrderInfo? order
@@ -6261,9 +6266,9 @@ function api.craftingOrders.getCraftingOrderTime() end
 ---@return CraftingOrderCustomerCategory[] categories
 function api.craftingOrders.getCustomerCategories() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param params CraftingOrderCustomerSearchParams
 ---@return CraftingOrderCustomerSearchResults results
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.craftingOrders.getCustomerOptions(params) end
 
 ---@return CraftingOrderInfo[] customerOrders
@@ -6278,9 +6283,9 @@ function api.craftingOrders.getMyOrders() end
 ---@return integer numFavorites
 function api.craftingOrders.getNumFavoriteCustomerOptions() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param profession Enum.Profession
 ---@return CraftingOrderClaimsRemainingInfo claimInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.craftingOrders.getOrderClaimInfo(profession) end
 
 ---@return CraftingOrderPersonalOrdersInfo[] infos
@@ -6289,60 +6294,60 @@ function api.craftingOrders.getPersonalOrdersInfo() end
 ---@return boolean hasFavorites
 function api.craftingOrders.hasFavoriteCustomerOptions() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@return boolean favorited
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.craftingOrders.isCustomerOptionFavorited(recipeID) end
 
----@param request CraftingOrderRequestMyOrdersInfo
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param request CraftingOrderRequestMyOrdersInfo
 function api.craftingOrders.listMyOrders(request) end
 
 function api.craftingOrders.openCrafterCraftingOrders() end
 
 function api.craftingOrders.openCustomerCraftingOrders() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param orderID integer
 ---@return boolean recraftable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.craftingOrders.orderCanBeRecrafted(orderID) end
 
 function api.craftingOrders.parseCustomerOptions() end
 
----@param orderInfo NewCraftingOrderInfo
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param orderInfo NewCraftingOrderInfo
 function api.craftingOrders.placeNewOrder(orderInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param orderID integer
 ---@param crafterNote string
 ---@param profession Enum.Profession
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.craftingOrders.rejectOrder(orderID, crafterNote, profession) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param orderID integer
 ---@param profession Enum.Profession
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.craftingOrders.releaseOrder(orderID, profession) end
 
----@param request CraftingOrderRequestInfo
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param request CraftingOrderRequestInfo
 function api.craftingOrders.requestCrafterOrders(request) end
 
----@param request CraftingOrderRequestInfo
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param request CraftingOrderRequestInfo
 function api.craftingOrders.requestCustomerOrders(request) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param favorited boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.craftingOrders.setCustomerOptionFavorited(recipeID, favorited) end
 
 ---@return boolean showTab
 function api.craftingOrders.shouldShowCraftingOrderTab() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineID number
 ---@return boolean hasOrders
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.craftingOrders.skillLineHasOrders(skillLineID) end
 
 function api.craftingOrders.updateIgnoreList() end
@@ -6351,69 +6356,69 @@ function api.craftingOrders.updateIgnoreList() end
 ---@class wow.beta.api.creatureInfo
 api.creatureInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param classID number
 ---@return ClassInfo? classInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.creatureInfo.getClassInfo(classID) end
 
 ---@return number[] creatureFamilyIDs
 function api.creatureInfo.getCreatureFamilyIDs() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param creatureFamilyID number
 ---@return CreatureFamilyInfo? creatureFamilyInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.creatureInfo.getCreatureFamilyInfo(creatureFamilyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param creatureGUID string
 ---@return number? creatureID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.creatureInfo.getCreatureID(creatureGUID) end
 
 ---@return number[] creatureTypeIDs
 function api.creatureInfo.getCreatureTypeIDs() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param creatureTypeID number
 ---@return CreatureTypeInfo? creatureTypeInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.creatureInfo.getCreatureTypeInfo(creatureTypeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param raceID number
 ---@return FactionInfo? factionInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.creatureInfo.getFactionInfo(raceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param raceID number
 ---@return RaceInfo? raceInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.creatureInfo.getRaceInfo(raceID) end
 
 ---Wraps `C_CurrencyInfo`.
 ---@class wow.beta.api.currencyInfo
 api.currencyInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@return boolean canTransferCurrency
 ---@return Enum.AccountCurrencyTransferResult? failureReason
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.canTransferCurrency(currencyID) end
 
 ---@return boolean doesCurrentFilterRequireAccountCurrencyData
 function api.currencyInfo.doesCurrentFilterRequireAccountCurrencyData() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@return boolean? warModeApplies
 ---@return boolean? limitOncePerTooltip
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.doesWarModeBonusApply(currencyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@param expand boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.expandCurrencyList(index, expand) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@return CharacterCurrencyData[]? accountCurrencyData
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.fetchCurrencyDataFromAccountCharacters(currencyID) end
 
 ---@return CurrencyTransferTransaction[] currencyTransferTransactions
@@ -6422,83 +6427,83 @@ function api.currencyInfo.fetchCurrencyTransferTransactions() end
 ---@return number azeriteCurrencyID
 function api.currencyInfo.getAzeriteCurrencyID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return BackpackCurrencyInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getBackpackCurrencyInfo(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyType number
 ---@param quantity? number
 ---@return CurrencyDisplayInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getBasicCurrencyInfo(currencyType, quantity) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param amount integer
 ---@return integer result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getCoinIcon(amount) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param amount integer
 ---@param separator? string
 ---@return string result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getCoinText(amount, separator) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param amount integer
 ---@param fontHeight? number
 ---@return string result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getCoinTextureString(amount, fontHeight) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@param quantity number
 ---@return number? totalQuantityConsumed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getCostToTransferCurrency(currencyID, quantity) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyType number
 ---@param quantity number
 ---@return CurrencyDisplayInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getCurrencyContainerInfo(currencyType, quantity) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type number
 ---@return string description
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getCurrencyDescription(type) end
 
 ---@return Enum.CurrencyFilterType filterType
 function api.currencyInfo.getCurrencyFilter() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyLink string
 ---@return number currencyID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getCurrencyIDFromLink(currencyLink) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type number
 ---@return CurrencyInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getCurrencyInfo(type) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param link string
 ---@return CurrencyInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getCurrencyInfoFromLink(link) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type number
 ---@param amount? number
 ---@return string link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getCurrencyLink(type, amount) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return CurrencyInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getCurrencyListInfo(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return string link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getCurrencyListLink(index) end
 
 ---@return number currencyListSize
@@ -6509,21 +6514,21 @@ function api.currencyInfo.getDragonIslesSuppliesCurrencyID() end
 
 ---Gets the faction ID for currency that is immediately converted into reputation with that
 ---faction instead.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@return number? factionID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getFactionGrantedByCurrency(currencyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@param requestedQuantity number
 ---@return number? maxTransferableAmount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getMaxTransferableAmountFromQuantity(currencyID, requestedQuantity) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@param includeAccountWide? boolean
 ---@return PlayerCurrencyCategoryInfo info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.getPlayerCurrencyCategoryInfo(categoryID, includeAccountWide) end
 
 ---@return number warResourceCurrencyID
@@ -6532,20 +6537,20 @@ function api.currencyInfo.getWarResourcesCurrencyID() end
 ---@return boolean isReady
 function api.currencyInfo.isAccountCharacterCurrencyDataReady() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@return boolean isAccountTransferableCurrency
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.isAccountTransferableCurrency(currencyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@return boolean isAccountWideCurrency
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.isAccountWideCurrency(currencyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@param quantity number
 ---@return boolean isCurrencyContainer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.isCurrencyContainer(currencyID, quantity) end
 
 ---@return boolean currencyTransferInProgress
@@ -6554,26 +6559,26 @@ function api.currencyInfo.isCurrencyTransferInProgress() end
 ---@return boolean isReady
 function api.currencyInfo.isCurrencyTransferTransactionDataReady() end
 
----@param type number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param type number
 function api.currencyInfo.pickupCurrency(type) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@return boolean hasMaxQuantity
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.playerHasMaxQuantity(currencyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@return boolean hasMaxWeeklyQuantity
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.playerHasMaxWeeklyQuantity(currencyID) end
 
 function api.currencyInfo.requestCurrencyDataForAccountCharacters() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param sourceCharacterGUID string
 ---@param currencyID number
 ---@param quantity number
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.currencyInfo.requestCurrencyFromAccountCharacter(
     sourceCharacterGUID,
     currencyID,
@@ -6581,23 +6586,23 @@ function api.currencyInfo.requestCurrencyFromAccountCharacter(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@param backpack boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.setCurrencyBackpack(index, backpack) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyType number
 ---@param backpack boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.setCurrencyBackpackByID(currencyType, backpack) end
 
----@param filterType Enum.CurrencyFilterType
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param filterType Enum.CurrencyFilterType
 function api.currencyInfo.setCurrencyFilter(filterType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@param unused boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.currencyInfo.setCurrencyUnused(index, unused) end
 
 ---Wraps `C_Cursor`.
@@ -6624,53 +6629,54 @@ function api.curveUtil.createColorCurve() end
 function api.curveUtil.createCurve() end
 
 ---Evaluates a potentially-secret boolean value and returns a color.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param boolean boolean
 ---@param valueIfTrue colorRGBA
 ---@param valueIfFalse colorRGBA
 ---@return colorRGBA value
----Restrictions: secretArguments=AllowedWhenTainted
 function api.curveUtil.evaluateColorFromBoolean(boolean, valueIfTrue, valueIfFalse) end
 
 ---Evaluates a potentially-secret boolean value and returns a single color component (eg.
 ---alpha).
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param boolean boolean
 ---@param valueIfTrue number
 ---@param valueIfFalse number
 ---@return number value
----Restrictions: secretArguments=AllowedWhenTainted
 function api.curveUtil.evaluateColorValueFromBoolean(boolean, valueIfTrue, valueIfFalse) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param curveID number
 ---@param x number
 ---@return number y
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.curveUtil.evaluateGameCurve(curveID, x) end
 
 ---Wraps `C_CVar`.
 ---@class wow.beta.api.cvar
 api.cvar = {}
 
+---Restrictions: secretArguments=NotAllowed
 ---@param name string
 ---@return string? value
----Restrictions: secretArguments=NotAllowed
 function api.cvar.getCVar(name) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param name string
 ---@param index integer
 ---@return boolean? value
----Restrictions: secretArguments=NotAllowed
 function api.cvar.getCVarBitfield(name, index) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param name string
 ---@return boolean? value
----Restrictions: secretArguments=NotAllowed
 function api.cvar.getCVarBool(name) end
 
+---Restrictions: secretArguments=NotAllowed, RequiresValidAndPublicCVar
 ---@param name string
 ---@return string? defaultValue
----Restrictions: secretArguments=NotAllowed, RequiresValidAndPublicCVar
 function api.cvar.getCVarDefault(name) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param name string
 ---@return string value
 ---@return string defaultValue
@@ -6679,29 +6685,28 @@ function api.cvar.getCVarDefault(name) end
 ---@return boolean isLockedFromUser
 ---@return boolean isSecure
 ---@return boolean isReadOnly
----Restrictions: secretArguments=NotAllowed
 function api.cvar.getCVarInfo(name) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param name string
 ---@param value? string
----Restrictions: secretArguments=NotAllowed
 function api.cvar.registerCVar(name, value) end
 
 function api.cvar.resetTestCVars() end
 
+---Restrictions: secretArguments=NotAllowed, RequiresNonReadOnlyCVar, RequiresNonSecureCVar,
+---RequiresValidAndPublicCVar
 ---@param name string
 ---@param value? string
 ---@return boolean success
----Restrictions: secretArguments=NotAllowed, RequiresNonReadOnlyCVar, RequiresNonSecureCVar,
----RequiresValidAndPublicCVar
 function api.cvar.setCVar(name, value) end
 
+---Restrictions: secretArguments=NotAllowed, RequiresIndexInRange, RequiresNonReadOnlyCVar,
+---RequiresNonSecureCVar, RequiresValidAndPublicCVar
 ---@param name string
 ---@param index integer
 ---@param value boolean
 ---@return boolean success
----Restrictions: secretArguments=NotAllowed, RequiresIndexInRange, RequiresNonReadOnlyCVar,
----RequiresNonSecureCVar, RequiresValidAndPublicCVar
 function api.cvar.setCVarBitfield(name, index, value) end
 
 ---Wraps `C_DamageMeter`.
@@ -6713,27 +6718,27 @@ api.damageMeter = {}
 function api.damageMeter.getAvailableCombatSessions() end
 
 ---Returns the data for the player's combat session with the specified ID.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenInCombat
 ---@param sessionID number
 ---@param type Enum.DamageMeterType
 ---@return DamageMeterCombatSession session
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenInCombat
 function api.damageMeter.getCombatSessionFromID(sessionID, type) end
 
 ---Returns the data for the player's current combat session.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenInCombat
 ---@param sessionType Enum.DamageMeterSessionType
 ---@param type Enum.DamageMeterType
 ---@return DamageMeterCombatSession session
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenInCombat
 function api.damageMeter.getCombatSessionFromType(sessionType, type) end
 
 ---Returns the data for a single source (unit) in the player's current combat session with the
 ---specified ID.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenInCombat
 ---@param sessionID number
 ---@param type Enum.DamageMeterType
 ---@param sourceGUID? string
 ---@param sourceCreatureID? number
 ---@return DamageMeterCombatSessionSource sessionSource
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenInCombat
 function api.damageMeter.getCombatSessionSourceFromID(
     sessionID,
     type,
@@ -6743,12 +6748,12 @@ function api.damageMeter.getCombatSessionSourceFromID(
 end
 
 ---Returns the data for a single source (unit) in the player's current combat session.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenInCombat
 ---@param sessionType Enum.DamageMeterSessionType
 ---@param type Enum.DamageMeterType
 ---@param sourceGUID? string
 ---@param sourceCreatureID? number
 ---@return DamageMeterCombatSessionSource sessionSource
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenInCombat
 function api.damageMeter.getCombatSessionSourceFromType(
     sessionType,
     type,
@@ -6758,9 +6763,9 @@ function api.damageMeter.getCombatSessionSourceFromType(
 end
 
 ---Returns the amount of time a combat session has lasted
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sessionType Enum.DamageMeterSessionType
 ---@return number? durationSeconds
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.damageMeter.getSessionDurationSeconds(sessionType) end
 
 ---Returns whether the player can enable and use the Damage Meter.
@@ -6775,33 +6780,33 @@ function api.damageMeter.resetAllCombatSessions() end
 ---@class wow.beta.api.dateAndTime
 api.dateAndTime = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param date CalendarTime
 ---@param days number
 ---@return CalendarTime newDate
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.dateAndTime.adjustTimeByDays(date, days) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param date CalendarTime
 ---@param minutes number
 ---@return CalendarTime newDate
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.dateAndTime.adjustTimeByMinutes(date, minutes) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param date CalendarTime
 ---@param months number
 ---@return CalendarTime newDate
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.dateAndTime.adjustTimeByMonths(date, months) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param lhsCalendarTime CalendarTime
 ---@param rhsCalendarTime CalendarTime
 ---@return number comparison
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.dateAndTime.compareCalendarTime(lhsCalendarTime, rhsCalendarTime) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param epoch integer
 ---@return CalendarTime date
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.dateAndTime.getCalendarTimeFromEpoch(epoch) end
 
 ---@return CalendarTime date
@@ -6827,52 +6832,52 @@ api.deathAlert = {}
 ---@class wow.beta.api.deathInfo
 api.deathInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return vector2? position
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.deathInfo.getCorpseMapPosition(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return vector2? position
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.deathInfo.getDeathReleasePosition(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return GraveyardMapInfo[] graveyards
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.deathInfo.getGraveyardsForMap(uiMapID) end
 
 ---@return SelfResurrectOption[]? options
 function api.deathInfo.getSelfResurrectOptions() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param optionType Enum.SelfResurrectOptionType
 ---@param id number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.deathInfo.useSelfResurrectOption(optionType, id) end
 
 ---Wraps `C_DeathRecap`.
 ---@class wow.beta.api.deathRecap
 api.deathRecap = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recapID? number
 ---@return DeathRecapEventInfo[] events
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.deathRecap.getRecapEvents(recapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recapID? number
 ---@return string link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.deathRecap.getRecapLink(recapID) end
 
 ---Returns the max health for the unit that died in the provided death recap.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recapID? number
 ---@return number maxHealth
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.deathRecap.getRecapMaxHealth(recapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recapID? number
 ---@return boolean hasEvents
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.deathRecap.hasRecapEvents(recapID) end
 
 ---Wraps the global functions of the `DebugToggle` system.
@@ -6902,28 +6907,28 @@ api.delvesUI = {}
 ---@return number playerCompanionInfoID
 function api.delvesUI.getCompanionInfoForActivePlayer() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param companionID? number
 ---@return number creatureDisplayInfoID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.getCreatureDisplayInfoForCompanion(companionID) end
 
 ---Given the spell ID for an owned curio and its rarity, return a spell link style hyperlink for
 ---the curio spell, since they aren't items when learned
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@param rarity Enum.CurioRarity
 ---@return string curioLink
----Restrictions: secretArguments=AllowedWhenTainted
 function api.delvesUI.getCurioLink(spellID, rarity) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param curioType Enum.CurioType
 ---@param companionID? number
 ---@return number nodeID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.getCurioNodeForCompanion(curioType, companionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param traitCondAccountElementID number
 ---@return Enum.CurioRarity rarity
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.getCurioRarityByTraitCondAccountElementID(traitCondAccountElementID) end
 
 ---@return number seasonNumber
@@ -6940,75 +6945,75 @@ function api.delvesUI.getDelvesFactionForSeason() end
 ---@return number? minRequiredLevel
 function api.delvesUI.getDelvesMinRequiredLevel() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param companionID? number
 ---@return number factionID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.getFactionForCompanion(companionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param companionID? number
 ---@return string text
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.getLockedTextForCompanion(companionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param companionID? number
 ---@return number modelSceneID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.getModelSceneForCompanion(companionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param companionID? number
 ---@return number? pdeID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.getPlayerCompanionPDEID(companionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param companionID? number
 ---@return number nodeID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.getRoleNodeForCompanion(companionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param roleType Enum.CompanionRoleType
 ---@param companionID? number
 ---@return number subTreeID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.getRoleSubtreeForCompanion(roleType, companionID) end
 
 ---@return number? pdeID
 function api.delvesUI.getTieredEntrancePDEID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param companionID? number
 ---@return number treeID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.getTraitTreeForCompanion(companionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slotType Enum.CompanionConfigSlotTypes
 ---@param ownedCurioNodeIDs number[]
 ---@return number[] unseenCurioNodeIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.getUnseenCuriosBySlotType(slotType, ownedCurioNodeIDs) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapID? number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.hasActiveDelve(mapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.isEligibleForActiveDelveRewards(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param traitTreeID number
 ---@return boolean isForCompanion
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.isTraitTreeForCompanion(traitTreeID) end
 
 ---Queries private party members to see what level they have unlocked for the Delve. Ineligible
 ---members are added to the tooltip of dropdown entries.
----@param gossipOption number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param gossipOption number
 function api.delvesUI.requestPartyEligibilityForDelveTiers(gossipOption) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slotType Enum.CompanionConfigSlotTypes
 ---@param ownedCurioNodeIDs number[]
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.delvesUI.saveSeenCuriosBySlotType(slotType, ownedCurioNodeIDs) end
 
 ---Wraps `C_DuelInfo`.
@@ -7034,55 +7039,55 @@ api.dyeColor = {}
 ---@return number[] dyeColorCategoryIDs
 function api.dyeColor.getAllDyeColorCategories() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param ownedColorsOnly? boolean
 ---@return number[] dyeColorIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.dyeColor.getAllDyeColors(ownedColorsOnly) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param dyeColorCategoryID number
 ---@return DyeColorCategoryDisplayInfo? dyeColorCategoryInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.dyeColor.getDyeColorCategoryInfo(dyeColorCategoryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLinkOrID ItemInfo
 ---@return number? dyeColorID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.dyeColor.getDyeColorForItem(itemLinkOrID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return number? dyeColorID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.dyeColor.getDyeColorForItemLocation(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param dyeColorID number
 ---@return DyeColorDisplayInfo? dyeColorInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.dyeColor.getDyeColorInfo(dyeColorID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param dyeColorCategory number
 ---@param ownedColorsOnly? boolean
 ---@return number[] dyeColorIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.dyeColor.getDyeColorsInCategory(dyeColorCategory, ownedColorsOnly) end
 
 ---True if the player owns any of the consumable item used to apply the specified dye
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param dyeColorID number
 ---@return boolean isOwned
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.dyeColor.isDyeColorOwned(dyeColorID) end
 
 ---Wraps `C_EditMode`.
 ---@class wow.beta.api.editMode
 api.editMode = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param layoutInfo EditModeLayoutInfo
 ---@return string layoutInfoAsString
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.editMode.convertLayoutInfoToString(layoutInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param layoutInfoAsString string
 ---@return EditModeLayoutInfo? layoutInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.editMode.convertStringToLayoutInfo(layoutInfoAsString) end
 
 ---@return EditModeSettingInfo[] accountSettings
@@ -7091,95 +7096,95 @@ function api.editMode.getAccountSettings() end
 ---@return EditModeLayouts layoutInfo
 function api.editMode.getLayouts() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return boolean isApproved
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.editMode.isValidLayoutName(name) end
 
 function api.editMode.onEditModeExit() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param addedLayoutIndex integer
 ---@param activateNewLayout boolean
 ---@param isLayoutImported boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.editMode.onLayoutAdded(addedLayoutIndex, activateNewLayout, isLayoutImported) end
 
----@param deletedLayoutIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param deletedLayoutIndex integer
 function api.editMode.onLayoutDeleted(deletedLayoutIndex) end
 
----@param saveInfo EditModeLayouts
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param saveInfo EditModeLayouts
 function api.editMode.saveLayouts(saveInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param setting Enum.EditModeAccountSetting
 ---@param value number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.editMode.setAccountSetting(setting, value) end
 
----@param activeLayout integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param activeLayout integer
 function api.editMode.setActiveLayout(activeLayout) end
 
 ---Wraps `C_EncodingUtil`.
 ---@class wow.beta.api.encodingUtil
 api.encodingUtil = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source string
 ---@param method? Enum.CompressionMethod
 ---@param level? Enum.CompressionLevel
 ---@return string? output
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encodingUtil.compressString(source, method, level) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source string
 ---@param variant? Enum.Base64Variant
 ---@return string? output
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encodingUtil.decodeBase64(source, variant) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source string
 ---@return string? output
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encodingUtil.decodeHex(source) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source string
 ---@param method? Enum.CompressionMethod
 ---@return string? output
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encodingUtil.decompressString(source, method) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source string
 ---@return any? value
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encodingUtil.deserializeCBOR(source) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source string
 ---@return any? value
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encodingUtil.deserializeJSON(source) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source string
 ---@param variant? Enum.Base64Variant
 ---@return string? output
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encodingUtil.encodeBase64(source, variant) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source string
 ---@return string? output
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encodingUtil.encodeHex(source) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param value? any
 ---@param options? CBORSerializationOptions
 ---@return string output
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encodingUtil.serializeCBOR(value, options) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param value? any
 ---@param options? JSONSerializationOptions
 ---@return string output
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encodingUtil.serializeJSON(value, options) end
 
 ---Wraps `C_EncounterEvents`.
@@ -7187,15 +7192,15 @@ function api.encodingUtil.serializeJSON(value, options) end
 api.encounterEvents = {}
 
 ---Returns any custom color override applied for an encounter event.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param encounterEventID number
 ---@return colorRGB? color
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterEvents.getEventColor(encounterEventID) end
 
 ---Returns information about an encounter event.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param encounterEventID number
 ---@return EncounterEventInfo? encounterEventInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterEvents.getEventInfo(encounterEventID) end
 
 ---Returns a list of all encounter event IDs.
@@ -7204,37 +7209,37 @@ function api.encounterEvents.getEventList() end
 
 ---Returns information on a custom sound file to be played when an encounter event trigger
 ---occurs.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param encounterEventID number
 ---@param trigger Enum.EncounterEventSoundTrigger
 ---@return EncounterEventSoundInfo? sound
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterEvents.getEventSound(encounterEventID, trigger) end
 
 ---Returns true if an encounter event record with a specified ID exists.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param encounterEventID number
 ---@return boolean exists
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterEvents.hasEventInfo(encounterEventID) end
 
 ---Plays any registered custom sound file for a given encounter event trigger.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param encounterEventID number
 ---@param trigger Enum.EncounterEventSoundTrigger
 ---@return integer handle
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterEvents.playEventSound(encounterEventID, trigger) end
 
 ---Sets a custom color override for an encounter event. This can be used to colorize text or
 ---timer bars individually.
+---Restrictions: secretArguments=NotAllowed
 ---@param encounterEventID number
 ---@param color? colorRGB
----Restrictions: secretArguments=NotAllowed
 function api.encounterEvents.setEventColor(encounterEventID, color) end
 
 ---Sets a custom sound file to be played when an encounter event trigger occurs.
+---Restrictions: secretArguments=NotAllowed
 ---@param encounterEventID number
 ---@param trigger Enum.EncounterEventSoundTrigger
 ---@param sound? EncounterEventSoundInfo
----Restrictions: secretArguments=NotAllowed
 function api.encounterEvents.setEventSound(encounterEventID, trigger, sound) end
 
 ---Wraps `C_EncounterInfo`.
@@ -7245,51 +7250,51 @@ api.encounterInfo = {}
 ---@class wow.beta.api.encounterJournal
 api.encounterJournal = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return DungeonEntranceMapInfo[] dungeonEntrances
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterJournal.getDungeonEntrancesForMap(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param linkType Enum.JournalLinkTypes
 ---@param ID number
 ---@param displayText string
 ---@param difficultyID number
 ---@return string link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterJournal.getEncounterJournalLink(linkType, ID, displayText, difficultyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return EncounterJournalMapEncounterInfo[] encounters
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterJournal.getEncountersOnMap(uiMapID) end
 
 ---GameMap as opposed to UIMap since we use a mapID not a uiMapID.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapID number
 ---@return number? journalInstanceID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterJournal.getInstanceForGameMap(mapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param id number
 ---@return EncounterJournalItemInfo itemInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterJournal.getLootInfo(id) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@param encounterIndex? integer
 ---@return EncounterJournalItemInfo? itemInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterJournal.getLootInfoByIndex(index, encounterIndex) end
 
 ---Represents the icon indices for this EJ section.  An icon index can be used to arrive at
 ---texture coordinates for specific encounter types, e.g.: EncounterJournal_SetFlagIcon
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sectionID number
 ---@return number[]? iconFlags
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterJournal.getSectionIconFlags(sectionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sectionID number
 ---@return EncounterJournalSectionInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterJournal.getSectionInfo(sectionID) end
 
 ---@return Enum.ItemSlotFilterType filter
@@ -7297,14 +7302,14 @@ function api.encounterJournal.getSlotFilter() end
 
 function api.encounterJournal.initalizeSelectedTier() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param instanceID? number
 ---@return boolean hasLoot
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterJournal.instanceHasLoot(instanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param journalEncounterID number
 ---@return boolean isEncounterComplete
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterJournal.isEncounterComplete(journalEncounterID) end
 
 ---Restrictions: hasRestrictions
@@ -7315,20 +7320,20 @@ function api.encounterJournal.onOpen() end
 
 function api.encounterJournal.resetSlotFilter() end
 
----@param level number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param level number
 function api.encounterJournal.setPreviewMythicPlusLevel(level) end
 
----@param tier number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param tier number
 function api.encounterJournal.setPreviewPvpTier(tier) end
 
----@param filterSlot Enum.ItemSlotFilterType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param filterSlot Enum.ItemSlotFilterType
 function api.encounterJournal.setSlotFilter(filterSlot) end
 
----@param tabIdx number
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param tabIdx number
 function api.encounterJournal.setTab(tabIdx) end
 
 function api.encounterJournal.startArathiRPE() end
@@ -7342,9 +7347,9 @@ api.encounterTimeline = {}
 function api.encounterTimeline.addEditModeEvents() end
 
 ---Adds a custom event to the timeline.
+---Restrictions: secretArguments=NotAllowed
 ---@param eventInfo EncounterTimelineScriptEventRequest
 ---@return integer eventID
----Restrictions: secretArguments=NotAllowed
 function api.encounterTimeline.addScriptEvent(eventInfo) end
 
 ---Cancels all custom timeline events, removing them from the timeline.
@@ -7354,13 +7359,13 @@ function api.encounterTimeline.cancelAllScriptEvents() end
 function api.encounterTimeline.cancelEditModeEvents() end
 
 ---Cancels a custom timeline event, removing it from the timeline.
----@param eventID integer
 ---Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
+---@param eventID integer
 function api.encounterTimeline.cancelScriptEvent(eventID) end
 
 ---Finishes a custom timeline event, removing it from the timeline.
----@param eventID integer
 ---Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
+---@param eventID integer
 function api.encounterTimeline.finishScriptEvent(eventID) end
 
 ---Returns the current timestamp used for rendering the timeline display.
@@ -7368,9 +7373,9 @@ function api.encounterTimeline.finishScriptEvent(eventID) end
 function api.encounterTimeline.getCurrentTime() end
 
 ---Returns the number of present events in the timeline by their source type.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source Enum.EncounterTimelineEventSource
 ---@return number count
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterTimeline.getEventCountBySource(source) end
 
 ---Returns the duration at which timeline events will be highlighted for imminency.
@@ -7379,10 +7384,10 @@ function api.encounterTimeline.getEventHighlightTime() end
 
 ---Returns information about a timeline event. This data is generally expected to be static for
 ---the lifetime of an event.
----@param eventID integer
----@return EncounterTimelineEventInfo info
 ---Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent,
 ---SecretWhenEncounterEvent
+---@param eventID integer
+---@return EncounterTimelineEventInfo info
 function api.encounterTimeline.getEventInfo(eventID) end
 
 ---Returns an unsorted list of event IDs present in the timeline.
@@ -7390,46 +7395,46 @@ function api.encounterTimeline.getEventInfo(eventID) end
 function api.encounterTimeline.getEventList() end
 
 ---Returns the current state of a timeline event.
+---Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
 ---@param eventID integer
 ---@return Enum.EncounterTimelineEventState state
----Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
 function api.encounterTimeline.getEventState(eventID) end
 
 ---Returns the elapsed duration of a timeline event.
+---Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
 ---@param eventID integer
 ---@return number timeElapsed
----Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
 function api.encounterTimeline.getEventTimeElapsed(eventID) end
 
 ---Returns the remaining duration of a timeline event.
+---Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
 ---@param eventID integer
 ---@return number timeRemaining
----Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
 function api.encounterTimeline.getEventTimeRemaining(eventID) end
 
 ---Returns a Duration object that tracks the elapsed duration of a timeline event. This object
 ---tracks the range [0, duration] of the event and automatically pauses its progression based on
 ---event state.
+---Restrictions: secretArguments=NotAllowed
 ---@param eventID integer
 ---@return LuaDurationObject? duration
----Restrictions: secretArguments=NotAllowed
 function api.encounterTimeline.getEventTimer(eventID) end
 
 ---Returns information about the position of an event on the timeline.
+---Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
 ---@param eventID integer
 ---@return Enum.EncounterTimelineTrack track
 ---@return integer? trackSortIndex
----Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
 function api.encounterTimeline.getEventTrack(eventID) end
 
 ---Returns a sorted list of event IDs present in the timeline from shortest to longest remaining
 ---durations, meeting the requirements of the specified filters.
+---Restrictions: secretArguments=NotAllowed
 ---@param maxEventCount? number
 ---@param maxEventDuration? number
 ---@param excludeTerminalStates? boolean
 ---@param excludeHiddenEvents? boolean
 ---@return integer[] events
----Restrictions: secretArguments=NotAllowed
 function api.encounterTimeline.getSortedEventList(
     maxEventCount,
     maxEventDuration,
@@ -7439,9 +7444,9 @@ function api.encounterTimeline.getSortedEventList(
 end
 
 ---Returns information for a single timeline track.
+---Restrictions: secretArguments=NotAllowed
 ---@param track Enum.EncounterTimelineTrack
 ---@return EncounterTimelineTrackInfo trackInfo
----Restrictions: secretArguments=NotAllowed
 function api.encounterTimeline.getTrackInfo(track) end
 
 ---Returns information about all timeline tracks.
@@ -7449,15 +7454,15 @@ function api.encounterTimeline.getTrackInfo(track) end
 function api.encounterTimeline.getTrackList() end
 
 ---Returns the maximum permitted event duration on a single timeline track.
+---Restrictions: secretArguments=NotAllowed
 ---@param track Enum.EncounterTimelineTrack
 ---@return number maxEventDuration
----Restrictions: secretArguments=NotAllowed
 function api.encounterTimeline.getTrackMaxEventDuration(track) end
 
 ---Returns the type of a single timeline track.
+---Restrictions: secretArguments=NotAllowed
 ---@param track Enum.EncounterTimelineTrack
 ---@return Enum.EncounterTimelineTrackType trackType
----Restrictions: secretArguments=NotAllowed
 function api.encounterTimeline.getTrackType(track) end
 
 ---Returns the current view type of the timeline.
@@ -7482,9 +7487,9 @@ function api.encounterTimeline.hasVisibleEvents() end
 
 ---Returns true if the event is in a 'blocked' state, where the cast for this event may not
 ---occur due to encounter conditions not being met.
+---Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
 ---@param eventID integer
 ---@return boolean blocked
----Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
 function api.encounterTimeline.isEventBlocked(eventID) end
 
 ---Returns true if the encounter timeline feature is available on this client.
@@ -7498,50 +7503,50 @@ function api.encounterTimeline.isFeatureEnabled() end
 
 ---Pauses a custom timeline event, hiding it from the timeline. A paused event can later be
 ---resumed to show it again, or canceled.
----@param eventID integer
 ---Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
+---@param eventID integer
 function api.encounterTimeline.pauseScriptEvent(eventID) end
 
 ---Resumes a custom timeline event, showing it on the timeline again if it is currently paused.
----@param eventID integer
 ---Restrictions: secretArguments=NotAllowed, RequiresValidTimelineEvent
+---@param eventID integer
 function api.encounterTimeline.resumeScriptEvent(eventID) end
 
 ---Updates a given vector of texture objects to reference art assets for icons associated with
 ---an event.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidTimelineEvent
 ---@param eventID integer
 ---@param includeIcons Enum.EncounterEventIconmask
 ---@param textures SimpleTexture[]
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidTimelineEvent
 function api.encounterTimeline.setEventIconTextures(eventID, includeIcons, textures) end
 
 ---Changes the view type for the timeline. This adjusts track layouts to be more appropriate for
 ---a specific mode and optimizes event processing.
----@param viewType Enum.EncounterTimelineViewType
 ---Restrictions: secretArguments=NotAllowed
+---@param viewType Enum.EncounterTimelineViewType
 function api.encounterTimeline.setViewType(viewType) end
 
 ---Wraps `C_EncounterWarnings`.
 ---@class wow.beta.api.encounterWarnings
 api.encounterWarnings = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param severity Enum.EncounterEventSeverity
 ---@return colorRGB color
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterWarnings.getColorForSeverity(severity) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param severity Enum.EncounterEventSeverity
 ---@return EncounterWarningInfo warningInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterWarnings.getEditModeWarningInfo(severity) end
 
 ---Returns true if custom sound alerts are allowed to play for hidden warning messages.
 ---@return boolean play
 function api.encounterWarnings.getPlayCustomSoundsWhenHidden() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param severity Enum.EncounterEventSeverity
 ---@return number soundKitID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterWarnings.getSoundKitForSeverity(severity) end
 
 ---Returns true if text messages for encounter events are allowed to be shown.
@@ -7554,20 +7559,20 @@ function api.encounterWarnings.isFeatureAvailable() end
 ---@return boolean isAvailableAndEnabled
 function api.encounterWarnings.isFeatureEnabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param severity Enum.EncounterEventSeverity
 ---@return number? soundHandle
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.encounterWarnings.playSound(severity) end
 
 ---Controls whether custom sound alerts for encounter events are allowed to play for warning
 ---messages that are hidden.
----@param play boolean
 ---Restrictions: secretArguments=NotAllowed
+---@param play boolean
 function api.encounterWarnings.setPlayCustomSoundsWhenHidden(play) end
 
 ---Controls whether text messages for encounter events are allowed to be shown.
----@param shown boolean
 ---Restrictions: secretArguments=NotAllowed
+---@param shown boolean
 function api.encounterWarnings.setWarningsShown(shown) end
 
 ---Wraps `C_EndOfMatchUI`.
@@ -7581,9 +7586,9 @@ function api.endOfMatchUI.getEndOfMatchDetails() end
 ---@class wow.beta.api.equipmentSet
 api.equipmentSet = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param equipmentSetID number
 ---@param specIndex integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.assignSpecToEquipmentSet(equipmentSetID, specIndex) end
 
 ---@return boolean canUseEquipmentSets
@@ -7591,38 +7596,39 @@ function api.equipmentSet.canUseEquipmentSets() end
 
 function api.equipmentSet.clearIgnoredSlotsForSave() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param equipmentSetName string
 ---@param icon? string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.createEquipmentSet(equipmentSetName, icon) end
 
----@param equipmentSetID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param equipmentSetID number
 function api.equipmentSet.deleteEquipmentSet(equipmentSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param equipmentSetID number
 ---@return boolean hasLockedItems
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.equipmentSetContainsLockedItems(equipmentSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param equipmentSetID number
 ---@return integer? specIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.getEquipmentSetAssignedSpec(equipmentSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specIndex integer
 ---@return number? equipmentSetID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.getEquipmentSetForSpec(specIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param equipmentSetName string
 ---@return number? equipmentSetID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.getEquipmentSetID(equipmentSetName) end
 
 ---@return number[] equipmentSetIDs
 function api.equipmentSet.getEquipmentSetIDs() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param equipmentSetID number
 ---@return string? name
 ---@return number? iconFileID
@@ -7633,62 +7639,61 @@ function api.equipmentSet.getEquipmentSetIDs() end
 ---@return number? numInInventory
 ---@return number? numLost
 ---@return number? numIgnored
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.getEquipmentSetInfo(equipmentSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param equipmentSetID number
 ---@return boolean[]? slotIgnored
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.getIgnoredSlots(equipmentSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param equipmentSetID number
 ---@return number[]? itemIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.getItemIDs(equipmentSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param equipmentSetID number
 ---@return number[]? locations
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.getItemLocations(equipmentSetID) end
 
 ---@return number numEquipmentSets
 function api.equipmentSet.getNumEquipmentSets() end
 
----@param slot integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param slot integer
 function api.equipmentSet.ignoreSlotForSave(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return boolean isSlotIgnored
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.isSlotIgnoredForSave(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param equipmentSetID number
 ---@param newName string
 ---@param newIcon? string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.modifyEquipmentSet(equipmentSetID, newName, newIcon) end
 
----@param equipmentSetID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param equipmentSetID number
 function api.equipmentSet.pickupEquipmentSet(equipmentSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param equipmentSetID number
 ---@param icon? string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.saveEquipmentSet(equipmentSetID, icon) end
 
----@param equipmentSetID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param equipmentSetID number
 function api.equipmentSet.unassignEquipmentSetSpec(equipmentSetID) end
 
----@param slot integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param slot integer
 function api.equipmentSet.unignoreSlotForSave(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param equipmentSetID number
 ---@return boolean setWasEquipped
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.equipmentSet.useEquipmentSet(equipmentSetID) end
 
 ---Wraps `C_EventScheduler`.
@@ -7701,8 +7706,8 @@ function api.eventScheduler.canShowEvents() end
 
 ---Clears reminder on a scheduled event. Must use endTime to identify which specific instance in
 ---the case of repeating ones.
----@param eventKey string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param eventKey string
 function api.eventScheduler.clearReminder(eventKey) end
 
 ---Returns the name of the continent with current events
@@ -7710,15 +7715,15 @@ function api.eventScheduler.clearReminder(eventKey) end
 function api.eventScheduler.getActiveContinentName() end
 
 ---Will try to figure out a UiMap for an areaPOI.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param areaPoiID number
 ---@return number? uiMapID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.eventScheduler.getEventUiMapID(areaPoiID) end
 
 ---Will try to figure out a map zone name for an areaPOI
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param areaPoiID number
 ---@return string? name
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.eventScheduler.getEventZoneName(areaPoiID) end
 
 ---Will request data from the server on a throttle
@@ -7743,17 +7748,17 @@ function api.eventScheduler.requestEvents() end
 
 ---Sets reminder on a scheduled event. Must use endTime to identify which specific instance in
 ---the case of repeating ones.
----@param eventKey string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param eventKey string
 function api.eventScheduler.setReminder(eventKey) end
 
 ---Wraps `C_EventToastManager`.
 ---@class wow.beta.api.eventToastManager
 api.eventToastManager = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param level number
 ---@return EventToastInfo[]? toastInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.eventToastManager.getLevelUpDisplayToastsFromLevel(level) end
 
 ---@return EventToastInfo? toastInfo
@@ -7765,14 +7770,14 @@ function api.eventToastManager.removeCurrentToast() end
 ---@class wow.beta.api.eventUtils
 api.eventUtils = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventName string
 ---@return boolean isCallbackEvent
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.eventUtils.isCallbackEvent(eventName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventName string
 ---@return boolean valid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.eventUtils.isEventValid(eventName) end
 
 ---Wraps the global functions of the `Expansion` system.
@@ -7794,15 +7799,15 @@ function api.expansion.getClientDisplayExpansionLevel() end
 ---@return string regionName
 function api.expansion.getCurrentRegionName() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param expansionLevel number
 ---@param desiredReleaseType? Enum.ReleaseType
 ---@return ExpansionDisplayInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.expansion.getExpansionDisplayInfo(expansionLevel, desiredReleaseType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLevel number
 ---@return number? expansionLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.expansion.getExpansionForLevel(playerLevel) end
 
 ---@return number expansionLevel
@@ -7813,9 +7818,9 @@ function api.expansion.getExpansionLevel() end
 function api.expansion.getExpansionTrialInfo() end
 
 ---Maps an expansion level to a maximum character level for that expansion.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param expansionLevel number
 ---@return number maxLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.expansion.getMaxLevelForExpansionLevel(expansionLevel) end
 
 ---@return number maxLevel
@@ -7851,8 +7856,8 @@ function api.expansion.isTrialAccount() end
 ---@return boolean isVeteranTrialAccount
 function api.expansion.isVeteranTrialAccount() end
 
----@param response Enum.SubscriptionInterstitialResponseType
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param response Enum.SubscriptionInterstitialResponseType
 function api.expansion.sendSubscriptionInterstitialResponse(response) end
 
 ---@return boolean showUpgradeBanner
@@ -7862,14 +7867,14 @@ function api.expansion.shouldShowExpansionUpgradeBanner() end
 ---@class wow.beta.api.expansionInfo
 api.expansionInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param expansionLevel number
 ---@return boolean isAtLeast
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.expansionInfo.classicExpansionAtLeast(expansionLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param expansionLevel number
 ---@return boolean isAtMost
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.expansionInfo.classicExpansionAtMost(expansionLevel) end
 
 ---@return number expansionLevel
@@ -7902,29 +7907,29 @@ function api.externalEventURL.launchURL() end
 ---@class wow.beta.api.fogOfWar
 api.fogOfWar = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number? fogOfWarID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.fogOfWar.getFogOfWarForMap(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param fogOfWarID number
 ---@return FogOfWarInfo? fogOfWarInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.fogOfWar.getFogOfWarInfo(fogOfWarID) end
 
 ---Wraps the global functions of the `Font` system.
 ---@class wow.beta.api.font
 api.font = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@param members CreateFontFamilyMemberInfo[]
 ---@return SimpleFont fontFamily
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.font.createFontFamily(name, members) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param fontObject SimpleFont
 ---@return FontScriptInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.font.getFontInfo(fontObject) end
 
 ---@return string[] fontNames
@@ -7934,24 +7939,24 @@ function api.font.getFonts() end
 ---@class wow.beta.api.frameManager
 api.frameManager = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param frameType Enum.UIFrameType
 ---@return boolean shouldShow
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameManager.getFrameVisibilityState(frameType) end
 
 ---Wraps the global functions of the `FrameScript` system.
 ---@class wow.beta.api.frameScript
 api.frameScript = {}
 
----@param fileName string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fileName string
 function api.frameScript.addSourceLocationExclude(fileName) end
 
 ---Returns true if the immediate calling function has appropriate permissions to access and
 ---operate on all supplied values.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param values any
 ---@return boolean canAccessAllValues
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.canaccessallvalues(values) end
 
 ---Returns true if the immediate calling function has appropriate permissions to access or
@@ -7962,32 +7967,32 @@ function api.frameScript.canaccesssecrets() end
 ---Returns true if the immediate calling function has appropriate permissions to index secret
 ---tables. This will return false if the caller cannot access the table value itself, or if
 ---access to the table contents is disallowed by taint.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param table any
 ---@return boolean canAccessTable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.canaccesstable(table) end
 
 ---Returns true if the immediate calling function has appropriate permissions to access and
 ---operate on a specific value.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param value any
 ---@return boolean canAccessValue
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.canaccessvalue(value) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mixins any
 ---@return any object
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.createFromMixins(mixins) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param luaFunction any
 ---@return any secureDelegateFunction
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.frameScript.createSecureDelegate(luaFunction) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param popupStyle? boolean
 ---@param topMost? boolean
 ---@return SimpleWindow? window
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.createWindow(popupStyle, topMost) end
 
 ---Starts a timer for profiling. The final time can be obtained by calling debugprofilestop.
@@ -8001,9 +8006,9 @@ function api.frameScript.debugprofilestop() end
 function api.frameScript.dropsecretaccess() end
 
 ---Invokes the '__dump' metamethod on any value (if present), returning its result.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param value? any
 ---@return any? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.dumpobject(value) end
 
 ---@return number height
@@ -8015,261 +8020,261 @@ function api.frameScript.getCurrentEventID() end
 ---@return number? height
 function api.frameScript.getErrorCallstackHeight() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventProfileIndex number
 ---@return number? totalElapsedTime
 ---@return number? numExecutedHandlers
 ---@return string? slowestHandlerName
 ---@return number? slowestHandlerTime
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.getEventTime(eventProfileIndex) end
 
 ---@return string? location
 function api.frameScript.getSourceLocation() end
 
 ---Returns true if a supplied value is a secret value.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param values any
 ---@return boolean isAnyValueSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.hasanysecretvalues(values) end
 
 ---Returns true if a supplied value is a secret table. This function will return true if the
 ---table value itself is secret, or if flags on the table are set such that accesses of the
 ---table would produce secrets.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param table any
 ---@return boolean isSecretOrContentsSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.issecrettable(table) end
 
 ---Returns true if a supplied value is a secret value.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param value any
 ---@return boolean isSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.issecretvalue(value) end
 
 ---Applies a given function over all supplied values individually, replacing the value with the
 ---result of the call.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param func any
 ---@param values any
 ---@return any mapped
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.mapvalues(func, values) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param object any
 ---@param mixins any
 ---@return any outObject
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.mixin(object, mixins) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventName string
 ---@param callback EventCallbackType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.registerEventCallback(eventName, callback) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventName string
 ---@param callback EventCallbackType
 ---@param unit string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.registerUnitEventCallback(eventName, callback, unit) end
 
----@param text string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param text string
 function api.frameScript.runScript(text) end
 
 ---Returns a transformed list of values with inputs that are either secret or are not string,
 ---number, or boolean type replaced by nil values.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param values any
 ---@return any scrubbed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.scrub(values) end
 
 ---Returns a transformed list of values with inputs that are secret values replaced by nil
 ---values.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param values any
 ---@return any scrubbed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.scrubsecretvalues(values) end
 
 ---Unwraps all supplied secrets, converting them back to regular values.
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param values any
 ---@return any unwrapped
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.frameScript.secretunwrap(values) end
 
 ---Converts all supplied values to secret values, preventing most operations on them from
 ---occurring on tainted code paths.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param values any
 ---@return any wrapped
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.secretwrap(values) end
 
 ---Invokes a named method on an object with a secure call barrier that prevents errors or taint
 ---from function lookup and execution from propagating to the caller.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param object any
 ---@param method string
 ---@param arguments any
 ---@return any results
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.securecallmethod(object, method, arguments) end
 
----@param height? number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param height? number
 function api.frameScript.setErrorCallstackHeight(height) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param table any
 ---@param option Enum.TableSecurityOption
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.frameScript.setTableSecurityOption(table, option) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventName string
 ---@param callback EventCallbackType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.unregisterEventCallback(eventName, callback) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventName string
 ---@param callback EventCallbackType
 ---@param unit string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.frameScript.unregisterUnitEventCallback(eventName, callback, unit) end
 
 ---Wraps `C_FriendList`.
 ---@class wow.beta.api.friendList
 api.friendList = {}
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param name string
 ---@param notes? string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.addFriend(name, notes) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param name string
 ---@return boolean added
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.addIgnore(name) end
 
----@param name string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
+---@param name string
 function api.friendList.addOrDelIgnore(name) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param name string
 ---@param notes string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.addOrRemoveFriend(name, notes) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param name string
 ---@return boolean removed
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.delIgnore(name) end
 
----@param index integer
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
+---@param index integer
 function api.friendList.delIgnoreByIndex(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param name string
 ---@return FriendInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.getFriendInfo(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param index integer
 ---@return FriendInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.getFriendInfoByIndex(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param index integer
 ---@return string? name
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.getIgnoreName(index) end
 
----@return number numFriends
 ---Restrictions: RequiresFriendList
+---@return number numFriends
 function api.friendList.getNumFriends() end
 
----@return number numIgnores
 ---Restrictions: RequiresFriendList
+---@return number numIgnores
 function api.friendList.getNumIgnores() end
 
----@return number numOnline
 ---Restrictions: RequiresFriendList
+---@return number numOnline
 function api.friendList.getNumOnlineFriends() end
 
+---Restrictions: RequiresFriendList
 ---@return number numWhos
 ---@return number totalNumWhos
----Restrictions: RequiresFriendList
 function api.friendList.getNumWhoResults() end
 
----@return integer? index
 ---Restrictions: RequiresFriendList
+---@return integer? index
 function api.friendList.getSelectedFriend() end
 
----@return integer? index
 ---Restrictions: RequiresFriendList
+---@return integer? index
 function api.friendList.getSelectedIgnore() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param index integer
 ---@return WhoInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.getWhoInfo(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param guid string
 ---@return boolean isFriend
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.isFriend(guid) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param token string
 ---@return boolean isIgnored
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.isIgnored(token) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param guid string
 ---@return boolean isIgnored
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.isIgnoredByGuid(guid) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param token string
 ---@return boolean isIgnored
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.isOnIgnoredList(token) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param name string
 ---@return boolean removed
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.removeFriend(name) end
 
----@param index integer
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
+---@param index integer
 function api.friendList.removeFriendByIndex(index) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param filter string
 ---@param origin? number
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.sendWho(filter, origin) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param name string
 ---@param notes string
 ---@return boolean found
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.setFriendNotes(name, notes) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 ---@param index integer
 ---@param notes string
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
 function api.friendList.setFriendNotesByIndex(index, notes) end
 
----@param index integer
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
+---@param index integer
 function api.friendList.setSelectedFriend(index) end
 
----@param index integer
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
+---@param index integer
 function api.friendList.setSelectedIgnore(index) end
 
----@param whoToUi boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
+---@param whoToUi boolean
 function api.friendList.setWhoToUi(whoToUi) end
 
 ---Restrictions: RequiresFriendList
 function api.friendList.showFriends() end
 
----@param sorting string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFriendList
+---@param sorting string
 function api.friendList.sortWho(sorting) end
 
 ---Wraps the global functions of the `GameCursor` system.
@@ -8298,8 +8303,8 @@ function api.gameCursor.deleteCursorItem() end
 ---Restrictions: hasRestrictions
 function api.gameCursor.dropCursorMoney() end
 
----@param slot integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param slot integer
 function api.gameCursor.equipCursorItem(slot) end
 
 function api.gameCursor.getCursorInfo() end
@@ -8307,46 +8312,46 @@ function api.gameCursor.getCursorInfo() end
 ---@return number amount
 function api.gameCursor.getCursorMoney() end
 
----@param amount integer
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param amount integer
 function api.gameCursor.pickupPlayerMoney(amount) end
 
 function api.gameCursor.resetCursor() end
 
 function api.gameCursor.sellCursorItem() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameCursor.setCursor(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mode Enum.Cursormode
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameCursor.setCursorByMode(mode) end
 
----@param item ItemLocation
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param item ItemLocation
 function api.gameCursor.setCursorHoveredItem(item) end
 
----@param enabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled boolean
 function api.gameCursor.setCursorHoveredItemTradeItem(enabled) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@param cursorType Enum.UICursorType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameCursor.setCursorVirtualItem(itemInfo, cursorType) end
 
 ---Wraps the global functions of the `GameError` system.
 ---@class wow.beta.api.gameError
 api.gameError = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param gameErrorIndex integer
 ---@return string? errorName
 ---@return number? soundKitID
 ---@return number? voiceID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameError.getGameMessageInfo(gameErrorIndex) end
 
 function api.gameError.notWhileDeadError() end
@@ -8355,39 +8360,39 @@ function api.gameError.notWhileDeadError() end
 ---@class wow.beta.api.gamePad
 api.gamePad = {}
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param platform Enum.ClientPlatformType
 ---@param mapping string
 ---@return boolean success
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.gamePad.addSDLMapping(platform, mapping) end
 
 ---Restrictions: hasRestrictions
 function api.gamePad.applyConfigs() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param axisIndex number
 ---@return string? configName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gamePad.axisIndexToConfigName(axisIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bindingName string
 ---@return number? buttonIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gamePad.buttonBindingToIndex(bindingName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param buttonIndex number
 ---@return string? bindingName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gamePad.buttonIndexToBinding(buttonIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param buttonIndex number
 ---@return string? configName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gamePad.buttonIndexToConfigName(buttonIndex) end
 
 function api.gamePad.clearLedColor() end
 
----@param configID GamePadConfigID
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param configID GamePadConfigID
 function api.gamePad.deleteConfig(configID) end
 
 ---@return number deviceID
@@ -8402,48 +8407,48 @@ function api.gamePad.getAllDeviceIDs() end
 ---@return number deviceID
 function api.gamePad.getCombinedDeviceID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID GamePadConfigID
 ---@return GamePadConfig? config
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gamePad.getConfig(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param deviceID? number
 ---@return GamePadMappedState? state
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gamePad.getDeviceMappedState(deviceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param deviceID number
 ---@return GamePadRawState? rawState
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gamePad.getDeviceRawState(deviceID) end
 
 ---@return colorRGB color
 function api.gamePad.getLedColor() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param deviceID? number
 ---@return Enum.GamePadPowerLevel powerLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gamePad.getPowerLevel(deviceID) end
 
 ---@return boolean enabled
 function api.gamePad.isEnabled() end
 
----@param config GamePadConfig
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param config GamePadConfig
 function api.gamePad.setConfig(config) end
 
----@param color colorRGB
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param color colorRGB
 function api.gamePad.setLedColor(color) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vibrationType string
 ---@param intensity number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gamePad.setVibration(vibrationType, intensity) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param stickIndex number
 ---@return string? configName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gamePad.stickIndexToConfigName(stickIndex) end
 
 function api.gamePad.stopVibration() end
@@ -8452,13 +8457,13 @@ function api.gamePad.stopVibration() end
 ---@class wow.beta.api.gameRules
 api.gameRules = {}
 
----@param gameModeRecordID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param gameModeRecordID number
 function api.gameRules.autoConnectToGameModeRealm(gameModeRecordID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param gameModeRecordID number
 ---@return boolean hasPromo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameRules.doesGameModeHavePromo(gameModeRecordID) end
 
 ---@return string gameMode
@@ -8473,36 +8478,36 @@ function api.gameRules.getCurrentGameModeDisplayInfo() end
 ---@return number gameModeRecordID
 function api.gameRules.getCurrentGameModeRecordID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param displayIndex integer
 ---@return number gameModeRecordID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameRules.getDisplayedGameModeRecordIDAtIndex(displayIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param gameModeRecordID number
 ---@return GameModeDisplayInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameRules.getGameModeDisplayInfoByRecordID(gameModeRecordID) end
 
 ---@return string screenName
 function api.gameRules.getGameModeGlueScreenName() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param gameModeRecordID number
 ---@return string promoGlobalString
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameRules.getGameModePromoGlobalString(gameModeRecordID) end
 
 ---Returns the numeric value specified in the Game Rule, multiplied by 0.1 for every decimal
 ---place requested
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param gameRule string
 ---@param decimalPlaces? number
 ---@return number value
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameRules.getGameRuleAsFloat(gameRule, decimalPlaces) end
 
 ---Returns the value specified in the Game Rule converted to a frame strata
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param gameRule string
 ---@return string frameStrata
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameRules.getGameRuleAsFrameStrata(gameRule) end
 
 ---@return number numDisplayedGameModes
@@ -8511,19 +8516,19 @@ function api.gameRules.getNumDisplayedGameModes() end
 ---@return boolean active
 function api.gameRules.isCharacterlessLoginActive() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param classID number
 ---@return boolean valid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameRules.isClassAllowedForGameMode(classID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param gameModeRecordID number
 ---@return boolean enabled
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameRules.isGameModeEnabled(gameModeRecordID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param gameRule string
 ---@return boolean isActive
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gameRules.isGameRuleActive(gameRule) end
 
 ---@return boolean valid
@@ -8546,50 +8551,50 @@ function api.gameRules.isWoWHack() end
 ---@class wow.beta.api.gameUI
 api.gameUI = {}
 
----@param visible boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param visible boolean
 function api.gameUI.setInWorldUIVisibility(visible) end
 
----@param visible boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param visible boolean
 function api.gameUI.setUIVisibility(visible) end
 
 ---Wraps `C_Garrison`.
 ---@class wow.beta.api.garrison
 api.garrison = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param missionID number
 ---@param followerID GarrisonFollower
 ---@param boardIndex? number
 ---@return boolean followerAdded
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.addFollowerToMission(missionID, followerID, boardIndex) end
 
 ---@return AutoCombatDamageClassString[] damageClassStrings
 function api.garrison.getAutoCombatDamageClassValues() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param missionID number
 ---@return AutoMissionTargetingInfo[] targetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getAutoMissionBoardState(missionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param missionID number
 ---@return AutoMissionEnvironmentEffect? autoMissionEnvEffect
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getAutoMissionEnvironmentEffect(missionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param missionID number
 ---@param followerID GarrisonFollower
 ---@param casterBoardIndex number
 ---@return AutoMissionTargetingInfo[] targetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getAutoMissionTargetingInfo(missionID, followerID, casterBoardIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param missionID number
 ---@param autoCombatSpellID number
 ---@param casterBoardIndex number
 ---@return AutoMissionTargetingInfo[] targetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getAutoMissionTargetingInfoForSpell(
     missionID,
     autoCombatSpellID,
@@ -8597,14 +8602,14 @@ function api.garrison.getAutoMissionTargetingInfoForSpell(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param followerType number
 ---@return AutoCombatTroopInfo[] autoTroopInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getAutoTroops(followerType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param autoCombatSpellID number
 ---@return AutoCombatSpellInfo? spellInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getCombatLogSpellInfo(autoCombatSpellID) end
 
 ---@return number equipmentLevel
@@ -8619,83 +8624,84 @@ function api.garrison.getCurrentGarrTalentTreeID() end
 ---@return number? cyphersToNext
 function api.garrison.getCyphersToNextEquipmentLevel() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param garrFollowerID GarrisonFollower
 ---@param followerLevel number
 ---@return AutoCombatSpellInfo[]? autoCombatSpells
 ---@return AutoCombatSpellInfo? autoCombatAutoAttack
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getFollowerAutoCombatSpells(garrFollowerID, followerLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param garrFollowerID GarrisonFollower
 ---@return FollowerAutoCombatStatsInfo? autoCombatInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getFollowerAutoCombatStats(garrFollowerID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param followerID GarrisonFollower
 ---@return FollowerMissionCompleteInfo followerMissionCompleteInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getFollowerMissionCompleteInfo(followerID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return GarrisonPlotInstanceMapInfo[] garrisonPlotInstances
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getGarrisonPlotsInstancesForMap(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param garrTalentTreeID number
 ---@return number? garrTalentTreeCurrencyType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getGarrisonTalentTreeCurrencyTypes(garrTalentTreeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param garrTalentTreeID number
 ---@return number garrTalentTreeType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getGarrisonTalentTreeType(garrTalentTreeID) end
 
 ---@return number maxEquipmentLevel
 function api.garrison.getMaxCypherEquipmentLevel() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param missionID number
 ---@return GarrisonEnemyEncounterInfo[] encounters
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getMissionCompleteEncounters(missionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param missionID number
 ---@return MissionDeploymentInfo missionDeploymentInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getMissionDeploymentInfo(missionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param missionID number
 ---@return MissionEncounterIconInfo missionEncounterIconInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getMissionEncounterIconInfo(missionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param talentID number
 ---@return GarrisonTalentInfo info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getTalentInfo(talentID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param garrTalentTreeID number
 ---@return number talentPoints
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getTalentPointsSpentInTalentTree(garrTalentTreeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param garrType number
 ---@param classID number
 ---@return number[]? treeIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getTalentTreeIDsByClassID(garrType, classID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param treeID number
 ---@return GarrisonTalentTreeInfo info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getTalentTreeInfo(treeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param garrTalentTreeID number
 ---@return number goldCost
 ---@return GarrisonTalentCurrencyCostInfo[] currencyCosts
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getTalentTreeResetInfo(garrTalentTreeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param garrTalentID number
 ---@param researchRank number
 ---@param garrTalentTreeID number
@@ -8704,7 +8710,6 @@ function api.garrison.getTalentTreeResetInfo(garrTalentTreeID) end
 ---@return number goldCost
 ---@return GarrisonTalentCurrencyCostInfo[] currencyCosts
 ---@return number durationSecs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getTalentTreeTalentPointResearchInfo(
     garrTalentID,
     researchRank,
@@ -8714,9 +8719,9 @@ function api.garrison.getTalentTreeTalentPointResearchInfo(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param talentID number
 ---@return number? worldQuestID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.getTalentUnlockWorldQuest(talentID) end
 
 ---@return boolean hasAdventures
@@ -8725,48 +8730,48 @@ function api.garrison.hasAdventures() end
 ---@return boolean atGarrisonMissionNPC
 function api.garrison.isAtGarrisonMissionNPC() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param missionID number
 ---@return boolean environmentCountered
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.isEnvironmentCountered(missionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param followerID GarrisonFollower
 ---@return boolean followerOnCompletedMission
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.isFollowerOnCompletedMission(followerID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param garrType number
 ---@return boolean isLandingPageMinimapButtonVisible
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.isLandingPageMinimapButtonVisible(garrType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param talentID number
 ---@return boolean isMet
 ---@return string? failureString
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.isTalentConditionMet(talentID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param missionID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.regenerateCombatLog(missionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param missionID number
 ---@param followerID GarrisonFollower
 ---@param boardIndex? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.garrison.removeFollowerFromMission(missionID, followerID, boardIndex) end
 
----@param followerType number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param followerType number
 function api.garrison.rushHealAllFollowers(followerType) end
 
----@param garrFollowerID GarrisonFollower
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param garrFollowerID GarrisonFollower
 function api.garrison.rushHealFollower(garrFollowerID) end
 
----@param state boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param state boolean
 function api.garrison.setAutoCombatSpellFastForward(state) end
 
 ---Wraps `C_GenericWidgetDisplay`.
@@ -8819,14 +8824,14 @@ function api.gossipInfo.getCompletedOptionDescriptionString() end
 ---@return string? description
 function api.gossipInfo.getCustomGossipDescriptionString() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param friendshipFactionID number
 ---@return FriendshipReputationInfo? reputationInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gossipInfo.getFriendshipReputation(friendshipFactionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param friendshipFactionID number
 ---@return FriendshipReputationRankInfo rankInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gossipInfo.getFriendshipReputationRanks(friendshipFactionID) end
 
 ---@return number mapID
@@ -8838,23 +8843,23 @@ function api.gossipInfo.getNumActiveQuests() end
 ---@return number numQuests
 function api.gossipInfo.getNumAvailableQuests() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param gossipOptionID number
 ---@return GossipOptionUIWidgetSetAndType[]? gossipOptionUIWidgetSetsAndTypes
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gossipInfo.getOptionUIWidgetSetsAndTypesByOptionID(gossipOptionID) end
 
 ---@return GossipOptionUIInfo[] info
 function api.gossipInfo.getOptions() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number? gossipPoiID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gossipInfo.getPoiForUiMapID(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@param gossipPoiID number
 ---@return GossipPoiInfo? gossipPoiInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gossipInfo.getPoiInfo(uiMapID, gossipPoiID) end
 
 ---@return string gossipText
@@ -8862,24 +8867,24 @@ function api.gossipInfo.getText() end
 
 function api.gossipInfo.refreshOptions() end
 
----@param optionID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param optionID number
 function api.gossipInfo.selectActiveQuest(optionID) end
 
----@param optionID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param optionID number
 function api.gossipInfo.selectAvailableQuest(optionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param optionID number
 ---@param text? string
 ---@param confirmed? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gossipInfo.selectOption(optionID, text, confirmed) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param optionID number
 ---@param text? string
 ---@param confirmed? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.gossipInfo.selectOptionByIndex(optionID, text, confirmed) end
 
 ---Wraps `C_GuildBank`.
@@ -8905,44 +8910,44 @@ function api.guildInfo.canSpeakInGuildChat() end
 ---@return boolean canViewOfficerNote
 function api.guildInfo.canViewOfficerNote() end
 
----@param name string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param name string
 function api.guildInfo.demote(name) end
 
 function api.guildInfo.disband() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return GuildNewsInfo? newsInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.guildInfo.getGuildNewsInfo(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@return integer rankOrder
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.guildInfo.getGuildRankOrder(guid) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return GuildTabardInfo? tabardInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.guildInfo.getGuildTabardInfo(unit) end
 
----@return string infoText
 ---Restrictions: hasRestrictions
+---@return string infoText
 function api.guildInfo.getInfoText() end
 
----@return string motd
 ---Restrictions: hasRestrictions
+---@return string motd
 function api.guildInfo.getMOTD() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param rankOrder integer
 ---@return boolean[] permissions
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.guildInfo.guildControlGetRankFlags(rankOrder) end
 
 function api.guildInfo.guildRoster() end
 
----@param name string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param name string
 function api.guildInfo.invite(name) end
 
 ---@return boolean enabled
@@ -8951,10 +8956,10 @@ function api.guildInfo.isEncounterGuildNewsEnabled() end
 ---@return boolean isOfficer
 function api.guildInfo.isGuildOfficer() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@param rankOrder integer
 ---@return boolean isGuildRankAssignmentAllowed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.guildInfo.isGuildRankAssignmentAllowed(guid, rankOrder) end
 
 ---@return boolean enabled
@@ -8962,70 +8967,70 @@ function api.guildInfo.isGuildReputationEnabled() end
 
 function api.guildInfo.leave() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return boolean exists
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.guildInfo.memberExistsByName(name) end
 
----@param name string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param name string
 function api.guildInfo.promote(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param guildMemberGUID string
 ---@param skillLineID number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.guildInfo.queryGuildMemberRecipes(guildMemberGUID, skillLineID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineID number
 ---@param recipeSpellID number
 ---@param recipeLevel? integer
 ---@return number? updatedRecipeSpellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.guildInfo.queryGuildMembersForRecipe(skillLineID, recipeSpellID, recipeLevel) end
 
----@param guid string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param guid string
 function api.guildInfo.removeFromGuild(guid) end
 
----@param desiredName string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param desiredName string
 function api.guildInfo.requestGuildRename(desiredName) end
 
 ---Restrictions: hasRestrictions
 function api.guildInfo.requestGuildRenameRefund() end
 
----@param desiredName string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param desiredName string
 function api.guildInfo.requestRenameNameCheck(desiredName) end
 
 ---@return boolean ableToRequest
 function api.guildInfo.requestRenameStatus() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@param rankOrder integer
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.guildInfo.setGuildRankOrder(guid, rankOrder) end
 
----@param infoText string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param infoText string
 function api.guildInfo.setInfoText(infoText) end
 
----@param name string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param name string
 function api.guildInfo.setLeader(name) end
 
----@param motd string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param motd string
 function api.guildInfo.setMOTD(motd) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@param note string
 ---@param isPublic boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.guildInfo.setNote(guid, note, isPublic) end
 
----@param name string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param name string
 function api.guildInfo.uninvite(name) end
 
 ---Wraps `C_HeirloomInfo`.
@@ -9038,20 +9043,20 @@ function api.heirloomInfo.areAllCollectionFiltersChecked() end
 ---@return boolean areAllSourceFiltersChecked
 function api.heirloomInfo.areAllSourceFiltersChecked() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source integer
 ---@return boolean isHeirloomSourceValid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.heirloomInfo.isHeirloomSourceValid(source) end
 
 ---@return boolean isUsingDefaultFilters
 function api.heirloomInfo.isUsingDefaultFilters() end
 
----@param checked boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param checked boolean
 function api.heirloomInfo.setAllCollectionFilters(checked) end
 
----@param checked boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param checked boolean
 function api.heirloomInfo.setAllSourceFilters(checked) end
 
 function api.heirloomInfo.setDefaultFilters() end
@@ -9061,9 +9066,9 @@ function api.heirloomInfo.setDefaultFilters() end
 api.houseEditor = {}
 
 ---Attempts switch the House Editor to a specific House Editor mode
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param editMode Enum.HouseEditorMode
 ---@return Enum.HousingResult result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.houseEditor.activateHouseEditorMode(editMode) end
 
 ---Attempts to open the House Editor to the default House Editor mode
@@ -9078,9 +9083,9 @@ function api.houseEditor.getActiveHouseEditorMode() end
 function api.houseEditor.getHouseEditorAvailability() end
 
 ---Returns the availability of a specific House Editor mode
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param editMode Enum.HouseEditorMode
 ---@return Enum.HousingResult result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.houseEditor.getHouseEditorModeAvailability(editMode) end
 
 ---Returns whether the House Editor is active, in any mode
@@ -9088,9 +9093,9 @@ function api.houseEditor.getHouseEditorModeAvailability(editMode) end
 function api.houseEditor.isHouseEditorActive() end
 
 ---Returns whether the specific House Editor mode is active
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param editMode Enum.HouseEditorMode
 ---@return boolean isModeActive
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.houseEditor.isHouseEditorModeActive(editMode) end
 
 ---Returns true if the HouseEditor currently able process mode availability and switching; May
@@ -9109,9 +9114,9 @@ api.houseExterior = {}
 ---targets
 function api.houseExterior.cancelActiveExteriorEditing() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param coreFixtureType Enum.HousingFixtureType
 ---@return HousingCoreFixtureInfo? coreFixtureOptionsInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.houseExterior.getCoreFixtureOptionsInfo(coreFixtureType) end
 
 ---@return Enum.HousingFixtureSize? houseExteriorSize
@@ -9138,20 +9143,20 @@ function api.houseExterior.hasSelectedFixturePoint() end
 
 function api.houseExterior.removeFixtureFromSelectedPoint() end
 
----@param fixtureID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fixtureID number
 function api.houseExterior.selectCoreFixtureOption(fixtureID) end
 
----@param fixtureID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fixtureID number
 function api.houseExterior.selectFixtureOption(fixtureID) end
 
----@param size Enum.HousingFixtureSize
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param size Enum.HousingFixtureSize
 function api.houseExterior.setHouseExteriorSize(size) end
 
----@param houseExteriorTypeID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param houseExteriorTypeID number
 function api.houseExterior.setHouseExteriorType(houseExteriorTypeID) end
 
 ---Wraps `C_Housing`.
@@ -9163,35 +9168,35 @@ function api.housing.acceptNeighborhoodOwnership() end
 ---@return boolean canEditCharter
 function api.housing.canEditCharter() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param plotIndex number
 ---@return any reason
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housing.canTakeReportScreenshot(plotIndex) end
 
----@param neighborhoodName string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param neighborhoodName string
 function api.housing.createGuildNeighborhood(neighborhoodName) end
 
----@param neighborhoodName string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param neighborhoodName string
 function api.housing.createNeighborhoodCharter(neighborhoodName) end
 
 function api.housing.declineNeighborhoodOwnership() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param neighborhoodGUID string
 ---@return boolean factionMatches
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housing.doesFactionMatchNeighborhood(neighborhoodGUID) end
 
----@param neighborhoodName string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param neighborhoodName string
 function api.housing.editNeighborhoodCharter(neighborhoodName) end
 
 ---@return HouseInfo? houseInfo
 function api.housing.getCurrentHouseInfo() end
 
----@param houseGuid string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param houseGuid string
 function api.housing.getCurrentHouseLevelFavor(houseGuid) end
 
 ---@return number refundAmount
@@ -9200,13 +9205,13 @@ function api.housing.getCurrentHouseRefundAmount() end
 ---@return string? neighborhoodGUID
 function api.housing.getCurrentNeighborhoodGUID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param level number
 ---@return number houseFavor
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housing.getHouseLevelFavorForLevel(level) end
 
----@param level number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param level number
 function api.housing.getHouseLevelRewardsForLevel(level) end
 
 ---@return integer accessFlags
@@ -9215,15 +9220,15 @@ function api.housing.getHousingAccessFlags() end
 ---@return number level
 function api.housing.getMaxHouseLevel() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param neighborhoodGUID string
 ---@return string neighborhoodTextureSuffix
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housing.getNeighborhoodTextureSuffix(neighborhoodGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerGUID? string
 ---@param bnetID? number
 ---@param isInPlayersGuild boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housing.getOthersOwnedHouses(playerGUID, bnetID, isInPlayersGuild) end
 
 function api.housing.getPlayerOwnedHouses() end
@@ -9231,9 +9236,9 @@ function api.housing.getPlayerOwnedHouses() end
 ---@return string? trackedHouse
 function api.housing.getTrackedHouseGuid() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param neighborhoodGuid string
 ---@return number? uiMapID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housing.getUIMapIDForNeighborhood(neighborhoodGuid) end
 
 ---@return SpellCooldownInfo? spellCooldownInfo
@@ -9246,9 +9251,9 @@ function api.housing.houseFinderDeclineNeighborhoodInvitation() end
 
 function api.housing.houseFinderRequestNeighborhoods() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param neighborhoodGuid string
 ---@param plotID number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housing.houseFinderRequestReservationAndPort(neighborhoodGuid, plotID) end
 
 ---@return boolean isHousingMarketCartFullRemoveEnabled
@@ -9288,25 +9293,25 @@ function api.housing.onCreateCharterNeighborhoodClosed() end
 
 function api.housing.onCreateGuildNeighborhoodClosed() end
 
----@param plotID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param plotID number
 function api.housing.onHouseFinderClickPlot(plotID) end
 
 function api.housing.onRequestSignatureClicked() end
 
----@param charterOwnerGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param charterOwnerGUID string
 function api.housing.onSignCharterClicked(charterOwnerGUID) end
 
----@param houseGuid string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param houseGuid string
 function api.housing.relinquishHouse(houseGuid) end
 
 function api.housing.requestCurrentHouseInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param neighborhoodGuid string
 ---@param neighborhoodName string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housing.requestHouseFinderNeighborhoodData(neighborhoodGuid, neighborhoodName) end
 
 function api.housing.requestPlayerCharacterList() end
@@ -9314,47 +9319,47 @@ function api.housing.requestPlayerCharacterList() end
 ---Restrictions: hasRestrictions
 function api.housing.returnAfterVisitingHouse() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerGUID string
 ---@param accessFlags integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housing.saveHouseSettings(playerGUID, accessFlags) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bnetName string
 ---@return boolean isValidBnetFriend
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housing.searchBNetFriendNeighborhoods(bnetName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bnetID number
 ---@return boolean isValidBnetFriend
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housing.searchBNetFriendNeighborhoodsByID(bnetID) end
 
----@param trackedHouse? string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param trackedHouse? string
 function api.housing.setTrackedHouseGuid(trackedHouse) end
 
 function api.housing.startTutorial() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param neighborhoodGUID string
 ---@param houseGUID string
 ---@param plotID number
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.housing.teleportHome(neighborhoodGUID, houseGUID, plotID) end
 
----@param neighborhoodName string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param neighborhoodName string
 function api.housing.tryRenameNeighborhood(neighborhoodName) end
 
 function api.housing.validateCreateGuildNeighborhoodSize() end
 
----@param neighborhoodName string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param neighborhoodName string
 function api.housing.validateNeighborhoodName(neighborhoodName) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param neighborhoodGUID string
 ---@param houseGUID string
 ---@param plotID number
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.housing.visitHouse(neighborhoodGUID, houseGUID, plotID) end
 
 ---Wraps `C_HousingBasicMode`.
@@ -9417,36 +9422,36 @@ function api.housingBasicMode.removeSelectedDecor() end
 ---Rotates the currently selected decor along a single axis; For wall decor, rotates such that
 ---the object stays flat against its current wall; For all other decor, rotates around the Z
 ---(vertical) axis
----@param rotDegrees number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param rotDegrees number
 function api.housingBasicMode.rotateDecor(rotDegrees) end
 
 ---Rotates the House Exterior around the Z (vertical) axis
----@param rotDegrees number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param rotDegrees number
 function api.housingBasicMode.rotateHouseExterior(rotDegrees) end
 
 ---Set whether free place is enabled; When free place is enabled, collision checks while
 ---dragging decor/the house exterior are ignored
----@param freePlaceEnabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param freePlaceEnabled boolean
 function api.housingBasicMode.setFreePlaceEnabled(freePlaceEnabled) end
 
----@param isGridSnapEnabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isGridSnapEnabled boolean
 function api.housingBasicMode.setGridSnapEnabled(isGridSnapEnabled) end
 
----@param gridVisible boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param gridVisible boolean
 function api.housingBasicMode.setGridVisible(gridVisible) end
 
----@param catalogEntryID HousingCatalogEntryID
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param catalogEntryID HousingCatalogEntryID
 function api.housingBasicMode.startPlacingNewDecor(catalogEntryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param decorRecordID number
 ---@param bundleCatalogShopProductID? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingBasicMode.startPlacingPreviewDecor(
     decorRecordID,
     bundleCatalogShopProductID
@@ -9463,59 +9468,59 @@ api.housingCatalog = {}
 ---@return HousingCatalogSearcher searcher
 function api.housingCatalog.createCatalogSearcher() end
 
----@param decorGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param decorGUID string
 function api.housingCatalog.deletePreviewCartDecor(decorGUID) end
 
 ---Attempt to delete the entry from storage
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param entryID HousingCatalogEntryID
 ---@param destroyAll boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.destroyEntry(entryID, destroyAll) end
 
 ---@return HousingCatalogFilterTagGroupInfo[] filterTagGroups
 function api.housingCatalog.getAllFilterTagGroups() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bundleCatalogShopProductID number
 ---@return HousingBundleInfo? bundleInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.getBundleInfo(bundleCatalogShopProductID) end
 
 ---@return number cartSizeLimit
 function api.housingCatalog.getCartSizeLimit() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@return HousingCatalogCategoryInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.getCatalogCategoryInfo(categoryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param entryID HousingCatalogEntryID
 ---@return HousingCatalogEntryInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.getCatalogEntryInfo(entryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@param tryGetOwnedInfo boolean
 ---@return HousingCatalogEntryInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.getCatalogEntryInfoByItem(itemInfo, tryGetOwnedInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param entryType Enum.HousingCatalogEntryType
 ---@param recordID number
 ---@param tryGetOwnedInfo boolean
 ---@return HousingCatalogEntryInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.getCatalogEntryInfoByRecordID(entryType, recordID, tryGetOwnedInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param entryType Enum.HousingCatalogEntryType
 ---@param recordID number
 ---@return integer? refundTimeStamp
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.getCatalogEntryRefundTimeStampByRecordID(entryType, recordID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param subcategoryID number
 ---@return HousingCatalogSubcategoryInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.getCatalogSubcategoryInfo(subcategoryID) end
 
 ---Returns the maximum total number of decor that can be in storage/in the house chest; Note
@@ -9529,9 +9534,9 @@ function api.housingCatalog.getDecorTotalOwnedCount() end
 
 ---Returns the number of instances that can be to be destroyed in storage; These instances count
 ---towards the max storage limit
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param entryID HousingCatalogEntryID
 ---@return number destroyableInstanceCount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.getDestroyableInstanceCount(entryID) end
 
 ---@return HousingBundleInfo[] bundleInfos
@@ -9542,42 +9547,42 @@ function api.housingCatalog.getFeaturedDecor() end
 
 ---Returns market info for a specific decor. This is decor-only for now but should be extended
 ---to support entry type and recordID generically
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param decorID number
 ---@return HousingMarketInfo? marketInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.getMarketInfoForDecor(decorID) end
 
 ---@return boolean hasEntries
 function api.housingCatalog.hasFeaturedEntries() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param decorGUID string
 ---@return boolean isShown
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.isPreviewCartItemShown(decorGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param decorID number
 ---@param previewDecorGUID string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.promotePreviewDecor(decorID, previewDecorGUID) end
 
 function api.housingCatalog.requestHousingMarketInfoRefresh() end
 
 function api.housingCatalog.requestHousingMarketRefundInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param searchParams HousingCategorySearchInfo
 ---@return number[] categoryIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.searchCatalogCategories(searchParams) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param searchParams HousingCategorySearchInfo
 ---@return number[] subcategoryIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.searchCatalogSubcategories(searchParams) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param decorGUID string
 ---@param shown boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCatalog.setPreviewCartItemShown(decorGUID, shown) end
 
 ---Wraps `C_HousingCleanupMode`.
@@ -9598,33 +9603,33 @@ api.housingCustomizeMode = {}
 
 ---If a dyeable decor is selected, applies a specific dye color in a specific slot as a preview;
 ---See CommitDyesForSelectedDecor to actually save applied dye changes
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param dyeSlotID number
 ---@param dyeColorID? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCustomizeMode.applyDyeToSelectedDecor(dyeSlotID, dyeColorID) end
 
 ---Attempt to apply a specific theme set (aka style) to all applicable room components in the
 ---current room
----@param themeSetID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param themeSetID number
 function api.housingCustomizeMode.applyThemeToRoom(themeSetID) end
 
 ---Attempt to apply a specific theme set (aka style) to the currently selected room component
 ---only
----@param themeSetID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param themeSetID number
 function api.housingCustomizeMode.applyThemeToSelectedRoomComponent(themeSetID) end
 
 ---Attempt to apply a specific wallpaper (aka material/texture) to all applicable room
 ---components in the current room
----@param roomComponentTextureRecID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param roomComponentTextureRecID number
 function api.housingCustomizeMode.applyWallpaperToAllWalls(roomComponentTextureRecID) end
 
 ---Attempt to apply a specific wallpaper (aka material/texture) to the currently selected room
 ---component only
----@param roomComponentTextureRecID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param roomComponentTextureRecID number
 function api.housingCustomizeMode.applyWallpaperToSelectedRoomComponent(
     roomComponentTextureRecID
 )
@@ -9690,16 +9695,16 @@ function api.housingCustomizeMode.getSelectedDecorInfo() end
 function api.housingCustomizeMode.getSelectedRoomComponentInfo() end
 
 ---Returns the name of the specified theme set (aka style) if it exists
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param themeSetID number
 ---@return string? name
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCustomizeMode.getThemeSetInfo(themeSetID) end
 
 ---Get all wallpapers (aka materials/textures) available for the selected room component type,
 ---if any
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.HousingRoomComponentType
 ---@return RoomComponentWallpaper[] availableWallpapers
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCustomizeMode.getWallpapersForRoomComponentType(type) end
 
 ---Returns true if a decor instance is currently selected for customization
@@ -9724,18 +9729,18 @@ function api.housingCustomizeMode.isRoomComponentSelected() end
 
 ---Check whether a specific room component supports a particular variant; What kind of id or
 ---enum 'variant' equates to is complicated, as it depends on the component type
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param componentID number
 ---@param variant number
 ---@return boolean variantSupported
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCustomizeMode.roomComponentSupportsVariant(componentID, variant) end
 
 ---Attempt to set a specific ceiling component, within a specific room, to a specific new
 ---ceiling type
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param roomGUID string
 ---@param componentID number
 ---@param ceilingType Enum.HousingRoomComponentCeilingType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCustomizeMode.setRoomComponentCeilingType(
     roomGUID,
     componentID,
@@ -9744,10 +9749,10 @@ function api.housingCustomizeMode.setRoomComponentCeilingType(
 end
 
 ---Attempt to set a specific door component, within a specific room, to a specific new door type
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param roomGUID string
 ---@param componentID number
 ---@param newDoortype Enum.HousingRoomComponentDoorType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingCustomizeMode.setRoomComponentDoorType(roomGUID, componentID, newDoortype) end
 
 ---Wraps `C_HousingDecor`.
@@ -9767,25 +9772,25 @@ function api.housingDecor.exitPreviewState() end
 
 ---Placed Decor List APIs currently restricted due to being potentially very expensive
 ---operations, may be reworked & opened up in the future
----@return HousingDecorInstanceListEntry[] placedDecor
 ---Restrictions: hasRestrictions
+---@return HousingDecorInstanceListEntry[] placedDecor
 function api.housingDecor.getAllPlacedDecor() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param decorID number
 ---@return integer? icon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingDecor.getDecorIcon(decorID) end
 
 ---Returns info for the placed decor instance associated with the passed Decor GUID, if there is
 ---one
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param decorGUID string
 ---@return HousingDecorInstanceInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingDecor.getDecorInstanceInfoForGUID(decorGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param decorID number
 ---@return string? name
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingDecor.getDecorName(decorID) end
 
 ---Returns info for the placed decor instance currently being hovered, if there is one
@@ -9839,9 +9844,9 @@ function api.housingDecor.isHouseExteriorHovered() end
 ---@return boolean isHoveringDecor
 function api.housingDecor.isHoveringDecor() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mode Enum.HouseEditorMode
 ---@return boolean isModeDisabled
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingDecor.isModeDisabledForPreviewState(mode) end
 
 ---@return boolean isPreviewState
@@ -9849,29 +9854,29 @@ function api.housingDecor.isPreviewState() end
 
 ---Placed Decor List APIs currently restricted due to being potentially very expensive
 ---operations, may be reworked & opened up in the future
----@param decorGUID string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param decorGUID string
 function api.housingDecor.removePlacedDecorEntry(decorGUID) end
 
 ---Attempt to return the currently selected decor instance back to the house chest
 function api.housingDecor.removeSelectedDecor() end
 
----@param gridVisible boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param gridVisible boolean
 function api.housingDecor.setGridVisible(gridVisible) end
 
 ---Placed Decor List APIs currently restricted due to being potentially very expensive
 ---operations, may be reworked & opened up in the future
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param decorGUID string
 ---@param hovered boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.housingDecor.setPlacedDecorEntryHovered(decorGUID, hovered) end
 
 ---Placed Decor List APIs currently restricted due to being potentially very expensive
 ---operations, may be reworked & opened up in the future
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param decorGUID string
 ---@param selected boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.housingDecor.setPlacedDecorEntrySelected(decorGUID, selected) end
 
 ---Wraps `C_HousingExpertMode`.
@@ -9898,9 +9903,9 @@ function api.housingExpertMode.getPrecisionSubmode() end
 
 ---Returns the type of restriction currently active on the submode; Will return
 ---HousingExpertSubmodeRestriction:None if submode is not currently restricted
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param subMode Enum.HousingPrecisionSubmode
 ---@return Enum.HousingExpertSubmodeRestriction restriction
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingExpertMode.getPrecisionSubmodeRestriction(subMode) end
 
 ---Returns info for the placed decor instance that's currently selected, if there is one
@@ -9931,8 +9936,8 @@ function api.housingExpertMode.removeSelectedDecor() end
 
 ---Reset the selected target's transform back to default values; This is NOT an undo, meaning it
 ---will completely reset the transform value to default, NOT just recently-made changes
----@param activeSubmodeOnly boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param activeSubmodeOnly boolean
 function api.housingExpertMode.resetPrecisionChanges(activeSubmodeOnly) end
 
 ---In the rotation submode, swaps the selected axis to the next available one, in order of X ->
@@ -9940,36 +9945,36 @@ function api.housingExpertMode.resetPrecisionChanges(activeSubmodeOnly) end
 ---available one, also in that order
 function api.housingExpertMode.selectNextRotationAxis() end
 
----@param gridVisible boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param gridVisible boolean
 function api.housingExpertMode.setGridVisible(gridVisible) end
 
 ---Sets a specific type of incremental change active or inactive; Whilever that type is active
 ---and target stays selected, incremental changes of that type will continue to be made every
 ---frame
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param incrementType Enum.HousingIncrementType
 ---@param active boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingExpertMode.setPrecisionIncrementingActive(incrementType, active) end
 
 ---Activate a specific Expert submode
----@param subMode Enum.HousingPrecisionSubmode
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param subMode Enum.HousingPrecisionSubmode
 function api.housingExpertMode.setPrecisionSubmode(subMode) end
 
 ---Wraps `C_HousingLayout`.
 ---@class wow.beta.api.housingLayout
 api.housingLayout = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param floor number
 ---@return boolean anyRooms
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingLayout.anyRoomsOnFloor(floor) end
 
 function api.housingLayout.cancelActiveLayoutEditing() end
 
----@param choice? Enum.HousingLayoutStairDirection
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param choice? Enum.HousingLayoutStairDirection
 function api.housingLayout.confirmStairChoice(choice) end
 
 function api.housingLayout.deselectFloorplan() end
@@ -10032,21 +10037,21 @@ function api.housingLayout.hasSelectedFloorplan() end
 ---@return boolean hasSelectedRoom
 function api.housingLayout.hasSelectedRoom() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param roomRecordID number
 ---@return boolean hasStairs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingLayout.hasStairs(roomRecordID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param roomGUID string
 ---@param componentID number
 ---@param roomId number
 ---@return boolean canPlace
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingLayout.hasValidConnection(roomGUID, componentID, roomId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param roomGUID string
 ---@return boolean isBaseRoom
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingLayout.isBaseRoom(roomGUID) end
 
 ---@return boolean isDragging
@@ -10055,39 +10060,39 @@ function api.housingLayout.isDraggingRoom() end
 
 ---Attempt to move the room currently being dragged to a specific connection point on a specific
 ---other room
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sourceDoorIndex number
 ---@param destRoom string
 ---@param destDoorIndex number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingLayout.moveDraggedRoom(sourceDoorIndex, destRoom, destDoorIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param direction Enum.HousingLayoutCameraDirection
 ---@param isPressed boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingLayout.moveLayoutCamera(direction, isPressed) end
 
 ---Attempt to return a previously placed room to the House Chest
----@param roomGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param roomGUID string
 function api.housingLayout.removeRoom(roomGUID) end
 
 ---Rotates either the currently dragged or currently selected room, if either exist
----@param isLeft boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isLeft boolean
 function api.housingLayout.rotateFocusedRoom(isLeft) end
 
 ---Attempt to rotate an already placed room
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param roomGUID string
 ---@param isLeft boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingLayout.rotateRoom(roomGUID, isLeft) end
 
----@param roomID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param roomID number
 function api.housingLayout.selectFloorplan(roomID) end
 
----@param floor number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param floor number
 function api.housingLayout.setViewedFloor(floor) end
 
 function api.housingLayout.startDrag() end
@@ -10096,9 +10101,9 @@ function api.housingLayout.stopDrag() end
 
 function api.housingLayout.stopDraggingRoom() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param zoomIn boolean
 ---@return boolean zoomChanged
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingLayout.zoomLayoutCamera(zoomIn) end
 
 ---Wraps `C_HousingNeighborhood`.
@@ -10109,13 +10114,13 @@ api.housingNeighborhood = {}
 function api.housingNeighborhood.canReturnAfterVisitingHouse() end
 
 ---Only available when interacting with a bulletin board game object
----@param playerName string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param playerName string
 function api.housingNeighborhood.cancelInviteToNeighborhood(playerName) end
 
 ---Only available when interacting with a bulletin board game object
----@param playerGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param playerGUID string
 function api.housingNeighborhood.demoteToResident(playerGUID) end
 
 ---Only available when interacting with a cornerstone game object
@@ -10147,9 +10152,9 @@ function api.housingNeighborhood.getNeighborhoodMapData() end
 ---@return string neighborhoodName
 function api.housingNeighborhood.getNeighborhoodName() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param plotIndex number
 ---@return string neighborhoodName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingNeighborhood.getNeighborhoodPlotName(plotIndex) end
 
 ---Only available when interacting with a cornerstone game object
@@ -10161,8 +10166,8 @@ function api.housingNeighborhood.getPreviousHouseIdentifier() end
 function api.housingNeighborhood.hasPermissionToPurchase() end
 
 ---Only available when interacting with a bulletin board game object
----@param playerName string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param playerName string
 function api.housingNeighborhood.invitePlayerToNeighborhood(playerName) end
 
 ---@return boolean isManager
@@ -10186,8 +10191,8 @@ function api.housingNeighborhood.isPlotOwnedByPlayer() end
 function api.housingNeighborhood.onBulletinBoardClosed() end
 
 ---Only available when interacting with a bulletin board game object
----@param playerGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param playerGUID string
 function api.housingNeighborhood.promoteToManager(playerGUID) end
 
 function api.housingNeighborhood.requestNeighborhoodInfo() end
@@ -10199,13 +10204,13 @@ function api.housingNeighborhood.requestNeighborhoodRoster() end
 function api.housingNeighborhood.requestPendingNeighborhoodInvites() end
 
 ---Only available when interacting with a bulletin board game object
----@param playerGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param playerGUID string
 function api.housingNeighborhood.transferNeighborhoodOwnership(playerGUID) end
 
 ---Only available when interacting with a bulletin board game object
----@param plotID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param plotID number
 function api.housingNeighborhood.tryEvictPlayer(plotID) end
 
 ---Only available when interacting with a cornerstone game object
@@ -10222,8 +10227,8 @@ function api.housingPhotoSharing.beginAuthorizationFlow() end
 
 function api.housingPhotoSharing.clearAuthorization() end
 
----@param callbackURL string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param callbackURL string
 function api.housingPhotoSharing.completeAuthorizationFlow(callbackURL) end
 
 ---@return number cropRatio
@@ -10238,15 +10243,15 @@ function api.housingPhotoSharing.isAuthorized() end
 ---@return boolean enabled
 function api.housingPhotoSharing.isEnabled() end
 
----@param textureObject SimpleTexture
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param textureObject SimpleTexture
 function api.housingPhotoSharing.setScreenshotPreviewTexture(textureObject) end
 
 function api.housingPhotoSharing.takePhoto() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param optionalTitle? string
 ---@param optionalDescription? string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.housingPhotoSharing.uploadPhotoToService(optionalTitle, optionalDescription) end
 
 ---Wraps `C_ImmersiveInteraction`.
@@ -10260,14 +10265,14 @@ function api.immersiveInteraction.hasImmersiveInteraction() end
 ---@class wow.beta.api.incomingSummon
 api.incomingSummon = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean summon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.incomingSummon.hasIncomingSummon(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return Enum.SummonStatus status
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.incomingSummon.incomingSummonStatus(unit) end
 
 ---Wraps the global functions of the `Input` system.
@@ -10285,9 +10290,9 @@ function api.input.getCursorPosition() end
 ---@return string buttonName
 function api.input.getMouseButtonClicked() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param button string
 ---@return string buttonName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.input.getMouseButtonName(button) end
 
 ---@return ScriptRegion[] region
@@ -10299,10 +10304,10 @@ function api.input.isAltKeyDown() end
 ---@return boolean down
 function api.input.isControlKeyDown() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param keyOrMouseName string
 ---@param excludeBindingState? boolean
 ---@return boolean? down
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.input.isKeyDown(keyOrMouseName, excludeBindingState) end
 
 ---@return boolean down
@@ -10323,9 +10328,9 @@ function api.input.isMetaKeyDown() end
 ---@return boolean down
 function api.input.isModifierKeyDown() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param button? string
 ---@return boolean down
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.input.isMouseButtonDown(button) end
 
 ---@return boolean down
@@ -10350,30 +10355,30 @@ function api.input.isUsingGamepad() end
 function api.input.isUsingMouse() end
 
 ---Insecure code can only call this once in response to gamepad input hardware events.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresLimitedInput
 ---@param xPosition number
 ---@param yPosition number
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresLimitedInput
 function api.input.setCursorPosition(xPosition, yPosition) end
 
 ---Effectively the same as SimulateMouseDown plus SimulateMouseUp and consumes limited input for
 ---both.
----@param button string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresLimitedInput
+---@param button string
 function api.input.simulateMouseClick(button) end
 
 ---Insecure code can only call this once in response to gamepad input hardware events.
----@param button string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresLimitedInput
+---@param button string
 function api.input.simulateMouseDown(button) end
 
 ---Insecure code can only call this once in response to gamepad input hardware events.
----@param button string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresLimitedInput
+---@param button string
 function api.input.simulateMouseUp(button) end
 
 ---Insecure code can only call this once in response to gamepad input hardware events.
----@param delta number
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresLimitedInput
+---@param delta number
 function api.input.simulateMouseWheel(delta) end
 
 ---Wraps the global functions of the `Instance` system.
@@ -10384,14 +10389,15 @@ api.instance = {}
 ---@return boolean? notOnCooldown
 function api.instance.canChangePlayerDifficulty() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapID? number
 ---@return boolean canChange
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.instance.canMapChangeDifficulty(mapID) end
 
 ---@return boolean result
 function api.instance.canShowResetInstances() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param difficultyID number
 ---@return string name
 ---@return string instanceType
@@ -10404,7 +10410,6 @@ function api.instance.canShowResetInstances() end
 ---@return number? minPlayers
 ---@return number? maxPlayers
 ---@return boolean isUserSelectable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.instance.getDifficultyInfo(difficultyID) end
 
 ---@return number result
@@ -10431,12 +10436,12 @@ function api.instance.getInstanceInfo() end
 ---@return number encountersCompleted
 function api.instance.getInstanceLockTimeRemaining() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param encounterIndex integer
 ---@return string encounterName
 ---@return string texture
 ---@return boolean isKilled
 ---@return boolean ineligible
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.instance.getInstanceLockTimeRemainingEncounter(encounterIndex) end
 
 ---@return number? result
@@ -10449,25 +10454,25 @@ function api.instance.getRaidDifficultyID() end
 ---@return string instanceType
 function api.instance.isInInstance() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param difficultyID number
 ---@return boolean? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.instance.isLegacyDifficulty(difficultyID) end
 
 function api.instance.resetInstances() end
 
----@param difficultyID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param difficultyID number
 function api.instance.setDungeonDifficultyID(difficultyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param difficultyID number
 ---@param force? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.instance.setLegacyRaidDifficultyID(difficultyID, force) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param difficultyID number
 ---@param force? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.instance.setRaidDifficultyID(difficultyID, force) end
 
 ---Wraps `C_InstanceEncounter`.
@@ -10509,19 +10514,19 @@ api.invasionInfo = {}
 ---@return boolean areInvasionsAvailable
 function api.invasionInfo.areInvasionsAvailable() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number? invasionID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.invasionInfo.getInvasionForUiMapID(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param invasionID number
 ---@return InvasionMapInfo? invasionInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.invasionInfo.getInvasionInfo(invasionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param invasionID number
 ---@return number? timeLeftMinutes
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.invasionInfo.getInvasionTimeLeft(invasionID) end
 
 ---Wraps `C_IslandsInfo`.
@@ -10543,12 +10548,12 @@ function api.islandsQueue.getIslandsMaxGroupSize() end
 ---@return number? questID
 function api.islandsQueue.getIslandsWeeklyQuestID() end
 
----@param difficultyID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param difficultyID number
 function api.islandsQueue.queueForIsland(difficultyID) end
 
----@param questId number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param questId number
 function api.islandsQueue.requestPreloadRewardData(questId) end
 
 ---Wraps `C_Item`.
@@ -10559,25 +10564,25 @@ function api.item.actionBindsItem() end
 
 function api.item.bindEnchant() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return boolean canBeRefunded
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.canBeRefunded(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return boolean canTransmog
 ---@return Enum.TransmogOutfitSlotError errorCode
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.canItemTransmogAppearance(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return boolean canBeScrapped
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.canScrapItem(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return boolean isItemViewable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.canViewItemPowers(itemLoc) end
 
 function api.item.confirmBindOnUse() end
@@ -10586,130 +10591,130 @@ function api.item.confirmNoRefundOnUse() end
 
 function api.item.confirmOnUse() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@param classID number
 ---@param specID? number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.doesItemContainSpec(itemInfo, classID, specID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param emptiableItemLocation EmptiableItemLocation
 ---@return boolean itemExists
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.doesItemExist(emptiableItemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean itemExists
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.doesItemExistByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return boolean matchesBonusTree
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.doesItemMatchBonusTreeReplacement(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return boolean matchesTargetEnchantingSpell
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.doesItemMatchTargetEnchantingSpell(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return boolean matchesTrackJump
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.doesItemMatchTrackJump(itemLoc) end
 
----@param unitGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param unitGUID string
 function api.item.dropItemOnUnit(unitGUID) end
 
----@param type string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param type string
 function api.item.endBoundTradeable(type) end
 
----@param type number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param type number
 function api.item.endRefund(type) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@param dstSlot? integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.equipItemByName(itemInfo, dstSlot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return ItemTransmogInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getAppliedItemTransmogInfo(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return ItemTransmogInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getBaseItemTransmogInfo(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return number? currentItemLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getCurrentItemLevel(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return ItemTransmogInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getCurrentItemTransmogInfo(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param context ItemCreationContext
 ---@return string? itemLink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getDelvePreviewItemLink(itemID, context) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param context ItemCreationContext
 ---@return Enum.ItemQuality itemQuality
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getDelvePreviewItemQuality(itemID, context) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number? actualItemLevel
 ---@return boolean? previewLevel
 ---@return number? sparseItemLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getDetailedItemLevelInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param itemQuality number
 ---@return number? spellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getFirstTriggeredSpellForItem(itemID, itemQuality) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@param slotID? integer
 ---@return number[] result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemChildInfo(itemInfo, slotID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemClassID number
 ---@return string result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemClassInfo(itemClassID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return integer? icon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemConversionOutputIcon(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number startTimeSeconds
 ---@return number durationSeconds
 ---@return boolean enableCooldownTimer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemCooldown(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@param includeBank? boolean
 ---@param includeUses? boolean
 ---@param includeReagentBank? boolean
 ---@param includeAccountBank? boolean
 ---@return number count
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemCount(
     itemInfo,
     includeBank,
@@ -10719,60 +10724,61 @@ function api.item.getItemCount(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number itemID
 ---@return string creationContext
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemCreationContext(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemFamily(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return string itemGUID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemGUID(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param hyperlink string
 ---@param index integer
 ---@return string? gemName
 ---@return string? gemLink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemGem(hyperlink, index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@param index integer
 ---@return number? gemID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemGemID(itemInfo, index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return number itemID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemID(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemGUID string
 ---@return number? itemID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemIDByGUID(itemGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number itemID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemIDForItemInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return integer? icon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemIcon(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return integer? icon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemIconByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return string? itemName
 ---@return string? itemLink
@@ -10792,9 +10798,9 @@ function api.item.getItemIconByID(itemInfo) end
 ---@return number? setID
 ---@return boolean? isCraftingReagent
 ---@return string? itemDescription
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number? itemID
 ---@return string? itemType
@@ -10803,352 +10809,351 @@ function api.item.getItemInfo(itemInfo) end
 ---@return integer? icon
 ---@return number? classID
 ---@return number? subClassID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemInfoInstant(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inventorySlot Enum.InventoryType
 ---@return string result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemInventorySlotInfo(inventorySlot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inventorySlot Enum.InventoryType
 ---@return string result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemInventorySlotKey(inventorySlot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return Enum.InventoryType? inventoryType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemInventoryType(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return Enum.InventoryType? inventoryType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemInventoryTypeByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number? setID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemLearnTransmogSet(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return string? itemLink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemLink(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemGUID string
 ---@return string? itemLink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemLinkByGUID(itemGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemGUID string
 ---@return ItemLocation? itemLocation
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemLocation(itemGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return number? stackSize
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemMaxStackSize(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number? stackSize
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemMaxStackSizeByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return string? itemName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemName(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return string? itemName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemNameByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number socketCount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemNumAddedSockets(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number socketCount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemNumSockets(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return Enum.ItemQuality? itemQuality
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemQuality(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return Enum.ItemQuality? itemQuality
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemQualityByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param quality Enum.ItemQuality
 ---@return number colorRGBR
 ---@return number colorRGBG
 ---@return number colorRGBB
 ---@return string qualityString
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemQualityColor(quality) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param setID number
 ---@return string result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemSetInfo(setID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number[]? specTable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemSpecInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return string? spellName
 ---@return number? spellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemSpell(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLink1 string
 ---@param itemLink2 string
 ---@return any? statTable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemStatDelta(itemLink1, itemLink2) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLink string
 ---@return any? statTable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemStats(itemLink) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemClassID number
 ---@param itemSubClassID number
 ---@return string? subClassName
 ---@return boolean? subClassUsesInvType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemSubClassInfo(itemClassID, itemSubClassID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number? limitCategory
 ---@return number? limitMax
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemUniqueness(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean? isUnique
 ---@return string? limitCategoryName
 ---@return number? limitCategoryCount
 ---@return number? limitCategoryID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemUniquenessByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return ItemUpgradeInfo? itemUpgradeInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getItemUpgradeInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return string? name
 ---@return integer? icon
 ---@return number? quantity
 ---@return number? maxQuantity
 ---@return number? totalEarned
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getLimitedCurrencyItemInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID number
 ---@param itemID number
 ---@return number[]? itemSetSpellIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getSetBonusesForSpecializationByItemID(specID, itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return number stackCount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.getStackCount(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean isAnimaItem
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isAnimaItemByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isArtifactPowerItem(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return boolean isBound
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isBound(itemLocation) end
 
 ---You can use IsItemBindToAccountUntilEquip instead if the item is not in your inventory
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return boolean isBoundToAccountUntilEquip
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isBoundToAccountUntilEquip(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isConsumableItem(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isCorruptedItem(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isCosmeticItem(itemInfo) end
 
 ---Returns whether the item is a consumable curio that can be applied to a delves companion.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isCurioItem(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isCurrentItem(itemInfo) end
 
 ---Returns whether the item is a consumable decor item.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean? isDecor
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isDecorItem(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean isDressableItem
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isDressableItemByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isEquippableItem(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isEquippedItem(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isEquippedItemType(type) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isHarmfulItem(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isHelpfulItem(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean isItemBindToAccount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemBindToAccount(itemInfo) end
 
 ---You can use IsBoundToAccountUntilEquip instead if the item exists in your inventory
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean isItemBindToAccountUntilEquip
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemBindToAccountUntilEquip(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return boolean isConduit
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemConduit(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return boolean isItemConvertibleAndValidForPlayer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemConvertibleAndValidForPlayer(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return boolean isCorrupted
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemCorrupted(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return boolean isCorruptionRelated
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemCorruptionRelated(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLoc ItemLocation
 ---@return boolean isCorruptionResistant
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemCorruptionResistant(itemLoc) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return boolean isCached
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemDataCached(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean isCached
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemDataCachedByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemGUID string
 ---@return boolean valid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemGUIDInInventory(itemGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@param targetToken string
 ---@return boolean? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemInRange(itemInfo, targetToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean isKeystone
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemKeystoneByID(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean isItemSpecificToPlayerClass
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isItemSpecificToPlayerClass(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return boolean isLocked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isLocked(itemLocation) end
 
 ---Returns whether the item is a consumable relic  that can be applied to an artifact weapon.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isRelicItem(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean usable
 ---@return boolean noMana
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.isUsableItem(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.itemHasRange(itemInfo) end
 
----@param itemLocation ItemLocation
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemLocation ItemLocation
 function api.item.lockItem(itemLocation) end
 
----@param itemGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemGUID string
 function api.item.lockItemByGUID(itemGUID) end
 
----@param itemInfo ItemInfo
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemInfo ItemInfo
 function api.item.pickupItem(itemInfo) end
 
 function api.item.replaceEnchant() end
@@ -11157,25 +11162,25 @@ function api.item.replaceTradeEnchant() end
 
 function api.item.replaceTradeskillEnchant() end
 
----@param itemLocation ItemLocation
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemLocation ItemLocation
 function api.item.requestLoadItemData(itemLocation) end
 
----@param itemInfo ItemInfo
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemInfo ItemInfo
 function api.item.requestLoadItemDataByID(itemInfo) end
 
----@param itemLocation ItemLocation
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemLocation ItemLocation
 function api.item.unlockItem(itemLocation) end
 
----@param itemGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemGUID string
 function api.item.unlockItemByGUID(itemGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@param target? string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.item.useItemByName(itemInfo, target) end
 
 ---Wraps `C_ItemInteraction`.
@@ -11189,9 +11194,9 @@ function api.itemInteraction.closeUI() end
 ---@return ItemInteractionChargeInfo chargeInfo
 function api.itemInteraction.getChargeInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param item ItemLocation
 ---@return ConversionCurrencyCost conversionCost
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemInteraction.getItemConversionCurrencyCost(item) end
 
 ---@return ItemInteractionFrameInfo? info
@@ -11207,9 +11212,9 @@ function api.itemInteraction.performItemInteraction() end
 
 function api.itemInteraction.reset() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param item? ItemLocation
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemInteraction.setPendingItem(item) end
 
 ---Wraps `C_ItemSocketInfo`.
@@ -11218,8 +11223,8 @@ api.itemSocketInfo = {}
 
 function api.itemSocketInfo.acceptSockets() end
 
----@param index integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param index integer
 function api.itemSocketInfo.clickSocketButton(index) end
 
 function api.itemSocketInfo.closeSocketInfo() end
@@ -11229,28 +11234,28 @@ function api.itemSocketInfo.completeSocketing() end
 ---@return Enum.ItemSocketInfoUIType uiType
 function api.itemSocketInfo.getCurrUIType() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return string? name
 ---@return integer? icon
 ---@return boolean gemMatchesSocket
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemSocketInfo.getExistingSocketInfo(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return string? existingSocketLink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemSocketInfo.getExistingSocketLink(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return string? name
 ---@return integer? icon
 ---@return boolean gemMatchesSocket
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemSocketInfo.getNewSocketInfo(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return string? newSocketLink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemSocketInfo.getNewSocketLink(index) end
 
 ---@return number numSockets
@@ -11267,17 +11272,17 @@ function api.itemSocketInfo.getSocketItemInfo() end
 ---@return boolean socketItemRefundable
 function api.itemSocketInfo.getSocketItemRefundable() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return string? socketType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemSocketInfo.getSocketTypes(index) end
 
 ---@return boolean hasBoundGemProposed
 function api.itemSocketInfo.hasBoundGemProposed() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param info ItemInfo
 ---@return boolean isArtifactRelicItem
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemSocketInfo.isArtifactRelicItem(info) end
 
 ---Wraps `C_ItemText`.
@@ -11288,30 +11293,30 @@ api.itemText = {}
 ---@class wow.beta.api.itemUpgrade
 api.itemUpgrade = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param baseItem ItemLocation
 ---@return boolean isValid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemUpgrade.canUpgradeItem(baseItem) end
 
 function api.itemUpgrade.clearItemUpgrade() end
 
 function api.itemUpgrade.closeItemUpgrade() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number? characterHighWatermark
 ---@return number? accountHighWatermark
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemUpgrade.getHighWatermarkForItem(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemRedundancySlot number
 ---@return number? characterHighWatermark
 ---@return number? accountHighWatermark
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemUpgrade.getHighWatermarkForSlot(itemRedundancySlot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number? itemRedundancySlot
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemUpgrade.getHighWatermarkSlotForItem(itemInfo) end
 
 ---@return string? link
@@ -11321,20 +11326,20 @@ function api.itemUpgrade.getItemHyperlink() end
 ---@return boolean? isPvpItemLevel
 function api.itemUpgrade.getItemUpgradeCurrentLevel() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param effectIndex number
 ---@param numUpgradeLevels? number
 ---@return string? outBaseEffect
 ---@return string? outUpgradedEffect
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemUpgrade.getItemUpgradeEffect(effectIndex, numUpgradeLevels) end
 
 ---@return ItemUpgradeItemInfo? itemInfo
 function api.itemUpgrade.getItemUpgradeItemInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param numUpgradeLevels number
 ---@return number? currentPvPItemLevel
 ---@return number? upgradedPvPItemLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.itemUpgrade.getItemUpgradePvpItemLevelDeltaValues(numUpgradeLevels) end
 
 ---@return number numItemUpgradeEffects
@@ -11345,63 +11350,63 @@ function api.itemUpgrade.isItemBound() end
 
 function api.itemUpgrade.setItemUpgradeFromCursorItem() end
 
----@param itemToSet ItemLocation
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemToSet ItemLocation
 function api.itemUpgrade.setItemUpgradeFromLocation(itemToSet) end
 
----@param numUpgrades? number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param numUpgrades? number
 function api.itemUpgrade.upgradeItem(numUpgrades) end
 
 ---Wraps `C_KeyBindings`.
 ---@class wow.beta.api.keyBindings
 api.keyBindings = {}
 
----@param newContext Enum.BindingContext
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param newContext Enum.BindingContext
 function api.keyBindings.activateBindingContext(newContext) end
 
----@param context Enum.BindingContext
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param context Enum.BindingContext
 function api.keyBindings.deactivateBindingContext(context) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param action string
 ---@param context? Enum.BindingContext
 ---@return string binding
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.keyBindings.getBindingByKey(action, context) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param action string
 ---@return Enum.BindingContext? context
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.keyBindings.getBindingContextForAction(action) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param action string
 ---@return integer? bindingIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.keyBindings.getBindingIndex(action) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bindingIndex integer
 ---@return Enum.CustomBindingType? customBindingType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.keyBindings.getCustomBindingType(bindingIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param action string
 ---@return string[]? searchTags
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.keyBindings.getSearchTagsForAction(action) end
 
 ---@return Enum.TurnStrafeStyle style
 function api.keyBindings.getTurnStrafeStyle() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param context Enum.BindingContext
 ---@return boolean isActive
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.keyBindings.isBindingContextActive(context) end
 
 ---Can only set to Modern or Legacy.
----@param style Enum.TurnStrafeStyle
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param style Enum.TurnStrafeStyle
 function api.keyBindings.setTurnStrafeStyle(style) end
 
 function api.keyBindings.updateTurnStrafeBindingsForCharacter() end
@@ -11412,15 +11417,15 @@ api.legendaryCrafting = {}
 
 function api.legendaryCrafting.closeRuneforgeInteraction() end
 
----@param description RuneforgeLegendaryCraftDescription
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param description RuneforgeLegendaryCraftDescription
 function api.legendaryCrafting.craftRuneforgeLegendary(description) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param baseItem ItemLocation
 ---@param runeforgePowerID? number
 ---@param modifiers? number[]
 ---@return RuneforgeItemPreviewInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.getRuneforgeItemPreviewInfo(
     baseItem,
     runeforgePowerID,
@@ -11428,14 +11433,14 @@ function api.legendaryCrafting.getRuneforgeItemPreviewInfo(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param runeforgeLegendary ItemLocation
 ---@return RuneforgeLegendaryComponentInfo componentInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.getRuneforgeLegendaryComponentInfo(runeforgeLegendary) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param baseItem ItemLocation
 ---@return CurrencyCost[] cost
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.getRuneforgeLegendaryCost(baseItem) end
 
 ---@return number spellID
@@ -11444,19 +11449,19 @@ function api.legendaryCrafting.getRuneforgeLegendaryCraftSpellID() end
 ---@return number[] currencies
 function api.legendaryCrafting.getRuneforgeLegendaryCurrencies() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param runeforgeLegendary ItemLocation
 ---@param upgradeItem ItemLocation
 ---@return CurrencyCost[] cost
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.getRuneforgeLegendaryUpgradeCost(runeforgeLegendary, upgradeItem) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param baseItem ItemLocation
 ---@param powerID? number
 ---@param addedModifierIndex integer
 ---@param modifiers number[]
 ---@return string name
 ---@return string[] description
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.getRuneforgeModifierInfo(
     baseItem,
     powerID,
@@ -11468,29 +11473,29 @@ end
 ---@return number[] modifiedReagentItemIDs
 function api.legendaryCrafting.getRuneforgeModifiers() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param runeforgePowerID number
 ---@return RuneforgePower power
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.getRuneforgePowerInfo(runeforgePowerID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param runeforgePowerID number
 ---@return string[] slotNames
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.getRuneforgePowerSlots(runeforgePowerID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param baseItem? ItemLocation
 ---@param filter? Enum.RuneforgePowerFilter
 ---@return number[] primaryRuneforgePowerIDs
 ---@return number[] otherRuneforgePowerIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.getRuneforgePowers(baseItem, filter) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param classID? number
 ---@param specID? number
 ---@param covenantID? number
 ---@param filter? Enum.RuneforgePowerFilter
 ---@return number[] runeforgePowerIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.getRuneforgePowersByClassSpecAndCovenant(
     classID,
     specID,
@@ -11499,36 +11504,36 @@ function api.legendaryCrafting.getRuneforgePowersByClassSpecAndCovenant(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param item ItemLocation
 ---@return boolean isRuneforgeLegendary
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.isRuneforgeLegendary(item) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param runeforgeLegendary ItemLocation
 ---@return boolean isMaxLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.isRuneforgeLegendaryMaxLevel(runeforgeLegendary) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param runeforgeLegendary ItemLocation
 ---@param upgradeItem ItemLocation
 ---@return boolean isValid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.isUpgradeItemValidForRuneforgeLegendary(
     runeforgeLegendary,
     upgradeItem
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param baseItem ItemLocation
 ---@return boolean isValid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.isValidRuneforgeBaseItem(baseItem) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param baseItem ItemLocation
 ---@param runeforgePowerID number
 ---@param modifiers number[]
 ---@return RuneforgeLegendaryCraftDescription description
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.makeRuneforgeCraftDescription(
     baseItem,
     runeforgePowerID,
@@ -11536,47 +11541,47 @@ function api.legendaryCrafting.makeRuneforgeCraftDescription(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param runeforgeLegendary ItemLocation
 ---@param upgradeItem ItemLocation
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.legendaryCrafting.upgradeRuneforgeLegendary(runeforgeLegendary, upgradeItem) end
 
 ---Wraps `C_LevelLink`.
 ---@class wow.beta.api.levelLink
 api.levelLink = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param actionID integer
 ---@return boolean isLocked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.levelLink.isActionLocked(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return boolean isLocked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.levelLink.isSpellLocked(spellID) end
 
 ---Wraps `C_LevelSquish`.
 ---@class wow.beta.api.levelSquish
 api.levelSquish = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param level number
 ---@param maxFollowerLevel number
 ---@return number squishedLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.levelSquish.convertFollowerLevel(level, maxFollowerLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param level number
 ---@return number squishedLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.levelSquish.convertPlayerLevel(level) end
 
 ---Wraps `C_LFGInfo`.
 ---@class wow.beta.api.lfgInfo
 api.lfgInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param lfgDungeonID number
 ---@return boolean areCrossFactionGroupQueuesAllowed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgInfo.areCrossFactionGroupQueuesAllowed(lfgDungeonID) end
 
 ---@return boolean canUse
@@ -11605,42 +11610,42 @@ function api.lfgInfo.canPlayerUseScenarioFinder() end
 
 function api.lfgInfo.confirmLfgExpandSearch() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param lfgDungeonID number
 ---@return boolean doesActivePartyMeetPremadeLaunchCount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgInfo.doesActivePartyMeetPremadeLaunchCount(lfgDungeonID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param lfgDungeonID number
 ---@return boolean doesCrossFactionQueueRequireFullPremade
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgInfo.doesCrossFactionQueueRequireFullPremade(lfgDungeonID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category integer
 ---@return number[] lfgDungeonIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgInfo.getAllEntriesForCategory(category) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param lfgDungeonID number
 ---@return LFGDungeonInfo? dungeonInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgInfo.getDungeonInfo(lfgDungeonID) end
 
 ---@return LFGLockInfo[] lockInfo
 function api.lfgInfo.getLFDLockStates() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currPlayerLevel number
 ---@param isRaid boolean
 ---@return number[] instances
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgInfo.getLevelUpInstances(currPlayerLevel, isRaid) end
 
 ---@return number? maxLevel
 ---@return boolean isLevelReduced
 function api.lfgInfo.getRoleCheckDifficultyDetails() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param dungeonID number
 ---@return boolean shouldHide
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgInfo.hideNameFromUI(dungeonID) end
 
 ---@return boolean enabled
@@ -11652,9 +11657,9 @@ function api.lfgInfo.isInLFGFollowerDungeon() end
 ---@return boolean enabled
 function api.lfgInfo.isLFDEnabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param dungeonID number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgInfo.isLFGFollowerDungeon(dungeonID) end
 
 ---@return boolean enabled
@@ -11667,14 +11672,14 @@ api.lfgList = {}
 ---@return boolean canUseAutoAccept
 function api.lfgList.canActiveEntryUseAutoAccept() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean canCreate
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.canCreateQuestGroup(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param scenarioID number
 ---@return boolean canCreate
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.canCreateScenarioGroup(scenarioID) end
 
 function api.lfgList.clearApplicationTextFields() end
@@ -11685,18 +11690,18 @@ function api.lfgList.clearSearchTextFields() end
 
 function api.lfgList.copyActiveEntryInfoToCreationFields() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param createData LfgListingCreateData
 ---@return boolean success
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.lfgList.createListing(createData) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param activityID number
 ---@param itemLevel number
 ---@param autoAccept boolean
 ---@param privateGroup boolean
 ---@param scenarioID number
 ---@return boolean canCreate
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.createScenarioListing(
     activityID,
     itemLevel,
@@ -11706,12 +11711,12 @@ function api.lfgList.createScenarioListing(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param activityID number
 ---@param groupID number
 ---@param playstyle? Enum.LFGEntryPlaystyle
 ---@param generalPlaystyle? Enum.LFGEntryGeneralPlaystyle
 ---@return boolean matches
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.doesEntryTitleMatchPrebuiltTitle(
     activityID,
     groupID,
@@ -11720,62 +11725,62 @@ function api.lfgList.doesEntryTitleMatchPrebuiltTitle(
 )
 end
 
----@return LfgEntryData? entryData
 ---Restrictions: SecretInChatMessagingLockdown
+---@return LfgEntryData? entryData
 function api.lfgList.getActiveEntryInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param activityID number
 ---@param questID? number
 ---@param showWarmode? boolean
 ---@return string fullName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.getActivityFullName(activityID, questID, showWarmode) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param groupID number
 ---@return string? name
 ---@return number? orderIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.getActivityGroupInfo(groupID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param activityID number
 ---@param questID? number
 ---@param showWarmode? boolean
 ---@return GroupFinderActivityInfo? activityInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.getActivityInfoTable(activityID, questID, showWarmode) end
 
 ---@return AdvancedFilterOptions options
 function api.lfgList.getAdvancedFilter() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param localID number
 ---@param applicantIndex integer
 ---@return BestDungeonScoreMapInfo? bestDungeonScoreForListing
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.getApplicantBestDungeonScore(localID, applicantIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param localID number
 ---@param applicantIndex integer
 ---@param activityID number
 ---@return BestDungeonScoreMapInfo? bestDungeonScoreForListing
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.getApplicantDungeonScoreForListing(localID, applicantIndex, activityID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param applicantID number
 ---@return LfgApplicantData? applicantData
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.lfgList.getApplicantInfo(applicantID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param localID number
 ---@param applicantIndex integer
 ---@param activityID number
 ---@return PvpRatingInfo? pvpRatingInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.getApplicantPvpRatingInfoForListing(localID, applicantIndex, activityID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@param filter? number
 ---@return number[] activityIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.getAvailableActivityGroups(categoryID, filter) end
 
 ---@return number totalResultsFound
@@ -11787,47 +11792,47 @@ function api.lfgList.getFilteredSearchResults() end
 ---@return number damageLeavers
 function api.lfgList.getGroupLeaverCountsByRole() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param activityID number
 ---@return number? level
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.getKeystoneForActivity(activityID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@return LfgCategoryData? categoryData
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.getLfgCategoryInfo(categoryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param getTimewalking? boolean
 ---@return number? activityID
 ---@return number? groupID
 ---@return number? keystoneLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.getOwnedKeystoneActivityAndGroupAndLevel(getTimewalking) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playstyle Enum.LFGEntryPlaystyle
 ---@param generalPlaystyle Enum.LFGEntryGeneralPlaystyle
 ---@param activityInfo GroupFinderActivityInfo
 ---@return string playstyleString
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.getPlaystyleString(playstyle, generalPlaystyle, activityInfo) end
 
 ---@return Enum.PremadeGroupFinderStyle style
 function api.lfgList.getPremadeGroupFinderStyle() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param searchResultID number
 ---@return LfgSearchResultData? searchResultData
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.lfgList.getSearchResultInfo(searchResultID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param searchResultID number
 ---@return LfgSearchResultPlayerInfo? leaderInfo
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.lfgList.getSearchResultLeaderInfo(searchResultID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param searchResultID number
 ---@param memberIndex integer
 ---@return LfgSearchResultPlayerInfo? playerInfo
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.lfgList.getSearchResultPlayerInfo(searchResultID, memberIndex) end
 
 ---@return number totalResultsFound
@@ -11837,14 +11842,14 @@ function api.lfgList.getSearchResults() end
 ---@return boolean hasActiveEntryInfo
 function api.lfgList.hasActiveEntryInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param searchResultID number
 ---@return boolean hasSearchResultInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.hasSearchResultInfo(searchResultID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param activityCategoryID? number
 ---@return boolean isAuthenticated
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.isPlayerAuthenticatedForLFG(activityCategoryID) end
 
 ---@return boolean isValid
@@ -11853,19 +11858,20 @@ function api.lfgList.isPlayerValidForEndgameFieldEdits() end
 ---@return boolean enabled
 function api.lfgList.isPremadeGroupFinderEnabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param activityID number
 ---@return boolean isEndgameListing
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.listingUsesEndgameEditRestrictions(activityID) end
 
----@param searchResultID number
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param searchResultID number
 function api.lfgList.reportGroupAsAdvertisement(searchResultID) end
 
----@param options AdvancedFilterOptions
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param options AdvancedFilterOptions
 function api.lfgList.saveAdvancedFilter(options) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@param filter? number
 ---@param preferredFilters? number
@@ -11873,7 +11879,6 @@ function api.lfgList.saveAdvancedFilter(options) end
 ---@param searchCrossFactionListings? boolean
 ---@param advancedFilter? AdvancedFilterOptions
 ---@param activityIDsFilter? number[]
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.lfgList.search(
     categoryID,
     filter,
@@ -11885,60 +11890,60 @@ function api.lfgList.search(
 )
 end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param activityID number
 ---@param groupID number
 ---@param playstyle? Enum.LFGEntryPlaystyle
 ---@param generalPlaystyle? Enum.LFGEntryGeneralPlaystyle
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.lfgList.setEntryTitle(activityID, groupID, playstyle, generalPlaystyle) end
 
----@param activityID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param activityID number
 function api.lfgList.setSearchToActivity(activityID) end
 
----@param questID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param questID number
 function api.lfgList.setSearchToQuestID(questID) end
 
----@param scenarioID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scenarioID number
 function api.lfgList.setSearchToScenarioID(scenarioID) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param createData LfgListingCreateData
 ---@return boolean success
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.lfgList.updateListing(createData) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param dungeonScore number
 ---@return boolean passes
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.validateRequiredDungeonScore(dungeonScore) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param activityID number
 ---@param rating number
 ---@return boolean passes
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lfgList.validateRequiredPvpRatingForActivity(activityID, rating) end
 
 ---Wraps `C_LimitedInput`.
 ---@class wow.beta.api.limitedInput
 api.limitedInput = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.LimitedInputType
 ---@return boolean allowed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.limitedInput.limitedInputAllowed(type) end
 
 ---Wraps `C_LiveEvent`.
 ---@class wow.beta.api.liveEvent
 api.liveEvent = {}
 
----@param timerunningSeasonID number
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param timerunningSeasonID number
 function api.liveEvent.onLiveEventBannerClicked(timerunningSeasonID) end
 
----@param timerunningSeasonID number
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param timerunningSeasonID number
 function api.liveEvent.onLiveEventPopupClicked(timerunningSeasonID) end
 
 ---Wraps `C_LoadingScreen`.
@@ -11951,8 +11956,8 @@ api.lobbyMatchmakerInfo = {}
 
 function api.lobbyMatchmakerInfo.abandonQueue() end
 
----@param playlistEntry PartyPlaylistEntry
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param playlistEntry PartyPlaylistEntry
 function api.lobbyMatchmakerInfo.enterQueue(playlistEntry) end
 
 ---@return PartyPlaylistEntry playlistEntry
@@ -11970,22 +11975,22 @@ function api.lobbyMatchmakerInfo.getQueueStartTime() end
 ---@return boolean isInQueue
 function api.lobbyMatchmakerInfo.isInQueue() end
 
----@param acceptQueue boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param acceptQueue boolean
 function api.lobbyMatchmakerInfo.respondToQueuePop(acceptQueue) end
 
 ---Wraps the global functions of the `Locale` system.
 ---@class wow.beta.api.locale
 api.locale = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param ignoreLocaleRestrictions? boolean
 ---@return LocaleInfo[] localeInfos
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.locale.getAvailableLocaleInfo(ignoreLocaleRestrictions) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param ignoreLocaleRestrictions? boolean
 ---@return string localeName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.locale.getAvailableLocales(ignoreLocaleRestrictions) end
 
 ---@return number region
@@ -12001,87 +12006,87 @@ function api.locale.getOSLocale() end
 ---@class wow.beta.api.localization
 api.localization = {}
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param number number
 ---@param options? NumberAbbrevOptions
 ---@return string result
----Restrictions: secretArguments=AllowedWhenTainted
 function api.localization.abbreviateLargeNumbers(number, options) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param number number
 ---@param options? NumberAbbrevOptions
 ---@return string result
----Restrictions: secretArguments=AllowedWhenTainted
 function api.localization.abbreviateNumbers(number, options) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param largeNumber number
 ---@param natural? boolean
 ---@return string result
----Restrictions: secretArguments=AllowedWhenTainted
 function api.localization.breakUpLargeNumbers(largeNumber, natural) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return string result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.localization.caseAccentInsensitiveParse(name) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param data NumberAbbreviationBreakpoint[]
 ---@return AbbreviateConfig config
----Restrictions: secretArguments=NotAllowed
 function api.localization.createAbbreviateConfig(data) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@param gender? Enum.UnitSex
 ---@param declensionSet integer
 ---@return string declinedNames
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.localization.declineName(name, gender, declensionSet) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@param gender? Enum.UnitSex
 ---@return number numDeclensionSets
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.localization.getNumDeclensionSets(name, gender) end
 
 ---@return boolean enabled
 function api.localization.isEuropeanNumbers() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param isFemale? boolean
 ---@return any result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.localization.localizedClassList(isFemale) end
 
----@param enabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled boolean
 function api.localization.setEuropeanNumbers(enabled) end
 
 ---Wraps `C_Log`.
 ---@class wow.beta.api.log
 api.log = {}
 
----@param message string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param message string
 function api.log.logErrorMessage(message) end
 
----@param message string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param message string
 function api.log.logMessage(message) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param priority Enum.LogPriority
 ---@param message string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.log.logMessageWithPriority(priority, message) end
 
----@param message string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param message string
 function api.log.logWarningMessage(message) end
 
 ---Wraps `C_Loot`.
 ---@class wow.beta.api.loot
 api.loot = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param rollID number
 ---@return number? duration
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.loot.getLootRollDuration(rollID) end
 
 ---@return boolean isLegacyLootModeEnabled
@@ -12094,69 +12099,69 @@ api.lootHistory = {}
 ---@return EncounterLootInfo[] infos
 function api.lootHistory.getAllEncounterInfos() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param encounterID number
 ---@return EncounterLootInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lootHistory.getInfoForEncounter(encounterID) end
 
 ---@return number time
 function api.lootHistory.getLootHistoryTime() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param encounterID number
 ---@return EncounterLootDropInfo[]? drops
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lootHistory.getSortedDropsForEncounter(encounterID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param encounterID number
 ---@param lootListID number
 ---@return EncounterLootDropInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lootHistory.getSortedInfoForDrop(encounterID, lootListID) end
 
 ---Wraps `C_LootJournal`.
 ---@class wow.beta.api.lootJournal
 api.lootJournal = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param setID number
 ---@return LootJournalItemInfo[]? items
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lootJournal.getItemSetItems(setID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param classID? number
 ---@param specID? number
 ---@return LootJournalItemSetInfo[]? itemSets
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lootJournal.getItemSets(classID, specID) end
 
 ---Wraps `C_LoreText`.
 ---@class wow.beta.api.loreText
 api.loreText = {}
 
----@param campaignID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param campaignID number
 function api.loreText.requestLoreTextForCampaignID(campaignID) end
 
 ---Wraps `C_LossOfControl`.
 ---@class wow.beta.api.lossOfControl
 api.lossOfControl = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return LossOfControlData? event
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lossOfControl.getActiveLossOfControlData(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenLossOfControlInfoRestricted
 ---@param unitToken string
 ---@param index integer
 ---@return LossOfControlData? event
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenLossOfControlInfoRestricted
 function api.lossOfControl.getActiveLossOfControlDataByUnit(unitToken, index) end
 
 ---@return number count
 function api.lossOfControl.getActiveLossOfControlDataCount() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return number count
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.lossOfControl.getActiveLossOfControlDataCountByUnit(unitToken) end
 
 ---Wraps `C_MacOptions`.
@@ -12188,31 +12193,31 @@ function api.macOptions.openMicrophoneRequestDialogue() end
 
 function api.macOptions.openUniversalAccess() end
 
----@param disable boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param disable boolean
 function api.macOptions.setOSShortcutsDisabled(disable) end
 
 ---Wraps `C_Macro`.
 ---@class wow.beta.api.macro
 api.macro = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param macroId integer
 ---@return string? name
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.macro.getMacroName(macroId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param macroId integer
 ---@return integer textureNum
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.macro.getSelectedMacroIcon(macroId) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param text string
 ---@param button string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.macro.runMacroText(text, button) end
 
----@param cb MacroExecuteLineCallback
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param cb MacroExecuteLineCallback
 function api.macro.setMacroExecuteLineCallback(cb) end
 
 ---Wraps `C_Mail`.
@@ -12223,176 +12228,177 @@ api.mail = {}
 ---@return number secondsUntilAllowed
 function api.mail.canCheckInbox() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inboxIndex integer
 ---@return CraftingOrderMailInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mail.getCraftingOrderMailInfo(inboxIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inboxIndex integer
 ---@return boolean inboxItemHasMoneyAttached
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mail.hasInboxMoney(inboxIndex) end
 
 ---@return boolean isCommandPending
 function api.mail.isCommandPending() end
 
----@param openingAll boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param openingAll boolean
 function api.mail.setOpeningAll(openingAll) end
 
 ---Wraps `C_MajorFactions`.
 ---@class wow.beta.api.majorFactions
 api.majorFactions = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param majorFactionID number
 ---@return number level
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.majorFactions.getCurrentRenownLevel(majorFactionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param majorFactionID number
 ---@return MajorFactionData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.majorFactions.getMajorFactionData(majorFactionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param expansionID? number
 ---@return number[] majorFactionIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.majorFactions.getMajorFactionIDs(expansionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param majorFactionID number
 ---@return MajorFactionRenownInfo? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.majorFactions.getMajorFactionRenownInfo(majorFactionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param majorFactionID number
 ---@return MajorFactionRenownLevelInfo[] levels
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.majorFactions.getRenownLevels(majorFactionID) end
 
 ---@return number renownNPCFactionID
 function api.majorFactions.getRenownNPCFactionID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param majorFactionID number
 ---@param renownLevel number
 ---@return MajorFactionRenownRewardInfo[] rewards
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.majorFactions.getRenownRewardsForLevel(majorFactionID, renownLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param majorFactionID number
 ---@return boolean hasMaxRenown
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.majorFactions.hasMaximumRenown(majorFactionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param majorFactionID number
 ---@return boolean isHidden
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.majorFactions.isMajorFactionHiddenFromExpansionPage(majorFactionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param majorFactionID number
 ---@return boolean isWeeklyCapped
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.majorFactions.isWeeklyRenownCapped(majorFactionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param majorFactionID number
 ---@return boolean shouldDisplayMajorFactionAsJourney
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.majorFactions.shouldDisplayMajorFactionAsJourney(majorFactionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param majorFactionID number
 ---@return boolean shouldUseJourneyRewardTrack
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.majorFactions.shouldUseJourneyRewardTrack(majorFactionID) end
 
 ---Wraps `C_Map`.
 ---@class wow.beta.api.map
 api.map = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return boolean canSet
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.canSetUserWaypointOnMap(uiMapID) end
 
 function api.map.clearUserWaypoint() end
 
 function api.map.closeWorldMapInteraction() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param areaID number
 ---@return string name
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getAreaInfo(areaID) end
 
 ---Only works for the player and party members.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return number? uiMapID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getBestMapForUnit(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bountySetID number
 ---@return number[] mapIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getBountySetMaps(bountySetID) end
 
 ---@return number uiMapID
 function api.map.getFallbackWorldMapID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return string atlasName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapArtBackgroundAtlas(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return Enum.MapCanvasPosition position
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapArtHelpTextPosition(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number? uiMapArtID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapArtID(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@param layerIndex integer
 ---@return integer[]? textures
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapArtLayerTextures(uiMapID, layerIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return UiMapLayerInfo[]? layerInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapArtLayers(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return Enum.MapCanvasPosition position
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapArtZoneTextPosition(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return MapBannerInfo[] mapBanners
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapBannersForMap(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@param mapType? Enum.UIMapType
 ---@param allDescendants? boolean
 ---@return UiMapDetails[]? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapChildrenInfo(uiMapID, mapType, allDescendants) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return boolean? hideIcons
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapDisplayInfo(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number? uiMapGroupID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapGroupID(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapGroupID number
 ---@return UiMapGroupMemberInfo[]? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapGroupMembersInfo(uiMapGroupID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@param x number
 ---@param y number
@@ -12404,9 +12410,9 @@ function api.map.getMapGroupMembersInfo(uiMapGroupID) end
 ---@return number? textureY
 ---@return number? scrollChildX
 ---@return number? scrollChildY
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapHighlightInfoAtPosition(uiMapID, x, y) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return integer? fileDataID
 ---@return string? atlasID
@@ -12416,154 +12422,153 @@ function api.map.getMapHighlightInfoAtPosition(uiMapID, x, y) end
 ---@return number? textureY
 ---@return number? scrollChildX
 ---@return number? scrollChildY
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapHighlightPulseInfo(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return UiMapDetails? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapInfo(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@param x number
 ---@param y number
 ---@param ignoreZoneMapPositionData? boolean
 ---@return UiMapDetails? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapInfoAtPosition(uiMapID, x, y, ignoreZoneMapPositionData) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number? playerMinLevel
 ---@return number? playerMaxLevel
 ---@return number? petMinLevel
 ---@return number? petMaxLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapLevels(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return MapLinkInfo[] mapLinks
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapLinksForMap(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param continentID number
 ---@param worldPosition vector2
 ---@param overrideUiMapID? number
 ---@return number? uiMapID
 ---@return vector2? mapPosition
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapPosFromWorldPos(continentID, worldPosition, overrideUiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@param topUiMapID number
 ---@return number? minX
 ---@return number? maxX
 ---@return number? minY
 ---@return number? maxY
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapRectOnMap(uiMapID, topUiMapID) end
 
 ---Returns the size in yards of the area represented by the map.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number width
 ---@return number height
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getMapWorldSize(uiMapID) end
 
 ---Only works for the player and party members.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@param unitToken string
 ---@return vector2? position
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getPlayerMapPosition(uiMapID, unitToken) end
 
 ---@return UiMapPoint? point
 function api.map.getUserWaypoint() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param hyperlink string
 ---@return UiMapPoint? point
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getUserWaypointFromHyperlink(hyperlink) end
 
 ---@return string? hyperlink
 function api.map.getUserWaypointHyperlink() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return vector2? mapPosition
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getUserWaypointPositionForMap(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@param mapPosition vector2
 ---@return number? continentID
 ---@return vector2? worldPosition
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.getWorldPosFromMapPos(uiMapID, mapPosition) end
 
 ---@return boolean hasUserWaypoint
 function api.map.hasUserWaypoint() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return boolean isCityMap
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.isCityMap(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return boolean isValid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.isMapValidForNavBarDropdown(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return boolean hasArt
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.map.mapHasArt(uiMapID) end
 
----@param uiMapID? number
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param uiMapID? number
 function api.map.openWorldMap(uiMapID) end
 
----@param uiMapID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param uiMapID number
 function api.map.requestPreloadMap(uiMapID) end
 
----@param point UiMapPoint
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param point UiMapPoint
 function api.map.setUserWaypoint(point) end
 
 ---Wraps `C_MapExplorationInfo`.
 ---@class wow.beta.api.mapExplorationInfo
 api.mapExplorationInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@param normalizedPosition vector2
 ---@return number[]? areaID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mapExplorationInfo.getExploredAreaIDsAtPosition(uiMapID, normalizedPosition) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return UiMapExplorationInfo[]? overlayInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mapExplorationInfo.getExploredMapTextures(uiMapID) end
 
 ---Wraps `C_MerchantFrame`.
 ---@class wow.beta.api.merchantFrame
 api.merchantFrame = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param buybackSlotIndex integer
 ---@return number? buybackItemID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.merchantFrame.getBuybackItemID(buybackSlotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return MerchantItemInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.merchantFrame.getItemInfo(index) end
 
 ---@return number numJunkItems
 function api.merchantFrame.getNumJunkItems() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return boolean refundable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.merchantFrame.isMerchantItemRefundable(index) end
 
 ---@return boolean enabled
@@ -12582,9 +12587,9 @@ function api.minimap.clearAllTracking() end
 
 function api.minimap.clearMinimapInsetInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param filterType Enum.MinimapTrackingFilter
 ---@return boolean defaultValue
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.minimap.getDefaultTrackingValue(filterType) end
 
 ---@return boolean draw
@@ -12596,30 +12601,30 @@ function api.minimap.getNumQuestPOIWorldEffects() end
 ---@return number numTrackingTypes
 function api.minimap.getNumTrackingTypes() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index? number
 ---@return number textureCoordsX
 ---@return number textureCoordsY
 ---@return number textureCoordsZ
 ---@return number textureCoordsW
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.minimap.getObjectIconTextureCoords(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index? number
 ---@return number textureCoordsX
 ---@return number textureCoordsY
 ---@return number textureCoordsZ
 ---@return number textureCoordsW
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.minimap.getPOITextureCoords(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIndex integer
 ---@return MinimapScriptTrackingFilter trackingType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.minimap.getTrackingFilter(spellIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIndex integer
 ---@return MinimapScriptTrackingInfo? trackingInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.minimap.getTrackingInfo(spellIndex) end
 
 ---@return number? uiMapID
@@ -12628,14 +12633,14 @@ function api.minimap.getUiMapID() end
 ---@return number yards
 function api.minimap.getViewRadius() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param filterType Enum.MinimapTrackingFilter
 ---@return boolean isFiltered
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.minimap.isFilteredOut(filterType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isInside
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.minimap.isInsideQuestBlob(questID) end
 
 ---@return boolean isIgnored
@@ -12650,23 +12655,23 @@ function api.minimap.isTrackingBattlePets() end
 ---@return boolean isTrackingHiddenQuests
 function api.minimap.isTrackingHiddenQuests() end
 
----@param draw boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param draw boolean
 function api.minimap.setDrawGroundTextures(draw) end
 
----@param ignore boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param ignore boolean
 function api.minimap.setIgnoreRotateMinimap(ignore) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param minAngle number
 ---@param maxAngle number
 ---@param scalar number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.minimap.setMinimapInsetInfo(minAngle, maxAngle, scalar) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@param on boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.minimap.setTracking(index, on) end
 
 ---@return boolean shouldUse
@@ -12676,6 +12681,7 @@ function api.minimap.shouldUseHybridMinimap() end
 ---@class wow.beta.api.mirrorTimer
 api.mirrorTimer = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param timerIndex integer
 ---@return string? name
 ---@return number? startValue
@@ -12684,12 +12690,11 @@ api.mirrorTimer = {}
 ---@return number? paused
 ---@return string? label
 ---@return number? spellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mirrorTimer.getMirrorTimerInfo(timerIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param timerName string
 ---@return number? progress
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mirrorTimer.getMirrorTimerProgress(timerName) end
 
 ---Wraps `C_ModelInfo`.
@@ -12697,82 +12702,82 @@ function api.mirrorTimer.getMirrorTimerProgress(timerName) end
 api.modelInfo = {}
 
 ---This function does nothing in public clients
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modelSceneFrame ModelSceneFrame
 ---@param modelSceneID number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.modelInfo.addActiveModelScene(modelSceneFrame, modelSceneID) end
 
 ---This function does nothing in public clients
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modelSceneFrameActor ModelSceneFrameActor
 ---@param modelSceneActorID number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.modelInfo.addActiveModelSceneActor(modelSceneFrameActor, modelSceneActorID) end
 
 ---This function does nothing in public clients
----@param modelSceneFrame ModelSceneFrame
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param modelSceneFrame ModelSceneFrame
 function api.modelInfo.clearActiveModelScene(modelSceneFrame) end
 
 ---This function does nothing in public clients
----@param modelSceneFrameActor ModelSceneFrameActor
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param modelSceneFrameActor ModelSceneFrameActor
 function api.modelInfo.clearActiveModelSceneActor(modelSceneFrameActor) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modelActorDisplayID number
 ---@return UIModelSceneActorDisplayInfo? actorDisplayInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.modelInfo.getModelSceneActorDisplayInfoByID(modelActorDisplayID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modelActorID number
 ---@return UIModelSceneActorInfo? actorInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.modelInfo.getModelSceneActorInfoByID(modelActorID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modelSceneCameraID number
 ---@return UIModelSceneCameraInfo? modelSceneCameraInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.modelInfo.getModelSceneCameraInfoByID(modelSceneCameraID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modelSceneID number
 ---@return Enum.ModelSceneType? modelSceneType
 ---@return number[]? modelCameraIDs
 ---@return number[]? modelActorsIDs
 ---@return number? flags
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.modelInfo.getModelSceneInfoByID(modelSceneID) end
 
 ---Wraps `C_ModifiedInstance`.
 ---@class wow.beta.api.modifiedInstance
 api.modifiedInstance = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapID number
 ---@return ModifiedInstanceInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.modifiedInstance.getModifiedInstanceInfoFromMapID(mapID) end
 
 ---Wraps `C_MountJournal`.
 ---@class wow.beta.api.mountJournal
 api.mountJournal = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return boolean canContinue
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.applyMountEquipment(itemLocation) end
 
 ---@return boolean areEffectsSuppressed
 function api.mountJournal.areMountEquipmentEffectsSuppressed() end
 
----@param mountID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param mountID number
 function api.mountJournal.clearFanfare(mountID) end
 
 function api.mountJournal.clearRecentFanfares() end
 
 function api.mountJournal.dismiss() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mountID number
 ---@return number[] creatureDisplayIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getAllCreatureDisplayIDsForMountID(mountID) end
 
 ---@return number? itemID
@@ -12781,21 +12786,22 @@ function api.mountJournal.getAppliedMountEquipmentID() end
 ---@return number[] mountIDs
 function api.mountJournal.getCollectedDragonridingMounts() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param filterIndex integer
 ---@return boolean isChecked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getCollectedFilterSetting(filterIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mountIndex integer
 ---@return MountCreatureDisplayInfo[]? allDisplayInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getDisplayedMountAllCreatureDisplayInfo(mountIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param displayIndex integer
 ---@return number mountID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getDisplayedMountID(displayIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param displayIndex integer
 ---@return string? name
 ---@return number? spellID
@@ -12810,9 +12816,9 @@ function api.mountJournal.getDisplayedMountID(displayIndex) end
 ---@return boolean? isCollected
 ---@return number? mountID
 ---@return boolean? isSteadyFlight
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getDisplayedMountInfo(displayIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mountIndex integer
 ---@return number? creatureDisplayInfoID
 ---@return string? description
@@ -12823,39 +12829,39 @@ function api.mountJournal.getDisplayedMountInfo(displayIndex) end
 ---@return number? animID
 ---@return number? spellVisualKitID
 ---@return boolean? disablePlayerMountPreview
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getDisplayedMountInfoExtra(mountIndex) end
 
 ---@return number spellID
 function api.mountJournal.getDynamicFlightModeSpellID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mountIndex integer
 ---@return boolean isFavorite
 ---@return boolean canSetFavorite
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getIsFavorite(mountIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mountID number
 ---@return MountCreatureDisplayInfo[]? allDisplayInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getMountAllCreatureDisplayInfoByID(mountID) end
 
 ---@return number level
 function api.mountJournal.getMountEquipmentUnlockLevel() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return number? mountID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getMountFromItem(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@return number? mountID
----Restrictions: secretArguments=AllowedWhenTainted
 function api.mountJournal.getMountFromSpell(spellID) end
 
 ---@return number[] mountIDs
 function api.mountJournal.getMountIDs() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mountID number
 ---@return string? name
 ---@return number? spellID
@@ -12870,9 +12876,9 @@ function api.mountJournal.getMountIDs() end
 ---@return boolean? isCollected
 ---@return number? mountID
 ---@return boolean? isSteadyFlight
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getMountInfoByID(mountID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mountID number
 ---@return number? creatureDisplayInfoID
 ---@return string? description
@@ -12883,19 +12889,18 @@ function api.mountJournal.getMountInfoByID(mountID) end
 ---@return number? animID
 ---@return number? spellVisualKitID
 ---@return boolean? disablePlayerMountPreview
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getMountInfoExtraByID(mountID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return string? mountCreatureDisplayInfoLink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getMountLink(spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mountID number
 ---@param checkIndoors boolean
 ---@return boolean? isUsable
 ---@return string? useError
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.getMountUsabilityByID(mountID, checkIndoors) end
 
 ---@return number numMounts
@@ -12913,84 +12918,84 @@ function api.mountJournal.getNumMountsNeedingFanfare() end
 function api.mountJournal.isDragonridingUnlocked() end
 
 ---Determines if the item is mount equipment based on its class and subclass.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return boolean isMountEquipment
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.isItemMountEquipment(itemLocation) end
 
 ---@return boolean isApplied
 function api.mountJournal.isMountEquipmentApplied() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param filterIndex integer
 ---@return boolean isChecked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.isSourceChecked(filterIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param filterIndex integer
 ---@return boolean isChecked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.isTypeChecked(filterIndex) end
 
 ---@return boolean isUsingDefaultFilters
 function api.mountJournal.isUsingDefaultFilters() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param filterIndex integer
 ---@return boolean isValid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.isValidSourceFilter(filterIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param filterIndex integer
 ---@return boolean isValid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.isValidTypeFilter(filterIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mountID number
 ---@return boolean needsFanfare
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.needsFanfare(mountID) end
 
----@param displayIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param displayIndex integer
 function api.mountJournal.pickup(displayIndex) end
 
 function api.mountJournal.pickupDynamicFlightMode() end
 
----@param isChecked boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isChecked boolean
 function api.mountJournal.setAllSourceFilters(isChecked) end
 
----@param isChecked boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isChecked boolean
 function api.mountJournal.setAllTypeFilters(isChecked) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param filterIndex integer
 ---@param isChecked boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.setCollectedFilterSetting(filterIndex, isChecked) end
 
 function api.mountJournal.setDefaultFilters() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mountIndex integer
 ---@param isFavorite boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.setIsFavorite(mountIndex, isFavorite) end
 
----@param searchValue string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param searchValue string
 function api.mountJournal.setSearch(searchValue) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param filterIndex integer
 ---@param isChecked boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.setSourceFilter(filterIndex, isChecked) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param filterIndex integer
 ---@param isChecked boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mountJournal.setTypeFilter(filterIndex, isChecked) end
 
----@param mountID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param mountID number
 function api.mountJournal.summonByID(mountID) end
 
 function api.mountJournal.swapDynamicFlightMode() end
@@ -12999,34 +13004,34 @@ function api.mountJournal.swapDynamicFlightMode() end
 ---@class wow.beta.api.movie
 api.movie = {}
 
----@param movieId number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param movieId number
 function api.movie.cancelPreloadingMovie(movieId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param movieId number
 ---@return boolean inProgress
 ---@return integer downloaded
 ---@return integer total
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.movie.getMovieDownloadProgress(movieId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param movieId number
 ---@return boolean isLocal
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.movie.isMovieLocal(movieId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param movieId number
 ---@return boolean isPlayable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.movie.isMoviePlayable(movieId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param movieId number
 ---@return boolean readable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.movie.isMovieReadable(movieId) end
 
----@param movieId number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param movieId number
 function api.movie.preloadMovie(movieId) end
 
 ---Wraps `C_MythicPlus`.
@@ -13047,9 +13052,9 @@ function api.mythicPlus.getCurrentSeasonValues() end
 ---@return number? seasonID
 function api.mythicPlus.getCurrentUIDisplaySeason() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param keystoneLevel number
 ---@return number? sequenceLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mythicPlus.getEndOfRunGearSequenceLevel(keystoneLevel) end
 
 ---@return number? challengeMapId
@@ -13065,22 +13070,22 @@ function api.mythicPlus.getOwnedKeystoneLevel() end
 ---@return number? mapID
 function api.mythicPlus.getOwnedKeystoneMapID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param difficultyLevel number
 ---@return number weeklyRewardLevel
 ---@return number endOfRunRewardLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mythicPlus.getRewardLevelForDifficultyLevel(difficultyLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param keystoneLevel number
 ---@return number? rewardLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mythicPlus.getRewardLevelFromKeystoneLevel(keystoneLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param includePreviousWeeks? boolean
 ---@param includeIncompleteRuns? boolean
 ---@param currentSeasonOnly? boolean
 ---@return MythicPlusRunInfo[] runs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mythicPlus.getRunHistory(
     includePreviousWeeks,
     includeIncompleteRuns,
@@ -13090,22 +13095,23 @@ end
 
 ---Gets the active players best runs by the seasonal tracked affixes as well as their overall
 ---score for the current season.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapChallengeModeID number
 ---@return MythicPlusAffixScoreInfo[]? affixScores
 ---@return number? bestOverAllScore
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mythicPlus.getSeasonBestAffixScoreInfoForMap(mapChallengeModeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapChallengeModeID number
 ---@return MapSeasonBestInfo? intimeInfo
 ---@return MapSeasonBestInfo? overtimeInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mythicPlus.getSeasonBestForMap(mapChallengeModeID) end
 
 ---@return number? bestSeasonScore
 ---@return number? bestSeason
 function api.mythicPlus.getSeasonBestMythicRatingFromThisExpansion() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapChallengeModeID number
 ---@return number? durationSec
 ---@return number? level
@@ -13113,7 +13119,6 @@ function api.mythicPlus.getSeasonBestMythicRatingFromThisExpansion() end
 ---@return number[]? affixIDs
 ---@return MythicPlusMember[]? members
 ---@return number? dungeonScore
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.mythicPlus.getWeeklyBestForMap(mapChallengeModeID) end
 
 ---@return number currentWeekBestLevel
@@ -13135,10 +13140,10 @@ function api.mythicPlus.requestRewards() end
 ---@class wow.beta.api.namePlate
 api.namePlate = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@param includeForbidden? boolean
 ---@return NamePlateFrame nameplate
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.namePlate.getNamePlateForUnit(unitToken, includeForbidden) end
 
 ---@return number width
@@ -13148,9 +13153,9 @@ function api.namePlate.getNamePlateSize() end
 ---@return NamePlateFrame[] nameplates
 function api.namePlate.getNamePlates() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param width number
 ---@param height number
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.namePlate.setNamePlateSize(width, height) end
 
 ---Wraps `C_NamePlateManager`.
@@ -13158,43 +13163,43 @@ function api.namePlate.setNamePlateSize(width, height) end
 api.namePlateManager = {}
 
 ---Returns the values used to adjust the hit testing area for nameplates.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.NamePlateType
 ---@return number left
 ---@return number right
 ---@return number top
 ---@return number bottom
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.namePlateManager.getNamePlateHitTestInsets(type) end
 
 ---Returns whether the unit to which the nameplate is attached is behind the player's camera.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return boolean isBehindCamera
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.namePlateManager.isNamePlateUnitBehindCamera(unitToken) end
 
 ---Set the frame used to determine where the mouse should interact with the nameplate. Used to
 ---control which part of the nameplate is clickable.
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@param hitTestFrame SimpleFrame
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.namePlateManager.setNamePlateHitTestFrame(unitToken, hitTestFrame) end
 
 ---Provide values to adjust the hit testing area for nameplates. Positive values will decrease
 ---the hit test area, negative values will increase it. Note that all hit testing is clamped to
 ---the bounds of the nameplate and can not be moved outside it.
+---Restrictions: hasRestrictions, secretArguments=NotAllowed
 ---@param type Enum.NamePlateType
 ---@param left number
 ---@param right number
 ---@param top number
 ---@param bottom number
----Restrictions: hasRestrictions, secretArguments=NotAllowed
 function api.namePlateManager.setNamePlateHitTestInsets(type, left, right, top, bottom) end
 
 ---Set whether the nameplate attached to a unit is considered simplified, which can change the
 ---way it's displayed.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@param isSimplified boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.namePlateManager.setNamePlateSimplified(unitToken, isSimplified) end
 
 ---Wraps `C_Navigation`.
@@ -13223,8 +13228,8 @@ function api.navigation.wasClampedToScreen() end
 ---@class wow.beta.api.neighborhoodInitiative
 api.neighborhoodInitiative = {}
 
----@param initiativeTaskID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param initiativeTaskID number
 function api.neighborhoodInitiative.addTrackedInitiativeTask(initiativeTaskID) end
 
 ---@return string neighborhoodGUID
@@ -13233,14 +13238,14 @@ function api.neighborhoodInitiative.getActiveNeighborhood() end
 ---@return InitiativeActivityLogInfo? info
 function api.neighborhoodInitiative.getInitiativeActivityLogInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param initiativeTaskID number
 ---@return string link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.neighborhoodInitiative.getInitiativeTaskChatLink(initiativeTaskID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param initiativeTaskID number
 ---@return InitiativeTaskInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.neighborhoodInitiative.getInitiativeTaskInfo(initiativeTaskID) end
 
 ---@return NeighborhoodInitiativeInfo? info
@@ -13267,20 +13272,20 @@ function api.neighborhoodInitiative.playerHasInitiativeAccess() end
 ---@return boolean success
 function api.neighborhoodInitiative.playerMeetsRequiredLevel() end
 
----@param initiativeTaskID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param initiativeTaskID number
 function api.neighborhoodInitiative.removeTrackedInitiativeTask(initiativeTaskID) end
 
 function api.neighborhoodInitiative.requestInitiativeActivityLog() end
 
 function api.neighborhoodInitiative.requestNeighborhoodInitiativeInfo() end
 
----@param neighborhoodGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param neighborhoodGUID string
 function api.neighborhoodInitiative.setActiveNeighborhood(neighborhoodGUID) end
 
----@param neighborhoodGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param neighborhoodGUID string
 function api.neighborhoodInitiative.setViewingNeighborhood(neighborhoodGUID) end
 
 ---Wraps `C_NewItems`.
@@ -13289,25 +13294,25 @@ api.newItems = {}
 
 function api.newItems.clearAll() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@return boolean isNew
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.newItems.isNewItem(containerIndex, slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param containerIndex Enum.BagIndex
 ---@param slotIndex integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.newItems.removeNewItem(containerIndex, slotIndex) end
 
 ---Wraps the global functions of the `Os` system.
 ---@class wow.beta.api.os
 api.os = {}
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param text string
 ---@param removeMarkup? boolean
 ---@return number length
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.os.copyToClipboard(text, removeMarkup) end
 
 ---@return number time
@@ -13320,39 +13325,39 @@ api.paperDollInfo = {}
 ---@return boolean canAutoEquip
 function api.paperDollInfo.canAutoEquipCursorItem() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slotIndex integer
 ---@return boolean canOccupySlot
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.paperDollInfo.canCursorCanGoInSlot(slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param armor number
 ---@param attackerLevel number
 ---@return number effectiveness
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.paperDollInfo.getArmorEffectiveness(armor, attackerLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param armor number
 ---@return number? effectiveness
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.paperDollInfo.getArmorEffectivenessAgainstTarget(armor) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param equipmentSlotIndex integer
 ---@return number[]? azeritePowerIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.paperDollInfo.getInspectAzeriteItemEmpoweredChoices(unit, equipmentSlotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitString string
 ---@return number achievementPoints
 ---@return number numMembers
 ---@return string guildName
 ---@return string realmName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.paperDollInfo.getInspectGuildInfo(unitString) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number equippedItemLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.paperDollInfo.getInspectItemLevel(unit) end
 
 ---@return InspectPVPData ratedBGBlitzData
@@ -13367,15 +13372,15 @@ function api.paperDollInfo.getInspectRatedSoloShuffleData() end
 ---@return number? minItemLevel
 function api.paperDollInfo.getMinItemLevel() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number stagger
 ---@return number? staggerAgainstTarget
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.paperDollInfo.getStaggerPercentage(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slotName string
 ---@return boolean isEnabled
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.paperDollInfo.isInventorySlotEnabled(slotName) end
 
 ---@return boolean isShown
@@ -13398,9 +13403,9 @@ function api.parentalControls.getSecondsUntilParentalControlsKick() end
 ---@class wow.beta.api.partyInfo
 api.partyInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param toRaid boolean
 ---@return boolean allowed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyInfo.allowedToDoPartyConversion(toRaid) end
 
 ---@return boolean canFormCrossFactionParties
@@ -13419,29 +13424,29 @@ function api.partyInfo.challengeModeRestrictionsActive() end
 ---Immediately convert to raid with no regard for potentially destructive actions.
 function api.partyInfo.confirmConvertToRaid() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param targetName string
 ---@param targetGUID string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyInfo.confirmInviteTravelPass(targetName, targetGUID) end
 
 ---Immediately invites the named unit to a party, with no regard for potentially destructive
 ---actions.
----@param targetName string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidInviteTarget
+---@param targetName string
 function api.partyInfo.confirmInviteUnit(targetName) end
 
 ---Immediately leave the party with no regard for potentially destructive actions
----@param category? integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param category? integer
 function api.partyInfo.confirmLeaveParty(category) end
 
 ---Immediately request an invite into the target party, this is the confirmation function to
 ---call after RequestInviteFromUnit, or if you would like to skip the confirmation process.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidInviteTarget
 ---@param targetName string
 ---@param tank? boolean
 ---@param healer? boolean
 ---@param dps? boolean
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidInviteTarget
 function api.partyInfo.confirmRequestInviteFromUnit(targetName, tank, healer, dps) end
 
 function api.partyInfo.convertToParty() end
@@ -13452,9 +13457,9 @@ function api.partyInfo.convertToRaid() end
 
 function api.partyInfo.delveTeleportOut() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param seconds number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyInfo.doCountdown(seconds) end
 
 ---@return number[]? categories
@@ -13489,18 +13494,18 @@ function api.partyInfo.getInstanceAbandonVoteResponse() end
 ---@return number timeLeftSeconds
 function api.partyInfo.getInstanceAbandonVoteTime() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inviteGUID string
 ---@return QueueSpecificInfo[]? invalidQueues
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyInfo.getInviteConfirmationInvalidQueues(inviteGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inviteGUID string
 ---@return string? outReferredByGuid
 ---@return string? outReferredByName
 ---@return Enum.PartyRequestJoinRelation? outRelationType
 ---@return boolean? outIsQuickJoin
 ---@return string? outClubId
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyInfo.getInviteReferralInfo(inviteGUID) end
 
 ---@return Enum.LootMethod method
@@ -13508,15 +13513,15 @@ function api.partyInfo.getInviteReferralInfo(inviteGUID) end
 ---@return number? masterLooterRaidID
 function api.partyInfo.getLootMethod() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param avgItemLevelCategory Enum.AvgItemLevelCategories
 ---@return number minItemLevel
 ---@return string playerNameWithLowestItemLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyInfo.getMinItemLevel(avgItemLevelCategory) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category? integer
 ---@return number minLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyInfo.getMinLevel(category) end
 
 ---Returns how many players have voted either way
@@ -13528,8 +13533,8 @@ function api.partyInfo.getRestrictPings() end
 
 ---Attempt to invite the named unit to a party, requires confirmation in some cases (e.g. the
 ---party will convert to a raid, or if there is a party sync in progress).
----@param targetName string
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidInviteTarget
+---@param targetName string
 function api.partyInfo.inviteUnit(targetName) end
 
 ---@return boolean active
@@ -13538,9 +13543,9 @@ function api.partyInfo.isChallengeModeActive() end
 ---@return boolean isKeystoneOwner
 function api.partyInfo.isChallengeModeKeystoneOwner() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category? integer
 ---@return boolean isCrossFactionParty
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyInfo.isCrossFactionParty(category) end
 
 ---@return boolean isDelveComplete
@@ -13549,9 +13554,9 @@ function api.partyInfo.isDelveComplete() end
 ---@return boolean isDelveComplete
 function api.partyInfo.isDelveInProgress() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category? integer
 ---@return boolean isFull
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyInfo.isPartyFull(category) end
 
 ---@return boolean isPartyInJailersTower
@@ -13562,32 +13567,32 @@ function api.partyInfo.isPartyWalkIn() end
 
 ---Usually this will leave the party immediately. In some cases (e.g. PartySync) the user will
 ---be prompted to confirm leaving the party, because it's potentially destructive
----@param category? integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param category? integer
 function api.partyInfo.leaveParty(category) end
 
 ---Attempt to request an invite into the target party, requires confirmation in some cases (e.g.
 ---there is a party sync in progress).
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidInviteTarget
 ---@param targetName string
 ---@param tank? boolean
 ---@param healer? boolean
 ---@param dps? boolean
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidInviteTarget
 function api.partyInfo.requestInviteFromUnit(targetName, tank, healer, dps) end
 
 ---Vote on whether to abandon instance, true for yes, false for no
----@param response boolean
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param response boolean
 function api.partyInfo.setInstanceAbandonVoteResponse(response) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param method Enum.LootMethod
 ---@param lootMaster? string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyInfo.setLootMethod(method, lootMaster) end
 
----@param restrictTo Enum.RestrictPingsTo
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param restrictTo Enum.RestrictPingsTo
 function api.partyInfo.setRestrictPings(restrictTo) end
 
 ---Start the vote
@@ -13598,44 +13603,44 @@ function api.partyInfo.startInstanceAbandonVote() end
 ---@class wow.beta.api.partyPose
 api.partyPose = {}
 
----@param partyPoseID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param partyPoseID number
 function api.partyPose.extraAction(partyPoseID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapID number
 ---@return PartyPoseInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyPose.getPartyPoseInfoByID(mapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapID number
 ---@return PartyPoseInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyPose.getPartyPoseInfoByMapID(mapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param partyPoseID number
 ---@return boolean hasExtraAction
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.partyPose.hasExtraAction(partyPoseID) end
 
 ---Wraps the global functions of the `PerformanceScript` system.
 ---@class wow.beta.api.performanceScript
 api.performanceScript = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.performanceScript.getAddOnCPUUsage(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name number|string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.performanceScript.getAddOnMemoryUsage(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param frame SimpleFrame
 ---@param includeChildren? boolean
 ---@return number call_time
 ---@return number call_count
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.performanceScript.getFrameCPUUsage(frame, includeChildren) end
 
 function api.performanceScript.resetCPUUsage() end
@@ -13648,8 +13653,8 @@ function api.performanceScript.updateAddOnMemoryUsage() end
 ---@class wow.beta.api.perksActivities
 api.perksActivities = {}
 
----@param perksActivityID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param perksActivityID number
 function api.perksActivities.addTrackedPerksActivity(perksActivityID) end
 
 function api.perksActivities.clearPerksActivitiesPendingCompletion() end
@@ -13663,14 +13668,14 @@ function api.perksActivities.getPerksActivitiesInfo() end
 ---@return PerksActivitiesPending pending
 function api.perksActivities.getPerksActivitiesPendingCompletion() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param perksActivityID number
 ---@return string link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.perksActivities.getPerksActivityChatLink(perksActivityID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param perksActivityID number
 ---@return PerksActivityInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.perksActivities.getPerksActivityInfo(perksActivityID) end
 
 ---@return string kitPrefix
@@ -13679,8 +13684,8 @@ function api.perksActivities.getPerksUIThemePrefix() end
 ---@return PerksActivitiesTracked trackedPerksActivities
 function api.perksActivities.getTrackedPerksActivities() end
 
----@param perksActivityID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param perksActivityID number
 function api.perksActivities.removeTrackedPerksActivity(perksActivityID) end
 
 ---Wraps `C_PerksProgram`.
@@ -13697,9 +13702,9 @@ function api.perksProgram.getAvailableCategoryIDs() end
 ---@return number[] vendorItemIDs
 function api.perksProgram.getAvailableVendorItemIDs() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param categoryID number
 ---@return PerksVendorCategoryInfo categoryInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.perksProgram.getCategoryInfo(categoryID) end
 
 ---@return number currencyAmount
@@ -13714,57 +13719,57 @@ function api.perksProgram.getFrozenPerksVendorItemInfo() end
 ---@return PerksProgramPendingChestRewards[] pendingRewards
 function api.perksProgram.getPendingChestRewards() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param id number
 ---@return PerksProgramItemDisplayInfo item
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.perksProgram.getPerksProgramItemDisplayInfo(id) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vendorItemID number
 ---@return integer timeRemaining
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.perksProgram.getTimeRemaining(vendorItemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vendorItemID number
 ---@return PerksVendorItemInfo vendorItemInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.perksProgram.getVendorItemInfo(vendorItemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vendorItemID number
 ---@return integer refundTimeRemaining
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.perksProgram.getVendorItemInfoRefundTimeLeft(vendorItemID) end
 
 ---@return boolean isAttackAnimToggleEnabled
 function api.perksProgram.isAttackAnimToggleEnabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param perksVendorItemID number
 ---@return boolean isFrozen
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.perksProgram.isFrozenPerksVendorItem(perksVendorItemID) end
 
 ---@return boolean isMountSpecialAnimToggleEnabled
 function api.perksProgram.isMountSpecialAnimToggleEnabled() end
 
----@param perksVendorItemID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param perksVendorItemID number
 function api.perksProgram.itemSelectedTelemetry(perksVendorItemID) end
 
----@param perksVendorItemID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param perksVendorItemID number
 function api.perksProgram.pickupPerksVendorItem(perksVendorItemID) end
 
----@param perksVendorItemIDs number[]
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param perksVendorItemIDs number[]
 function api.perksProgram.requestCartCheckout(perksVendorItemIDs) end
 
 function api.perksProgram.requestPendingChestRewards() end
 
----@param perksVendorItemID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param perksVendorItemID number
 function api.perksProgram.requestPurchase(perksVendorItemID) end
 
----@param perksVendorItemID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param perksVendorItemID number
 function api.perksProgram.requestRefund(perksVendorItemID) end
 
 function api.perksProgram.resetHeldItemDragAndDrop() end
@@ -13775,23 +13780,23 @@ function api.perksProgram.setFrozenPerksVendorItem() end
 ---@class wow.beta.api.petBattles
 api.petBattles = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param petOwner Enum.BattlePetOwner
 ---@param slot number
 ---@return Enum.BattlePetBreedQuality quality
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petBattles.getBreedQuality(petOwner, slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param petOwner Enum.BattlePetOwner
 ---@param slot number
 ---@return integer? iconFileID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petBattles.getIcon(petOwner, slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param petOwner Enum.BattlePetOwner
 ---@param slot number
 ---@return string? customName
 ---@return string? speciesName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petBattles.getName(petOwner, slot) end
 
 ---@return boolean isPlayerNPC
@@ -13807,31 +13812,31 @@ api.petInfo = {}
 ---@return string? talentTreeName
 function api.petInfo.getPetTalentTree() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return PetTamerMapInfo[] petTamers
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petInfo.getPetTamersForMap(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param actionID number
 ---@return number? spellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petInfo.getSpellForPetAction(actionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param actionID number
 ---@return boolean isPassive
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petInfo.isPetActionPassive(actionID) end
 
----@param petNumber? number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param petNumber? number
 function api.petInfo.petAbandon(petNumber) end
 
 function api.petInfo.petAssistMode() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@param petNumber? number
 ---@param declensions? string[]
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petInfo.petRename(name, petNumber, declensions) end
 
 ---Wraps `C_PetJournal`.
@@ -13842,72 +13847,72 @@ function api.petJournal.clearHoveredBattlePet() end
 
 function api.petJournal.clearSearchFilter() end
 
----@param petID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param petID string
 function api.petJournal.dismissSummonedPet(petID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param speciesID number
 ---@param index integer
 ---@return number? displayID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.getDisplayIDByIndex(speciesID, index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param speciesID number
 ---@param index integer
 ---@return number? displayProbability
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.getDisplayProbabilityByIndex(speciesID, index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return string link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.getNonBattlePetLinkByIndex(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param speciesID number
 ---@return number? numDisplays
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.getNumDisplays(speciesID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param creatureID number
 ---@return number maxAllowed
 ---@return number numPets
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.getNumPetsInJournal(creatureID) end
 
 ---@return string[] ownedPetIDs
 function api.petJournal.getOwnedPetIDs() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param abilityID number
 ---@return string? name
 ---@return integer? icon
 ---@return number? petType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.getPetAbilityInfo(abilityID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param speciesID number
 ---@return PetAbilityLevelInfo[]? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.getPetAbilityListTable(speciesID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param petID string
 ---@return PetJournalPetInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.getPetInfoTableByPetID(petID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return string? petID
 ---@return number? ability1ID
 ---@return number? ability2ID
 ---@return number? ability3ID
 ---@return boolean? locked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.getPetLoadOutInfo(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param battlePetGUID string
 ---@return boolean isSummonable
 ---@return Enum.PetJournalError error
 ---@return string errorText
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.getPetSummonInfo(battlePetGUID) end
 
 ---@return string filterText
@@ -13916,45 +13921,45 @@ function api.petJournal.getSearchFilter() end
 ---@return boolean hasFavorites
 function api.petJournal.hasFavoritePets() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param petID string
 ---@return boolean isSummoned
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.isCurrentlySummoned(petID) end
 
 ---@return boolean isUsingDefaultFilters
 function api.petJournal.isUsingDefaultFilters() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param battlePetGUID string
 ---@return boolean isSummonable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.petIsSummonable(battlePetGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param speciesID number
 ---@return boolean? usesRandomDisplay
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.petJournal.petUsesRandomDisplay(speciesID) end
 
 function api.petJournal.setDefaultFilters() end
 
----@param battlePetGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param battlePetGUID string
 function api.petJournal.setHoveredBattlePet(battlePetGUID) end
 
----@param filterText string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param filterText string
 function api.petJournal.setSearchFilter(filterText) end
 
----@param battlePetGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param battlePetGUID string
 function api.petJournal.spellTargetBattlePet(battlePetGUID) end
 
 ---Wraps `C_Ping`.
 ---@class wow.beta.api.ping
 api.ping = {}
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param targetUnit? string
 ---@return Enum.PingSubjectType type
----Restrictions: secretArguments=AllowedWhenTainted
 function api.ping.getContextualPingTypeForUnit(targetUnit) end
 
 ---@return PingCooldownInfo cooldownInfo
@@ -13963,21 +13968,21 @@ function api.ping.getCooldownInfo() end
 ---@return PingTypeInfo[] pingTypes
 function api.ping.getDefaultPingOptions() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.PingSubjectType
 ---@return string uiTextureKitID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ping.getTextureKitForType(type) end
 
 ---@return boolean isEnabled
 function api.ping.isPingSystemEnabled() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param type? Enum.PingSubjectType
 ---@param targetToken? string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.ping.sendMacroPing(type, targetToken) end
 
----@param down boolean
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param down boolean
 function api.ping.togglePingListener(down) end
 
 ---Wraps `C_PingSecure`.
@@ -13990,62 +13995,62 @@ function api.pingSecure.clearPendingPingInfo() end
 ---Restrictions: hasRestrictions
 function api.pingSecure.createFrame() end
 
----@param error string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param error string
 function api.pingSecure.displayError(error) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param mousePosX number
 ---@param mousePosY number
 ---@return ScriptRegion frame
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.pingSecure.getTargetPingReceiver(mousePosX, mousePosY) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param mousePosX number
 ---@param mousePosY number
 ---@return boolean foundTarget
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.pingSecure.getTargetWorldPing(mousePosX, mousePosY) end
 
----@return ContextualWorldPingResult result
 ---Restrictions: hasRestrictions
+---@return ContextualWorldPingResult result
 function api.pingSecure.getTargetWorldPingAndSend() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param type Enum.PingSubjectType
 ---@param target? string
 ---@return Enum.PingResult result
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.pingSecure.sendPing(type, target) end
 
----@param cb PendingPingOffScreenCallback
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param cb PendingPingOffScreenCallback
 function api.pingSecure.setPendingPingOffScreenCallback(cb) end
 
----@param cb PingCooldownStartedCallback
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param cb PingCooldownStartedCallback
 function api.pingSecure.setPingCooldownStartedCallback(cb) end
 
----@param cb PingPinFrameAddedCallback
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param cb PingPinFrameAddedCallback
 function api.pingSecure.setPingPinFrameAddedCallback(cb) end
 
----@param cb PingPinFrameRemovedCallback
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param cb PingPinFrameRemovedCallback
 function api.pingSecure.setPingPinFrameRemovedCallback(cb) end
 
----@param cb PingPinFrameScreenClampStateUpdatedCallback
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param cb PingPinFrameScreenClampStateUpdatedCallback
 function api.pingSecure.setPingPinFrameScreenClampStateUpdatedCallback(cb) end
 
----@param cb PingRadialWheelCreatedCallback
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param cb PingRadialWheelCreatedCallback
 function api.pingSecure.setPingRadialWheelCreatedCallback(cb) end
 
----@param cb SendMacroPingCallback
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param cb SendMacroPingCallback
 function api.pingSecure.setSendMacroPingCallback(cb) end
 
----@param cb TogglePingListenerCallback
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param cb TogglePingListenerCallback
 function api.pingSecure.setTogglePingListenerCallback(cb) end
 
 ---Wraps `C_Platform`.
@@ -14072,8 +14077,8 @@ function api.playerChoice.onUIClosed() end
 
 function api.playerChoice.requestRerollPlayerChoice() end
 
----@param responseID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param responseID number
 function api.playerChoice.sendPlayerChoiceResponse(responseID) end
 
 ---Wraps `C_PlayerInfo`.
@@ -14090,30 +14095,30 @@ function api.playerInfo.canPlayerUseAreaLoot() end
 ---@return string failureReason
 function api.playerInfo.canPlayerUseMountEquipment() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return boolean isUseable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.canUseItem(itemID) end
 
 ---@return boolean hasAlternateForm
 ---@return boolean inAlternateForm
 function api.playerInfo.getAlternateFormInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@return string? className
 ---@return string? classFilename
 ---@return number? classID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.getClass(playerLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return Enum.RelativeContentDifficulty difficulty
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.getContentDifficultyCreatureForPlayer(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return Enum.RelativeContentDifficulty difficulty
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.getContentDifficultyQuestForPlayer(questID) end
 
 ---@return number displayID
@@ -14124,23 +14129,23 @@ function api.playerInfo.getDisplayID() end
 ---@return number forwardSpeed
 function api.playerInfo.getGlidingInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param level number
 ---@param isRaid boolean
 ---@return number[]? dungeonID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.getInstancesUnlockedAtLevel(level, isRaid) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@return string? name
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.getName(playerLocation) end
 
 ---@return number nativeDisplayID
 function api.playerInfo.getNativeDisplayID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index number
 ---@return number creatureDisplayInfoID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.getPetStableCreatureDisplayInfoID(index) end
 
 ---@return PlayerInfoCharacterData? characterData
@@ -14148,32 +14153,32 @@ function api.playerInfo.getPlayerCharacterData() end
 
 ---Returns the players mythic+ rating summary which includes the runs they've completed as well
 ---as their current season m+ rating
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerToken string
 ---@return MythicPlusRatingSummary? ratingSummary
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.getPlayerMythicPlusRatingSummary(playerToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@return number? raceID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.getRace(playerLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@return Enum.UnitSex? sex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.getSex(playerLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@return boolean isPlayer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.guidIsPlayer(guid) end
 
 ---@return boolean hasAccountInventoryLock
 function api.playerInfo.hasAccountInventoryLock() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return boolean isVisible
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.hasVisibleInvSlot(slot) end
 
 ---@return boolean isAccountBankEnabled
@@ -14182,9 +14187,9 @@ function api.playerInfo.isAccountBankEnabled() end
 ---@return boolean isCharacterBankEnabled
 function api.playerInfo.isCharacterBankEnabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation? PlayerLocation
 ---@return boolean? isConnected
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.isConnected(playerLocation) end
 
 ---@return boolean isDisplayRaceNative
@@ -14228,41 +14233,41 @@ function api.playerInfo.isTravelersLogAvailable() end
 ---@return boolean isAvailable
 function api.playerInfo.isTutorialsTabAvailable() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@return boolean unitIsSameServer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInfo.unitIsSameServer(playerLocation) end
 
 ---Wraps `C_PlayerInteractionManager`.
 ---@class wow.beta.api.playerInteractionManager
 api.playerInteractionManager = {}
 
----@param type? Enum.PlayerInteractionType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param type? Enum.PlayerInteractionType
 function api.playerInteractionManager.clearInteraction(type) end
 
----@param type? Enum.PlayerInteractionType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param type? Enum.PlayerInteractionType
 function api.playerInteractionManager.confirmationInteraction(type) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param exactMatch? boolean
 ---@param looseTargeting? boolean
 ---@return boolean success
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.playerInteractionManager.interactUnit(unit, exactMatch, looseTargeting) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.PlayerInteractionType
 ---@return boolean interacting
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInteractionManager.isInteractingWithNpcOfType(type) end
 
 ---@return boolean replacing
 function api.playerInteractionManager.isReplacingUnit() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.PlayerInteractionType
 ---@return boolean isValidInteraction
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerInteractionManager.isValidNPCInteraction(type) end
 
 ---Restrictions: hasRestrictions
@@ -14280,9 +14285,9 @@ function api.playerMentorship.getMentorLevelRequirement() end
 ---@return number optionalCompleteAtLeastCount
 function api.playerMentorship.getMentorRequirements() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@return Enum.PlayerMentorshipStatus status
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerMentorship.getMentorshipStatus(playerLocation) end
 
 ---@return boolean isConsideredNewcomer
@@ -14301,10 +14306,10 @@ function api.playerScript.acceptGuild() end
 
 function api.playerScript.acceptResurrect() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param fullName string
 ---@param context string
 ---@return string result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.ambiguate(fullName, context) end
 
 function api.playerScript.autoEquipCursorItem() end
@@ -14314,29 +14319,29 @@ function api.playerScript.beginTrade() end
 ---@return boolean result
 function api.playerScript.canDualWield() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param targetGUID string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.canInspect(targetGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param targetUnit string
 ---@return boolean? hasLoot
 ---@return boolean? canLoot
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.canLootUnit(targetUnit) end
 
 function api.playerScript.cancelAreaSpiritHeal() end
 
----@param index number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param index number
 function api.playerScript.cancelPendingEquip(index) end
 
 function api.playerScript.cancelTrade() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitGUID string
 ---@param distIndex integer
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.checkInteractDistance(unitGUID, distIndex) end
 
 ---@return boolean result
@@ -14354,13 +14359,13 @@ function api.playerScript.declineResurrect() end
 
 function api.playerScript.dismount() end
 
----@param index number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param index number
 function api.playerScript.equipPendingItem(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name? string
 ---@param exactMatch? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.followUnit(name, exactMatch) end
 
 ---@return boolean result
@@ -14372,10 +14377,10 @@ function api.playerScript.getAllowRecentAlliesSeeLocation() end
 ---@return number result
 function api.playerScript.getAreaSpiritHealerTime() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param stat integer
 ---@param value number
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.getAttackPowerForStat(stat, value) end
 
 ---@return boolean result
@@ -14399,20 +14404,20 @@ function api.playerScript.getCemeteryPreference() end
 ---@return number cost
 function api.playerScript.getCollapsingStarCost() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param ratingIndex integer
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.getCombatRating(ratingIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param ratingIndex integer
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.getCombatRatingBonus(ratingIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param ratingIndex integer
 ---@param value number
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.getCombatRatingBonusForCombatRatingValue(ratingIndex, value) end
 
 ---@return number result
@@ -14472,9 +14477,9 @@ function api.playerScript.getMastery() end
 ---@return number bonusCoefficient
 function api.playerScript.getMasteryEffect() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param ratingIndex integer
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.getMaxCombatRatingBonus(ratingIndex) end
 
 ---@return number maxPlayerLevel
@@ -14534,6 +14539,7 @@ function api.playerScript.getPetSpellBonusDamage() end
 ---@return number? result
 function api.playerScript.getPlayerFacing() end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param guid string
 ---@return string? localizedClass
 ---@return string? englishClass
@@ -14542,17 +14548,16 @@ function api.playerScript.getPlayerFacing() end
 ---@return number? sex
 ---@return string? name
 ---@return string? realmName
----Restrictions: secretArguments=AllowedWhenTainted
 function api.playerScript.getPlayerInfoByGUID(guid) end
 
 ---@return number basePowerRegen
 ---@return number castingPowerRegen
 function api.playerScript.getPowerRegen() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerType number
 ---@return number basePowerRegen
 ---@return number castingPowerRegen
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.getPowerRegenForPowerType(powerType) end
 
 ---@return number result
@@ -14583,16 +14588,16 @@ function api.playerScript.getRestState() end
 ---@return number professionCap
 function api.playerScript.getRestrictedAccountData() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param runeIndex integer
 ---@return number? startTime
 ---@return number? duration
 ---@return boolean? isRuneReady
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.getRuneCooldown(runeIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param runeIndex integer
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.getRuneCount(runeIndex) end
 
 ---@return number? result
@@ -14604,9 +14609,9 @@ function api.playerScript.getShieldBlock() end
 ---@return number result
 function api.playerScript.getSpeed() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param school integer
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.getSpellBonusDamage(school) end
 
 ---@return number result
@@ -14627,9 +14632,9 @@ function api.playerScript.getSturdiness() end
 ---@return boolean result
 function api.playerScript.getTaxiBenchmarkMode() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param combatRating integer
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.getVersatilityBonus(combatRating) end
 
 ---@return number? result
@@ -14658,8 +14663,8 @@ function api.playerScript.hasNoReleaseAura() end
 ---@return boolean result
 function api.playerScript.hasSPEffectsAttackPower() end
 
----@param guid string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param guid string
 function api.playerScript.initiateTrade(guid) end
 
 ---@return boolean result
@@ -14698,14 +14703,14 @@ function api.playerScript.isIndoors() end
 ---@return boolean result
 function api.playerScript.isInsane() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@return boolean isItemPreferredArmorType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.isItemPreferredArmorType(itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param layerLevel number
 ---@return string result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.isJailersTowerLayerTimeLocked(layerLevel) end
 
 ---@return boolean result
@@ -14750,8 +14755,8 @@ function api.playerScript.isXPUserDisabled() end
 ---@return boolean? result
 function api.playerScript.noPlayTime() end
 
----@param targetGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param targetGUID string
 function api.playerScript.notifyInspect(targetGUID) end
 
 ---@return boolean? result
@@ -14778,17 +14783,17 @@ function api.playerScript.playerIsTimerunning() end
 
 function api.playerScript.portGraveyard() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param min number
 ---@param max number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.randomRoll(min, max) end
 
 function api.playerScript.repopMe() end
 
 function api.playerScript.requestTimePlayed() end
 
----@param acceptLock boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param acceptLock boolean
 function api.playerScript.respondInstanceLock(acceptLock) end
 
 ---@return string name
@@ -14802,32 +14807,32 @@ function api.playerScript.resurrectHasTimer() end
 
 function api.playerScript.retrieveCorpse() end
 
----@param allow? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param allow? boolean
 function api.playerScript.setAllowLowLevelRaid(allow) end
 
----@param allowRecentAlliesSeeLocation boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param allowRecentAlliesSeeLocation boolean
 function api.playerScript.setAllowRecentAlliesSeeLocation(allowRecentAlliesSeeLocation) end
 
----@param allow? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param allow? boolean
 function api.playerScript.setAutoDeclineGuildInvites(allow) end
 
----@param allow? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param allow? boolean
 function api.playerScript.setAutoDeclineNeighborhoodInvites(allow) end
 
----@param cemetaryID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param cemetaryID number
 function api.playerScript.setCemeteryPreference(cemetaryID) end
 
----@param specializationID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param specializationID number
 function api.playerScript.setLootSpecialization(specializationID) end
 
----@param enable? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enable? boolean
 function api.playerScript.setTaxiBenchmarkMode(enable) end
 
 ---@return boolean result
@@ -14836,12 +14841,12 @@ function api.playerScript.shouldShowIslandsWeeklyPOI() end
 ---@return boolean result
 function api.playerScript.shouldShowSpecialSplashScreen() end
 
----@param show boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param show boolean
 function api.playerScript.showCloak(show) end
 
----@param show boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param show boolean
 function api.playerScript.showHelm(show) end
 
 ---@return boolean result
@@ -14856,9 +14861,9 @@ function api.playerScript.sitStandOrDescendStart() end
 ---@return boolean result
 function api.playerScript.splashFrameCanBeShown() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name? string
 ---@param exactMatch? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.playerScript.startAttack(name, exactMatch) end
 
 function api.playerScript.stopAttack() end
@@ -14881,135 +14886,135 @@ api.pony = {}
 ---@class wow.beta.api.profSpecs
 api.profSpecs = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pathID number
 ---@param configID number
 ---@return boolean canRefund
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.canRefundPath(pathID, configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param tabTreeID number
 ---@param configID number
 ---@return boolean canUnlock
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.canUnlockTab(tabTreeID, configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pathID number
 ---@return number[] childIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getChildrenForPath(pathID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineID number
 ---@return number configID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getConfigIDForSkillLine(skillLineID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineID number
 ---@return SpecializationCurrencyInfo info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getCurrencyInfoForSkillLine(skillLineID) end
 
 ---@return number? defaultSpecSkillLine
 function api.profSpecs.getDefaultSpecSkillLine() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pathID number
 ---@return string description
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getDescriptionForPath(pathID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param perkID number
 ---@return string description
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getDescriptionForPerk(perkID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param perkID number
 ---@return number entryID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getEntryIDForPerk(perkID) end
 
 ---@return string? profName
 function api.profSpecs.getNewSpecReminderProfName() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pathID number
 ---@return SpecPerkInfo[] perkInfos
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getPerksForPath(pathID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param tabTreeID number
 ---@return number? rootPathID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getRootPathForTab(tabTreeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pathID number
 ---@param configID number
 ---@return string sourceText
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getSourceTextForPath(pathID, configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineID number
 ---@return number[] specTabIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getSpecTabIDsForSkillLine(skillLineID) end
 
 ---@return SpecializationTabInfo specTabInfo
 function api.profSpecs.getSpecTabInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pathID number
 ---@return number? currencyID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getSpendCurrencyForPath(pathID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pathID number
 ---@return number entryID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getSpendEntryForPath(pathID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pathID number
 ---@param configID number
 ---@return Enum.ProfessionsSpecPathState state
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getStateForPath(pathID, configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param perkID number
 ---@param configID number
 ---@return Enum.ProfessionsSpecPerkState state
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getStateForPerk(perkID, configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param tabTreeID number
 ---@param configID number
 ---@return Enum.ProfessionsSpecTabState tabInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getStateForTab(tabTreeID, configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param tabTreeID number
 ---@return ProfTabInfo? tabInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getTabInfo(tabTreeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pathID number
 ---@return number entryID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getUnlockEntryForPath(pathID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param perkID number
 ---@return number? unlockRank
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.getUnlockRankForPerk(perkID) end
 
 ---@return boolean showReminder
 function api.profSpecs.shouldShowPointsReminder() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineID number
 ---@return boolean showReminder
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.shouldShowPointsReminderForSkillLine(skillLineID) end
 
 ---@return boolean showSpecTab
 function api.profSpecs.shouldShowSpecTab() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineID number
 ---@return boolean hasSpecialization
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.profSpecs.skillLineHasSpecialization(skillLineID) end
 
 ---Wraps `C_PvP`.
@@ -15036,9 +15041,9 @@ function api.pvp.canPlayerUseRatedPVPUI() end
 ---@return string failureReason
 function api.pvp.canPlayerUseTrainingGroundsUI() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param toggle boolean
 ---@return boolean canTogglePvP
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.canToggleWarMode(toggle) end
 
 ---@return boolean canTogglePvPInArea
@@ -15062,25 +15067,25 @@ function api.pvp.getActiveMatchState() end
 ---@return number winner
 function api.pvp.getActiveMatchWinner() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerToken string
 ---@return LuaDurationObject duration
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getArenaCrowdControlDuration(playerToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenLossOfControlInfoRestricted
 ---@param playerToken string
 ---@return number? spellID
 ---@return number? startTime
 ---@return number? duration
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenLossOfControlInfoRestricted
 function api.pvp.getArenaCrowdControlInfo(playerToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param teamSize number
 ---@return number? honor
 ---@return number? experience
 ---@return BattlefieldItemReward[]? itemRewards
 ---@return BattlefieldCurrencyReward[]? currencyRewards
 ---@return RoleShortageReward? roleShortageBonus
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getArenaRewards(teamSize) end
 
 ---@return number honor
@@ -15090,39 +15095,40 @@ function api.pvp.getArenaRewards(teamSize) end
 ---@return RoleShortageReward? roleShortageBonus
 function api.pvp.getArenaSkirmishRewards() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param queueID number
 ---@return number? specializationID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getAssignedSpecForBattlefieldQueue(queueID) end
 
 ---If nil is returned, PVP_BRAWL_INFO_UPDATED event will be sent when the data is ready.
 ---@return PvpBrawlInfo? brawlInfo
 function api.pvp.getAvailableBrawlInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param flagIndex integer
 ---@param uiMapId number
 ---@return number? uiPosx
 ---@return number? uiPosy
 ---@return number flagTexture
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getBattlefieldFlagPosition(flagIndex, uiMapId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vehicleIndex integer
 ---@param uiMapID number
 ---@return BattlefieldVehicleInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getBattlefieldVehicleInfo(vehicleIndex, uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return BattlefieldVehicleInfo[]? vehicles
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getBattlefieldVehicles(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param battlegroundIndex integer
 ---@return BattlegroundInfo? battlegroundInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getBattlegroundInfo(battlegroundIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param brawlType Enum.BrawlType
 ---@return number? honor
 ---@return number? experience
@@ -15130,7 +15136,6 @@ function api.pvp.getBattlegroundInfo(battlegroundIndex) end
 ---@return BattlefieldCurrencyReward[]? currencyRewards
 ---@return RoleShortageReward? roleShortageBonus
 ---@return boolean? hasWon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getBrawlRewards(brawlType) end
 
 ---@return number minItemLevel
@@ -15139,37 +15144,37 @@ function api.pvp.getBrawlSoloRBGMinItemLevel() end
 ---@return number statID
 function api.pvp.getCustomVictoryStatID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specializationID number
 ---@return PvpScalingData[]? pvpScalingData
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getGlobalPvpScalingInfoForSpecID(specializationID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param honorLevel number
 ---@return HonorRewardInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getHonorRewardInfo(honorLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param level number
 ---@return LevelUpBattlegroundInfo[] battlefields
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getLevelUpBattlegrounds(level) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pvpStatID number
 ---@return MatchPVPStatColumn? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getMatchPVPStatColumn(pvpStatID) end
 
 ---@return MatchPVPStatColumn[] columns
 function api.pvp.getMatchPVPStatColumns() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param honorLevel number
 ---@return number? nextHonorLevelWithReward
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getNextHonorLevelForReward(honorLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return integer pvpWaitTime
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getOutdoorPvPWaitTime(uiMapID) end
 
 ---@return PVPPersonalRatedInfo? info
@@ -15196,15 +15201,15 @@ function api.pvp.getPostMatchItemRewards() end
 ---@return number unlockLevel
 function api.pvp.getPvpTalentsUnlockedLevel() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param tierEnum number
 ---@param bracketEnum integer
 ---@return number? id
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getPvpTierID(tierEnum, bracketEnum) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param tierID number
 ---@return PvpTierInfo? pvpTierInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getPvpTierInfo(tierID) end
 
 ---@return RandomBGInfo info
@@ -15261,37 +15266,37 @@ function api.pvp.getRatedSoloShuffleMinItemLevel() end
 ---@return RoleShortageReward? roleShortageBonus
 function api.pvp.getRatedSoloShuffleRewards() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pvpTierEnum number
 ---@return number activityItemLevel
 ---@return number weeklyItemLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getRewardItemLevelsByTierEnum(pvpTierEnum) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInActivePvPMatch
 ---@param offsetIndex integer
 ---@return PVPScoreInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInActivePvPMatch
 function api.pvp.getScoreInfo(offsetIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInActivePvPMatch
 ---@param guid string
 ---@return PVPScoreInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInActivePvPMatch
 function api.pvp.getScoreInfoByPlayerGuid(guid) end
 
 ---@return number tierID
 ---@return number? nextTierID
 function api.pvp.getSeasonBestInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pvpBracket number
 ---@return BattlemasterListInfo? battlemasterListInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getSkirmishInfo(pvpBracket) end
 
 ---@return PvpBrawlInfo? brawlInfo
 function api.pvp.getSpecialEventBrawlInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param factionIndex number
 ---@return PVPTeamInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.getTeamInfo(factionIndex) end
 
 ---@return BattlegroundInfo[] trainingGrounds
@@ -15403,45 +15408,45 @@ function api.pvp.isWarModeDesired() end
 ---@return boolean warModeEnabled
 function api.pvp.isWarModeFeatureEnabled() end
 
----@param battlemasterListId number
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param battlemasterListId number
 function api.pvp.joinBattlefield(battlemasterListId) end
 
----@param isSpecialBrawl? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isSpecialBrawl? boolean
 function api.pvp.joinBrawl(isSpecialBrawl) end
 
 function api.pvp.joinRandomTrainingGround() end
 
 function api.pvp.joinRatedBGBlitz() end
 
----@param trainingGroundID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param trainingGroundID number
 function api.pvp.joinTrainingGround(trainingGroundID) end
 
----@param playerToken string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param playerToken string
 function api.pvp.requestCrowdControlSpell(playerToken) end
 
----@param enablePVP? boolean
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param enablePVP? boolean
 function api.pvp.setPVP(enablePVP) end
 
----@param warModeDesired boolean
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param warModeDesired boolean
 function api.pvp.setWarModeDesired(warModeDesired) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param args string
 ---@return number success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.startSoloRBGWarGameByName(args) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param opaqueID1 number
 ---@param opaqueID2 number
 ---@param specifiedMap string
 ---@param tournamentRules boolean
 ---@return number success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.pvp.startSpectatorSoloRBGWarGame(
     opaqueID1,
     opaqueID2,
@@ -15460,109 +15465,109 @@ function api.pvp.toggleWarMode() end
 ---@class wow.beta.api.questHub
 api.questHub = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param areaPoiID number
 ---@return boolean isRelated
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questHub.isQuestCurrentlyRelatedToHub(questID, areaPoiID) end
 
 ---Wraps `C_QuestInfoSystem`.
 ---@class wow.beta.api.questInfoSystem
 api.questInfoSystem = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID? number
 ---@param questInfoID? number
 ---@return Enum.QuestClassification classification
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questInfoSystem.getQuestClassification(questID, questInfoID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param clampFavorToCycleCap? boolean
 ---@return number amount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questInfoSystem.getQuestLogRewardFavor(questID, clampFavorToCycleCap) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID? number
 ---@return QuestRewardCurrencyInfo[]? questRewardCurrencyInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questInfoSystem.getQuestRewardCurrencies(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID? number
 ---@param spellID number
 ---@return QuestRewardSpellInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questInfoSystem.getQuestRewardSpellInfo(questID, spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID? number
 ---@return number[]? spellIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questInfoSystem.getQuestRewardSpells(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID? number
 ---@return boolean shouldToast
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questInfoSystem.getQuestShouldToastCompletion(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID? number
 ---@return boolean hasQuestRewardCurrencies
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questInfoSystem.hasQuestRewardCurrencies(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID? number
 ---@return boolean hasRewardSpells
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questInfoSystem.hasQuestRewardSpells(questID) end
 
 ---Wraps `C_QuestItemUse`.
 ---@class wow.beta.api.questItemUse
 api.questItemUse = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param item ItemLocation
 ---@param unit string
 ---@param checkRange? boolean
 ---@return boolean canUse
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questItemUse.canUseQuestItemOnObject(item, unit, checkRange) end
 
 ---Wraps `C_QuestLine`.
 ---@class wow.beta.api.questLine
 api.questLine = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return QuestLineInfo[] questLines
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLine.getAvailableQuestLines(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number[] questIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLine.getForceVisibleQuests(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param uiMapID? number
 ---@param displayableOnly? boolean
 ---@return QuestLineInfo? questLineInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLine.getQuestLineInfo(questID, uiMapID, displayableOnly) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questLineID number
 ---@return number[] questIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLine.getQuestLineQuests(questLineID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questLineID number
 ---@return boolean isComplete
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLine.isComplete(questLineID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@param questLineID number
 ---@return boolean questLineIgnoresAccountCompletedFiltering
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLine.questLineIgnoresAccountCompletedFiltering(uiMapID, questLineID) end
 
----@param uiMapID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param uiMapID number
 function api.questLine.requestQuestLinesForMap(uiMapID) end
 
 ---Wraps `C_QuestLog`.
@@ -15571,26 +15576,26 @@ api.questLog = {}
 
 function api.questLog.abandonQuest() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean wasWatched
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.addQuestWatch(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param watchType? Enum.QuestWatchType
 ---@return boolean wasWatched
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.addWorldQuestWatch(questID, watchType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean canAbandon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.canAbandonQuest(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param targetFactionID number
 ---@return boolean awardsReputation
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.doesQuestAwardReputationWithFaction(questID, targetFactionID) end
 
 ---@return number questID
@@ -15608,39 +15613,39 @@ function api.questLog.getActiveThreatMaps() end
 ---@return number[] quests
 function api.questLog.getAllCompletedQuestIDs() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return BountyInfo[]? bounties
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getBountiesForMapID(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return Enum.MapOverlayDisplayLocation? displayLocation
 ---@return number? lockQuestID
 ---@return number? bountySetID
 ---@return boolean? isActivitySet
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getBountySetInfoForMapID(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number? distanceSq
 ---@return boolean? onContinent
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getDistanceSqToQuest(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return integer? index
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getHeaderIndexForQuest(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questLogIndex integer
 ---@return QuestInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getInfo(questLogIndex) end
 
 ---Only returns a log index for actual quests, not headers
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return integer? questLogIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getLogIndexForQuestID(questID) end
 
 ---@return number uiMapID
@@ -15656,32 +15661,32 @@ function api.questLog.getMaxNumQuests() end
 ---@return number maxNumQuestsCanAccept
 function api.questLog.getMaxNumQuestsCanAccept() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number? mapID
 ---@return number? x
 ---@return number? y
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getNextWaypoint(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param uiMapID number
 ---@return number? x
 ---@return number? y
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getNextWaypointForMap(questID, uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return string? waypointText
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getNextWaypointText(questID) end
 
 ---@return number numShownEntries
 ---@return number numQuests
 function api.questLog.getNumQuestLogEntries() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number leaderboardCount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getNumQuestObjectives(questID) end
 
 ---@return number numQuestWatches
@@ -15690,329 +15695,329 @@ function api.questLog.getNumQuestWatches() end
 ---@return number numQuestWatches
 function api.questLog.getNumWorldQuestWatches() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number uiMapID
 ---@return boolean worldQuests
 ---@return boolean worldQuestsElite
 ---@return boolean dungeons
 ---@return boolean treasures
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestAdditionalHighlights(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return QuestTheme? theme
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestDetailsTheme(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number level
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestDifficultyLevel(questID) end
 
 ---Only returns a questID for actual quests, not headers
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questLogIndex integer
 ---@return number? questID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestIDForLogIndex(questLogIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questWatchIndex integer
 ---@return number? questID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestIDForQuestWatchIndex(questWatchIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questWatchIndex integer
 ---@return number? questID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestIDForWorldQuestWatchIndex(questWatchIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return QuestRewardReputationInfo[]? reputationRewards
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestLogMajorFactionReputationRewards(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questLogIndex? integer
 ---@return number? portraitGiver
 ---@return string? portraitGiverText
 ---@return string? portraitGiverName
 ---@return number? portraitGiverMount
 ---@return number? portraitGiverModelSceneID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestLogPortraitGiver(questLogIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return QuestObjectiveInfo[]? objectives
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestObjectives(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return QuestRewardCurrencyInfo[] questRewardCurrencies
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestRewardCurrencies(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param currencyIndex integer
 ---@param isChoice boolean
 ---@return QuestRewardCurrencyInfo? questRewardCurrencyInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestRewardCurrencyInfo(questID, currencyIndex, isChoice) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return QuestTagInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestTagInfo(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number? questType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestType(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return Enum.QuestWatchType? watchType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestWatchType(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return QuestPOIMapInfo[]? quests
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getQuestsOnMap(uiMapID) end
 
 ---Uses the selected quest if no questID is provided
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID? number
 ---@return number requiredMoney
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getRequiredMoney(questID) end
 
 ---@return number questID
 function api.questLog.getSelectedQuest() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number suggestedGroupSize
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getSuggestedGroupSize(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number? totalTime
 ---@return number? elapsedTime
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getTimeAllowed(questID) end
 
 ---Returns a valid title for anything that is in the quest log.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questLogIndex integer
 ---@return string? title
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getTitleForLogIndex(questLogIndex) end
 
 ---Only returns a valid title for quests, header titles cannot be discovered using this.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return string? title
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getTitleForQuestID(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number? achievementID
 ---@return number? storyMapID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.getZoneStoryInfo(uiMapID) end
 
 ---@return boolean hasActiveThreats
 function api.questLog.hasActiveThreats() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isAccountQuest
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isAccountQuest(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isComplete
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isComplete(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isFailed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isFailed(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isImportant
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isImportantQuest(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isMeta
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isMetaQuest(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean onMap
 ---@return boolean hasLocalPOI
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isOnMap(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isOnQuest
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isOnQuest(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isPushable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isPushableQuest(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isBounty
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isQuestBounty(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isCalling
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isQuestCalling(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param bountyQuestID number
 ---@return boolean isCriteriaForBounty
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isQuestCriteriaForBounty(questID, bountyQuestID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isDisabled
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isQuestDisabledForSession(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isCompleted
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isQuestFlaggedCompleted(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isCompletedOnAccount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isQuestFlaggedCompletedOnAccount(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isFromContentPush
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isQuestFromContentPush(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isInvasion
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isQuestInvasion(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isReplayable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isQuestReplayable(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean recentlyReplayed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isQuestReplayedRecently(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isTask
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isQuestTask(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isTrivial
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isQuestTrivial(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isRepeatable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isRepeatableQuest(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isThreat
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isThreatQuest(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param questID number
 ---@return boolean isOnQuest
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isUnitOnQuest(unit, questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean isWorldQuest
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.isWorldQuest(questID) end
 
 ---Tests whether a quest is eligible for warmode bonuses (e.g. most world quests, some daily
 ---quests
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean hasBonus
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.questCanHaveWarModeBonus(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean questContainsFirstTimeRepBonusForPlayer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.questContainsFirstTimeRepBonusForPlayer(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean hasBonus
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.questHasQuestSessionBonus(questID) end
 
 ---Tests whether a quest in the player's quest log that is eligible for warmode bonuses (see
 ---'QuestCanHaveWarModeBOnus') has been completed in warmode (including accepting it)
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean hasBonus
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.questHasWarModeBonus(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean questIgnoresAccountCompletedFiltering
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.questIgnoresAccountCompletedFiltering(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean? readyForTurnIn
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.readyForTurnIn(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean wasRemoved
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.removeQuestWatch(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean wasRemoved
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.removeWorldQuestWatch(questID) end
 
----@param questID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param questID number
 function api.questLog.requestLoadQuestByID(questID) end
 
 function api.questLog.setAbandonQuest() end
 
----@param uiMapID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param uiMapID number
 function api.questLog.setMapForQuestPOIs(uiMapID) end
 
----@param questID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param questID number
 function api.questLog.setSelectedQuest(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean displayTimeRemaining
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.shouldDisplayTimeRemaining(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean shouldShow
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.shouldShowQuestRewards(questID) end
 
 function api.questLog.sortQuestWatches() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean isRelatedToActiveQuest
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questLog.unitIsRelatedToActiveQuest(unit) end
 
 function api.questLog.updateCampaignHeaders() end
@@ -16027,15 +16032,15 @@ function api.questOffer.getHideRequiredItems() end
 ---@return QuestRewardReputationInfo[]? reputationRewards
 function api.questOffer.getQuestOfferMajorFactionReputationRewards() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questRewardIndex integer
 ---@return QuestRequiredCurrencyInfo? questRequiredCurrencyInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questOffer.getQuestRequiredCurrencyInfo(questRewardIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questInfoType string
 ---@param questRewardIndex integer
 ---@return QuestRewardCurrencyInfo? questRewardCurrencyInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questOffer.getQuestRewardCurrencyInfo(questInfoType, questRewardIndex) end
 
 ---Wraps `C_QuestSession`.
@@ -16076,30 +16081,30 @@ function api.questSession.requestSessionStart() end
 
 function api.questSession.requestSessionStop() end
 
----@param beginSession boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param beginSession boolean
 function api.questSession.sendSessionBeginResponse(beginSession) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param superTrack boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.questSession.setQuestIsSuperTracked(questID, superTrack) end
 
 ---Wraps `C_RaidLocks`.
 ---@class wow.beta.api.raidLocks
 api.raidLocks = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapID number
 ---@param difficultyID number
 ---@return number redirectedDifficultyID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.raidLocks.getRedirectedDifficultyID(mapID, difficultyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapID number
 ---@param encounterID number
 ---@param difficultyID? number
 ---@return boolean encounterIsComplete
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.raidLocks.isEncounterComplete(mapID, encounterID, difficultyID) end
 
 ---@return boolean raidLockExtendFeatureEnabled
@@ -16109,82 +16114,82 @@ function api.raidLocks.isRaidLockExtendFeatureEnabled() end
 ---@class wow.beta.api.raidMarkers
 api.raidMarkers = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param target string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.raidMarkers.canBeRaidTarget(target) end
 
----@param raidMarkerIndex? integer
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param raidMarkerIndex? integer
 function api.raidMarkers.clearRaidMarker(raidMarkerIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param target string
 ---@return integer? result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.raidMarkers.getRaidTargetIndex(target) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.raidMarkers.isRaidMarkerActive(index) end
 
 ---@return boolean enabled
 function api.raidMarkers.isRaidMarkerSystemEnabled() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@param token? string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.raidMarkers.placeRaidMarker(index, token) end
 
 ---Removes all assigned raid target markers.
 ---Restrictions: hasRestrictions
 function api.raidMarkers.removeRaidTargets() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param target string
 ---@param userIndex integer
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.raidMarkers.setRaidTarget(target, userIndex) end
 
 ---Wraps `C_RecentAllies`.
 ---@class wow.beta.api.recentAllies
 api.recentAllies = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 ---@param characterGUID string
 ---@return boolean canSetNote
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 function api.recentAllies.canSetRecentAllyNote(characterGUID) end
 
----@return RecentAllyData[] recentAlliesData
 ---Restrictions: RequiresRecentAllies
+---@return RecentAllyData[] recentAlliesData
 function api.recentAllies.getRecentAllies() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 ---@param fullCharacterName string
 ---@return RecentAllyData? recentAllyData
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 function api.recentAllies.getRecentAllyByFullName(fullCharacterName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 ---@param characterGUID string
 ---@return RecentAllyData? recentAllyData
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 function api.recentAllies.getRecentAllyByGUID(characterGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 ---@param fullCharacterName string
 ---@return boolean isRecentAlly
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 function api.recentAllies.isRecentAllyByFullName(fullCharacterName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 ---@param characterGUID string
 ---@return boolean isRecentAlly
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 function api.recentAllies.isRecentAllyByGUID(characterGUID) end
 
----@return boolean isReady
 ---Restrictions: RequiresRecentAllies
+---@return boolean isReady
 function api.recentAllies.isRecentAllyDataReady() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 ---@param characterGUID string
 ---@return boolean isPinned
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 function api.recentAllies.isRecentAllyPinned(characterGUID) end
 
 ---@return boolean isRecentAllySystemEnabled
@@ -16193,14 +16198,14 @@ function api.recentAllies.isSystemEnabled() end
 ---@return boolean isRecentAllySystemSupported
 function api.recentAllies.isSystemSupported() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 ---@param characterGUID string
 ---@param note string
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 function api.recentAllies.setRecentAllyNote(characterGUID, note) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 ---@param characterGUID string
 ---@param isPinned boolean
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresRecentAllies
 function api.recentAllies.setRecentAllyPinned(characterGUID, isPinned) end
 
 ---Restrictions: hasRestrictions, RequiresRecentAllies
@@ -16210,24 +16215,24 @@ function api.recentAllies.tryRequestRecentAlliesData() end
 ---@class wow.beta.api.recruitAFriend
 api.recruitAFriend = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.recruitAFriend.canSummonFriend(guid) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param activityID number
 ---@param acceptanceID integer
 ---@return boolean success
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.recruitAFriend.claimActivityReward(activityID, acceptanceID) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param rafVersion? Enum.RecruitAFriendRewardsVersion
 ---@return boolean success
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.recruitAFriend.claimNextReward(rafVersion) end
 
----@return boolean success
 ---Restrictions: hasRestrictions
+---@return boolean success
 function api.recruitAFriend.generateRecruitmentLink() end
 
 ---@return RafInfo info
@@ -16236,10 +16241,10 @@ function api.recruitAFriend.getRAFInfo() end
 ---@return RafSystemInfo systemInfo
 function api.recruitAFriend.getRAFSystemInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param activityID number
 ---@param acceptanceID integer
 ---@return string[] requirementsText
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.recruitAFriend.getRecruitActivityRequirementsText(activityID, acceptanceID) end
 
 ---@return boolean active
@@ -16254,26 +16259,26 @@ function api.recruitAFriend.getSummonFriendCooldown() end
 ---@return boolean enabled
 function api.recruitAFriend.isEnabled() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.recruitAFriend.isRecruitAFriendLinked(guid) end
 
 ---@return boolean enabled
 function api.recruitAFriend.isRecruitingEnabled() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param wowAccountGUID string
 ---@return boolean success
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.recruitAFriend.removeRAFRecruit(wowAccountGUID) end
 
----@return boolean success
 ---Restrictions: hasRestrictions
+---@return boolean success
 function api.recruitAFriend.requestUpdatedRecruitmentInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param target string
 ---@param name string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.recruitAFriend.summonFriend(target, name) end
 
 ---Wraps `C_RemixArtifactUI`.
@@ -16282,10 +16287,10 @@ api.remixArtifactUI = {}
 
 function api.remixArtifactUI.clearRemixArtifactItem() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param artifactAppearanceID number
 ---@return number? uiCameraID
 ---@return number? altHandUICameraID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.remixArtifactUI.getAppearanceInfoByID(artifactAppearanceID) end
 
 ---@return RemixArtifactArtInfo? artifactArtInfo
@@ -16309,68 +16314,68 @@ function api.remixArtifactUI.getCurrItemSpecIndex() end
 ---@return number? traitTreeID
 function api.remixArtifactUI.getCurrTraitTreeID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param invSlot integer
 ---@return boolean isRemixArtifact
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.remixArtifactUI.itemInSlotIsRemixArtifact(invSlot) end
 
 ---Wraps `C_ReportSystem`.
 ---@class wow.beta.api.reportSystem
 api.reportSystem = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@return boolean canReport
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reportSystem.canReportPlayer(playerLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@return boolean canReport
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reportSystem.canReportPlayerForLanguage(playerLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param reportType Enum.ReportType
 ---@return Enum.ReportMajorCategory[] majorCategories
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reportSystem.getMajorCategoriesForReportType(reportType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param majorCategory Enum.ReportMajorCategory
 ---@return string majorCategoryString
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reportSystem.getMajorCategoryString(majorCategory) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param reportType Enum.ReportType
 ---@param majorCategory Enum.ReportMajorCategory
 ---@return Enum.ReportMinorCategory[] minorCategories
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reportSystem.getMinorCategoriesForReportTypeAndMajorCategory(
     reportType,
     majorCategory
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param minorCategory Enum.ReportMinorCategory
 ---@return string minorCategoryString
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reportSystem.getMinorCategoryString(minorCategory) end
 
 function api.reportSystem.reportServerLag() end
 
 function api.reportSystem.reportStuckInCombat() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param reportType Enum.ReportType
 ---@param majorCategory Enum.ReportMajorCategory
 ---@return boolean requiresScreenshot
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reportSystem.requiresScreenshotForReportType(reportType, majorCategory) end
 
 ---Not allowed to be called by addons
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param reportInfo ReportInfo
 ---@param playerLocation? PlayerLocation
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.reportSystem.sendReport(reportInfo, playerLocation) end
 
----@param textureObject SimpleTexture
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param textureObject SimpleTexture
 function api.reportSystem.setScreenshotPreviewTexture(textureObject) end
 
 function api.reportSystem.takeReportScreenshot() end
@@ -16384,26 +16389,27 @@ function api.reputation.areLegacyReputationsShown() end
 
 function api.reputation.collapseAllFactionHeaders() end
 
----@param factionSortIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param factionSortIndex integer
 function api.reputation.collapseFactionHeader(factionSortIndex) end
 
 function api.reputation.expandAllFactionHeaders() end
 
----@param factionSortIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param factionSortIndex integer
 function api.reputation.expandFactionHeader(factionSortIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param factionID number
 ---@return FactionData? factionData
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reputation.getFactionDataByID(factionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param factionSortIndex integer
 ---@return FactionData? factionData
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reputation.getFactionDataByIndex(factionSortIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param factionID number
 ---@return number? currentValue
 ---@return number? threshold
@@ -16411,7 +16417,6 @@ function api.reputation.getFactionDataByIndex(factionSortIndex) end
 ---@return boolean? hasRewardPending
 ---@return boolean? tooLowLevelForParagon
 ---@return number? paragonStorageLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reputation.getFactionParagonInfo(factionID) end
 
 ---@return FactionData? guildFactionData
@@ -16432,71 +16437,71 @@ function api.reputation.getSelectedFaction() end
 ---@return FactionData? watchedFactionData
 function api.reputation.getWatchedFactionData() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param factionID number
 ---@return boolean isAccountWide
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reputation.isAccountWideReputation(factionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param factionSortIndex integer
 ---@return boolean isActive
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reputation.isFactionActive(factionSortIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param factionID number
 ---@return boolean factionIsParagon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reputation.isFactionParagon(factionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param factionID number
 ---@return boolean currentPlayerHasParagon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reputation.isFactionParagonForCurrentPlayer(factionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param factionID number
 ---@return boolean isMajorFaction
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reputation.isMajorFaction(factionID) end
 
----@param factionID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param factionID number
 function api.reputation.requestFactionParagonPreloadRewardData(factionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param factionSortIndex integer
 ---@param setActive boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.reputation.setFactionActive(factionSortIndex, setActive) end
 
----@param showLegacyReputations boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param showLegacyReputations boolean
 function api.reputation.setLegacyReputationsShown(showLegacyReputations) end
 
----@param sortType Enum.ReputationSortType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param sortType Enum.ReputationSortType
 function api.reputation.setReputationSortType(sortType) end
 
----@param factionSortIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param factionSortIndex integer
 function api.reputation.setSelectedFaction(factionSortIndex) end
 
----@param factionID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param factionID number
 function api.reputation.setWatchedFactionByID(factionID) end
 
----@param factionSortIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param factionSortIndex integer
 function api.reputation.setWatchedFactionByIndex(factionSortIndex) end
 
----@param factionSortIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param factionSortIndex integer
 function api.reputation.toggleFactionAtWar(factionSortIndex) end
 
 ---Wraps `C_ResearchInfo`.
 ---@class wow.beta.api.researchInfo
 api.researchInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return DigSiteMapInfo[] digSites
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.researchInfo.getDigSitesForMap(uiMapID) end
 
 ---Wraps `C_RestrictedActions`.
@@ -16505,16 +16510,16 @@ api.restrictedActions = {}
 
 ---Returns true if the calling context has permissions to call protected functions on the
 ---supplied object.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param object FrameScriptObject
 ---@param silent? boolean
 ---@return boolean protectedFunctionsAllowed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.restrictedActions.checkAllowProtectedFunctions(object, silent) end
 
 ---Returns the current state of an addon restriction type.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.AddOnRestrictionType
 ---@return Enum.AddOnRestrictionState state
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.restrictedActions.getAddOnRestrictionState(type) end
 
 ---@return boolean inCombatLockdown
@@ -16522,37 +16527,37 @@ function api.restrictedActions.inCombatLockdown() end
 
 ---Returns true if an addon restriction type is in an active state. Will always return false
 ---during dispatch of ADDON_RESTRICTION_STATE_CHANGED.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.AddOnRestrictionType
 ---@return boolean active
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.restrictedActions.isAddOnRestrictionActive(type) end
 
 ---Wraps `C_ScenarioInfo`.
 ---@class wow.beta.api.scenarioInfo
 api.scenarioInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param criteriaIndex number
 ---@return ScenarioCriteriaInfo? scenarioCriteriaInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.scenarioInfo.getCriteriaInfo(criteriaIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param stepID number
 ---@param criteriaIndex number
 ---@return ScenarioCriteriaInfo? scenarioCriteriaInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.scenarioInfo.getCriteriaInfoByStep(stepID, criteriaIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param runType Enum.JailersTowerType
 ---@return string? typeString
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.scenarioInfo.getJailersTowerTypeString(runType) end
 
 ---@return ScenarioInformation? scenarioInfo
 function api.scenarioInfo.getScenarioInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param scenarioStepID? number
 ---@return ScenarioStepInfo? scenarioStepInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.scenarioInfo.getScenarioStepInfo(scenarioStepID) end
 
 ---Wraps `C_ScrappingMachineUI`.
@@ -16561,13 +16566,13 @@ api.scrappingMachineUI = {}
 
 function api.scrappingMachineUI.closeScrappingMachine() end
 
----@param index number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param index number
 function api.scrappingMachineUI.dropPendingScrapItemFromCursor(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index number
 ---@return ItemLocation? itemLoc
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.scrappingMachineUI.getCurrentPendingScrapItemLocationByIndex(index) end
 
 ---@return number spellID
@@ -16583,8 +16588,8 @@ function api.scrappingMachineUI.removeAllScrapItems() end
 
 function api.scrappingMachineUI.removeCurrentScrappingItem() end
 
----@param index number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param index number
 function api.scrappingMachineUI.removeItemToScrap(index) end
 
 function api.scrappingMachineUI.scrapItems() end
@@ -16638,27 +16643,27 @@ function api.seasonInfo.getCurrentDisplaySeasonID() end
 api.secrets = {}
 
 ---Queries the base secrecy for a power type.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerType Enum.PowerType
 ---@return Enum.SecrecyLevel secrecy
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.getPowerTypeSecrecy(powerType) end
 
 ---Queries the base secrecy for a spell if queried as an aura.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIdentifier number|string
 ---@return Enum.SecrecyLevel secrecy
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.getSpellAuraSecrecy(spellIdentifier) end
 
 ---Queries the base secrecy for a spell if queried as a cast.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIdentifier number|string
 ---@return Enum.SecrecyLevel secrecy
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.getSpellCastSecrecy(spellIdentifier) end
 
 ---Queries the base secrecy for a spell if queried as a cooldown.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIdentifier number|string
 ---@return Enum.SecrecyLevel secrecy
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.getSpellCooldownSecrecy(spellIdentifier) end
 
 ---Returns true if this client build has secret value restrictions enabled. If false, all APIs
@@ -16668,9 +16673,9 @@ function api.secrets.hasSecretRestrictions() end
 
 ---Returns true if a given action bar slot ID will produce secret values for cooldowns if
 ---queried.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param actionID integer
 ---@return boolean isCooldownSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldActionCooldownBeSecret(actionID) end
 
 ---Returns true if queries for aura data will generally produce secret values.
@@ -16683,16 +16688,16 @@ function api.secrets.shouldCooldownsBeSecret() end
 
 ---Returns true if a given spell identifier would, if applied as an aura, produce secret values
 ---when queried.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIdentifier number|string
 ---@return boolean isAuraSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldSpellAuraBeSecret(spellIdentifier) end
 
 ---Returns true if a given spellbook item will produce secret values for cooldowns if queried.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isCooldownSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldSpellBookItemCooldownBeSecret(
     spellBookItemSlotIndex,
     spellBookItemSpellBank
@@ -16700,106 +16705,106 @@ function api.secrets.shouldSpellBookItemCooldownBeSecret(
 end
 
 ---Returns true if a given spell identifier will produce secret values for cooldowns if queried.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIdentifier number|string
 ---@return boolean isCooldownSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldSpellCooldownBeSecret(spellIdentifier) end
 
 ---Returns true if information about a totem slot will produce secret values if queried.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return boolean isTotemSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldTotemSlotBeSecret(slot) end
 
 ---Returns true if information about a spell when associated with a totem slot will produce
 ---secret values if queried.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return boolean isTotemSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldTotemSpellBeSecret(spellID) end
 
 ---Returns true if a given aura index will produce secret values if queried.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param index integer
 ---@param filter? string
 ---@return boolean isAuraSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldUnitAuraIndexBeSecret(unit, index, filter) end
 
 ---Returns true if a given aura instance ID will produce secret values if queried.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param auraInstanceID number
 ---@return boolean isAuraSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldUnitAuraInstanceBeSecret(unit, auraInstanceID) end
 
 ---Returns true if a given aura slot ID will produce secret values if queried.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param slot number
 ---@return boolean isAuraSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldUnitAuraSlotBeSecret(unit, slot) end
 
 ---Returns true if queries that compare units will produce secret values.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit1 string
 ---@param unit2 string
 ---@return boolean isUnitComparisonSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldUnitComparisonBeSecret(unit1, unit2) end
 
 ---Returns true if queries for maximum unit health will produce secret values.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean isUnitHealthMaxSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldUnitHealthMaxBeSecret(unit) end
 
 ---Returns true if queries for unit identity (such as name or GUID) will produce secret values.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean isUnitIdentitySecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldUnitIdentityBeSecret(unit) end
 
 ---Returns true if queries for unit power will produce secret values.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param powerType? Enum.PowerType
 ---@return boolean isUnitPowerSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldUnitPowerBeSecret(unit, powerType) end
 
 ---Returns true if queries for maximum unit power will produce secret values.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param powerType? Enum.PowerType
 ---@return boolean isUnitPowerMaxSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldUnitPowerMaxBeSecret(unit, powerType) end
 
 ---Returns true if queries for spell casting information for a unit would produce secret values
 ---when queried.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param spellIdentifier number|string
 ---@return boolean isSpellCastSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldUnitSpellCastBeSecret(unit, spellIdentifier) end
 
 ---Returns true if queries for spell casting information for a specific unit will generally
 ---produce secret values.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean isSpellCastingSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldUnitSpellCastingBeSecret(unit) end
 
 ---Returns true if queries for unit threat status will produce secret values.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param mobUnit? string
 ---@return boolean isUnitThreatSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldUnitThreatStateBeSecret(unit, mobUnit) end
 
 ---Returns true if queries for unit threat values will produce secret values.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param mobUnit string
 ---@return boolean isUnitThreatSecret
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.secrets.shouldUnitThreatValuesBeSecret(unit, mobUnit) end
 
 ---Wraps `C_SecureTransfer`.
@@ -16818,16 +16823,16 @@ function api.secureTransfer.completeHousingPurchase() end
 ---Restrictions: hasRestrictions
 function api.secureTransfer.completeHousingVCPurchase() end
 
----@return number totalCost
 ---Restrictions: hasRestrictions
+---@return number totalCost
 function api.secureTransfer.getHousingPurchaseCost() end
 
----@return number productID
 ---Restrictions: hasRestrictions
+---@return number productID
 function api.secureTransfer.getHousingVCPurchaseProductID() end
 
----@return MailInfo mailInfo
 ---Restrictions: hasRestrictions
+---@return MailInfo mailInfo
 function api.secureTransfer.getMailInfo() end
 
 ---Restrictions: hasRestrictions
@@ -16839,9 +16844,9 @@ api.settingsUtil = {}
 
 function api.settingsUtil.notifySettingsLoaded() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param openToCategoryID? number
 ---@param scrollToElementName? string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.settingsUtil.openSettingsPanel(openToCategoryID, scrollToElementName) end
 
 ---Wraps `C_SkillInfo`.
@@ -16855,29 +16860,30 @@ api.slashCommand = {}
 ---@return boolean allowed
 function api.slashCommand.areDangerousScriptsAllowed() end
 
----@param allowed? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param allowed? boolean
 function api.slashCommand.setAllowDangerousScripts(allowed) end
 
 ---Wraps `C_SocialQueue`.
 ---@class wow.beta.api.socialQueue
 api.socialQueue = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param allowNonJoinable? boolean
 ---@param allowNonQueuedGroups? boolean
 ---@return string[] groupGUIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.socialQueue.getAllGroups(allowNonJoinable, allowNonQueuedGroups) end
 
 ---@return SocialQueueConfig? config
 function api.socialQueue.getConfig() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerGUID string
 ---@return string? groupGUID
 ---@return boolean? isSoloQueueParty
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.socialQueue.getGroupForPlayer(playerGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param groupGUID string
 ---@return boolean? canJoin
 ---@return number? numQueues
@@ -16887,30 +16893,29 @@ function api.socialQueue.getGroupForPlayer(playerGUID) end
 ---@return boolean? isSoloQueueParty
 ---@return boolean? questSessionActive
 ---@return string? leaderGUID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.socialQueue.getGroupInfo(groupGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param groupGUID string
 ---@return SocialQueuePlayerInfo[]? groupMembers
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.socialQueue.getGroupMembers(groupGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param groupGUID string
 ---@return SocialQueueGroupQueueInfo[]? queues
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.socialQueue.getGroupQueues(groupGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param groupGUID string
 ---@param applyAsTank? boolean
 ---@param applyAsHealer? boolean
 ---@param applyAsDamage? boolean
 ---@return boolean requestSuccessful
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.socialQueue.requestToJoin(groupGUID, applyAsTank, applyAsHealer, applyAsDamage) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param groupGUID string
 ---@param priority number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.socialQueue.signalToastDisplayed(groupGUID, priority) end
 
 ---Wraps `C_SocialRestrictions`.
@@ -16939,31 +16944,31 @@ function api.socialRestrictions.isSilenced() end
 ---@return boolean isSquelched
 function api.socialRestrictions.isSquelched() end
 
----@param disabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param disabled boolean
 function api.socialRestrictions.setChatDisabled(disabled) end
 
 ---Wraps `C_Soulbinds`.
 ---@class wow.beta.api.soulbinds
 api.soulbinds = {}
 
----@param soulbindID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param soulbindID number
 function api.soulbinds.activateSoulbind(soulbindID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soulbindID number
 ---@return boolean result
 ---@return string? errorDescription
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.canActivateSoulbind(soulbindID) end
 
 ---@return boolean result
 function api.soulbinds.canModifySoulbind() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soulbindID number
 ---@return boolean result
 ---@return string? errorDescription
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.canResetConduitsInSoulbind(soulbindID) end
 
 ---@return boolean result
@@ -16971,188 +16976,189 @@ function api.soulbinds.canSwitchActiveSoulbindTreeBranch() end
 
 function api.soulbinds.closeUI() end
 
----@param soulbindID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param soulbindID number
 function api.soulbinds.commitPendingConduitsInSoulbind(soulbindID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soulbindID number
 ---@param conduitID number
 ---@return number nodeID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.findNodeIDActuallyInstalled(soulbindID, conduitID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soulbindID number
 ---@param conduitID number
 ---@return number nodeID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.findNodeIDAppearingInstalled(soulbindID, conduitID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soulbindID number
 ---@param conduitID number
 ---@return number nodeID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.findNodeIDPendingInstall(soulbindID, conduitID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soulbindID number
 ---@param conduitID number
 ---@return number nodeID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.findNodeIDPendingUninstall(soulbindID, conduitID) end
 
 ---@return number soulbindID
 function api.soulbinds.getActiveSoulbindID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param conduitType Enum.SoulbindConduitType
 ---@return ConduitCollectionData[] collectionData
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getConduitCollection(conduitType) end
 
 ---@return number count
 function api.soulbinds.getConduitCollectionCount() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param conduitID number
 ---@return ConduitCollectionData? collectionData
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getConduitCollectionData(conduitID) end
 
 ---@return ConduitCollectionData? collectionData
 function api.soulbinds.getConduitCollectionDataAtCursor() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param virtualID number
 ---@return ConduitCollectionData? collectionData
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getConduitCollectionDataByVirtualID(virtualID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param nodeID number
 ---@return number conduitID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getConduitDisplayed(nodeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param conduitID number
 ---@param rank number
 ---@return string link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getConduitHyperlink(conduitID, rank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param nodeID number
 ---@return number conduitID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getConduitIDPendingInstall(nodeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param conduitID number
 ---@param rank number
 ---@return number quality
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getConduitQuality(conduitID, rank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param conduitID number
 ---@return number conduitRank
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getConduitRank(conduitID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param conduitID number
 ---@param conduitRank number
 ---@return number spellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getConduitSpellID(conduitID, conduitRank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param nodeID number
 ---@return number conduitID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getInstalledConduitID(nodeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param nodeID number
 ---@return SoulbindNode node
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getNode(nodeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soulbindID number
 ---@return SoulbindData data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getSoulbindData(soulbindID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soulbindID number
 ---@return number[] specIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getSpecsAssignedToSoulbind(soulbindID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param treeID number
 ---@return SoulbindTree tree
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.getTree(treeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soulbindID number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.hasAnyInstalledConduitInSoulbind(soulbindID) end
 
 ---@return boolean result
 function api.soulbinds.hasAnyPendingConduits() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soulbindID number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.hasPendingConduitsInSoulbind(soulbindID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param nodeID number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.isConduitInstalled(nodeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soulbindID number
 ---@param conduitID number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.isConduitInstalledInSoulbind(soulbindID, conduitID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.isItemConduitByItemInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param nodeID number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.isNodePendingModify(nodeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soulbindID number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.isUnselectedConduitPendingInSoulbind(soulbindID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param nodeID number
 ---@param conduitID number
 ---@param type Enum.SoulbindConduitTransactionType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.soulbinds.modifyNode(nodeID, conduitID, type) end
 
----@param nodeID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param nodeID number
 function api.soulbinds.selectNode(nodeID) end
 
----@param nodeID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param nodeID number
 function api.soulbinds.unmodifyNode(nodeID) end
 
 ---Wraps `C_Sound`.
 ---@class wow.beta.api.sound
 api.sound = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soundHandle number
 ---@return number scaledVolume
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.sound.getSoundScaledVolume(soundHandle) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soundHandle number
 ---@return boolean isPlaying
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.sound.isPlaying(soundHandle) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soundType any
 ---@param itemLocation ItemLocation
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.sound.playItemSound(soundType, itemLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param soundKitID number
 ---@param uiSoundSubType? any
 ---@param forceNoDuplicates? boolean
@@ -17160,7 +17166,6 @@ function api.sound.playItemSound(soundType, itemLocation) end
 ---@param overridePriority? number
 ---@return boolean? success
 ---@return integer? soundHandle
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.sound.playSound(
     soundKitID,
     uiSoundSubType,
@@ -17170,8 +17175,8 @@ function api.sound.playSound(
 )
 end
 
----@param vocalErrorSoundID any
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param vocalErrorSoundID any
 function api.sound.playVocalErrorSound(vocalErrorSoundID) end
 
 ---Wraps `C_SpecializationInfo`.
@@ -17190,67 +17195,68 @@ function api.specializationInfo.canPlayerUseTalentSpecUI() end
 ---@return string failureReason
 function api.specializationInfo.canPlayerUseTalentUI() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param isInspect? boolean
 ---@param isPet? boolean
 ---@return integer groupIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getActiveSpecGroup(isInspect, isPet) end
 
 ---@return number[] selectedPvpTalentIDs
 function api.specializationInfo.getAllSelectedPvpTalentIDs() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID number
 ---@return number? classID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getClassIDFromSpecID(specID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inspectedUnit string
 ---@param talentIndex number
 ---@return number? selectedTalentID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getInspectSelectedPvpTalent(inspectedUnit, talentIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param classID number
 ---@return number specCount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getNumSpecializationsForClassID(classID) end
 
 ---@return boolean hasUnspentSlot
 ---@return boolean hasNewTalent
 function api.specializationInfo.getPvpTalentAlertStatus() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param talentID number
 ---@return PvpTalentInfo? talentInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getPvpTalentInfo(talentID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param talentIndex number
 ---@return PvpTalentSlotInfo? slotInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getPvpTalentSlotInfo(talentIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param talentIndex number
 ---@return number? requiredLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getPvpTalentSlotUnlockLevel(talentIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param talentID number
 ---@return number? requiredLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getPvpTalentUnlockLevel(talentID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specSetID number
 ---@return number[] specIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getSpecIDs(specSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param isInspect? boolean
 ---@param isPet? boolean
 ---@param specGroupIndex? integer
 ---@return integer specializationIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getSpecialization(isInspect, isPet, specGroupIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specializationIndex integer
 ---@param isInspect? boolean
 ---@param isPet? boolean
@@ -17268,7 +17274,6 @@ function api.specializationInfo.getSpecialization(isInspect, isPet, specGroupInd
 ---@return string? background
 ---@return number previewPointsSpent
 ---@return boolean isUnlocked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getSpecializationInfo(
     specializationIndex,
     isInspect,
@@ -17280,11 +17285,11 @@ function api.specializationInfo.getSpecializationInfo(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specializationIndex integer
 ---@param isInspect? boolean
 ---@param isPet? boolean
 ---@return number[] spellIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getSpecializationMasterySpells(
     specializationIndex,
     isInspect,
@@ -17292,48 +17297,49 @@ function api.specializationInfo.getSpecializationMasterySpells(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specializationID number
 ---@return number[] spellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getSpellsDisplay(specializationID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param query TalentInfoQuery
 ---@return TalentInfoResult? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.getTalentInfo(query) end
 
 ---@return boolean isSpecializationDataInitialized
 function api.specializationInfo.isInitialized() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param talentID number
 ---@return boolean locked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.isPvpTalentLocked(talentID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specSetID number
 ---@return boolean matches
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.matchesCurrentSpecSet(specSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specIndex integer
 ---@param petNumber? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.setPetSpecialization(specIndex, petNumber) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param talentID number
 ---@param locked boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.setPvpTalentLocked(talentID, locked) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specIndex integer
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationInfo.setSpecialization(specIndex) end
 
 ---Wraps the global functions of the `SpecializationShared` system.
 ---@class wow.beta.api.specializationShared
 api.specializationShared = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param classID number
 ---@param index integer
 ---@param gender? Enum.UnitSex
@@ -17346,9 +17352,9 @@ api.specializationShared = {}
 ---@return boolean allowedForBoost
 ---@return number? masterySpell1
 ---@return number? masterySpell2
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationShared.getSpecializationInfoForClassID(classID, index, gender) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID number
 ---@param gender? Enum.UnitSex
 ---@return number id
@@ -17360,13 +17366,12 @@ function api.specializationShared.getSpecializationInfoForClassID(classID, index
 ---@return boolean allowedForBoost
 ---@return number? masterySpell1
 ---@return number? masterySpell2
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationShared.getSpecializationInfoForSpecID(specID, gender) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param specID number
 ---@param gender? Enum.UnitSex
 ---@return string? name
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.specializationShared.getSpecializationNameForSpecID(specID, gender) end
 
 ---@return boolean hasLootSpecializations
@@ -17376,179 +17381,179 @@ function api.specializationShared.hasLootSpecializations() end
 ---@class wow.beta.api.spell
 api.spell = {}
 
----@param spellID number
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param spellID number
 function api.spell.cancelSpellByID(spellID) end
 
 ---Returns true if the spell exists, regardless of whether the player has learned it
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIdentifier number|string
 ---@return boolean spellExists
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spell.doesSpellExist(spellIdentifier) end
 
 ---Used in conjunction with SpellRangeCheckUpdate to inform the UI when a spell goes in or out
 ---of range with the current target.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIdentifier number|string
 ---@param enable boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spell.enableSpellRangeCheck(spellIdentifier, enable) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return number healthChange
 ---@return PowerTypeChange[] powerTypeChanges
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spell.getAuraStatChanges(spellID) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@param spec? number
 ---@return number baseSpellID
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getBaseSpell(spellIdentifier, spec) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return DeadlyDebuffInfo? deadlyDebuffInfo
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getDeadlyDebuffInfo(spellIdentifier) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return number[] itemModifiedAppearanceIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spell.getItemModifiedAppearancesApplied(spellID) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@return string? rarityBorderAtlas
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getMawPowerBorderAtlasBySpellID(spellID) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@return string? link
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getMawPowerLinkBySpellID(spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIdentifier number|string
 ---@param spec? number
 ---@param onlyKnown? boolean
 ---@param ignoreOverrideSpellID? number
 ---@return number overrideSpellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spell.getOverrideSpell(spellIdentifier, spec, onlyKnown, ignoreOverrideSpellID) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param schoolMask number
 ---@return string result
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSchoolString(schoolMask) end
 
 ---Returns nil if spell is not found
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean? autoCastAllowed
 ---@return boolean? autoCastEnabled
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellAutoCast(spellIdentifier) end
 
 ---Returns number of times a spell can be cast, typically based on availability of things like
 ---required reagent items; Returns 0 if spell is not found
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenSpellCooldownRestricted
 ---@param spellIdentifier number|string
 ---@return number castCount
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenSpellCooldownRestricted
 function api.spell.getSpellCastCount(spellIdentifier) end
 
 ---Returns a duration object describing the active recharge time for a spell.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return LuaDurationObject? duration
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellChargeDuration(spellIdentifier) end
 
 ---Returns a table of info about the charges of a charge-accumulating spell; May return nil if
 ---spell is not found or is not charge-based
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenSpellCooldownRestricted
 ---@param spellIdentifier number|string
 ---@return SpellChargeInfo? chargeInfo
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenSpellCooldownRestricted
 function api.spell.getSpellCharges(spellIdentifier) end
 
 ---Returns nil if spell is not found
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenSpellCooldownRestricted
 ---@param spellIdentifier number|string
 ---@return SpellCooldownInfo? spellCooldownInfo
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenSpellCooldownRestricted
 function api.spell.getSpellCooldown(spellIdentifier) end
 
 ---Returns a duration object describing the active cooldown duration for a spell.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return LuaDurationObject? duration
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellCooldownDuration(spellIdentifier) end
 
 ---Returns nil if spell is not found
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return string? description
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellDescription(spellIdentifier) end
 
 ---Depending on the spell, return a string that is either the use count or number of charges. If
 ---value is beyond the display count parameter, returns the replacementString (defaults to '*').
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenSpellCooldownRestricted
 ---@param spellIdentifier number|string
 ---@param maxDisplayCount? number
 ---@param replacementString? string
 ---@return string displayCount
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenSpellCooldownRestricted
 function api.spell.getSpellDisplayCount(spellIdentifier, maxDisplayCount, replacementString) end
 
 ---Meant primarily for getting a spell id from a spell name or link; Returns nothing if spell
 ---does not exist
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return number? spellID
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellIDForSpellIdentifier(spellIdentifier) end
 
 ---Returns nil if spell is not found
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return SpellInfo? spellInfo
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellInfo(spellIdentifier) end
 
 ---Returns the level the spell is learned at; May return a different value if the player is
 ---currently Level Linked with another player
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return number levelLearned
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellLevelLearned(spellIdentifier) end
 
 ---Returns nil if spell is not found
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@param glyphID? number
 ---@return string? spellLink
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellLink(spellIdentifier, glyphID) end
 
 ---Returns nil if spell is not found
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenSpellCooldownRestricted
 ---@param spellIdentifier number|string
 ---@return number? startTime
 ---@return number? duration
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenSpellCooldownRestricted
 function api.spell.getSpellLossOfControlCooldown(spellIdentifier) end
 
 ---Returns a duration object describing the active loss of control cooldown duration for a
 ---spell.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return LuaDurationObject? duration
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellLossOfControlCooldownDuration(spellIdentifier) end
 
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenSpellAuraRestricted
 ---@param spellID number
 ---@return number cumulativeAura
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenSpellAuraRestricted
 function api.spell.getSpellMaxCumulativeAuraApplications(spellID) end
 
 ---Returns nil if spell is not found
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return string? name
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellName(spellIdentifier) end
 
 ---Returns a table containing one or more SpellPowerCostInfos, one for each power type this
 ---spell costs; May return nil if spell is not found or has no resource costs
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return SpellPowerCostInfo[]? powerCosts
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellPowerCost(spellIdentifier) end
 
 ---@return number result
@@ -17556,182 +17561,182 @@ function api.spell.getSpellQueueWindow() end
 
 ---Returns the rank of a spell that corresponds to an ability within a ranked SkillLine (ex: a
 ---crafting Recipe); Returns nil if spell is not found, or isn't part of a ranked SkillLine
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return number? rank
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellSkillLineAbilityRank(spellIdentifier) end
 
 ---Returns nil if spell is not found
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return string? subtext
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellSubtext(spellIdentifier) end
 
 ---Returns nothing if spell is not found
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return integer? iconID
 ---@return integer? originalIconID
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellTexture(spellIdentifier) end
 
 ---Returns nil if spell is not associated with a trade skill
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return string? spellLink
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.getSpellTradeSkillLink(spellIdentifier) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@param visibilityType Enum.SpellAuraVisibilityType
 ---@return boolean? hasCustom
 ---@return boolean? alwaysShowMine
 ---@return boolean? showForMySpec
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spell.getVisibilityInfo(spellID, visibilityType) end
 
 ---Returns true if the spell is the player's melee Auto Attack spell
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isAutoAttack
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isAutoAttackSpell(spellIdentifier) end
 
 ---Returns true if the spell is an auto repeat player spell
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isAutoRepeat
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isAutoRepeatSpell(spellIdentifier) end
 
 ---Returns true if the spell comes from a Class Talent
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isAutoRepeat
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isClassTalentSpell(spellIdentifier) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean consumable
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isConsumableSpell(spellIdentifier) end
 
 ---Returns true if the spell is currently being cast or is queued to be cast
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isCurrentSpell
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isCurrentSpell(spellIdentifier) end
 
 ---Returns true if an aura is considered an external defensive.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return boolean isExternalDefensive
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spell.isExternalDefensive(spellID) end
 
 ---Returns true if the spell is an 'empower' type spell that is cast by pressing and holding,
 ---with the on-release cast typically being affected by time held
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isPressHoldRelease
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isPressHoldReleaseSpell(spellIdentifier) end
 
 ---Returns true if an aura is considered high priority and should be ordered ahead of other
 ---auras in the UI.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return boolean isHighPriority
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spell.isPriorityAura(spellID) end
 
 ---Returns true if the spell comes from a PvP Talent
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isAutoRepeat
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isPvPTalentSpell(spellIdentifier) end
 
 ---Returns true if the spell is the player's ranged Auto Attack spell (ex: Shoot, Auto Shot,
 ---etc)
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isRangedAutoAttack
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isRangedAutoAttackSpell(spellIdentifier) end
 
 ---Returns true if an aura only applies effects to the player, and no other units.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return boolean hasSelfEffectsOnly
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spell.isSelfBuff(spellID) end
 
 ---Returns true if the spell causes a crowd control effect when cast on a valid target.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isCrowdControl
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isSpellCrowdControl(spellIdentifier) end
 
 ---Returns true if data for the spell has already been loaded and cached this session
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIdentifier number|string
 ---@return boolean isCached
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spell.isSpellDataCached(spellIdentifier) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean disabled
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isSpellDisabled(spellIdentifier) end
 
 ---Returns true if the spell can be cast on hostile targets
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isHarmful
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isSpellHarmful(spellIdentifier) end
 
 ---Returns true if the spell can be cast on the player or other friendly targets
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isHelpful
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isSpellHelpful(spellIdentifier) end
 
 ---Returns true if the spell is considered important. For example a spell that's lethal if not
 ---interrupted would be considered important.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isImportant
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isSpellImportant(spellIdentifier) end
 
 ---Returns true if the current target is within range of the spell; False if out of range; Nil
 ---if range check was invalid
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@param targetUnit? string
 ---@return boolean? inRange
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isSpellInRange(spellIdentifier, targetUnit) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isPassive
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isSpellPassive(spellIdentifier) end
 
 ---Returns whether the spell is currently castable; Typically based on things like learned
 ---status, required resources, etc
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean isUsable
 ---@return boolean insufficientPower
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.isSpellUsable(spellIdentifier) end
 
----@param spellIdentifier number|string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param spellIdentifier number|string
 function api.spell.pickupSpell(spellIdentifier) end
 
 ---Requests data for the spell be loaded; Listen for SPELL_DATA_LOAD_RESULT to be notified when
 ---load is finished
----@param spellIdentifier number|string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param spellIdentifier number|string
 function api.spell.requestLoadSpellData(spellIdentifier) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIdentifier number|string
 ---@param enabled boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spell.setSpellAutoCastEnabled(spellIdentifier, enabled) end
 
 ---Returns true if the spell has a min and/or max range greater than 0
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellIdentifier number|string
 ---@return boolean hasRange
----Restrictions: secretArguments=AllowedWhenTainted
 function api.spell.spellHasRange(spellIdentifier) end
 
 ---@return boolean isEnchanting
@@ -17744,27 +17749,27 @@ function api.spell.targetSpellJumpsUpgradeTrack() end
 function api.spell.targetSpellReplacesBonusTree() end
 
 ---Toggles whether spell's autoCast is enabled
----@param spellIdentifier number|string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param spellIdentifier number|string
 function api.spell.toggleSpellAutoCast(spellIdentifier) end
 
 ---Wraps `C_SpellActivationOverlay`.
 ---@class wow.beta.api.spellActivationOverlay
 api.spellActivationOverlay = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return boolean isSpellOverlayed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellActivationOverlay.isSpellOverlayed(spellID) end
 
 ---Wraps `C_SpellBook`.
 ---@class wow.beta.api.spellBook
 api.spellBook = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@param targetSelf? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.castSpellBookItem(
     spellBookItemSlotIndex,
     spellBookItemSpellBank,
@@ -17776,18 +17781,19 @@ end
 ---@return boolean contains
 function api.spellBook.containsAnyDisenchantSpell() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return number? baseSpellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.findBaseSpellByID(spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return integer flyoutSlot
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.findFlyoutSlotBySpellID(spellID) end
 
 ---If found, returns the first slot position of a SpellBookItem matching the specified spell and
 ---criteria
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellIdentifier number|string
 ---@param includeHidden? boolean
 ---@param includeFlyouts? boolean
@@ -17795,7 +17801,6 @@ function api.spellBook.findFlyoutSlotBySpellID(spellID) end
 ---@param includeOffSpec? boolean
 ---@return integer? spellBookItemSlotIndex
 ---@return Enum.SpellBookSpellBank? spellBookItemSpellBank
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.findSpellBookSlotForSpell(
     spellIdentifier,
     includeHidden,
@@ -17805,46 +17810,46 @@ function api.spellBook.findSpellBookSlotForSpell(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@return number? overrideSpellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.findSpellOverrideByID(spellID) end
 
 ---Returns general, class, and active spec spells that are learned at the specified level
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param level number
 ---@return number[]? spellIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getCurrentLevelSpells(level) end
 
 ---@return number numSpellBookSkillLines
 function api.spellBook.getNumSpellBookSkillLines() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineID number
 ---@return integer? skillIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSkillLineIndexByID(skillLineID) end
 
 ---Returns nothing if item doesn't exist or isn't a spell
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean? autoCastAllowed
 ---@return boolean? autoCastEnabled
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemAutoCast(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns number of times a SpellBookItem can be cast, typically based on availability of
 ---things like required reagent items; Always returns 0 if item is not found or is not a spell
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenSpellCooldownRestricted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return number castCount
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenSpellCooldownRestricted
 function api.spellBook.getSpellBookItemCastCount(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns a duration object describing the active recharge time for a spellbook item.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return LuaDurationObject? duration
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemChargeDuration(
     spellBookItemSlotIndex,
     spellBookItemSpellBank
@@ -17853,64 +17858,64 @@ end
 
 ---Returns a table of info about the charges of a charge-accumulating SpellBookItem; May return
 ---nil if item is not found or is not charge-based
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenSpellCooldownRestricted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return SpellChargeInfo? chargeInfo
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenSpellCooldownRestricted
 function api.spellBook.getSpellBookItemCharges(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns nil if item doesn't exist or if this kind of item doesn't display cooldowns (ex:
 ---future or offspec spells)
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenSpellCooldownRestricted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return SpellCooldownInfo? spellCooldownInfo
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenSpellCooldownRestricted
 function api.spellBook.getSpellBookItemCooldown(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns a duration object describing the active cooldown duration for a spellbook item.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return LuaDurationObject? duration
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemCooldownDuration(
     spellBookItemSlotIndex,
     spellBookItemSpellBank
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return string? description
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemDescription(
     spellBookItemSlotIndex,
     spellBookItemSpellBank
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return SpellBookItemInfo? spellBookItemInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemInfo(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns the level the spell is learned at; May return a different value if the player is
 ---currently Level Linked with another player; Returns 0 if item is not a Spell
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return number levelLearned
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemLevelLearned(
     spellBookItemSlotIndex,
     spellBookItemSpellBank
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@param glyphID? number
 ---@return string? spellLink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemLink(
     spellBookItemSlotIndex,
     spellBookItemSpellBank,
@@ -17920,11 +17925,11 @@ end
 
 ---Returns nil if item doesn't exist or if this kind of item doesn't display cooldowns (ex:
 ---future or offspec spells)
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenSpellCooldownRestricted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return number? startTime
 ---@return number? duration
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenSpellCooldownRestricted
 function api.spellBook.getSpellBookItemLossOfControlCooldown(
     spellBookItemSlotIndex,
     spellBookItemSpellBank
@@ -17933,70 +17938,70 @@ end
 
 ---Returns a duration object describing the active loss of control cooldown duration for a
 ---spellbook item.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return LuaDurationObject? duration
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemLossOfControlCooldownDuration(
     spellBookItemSlotIndex,
     spellBookItemSpellBank
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return string? name
 ---@return string? subName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemName(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns a table containing one or more SpellPowerCostInfos, one for each power type a
 ---SpellBookItem costs; May return nil if item is not found or has no resource costs
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return SpellPowerCostInfo[]? powerCosts
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemPowerCost(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Get the index of the SkillLine this SpellBookItem is part of
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return integer? skillLineIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemSkillLineIndex(
     spellBookItemSlotIndex,
     spellBookItemSpellBank
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return integer? iconID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemTexture(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns nil if SpellBookItem is not associated with a trade skill
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return string? spellLink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemTradeSkillLink(
     spellBookItemSlotIndex,
     spellBookItemSpellBank
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return Enum.SpellBookItemType? itemType
 ---@return number? actionID
 ---@return number? spellID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookItemType(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineIndex integer
 ---@return SpellBookSkillLineInfo? skillLineInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.getSpellBookSkillLineInfo(skillLineIndex) end
 
 ---Returns nothing if player has no pet spells
@@ -18005,17 +18010,17 @@ function api.spellBook.getSpellBookSkillLineInfo(skillLineIndex) end
 function api.spellBook.hasPetSpells() end
 
 ---Returns true if the SpellBookItem is the player's melee Auto Attack spell
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isAutoAttack
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isAutoAttackSpellBookItem(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns true if the SpellBookItem comes from a Class Talent
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isClassTalent
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isClassTalentSpellBookItem(
     spellBookItemSlotIndex,
     spellBookItemSpellBank
@@ -18023,18 +18028,18 @@ function api.spellBook.isClassTalentSpellBookItem(
 end
 
 ---Returns true if the SpellBookItem comes from a PvP Talent
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isPvPTalent
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isPvPTalentSpellBookItem(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns true if the SpellBookItem is the player's ranged Auto Attack spell (ex: Shoot, Auto
 ---Shot, etc)
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isRangedAutoAttack
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isRangedAutoAttackSpellBookItem(
     spellBookItemSlotIndex,
     spellBookItemSpellBank
@@ -18042,26 +18047,26 @@ function api.spellBook.isRangedAutoAttackSpellBookItem(
 end
 
 ---Returns true if the SpellBookIem can be cast on hostile targets
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isHarmful
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isSpellBookItemHarmful(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns true if the SpellBookIem can be cast on the player or other friendly targets
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isHelpful
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isSpellBookItemHelpful(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns true if the current target is within range of the SpellBookIem; False if out of
 ---range; Nil if range check was invalid
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@param targetUnit? string
 ---@return boolean? inRange
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isSpellBookItemInRange(
     spellBookItemSlotIndex,
     spellBookItemSpellBank,
@@ -18070,64 +18075,64 @@ function api.spellBook.isSpellBookItemInRange(
 end
 
 ---Returns true if the SpellBookItem belongs to a non-active class specialization
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isOffSpec
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isSpellBookItemOffSpec(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns true if the SpellBookItem is a passive spell; Will always return false if it is not a
 ---spell
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isPassive
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isSpellBookItemPassive(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns whether the SpellBookIem is currently castable; Typically based on things like
 ---learned status, required resources, etc
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean isUsable
 ---@return boolean insufficientPower
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isSpellBookItemUsable(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
 ---Returns true if a spell should be found in the spellbook. This function can also return true
 ---for spells that aren't known, such as override spells granted by an aura linked to class
 ---talents
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@param spellBank? Enum.SpellBookSpellBank
 ---@param includeOverrides? boolean
 ---@return boolean isInSpellBook
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isSpellInSpellBook(spellID, spellBank, includeOverrides) end
 
 ---Returns true if a player knows a spell. This function can also return true for spells that
 ---aren't in the spellbook, such as temporarily-granted abilities
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@param spellBank? Enum.SpellBookSpellBank
 ---@return boolean isKnown
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isSpellKnown(spellID, spellBank) end
 
 ---Returns true if a spell is considered to be known or present in the spellbook
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellID number
 ---@param spellBank? Enum.SpellBookSpellBank
 ---@param includeOverrides? boolean
 ---@return boolean isKnownOrInSpellBook
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.isSpellKnownOrInSpellBook(spellID, spellBank, includeOverrides) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.pickupSpellBookItem(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@param enabled boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.setSpellBookItemAutoCastEnabled(
     spellBookItemSlotIndex,
     spellBookItemSpellBank,
@@ -18137,15 +18142,15 @@ end
 
 ---Returns true if the SpellBookIem has a min and/or max range greater than 0; Will always
 ---return false if it is not a spell
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return boolean hasRange
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.spellBookItemHasRange(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.spellBook.toggleSpellBookItemAutoCast(
     spellBookItemSlotIndex,
     spellBookItemSpellBank
@@ -18156,23 +18161,23 @@ end
 ---@class wow.beta.api.spellDiminish
 api.spellDiminish = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresSpellDiminishUI
 ---@param ruleset? Enum.SpellDiminishRuleset
 ---@return SpellDiminishCategoryInfo[] categories
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresSpellDiminishUI
 function api.spellDiminish.getAllSpellDiminishCategories(ruleset) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresSpellDiminishUI
 ---@param category Enum.SpellDiminishCategory
 ---@return SpellDiminishCategoryInfo? categoryInfo
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresSpellDiminishUI
 function api.spellDiminish.getSpellDiminishCategoryInfo(category) end
 
 ---@return boolean isSystemSupported
 function api.spellDiminish.isSystemSupported() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresSpellDiminishUI, SecretReturns
 ---@param category Enum.SpellDiminishCategory
 ---@param ruleset Enum.SpellDiminishRuleset
 ---@return boolean isTracked
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresSpellDiminishUI, SecretReturns
 function api.spellDiminish.shouldTrackSpellDiminishCategory(category, ruleset) end
 
 ---Wraps `C_SplashScreen`.
@@ -18184,8 +18189,8 @@ function api.splashScreen.acknowledgeSplash() end
 ---@return boolean canView
 function api.splashScreen.canViewSplashScreen() end
 
----@param fromGameMenu boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fromGameMenu boolean
 function api.splashScreen.requestLatestSplashScreen(fromGameMenu) end
 
 ---Restrictions: hasRestrictions
@@ -18212,14 +18217,14 @@ function api.stableInfo.getNumActivePets() end
 ---@return number numStablePets
 function api.stableInfo.getNumStablePets() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return string[] foodTypes
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.stableInfo.getStablePetFoodTypes(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return PetInfo? petInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.stableInfo.getStablePetInfo(index) end
 
 ---@return PetInfo[] stabledPets
@@ -18231,37 +18236,37 @@ function api.stableInfo.isAtStableMaster() end
 ---@return boolean isAvailable
 function api.stableInfo.isBonusPetSlotAvailable() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return boolean isFavorite
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.stableInfo.isPetFavorite(slot) end
 
----@param index integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param index integer
 function api.stableInfo.pickupStablePet(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@param isFavorite boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.stableInfo.setPetFavorite(slot, isFavorite) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@param slot integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.stableInfo.setPetSlot(index, slot) end
 
 ---Wraps `C_StorePublic`.
 ---@class wow.beta.api.storePublic
 api.storePublic = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param groupID number
 ---@return boolean hasPurchaseableProducts
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.storePublic.doesGroupHavePurchaseableProducts(groupID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param newShown boolean
 ---@param contextKey? string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.storePublic.eventStoreUISetShown(newShown, contextKey) end
 
 ---@return boolean enabled
@@ -18288,40 +18293,41 @@ function api.streaming.getFileStreamingStatus() end
 api.stringUtil = {}
 
 ---Returns a string with Lua format string tokens ('%') escaped.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@return string escapedText
----Restrictions: secretArguments=AllowedWhenTainted
 function api.stringUtil.escapeLuaFormatString(text) end
 
 ---Returns a string with all Lua pattern characters escaped.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@return string escapedText
----Restrictions: secretArguments=AllowedWhenTainted
 function api.stringUtil.escapeLuaPatterns(text) end
 
 ---Returns a string with all quoted code sequences ('|' characters) escaped.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@return string escaped
----Restrictions: secretArguments=AllowedWhenTainted
 function api.stringUtil.escapeQuotedCodes(text) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param number number
 ---@return string text
----Restrictions: secretArguments=AllowedWhenTainted
 function api.stringUtil.floorToNearestString(number) end
 
 ---Returns a string with all contiguous occurrences of ASCII space characters truncated.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@param maxAllowedSpaces number
 ---@return string trimmedText
----Restrictions: secretArguments=AllowedWhenTainted
 function api.stringUtil.removeContiguousSpaces(text, maxAllowedSpaces) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param number number
 ---@return string text
----Restrictions: secretArguments=AllowedWhenTainted
 function api.stringUtil.roundToNearestString(number) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@param maintainColor? boolean
 ---@param maintainBrackets? boolean
@@ -18329,7 +18335,6 @@ function api.stringUtil.roundToNearestString(number) end
 ---@param maintainAtlases? boolean
 ---@param maintainTextures? boolean
 ---@return string stripped
----Restrictions: secretArguments=AllowedWhenTainted
 function api.stringUtil.stripHyperlinks(
     text,
     maintainColor,
@@ -18340,32 +18345,32 @@ function api.stringUtil.stripHyperlinks(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@return string stripped
----Restrictions: secretArguments=AllowedWhenTainted
 function api.stringUtil.stripTextureMarkupForLooseFiles(text) end
 
 ---Returns a string with all bytes in the 'characters' set removed from the start and end.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param str string
 ---@param characters? string
 ---@return string trimmed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.stringUtil.trim(str, characters) end
 
 ---Formats the given number to a string as an integer (rounding down). If the integer is zero,
 ---returns an empty string.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param number number
 ---@return string text
----Restrictions: secretArguments=AllowedWhenTainted
 function api.stringUtil.truncateWhenZero(number) end
 
 ---Returns a string with 'prefix' and 'suffix' joined to 'infix' iif 'infix' is not an empty
 ---string. Else, an empty string is returned.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param infix string
 ---@param prefix? string
 ---@param suffix? string
 ---@return string text
----Restrictions: secretArguments=AllowedWhenTainted
 function api.stringUtil.wrapString(infix, prefix, suffix) end
 
 ---Wraps `C_SummonInfo`.
@@ -18404,11 +18409,11 @@ function api.superTrack.clearSuperTrackedMapPin() end
 ---@return Enum.SuperTrackingType? type
 function api.superTrack.getHighestPrioritySuperTrackingType() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return number? x
 ---@return number? y
 ---@return string? waypointDescription
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.superTrack.getNextWaypointForMap(uiMapID) end
 
 ---@return Enum.ContentTrackingType? trackableType
@@ -18447,26 +18452,26 @@ function api.superTrack.isSuperTrackingQuest() end
 ---@return boolean isSuperTracking
 function api.superTrack.isSuperTrackingUserWaypoint() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param trackableType Enum.ContentTrackingType
 ---@param trackableID number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.superTrack.setSuperTrackedContent(trackableType, trackableID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type Enum.SuperTrackingMapPinType
 ---@param typeID number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.superTrack.setSuperTrackedMapPin(type, typeID) end
 
----@param questID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param questID number
 function api.superTrack.setSuperTrackedQuestID(questID) end
 
----@param superTracked boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param superTracked boolean
 function api.superTrack.setSuperTrackedUserWaypoint(superTracked) end
 
----@param vignetteGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param vignetteGUID string
 function api.superTrack.setSuperTrackedVignette(vignetteGUID) end
 
 ---Wraps `C_System`.
@@ -18507,34 +18512,34 @@ function api.systemTime.isUsingFixedTimeStep() end
 ---@class wow.beta.api.systemVisibilityManager
 api.systemVisibilityManager = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param system Enum.UISystemType
 ---@return boolean visible
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.systemVisibilityManager.isSystemVisible(system) end
 
 ---Wraps `C_TableUtil`.
 ---@class wow.beta.api.tableUtil
 api.tableUtil = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param table any
 ---@return number? numTableNodes
 ---@return number? numArrayNodes
 ---@return number? maxArrayIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tableUtil.count(table) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param arraySizeHint number
 ---@param nodeSizeHint? number
 ---@return any table
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tableUtil.create(arraySizeHint, nodeSizeHint) end
 
 ---Given two tables, finds the first index in the range (1, #t1) and (1, #t2) where two elements
 ---compare as inequal, or nil if no such elements are found.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param t1 any
 ---@param t2 any
 ---@return number? index
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tableUtil.findIndexedMismatch(t1, t2) end
 
 ---Wraps `C_TalkingHead`.
@@ -18545,9 +18550,9 @@ api.talkingHead = {}
 ---@class wow.beta.api.targetScript
 api.targetScript = {}
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param name? string
 ---@param exactMatch? boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.targetScript.assistUnit(name, exactMatch) end
 
 function api.targetScript.attackTarget() end
@@ -18557,23 +18562,23 @@ function api.targetScript.clearFocus() end
 ---@return boolean willMakeChange
 function api.targetScript.clearTarget() end
 
----@param name? string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param name? string
 function api.targetScript.focusUnit(name) end
 
 ---@return boolean isTargetLoose
 function api.targetScript.isTargetLoose() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param facing number
 ---@param coneAngle? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.targetScript.targetDirectionEnemy(facing, coneAngle) end
 
 function api.targetScript.targetDirectionFinished() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param facing number
 ---@param coneAngle? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.targetScript.targetDirectionFriend(facing, coneAngle) end
 
 function api.targetScript.targetLastEnemy() end
@@ -18582,113 +18587,113 @@ function api.targetScript.targetLastFriend() end
 
 function api.targetScript.targetLastTarget() end
 
----@param reverse? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param reverse? boolean
 function api.targetScript.targetNearest(reverse) end
 
----@param reverse? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param reverse? boolean
 function api.targetScript.targetNearestEnemy(reverse) end
 
----@param reverse? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param reverse? boolean
 function api.targetScript.targetNearestEnemyPlayer(reverse) end
 
----@param reverse? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param reverse? boolean
 function api.targetScript.targetNearestFriend(reverse) end
 
----@param reverse? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param reverse? boolean
 function api.targetScript.targetNearestFriendPlayer(reverse) end
 
----@param reverse? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param reverse? boolean
 function api.targetScript.targetNearestPartyMember(reverse) end
 
----@param reverse? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param reverse? boolean
 function api.targetScript.targetNearestRaidMember(reverse) end
 
 function api.targetScript.targetPriorityHighlightEnd() end
 
----@param useStartDelay? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param useStartDelay? boolean
 function api.targetScript.targetPriorityHighlightStart(useStartDelay) end
 
 ---Restrictions: hasRestrictions
 function api.targetScript.targetToggle() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param name? string
 ---@param exactMatch? boolean
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.targetScript.targetUnit(name, exactMatch) end
 
 ---Wraps `C_TaskQuest`.
 ---@class wow.beta.api.taskQuest
 api.taskQuest = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return boolean showsTaskQuestObjectives
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taskQuest.doesMapShowTaskQuestObjectives(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return string? questTitle
 ---@return number? factionID
 ---@return boolean? capped
 ---@return boolean? displayAsObjective
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taskQuest.getQuestInfoByQuestID(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param uiMapID number
 ---@return number? locationX
 ---@return number? locationY
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taskQuest.getQuestLocation(questID, uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number? progress
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taskQuest.getQuestProgressBarInfo(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number? minutesLeft
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taskQuest.getQuestTimeLeftMinutes(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number? secondsLeft
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taskQuest.getQuestTimeLeftSeconds(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param type Enum.MapIconUIWidgetSetType
 ---@return number? widgetSet
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taskQuest.getQuestUIWidgetSetByType(questID, type) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return number? uiMapID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taskQuest.getQuestZoneID(questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return QuestPOIMapInfo[]? taskPOIs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taskQuest.getQuestsOnMap(uiMapID) end
 
 ---@return number[] quests
 function api.taskQuest.getThreatQuests() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@return boolean active
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taskQuest.isActive(questID) end
 
----@param questID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param questID number
 function api.taskQuest.requestPreloadRewardData(questID) end
 
 ---Wraps `C_TaxiMap`.
@@ -18696,91 +18701,91 @@ function api.taskQuest.requestPreloadRewardData(questID) end
 api.taxiMap = {}
 
 ---Returns information on taxi nodes at the current flight master.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return TaxiNodeInfo[] taxiNodes
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taxiMap.getAllTaxiNodes(uiMapID) end
 
 ---Returns information on taxi nodes for a given map, without considering the current flight
 ---master.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return MapTaxiNodeInfo[] mapTaxiNodes
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taxiMap.getTaxiNodesForMap(uiMapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param uiMapID number
 ---@return boolean shouldShowNodes
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.taxiMap.shouldMapShowTaxiNodes(uiMapID) end
 
 ---Wraps `C_Texture`.
 ---@class wow.beta.api.texture
 api.texture = {}
 
----@param texture SimpleTexture
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param texture SimpleTexture
 function api.texture.clearTitleIconTexture(texture) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param atlas string
 ---@return number elementID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.texture.getAtlasElementID(atlas) end
 
 ---@return string[] atlases
 function api.texture.getAtlasElements() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param atlas string
 ---@return boolean atlasExists
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.texture.getAtlasExists(atlas) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param atlas string
 ---@return number atlasID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.texture.getAtlasID(atlas) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param atlas string
 ---@return AtlasInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.texture.getAtlasInfo(atlas) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param fileDataID number
 ---@return string filename
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.texture.getFilenameFromFileDataID(fileDataID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param titleID string
 ---@param version Enum.TitleIconVersion
 ---@param callback GetTitleIconTextureCallback
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.texture.getTitleIconTexture(titleID, version, callback) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param titleID string
 ---@param version Enum.TitleIconVersion
 ---@return boolean ready
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.texture.isTitleIconTextureReady(titleID, version) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param texture SimpleTexture
 ---@param titleID string
 ---@param version Enum.TitleIconVersion
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.texture.setTitleIconTexture(texture, titleID, version) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param texture SimpleTexture
 ---@param url string
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.texture.setURLTexture(texture, url) end
 
 ---Wraps the global functions of the `Threat` system.
 ---@class wow.beta.api.threat
 api.threat = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param gameErrorIndex number
 ---@return number colorR
 ---@return number colorG
 ---@return number colorB
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.threat.getThreatStatusColor(gameErrorIndex) end
 
 ---@return boolean result
@@ -18790,22 +18795,22 @@ function api.threat.isThreatWarningEnabled() end
 ---@class wow.beta.api.timer
 api.timer = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param seconds number
 ---@param callback TimerCallback
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.timer.after(seconds, callback) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param seconds number
 ---@param callback TickerCallback
 ---@param iterations? number
 ---@return TickerCallback cbObject
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.timer.newTicker(seconds, callback, iterations) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param seconds number
 ---@param callback TickerCallback
 ---@return TickerCallback cbObject
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.timer.newTimer(seconds, callback) end
 
 ---Wraps `C_TimerunningUI`.
@@ -18825,37 +18830,37 @@ function api.title.getCurrentTitle() end
 ---@return number result
 function api.title.getNumTitles() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param titleMaskID number
 ---@return string titleString
 ---@return boolean playerTitle
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.title.getTitleName(titleMaskID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param titleMaskID number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.title.isTitleKnown(titleMaskID) end
 
----@param titleMaskID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param titleMaskID number
 function api.title.setCurrentTitle(titleMaskID) end
 
 ---Wraps `C_TooltipComparison`.
 ---@class wow.beta.api.tooltipComparison
 api.tooltipComparison = {}
 
+---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 ---@param comparisonItem TooltipComparisonItem
 ---@param tooltip Tooltip
 ---@param anchorFrame? SimpleFrame
----Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 function api.tooltipComparison.compareItem(comparisonItem, tooltip, anchorFrame) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param comparisonItem TooltipComparisonItem
 ---@param equippedItem TooltipComparisonItem
 ---@param pairedItem? TooltipComparisonItem
 ---@param addPairedStats? boolean
 ---@return string[]? lines
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipComparison.getItemComparisonDelta(
     comparisonItem,
     equippedItem,
@@ -18864,323 +18869,323 @@ function api.tooltipComparison.getItemComparisonDelta(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param comparisonItem TooltipComparisonItem
 ---@return TooltipItemComparisonInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipComparison.getItemComparisonInfo(comparisonItem) end
 
 ---Wraps `C_TooltipInfo`.
 ---@class wow.beta.api.tooltipInfo
 api.tooltipInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param achievementID number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getAchievementByID(achievementID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param actionID integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getAction(actionID) end
 
 ---@return TooltipData? data
 function api.tooltipInfo.getArtifactItem() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerID number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getArtifactPowerByID(powerID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param essenceID number
 ---@param rank? number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getAzeriteEssence(essenceID, rank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.AzeriteEssenceSlot
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getAzeriteEssenceSlot(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param itemLevel number
 ---@param powerID number
 ---@param owningItemLink? string
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getAzeritePower(itemID, itemLevel, powerID, owningItemLink) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getBackpackToken(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bagIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getBagItem(bagIndex, slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bagIndex Enum.BagIndex
 ---@param slotIndex integer
 ---@param equipSlotIndex integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getBagItemChild(bagIndex, slotIndex, equipSlotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getBuybackItem(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param petGUID string
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getCompanionPet(petGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param conduitID number
 ---@param conduitRank number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getConduit(conduitID, conduitRank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param currencyID number
 ---@param amount? number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getCurrencyByID(currencyID, amount) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param tokenIndex integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getCurrencyToken(tokenIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param conduitID number
 ---@param rank number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getEnhancedConduit(conduitID, rank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param setID number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getEquipmentSet(setID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@param toDestroy? boolean
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getExistingSocketGem(index, toDestroy) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param tab integer
 ---@param slot integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getGuildBankItem(tab, slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getHeirloomByItemID(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param hyperlink string
 ---@param optionalArg1? number
 ---@param optionalArg2? number
 ---@param hideVendorPrice? boolean
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getHyperlink(hyperlink, optionalArg1, optionalArg2, hideVendorPrice) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param messageIndex integer
 ---@param attachmentIndex? integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getInboxItem(messageIndex, attachmentIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getInstanceLockEncountersComplete(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param slot integer
 ---@param hideUselessStats? boolean
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getInventoryItem(unit, slot, hideUselessStats) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getInventoryItemByID(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getItemByGUID(guid) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param quality? number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getItemByID(itemID, quality) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemModifiedAppearanceID number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getItemByItemModifiedAppearanceID(itemModifiedAppearanceID) end
 
 ---@return TooltipData? data
 function api.tooltipInfo.getItemInteractionItem() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param itemLevel number
 ---@param itemSuffix number
 ---@param requiredLevel? number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getItemKey(itemID, itemLevel, itemSuffix, requiredLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param dungeonID number
 ---@param lootIndex integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getLFGDungeonReward(dungeonID, lootIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param dungeonID number
 ---@param shortageSeverity number
 ---@param lootIndex integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getLFGDungeonShortageReward(dungeonID, shortageSeverity, lootIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getLootCurrency(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getLootItem(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param id number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getLootRollItem(id) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@param costIndex integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getMerchantCostItem(slot, costIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getMerchantItem(slot) end
 
 ---@return TooltipData? data
 function api.tooltipInfo.getMinimapMouseover() end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@param checkIndoors? boolean
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenTainted
 function api.tooltipInfo.getMountBySpellID(spellID, checkIndoors) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param outfitID number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getOutfit(outfitID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getOwnedItemByID(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getPetAction(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getPossession(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param isSpecial? boolean
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getPvpBrawl(isSpecial) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param talentID number
 ---@param isInspect? boolean
 ---@param groupIndex? integer
 ---@param talentIndex? number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getPvpTalent(talentID, isInspect, groupIndex, talentIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type string
 ---@param currencyIndex integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getQuestCurrency(type, currencyIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type string
 ---@param itemIndex integer
 ---@param allowCollectionText? boolean
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getQuestItem(type, itemIndex, allowCollectionText) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type string
 ---@param currencyIndex integer
 ---@param questID? number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getQuestLogCurrency(type, currencyIndex, questID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type string
 ---@param itemIndex integer
 ---@param questID? number
 ---@param allowCollectionText? boolean
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getQuestLogItem(type, itemIndex, questID, allowCollectionText) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questIndex integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getQuestLogSpecialItem(questIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param omitTitle? boolean
 ---@param ignoreActivePlayer? boolean
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getQuestPartyProgress(questID, omitTitle, ignoreActivePlayer) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param rank number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getRecipeRankInfo(recipeID, rank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeSpellID number
 ---@param dataSlotIndex integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getRecipeReagentItem(recipeSpellID, dataSlotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param reagentInfos? CraftingReagentInfo[]
 ---@param recraftItemGUID? string
 ---@param recipeLevel? integer
 ---@param overrideQualityID? number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getRecipeResultItem(
     recipeID,
     reagentInfos,
@@ -19190,13 +19195,13 @@ function api.tooltipInfo.getRecipeResultItem(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param reagentInfos? CraftingReagentInfo[]
 ---@param orderID? integer
 ---@param recipeLevel? integer
 ---@param overrideQualityID? number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getRecipeResultItemForOrder(
     recipeID,
     reagentInfos,
@@ -19206,46 +19211,47 @@ function api.tooltipInfo.getRecipeResultItemForOrder(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemGUID string
 ---@param itemLevel number
 ---@param powerID? number
 ---@param modifiers? number[]
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getRuneforgeResultItem(itemGUID, itemLevel, powerID, modifiers) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param attachmentIndex? integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getSendMailItem(attachmentIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getShapeshift(slot) end
 
 ---@return TooltipData? data
 function api.tooltipInfo.getSlottedKeystone() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getSocketGem(index) end
 
 ---@return TooltipData? data
 function api.tooltipInfo.getSocketedItem() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slotIndex integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getSocketedRelic(slotIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellBookItemSlotIndex integer
 ---@param spellBookItemSpellBank Enum.SpellBookSpellBank
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getSpellBookItem(spellBookItemSlotIndex, spellBookItemSpellBank) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@param isPet? boolean
 ---@param showSubtext? boolean
@@ -19253,7 +19259,6 @@ function api.tooltipInfo.getSpellBookItem(spellBookItemSlotIndex, spellBookItemS
 ---@param difficultyID? number
 ---@param isLink? boolean
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenTainted
 function api.tooltipInfo.getSpellByID(
     spellID,
     isPet,
@@ -19264,127 +19269,128 @@ function api.tooltipInfo.getSpellByID(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param talentID number
 ---@param isInspect? boolean
 ---@param groupIndex? integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getTalent(talentID, isInspect, groupIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getTotem(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getToyByItemID(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getTradePlayerItem(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getTradeTargetItem(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param serviceIndex integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getTrainerService(serviceIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param entryID number
 ---@param rank? number
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getTraitEntry(entryID, rank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param hideStatus? boolean
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getUnit(unit, hideStatus) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitAuraRestricted
 ---@param unitToken string
 ---@param index integer
 ---@param filter? string
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitAuraRestricted
 function api.tooltipInfo.getUnitAura(unitToken, index, filter) end
 
 ---Obtains aura info like other functions with the caveat that the filters will always at least
 ---include the typically mutually exclusive HELPFUL|HARMFUL regardless of what the argument
 ---value is set to
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenInCombat
 ---@param unitToken string
 ---@param auraInstanceID number
 ---@param filter? string
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenInCombat
 function api.tooltipInfo.getUnitAuraByAuraInstanceID(unitToken, auraInstanceID, filter) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitAuraRestricted
 ---@param unitToken string
 ---@param index integer
 ---@param filter? string
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitAuraRestricted
 function api.tooltipInfo.getUnitBuff(unitToken, index, filter) end
 
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitAuraRestricted
 ---@param unitToken string
 ---@param auraInstanceID number
 ---@param filter? string
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitAuraRestricted
 function api.tooltipInfo.getUnitBuffByAuraInstanceID(unitToken, auraInstanceID, filter) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitAuraRestricted
 ---@param unitToken string
 ---@param index integer
 ---@param filter? string
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitAuraRestricted
 function api.tooltipInfo.getUnitDebuff(unitToken, index, filter) end
 
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitAuraRestricted
 ---@param unitToken string
 ---@param auraInstanceID number
 ---@param filter? string
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitAuraRestricted
 function api.tooltipInfo.getUnitDebuffByAuraInstanceID(unitToken, auraInstanceID, filter) end
 
 ---@return TooltipData? data
 function api.tooltipInfo.getUpgradeItem() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemDBID integer
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getWeeklyReward(itemDBID) end
 
 ---@return TooltipData? data
 function api.tooltipInfo.getWorldCursor() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitTokenString string
 ---@return TooltipData? data
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tooltipInfo.getWorldLootObject(unitTokenString) end
 
 ---Wraps the global functions of the `Totem` system.
 ---@class wow.beta.api.totem
 api.totem = {}
 
----@param slot integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param slot integer
 function api.totem.destroyTotem(slot) end
 
 ---@return number numSlots
 function api.totem.getNumTotemSlots() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return boolean? cannotDismiss
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.totem.getTotemCannotDismiss(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenTotemSlotSecret
 ---@param slot integer
 ---@return boolean? haveTotem
 ---@return string? totemName
@@ -19393,37 +19399,36 @@ function api.totem.getTotemCannotDismiss(slot) end
 ---@return integer? icon
 ---@return number? modRate
 ---@return number? spellID
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenTotemSlotSecret
 function api.totem.getTotemInfo(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenTotemSlotSecret
 ---@param slot integer
 ---@return number? timeLeft
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenTotemSlotSecret
 function api.totem.getTotemTimeLeft(slot) end
 
----@param slot integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param slot integer
 function api.totem.targetTotem(slot) end
 
 ---Wraps `C_ToyBoxInfo`.
 ---@class wow.beta.api.toyBoxInfo
 api.toyBoxInfo = {}
 
----@param itemID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemID number
 function api.toyBoxInfo.clearFanfare(itemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source integer
 ---@return boolean isToySourceValid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.toyBoxInfo.isToySourceValid(source) end
 
 ---@return boolean isUsingDefaultFilters
 function api.toyBoxInfo.isUsingDefaultFilters() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@return boolean needsFanfare
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.toyBoxInfo.needsFanfare(itemID) end
 
 function api.toyBoxInfo.setDefaultFilters() end
@@ -19436,22 +19441,22 @@ api.tradeInfo = {}
 ---Restrictions: hasRestrictions
 function api.tradeInfo.addTradeMoney() end
 
----@param amount integer
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param amount integer
 function api.tradeInfo.pickupTradeMoney(amount) end
 
 ---Sets the amount of money in the current trade offer.
----@param amount integer
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param amount integer
 function api.tradeInfo.setTradeMoney(amount) end
 
 ---Wraps `C_TradeSkillUI`.
 ---@class wow.beta.api.tradeSkillUI
 api.tradeSkillUI = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemGUID string
 ---@return boolean canStore
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.canStoreEnchantInItem(itemGUID) end
 
 function api.tradeSkillUI.cancelProfessionRespec() end
@@ -19463,12 +19468,12 @@ function api.tradeSkillUI.closeTradeSkill() end
 
 function api.tradeSkillUI.confirmProfessionRespec() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeSpellID number
 ---@param numCasts? number
 ---@param craftingReagents? CraftingReagentInfo[]
 ---@param itemTarget? ItemLocation
 ---@param applyConcentration? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.craftEnchant(
     recipeSpellID,
     numCasts,
@@ -19478,13 +19483,13 @@ function api.tradeSkillUI.craftEnchant(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeSpellID number
 ---@param numCasts? number
 ---@param craftingReagents? CraftingReagentInfo[]
 ---@param recipeLevel? integer
 ---@param orderID? integer
 ---@param applyConcentration? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.craftRecipe(
     recipeSpellID,
     numCasts,
@@ -19495,12 +19500,12 @@ function api.tradeSkillUI.craftRecipe(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeSpellID number
 ---@param numCasts? number
 ---@param itemTarget ItemLocation
 ---@param craftingReagents? CraftingReagentInfo[]
 ---@param applyConcentration? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.craftSalvage(
     recipeSpellID,
     numCasts,
@@ -19510,10 +19515,10 @@ function api.tradeSkillUI.craftSalvage(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLocation ItemLocation
 ---@param recipeID number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.doesRecraftingRecipeAcceptItem(itemLocation, recipeID) end
 
 ---@return number[] skillLineID
@@ -19528,23 +19533,23 @@ function api.tradeSkillUI.getChildProfessionInfo() end
 ---@return ProfessionInfo[] infos
 function api.tradeSkillUI.getChildProfessionInfos() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineID number
 ---@return number currencyType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getConcentrationCurrencyID(skillLineID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeSpellID number
 ---@param recipeLevel? integer
 ---@return number numAvailable
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getCraftableCount(recipeSpellID, recipeLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param craftingReagents CraftingReagentInfo[]
 ---@param allocationItemGUID? string
 ---@param applyConcentration boolean
 ---@return CraftingOperationInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getCraftingOperationInfo(
     recipeID,
     craftingReagents,
@@ -19553,12 +19558,12 @@ function api.tradeSkillUI.getCraftingOperationInfo(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param craftingReagents CraftingReagentInfo[]
 ---@param orderID integer
 ---@param applyConcentration boolean
 ---@return CraftingOperationInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getCraftingOperationInfoForOrder(
     recipeID,
     craftingReagents,
@@ -19567,12 +19572,12 @@ function api.tradeSkillUI.getCraftingOperationInfoForOrder(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeSpellID number
 ---@param craftingReagentIndex integer
 ---@param craftingReagents CraftingReagentInfo[]
 ---@param allocationItemGUID? string
 ---@return string[] bonusText
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getCraftingReagentBonusText(
     recipeSpellID,
     craftingReagentIndex,
@@ -19581,77 +19586,77 @@ function api.tradeSkillUI.getCraftingReagentBonusText(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemIDs number[]
 ---@return CraftingTargetItem[] items
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getCraftingTargetItems(itemIDs) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param reagent CraftingReagent
 ---@return CraftingReagent[] reagents
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getDependentReagents(reagent) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param craftingReagents? CraftingReagentInfo[]
 ---@return string[] items
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getEnchantItems(recipeID, craftingReagents) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeSpellID number
 ---@return number? itemID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getFactionSpecificOutputItem(recipeSpellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@return GatheringOperationInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getGatheringOperationInfo(recipeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@return boolean cannotModifyHideUnowned
 ---@return boolean alwaysShowUnowned
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getHideUnownedFlags(recipeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number? quality
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getItemCraftedQualityByItemInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return CraftingQualityInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getItemCraftedQualityInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number? quality
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getItemReagentQualityByItemInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return CraftingQualityInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getItemReagentQualityInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemGUID string
 ---@return CraftingItemSlotModification[] slotMods
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getItemSlotModifications(itemGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param orderID integer
 ---@return CraftingItemSlotModification[] slotMods
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getItemSlotModificationsForOrder(orderID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemGUID string
 ---@return number? recipeID
 ---@return number? skillLineAbilityID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getOriginalCraftRecipeID(itemGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return Enum.Profession? profession
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getProfessionByInventorySlot(slot) end
 
 ---@return number skillLineID
@@ -19660,91 +19665,91 @@ function api.tradeSkillUI.getProfessionChildSkillLineID() end
 ---@return Enum.Profession? profession
 function api.tradeSkillUI.getProfessionForCursorItem() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@return ProfessionInfo info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getProfessionInfoByRecipeID(recipeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineID number
 ---@return ProfessionInfo info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getProfessionInfoBySkillLineID(skillLineID) end
 
 ---@return integer[] invSlots
 function api.tradeSkillUI.getProfessionInventorySlots() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineAbilityID number
 ---@return string professionNmae
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getProfessionNameForSkillLineAbility(skillLineAbilityID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param profession Enum.Profession
 ---@return number skillLineID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getProfessionSkillLineID(profession) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param profession Enum.Profession
 ---@return integer[] slots
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getProfessionSlots(profession) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param professionID number
 ---@param skillLineID? number
 ---@return number[] knownSpells
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getProfessionSpells(professionID, skillLineID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@return number[]? qualityIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getQualitiesForRecipe(recipeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param craftingReagentIndex integer
 ---@param craftingReagents CraftingReagentInfo[]
 ---@return string bonusText
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getReagentDifficultyText(craftingReagentIndex, craftingReagents) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mcrSlotID number
 ---@param recipeSpellID number
 ---@param skillLineAbilityID number
 ---@return boolean locked
 ---@return string lockedReason
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getReagentSlotStatus(mcrSlotID, recipeSpellID, skillLineAbilityID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param craftingReagents CraftingReagentInfo[]
 ---@param allocationItemGUID? string
 ---@return string description
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getRecipeDescription(recipeID, craftingReagents, allocationItemGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeSpellID number
 ---@param recipeLevel? integer
 ---@return TradeSkillRecipeInfo? recipeInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getRecipeInfo(recipeSpellID, recipeLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineAbilityID number
 ---@param recipeLevel? integer
 ---@return TradeSkillRecipeInfo? recipeInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getRecipeInfoForSkillLineAbility(skillLineAbilityID, recipeLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param quality number
 ---@return CraftingQualityInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getRecipeItemQualityInfo(recipeID, quality) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeSpellID number
 ---@param reagents? CraftingReagentInfo[]
 ---@param allocationItemGUID? string
 ---@param overrideQualityID? number
 ---@param recraftOrderID? integer
 ---@return CraftingRecipeOutputInfo outputInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getRecipeOutputItemData(
     recipeSpellID,
     reagents,
@@ -19754,52 +19759,52 @@ function api.tradeSkillUI.getRecipeOutputItemData(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeSpellID number
 ---@return number[]? qualityItemIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getRecipeQualityItemIDs(recipeSpellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param dataSlotIndex integer
 ---@param qualityIndex integer
 ---@return string link
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getRecipeQualityReagentLink(recipeID, dataSlotIndex, qualityIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@return CraftingRecipeRequirement[] requirements
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getRecipeRequirements(recipeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeSpellID number
 ---@param isRecraft boolean
 ---@param recipeLevel? integer
 ---@return CraftingRecipeSchematic schematic
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getRecipeSchematic(recipeSpellID, isRecraft, recipeLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param isRecraft boolean
 ---@return number[] recipeIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getRecipesTracked(isRecraft) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID? number
 ---@return string[] items
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getRecraftItems(recipeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemGUID string
 ---@param replacedReagents CraftingReagent[]
 ---@return string[] warnings
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getRecraftRemovalWarnings(itemGUID, replacedReagents) end
 
 ---@return number remaining
 function api.tradeSkillUI.getRemainingRecasts() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@return number[] itemIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getSalvagableItemIDs(recipeID) end
 
 ---@return boolean flag
@@ -19808,27 +19813,27 @@ function api.tradeSkillUI.getShowLearned() end
 ---@return boolean flag
 function api.tradeSkillUI.getShowUnlearned() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number? skillLineID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getSkillLineForGear(itemInfo) end
 
 ---@return number sourceTypeFilter
 function api.tradeSkillUI.getSourceTypeFilter() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineID number
 ---@return string professionDisplayName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.getTradeSkillDisplayName(skillLineID) end
 
 ---@return boolean hasFavorites
 function api.tradeSkillUI.hasFavoriteOrderRecipes() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param itemGUID string
 ---@param craftingReagents? CraftingReagentInfo[]
 ---@return boolean valid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.isEnchantTargetValid(recipeID, itemGUID, craftingReagents) end
 
 ---@return boolean enabled
@@ -19837,77 +19842,77 @@ function api.tradeSkillUI.isGuildTradeSkillsEnabled() end
 ---@return boolean result
 function api.tradeSkillUI.isNPCCrafting() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param profession Enum.Profession
 ---@return boolean nearFocus
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.isNearProfessionSpellFocus(profession) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemGUID string
 ---@return boolean learned
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.isOriginalCraftRecipeLearned(itemGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.isRecipeFirstCraft(recipeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.isRecipeInBaseSkillLine(recipeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param skillLineID number
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.isRecipeInSkillLine(recipeID, skillLineID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@return boolean recipeProfessionLearned
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.isRecipeProfessionLearned(recipeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param isRecraft boolean
 ---@return boolean tracked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.isRecipeTracked(recipeID, isRecraft) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recraftItemGUID string
 ---@return boolean isEquipped
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.isRecraftItemEquipped(recraftItemGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemGUID string
 ---@param reagent CraftingReagent
 ---@return boolean valid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.isRecraftReagentValid(itemGUID, reagent) end
 
 ---@return boolean result
 function api.tradeSkillUI.isRuneforging() end
 
----@param recipeID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param recipeID number
 function api.tradeSkillUI.openRecipe(recipeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param skillLineID number
 ---@return boolean opened
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.openTradeSkill(skillLineID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param reagent CraftingReagent
 ---@return boolean recraftValid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.recraftLimitCategoryValid(reagent) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemGUID string
 ---@param craftingReagents? CraftingReagentInfo[]
 ---@param removedModifications? CraftingItemSlotModification[]
 ---@param applyConcentration? boolean
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.recraftRecipe(
     itemGUID,
     craftingReagents,
@@ -19916,13 +19921,13 @@ function api.tradeSkillUI.recraftRecipe(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param orderID integer
 ---@param itemGUID string
 ---@param craftingReagents? CraftingReagentInfo[]
 ---@param removedModifications? CraftingItemSlotModification[]
 ---@param applyConcentration? boolean
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.recraftRecipeForOrder(
     orderID,
     itemGUID,
@@ -19932,30 +19937,30 @@ function api.tradeSkillUI.recraftRecipeForOrder(
 )
 end
 
----@param flag boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param flag boolean
 function api.tradeSkillUI.setOnlyShowAvailableForOrders(flag) end
 
----@param skillLineID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param skillLineID number
 function api.tradeSkillUI.setProfessionChildSkillLineID(skillLineID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param recipeID number
 ---@param tracked boolean
 ---@param isRecraft boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.tradeSkillUI.setRecipeTracked(recipeID, tracked, isRecraft) end
 
----@param flag boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param flag boolean
 function api.tradeSkillUI.setShowLearned(flag) end
 
----@param flag boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param flag boolean
 function api.tradeSkillUI.setShowUnlearned(flag) end
 
----@param sourceTypeFilter number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param sourceTypeFilter number
 function api.tradeSkillUI.setSourceTypeFilter(sourceTypeFilter) end
 
 ---Wraps `C_Trainer`.
@@ -19971,193 +19976,193 @@ api.traitConfig = {}
 api.traits = {}
 
 ---Returns whether the player can make changes to the specified talent config.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return boolean canEdit
 ---@return string errorMessage
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.canEditConfig(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@param nodeEntryID number
 ---@return boolean canPurchase
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.canPurchaseRank(configID, nodeID, nodeEntryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@return boolean canRefund
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.canRefundRank(configID, nodeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@param entryID? number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.cascadeRepurchaseRanks(configID, nodeID, entryID) end
 
----@param configID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param configID number
 function api.traits.clearCascadeRepurchaseHistory(configID) end
 
 function api.traits.closeTraitSystemInteraction() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.commitConfig(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return boolean hasChanges
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.configHasStagedChanges(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return string importString
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.generateImportString(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param target string
 ---@return string importString
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.generateInspectImportString(target) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param condID number
 ---@return TraitCondInfo? condInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getConditionInfo(configID, condID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param systemID number
 ---@return number? configID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getConfigIDBySystemID(systemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param treeID number
 ---@return number? configID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getConfigIDByTreeID(treeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return TraitConfigInfo? configInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getConfigInfo(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param systemID number
 ---@return number? variationID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getConfigVariationID(systemID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configType Enum.TraitConfigType
 ---@return number[] configIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getConfigsByType(configType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param definitionID number
 ---@return TraitDefinitionInfo? definitionInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getDefinitionInfo(definitionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param entryID number
 ---@return TraitEntryInfo? entryInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getEntryInfo(configID, entryID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param nodeID number
 ---@param entryID number
 ---@return IncreasedTraitData[]? itemName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getIncreasedTraitData(nodeID, entryID) end
 
 ---@return number serializationVersion
 function api.traits.getLoadoutSerializationVersion() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@return TraitCurrencyCost[] costs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getNodeCost(configID, nodeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@return TraitNodeInfo? nodeInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getNodeInfo(configID, nodeID) end
 
 ---Returns IDs of Trait Nodes with pending changes, grouped by the type of change; Returns
 ---nothing if there are no pending changes
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return number[]? nodeIDsWithPurchases
 ---@return number[]? nodeIDsWithRefunds
 ---@return number[]? nodeIDsWithSelectionSwaps
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getStagedChanges(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return TraitCurrencyCost[] costs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getStagedChangesCost(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param subTreeID number
 ---@return TraitSubTreeInfo? subTreeInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getSubTreeInfo(configID, subTreeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param treeID number
 ---@return number? systemID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getSystemIDByTreeID(treeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param traitCurrencyID number
 ---@return number flags
 ---@return number type
 ---@return number? currencyTypesID
 ---@return number? icon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getTraitCurrencyInfo(traitCurrencyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param entryID number
 ---@param rank number
 ---@return string? description
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getTraitDescription(entryID, rank) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return number? flags
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getTraitSystemFlags(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return number? uiWidgetSetID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getTraitSystemWidgetSetID(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param treeID number
 ---@param excludeStagedChanges boolean
 ---@return TreeCurrencyInfo[] treeCurrencyInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getTreeCurrencyInfo(configID, treeID, excludeStagedChanges) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param treeID number
 ---@return number[] result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getTreeHash(treeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param treeID number
 ---@return TraitTreeInfo? treeInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getTreeInfo(configID, treeID) end
 
 ---Returns a list of nodeIDs, sorted ascending, for a given treeID. Contains nodes for all class
 ---specializations.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param treeID number
 ---@return number[]? nodeIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.getTreeNodes(treeID) end
 
 ---@return boolean hasValidInspectData
@@ -20166,116 +20171,116 @@ function api.traits.hasValidInspectData() end
 ---@return boolean isReadyForCommit
 function api.traits.isReadyForCommit() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@param ignoreCost boolean
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.purchaseAllRanks(configID, nodeID, ignoreCost) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.purchaseRank(configID, nodeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.refundAllRanks(configID, nodeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@param clearEdges? boolean
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.refundRank(configID, nodeID, clearEdges) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param treeID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.resetTree(configID, treeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param treeID number
 ---@param traitCurrencyID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.resetTreeByCurrency(configID, treeID, traitCurrencyID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.rollbackConfig(configID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@param nodeEntryID? number
 ---@param clearEdges? boolean
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.setSelection(configID, nodeID, nodeEntryID, clearEdges) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.stageConfig(configID) end
 
 function api.traits.talentTestUnlearnSpells() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.tryPurchaseAllRanks(configID, nodeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.tryPurchaseToNode(configID, nodeID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param configID number
 ---@param nodeID number
 ---@param entryID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.traits.tryRefundToNode(configID, nodeID, entryID) end
 
 ---Wraps `C_Transmog`.
 ---@class wow.beta.api.transmog
 api.transmog = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slotID integer
 ---@return boolean canHaveSecondaryAppearance
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmog.canHaveSecondaryAppearanceForSlotID(slotID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param input string
 ---@return number[] transmogIDList
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmog.extractTransmogIDList(input) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param setID number
 ---@return TransmogSetItemInfo[]? setItems
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmog.getAllSetAppearancesByID(setID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemModifiedAppearanceID number
 ---@return number? itemID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmog.getItemIDForSource(itemModifiedAppearanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inventoryType integer
 ---@return integer? slot
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmog.getSlotForInventoryType(inventoryType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogLocation TransmogLocation
 ---@return TransmogSlotVisualInfo? slotVisualInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmog.getSlotVisualInfo(transmogLocation) end
 
 ---@return boolean isAtNPC
@@ -20285,10 +20290,10 @@ function api.transmog.isAtTransmogNPC() end
 ---@class wow.beta.api.transmogCollection
 api.transmogCollection = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sourceID number
 ---@return boolean hasItemData
 ---@return boolean canCollect
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.accountCanCollectSource(sourceID) end
 
 ---@return boolean areAllCollectionTypeFiltersChecked
@@ -20297,29 +20302,29 @@ function api.transmogCollection.areAllCollectionTypeFiltersChecked() end
 ---@return boolean areAllSourceTypeFiltersChecked
 function api.transmogCollection.areAllSourceTypeFiltersChecked() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param appearanceID number
 ---@return boolean canHaveIllusion
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.canAppearanceHaveIllusion(appearanceID) end
 
----@param visualID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param visualID number
 function api.transmogCollection.clearNewAppearance(visualID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param searchType Enum.TransmogSearchType
 ---@return boolean completed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.clearSearch(searchType) end
 
----@param customSetID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param customSetID number
 function api.transmogCollection.deleteCustomSet(customSetID) end
 
 function api.transmogCollection.endSearch() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemAppearanceID number
 ---@return number[] itemModifiedAppearanceIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getAllAppearanceSources(itemAppearanceID) end
 
 ---@return boolean shown
@@ -20328,42 +20333,42 @@ function api.transmogCollection.getAllFactionsShown() end
 ---@return boolean shown
 function api.transmogCollection.getAllRacesShown() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemAppearanceID number
 ---@param variation? Enum.TransmogCameraVariation
 ---@return number cameraID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getAppearanceCameraID(itemAppearanceID, variation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemModifiedAppearanceID number
 ---@param variation? Enum.TransmogCameraVariation
 ---@return number cameraID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getAppearanceCameraIDBySource(
     itemModifiedAppearanceID,
     variation
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemModifiedAppearanceID number
 ---@return TransmogAppearanceInfoBySourceData? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getAppearanceInfoBySource(itemModifiedAppearanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemModifiedAppearanceID number
 ---@return TransmogAppearanceJournalEncounterInfo[]? encounterInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getAppearanceSourceDrops(itemModifiedAppearanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemModifiedAppearanceID number
 ---@return TransmogAppearanceSourceInfoData? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getAppearanceSourceInfo(itemModifiedAppearanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param appearanceID number
 ---@param categoryType? Enum.TransmogCollectionType
 ---@param transmogLocation? TransmogLocation
 ---@return AppearanceSourceInfo[]? sources
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getAppearanceSources(
     appearanceID,
     categoryType,
@@ -20371,28 +20376,29 @@ function api.transmogCollection.getAppearanceSources(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param appearanceID number
 ---@return string? name
 ---@return string? hyperlink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getArtifactAppearanceStrings(appearanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category Enum.TransmogCollectionType
 ---@param transmogLocation? TransmogLocation
 ---@return TransmogCategoryAppearanceInfo[]? appearances
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getCategoryAppearances(category, transmogLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category Enum.TransmogCollectionType
 ---@return number count
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getCategoryCollectedCount(category) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemModifiedAppearanceID number
 ---@return Enum.TransmogCollectionType? collectionCategory
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getCategoryForItem(itemModifiedAppearanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category Enum.TransmogCollectionType
 ---@return string? name
 ---@return boolean? isWeapon
@@ -20400,12 +20406,11 @@ function api.transmogCollection.getCategoryForItem(itemModifiedAppearanceID) end
 ---@return boolean? canMainHand
 ---@return boolean? canOffHand
 ---@return boolean? canRanged
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getCategoryInfo(category) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category Enum.TransmogCollectionType
 ---@return number total
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getCategoryTotal(category) end
 
 ---@return number classID
@@ -20414,23 +20419,23 @@ function api.transmogCollection.getClassFilter() end
 ---@return boolean shown
 function api.transmogCollection.getCollectedShown() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemTransmogInfoList ItemTransmogInfo[]
 ---@return string? hyperlink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getCustomSetHyperlinkFromItemTransmogInfoList(
     itemTransmogInfoList
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param customSetID number
 ---@return string? name
 ---@return integer? icon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getCustomSetInfo(customSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param customSetID number
 ---@return ItemTransmogInfo[]? list
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getCustomSetItemTransmogInfoList(customSetID) end
 
 ---@return number[] customSetID
@@ -20439,26 +20444,26 @@ function api.transmogCollection.getCustomSets() end
 ---@return number? appearanceID
 function api.transmogCollection.getFallbackWeaponAppearance() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category Enum.TransmogCollectionType
 ---@return number count
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getFilteredCategoryCollectedCount(category) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category Enum.TransmogCollectionType
 ---@return number total
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getFilteredCategoryTotal(category) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param illusionID number
 ---@return TransmogIllusionInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getIllusionInfo(illusionID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param illusionID number
 ---@return string? name
 ---@return string? hyperlink
 ---@return string? sourceText
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getIllusionStrings(illusionID) end
 
 ---@return TransmogIllusionInfo[] illusions
@@ -20467,20 +20472,20 @@ function api.transmogCollection.getIllusions() end
 ---@return ItemTransmogInfo[]? list
 function api.transmogCollection.getInspectItemTransmogInfoList() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemAppearanceID number
 ---@return boolean isFavorite
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getIsAppearanceFavorite(itemAppearanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return number? itemAppearanceID
 ---@return number? itemModifiedAppearanceID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getItemInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param hyperlink string
 ---@return ItemTransmogInfo[]? list
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getItemTransmogInfoListFromCustomSetHyperlink(hyperlink) end
 
 ---@return number? visualID
@@ -20493,40 +20498,40 @@ function api.transmogCollection.getNumMaxCustomSets() end
 ---@return number count
 function api.transmogCollection.getNumTransmogSources() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemModifiedAppearanceID number
 ---@return number? pairedItemModifiedAppearanceID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getPairedArtifactAppearance(itemModifiedAppearanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemModifiedAppearanceID number
 ---@return integer? icon
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getSourceIcon(itemModifiedAppearanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sourceID number
 ---@return AppearanceSourceInfo? sourceInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getSourceInfo(sourceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemModifiedAppearanceID number
 ---@return number? itemID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getSourceItemID(itemModifiedAppearanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemModifiedAppearanceID number
 ---@return string? holidayName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getSourceRequiredHoliday(itemModifiedAppearanceID) end
 
 ---@return boolean shown
 function api.transmogCollection.getUncollectedShown() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param appearanceID number
 ---@param classID number
 ---@param categoryType? Enum.TransmogCollectionType
 ---@param transmogLocation? TransmogLocation
 ---@return AppearanceSourceInfo[]? sources
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.getValidAppearanceSourcesForClass(
     appearanceID,
     classID,
@@ -20538,158 +20543,158 @@ end
 ---@return boolean hasFavorites
 function api.transmogCollection.hasFavorites() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param appearanceID number
 ---@return boolean isHiddenVisual
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.isAppearanceHiddenVisual(appearanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param category Enum.TransmogCollectionType
 ---@param itemInfo ItemInfo
 ---@return boolean isValid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.isCategoryValidForItem(category, itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param visualID number
 ---@return boolean isNew
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.isNewAppearance(visualID) end
 
 ---@return boolean isLoading
 function api.transmogCollection.isSearchDBLoading() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param searchType Enum.TransmogSearchType
 ---@return boolean inProgress
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.isSearchInProgress(searchType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return boolean checked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.isSourceTypeFilterChecked(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellItemEnchantmentID number
 ---@return boolean isHiddenVisual
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.isSpellItemEnchantmentHiddenVisual(spellItemEnchantmentID) end
 
 ---@return boolean isUsingDefaultFilters
 function api.transmogCollection.isUsingDefaultFilters() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return boolean isApproved
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.isValidCustomSetName(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source Enum.TransmogSource
 ---@return boolean valid
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.isValidTransmogSource(source) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param customSetID number
 ---@param itemTransmogInfoList ItemTransmogInfo[]
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.modifyCustomSet(customSetID, itemTransmogInfoList) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@param icon integer
 ---@param itemTransmogInfoList ItemTransmogInfo[]
 ---@return number? customSetID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.newCustomSet(name, icon, itemTransmogInfoList) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sourceID number
 ---@return boolean hasItemData
 ---@return boolean canCollect
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.playerCanCollectSource(sourceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param itemAppearanceModID? number
 ---@return boolean hasTransmog
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.playerHasTransmog(itemID, itemAppearanceModID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemInfo ItemInfo
 ---@return boolean hasTransmog
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.playerHasTransmogByItemInfo(itemInfo) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemModifiedAppearanceID number
 ---@return boolean hasTransmog
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.playerHasTransmogItemModifiedAppearance(
     itemModifiedAppearanceID
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sourceID number
 ---@return boolean isKnown
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.playerKnowsSource(sourceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param customSetID number
 ---@param name string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.renameCustomSet(customSetID, name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param searchType Enum.TransmogSearchType
 ---@return number progress
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.searchProgress(searchType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param searchType Enum.TransmogSearchType
 ---@return number size
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.searchSize(searchType) end
 
----@param checked boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param checked boolean
 function api.transmogCollection.setAllCollectionTypeFilters(checked) end
 
----@param shown boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param shown boolean
 function api.transmogCollection.setAllFactionsShown(shown) end
 
----@param shown boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param shown boolean
 function api.transmogCollection.setAllRacesShown(shown) end
 
----@param checked boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param checked boolean
 function api.transmogCollection.setAllSourceTypeFilters(checked) end
 
----@param classID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param classID number
 function api.transmogCollection.setClassFilter(classID) end
 
----@param shown boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param shown boolean
 function api.transmogCollection.setCollectedShown(shown) end
 
 function api.transmogCollection.setDefaultFilters() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemAppearanceID number
 ---@param isFavorite boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.setIsAppearanceFavorite(itemAppearanceID, isFavorite) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param searchType Enum.TransmogSearchType
 ---@param searchText string
 ---@return boolean completed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.setSearch(searchType, searchText) end
 
----@param category Enum.TransmogCollectionType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param category Enum.TransmogCollectionType
 function api.transmogCollection.setSearchAndFilterCategory(category) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@param checked boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogCollection.setSourceTypeFilter(index, checked) end
 
----@param shown boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param shown boolean
 function api.transmogCollection.setUncollectedShown(shown) end
 
 function api.transmogCollection.updateUsableAppearances() end
@@ -20698,16 +20703,16 @@ function api.transmogCollection.updateUsableAppearances() end
 ---@class wow.beta.api.transmogOutfitInfo
 api.transmogOutfitInfo = {}
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@param icon integer
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.addNewOutfit(name, icon) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param outfitID number
 ---@param trigger Enum.TransmogSituationTrigger
 ---@param toggleLock boolean
 ---@param allowRemoveOutfit boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.changeDisplayedOutfit(
     outfitID,
     trigger,
@@ -20716,27 +20721,27 @@ function api.transmogOutfitInfo.changeDisplayedOutfit(
 )
 end
 
----@param outfitID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param outfitID number
 function api.transmogOutfitInfo.changeViewedOutfit(outfitID) end
 
 function api.transmogOutfitInfo.clearAllPendingSituations() end
 
 function api.transmogOutfitInfo.clearAllPendingTransmogs() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param trigger Enum.TransmogSituationTrigger
 ---@param toggleLock boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.clearDisplayedOutfit(trigger, toggleLock) end
 
----@param useAvailableDiscount boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param useAvailableDiscount boolean
 function api.transmogOutfitInfo.commitAndApplyAllPending(useAvailableDiscount) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param outfitID number
 ---@param name string
 ---@param icon integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.commitOutfitInfo(outfitID, name, icon) end
 
 function api.transmogOutfitInfo.commitPendingSituations() end
@@ -20748,11 +20753,11 @@ function api.transmogOutfitInfo.getActiveOutfitID() end
 ---@return TransmogOutfitSlotInfo[]? illusionSlotInfo
 function api.transmogOutfitInfo.getAllSlotLocationInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@param weaponOption Enum.TransmogOutfitSlotOption
 ---@param collectionType Enum.TransmogCollectionType
 ---@return TransmogOutfitWeaponCollectionInfo? collectionInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getCollectionInfoForSlotAndOption(
     slot,
     weaponOption,
@@ -20763,29 +20768,29 @@ end
 ---@return number outfitID
 function api.transmogOutfitInfo.getCurrentlyViewedOutfitID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@return Enum.TransmogOutfitSlotOption? weaponOption
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getEquippedSlotOptionFromTransmogSlot(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param collectionType Enum.TransmogCollectionType
 ---@return number? imaID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getIllusionDefaultIMAIDForCollectionType(collectionType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param imaID number
 ---@return Enum.TransmogCollectionType categoryID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getItemModifiedAppearanceEffectiveCategory(imaID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@return TransmogOutfitLinkedSlotInfo? linkedSlotInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getLinkedSlotInfo(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source Enum.TransmogOutfitEntrySource
 ---@return number maxOutfitCount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getMaxNumberOfTotalOutfitsForSource(source) end
 
 ---@return number maxOutfitCount
@@ -20794,19 +20799,19 @@ function api.transmogOutfitInfo.getMaxNumberOfUsableOutfits() end
 ---@return integer outfitCost
 function api.transmogOutfitInfo.getNextOutfitCost() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param source Enum.TransmogOutfitEntrySource
 ---@return number unlockedOutfitCount
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getNumberOfOutfitsUnlockedForSource(source) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param outfitID number
 ---@return TransmogOutfitEntryInfo? outfitsInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getOutfitInfo(outfitID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param option TransmogSituationOption
 ---@return boolean value
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getOutfitSituation(option) end
 
 ---@return boolean enabled
@@ -20818,60 +20823,60 @@ function api.transmogOutfitInfo.getOutfitsInfo() end
 ---@return integer? cost
 function api.transmogOutfitInfo.getPendingTransmogCost() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@return boolean state
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getSecondarySlotState(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@param slot Enum.TransmogOutfitSlot
 ---@return AppearanceSourceInfo[]? sources
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getSetSourcesForSlot(transmogSetID, slot) end
 
 ---@return TransmogOutfitSlotGroup[]? slotGroups
 function api.transmogOutfitInfo.getSlotGroupInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@param slot Enum.TransmogOutfitSlot
 ---@return number[]? sources
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getSourceIDsForSlot(transmogSetID, slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inventoryType integer
 ---@return Enum.TransmogOutfitSlot? slot
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getTransmogOutfitSlotForInventoryType(inventoryType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inventorySlot integer
 ---@return Enum.TransmogOutfitSlot? slot
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getTransmogOutfitSlotFromInventorySlot(inventorySlot) end
 
 ---@return TransmogSituationCategory[]? categoryData
 function api.transmogOutfitInfo.getUISituationCategoriesAndOptions() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@return string? atlas
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getUnassignedAtlasForSlot(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@return string? atlas
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getUnassignedDisplayAtlasForSlot(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@param type Enum.TransmogType
 ---@param option Enum.TransmogOutfitSlotOption
 ---@return ViewedTransmogOutfitSlotInfo? slotInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getViewedOutfitSlotInfo(slot, type, option) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@return TransmogOutfitWeaponOptionInfo[]? weaponOptions
 ---@return TransmogOutfitWeaponOptionInfo[]? artifactOptions
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.getWeaponOptionsForSlot(slot) end
 
 ---@return boolean hasPending
@@ -20889,81 +20894,81 @@ function api.transmogOutfitInfo.isEquippedGearOutfitDisplayed() end
 ---@return boolean isLocked
 function api.transmogOutfitInfo.isEquippedGearOutfitLocked() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param outfitID number
 ---@return boolean isLocked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.isLockedOutfit(outfitID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@return boolean isWeaponSlot
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.isSlotWeaponSlot(slot) end
 
 ---@return boolean isAvailable
 function api.transmogOutfitInfo.isUsableDiscountAvailable() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return boolean isApproved
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.isValidTransmogOutfitName(name) end
 
----@param outfitID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param outfitID number
 function api.transmogOutfitInfo.pickupOutfit(outfitID) end
 
 function api.transmogOutfitInfo.resetOutfitSituations() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@param type Enum.TransmogType
 ---@param option Enum.TransmogOutfitSlotOption
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.revertPendingTransmog(slot, type, option) end
 
----@param enabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled boolean
 function api.transmogOutfitInfo.setOutfitSituationsEnabled(enabled) end
 
----@param transmogCustomSetID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param transmogCustomSetID number
 function api.transmogOutfitInfo.setOutfitToCustomSet(transmogCustomSetID) end
 
----@param outfitID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param outfitID number
 function api.transmogOutfitInfo.setOutfitToOutfit(outfitID) end
 
----@param transmogSetID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param transmogSetID number
 function api.transmogOutfitInfo.setOutfitToSet(transmogSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@param type Enum.TransmogType
 ---@param option Enum.TransmogOutfitSlotOption
 ---@param transmogID number
 ---@param displayType Enum.TransmogOutfitDisplayType
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.setPendingTransmog(slot, type, option, transmogID, displayType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@param state boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.setSecondarySlotState(slot, state) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@param weaponOption Enum.TransmogOutfitSlotOption
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.setViewedWeaponOptionForSlot(slot, weaponOption) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot Enum.TransmogOutfitSlot
 ---@return boolean hasSecondary
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.slotHasSecondary(slot) end
 
 ---@return boolean transmogEventActive
 function api.transmogOutfitInfo.transmogEventActive() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param option TransmogSituationOption
 ---@param value boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogOutfitInfo.updatePendingSituation(option, value) end
 
 ---Wraps `C_TransmogSets`.
@@ -20972,37 +20977,37 @@ api.transmogSets = {}
 
 function api.transmogSets.clearLatestSource() end
 
----@param sourceID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param sourceID number
 function api.transmogSets.clearNewSource(sourceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@param slot integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.clearSetNewSourcesForSlot(transmogSetID, slot) end
 
 ---@return TransmogSetInfo[] sets
 function api.transmogSets.getAllSets() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@return number[]? sources
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getAllSourceIDs(transmogSetID) end
 
 ---@return TransmogSetInfo[] sets
 function api.transmogSets.getAvailableSets() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@return number? baseTransmogSetID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getBaseSetID(transmogSetID) end
 
 ---@return TransmogSetInfo[] sets
 function api.transmogSets.getBaseSets() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return boolean? isChecked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getBaseSetsFilter(index) end
 
 ---@return number? detailsCameraID
@@ -21017,50 +21022,50 @@ function api.transmogSets.getFilteredBaseSetsCounts() end
 ---@return number numTotal
 function api.transmogSets.getFullBaseSetsCounts() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@return boolean? isFavorite
 ---@return boolean? isGroupFavorite
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getIsFavorite(transmogSetID) end
 
 ---@return number sourceID
 function api.transmogSets.getLatestSource() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@return TransmogSetInfo? set
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getSetInfo(transmogSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@return number[]? sourceIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getSetNewSources(transmogSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@return TransmogSetPrimaryAppearanceInfo[]? apppearances
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getSetPrimaryAppearances(transmogSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sourceID number
 ---@return number[]? setIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getSetsContainingSourceID(sourceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return boolean? isChecked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getSetsFilter(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@param slot integer
 ---@return number[]? sources
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getSourceIDsForSlot(transmogSetID, slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@param slot integer
 ---@return AppearanceSourceInfo[]? sources
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getSourcesForSlot(transmogSetID, slot) end
 
 ---@return number classID
@@ -21073,32 +21078,32 @@ function api.transmogSets.getUsableSets() end
 ---@return number numTotal
 function api.transmogSets.getValidBaseSetsCountsForCharacter() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@return number? classID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getValidClassForSet(transmogSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@return TransmogSetInfo[]? sets
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.getVariantSets(transmogSetID) end
 
 ---@return boolean hasUsableSets
 function api.transmogSets.hasUsableSets() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@return boolean isCollected
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.isBaseSetCollected(transmogSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sourceID number
 ---@return boolean isNew
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.isNewSource(sourceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@return boolean isVisible
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.isSetVisible(transmogSetID) end
 
 ---@return boolean isUsingDefaultBaseSetsFilters
@@ -21107,60 +21112,60 @@ function api.transmogSets.isUsingDefaultBaseSetsFilters() end
 ---@return boolean isUsingDefaultSetsFilters
 function api.transmogSets.isUsingDefaultSetsFilters() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@param isChecked boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.setBaseSetsFilter(index, isChecked) end
 
 function api.transmogSets.setDefaultBaseSetsFilters() end
 
 function api.transmogSets.setDefaultSetsFilters() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@return boolean hasNewSources
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.setHasNewSources(transmogSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@param slot integer
 ---@return boolean hasNewSources
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.setHasNewSourcesForSlot(transmogSetID, slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogSetID number
 ---@param isFavorite boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.setIsFavorite(transmogSetID, isFavorite) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@param isChecked boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.transmogSets.setSetsFilter(index, isChecked) end
 
----@param classID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param classID number
 function api.transmogSets.setTransmogSetsClassFilter(classID) end
 
 ---Wraps `C_TTSSettings`.
 ---@class wow.beta.api.ttsSettings
 api.ttsSettings = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelInfo ChatChannelInfo
 ---@return boolean enabled
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ttsSettings.getChannelEnabled(channelInfo) end
 
 ---@return boolean settingsBeenSaved
 function api.ttsSettings.getCharacterSettingsSaved() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param chatName string
 ---@return boolean enabled
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ttsSettings.getChatTypeEnabled(chatName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param setting Enum.TtsBoolSetting
 ---@return boolean enabled
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ttsSettings.getSetting(setting) end
 
 ---@return number rate
@@ -21169,62 +21174,62 @@ function api.ttsSettings.getSpeechRate() end
 ---@return number volume
 function api.ttsSettings.getSpeechVolume() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param voiceType Enum.TtsVoiceType
 ---@return number voiceID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ttsSettings.getVoiceOptionID(voiceType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param voiceType Enum.TtsVoiceType
 ---@return string voiceName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ttsSettings.getVoiceOptionName(voiceType) end
 
 function api.ttsSettings.markCharacterSettingsSaved() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelInfo ChatChannelInfo
 ---@param newVal? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ttsSettings.setChannelEnabled(channelInfo, newVal) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelKey string
 ---@param newVal? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ttsSettings.setChannelKeyEnabled(channelKey, newVal) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param chatName string
 ---@param newVal? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ttsSettings.setChatTypeEnabled(chatName, newVal) end
 
 function api.ttsSettings.setDefaultSettings() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param setting Enum.TtsBoolSetting
 ---@param newVal? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ttsSettings.setSetting(setting, newVal) end
 
----@param newVal number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param newVal number
 function api.ttsSettings.setSpeechRate(newVal) end
 
----@param newVal number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param newVal number
 function api.ttsSettings.setSpeechVolume(newVal) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param voiceType Enum.TtsVoiceType
 ---@param voiceID number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ttsSettings.setVoiceOption(voiceType, voiceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param voiceType Enum.TtsVoiceType
 ---@param voiceName string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ttsSettings.setVoiceOptionName(voiceType, voiceName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param language number
 ---@param messageText string
 ---@return boolean overrideMessage
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.ttsSettings.shouldOverrideMessage(language, messageText) end
 
 ---Wraps `C_Tutorial`.
@@ -21288,87 +21293,87 @@ function api.uiColor.getColors() end
 ---@class wow.beta.api.uiWidgetManager
 api.uiWidgetManager = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param setID number
 ---@return UIWidgetInfo[] widgets
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getAllWidgetsBySetID(setID) end
 
 ---@return number setID
 function api.uiWidgetManager.getBelowMinimapWidgetSetID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return BulletTextListWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getBulletTextListWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return ButtonHeaderWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getButtonHeaderWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return CaptureBarWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getCaptureBarWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return CaptureZoneVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getCaptureZoneVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return DiscreteProgressStepsVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getDiscreteProgressStepsVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return DoubleIconAndTextWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getDoubleIconAndTextWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return DoubleStateIconRowVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getDoubleStateIconRowVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return DoubleStatusBarWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getDoubleStatusBarWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return FillUpFramesWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getFillUpFramesWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return HorizontalCurrenciesWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getHorizontalCurrenciesWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return IconAndTextWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getIconAndTextWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return IconTextAndBackgroundWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getIconTextAndBackgroundWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return IconTextAndCurrenciesWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getIconTextAndCurrenciesWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return ItemDisplayVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getItemDisplayVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return MapPinAnimationWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getMapPinAnimationWidgetVisualizationInfo(widgetID) end
 
 ---@return number setID
@@ -21377,208 +21382,209 @@ function api.uiWidgetManager.getObjectiveTrackerWidgetSetID() end
 ---@return number setID
 function api.uiWidgetManager.getPowerBarWidgetSetID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return PreyHuntProgressWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getPreyHuntProgressWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return ScenarioHeaderCurrenciesAndBackgroundWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getScenarioHeaderCurrenciesAndBackgroundWidgetVisualizationInfo(
     widgetID
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return ScenarioHeaderDelvesWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getScenarioHeaderDelvesWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return ScenarioHeaderTimerWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getScenarioHeaderTimerWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return SpacerVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getSpacerVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return SpellDisplayVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getSpellDisplayVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return StackedResourceTrackerWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getStackedResourceTrackerWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return StatusBarWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getStatusBarWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return TextColumnRowVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getTextColumnRowVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return TextWithStateWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getTextWithStateWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return TextWithSubtextWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getTextWithSubtextWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return TextureAndTextRowVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getTextureAndTextRowVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return TextureAndTextVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getTextureAndTextVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return TextureWithAnimationVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getTextureWithAnimationVisualizationInfo(widgetID) end
 
 ---@return number setID
 function api.uiWidgetManager.getTopCenterWidgetSetID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return TugOfWarWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getTugOfWarWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return UnitPowerBarWidgetVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getUnitPowerBarWidgetVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetSetID number
 ---@return UIWidgetSetInfo? widgetSetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getWidgetSetInfo(widgetSetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param widgetID number
 ---@return ZoneControlVisualizationInfo? widgetInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.getZoneControlVisualizationInfo(widgetID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@param isGuid? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.registerUnitForWidgetUpdates(unitToken, isGuid) end
 
----@param unit? string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param unit? string
 function api.uiWidgetManager.setProcessingUnit(unit) end
 
----@param unit? string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param unit? string
 function api.uiWidgetManager.setProcessingUnitGuid(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@param isGuid? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.uiWidgetManager.unregisterUnitForWidgetUpdates(unitToken, isGuid) end
 
 ---Wraps the global functions of the `Unit` system.
 ---@class wow.beta.api.unit
 api.unit = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.affectingCombat(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean isAlliedRace
 ---@return boolean hasHeritageArmorUnlocked
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.alliedRaceInfo(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number base
 ---@return number effective
 ---@return number real
 ---@return number bonus
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.armor(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number attackPower
 ---@return number posBuff
 ---@return number negBuff
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.attackPower(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number attackSpeed
 ---@return number? offhandAttackSpeed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.attackSpeed(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.battlePetLevel(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.battlePetSpeciesID(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.battlePetType(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param target string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.canAssist(unit, target) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param target string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.canAttack(unit, target) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param target string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.canCooperate(unit, target) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param virtualSeatIndex integer
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.canEjectPassengerFromSeat(virtualSeatIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param target string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.canPetBattle(unit, target) end
 
 ---@return boolean result
 function api.unit.canSwitchVehicleSeat() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param unit string
 ---@return LuaDurationObject? duration
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.castingDuration(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitSpellCastRestricted
 ---@param unit string
 ---@return string name
 ---@return string displayName
@@ -21591,14 +21597,14 @@ function api.unit.castingDuration(unit) end
 ---@return number castingSpellID
 ---@return number? castBarID
 ---@return number delayTimeMs
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitSpellCastRestricted
 function api.unit.castingInfo(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return LuaDurationObject? duration
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.channelDuration(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitSpellCastRestricted
 ---@param unit string
 ---@return string name
 ---@return string displayName
@@ -21611,78 +21617,78 @@ function api.unit.channelDuration(unit) end
 ---@return boolean isEmpowered
 ---@return number numEmpowerStages
 ---@return number? castBarID
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitSpellCastRestricted
 function api.unit.channelInfo(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number ID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.chromieTimeID(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return string? className
 ---@return string? classFilename
 ---@return number? classID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.class(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return string? classFilename
 ---@return number? classID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.classBase(unit) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param unitGUID string
 ---@return string? className
 ---@return string? classFilename
 ---@return number? classID
----Restrictions: secretArguments=AllowedWhenTainted
 function api.unit.classFromGUID(unitGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return string result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.classification(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param gameObjectID number
 ---@return number? xPos
 ---@return number? yPos
 ---@return number? distance
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.closestGameObjectPosition(gameObjectID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param creatureID number
 ---@return number? xPos
 ---@return number? yPos
 ---@return number? distance
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.closestUnitPosition(creatureID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.controllingVehicle(unit) end
 
 ---@return UnitHealPredictionCalculator healPredictionCalculator
 function api.unit.createUnitHealPredictionCalculator() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 ---@param unit string
 ---@return string name
 ---@return number id
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 function api.unit.creatureFamily(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 ---@param unit string
 ---@return number? creatureID
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 function api.unit.creatureID(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 ---@param unit string
 ---@return string name
 ---@return number id
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 function api.unit.creatureType(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number minDamage
 ---@return number maxDamage
@@ -21691,9 +21697,9 @@ function api.unit.creatureType(unit) end
 ---@return number posBuff
 ---@return number negBuff
 ---@return number percent
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.damage(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitThreatValuesRestricted
 ---@param unit string
 ---@param mobGUID string
 ---@return boolean? isTanking
@@ -21701,150 +21707,150 @@ function api.unit.damage(unit) end
 ---@return number? scaledPercentage
 ---@return number? rawPercentage
 ---@return number? rawThreat
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitThreatValuesRestricted
 function api.unit.detailedThreatSituation(unit, mobGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number distance
 ---@return boolean checkedDistance
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.distanceSquared(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.effectiveLevel(name) end
 
----@param virtualSeatIndex integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param virtualSeatIndex integer
 function api.unit.ejectPassengerFromSeat(virtualSeatIndex) end
 
 ---Returns a duration object that includes the duration of an empowered cast channel.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param includeHoldAtMaxTime? boolean
 ---@return LuaDurationObject? duration
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.empoweredChannelDuration(unit, includeHoldAtMaxTime) end
 
 ---Returns a vector of duration objects that measure the time spans for each individual stage in
 ---an empowered channel, with hold-at-max time included as the last element.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return LuaDurationObject[]? duration
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.empoweredStageDurations(unit) end
 
 ---Returns a vector of percentages that describe how much of the total duration of an empowered
 ---channel is occupied by a stage.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param includeHoldAtMaxTime? boolean
 ---@return number[]? percentages
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.empoweredStagePercentages(unit, includeHoldAtMaxTime) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.exists(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitName string
 ---@param checkDisplayRace? boolean
 ---@return string factionGroupTag
 ---@return string localized
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.factionGroup(unitName, checkDisplayRace) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 ---@param unit string
 ---@return string unitName
 ---@return string unitServer
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 function api.unit.fullName(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitPowerRestricted
 ---@param unit string
 ---@param target string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitPowerRestricted
 function api.unit.getComboPoints(unit, target) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param healerUnit? string
 ---@param healPredictionCalculator UnitHealPredictionCalculator
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getDetailedHealPrediction(unit, healerUnit, healPredictionCalculator) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param unit string
 ---@param healerGUID? string
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.getIncomingHeals(unit, healerGUID) end
 
 ---@return CorruptionEffectInfo[] corruptionEffects
 function api.unit.getNegativeCorruptionEffectInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.getTotalAbsorbs(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.getTotalHealAbsorbs(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitPowerRestricted
 ---@param unit string
 ---@return number[]? pointIndices
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitPowerRestricted
 function api.unit.getUnitChargedPowerPoints(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitSpellCastRestricted
 ---@param unit string
 ---@return number holdAtMaxTime
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitSpellCastRestricted
 function api.unit.getUnitEmpowerHoldAtMaxTime(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitSpellCastRestricted
 ---@param unit string
 ---@return number minHoldTime
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitSpellCastRestricted
 function api.unit.getUnitEmpowerMinHoldTime(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitSpellCastRestricted
 ---@param unit string
 ---@param index number
 ---@return number duration
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitSpellCastRestricted
 function api.unit.getUnitEmpowerStageDuration(unit, index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getUnitHealthModifier(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getUnitMaxHealthModifier(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return UnitPowerBarInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getUnitPowerBarInfo(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param barID number
 ---@return UnitPowerBarInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getUnitPowerBarInfoByID(barID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return string? name
 ---@return string? tooltip
 ---@return string? cost
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getUnitPowerBarStrings(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param barID number
 ---@return string? name
 ---@return string? tooltip
 ---@return string? cost
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getUnitPowerBarStringsByID(barID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@param textureIndex integer
 ---@param timerIndex? integer
@@ -21853,9 +21859,9 @@ function api.unit.getUnitPowerBarStringsByID(barID) end
 ---@return number colorG
 ---@return number colorB
 ---@return number colorA
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getUnitPowerBarTextureInfo(unitToken, textureIndex, timerIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param barID number
 ---@param textureIndex integer
 ---@return integer texture
@@ -21863,589 +21869,589 @@ function api.unit.getUnitPowerBarTextureInfo(unitToken, textureIndex, timerIndex
 ---@return number colorG
 ---@return number colorB
 ---@return number colorA
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getUnitPowerBarTextureInfoByID(barID, textureIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getUnitPowerModifier(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number currentSpeed
 ---@return number runSpeed
 ---@return number flightSpeed
 ---@return number swimSpeed
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getUnitSpeed(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getUnitTotalModifiedMaxHealthPercent(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vehicleIndicatorID number
 ---@return integer? backgroundTextureID
 ---@return number? numSeatIndicators
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getVehicleUIIndicator(vehicleIndicatorID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vehicleIndicatorID number
 ---@param indicatorSeatIndex integer
 ---@return number? virtualSeatIndex
 ---@return number? xPos
 ---@return number? yPos
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.getVehicleUIIndicatorSeat(vehicleIndicatorID, indicatorSeatIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return string result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.groupRolesAssigned(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.groupRolesAssignedEnum(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 ---@param unit string
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 function api.unit.guid(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.hasRelicSlot(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.hasVehiclePlayerFrameUI(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.hasVehicleUI(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param unit string
 ---@param usePredicted? boolean
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.health(unit, usePredicted) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitHealthMaxRestricted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitHealthMaxRestricted
 function api.unit.healthMax(unit) end
 
 ---Result of UnitHealthMax() - UnitHealth()
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param unit string
 ---@param usePredicted? boolean
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.healthMissing(unit, usePredicted) end
 
 ---Returns percent of health remaining - can be scaled via a curve for display purposes
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns, SecretWhenCurveSecret
 ---@param unit string
 ---@param usePredicted? boolean
 ---@param curve? LuaCurveObjectBase
 ---@return LuaCurveEvaluatedResult result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns, SecretWhenCurveSecret
 function api.unit.healthPercent(unit, usePredicted, curve) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.honor(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.honorLevel(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.honorMax(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.hpPerStamina(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@param partyIndex? integer
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.inAnyGroup(unit, partyIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@param partyIndex? integer
 ---@return integer? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.inBattleground(unit, partyIndex) end
 
 ---Checks whether this unit cannot see your party chat because it is in an instance group
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean inOtherParty
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.inOtherParty(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@param partyIndex? integer
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.inParty(unit, partyIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.inPartyIsAI(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean inPartyShard
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.inPartyShard(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@param partyIndex? integer
 ---@return integer? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.inRaid(unit, partyIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param unit string
 ---@return boolean inRange
 ---@return boolean checkedRange
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.inRange(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@param partyIndex? integer
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.inSubgroup(unit, partyIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.inVehicle(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.inVehicleControlSeat(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.inVehicleHidesPetFrame(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.unit.isAFK(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isBattlePet(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isBattlePetCompanion(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isBossMob(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isCharmed(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean isConnected
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isConnected(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isControlling(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isCorpse(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.unit.isDND(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isDead(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isDeadOrGhost(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param target string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isEnemy(unit, target) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isFalling(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isFeignDeath(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isFlying(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param target string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isFriend(unit, target) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isGameObject(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isGhost(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean isAssistant
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isGroupAssistant(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param partyCategory? integer
 ---@return boolean isLeader
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isGroupLeader(unit, partyCategory) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@param partyIndex? integer
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isHumanPlayer(unit, partyIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isInMyGuild(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isInteractable(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isLieutenant(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isMercenary(name) end
 
 ---Returns whether the unit is considered a minion of a player, such as a pet, totem, or
 ---guardian.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isMinion(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isNPCAsPlayer(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isOtherPlayersBattlePet(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isOtherPlayersPet(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param controllingUnit string
 ---@param controlledUnit string
 ---@return boolean unitIsOwnerOrControllerOfUnit
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isOwnerOrControllerOfUnit(controllingUnit, controlledUnit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isPVP(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isPVPFreeForAll(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isPVPSanctuary(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@param partyIndex? integer
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isPlayer(unit, partyIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerGUID string
 ---@return boolean IsInGuild
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isPlayerInGuildFromGUID(playerGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isPossessed(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isQuestBoss(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isRaidOfficer(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitName string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isSameServer(unitName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isSubmerged(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isSwimming(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isTapDenied(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isTrivial(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isUnconscious(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitComparisonRestricted
 ---@param unit1 string
 ---@param unit2 string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitComparisonRestricted
 function api.unit.isUnit(unit1, unit2) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return boolean isReady
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isUnitModelReadyForUI(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isVisible(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.isWildBattlePet(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean isLeader
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.leadsAnyGroup(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.level(name) end
 
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitIdentityRestricted
 ---@param unit string
 ---@return string unitName
 ---@return string unitServer
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitIdentityRestricted
 function api.unit.name(unit) end
 
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitIdentityRestricted
 ---@param unitGUID string
 ---@return string unitName
 ---@return string unitServer
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitIdentityRestricted
 function api.unit.nameFromGUID(unitGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 ---@param unit string
 ---@return string unitName
 ---@return string unitServer
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 function api.unit.nameUnmodified(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean nameplateShowsWidgetsOnly
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.nameplateShowsWidgetsOnly(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.numPowerBarTimers(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.onTaxi(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 ---@param unit string
 ---@return string ownerGUID
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 function api.unit.ownerGUID(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitPowerRestricted
 ---@param unitToken string
 ---@param powerType? Enum.PowerType
 ---@param unmodified? boolean
 ---@return number partialPower
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitPowerRestricted
 function api.unit.partialPower(unitToken, powerType, unmodified) end
 
+---Restrictions: secretArguments=AllowedWhenTainted, SecretReturns
 ---@param unitGUID string
 ---@return number? percentHealth
----Restrictions: secretArguments=AllowedWhenTainted, SecretReturns
 function api.unit.percentHealthFromGUID(unitGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return Enum.PhaseReason? reason
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.phaseReason(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.playerControlled(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.playerIsPVPInactive(unit) end
 
 ---If the unit is currently casting a spell, returns whether spell's target unit is the player.
 ---Returns false if the unit is not casting a spell or the spell has no target.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.playerIsSpellTarget(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@param partyIndex? integer
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.playerOrPetInParty(unit, partyIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@param partyIndex? integer
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.playerOrPetInRaid(unit, partyIndex) end
 
 ---@return boolean vehicleHasComboPoints
 function api.unit.playerVehicleHasComboPoints() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number positionX
 ---@return number positionY
 ---@return number positionZ
 ---@return number mapID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.position(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitPowerRestricted
 ---@param unitToken string
 ---@param powerType? Enum.PowerType
 ---@param unmodified? boolean
 ---@return number power
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitPowerRestricted
 function api.unit.power(unitToken, powerType, unmodified) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return number barID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.powerBarID(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param unit string
 ---@param index? integer
 ---@return number? duration
 ---@return number? expiration
 ---@return number? barID
 ---@return number? auraID
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.powerBarTimerInfo(unit, index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param powerType Enum.PowerType
 ---@return number displayMod
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.powerDisplayMod(powerType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitPowerMaxRestricted
 ---@param unitToken string
 ---@param powerType? Enum.PowerType
 ---@param unmodified? boolean
 ---@return number maxPower
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitPowerMaxRestricted
 function api.unit.powerMax(unitToken, powerType, unmodified) end
 
 ---Result of UnitPowerMax() - UnitPower()
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitPowerRestricted
 ---@param unitToken string
 ---@param powerType? Enum.PowerType
 ---@param unmodified? boolean
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitPowerRestricted
 function api.unit.powerMissing(unitToken, powerType, unmodified) end
 
 ---Queries the percent of power remaining, optionally evaluating it against a supplied curve.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenCurveSecret,
+---SecretWhenUnitPowerRestricted
 ---@param unitToken string
 ---@param powerType? Enum.PowerType
 ---@param unmodified? boolean
 ---@param curve? LuaCurveObjectBase
 ---@return LuaCurveEvaluatedResult result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenCurveSecret,
----SecretWhenUnitPowerRestricted
 function api.unit.powerPercent(unitToken, powerType, unmodified, curve) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param index? number
 ---@return Enum.PowerType? powerType
@@ -22453,43 +22459,43 @@ function api.unit.powerPercent(unitToken, powerType, unmodified, curve) end
 ---@return number? rgbX
 ---@return number? rgbY
 ---@return number? rgbZ
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.powerType(unit, index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return Enum.PvPUnitClassification? classification
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.pvpClassification(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 ---@param unit string
 ---@return string result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitIdentityRestricted
 function api.unit.pvpName(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number levelRange
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.questTrivialLevelRange(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number levelRange
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.questTrivialLevelRangeScaling(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return string? localizedRaceName
 ---@return string? englishRaceName
 ---@return number? raceID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.race(name) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number attackPower
 ---@return number posBuff
 ---@return number negBuff
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.rangedAttackPower(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number speed
 ---@return number minDamage
@@ -22497,182 +22503,182 @@ function api.unit.rangedAttackPower(unit) end
 ---@return number posBuff
 ---@return number negBuff
 ---@return number percent
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.rangedDamage(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param target string
 ---@return integer? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.reaction(unit, target) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return integer? realmRelationship
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.realmRelationship(unit) end
 
----@param unit string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param unit string
 function api.unit.reportPlayerIsPVPAFK(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param resistance number
 ---@param casterLevel number
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.resistancePercent(resistance, casterLevel) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param useExtendedColors? boolean
 ---@return number resultR
 ---@return number resultG
 ---@return number resultB
 ---@return number resultA
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.selectionColor(unit, useExtendedColors) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param useExtendedColors? boolean
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.selectionType(unit, useExtendedColors) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textureObject SimpleTexture
 ---@param unitToken string
 ---@param disableMasking? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.setPortraitTexture(textureObject, unitToken, disableMasking) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textureObject SimpleTexture
 ---@param creatureDisplayID number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.setPortraitTextureFromCreatureDisplayID(textureObject, creatureDisplayID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textureObject SimpleTexture
 ---@param unit string
 ---@param style? Enum.CursorStyle
 ---@param includeLowPriority? boolean
 ---@return boolean hasCursor
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.setUnitCursorTexture(textureObject, unit, style, includeLowPriority) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number? sex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.sex(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return Enum.UnitSex? sex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.sexBase(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.shouldDisplayName(unit) end
 
 ---If the unit is currently casting a spell, returns whether the target's name should be
 ---displayed. Returns false if the unit is not casting a spell or the spell has no target.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.shouldDisplaySpellTargetName(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.spellHaste(unit) end
 
 ---If the unit is currently casting a spell, returns the class of the spell's target unit.
 ---Returns nil if the unit is not casting a spell or the spell has no target.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param unit string
 ---@return string classFilename
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.spellTargetClass(unit) end
 
 ---If the unit is currently casting a spell, returns the name of the spell's target unit.
 ---Returns nil if the unit is not casting a spell or the spell has no target.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 ---@param unit string
 ---@return string targetName
----Restrictions: secretArguments=AllowedWhenUntainted, SecretReturns
 function api.unit.spellTargetName(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.stagger(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param index integer
 ---@return number currentStat
 ---@return number effectiveStat
 ---@return number statPositiveBuff
 ---@return number statNegativeBuff
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.stat(unit, index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param virtualSeatIndex integer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.switchToVehicleSeat(unit, virtualSeatIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.targetsVehicleInRaidUI(unit) end
 
 ---Returns a threat state (0-3; representing none, yellow, orange, red) that indicates how far
 ---the provided unit is above the secondmost threat on the provided mob. If the unit is not
 ---first on threat, will always return red. Can return nil if the provided mob does not exist.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitThreatStateRestricted
 ---@param unit string
 ---@param mobGUID string
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitThreatStateRestricted
 function api.unit.threatLeadSituation(unit, mobGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitThreatValuesRestricted
 ---@param unit string
 ---@param mobGUID string
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitThreatValuesRestricted
 function api.unit.threatPercentageOfLead(unit, mobGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitThreatStateRestricted
 ---@param unit string
 ---@param mobGUID? string
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitThreatStateRestricted
 function api.unit.threatSituation(unit, mobGUID) end
 
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitIdentityRestricted
 ---@param unitGUID string
 ---@return string? unitToken
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitIdentityRestricted
 function api.unit.tokenFromGUID(unitGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean treatAsPlayer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.treatAsPlayerForDisplay(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number bankedLevels
 ---@return number xpIntoCurrentLevel
 ---@return number xpForNextLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.trialBankedLevels(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.trialXP(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.usingVehicle(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.vehicleSeatCount(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param virtualSeatIndex integer
 ---@return string? controlType
@@ -22680,81 +22686,80 @@ function api.unit.vehicleSeatCount(unit) end
 ---@return string? serverName
 ---@return boolean? ejectable
 ---@return boolean? canSwitchSeats
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.vehicleSeatInfo(unit, virtualSeatIndex) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return integer result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.vehicleSkin(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number mainHandWeaponAttackPower
 ---@return number offHandWeaponAttackPower
 ---@return number rangedWeaponAttackPower
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.weaponAttackPower(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number? uiWidgetSet
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.widgetSet(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit? string
 ---@return boolean result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.worldLootObjectExists(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.xp(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return number result
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unit.xpMax(unit) end
 
 ---Wraps `C_UnitAuras`.
 ---@class wow.beta.api.unitAuras
 api.unitAuras = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param args AddPrivateAuraAnchorArgs
 ---@return number? anchorID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unitAuras.addPrivateAuraAnchor(args) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sound UnitPrivateAuraAppliedSoundInfo
 ---@return number? privateAuraSoundID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unitAuras.addPrivateAuraAppliedSound(sound) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@return boolean isBigDefensive
----Restrictions: secretArguments=AllowedWhenTainted
 function api.unitAuras.auraIsBigDefensive(spellID) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@return boolean isPrivate
----Restrictions: secretArguments=AllowedWhenTainted
 function api.unitAuras.auraIsPrivate(spellID) end
 
 ---Returns true if an aura instance will expire after a certain amount of time.
+---Restrictions: secretArguments=AllowedWhenTainted, RequiresValidUnitAuraInstance,
+---SecretWhenUnitAuraRestricted
 ---@param auraInstanceUnit string
 ---@param auraInstanceID number
 ---@return boolean hasExpirationTime
----Restrictions: secretArguments=AllowedWhenTainted, RequiresValidUnitAuraInstance,
----SecretWhenUnitAuraRestricted
 function api.unitAuras.doesAuraHaveExpirationTime(auraInstanceUnit, auraInstanceID) end
 
 ---Formats a string for displaying the number of applications an aura has present.
+---Restrictions: secretArguments=AllowedWhenTainted, RequiresValidUnitAuraInstance,
+---SecretWhenUnitAuraRestricted
 ---@param auraInstanceUnit string
 ---@param auraInstanceID number
 ---@param minDisplayCount? number
 ---@param maxDisplayCount? number
 ---@return string count
----Restrictions: secretArguments=AllowedWhenTainted, RequiresValidUnitAuraInstance,
----SecretWhenUnitAuraRestricted
 function api.unitAuras.getAuraApplicationDisplayCount(
     auraInstanceUnit,
     auraInstanceID,
@@ -22766,157 +22771,157 @@ end
 ---Returns the base duration of the given spell (or aura). Takes an optional spellID to use as
 ---the new duration if that cannot be derived from the aura, if that value isn't supplied the
 ---aura's spellID will be used
+---Restrictions: secretArguments=AllowedWhenTainted, RequiresValidUnitAuraInstance,
+---SecretWhenUnitAuraRestricted
 ---@param auraInstanceUnit string
 ---@param auraInstanceID number
 ---@param spellID? number
 ---@return number? newDuration
----Restrictions: secretArguments=AllowedWhenTainted, RequiresValidUnitAuraInstance,
----SecretWhenUnitAuraRestricted
 function api.unitAuras.getAuraBaseDuration(auraInstanceUnit, auraInstanceID, spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitAuraRestricted
 ---@param unit string
 ---@param auraInstanceID number
 ---@return AuraData? aura
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenUnitAuraRestricted
 function api.unitAuras.getAuraDataByAuraInstanceID(unit, auraInstanceID) end
 
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitAuraRestricted
 ---@param unit string
 ---@param index integer
 ---@param filter? string
 ---@return AuraData? aura
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitAuraRestricted
 function api.unitAuras.getAuraDataByIndex(unit, index, filter) end
 
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitAuraRestricted
 ---@param unit string
 ---@param slot number
 ---@return AuraData? aura
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitAuraRestricted
 function api.unitAuras.getAuraDataBySlot(unit, slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresNonSecretAura,
+---SecretWhenUnitAuraRestricted
 ---@param unit string
 ---@param spellName string
 ---@param filter? string
 ---@return AuraData? aura
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresNonSecretAura,
----SecretWhenUnitAuraRestricted
 function api.unitAuras.getAuraDataBySpellName(unit, spellName, filter) end
 
 ---Queries the dispel type associated with an aura instance and remaps it to a color via a
 ---curve, with the dispel type ID used as the 'x' value.
+---Restrictions: secretArguments=AllowedWhenTainted, RequiresValidUnitAuraInstance,
+---SecretWhenCurveSecret, SecretWhenUnitAuraRestricted
 ---@param auraInstanceUnit string
 ---@param auraInstanceID number
 ---@param curve LuaColorCurveObject
 ---@return colorRGBA dispelTypeColor
----Restrictions: secretArguments=AllowedWhenTainted, RequiresValidUnitAuraInstance,
----SecretWhenCurveSecret, SecretWhenUnitAuraRestricted
 function api.unitAuras.getAuraDispelTypeColor(auraInstanceUnit, auraInstanceID, curve) end
 
+---Restrictions: secretArguments=AllowedWhenTainted, RequiresValidUnitAuraInstance
 ---@param auraInstanceUnit string
 ---@param auraInstanceID number
 ---@return LuaDurationObject duration
----Restrictions: secretArguments=AllowedWhenTainted, RequiresValidUnitAuraInstance
 function api.unitAuras.getAuraDuration(auraInstanceUnit, auraInstanceID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param filter? string
 ---@param maxSlots? number
 ---@param continuationToken? number
 ---@return number? outContinuationToken
 ---@return number slots
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unitAuras.getAuraSlots(unit, filter, maxSlots, continuationToken) end
 
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitAuraRestricted
 ---@param unit string
 ---@param index integer
 ---@param filter? string
 ---@return AuraData? aura
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitAuraRestricted
 function api.unitAuras.getBuffDataByIndex(unit, index, filter) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param spellID number
 ---@return number? cooldownSpellID
----Restrictions: secretArguments=AllowedWhenTainted
 function api.unitAuras.getCooldownAuraBySpellID(spellID) end
 
+---Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitAuraRestricted
 ---@param unit string
 ---@param index integer
 ---@param filter? string
 ---@return AuraData? aura
----Restrictions: secretArguments=AllowedWhenTainted, SecretWhenUnitAuraRestricted
 function api.unitAuras.getDebuffDataByIndex(unit, index, filter) end
 
----@param spellID number
----@return AuraData? aura
 ---Restrictions: secretArguments=AllowedWhenTainted, RequiresNonSecretAura,
 ---SecretWhenUnitAuraRestricted
+---@param spellID number
+---@return AuraData? aura
 function api.unitAuras.getPlayerAuraBySpellID(spellID) end
 
 ---Returns the client-predicted new duration of this aura if it were cast again right now. Takes
 ---an optional spellID to use as the new duration if that cannot be derived from the aura, if
 ---that value isn't supplied the aura's spellID will be used
+---Restrictions: secretArguments=AllowedWhenTainted, RequiresValidUnitAuraInstance,
+---SecretWhenUnitAuraRestricted
 ---@param auraInstanceUnit string
 ---@param auraInstanceID number
 ---@param spellID? number
 ---@return number? newDuration
----Restrictions: secretArguments=AllowedWhenTainted, RequiresValidUnitAuraInstance,
----SecretWhenUnitAuraRestricted
 function api.unitAuras.getRefreshExtendedDuration(auraInstanceUnit, auraInstanceID, spellID) end
 
 ---Returns the first instance of an aura on a unit matching a given spell ID. Returns nil if no
 ---such aura is found. Additionally can return nil if querying a unit that is not visible (eg.
 ---party members on other maps).
+---Restrictions: secretArguments=AllowedWhenTainted, RequiresNonSecretAura,
+---SecretWhenUnitAuraRestricted
 ---@param unit string
 ---@param spellID number
 ---@return AuraData? aura
----Restrictions: secretArguments=AllowedWhenTainted, RequiresNonSecretAura,
----SecretWhenUnitAuraRestricted
 function api.unitAuras.getUnitAuraBySpellID(unit, spellID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param filter string
 ---@param maxCount? number
 ---@param sortRule? Enum.UnitAuraSortRule
 ---@param sortDirection? Enum.UnitAuraSortDirection
 ---@return number[] auraInstanceIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unitAuras.getUnitAuraInstanceIDs(unit, filter, maxCount, sortRule, sortDirection) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param filter string
 ---@param maxCount? number
 ---@param sortRule? Enum.UnitAuraSortRule
 ---@param sortDirection? Enum.UnitAuraSortDirection
 ---@return AuraData[] auras
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unitAuras.getUnitAuras(unit, filter, maxCount, sortRule, sortDirection) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param unit string
 ---@param auraInstanceID number
 ---@param filter string
 ---@return boolean isFiltered
----Restrictions: secretArguments=AllowedWhenTainted
 function api.unitAuras.isAuraFilteredOutByInstanceID(unit, auraInstanceID, filter) end
 
----@param anchorID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param anchorID number
 function api.unitAuras.removePrivateAuraAnchor(anchorID) end
 
----@param privateAuraSoundID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param privateAuraSoundID number
 function api.unitAuras.removePrivateAuraAppliedSound(privateAuraSoundID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param parent SimpleFrame
 ---@param anchor? AnchorBinding
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unitAuras.setPrivateWarningTextAnchor(parent, anchor) end
 
----@param show boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param show boolean
 function api.unitAuras.triggerPrivateAuraShowDispelType(show) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param unit string
 ---@return boolean wantsAlteredForm
----Restrictions: secretArguments=AllowedWhenTainted
 function api.unitAuras.wantsAlteredForm(unit) end
 
 ---Wraps the global functions of the `UnitRole` system.
@@ -22934,51 +22939,51 @@ function api.unitRole.canShowSetRoleButton() end
 ---@return boolean result
 function api.unitRole.initiateRolePoll() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@return boolean? tank
 ---@return boolean? healer
 ---@return boolean? dps
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.unitRole.unitGetAvailableRoles(unit) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param roleStr? string
 ---@return boolean result
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.unitRole.unitSetRole(unit, roleStr) end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param unit string
 ---@param role? Enum.LFGRole
 ---@return boolean result
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function api.unitRole.unitSetRoleEnum(unit, role) end
 
 ---Wraps the global functions of the `URL` system.
 ---@class wow.beta.api.url
 api.url = {}
 
----@param url string
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param url string
 function api.url.launchURL(url) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index number
 ---@param param? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.url.loadURLIndex(index, param) end
 
 ---Wraps `C_UserFeedback`.
 ---@class wow.beta.api.userFeedback
 api.userFeedback = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param bugInfo string
 ---@param suppressNotification? boolean
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.userFeedback.submitBug(bugInfo, suppressNotification) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param suggestion string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.userFeedback.submitSuggestion(suggestion) end
 
 ---Wraps `C_Vehicle`.
@@ -22992,15 +22997,15 @@ api.videoOptions = {}
 ---@return vector2 size
 function api.videoOptions.getCurrentGameWindowSize() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param monitor number
 ---@return vector2 size
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.videoOptions.getDefaultGameWindowSize(monitor) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param monitor number
 ---@param fullscreen boolean
 ---@return vector2[] sizes
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.videoOptions.getGameWindowSizes(monitor, fullscreen) end
 
 ---@return GxAdapterInfoDetails[] adapters
@@ -23009,41 +23014,41 @@ function api.videoOptions.getGxAdapterInfo() end
 ---@return boolean isSupported
 function api.videoOptions.isSpellVisualDensitySystemSupported() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param x number
 ---@param y number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.videoOptions.setGameWindowSize(x, y) end
 
 ---Wraps `C_VignetteInfo`.
 ---@class wow.beta.api.vignetteInfo
 api.vignetteInfo = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vignetteGUIDs string[]
 ---@return integer? bestUniqueVignetteIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.vignetteInfo.findBestUniqueVignette(vignetteGUIDs) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vignetteGUID string
 ---@return number? healthPct
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.vignetteInfo.getHealthPercent(vignetteGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vignetteGUID string
 ---@return number? minGroupSize
 ---@return number? maxGroupSize
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.vignetteInfo.getRecommendedGroupSize(vignetteGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vignetteGUID string
 ---@return VignetteInfo? vignetteInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.vignetteInfo.getVignetteInfo(vignetteGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vignetteGUID string
 ---@param uiMapID number
 ---@return vector2? vignettePosition
 ---@return number? vignetteFacing
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.vignetteInfo.getVignettePosition(vignetteGUID, uiMapID) end
 
 ---@return string[] vignetteGUIDs
@@ -23053,16 +23058,16 @@ function api.vignetteInfo.getVignettes() end
 ---@class wow.beta.api.voiceChat
 api.voiceChat = {}
 
----@param channelID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param channelID number
 function api.voiceChat.activateChannel(channelID) end
 
----@param channelID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param channelID number
 function api.voiceChat.activateChannelTranscription(channelID) end
 
----@param listenToLocalUser boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param listenToLocalUser boolean
 function api.voiceChat.beginLocalCapture(listenToLocalUser) end
 
 ---@return boolean canAccess
@@ -23071,17 +23076,17 @@ function api.voiceChat.canAccessSettings() end
 ---@return boolean canUseVoiceChat
 function api.voiceChat.canPlayerUseVoiceChat() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelDisplayName string
 ---@return Enum.VoiceChatStatusCode status
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.createChannel(channelDisplayName) end
 
----@param channelID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param channelID number
 function api.voiceChat.deactivateChannel(channelID) end
 
----@param channelID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param channelID number
 function api.voiceChat.deactivateChannelTranscription(channelID) end
 
 function api.voiceChat.endLocalCapture() end
@@ -23098,20 +23103,20 @@ function api.voiceChat.getAvailableInputDevices() end
 ---@return VoiceAudioDevice[]? outputDevices
 function api.voiceChat.getAvailableOutputDevices() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param channelID number
 ---@return VoiceChatChannel? channel
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.voiceChat.getChannel(channelID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param channelType Enum.ChatChannelType
 ---@return VoiceChatChannel? channel
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.voiceChat.getChannelForChannelType(channelType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 ---@param clubId string
 ---@param streamId string
 ---@return VoiceChatChannel? channel
----Restrictions: secretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown
 function api.voiceChat.getChannelForCommunityStream(clubId, streamId) end
 
 ---@return Enum.CommunicationMode? communicationMode
@@ -23123,49 +23128,49 @@ function api.voiceChat.getCurrentVoiceChatConnectionStatusCode() end
 ---@return number? volume
 function api.voiceChat.getInputVolume() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubId string
 ---@return Enum.VoiceChannelErrorReason? errorReason
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.getJoinClubVoiceChannelError(clubId) end
 
 ---@return VoiceChatMember? memberInfo
 function api.voiceChat.getLocalPlayerActiveChannelMemberInfo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelID number
 ---@return number? memberID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.getLocalPlayerMemberID(channelID) end
 
 ---@return number scale
 function api.voiceChat.getMasterVolumeScale() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param memberID number
 ---@param channelID number
 ---@return string memberGUID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.getMemberGUID(memberID, channelID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelID number
 ---@param memberGUID string
 ---@return number? memberID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.getMemberID(channelID, memberGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param memberID number
 ---@param channelID number
 ---@return VoiceChatMember? memberInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.getMemberInfo(memberID, channelID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param memberID number
 ---@param channelID number
 ---@return string? memberName
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.getMemberName(memberID, channelID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@return number? volume
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.getMemberVolume(playerLocation) end
 
 ---@return number? volume
@@ -23189,11 +23194,11 @@ function api.voiceChat.getTtsVoices() end
 ---@return number? sensitivity
 function api.voiceChat.getVADSensitivity() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelType Enum.ChatChannelType
 ---@param clubId? string
 ---@param streamId? string
 ---@return boolean isPending
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.isChannelJoinPending(channelType, clubId, streamId) end
 
 ---@return boolean? isDeafened
@@ -23205,27 +23210,27 @@ function api.voiceChat.isEnabled() end
 ---@return boolean isLoggedIn
 function api.voiceChat.isLoggedIn() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param memberID number
 ---@param channelID number
 ---@return boolean isLocalPlayer
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.isMemberLocalPlayer(memberID, channelID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@return boolean? mutedForMe
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.isMemberMuted(playerLocation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param memberID number
 ---@param channelID number
 ---@return boolean? mutedForAll
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.isMemberMutedForAll(memberID, channelID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param memberID number
 ---@param channelID number
 ---@return boolean? silenced
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.isMemberSilenced(memberID, channelID) end
 
 ---@return boolean? isMuted
@@ -23237,9 +23242,9 @@ function api.voiceChat.isParentalDisabled() end
 ---@return boolean isParentalMuted
 function api.voiceChat.isParentalMuted() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@return boolean isUsingVoice
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.isPlayerUsingVoice(playerLocation) end
 
 ---@return boolean? isSilenced
@@ -23260,8 +23265,8 @@ function api.voiceChat.isTranscriptionAllowed() end
 ---@return boolean connected
 function api.voiceChat.isVoiceChatConnected() end
 
----@param channelID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param channelID number
 function api.voiceChat.leaveChannel(channelID) end
 
 ---@return Enum.VoiceChatStatusCode status
@@ -23274,71 +23279,71 @@ function api.voiceChat.logout() end
 ---will be updated again if appropriate
 function api.voiceChat.markChannelsDiscovered() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param clubId string
 ---@param streamId string
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.requestJoinAndActivateCommunityStreamChannel(clubId, streamId) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param channelType Enum.ChatChannelType
 ---@param autoActivate? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.requestJoinChannelByChannelType(channelType, autoActivate) end
 
----@param communicationMode Enum.CommunicationMode
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param communicationMode Enum.CommunicationMode
 function api.voiceChat.setCommunicationMode(communicationMode) end
 
----@param isDeafened boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isDeafened boolean
 function api.voiceChat.setDeafened(isDeafened) end
 
----@param deviceID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param deviceID string
 function api.voiceChat.setInputDevice(deviceID) end
 
----@param volume number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param volume number
 function api.voiceChat.setInputVolume(volume) end
 
----@param scale number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scale number
 function api.voiceChat.setMasterVolumeScale(scale) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@param muted boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.setMemberMuted(playerLocation, muted) end
 
 ---Adjusts member volume across all channels
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param playerLocation PlayerLocation
 ---@param volume number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.setMemberVolume(playerLocation, volume) end
 
----@param isMuted boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isMuted boolean
 function api.voiceChat.setMuted(isMuted) end
 
----@param deviceID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param deviceID string
 function api.voiceChat.setOutputDevice(deviceID) end
 
----@param volume number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param volume number
 function api.voiceChat.setOutputVolume(volume) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textureObject SimpleTexture
 ---@param memberID number
 ---@param channelID number
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.voiceChat.setPortraitTexture(textureObject, memberID, channelID) end
 
----@param keys string[]
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param keys string[]
 function api.voiceChat.setPushToTalkBinding(keys) end
 
----@param sensitivity number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param sensitivity number
 function api.voiceChat.setVADSensitivity(sensitivity) end
 
 ---Use this while loading to determine if the UI should attempt to rediscover the previously
@@ -23346,26 +23351,26 @@ function api.voiceChat.setVADSensitivity(sensitivity) end
 ---@return boolean shouldDiscoverChannels
 function api.voiceChat.shouldDiscoverChannels() end
 
----@param text string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param text string
 function api.voiceChat.speakRemoteTextSample(text) end
 
 ---SpeakText also supports XML TTS tags on Windows including bookmarks - see SAPI XML TTS
 ---Tutorial in Microsoft's online documentation for more information.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param voiceID number
 ---@param text string
 ---@param rate number
 ---@param volume number
 ---@param overlap? boolean
----Restrictions: secretArguments=AllowedWhenTainted
 function api.voiceChat.speakText(voiceID, text, rate, volume, overlap) end
 
 function api.voiceChat.stopSpeakingText() end
 
 function api.voiceChat.toggleDeafened() end
 
----@param playerLocation PlayerLocation
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param playerLocation PlayerLocation
 function api.voiceChat.toggleMemberMuted(playerLocation) end
 
 function api.voiceChat.toggleMuted() end
@@ -23377,29 +23382,29 @@ api.warbandScene = {}
 ---@return number warbandSceneID
 function api.warbandScene.getRandomEntryID() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param warbandSceneID number
 ---@return WarbandSceneEntry? warbandSceneEntry
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.warbandScene.getWarbandSceneEntry(warbandSceneID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param warbandSceneID number
 ---@return boolean owned
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.warbandScene.hasWarbandScene(warbandSceneID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param warbandSceneID number
 ---@return boolean favorite
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.warbandScene.isFavorite(warbandSceneID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param searchParams WarbandSceneSearchInfo
 ---@return number[] matchingEntryIDs
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.warbandScene.searchWarbandSceneEntries(searchParams) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param warbandSceneID number
 ---@param favorite boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.warbandScene.setFavorite(warbandSceneID, favorite) end
 
 ---Wraps `C_WeeklyRewards`.
@@ -23412,56 +23417,56 @@ function api.weeklyRewards.areRewardsForCurrentRewardPeriod() end
 ---@return boolean canClaimRewards
 function api.weeklyRewards.canClaimRewards() end
 
----@param id number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param id number
 function api.weeklyRewards.claimReward(id) end
 
 function api.weeklyRewards.closeInteraction() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type? any
 ---@return WeeklyRewardActivityInfo[] activities
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.weeklyRewards.getActivities(type) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type any
 ---@param index integer
 ---@return WeeklyRewardActivityEncounterInfo[]? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.weeklyRewards.getActivityEncounterInfo(type, index) end
 
 ---@return ConquestWeeklyProgress weeklyProgress
 function api.weeklyRewards.getConquestWeeklyProgress() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param activityTierID number
 ---@return number? difficultyID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.weeklyRewards.getDifficultyIDForActivityTier(activityTierID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param id number
 ---@return string? hyperlink
 ---@return string? upgradeHyperlink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.weeklyRewards.getExampleRewardItemHyperlinks(id) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemDBID integer
 ---@return string? hyperlink
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.weeklyRewards.getItemHyperlink(itemDBID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param activityTierID number
 ---@param level number
 ---@return boolean hasSeasonData
 ---@return number? nextActivityTierID
 ---@return number? nextLevel
 ---@return number? itemLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.weeklyRewards.getNextActivitiesIncrease(activityTierID, level) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mythicPlusLevel number
 ---@return boolean hasSeasonData
 ---@return number? nextMythicPlusLevel
 ---@return number? itemLevel
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.weeklyRewards.getNextMythicPlusIncrease(mythicPlusLevel) end
 
 ---@return number numHeroic
@@ -23469,10 +23474,10 @@ function api.weeklyRewards.getNextMythicPlusIncrease(mythicPlusLevel) end
 ---@return number numMythicPlus
 function api.weeklyRewards.getNumCompletedDungeonRuns() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param type any
 ---@param combineSharedDifficulty boolean
 ---@return WeeklyRewardActivityTierProgress[] progress
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.weeklyRewards.getSortedProgressForActivity(type, combineSharedDifficulty) end
 
 ---@return boolean hasAvailableRewards
@@ -23499,45 +23504,45 @@ function api.weeklyRewards.shouldShowRetirementMessage() end
 ---@class wow.beta.api.worldLootObject
 api.worldLootObject = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot number
 ---@param inventoryType Enum.InventoryType
 ---@return boolean matches
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.worldLootObject.doesSlotMatchInventoryType(slot, inventoryType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return number? distanceSquared
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.worldLootObject.getWorldLootObjectDistanceSquared(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return WorldLootObjectInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.worldLootObject.getWorldLootObjectInfo(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param objectGUID string
 ---@return WorldLootObjectInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.worldLootObject.getWorldLootObjectInfoByGUID(objectGUID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return boolean isWorldLootObject
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.worldLootObject.isWorldLootObject(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param guid string
 ---@return boolean isWorldLootObject
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.worldLootObject.isWorldLootObjectByGUID(guid) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@return boolean isWorldLootObjectInRange
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.worldLootObject.isWorldLootObjectInRange(unitToken) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitToken string
 ---@param isLeftClick boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.worldLootObject.onWorldLootObjectClick(unitToken, isLeftClick) end
 
 ---Wraps `C_WorldSafeLocsUIInternal`.
@@ -23562,25 +23567,25 @@ api.wowSurvey = {}
 ---Restrictions: hasRestrictions
 function api.wowSurvey.openSurvey() end
 
----@param deliveryMoment Enum.SurveyDeliveryMoment
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param deliveryMoment Enum.SurveyDeliveryMoment
 function api.wowSurvey.triggerSurveyServe(deliveryMoment) end
 
 ---Wraps `C_WowTokenUI`.
 ---@class wow.beta.api.wowTokenUI
 api.wowTokenUI = {}
 
----@param tokenGUID string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param tokenGUID string
 function api.wowTokenUI.startTokenSell(tokenGUID) end
 
 ---Wraps `C_XMLUtil`.
 ---@class wow.beta.api.xmlUtil
 api.xmlUtil = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return XMLTemplateInfo? info
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.xmlUtil.getTemplateInfo(name) end
 
 ---@return XMLTemplateListInfo[] templates
@@ -23593,9 +23598,9 @@ api.zoneAbility = {}
 ---@return ZoneAbilityInfo[] zoneAbilities
 function api.zoneAbility.getActiveAbilities() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param zoneAbilitySpellID number
 ---@return number? zoneAbilityIconID
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.zoneAbility.getZoneAbilityIcon(zoneAbilitySpellID) end
 
 ---Wraps the global functions of the `ZoneScript` system.
@@ -23608,9 +23613,9 @@ function api.zoneScript.getAreaText() end
 ---@return string text
 function api.zoneScript.getMinimapZoneText() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param mapID? number
 ---@return string text
----Restrictions: secretArguments=AllowedWhenUntainted
 function api.zoneScript.getRealZoneText(mapID) end
 
 ---@return string text

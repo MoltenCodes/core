@@ -47,6 +47,10 @@ local BETA_BUILD_PROBE = "IsBetaBuild"
 -- The flavour a client matches when its facts fit no row below.
 local UNSUPPORTED_FLAVOR = "unsupported"
 
+-- Retail's `WOW_PROJECT_ID`: the one project whose test realm and beta builds
+-- are flavours of their own, so the build facts are consulted for it alone.
+local RETAIL_PROJECT_ID = 1
+
 -- The supported flavours, in the order `tooling/api/flavours.json` lists them:
 -- the flavour id, the segments of its namespace under `MoltenCodes.wow`, and
 -- the facts a client of that flavour reports. Every row states all three
@@ -209,8 +213,11 @@ end
 
 ---Derive the flavour id from the host's facts.
 ---
----Every row of `FLAVORS` states a project id and both build facts, so a client
----matches exactly one row or none. A beta client is a test build whatever
+---The build facts (`IsTestBuild`, `IsBetaBuild`) only separate Retail from
+---its test realm and beta builds, which have flavours of their own. A Classic
+---test realm has none: its client runs the Classic flavour's surface, so for a
+---project id other than Retail's the facts are not consulted and the row is
+---matched on the project id alone. A beta client is a test build whatever
 ---`IsTestBuild` says about it, so the beta probe folds into the test probe
 ---before the comparison.
 ---@return string flavorId one of the `FLAVORS` ids, or `UNSUPPORTED_FLAVOR`
@@ -223,12 +230,13 @@ local function probeFlavor()
     local testBuild = betaBuild or probeBoolean(TEST_BUILD_PROBE)
     for index = 1, #FLAVORS do
         local row = FLAVORS[index]
-        if
-            row.projectId == projectId
-            and row.testBuild == testBuild
-            and row.betaBuild == betaBuild
-        then
-            return row.id
+        if row.projectId == projectId then
+            local buildFactsApply = projectId == RETAIL_PROJECT_ID
+            if
+                not buildFactsApply or (row.testBuild == testBuild and row.betaBuild == betaBuild)
+            then
+                return row.id
+            end
         end
     end
     return UNSUPPORTED_FLAVOR

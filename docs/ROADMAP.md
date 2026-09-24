@@ -1063,17 +1063,18 @@ way packages A to G were handled. Code starts only after the owner's go.
    for types, footprint); `docs/API.md` (the facade contract, the wrapper
    function exceptions, the raw escape hatch); `docs/NAMING.md` (rules,
    initialisms, exceptions, aliases); `docs/UPDATING.md` (new-build
-   procedure); `metadata/SCHEMA.md`; generated reference and change reports;
+   procedure); `tooling/api/SCHEMA.md`; generated reference and change reports;
    CHANGELOG naming the captured build per flavour; EMBEDDING.md gains the
    second-global rule, the footprint row and the load-order entries;
    ARCHITECTURE.md and `docs/README.md` list the package; the design document
    stays current.
 9. Status: implemented (package H, 0.1.0, 2026-09-24) with all five flavours
-   captured; deviations from this record are stated in
-   `packages/apiKit/docs/API.md` (the `info` argument of `RegisterFlavor`,
-   `SUPPORTED_FLAVOR_COUNT`, `GetGlobalStatus` read live) and the reference
-   is a release asset rather than a committed file (design document,
-   section 13).
+   captured. What shipped beyond this record is documented in
+   `packages/apiKit/docs/API.md`: the `info` argument of `RegisterFlavor`,
+   `SUPPORTED_FLAVOR_COUNT`, `GetGlobalStatus` read live, and the build facts
+   consulted for Retail's project id alone so Classic test realms run their
+   Classic flavour's surface. The reference is a release asset rather than a
+   committed file (design document, section 13).
 
 ##### Delivery sequence
 
@@ -1099,7 +1100,7 @@ begins; H4 to H6 may overlap where they do not share files.
       turned out to carry a few constants written as references and sums;
       those are kept as text); `tooling.api.naming` with the rules of design
       section 6 and the reviewed data in `naming.json`; `tooling.api.model`
-      with the host type table `types.json` (169 client types the tables
+      with the host type table `types.json` (the client types the tables
       reference but never define); `tooling.api.normalize` merging the files
       that describe one namespace, keeping every marker, failing on a shared
       wrapper name; `tooling.api.validate`. Against the Retail tables of
@@ -1110,7 +1111,7 @@ begins; H4 to H6 may overlap where they do not share files.
 - [x] **H2 — generators.** `tooling.api.generate` writes, from one metadata
       directory, the runtime flavour file (`render_runtime`: one direct alias
       per function, bound only when the host has the namespace; Retail is
-      9,824 lines, parsed by Lua 5.1 in about 4 ms, installed in under 1 ms),
+      about 9,800 lines; load cost in the package's API document),
       the LuaCATS definitions (`render_types`, seven files per flavour), the
       Markdown reference and the search index (`render_reference`, 320 files
       for Retail with every link resolving), and with `--previous` the change
@@ -1137,7 +1138,7 @@ begins; H4 to H6 may overlap where they do not share files.
 - [x] **H4 — Retail.** First capture at `Gethe/wow-ui-source@09b9db79`
       (live, client 12.1.0, build 69933, 612 tables, captured 2026-09-24);
       metadata (7.9 MB with the search index), runtime file (`flavours/
-      Retail.lua`, 9,824 lines), types (7 files, 1.8 MB), reference (320
+      Retail.lua`, about 9,800 lines), types (7 files, 1.8 MB), reference (320
       files, 4.0 MB) and the first history entry committed together. The
       generated-output check is exhaustive rather than sampled: a tooling
       test builds a stub host from the metadata and proves the committed file
@@ -1145,8 +1146,7 @@ begins; H4 to H6 may overlap where they do not share files.
       loads the file against the real facade and the shared fixture. CI runs
       `generate --all --check`. The real tables produced no naming
       collision, so the exception tables stay empty. Load cost recorded in
-      `packages/apiKit/docs/API.md` (parse about 3.5 ms, install under
-      0.5 ms). The reference and the search index (6 MB of the 14 MB the
+      `packages/apiKit/docs/API.md`. The reference and the search index (6 MB of the 14 MB the
       capture produced) are not committed: decided with the owner on
       2026-09-24, they are built by `generate --reference-out` and attached
       to releases; the release workflow does so.
@@ -1169,7 +1169,7 @@ begins; H4 to H6 may overlap where they do not share files.
       checked like the others, each with its Busted spec. The detection
       probes `IsTestBuild` and `IsBetaBuild` were verified as documented
       functions of the Retail client. Package after five flavours: 36 MB
-      committed, of which metadata 24 MB and types 8 MB (2026-09-24).
+      committed, of which metadata 26 MB and types 8 MB (2026-09-24).
 - [x] **H7 — documentation and review.** `packages/apiKit/docs/UPDATING.md`
       (the six-command refresh, the two expected refusals and their fixes,
       adding a flavour); EMBEDDING (load order with the flavour files, the

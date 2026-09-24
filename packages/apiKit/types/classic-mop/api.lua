@@ -16,6 +16,11 @@
 ---@field classic wow.classic
 wow = {}
 
+---The MoltenCodes namespace; `wow` is always reachable here.
+---@class MoltenCodes
+---@field wow wow
+MoltenCodes = {}
+
 ---The Mists of Pandaria Classic World of Warcraft API: `local api = wow.classic.mop.api`.
 ---@class wow.classic.mop.api
 ---@field accountInfo wow.classic.mop.api.accountInfo
@@ -380,12 +385,12 @@ function api.achievementInfo.setPortraitTexture(textureObject) end
 ---@class wow.classic.mop.api.achievementTelemetry
 api.achievementTelemetry = {}
 
----@param achievementID number
 ---Restrictions: hasRestrictions
+---@param achievementID number
 function api.achievementTelemetry.linkAchievementInClub(achievementID) end
 
----@param achievementID number
 ---Restrictions: hasRestrictions
+---@param achievementID number
 function api.achievementTelemetry.linkAchievementInWhisper(achievementID) end
 
 function api.achievementTelemetry.showAchievements() end
@@ -413,73 +418,73 @@ function api.actionBar.findPetActionButtons(petActionID) end
 ---@return integer[]? slots
 function api.actionBar.findSpellActionButtons(spellID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean autocastAllowed
 ---@return boolean autocastEnabled
----Restrictions: RequiresValidActionSlot
 function api.actionBar.getActionAutocast(actionID) end
 
 ---@return integer currentPage
 function api.actionBar.getActionBarPage() end
 
 ---Returns a duration object describing the active recharge time for an action.
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return LuaDurationObject duration
----Restrictions: RequiresValidActionSlot
 function api.actionBar.getActionChargeDuration(actionID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return SpellChargeInfo chargeInfo
----Restrictions: RequiresValidActionSlot
 function api.actionBar.getActionCharges(actionID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return SpellCooldownInfo cooldownInfo
----Restrictions: RequiresValidActionSlot
 function api.actionBar.getActionCooldown(actionID) end
 
 ---Returns a duration object describing the active cooldown duration for an action.
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@param ignoreGCD? boolean
 ---@return LuaDurationObject duration
----Restrictions: RequiresValidActionSlot
 function api.actionBar.getActionCooldownDuration(actionID, ignoreGCD) end
 
 ---Depending on the action type, return a string that is either the use count or number of
 ---charges. If value is beyond the display count parameter, returns the replacementString
 ---(defaults to '*').
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@param maxDisplayCount? number
 ---@param replacementString? string
 ---@return string displayCount
----Restrictions: RequiresValidActionSlot
 function api.actionBar.getActionDisplayCount(actionID, maxDisplayCount, replacementString) end
 
 ---Returns a duration object describing the active loss of control cooldown duration for an
 ---action.
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return LuaDurationObject duration
----Restrictions: RequiresValidActionSlot
 function api.actionBar.getActionLossOfControlCooldownDuration(actionID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return SpellLossOfControlInfo lossOfControlInfo
----Restrictions: RequiresValidActionSlot
 function api.actionBar.getActionLossOfControlCooldownInfo(actionID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return string? text
----Restrictions: RequiresValidActionSlot
 function api.actionBar.getActionText(actionID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return integer textureFileID
----Restrictions: RequiresValidActionSlot
 function api.actionBar.getActionTexture(actionID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return number count
----Restrictions: RequiresValidActionSlot
 function api.actionBar.getActionUseCount(actionID) end
 
 ---@return integer bonusBarIndex
@@ -523,9 +528,9 @@ function api.actionBar.getTempShapeshiftBarIndex() end
 function api.actionBar.getVehicleBarIndex() end
 
 ---Returns true if an actionbar slot is populated with an action.
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean hasAction
----Restrictions: RequiresValidActionSlot
 function api.actionBar.hasAction(actionID) end
 
 ---@return boolean hasButtons
@@ -548,9 +553,9 @@ function api.actionBar.hasPetActionButtons(petActionID) end
 ---@return boolean hasPetActionPetBarIndices
 function api.actionBar.hasPetActionPetBarIndices(petActionID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean hasRangeRequirements
----Restrictions: RequiresValidActionSlot
 function api.actionBar.hasRangeRequirements(actionID) end
 
 ---@param spellID number|string
@@ -563,10 +568,10 @@ function api.actionBar.hasTempShapeshiftActionBar() end
 ---@return boolean hasVehicleActionBar
 function api.actionBar.hasVehicleActionBar() end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@param target? string
 ---@return boolean? isInRange
----Restrictions: RequiresValidActionSlot
 function api.actionBar.isActionInRange(actionID, target) end
 
 ---Returns whether the given action button contains the Assisted Combat action spell.
@@ -574,37 +579,37 @@ function api.actionBar.isActionInRange(actionID, target) end
 ---@return boolean isAssistedCombatAction
 function api.actionBar.isAssistedCombatAction(slotID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isAttackAction
----Restrictions: RequiresValidActionSlot
 function api.actionBar.isAttackAction(actionID) end
 
 ---@param slotID integer
 ---@return boolean isAutoCastPetAction
 function api.actionBar.isAutoCastPetAction(slotID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isAutoRepeatAction
----Restrictions: RequiresValidActionSlot
 function api.actionBar.isAutoRepeatAction(actionID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isConsumableAction
----Restrictions: RequiresValidActionSlot
 function api.actionBar.isConsumableAction(actionID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isCurrentAction
----Restrictions: RequiresValidActionSlot
 function api.actionBar.isCurrentAction(actionID) end
 
 ---@param slotID integer
 ---@return boolean isEnabledAutoCastPetAction
 function api.actionBar.isEnabledAutoCastPetAction(slotID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isEquippedAction
----Restrictions: RequiresValidActionSlot
 function api.actionBar.isEquippedAction(actionID) end
 
 ---@param slotID integer
@@ -621,9 +626,9 @@ function api.actionBar.isHarmfulAction(actionID, useNeutral) end
 ---@return boolean isHelpful
 function api.actionBar.isHelpfulAction(actionID, useNeutral) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isItemAction
----Restrictions: RequiresValidActionSlot
 function api.actionBar.isItemAction(actionID) end
 
 ---@param spellID number|string
@@ -633,21 +638,21 @@ function api.actionBar.isOnBarOrSpecialBar(spellID) end
 ---@return boolean isPossessBarVisible
 function api.actionBar.isPossessBarVisible() end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isStackableAction
----Restrictions: RequiresValidActionSlot
 function api.actionBar.isStackableAction(actionID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean isUsable
 ---@return boolean isLackingResources
----Restrictions: RequiresValidActionSlot
 function api.actionBar.isUsableAction(actionID) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param checkboxFrame SimpleCheckbox
 ---@param actionID integer
 ---@param cooldownFrame CooldownFrame
----Restrictions: RequiresValidActionSlot
 function api.actionBar.registerActionUIButton(checkboxFrame, actionID, cooldownFrame) end
 
 ---@param pageIndex integer
@@ -665,9 +670,9 @@ function api.actionBar.toggleAutoCastPetAction(slotID) end
 ---@param checkboxFrame SimpleCheckbox
 function api.actionBar.unregisterActionUIButton(checkboxFrame) end
 
+---Restrictions: RequiresValidActionSlot
 ---@param actionID integer
 ---@return boolean usesActionText
----Restrictions: RequiresValidActionSlot
 function api.actionBar.usesActionText(actionID) end
 
 ---Wraps `C_AddOnProfiler`.
@@ -680,8 +685,8 @@ api.addOnProfiler = {}
 function api.addOnProfiler.addMeasuredCallEvent(name) end
 
 ---Internal API for telemetry.
----@param msg AddOnPerformanceMessage
 ---Restrictions: hasRestrictions
+---@param msg AddOnPerformanceMessage
 function api.addOnProfiler.addPerformanceMessageShown(msg) end
 
 ---Optimized check for determining if AddOns are severely impacting UI performance.
@@ -944,8 +949,8 @@ function api.auctionHouse.calculateItemDeposit(item, duration, quantity) end
 ---@return boolean canCancelAuction
 function api.auctionHouse.canCancelAuction(ownedAuctionID) end
 
----@param ownedAuctionID number
 ---Restrictions: hasRestrictions
+---@param ownedAuctionID number
 function api.auctionHouse.cancelAuction(ownedAuctionID) end
 
 function api.auctionHouse.cancelCommoditiesPurchase() end
@@ -958,19 +963,19 @@ function api.auctionHouse.closeAuctionHouse() end
 ---@param quantity number
 function api.auctionHouse.confirmCommoditiesPurchase(itemID, quantity) end
 
+---Restrictions: hasRestrictions
 ---@param item ItemLocation
 ---@param duration integer
 ---@param quantity number
 ---@param unitPrice integer
----Restrictions: hasRestrictions
 function api.auctionHouse.confirmPostCommodity(item, duration, quantity, unitPrice) end
 
+---Restrictions: hasRestrictions
 ---@param item ItemLocation
 ---@param duration integer
 ---@param quantity number
 ---@param bid? integer
 ---@param buyout? integer
----Restrictions: hasRestrictions
 function api.auctionHouse.confirmPostItem(item, duration, quantity, bid, buyout) end
 
 ---@return boolean favoritesAreAvailable
@@ -1194,26 +1199,26 @@ function api.auctionHouse.isThrottledMessageSystemReady() end
 ---@return ItemKey itemKey
 function api.auctionHouse.makeItemKey(itemID, itemLevel, itemSuffix, battlePetSpeciesID) end
 
+---Restrictions: hasRestrictions
 ---@param auctionID number
 ---@param bidAmount integer
----Restrictions: hasRestrictions
 function api.auctionHouse.placeBid(auctionID, bidAmount) end
 
+---Restrictions: hasRestrictions
 ---@param item ItemLocation
 ---@param duration integer
 ---@param quantity number
 ---@param unitPrice integer
 ---@return boolean needsConfirmation
----Restrictions: hasRestrictions
 function api.auctionHouse.postCommodity(item, duration, quantity, unitPrice) end
 
+---Restrictions: hasRestrictions
 ---@param item ItemLocation
 ---@param duration integer
 ---@param quantity number
 ---@param bid? integer
 ---@param buyout? integer
 ---@return boolean needsConfirmation
----Restrictions: hasRestrictions
 function api.auctionHouse.postItem(item, duration, quantity, bid, buyout) end
 
 ---@param sorts AuctionHouseSortType[]
@@ -1290,9 +1295,9 @@ function api.auctionHouse.setFavoriteItem(itemKey, setFavorite) end
 ---@return boolean shouldAutoPopulatePrice
 function api.auctionHouse.shouldAutoPopulatePrice() end
 
+---Restrictions: hasRestrictions
 ---@param itemID number
 ---@param quantity number
----Restrictions: hasRestrictions
 function api.auctionHouse.startCommoditiesPurchase(itemID, quantity) end
 
 ---@return boolean supportsCopperValues
@@ -1419,9 +1424,9 @@ function api.azeriteEmpoweredItem.setHasBeenViewed(azeriteEmpoweredItemLocation)
 ---@class wow.classic.mop.api.azeriteEssence
 api.azeriteEssence = {}
 
+---Restrictions: hasRestrictions
 ---@param essenceID number
 ---@param milestoneID number
----Restrictions: hasRestrictions
 function api.azeriteEssence.activateEssence(essenceID, milestoneID) end
 
 ---@param essenceID number
@@ -1485,8 +1490,8 @@ function api.azeriteEssence.hasPendingActivationEssence() end
 ---@return boolean isAtForge
 function api.azeriteEssence.isAtForge() end
 
----@param essenceID number
 ---Restrictions: hasRestrictions
+---@param essenceID number
 function api.azeriteEssence.setPendingActivationEssence(essenceID) end
 
 ---@param milestoneID number
@@ -1712,23 +1717,23 @@ function api.battleNet.inviteFriend(gameAccountID) end
 ---@return Enum.SendAddonMessageResult result
 function api.battleNet.sendGameData(gameAccountID, prefix, data) end
 
+---Restrictions: hasRestrictions, RestrictedForMacroChatMessages
 ---@param bnetAccountID number
 ---@param text string
 ---@return boolean success
----Restrictions: hasRestrictions, RestrictedForMacroChatMessages
 function api.battleNet.sendWhisper(bnetAccountID, text) end
 
----@param isAFK? boolean
 ---Restrictions: hasRestrictions
+---@param isAFK? boolean
 function api.battleNet.setAFK(isAFK) end
 
+---Restrictions: hasRestrictions
 ---@param text string
 ---@return boolean success
----Restrictions: hasRestrictions
 function api.battleNet.setCustomMessage(text) end
 
----@param isDND? boolean
 ---Restrictions: hasRestrictions
+---@param isDND? boolean
 function api.battleNet.setDND(isDND) end
 
 ---Wraps `C_BattlePet`.
@@ -2111,9 +2116,9 @@ function api.camera.getUICameraInfo(uiCameraID) end
 ---@class wow.classic.mop.api.catalogShop
 api.catalogShop = {}
 
+---Restrictions: hasRestrictions
 ---@param productIDs number[]
 ---@return boolean canPurchaseProducts
----Restrictions: hasRestrictions
 function api.catalogShop.bulkPurchaseProducts(productIDs) end
 
 ---@param decorGUIDs string[]
@@ -2176,9 +2181,9 @@ function api.catalogShop.getProductIDsForCategory(categoryID) end
 ---@return number[] productIDs
 function api.catalogShop.getProductIDsForCategorySection(categoryID, sectionID) end
 
+---Restrictions: hasRestrictions
 ---@param productID number
 ---@return CatalogShopProductInfo? productInfo
----Restrictions: hasRestrictions
 function api.catalogShop.getProductInfo(productID) end
 
 ---@param categoryID number
@@ -2228,17 +2233,17 @@ function api.catalogShop.openCatalogShopInteractionFromHouse() end
 ---@return string shoppingSessionUUIDStr
 function api.catalogShop.openCatalogShopInteractionFromShop() end
 
+---Restrictions: hasRestrictions
 ---@param categoryId number
 ---@param sectionId number
 ---@param catalogShopProductID number
----Restrictions: hasRestrictions
 function api.catalogShop.productDisplayedTelemetry(categoryId, sectionId, catalogShopProductID) end
 
+---Restrictions: hasRestrictions
 ---@param categoryId number
 ---@param sectionId number
 ---@param catalogShopProductID number
 ---@param wasCodeSelection boolean
----Restrictions: hasRestrictions
 function api.catalogShop.productSelectedTelemetry(
     categoryId,
     sectionId,
@@ -2247,9 +2252,9 @@ function api.catalogShop.productSelectedTelemetry(
 )
 end
 
+---Restrictions: hasRestrictions
 ---@param productID number
 ---@return boolean canPurchase
----Restrictions: hasRestrictions
 function api.catalogShop.purchaseProduct(productID) end
 
 function api.catalogShop.refreshRefundableDecors() end
@@ -2464,11 +2469,11 @@ function api.chatInfo.isValidChatLine(chatLine) end
 ---@return boolean isApproved
 function api.chatInfo.isValidCombatFilterName(name) end
 
+---Restrictions: hasRestrictions
 ---@param emoteName string
 ---@param targetName? string
 ---@param suppressMoveError? boolean
 ---@return boolean success
----Restrictions: hasRestrictions
 function api.chatInfo.performEmote(emoteName, targetName, suppressMoveError) end
 
 ---Registers interest in addon messages with this prefix, cannot be an empty string.
@@ -2510,11 +2515,11 @@ function api.chatInfo.sendAddonMessageLogged(prefix, message, chatType, target) 
 ---@param confirmNumber number
 function api.chatInfo.sendCautionaryChatMessage(confirmNumber) end
 
+---Restrictions: hasRestrictions, RestrictedForMacroChatMessages
 ---@param message string
 ---@param chatType? string
 ---@param languageID? number
 ---@param target? string
----Restrictions: hasRestrictions, RestrictedForMacroChatMessages
 function api.chatInfo.sendChatMessage(message, chatType, languageID, target) end
 
 ---@param firstChannelIndex integer
@@ -2603,37 +2608,37 @@ api.clientScene = {}
 ---@class wow.classic.mop.api.club
 api.club = {}
 
----@param clubId string
 ---Restrictions: hasRestrictions, RequiresClubsInitialized
+---@param clubId string
 function api.club.acceptInvitation(clubId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
----Restrictions: RequiresClubsInitialized
 function api.club.addClubStreamChatChannel(clubId, streamId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
----Restrictions: RequiresClubsInitialized
 function api.club.advanceStreamViewMarker(clubId, streamId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@return boolean membersReady
----Restrictions: RequiresClubsInitialized
 function api.club.areMembersReady(clubId) end
 
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId string
 ---@param roleId Enum.ClubRoleIdentifier
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.assignMemberRole(clubId, memberId, roleId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param epoch integer
 ---@param position integer
 ---@return boolean canResolve
----Restrictions: RequiresClubsInitialized
 function api.club.canResolvePlayerLocationFromClubMessageData(clubId, streamId, epoch, position) end
 
 ---Restrictions: RequiresClubsInitialized
@@ -2642,37 +2647,37 @@ function api.club.clearAutoAdvanceStreamViewMarker() end
 ---Restrictions: RequiresClubsInitialized
 function api.club.clearClubPresenceSubscription() end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param lhsMemberId number
 ---@param rhsMemberId number
 ---@return number comparison
----Restrictions: RequiresClubsInitialized
 function api.club.compareBattleNetDisplayName(clubId, lhsMemberId, rhsMemberId) end
 
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param name string
 ---@param shortName? string
 ---@param description string
 ---@param clubType Enum.ClubType
 ---@param avatarId number
 ---@param isCrossFaction? boolean
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.createClub(name, shortName, description, clubType, avatarId, isCrossFaction) end
 
 ---Check the canCreateStream privilege.
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param name string
 ---@param subject string
 ---@param leadersAndModeratorsOnly boolean
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.createStream(clubId, name, subject, leadersAndModeratorsOnly) end
 
 ---Check canCreateTicket privilege.
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param allowedRedeemCount? number
 ---@param duration? number
 ---@param defaultStreamId? string
 ---@param isCrossFaction? boolean
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.createTicket(
     clubId,
     allowedRedeemCount,
@@ -2682,43 +2687,44 @@ function api.club.createTicket(
 )
 end
 
----@param clubId string
 ---Restrictions: hasRestrictions, RequiresClubsInitialized
+---@param clubId string
 function api.club.declineInvitation(clubId) end
 
 ---Check the canDestroy privilege.
----@param clubId string
 ---Restrictions: hasRestrictions, RequiresClubsInitialized
+---@param clubId string
 function api.club.destroyClub(clubId) end
 
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param messageId ClubMessageIdentifier
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.destroyMessage(clubId, streamId, messageId) end
 
 ---Check canDestroyStream privilege.
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.destroyStream(clubId, streamId) end
 
 ---Check canDestroyTicket privilege.
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param ticketId string
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.destroyTicket(clubId, ticketId) end
 
----@return boolean hasUnreadMessages
 ---Restrictions: RequiresClubsInitialized
+---@return boolean hasUnreadMessages
 function api.club.doesAnyCommunityHaveUnreadMessages() end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@return boolean hasMembersOfOppositeFaction
----Restrictions: RequiresClubsInitialized
 function api.club.doesCommunityHaveMembersOfTheOppositeFaction(clubId) end
 
 ---nil arguments will not change existing club data
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param name? string
 ---@param shortName? string
@@ -2726,7 +2732,6 @@ function api.club.doesCommunityHaveMembersOfTheOppositeFaction(clubId) end
 ---@param avatarId? number
 ---@param broadcast? string
 ---@param crossFaction? boolean
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.editClub(
     clubId,
     name,
@@ -2738,21 +2743,21 @@ function api.club.editClub(
 )
 end
 
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param messageId ClubMessageIdentifier
 ---@param message string
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.editMessage(clubId, streamId, messageId, message) end
 
 ---Check the canSetStreamName, canSetStreamSubject, canSetStreamAccess privileges. nil arguments
 ---will not change existing stream data.
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param name? string
 ---@param subject? string
 ---@param leadersAndModeratorsOnly? boolean
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.editStream(clubId, streamId, name, subject, leadersAndModeratorsOnly) end
 
 ---Restrictions: RequiresClubsInitialized
@@ -2761,85 +2766,85 @@ function api.club.flush() end
 ---Restrictions: RequiresClubsInitialized
 function api.club.focusCommunityStreams() end
 
----@param clubId string
 ---Restrictions: RequiresClubsInitialized
+---@param clubId string
 function api.club.focusMembers(clubId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@return boolean focused
----Restrictions: RequiresClubsInitialized
 function api.club.focusStream(clubId, streamId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId string
 ---@return Enum.ClubRoleIdentifier[] assignableRoles
----Restrictions: RequiresClubsInitialized
 function api.club.getAssignableRoles(clubId, memberId) end
 
 ---listen for AVATAR_LIST_UPDATED event. This can happen if we haven't downloaded the battle.net
 ---avatar list yet
+---Restrictions: RequiresClubsInitialized
 ---@param clubType Enum.ClubType
 ---@return number[]? avatarIds
----Restrictions: RequiresClubsInitialized
 function api.club.getAvatarIdList(clubType) end
 
----@return number capacity
 ---Restrictions: RequiresClubsInitialized
+---@return number capacity
 function api.club.getClubCapacity() end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubInfo? info
----Restrictions: RequiresClubsInitialized
 function api.club.getClubInfo(clubId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubType Enum.ClubType
 ---@return ClubLimits clubLimits
----Restrictions: RequiresClubsInitialized
 function api.club.getClubLimits(clubType) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId? string
 ---@return string[] members
----Restrictions: RequiresClubsInitialized
 function api.club.getClubMembers(clubId, streamId) end
 
 ---The privileges for the logged in user for this club
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubPrivilegeInfo privilegeInfo
----Restrictions: RequiresClubsInitialized
 function api.club.getClubPrivileges(clubId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubStreamNotificationSetting[] settings
----Restrictions: RequiresClubsInitialized
 function api.club.getClubStreamNotificationSettings(clubId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param result Enum.ValidateNameResult
 ---@return string? errorCode
----Restrictions: RequiresClubsInitialized
 function api.club.getCommunityNameResultText(result) end
 
----@return string? guildClubId
 ---Restrictions: RequiresClubsInitialized
+---@return string? guildClubId
 function api.club.getGuildClubId() end
 
+---Restrictions: RequiresClubsInitialized
 ---@return ClubMessageInfo? messageInfo
 ---@return string? clubId
 ---@return string? streamId
 ---@return Enum.ClubType? clubType
----Restrictions: RequiresClubsInitialized
 function api.club.getInfoFromLastCommunityChatLine() end
 
 ---Returns a list of players that you can send a request to a Battle.net club. Returns an empty
 ---list for Character based clubs
+---Restrictions: RequiresClubsInitialized
 ---@param filter? string
 ---@param maxResults? number
 ---@param cursorPosition? number
 ---@param allowFullMatch? boolean
 ---@param clubId string
 ---@return ClubInvitationCandidateInfo[] candidates
----Restrictions: RequiresClubsInitialized
 function api.club.getInvitationCandidates(
     filter,
     maxResults,
@@ -2850,282 +2855,282 @@ function api.club.getInvitationCandidates(
 end
 
 ---Get info about a specific club the active player has been invited to.
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubSelfInvitationInfo? invitation
----Restrictions: RequiresClubsInitialized
 function api.club.getInvitationInfo(clubId) end
 
 ---Get the pending invitations for this club. Call RequestInvitationsForClub() to retrieve
 ---invitations from server.
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubInvitationInfo[] invitations
----Restrictions: RequiresClubsInitialized
 function api.club.getInvitationsForClub(clubId) end
 
 ---These are the clubs the active player has been invited to.
----@return ClubSelfInvitationInfo[] invitations
 ---Restrictions: RequiresClubsInitialized
+---@return ClubSelfInvitationInfo[] invitations
 function api.club.getInvitationsForSelf() end
 
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param ticket string
 ---@return Enum.ClubErrorType? error
 ---@return ClubInfo? info
 ---@return boolean? showError
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.getLastTicketResponse(ticket) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId string
 ---@return ClubMemberInfo? info
----Restrictions: RequiresClubsInitialized
 function api.club.getMemberInfo(clubId, memberId) end
 
 ---Info for the logged in user for this club
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubMemberInfo? info
----Restrictions: RequiresClubsInitialized
 function api.club.getMemberInfoForSelf(clubId) end
 
 ---Get info about a particular message.
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param messageId ClubMessageIdentifier
 ---@return ClubMessageInfo? message
----Restrictions: RequiresClubsInitialized
 function api.club.getMessageInfo(clubId, streamId, messageId) end
 
 ---Get the ranges of the messages currently downloaded.
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@return ClubMessageRange[] ranges
----Restrictions: RequiresClubsInitialized
 function api.club.getMessageRanges(clubId, streamId) end
 
 ---Get downloaded messages before (and including) the specified messageId limited by count.
 ---These are filtered by ignored players
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param newest ClubMessageIdentifier
 ---@param count number
 ---@return ClubMessageInfo[] messages
----Restrictions: RequiresClubsInitialized
 function api.club.getMessagesBefore(clubId, streamId, newest, count) end
 
 ---Get downloaded messages in the given range. These are filtered by ignored players
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param oldest ClubMessageIdentifier
 ---@param newest ClubMessageIdentifier
 ---@return ClubMessageInfo[] messages
----Restrictions: RequiresClubsInitialized
 function api.club.getMessagesInRange(clubId, streamId, oldest, newest) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@return ClubStreamInfo? streamInfo
----Restrictions: RequiresClubsInitialized
 function api.club.getStreamInfo(clubId, streamId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@return integer? lastReadTime
----Restrictions: RequiresClubsInitialized
 function api.club.getStreamViewMarker(clubId, streamId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubStreamInfo[] streams
----Restrictions: RequiresClubsInitialized
 function api.club.getStreams(clubId) end
 
----@return ClubInfo[] clubs
 ---Restrictions: RequiresClubsInitialized
+---@return ClubInfo[] clubs
 function api.club.getSubscribedClubs() end
 
 ---Get the existing tickets for this club. Call RequestTickets() to retrieve tickets from
 ---server.
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@return ClubTicketInfo[] tickets
----Restrictions: RequiresClubsInitialized
 function api.club.getTickets(clubId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@return boolean accountMuted
----Restrictions: RequiresClubsInitialized
 function api.club.isAccountMuted(clubId) end
 
 ---Returns whether the given message is the first message in the stream, taking into account
 ---ignored messages
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param messageId ClubMessageIdentifier
 ---@return boolean isBeginningOfStream
----Restrictions: RequiresClubsInitialized
 function api.club.isBeginningOfStream(clubId, streamId, messageId) end
 
----@return boolean clubsEnabled
 ---Restrictions: RequiresClubsInitialized
+---@return boolean clubsEnabled
 function api.club.isEnabled() end
 
----@return Enum.ClubRestrictionReason restrictionReason
 ---Restrictions: RequiresClubsInitialized
+---@return Enum.ClubRestrictionReason restrictionReason
 function api.club.isRestricted() end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@return boolean subscribed
----Restrictions: RequiresClubsInitialized
 function api.club.isSubscribedToStream(clubId, streamId) end
 
 ---Check kickableRoleIds privilege.
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId string
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.kickMember(clubId, memberId) end
 
----@param clubId string
 ---Restrictions: hasRestrictions, RequiresClubsInitialized
+---@param clubId string
 function api.club.leaveClub(clubId) end
 
----@param ticketId string
 ---Restrictions: hasRestrictions, RequiresClubsInitialized
+---@param ticketId string
 function api.club.redeemTicket(ticketId) end
 
 ---Request invitations for this club from server. Check canGetInvitation privilege.
----@param clubId string
 ---Restrictions: RequiresClubsInitialized
+---@param clubId string
 function api.club.requestInvitationsForClub(clubId) end
 
 ---Call this when the user scrolls near the top of the message view, and more need to be
 ---displayed. The history will be downloaded backwards (newest to oldest).
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param messageId? ClubMessageIdentifier
 ---@param count? number
 ---@return boolean alreadyHasMessages
----Restrictions: RequiresClubsInitialized
 function api.club.requestMoreMessagesBefore(clubId, streamId, messageId, count) end
 
----@param ticketId string
 ---Restrictions: RequiresClubsInitialized
+---@param ticketId string
 function api.club.requestTicket(ticketId) end
 
 ---Request tickets from server. Check canGetTicket privilege.
----@param clubId string
 ---Restrictions: RequiresClubsInitialized
+---@param clubId string
 function api.club.requestTickets(clubId) end
 
 ---Check canRevokeOwnInvitation or canRevokeOtherInvitation
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId string
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.revokeInvitation(clubId, memberId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param guildClubId string
 ---@param memberId string
----Restrictions: RequiresClubsInitialized
 function api.club.sendBattleTagFriendRequest(guildClubId, memberId) end
 
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param character string
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.sendCharacterInvitation(clubId, character) end
 
 ---Check the canSendInvitation privilege.
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId string
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.sendInvitation(clubId, memberId) end
 
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
 ---@param message string
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.sendMessage(clubId, streamId, message) end
 
 ---Only one stream can be set for auto-advance at a time. Focused streams will have their view
 ---times advanced automatically.
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
----Restrictions: RequiresClubsInitialized
 function api.club.setAutoAdvanceStreamViewMarker(clubId, streamId) end
 
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param texture SimpleTexture
 ---@param avatarId number
 ---@param clubType Enum.ClubType
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.setAvatarTexture(texture, avatarId, clubType) end
 
 ---Check the canSetOwnMemberNote and canSetOtherMemberNote privileges.
+---Restrictions: hasRestrictions, RequiresClubsInitialized
 ---@param clubId string
 ---@param memberId string
 ---@param note string
----Restrictions: hasRestrictions, RequiresClubsInitialized
 function api.club.setClubMemberNote(clubId, memberId, note) end
 
 ---You can only be subscribed to 0 or 1 clubs for presence.  Subscribing to a new club
 ---automatically unsuscribes you to existing subscription.
----@param clubId string
 ---Restrictions: RequiresClubsInitialized
+---@param clubId string
 function api.club.setClubPresenceSubscription(clubId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param settings ClubStreamNotificationSetting[]
----Restrictions: RequiresClubsInitialized
 function api.club.setClubStreamNotificationSettings(clubId, settings) end
 
----@param communityID integer
 ---Restrictions: RequiresClubsInitialized
+---@param communityID integer
 function api.club.setCommunityID(communityID) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param isFavorite boolean
----Restrictions: RequiresClubsInitialized
 function api.club.setFavorite(clubId, isFavorite) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param enabled boolean
----Restrictions: RequiresClubsInitialized
 function api.club.setSocialQueueingEnabled(clubId, enabled) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubType Enum.ClubType
 ---@return boolean clubTypeIsAllowed
----Restrictions: RequiresClubsInitialized
 function api.club.shouldAllowClubType(clubType) end
 
----@param unsubscribe boolean
 ---Restrictions: RequiresClubsInitialized
+---@param unsubscribe boolean
 function api.club.unfocusAllStreams(unsubscribe) end
 
----@param clubId string
 ---Restrictions: RequiresClubsInitialized
+---@param clubId string
 function api.club.unfocusMembers(clubId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubId string
 ---@param streamId string
----Restrictions: RequiresClubsInitialized
 function api.club.unfocusStream(clubId, streamId) end
 
+---Restrictions: RequiresClubsInitialized
 ---@param clubType Enum.ClubType
 ---@param text string
 ---@param clubFieldType Enum.ClubFieldType
 ---@return Enum.ValidateNameResult result
----Restrictions: RequiresClubsInitialized
 function api.club.validateText(clubType, text, clubFieldType) end
 
 ---Wraps `C_ClubFinder`.
 ---@class wow.classic.mop.api.clubFinder
 api.clubFinder = {}
 
----@param clubFinderGUID string
 ---Restrictions: hasRestrictions
+---@param clubFinderGUID string
 function api.clubFinder.applicantAcceptClubInvite(clubFinderGUID) end
 
----@param clubFinderGUID string
 ---Restrictions: hasRestrictions
+---@param clubFinderGUID string
 function api.clubFinder.applicantDeclineClubInvite(clubFinderGUID) end
 
----@param clubFinderGUID string
 ---Restrictions: hasRestrictions
+---@param clubFinderGUID string
 function api.clubFinder.cancelMembershipRequest(clubFinderGUID) end
 
 function api.clubFinder.checkAllPlayerApplicantSettings() end
@@ -3231,6 +3236,7 @@ function api.clubFinder.playerReturnPendingCommunitiesList() end
 ---@return RecruitingClubInfo[] info
 function api.clubFinder.playerReturnPendingGuildsList() end
 
+---Restrictions: hasRestrictions
 ---@param clubId string
 ---@param itemLevelRequirement number
 ---@param name string
@@ -3240,7 +3246,6 @@ function api.clubFinder.playerReturnPendingGuildsList() end
 ---@param type Enum.ClubFinderRequestType
 ---@param crossFaction? boolean
 ---@return boolean succesful
----Restrictions: hasRestrictions
 function api.clubFinder.postClub(
     clubId,
     itemLevelRequirement,
@@ -3256,16 +3261,16 @@ end
 ---@param type Enum.ClubFinderRequestType
 function api.clubFinder.requestApplicantList(type) end
 
+---Restrictions: hasRestrictions
 ---@param guildListRequested boolean
 ---@param searchString string
 ---@param specIDs number[]
----Restrictions: hasRestrictions
 function api.clubFinder.requestClubsList(guildListRequested, searchString, specIDs) end
 
+---Restrictions: hasRestrictions
 ---@param clubFinderGUID string
 ---@param comment string
 ---@param specIDs number[]
----Restrictions: hasRestrictions
 function api.clubFinder.requestMembershipToClub(clubFinderGUID, comment, specIDs) end
 
 ---@param startingIndex number
@@ -3284,6 +3289,7 @@ function api.clubFinder.requestSubscribedClubPostingIDs() end
 
 function api.clubFinder.resetClubPostingMapCache() end
 
+---Restrictions: hasRestrictions
 ---@param clubFinderGUID string
 ---@param playerGUID string
 ---@param shouldAccept boolean
@@ -3291,7 +3297,6 @@ function api.clubFinder.resetClubPostingMapCache() end
 ---@param playerName string
 ---@param forceAccept boolean
 ---@param reported? boolean
----Restrictions: hasRestrictions
 function api.clubFinder.respondToApplicant(
     clubFinderGUID,
     playerGUID,
@@ -3408,9 +3413,9 @@ function api.colorUtil.wrapTextInColorCode(text, textColorCode) end
 ---@class wow.classic.mop.api.combatAudioAlert
 api.combatAudioAlert = {}
 
+---Restrictions: hasRestrictions
 ---@param unit string
 ---@return boolean added
----Restrictions: hasRestrictions
 function api.combatAudioAlert.addToKnownTargetingList(unit) end
 
 ---@param category Enum.CombatAudioAlertCategory
@@ -3440,9 +3445,9 @@ function api.combatAudioAlert.getThrottle(throttleType) end
 ---@return boolean isEnabled
 function api.combatAudioAlert.isEnabled() end
 
+---Restrictions: hasRestrictions
 ---@param unit string
 ---@return boolean removed
----Restrictions: hasRestrictions
 function api.combatAudioAlert.removeFromKnownTargetingList(unit) end
 
 ---@param category Enum.CombatAudioAlertCategory
@@ -3506,9 +3511,9 @@ function api.combatLog.getCurrentEntryInfo() end
 ---Restrictions: hasRestrictions
 function api.combatLog.getCurrentEventInfo() end
 
+---Restrictions: hasRestrictions
 ---@param ignoreFilter? boolean
 ---@return number count
----Restrictions: hasRestrictions
 function api.combatLog.getEntryCount(ignoreFilter) end
 
 ---@return number retentionTime
@@ -3520,14 +3525,14 @@ function api.combatLog.getMessageLimit() end
 ---@return boolean restricted
 function api.combatLog.isCombatLogRestricted() end
 
+---Restrictions: hasRestrictions
 ---@param ignoreFilter? boolean
 ---@return boolean isValidEntry
----Restrictions: hasRestrictions
 function api.combatLog.seekToNewestEntry(ignoreFilter) end
 
+---Restrictions: hasRestrictions
 ---@param ignoreFilter? boolean
 ---@return boolean isValidEntry
----Restrictions: hasRestrictions
 function api.combatLog.seekToPreviousEntry(ignoreFilter) end
 
 ---@param retentionTime number
@@ -3539,8 +3544,8 @@ function api.combatLog.setFilteredEventsEnabled(enabled) end
 ---@param messageLimit number
 function api.combatLog.setMessageLimit(messageLimit) end
 
----@return boolean shouldShow
 ---Restrictions: hasRestrictions
+---@return boolean shouldShow
 function api.combatLog.shouldShowCurrentEntry() end
 
 ---Wraps `C_CombatLogInternal`.
@@ -3559,12 +3564,12 @@ function api.combatLogSecure.addEventFilter() end
 ---Restrictions: hasRestrictions
 function api.combatLogSecure.clearEventFilters() end
 
+---Restrictions: hasRestrictions
 ---@param message string
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param order Enum.CombatLogMessageOrder
----Restrictions: hasRestrictions
 function api.combatLogSecure.createCombatLogMessage(message, colorR, colorG, colorB, order) end
 
 ---Restrictions: hasRestrictions
@@ -3573,23 +3578,23 @@ function api.combatLogSecure.getCurrentEntryInfo() end
 ---Restrictions: hasRestrictions
 function api.combatLogSecure.getCurrentEventInfo() end
 
+---Restrictions: hasRestrictions
 ---@param ignoreFilter? boolean
 ---@return number count
----Restrictions: hasRestrictions
 function api.combatLogSecure.getEntryCount(ignoreFilter) end
 
+---Restrictions: hasRestrictions
 ---@param ignoreFilter? boolean
 ---@return boolean isValidEntry
----Restrictions: hasRestrictions
 function api.combatLogSecure.seekToNewestEntry(ignoreFilter) end
 
+---Restrictions: hasRestrictions
 ---@param ignoreFilter? boolean
 ---@return boolean isValidEntry
----Restrictions: hasRestrictions
 function api.combatLogSecure.seekToPreviousEntry(ignoreFilter) end
 
----@return boolean shouldShow
 ---Restrictions: hasRestrictions
+---@return boolean shouldShow
 function api.combatLogSecure.shouldShowCurrentEntry() end
 
 ---Wraps `C_CombatText`.
@@ -3601,8 +3606,8 @@ function api.combatText.getActiveUnit() end
 
 function api.combatText.getCurrentEventInfo() end
 
----@param unitToken string
 ---Restrictions: RequiresDeclassifiedUnitIdentity
+---@param unitToken string
 function api.combatText.setActiveUnit(unitToken) end
 
 ---Wraps `C_Commentator`.
@@ -3613,12 +3618,12 @@ api.commentator = {}
 ---@param overrideName string
 function api.commentator.addPlayerOverrideName(playerName, overrideName) end
 
----@param spellIDs number[]
 ---Restrictions: RequiresActiveCommentator
+---@param spellIDs number[]
 function api.commentator.addTrackedDefensiveAuras(spellIDs) end
 
----@param spellIDs number[]
 ---Restrictions: RequiresActiveCommentator
+---@param spellIDs number[]
 function api.commentator.addTrackedOffensiveAuras(spellIDs) end
 
 ---@return boolean teamsAreSwapped
@@ -3645,8 +3650,8 @@ function api.commentator.clearCameraTarget() end
 ---Restrictions: RequiresActiveCommentator
 function api.commentator.clearFollowTarget() end
 
----@param lookAtIndex? integer
 ---Restrictions: RequiresActiveCommentator
+---@param lookAtIndex? integer
 function api.commentator.clearLookAtTarget(lookAtIndex) end
 
 ---Restrictions: RequiresCommentator
@@ -3655,11 +3660,11 @@ function api.commentator.enterInstance() end
 ---Restrictions: RequiresCommentator
 function api.commentator.exitInstance() end
 
+---Restrictions: RequiresActiveCommentator
 ---@param unitToken string
 ---@return integer? playerIndex
 ---@return integer? teamIndex
 ---@return boolean? isPet
----Restrictions: RequiresActiveCommentator
 function api.commentator.findSpectatedUnit(unitToken) end
 
 ---@param teamIndex integer
@@ -3672,33 +3677,34 @@ function api.commentator.findTeamNameInDirectory(playerNames) end
 
 function api.commentator.flushCommentatorHistory() end
 
+---Restrictions: RequiresActiveCommentator
 ---@param factionIndex integer
 ---@param playerIndex integer
 ---@param forceInstantTransition? boolean
----Restrictions: RequiresActiveCommentator
 function api.commentator.followPlayer(factionIndex, playerIndex, forceInstantTransition) end
 
----@param token string
 ---Restrictions: RequiresActiveCommentator
+---@param token string
 function api.commentator.followUnit(token) end
 
 ---Restrictions: RequiresActiveCommentator
 function api.commentator.forceFollowTransition() end
 
+---Restrictions: RequiresActiveCommentator
 ---@return integer teamIndex
 ---@return integer playerIndex
----Restrictions: RequiresActiveCommentator
 function api.commentator.getAdditionalCameraWeight() end
 
+---Restrictions: RequiresActiveCommentator
 ---@param unitToken string
 ---@return number? weight
----Restrictions: RequiresActiveCommentator
 function api.commentator.getAdditionalCameraWeightByToken(unitToken) end
 
----@return NameOverrideEntry[] nameEntries
 ---Restrictions: RequiresActiveCommentator
+---@return NameOverrideEntry[] nameEntries
 function api.commentator.getAllPlayerOverrideNames() end
 
+---Restrictions: RequiresActiveCommentator
 ---@return number? xPos
 ---@return number? yPos
 ---@return number? zPos
@@ -3706,16 +3712,15 @@ function api.commentator.getAllPlayerOverrideNames() end
 ---@return number? pitch
 ---@return number? roll
 ---@return number? fov
----Restrictions: RequiresActiveCommentator
 function api.commentator.getCamera() end
 
 ---@return boolean isColliding
 function api.commentator.getCameraCollision() end
 
+---Restrictions: RequiresActiveCommentator
 ---@return number? xPos
 ---@return number? yPos
 ---@return number? zPos
----Restrictions: RequiresActiveCommentator
 function api.commentator.getCameraPosition() end
 
 ---Restrictions: RequiresActiveCommentator
@@ -3724,8 +3729,8 @@ function api.commentator.getCombatEventInfo() end
 ---@return CommentatorHistory history
 function api.commentator.getCommentatorHistory() end
 
----@return number? mapID
 ---Restrictions: RequiresCommentator
+---@return number? mapID
 function api.commentator.getCurrentMapID() end
 
 ---@return number percentage
@@ -3746,11 +3751,12 @@ function api.commentator.getHardlockWeight() end
 ---@return number angle
 function api.commentator.getHorizontalAngleThresholdToSmooth() end
 
+---Restrictions: RequiresActiveCommentator
 ---@param trackedSpellID number
 ---@return number indirectSpellID
----Restrictions: RequiresActiveCommentator
 function api.commentator.getIndirectSpellID(trackedSpellID) end
 
+---Restrictions: RequiresCommentator
 ---@param mapIndex integer
 ---@param instanceIndex integer
 ---@return number? mapID
@@ -3758,18 +3764,17 @@ function api.commentator.getIndirectSpellID(trackedSpellID) end
 ---@return number? status
 ---@return number? instanceIDLow
 ---@return number? instanceIDHigh
----Restrictions: RequiresCommentator
 function api.commentator.getInstanceInfo(mapIndex, instanceIndex) end
 
 ---@return number amount
 function api.commentator.getLookAtLerpAmount() end
 
+---Restrictions: RequiresCommentator
 ---@param mapIndex integer
 ---@return number? teamSize
 ---@return number? minLevel
 ---@return number? maxLevel
 ---@return number? numInstances
----Restrictions: RequiresCommentator
 function api.commentator.getMapInfo(mapIndex) end
 
 ---@return integer seconds
@@ -3799,9 +3804,9 @@ function api.commentator.getMsToSmoothVerticalChange() end
 ---@return number numMaps
 function api.commentator.getNumMaps() end
 
+---Restrictions: RequiresActiveCommentator
 ---@param factionIndex integer
 ---@return number? numPlayers
----Restrictions: RequiresActiveCommentator
 function api.commentator.getNumPlayers(factionIndex) end
 
 ---@param teamName1 string
@@ -3809,76 +3814,77 @@ function api.commentator.getNumPlayers(factionIndex) end
 ---@return CommentatorSeries data
 function api.commentator.getOrCreateSeries(teamName1, teamName2) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param spellID number
 ---@return number? startTime
 ---@return number? duration
 ---@return boolean? enable
----Restrictions: RequiresActiveCommentator
 function api.commentator.getPlayerAuraInfo(teamIndex, playerIndex, spellID) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param token string
 ---@param spellID number
 ---@return number? startTime
 ---@return number? duration
 ---@return boolean? enable
----Restrictions: RequiresActiveCommentator
 function api.commentator.getPlayerAuraInfoByUnit(token, spellID) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param spellID number
 ---@return number? startTime
 ---@return number? duration
 ---@return boolean? enable
----Restrictions: RequiresActiveCommentator
 function api.commentator.getPlayerCooldownInfo(teamIndex, playerIndex, spellID) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param unitToken string
 ---@param spellID number
 ---@return number? startTime
 ---@return number? duration
 ---@return boolean? enable
----Restrictions: RequiresActiveCommentator
 function api.commentator.getPlayerCooldownInfoByUnit(unitToken, spellID) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@return number? spellID
 ---@return number? expiration
 ---@return number? duration
----Restrictions: RequiresActiveCommentator
 function api.commentator.getPlayerCrowdControlInfo(teamIndex, playerIndex) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param token string
 ---@return number? spellID
 ---@return number? expiration
 ---@return number? duration
----Restrictions: RequiresActiveCommentator
 function api.commentator.getPlayerCrowdControlInfoByUnit(token) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@return CommentatorPlayerData? info
----Restrictions: RequiresActiveCommentator
 function api.commentator.getPlayerData(teamIndex, playerIndex) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@return boolean hasFlag
----Restrictions: RequiresActiveCommentator
 function api.commentator.getPlayerFlagInfo(teamIndex, playerIndex) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param unitToken string
 ---@return boolean hasFlag
----Restrictions: RequiresActiveCommentator
 function api.commentator.getPlayerFlagInfoByUnit(unitToken) end
 
 ---@param originalName string
 ---@return string? overrideName
 function api.commentator.getPlayerOverrideName(originalName) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param spellID number
@@ -3886,23 +3892,22 @@ function api.commentator.getPlayerOverrideName(originalName) end
 ---@return number? maxCharges
 ---@return number? startTime
 ---@return number? duration
----Restrictions: RequiresActiveCommentator
 function api.commentator.getPlayerSpellCharges(teamIndex, playerIndex, spellID) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param unitToken string
 ---@param spellID number
 ---@return number? charges
 ---@return number? maxCharges
 ---@return number? startTime
 ---@return number? duration
----Restrictions: RequiresActiveCommentator
 function api.commentator.getPlayerSpellChargesByUnit(unitToken, spellID) end
 
 ---@return number amount
 function api.commentator.getPositionLerpAmount() end
 
----@return boolean enabled
 ---Restrictions: RequiresActiveCommentator
+---@return boolean enabled
 function api.commentator.getSmoothFollowTransitioning() end
 
 ---@return number weight
@@ -3926,41 +3931,41 @@ function api.commentator.getTeamColorByUnit(unitToken) end
 ---@return number? timeLeft
 function api.commentator.getTimeLeftInMatch() end
 
+---Restrictions: RequiresActiveCommentator
 ---@param indirectSpellID number
 ---@return number trackedSpellID
----Restrictions: RequiresActiveCommentator
 function api.commentator.getTrackedSpellID(indirectSpellID) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param category Enum.TrackedSpellCategory
 ---@return number[]? spells
----Restrictions: RequiresActiveCommentator
 function api.commentator.getTrackedSpells(teamIndex, playerIndex, category) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param unitToken string
 ---@param category Enum.TrackedSpellCategory
 ---@return number[]? spells
----Restrictions: RequiresActiveCommentator
 function api.commentator.getTrackedSpellsByUnit(unitToken, category) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param unitToken string
 ---@return CommentatorUnitData data
----Restrictions: RequiresActiveCommentator
 function api.commentator.getUnitData(unitToken) end
 
+---Restrictions: RequiresCommentator
 ---@param listID number
 ---@return string? name
 ---@return number? minPlayers
 ---@return number? maxPlayers
 ---@return boolean? isArena
----Restrictions: RequiresCommentator
 function api.commentator.getWargameInfo(listID) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param token string
 ---@return boolean hasOffensiveAura
 ---@return boolean hasDefensiveAura
----Restrictions: RequiresActiveCommentator
 function api.commentator.hasTrackedAuras(token) end
 
 ---@return boolean isSmartCameraLocked
@@ -3969,38 +3974,38 @@ function api.commentator.isSmartCameraLocked() end
 ---@return boolean isSpectating
 function api.commentator.isSpectating() end
 
+---Restrictions: RequiresActiveCommentator
 ---@param spellID number
 ---@return boolean isDefensiveTrigger
----Restrictions: RequiresActiveCommentator
 function api.commentator.isTrackedDefensiveAura(spellID) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param spellID number
 ---@return boolean isOffensiveTrigger
----Restrictions: RequiresActiveCommentator
 function api.commentator.isTrackedOffensiveAura(spellID) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param spellID number
 ---@param category Enum.TrackedSpellCategory
 ---@return boolean isTracked
----Restrictions: RequiresActiveCommentator
 function api.commentator.isTrackedSpell(teamIndex, playerIndex, spellID, category) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param unitToken string
 ---@param spellID number
 ---@param category Enum.TrackedSpellCategory
 ---@return boolean isTracked
----Restrictions: RequiresActiveCommentator
 function api.commentator.isTrackedSpellByUnit(unitToken, spellID, category) end
 
 ---@return boolean isUsingSmartCamera
 function api.commentator.isUsingSmartCamera() end
 
+---Restrictions: RequiresActiveCommentator
 ---@param factionIndex integer
 ---@param playerIndex integer
 ---@param lookAtIndex? integer
----Restrictions: RequiresActiveCommentator
 function api.commentator.lookAtPlayer(factionIndex, playerIndex, lookAtIndex) end
 
 function api.commentator.removeAllOverrideNames() end
@@ -4008,9 +4013,9 @@ function api.commentator.removeAllOverrideNames() end
 ---@param originalPlayerName string
 function api.commentator.removePlayerOverrideName(originalPlayerName) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
----Restrictions: RequiresActiveCommentator
 function api.commentator.requestPlayerCooldownInfo(teamIndex, playerIndex) end
 
 function api.commentator.resetFoVTarget() end
@@ -4024,15 +4029,15 @@ function api.commentator.resetSettings() end
 ---Restrictions: RequiresActiveCommentator
 function api.commentator.resetTrackedAuras() end
 
+---Restrictions: RequiresActiveCommentator
 ---@param teamIndex integer
 ---@param playerIndex integer
 ---@param weight number
----Restrictions: RequiresActiveCommentator
 function api.commentator.setAdditionalCameraWeight(teamIndex, playerIndex, weight) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param unitToken string
 ---@param weight number
----Restrictions: RequiresActiveCommentator
 function api.commentator.setAdditionalCameraWeightByToken(unitToken, weight) end
 
 ---@param spellIDs number[]
@@ -4042,6 +4047,7 @@ function api.commentator.setBlocklistedAuras(spellIDs) end
 ---@param spellIDs number[]
 function api.commentator.setBlocklistedCooldowns(classID, spellIDs) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param xPos number
 ---@param yPos number
 ---@param zPos number
@@ -4049,18 +4055,17 @@ function api.commentator.setBlocklistedCooldowns(classID, spellIDs) end
 ---@param pitch number
 ---@param roll number
 ---@param fov number
----Restrictions: RequiresActiveCommentator
 function api.commentator.setCamera(xPos, yPos, zPos, yaw, pitch, roll, fov) end
 
----@param collide boolean
 ---Restrictions: RequiresActiveCommentator
+---@param collide boolean
 function api.commentator.setCameraCollision(collide) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param xPos number
 ---@param yPos number
 ---@param zPos number
 ---@param snapToLocation boolean
----Restrictions: RequiresActiveCommentator
 function api.commentator.setCameraPosition(xPos, yPos, zPos, snapToLocation) end
 
 ---@param enableCheats boolean
@@ -4078,9 +4083,9 @@ function api.commentator.setDurationToForceHorizontalConvergence(ms) end
 ---@param excludeDistance number
 function api.commentator.setExcludeDistance(excludeDistance) end
 
+---Restrictions: RequiresActiveCommentator
 ---@param elasticSpeed number
 ---@param minSpeed number
----Restrictions: RequiresActiveCommentator
 function api.commentator.setFollowCameraSpeeds(elasticSpeed, minSpeed) end
 
 ---@param weight number
@@ -4092,9 +4097,9 @@ function api.commentator.setHorizontalAngleThresholdToSmooth(angle) end
 ---@param amount number
 function api.commentator.setLookAtLerpAmount(amount) end
 
+---Restrictions: RequiresCommentator
 ---@param mapIndex integer
 ---@param instanceIndex integer
----Restrictions: RequiresCommentator
 function api.commentator.setMapAndInstanceIndex(mapIndex, instanceIndex) end
 
 ---@param disabled boolean
@@ -4145,8 +4150,8 @@ function api.commentator.setSeriesScores(teamName1, teamName2, score1, score2) e
 ---@param locked boolean
 function api.commentator.setSmartCameraLocked(locked) end
 
----@param enabled boolean
 ---Restrictions: RequiresActiveCommentator
+---@param enabled boolean
 function api.commentator.setSmoothFollowTransitioning(enabled) end
 
 ---@param weight number
@@ -4155,8 +4160,8 @@ function api.commentator.setSoftlockWeight(weight) end
 ---@param factor number
 function api.commentator.setSpeedFactor(factor) end
 
----@param offset number
 ---Restrictions: RequiresActiveCommentator
+---@param offset number
 function api.commentator.setTargetHeightOffset(offset) end
 
 ---@param useSmartCamera boolean
@@ -4165,12 +4170,12 @@ function api.commentator.setUseSmartCamera(useSmartCamera) end
 ---Restrictions: RequiresActiveCommentator
 function api.commentator.snapCameraLookAtPoint() end
 
+---Restrictions: RequiresCommentator
 ---@param listID number
 ---@param teamSize number
 ---@param tournamentRules boolean
 ---@param teamOneCaptain string
 ---@param teamTwoCaptain string
----Restrictions: RequiresCommentator
 function api.commentator.startWargame(
     listID,
     teamSize,
@@ -4184,8 +4189,8 @@ function api.commentator.swapTeamSides() end
 
 function api.commentator.toggleCheats() end
 
----@param targetPlayer? string
 ---Restrictions: RequiresCommentator
+---@param targetPlayer? string
 function api.commentator.updateMapInfo(targetPlayer) end
 
 ---Restrictions: RequiresCommentator
@@ -4661,9 +4666,9 @@ function api.cvar.getCVarBitfield(name, index) end
 ---@return boolean? value
 function api.cvar.getCVarBool(name) end
 
+---Restrictions: IsValidAndPublic
 ---@param name string
 ---@return string? defaultValue
----Restrictions: IsValidAndPublic
 function api.cvar.getCVarDefault(name) end
 
 ---@param name string
@@ -4682,19 +4687,19 @@ function api.cvar.registerCVar(name, value) end
 
 function api.cvar.resetTestCVars() end
 
+---Restrictions: IsNotReadOnly, IsNotSecure, IsValidAndPublic
 ---@param name string
 ---@param value? string
 ---@param scriptCVar? string
 ---@return boolean success
----Restrictions: IsNotReadOnly, IsNotSecure, IsValidAndPublic
 function api.cvar.setCVar(name, value, scriptCVar) end
 
+---Restrictions: IsIndexInRange, IsNotReadOnly, IsNotSecure, IsValidAndPublic
 ---@param name string
 ---@param index integer
 ---@param value boolean
 ---@param scriptCVar? string
 ---@return boolean success
----Restrictions: IsIndexInRange, IsNotReadOnly, IsNotSecure, IsValidAndPublic
 function api.cvar.setCVarBitfield(name, index, value, scriptCVar) end
 
 ---Wraps `C_DamageMeter`.
@@ -5129,8 +5134,8 @@ function api.encounterJournal.resetSlotFilter() end
 ---@param filterSlot Enum.ItemSlotFilterType
 function api.encounterJournal.setSlotFilter(filterSlot) end
 
----@param tabIdx number
 ---Restrictions: hasRestrictions
+---@param tabIdx number
 function api.encounterJournal.setTab(tabIdx) end
 
 ---Wraps `C_EncounterTimeline`.
@@ -5153,13 +5158,13 @@ function api.encounterTimeline.cancelAllScriptEvents() end
 function api.encounterTimeline.cancelEditModeEvents() end
 
 ---Cancels a custom timeline event, removing it from the timeline.
----@param eventID integer
 ---Restrictions: RequiresValidTimelineEvent
+---@param eventID integer
 function api.encounterTimeline.cancelScriptEvent(eventID) end
 
 ---Finishes a custom timeline event, removing it from the timeline.
----@param eventID integer
 ---Restrictions: RequiresValidTimelineEvent
+---@param eventID integer
 function api.encounterTimeline.finishScriptEvent(eventID) end
 
 ---Returns the current timestamp used for rendering the timeline display.
@@ -5167,10 +5172,10 @@ function api.encounterTimeline.finishScriptEvent(eventID) end
 function api.encounterTimeline.getCurrentTime() end
 
 ---Returns the current color used to render timeline event.
+---Restrictions: RequiresValidTimelineEvent
 ---@param eventID integer
 ---@param overrideTrigger? Enum.EncounterEventColorTrigger
 ---@return colorRGBA color
----Restrictions: RequiresValidTimelineEvent
 function api.encounterTimeline.getEventColor(eventID, overrideTrigger) end
 
 ---Returns the number of present events in the timeline by their source type.
@@ -5184,9 +5189,9 @@ function api.encounterTimeline.getEventHighlightTime() end
 
 ---Returns information about a timeline event. This data is generally expected to be static for
 ---the lifetime of an event.
+---Restrictions: RequiresValidTimelineEvent
 ---@param eventID integer
 ---@return EncounterTimelineEventInfo info
----Restrictions: RequiresValidTimelineEvent
 function api.encounterTimeline.getEventInfo(eventID) end
 
 ---Returns an unsorted list of event IDs present in the timeline.
@@ -5194,21 +5199,21 @@ function api.encounterTimeline.getEventInfo(eventID) end
 function api.encounterTimeline.getEventList() end
 
 ---Returns the current state of a timeline event.
+---Restrictions: RequiresValidTimelineEvent
 ---@param eventID integer
 ---@return Enum.EncounterTimelineEventState state
----Restrictions: RequiresValidTimelineEvent
 function api.encounterTimeline.getEventState(eventID) end
 
 ---Returns the elapsed duration of a timeline event.
+---Restrictions: RequiresValidTimelineEvent
 ---@param eventID integer
 ---@return number timeElapsed
----Restrictions: RequiresValidTimelineEvent
 function api.encounterTimeline.getEventTimeElapsed(eventID) end
 
 ---Returns the remaining duration of a timeline event.
+---Restrictions: RequiresValidTimelineEvent
 ---@param eventID integer
 ---@return number timeRemaining
----Restrictions: RequiresValidTimelineEvent
 function api.encounterTimeline.getEventTimeRemaining(eventID) end
 
 ---Returns a Duration object that tracks the elapsed duration of a timeline event. This object
@@ -5219,10 +5224,10 @@ function api.encounterTimeline.getEventTimeRemaining(eventID) end
 function api.encounterTimeline.getEventTimer(eventID) end
 
 ---Returns information about the position of an event on the timeline.
+---Restrictions: RequiresValidTimelineEvent
 ---@param eventID integer
 ---@return Enum.EncounterTimelineTrack track
 ---@return integer? trackSortIndex
----Restrictions: RequiresValidTimelineEvent
 function api.encounterTimeline.getEventTrack(eventID) end
 
 ---Returns a sorted list of event IDs present in the timeline from shortest to longest remaining
@@ -5281,9 +5286,9 @@ function api.encounterTimeline.hasVisibleEvents() end
 
 ---Returns true if the event is in a 'blocked' state, where the cast for this event may not
 ---occur due to encounter conditions not being met.
+---Restrictions: RequiresValidTimelineEvent
 ---@param eventID integer
 ---@return boolean blocked
----Restrictions: RequiresValidTimelineEvent
 function api.encounterTimeline.isEventBlocked(eventID) end
 
 ---Returns true if the encounter timeline feature is available on this client.
@@ -5297,21 +5302,21 @@ function api.encounterTimeline.isFeatureEnabled() end
 
 ---Pauses a custom timeline event, hiding it from the timeline. A paused event can later be
 ---resumed to show it again, or canceled.
----@param eventID integer
 ---Restrictions: RequiresValidTimelineEvent
+---@param eventID integer
 function api.encounterTimeline.pauseScriptEvent(eventID) end
 
 ---Resumes a custom timeline event, showing it on the timeline again if it is currently paused.
----@param eventID integer
 ---Restrictions: RequiresValidTimelineEvent
+---@param eventID integer
 function api.encounterTimeline.resumeScriptEvent(eventID) end
 
 ---Updates a given vector of texture objects to reference art assets for icons associated with
 ---an event.
+---Restrictions: RequiresValidTimelineEvent
 ---@param eventID integer
 ---@param includeIcons Enum.EncounterEventIconmask
 ---@param textures SimpleTexture[]
----Restrictions: RequiresValidTimelineEvent
 function api.encounterTimeline.setEventIconTextures(eventID, includeIcons, textures) end
 
 ---Changes the view type for the timeline. This adjusts track layouts to be more appropriate for
@@ -5729,9 +5734,9 @@ function api.frameScript.canaccessvalue(value) end
 ---@return any object
 function api.frameScript.createFromMixins(mixins) end
 
+---Restrictions: hasRestrictions
 ---@param luaFunction any
 ---@return any secureDelegateFunction
----Restrictions: hasRestrictions
 function api.frameScript.createSecureDelegate(luaFunction) end
 
 ---@param popupStyle? boolean
@@ -5827,9 +5832,9 @@ function api.frameScript.scrub(values) end
 function api.frameScript.scrubsecretvalues(values) end
 
 ---Unwraps all supplied secrets, converting them back to regular values.
+---Restrictions: hasRestrictions
 ---@param values any
 ---@return any unwrapped
----Restrictions: hasRestrictions
 function api.frameScript.secretunwrap(values) end
 
 ---Converts all supplied values to secret values, preventing most operations on them from
@@ -5849,9 +5854,9 @@ function api.frameScript.securecallmethod(object, method, arguments) end
 ---@param height? number
 function api.frameScript.setErrorCallstackHeight(height) end
 
+---Restrictions: hasRestrictions
 ---@param table any
 ---@param option Enum.TableSecurityOption
----Restrictions: hasRestrictions
 function api.frameScript.setTableSecurityOption(table, option) end
 
 ---@param eventName string
@@ -5867,141 +5872,141 @@ function api.frameScript.unregisterUnitEventCallback(eventName, callback, unit) 
 ---@class wow.classic.mop.api.friendList
 api.friendList = {}
 
+---Restrictions: hasRestrictions, RequiresFriendList
 ---@param name string
 ---@param notes? string
----Restrictions: hasRestrictions, RequiresFriendList
 function api.friendList.addFriend(name, notes) end
 
+---Restrictions: RequiresFriendList
 ---@param name string
 ---@return boolean added
----Restrictions: RequiresFriendList
 function api.friendList.addIgnore(name) end
 
----@param name string
 ---Restrictions: RequiresFriendList
+---@param name string
 function api.friendList.addOrDelIgnore(name) end
 
+---Restrictions: hasRestrictions, RequiresFriendList
 ---@param name string
 ---@param notes string
----Restrictions: hasRestrictions, RequiresFriendList
 function api.friendList.addOrRemoveFriend(name, notes) end
 
+---Restrictions: RequiresFriendList
 ---@param name string
 ---@return boolean removed
----Restrictions: RequiresFriendList
 function api.friendList.delIgnore(name) end
 
----@param index integer
 ---Restrictions: RequiresFriendList
+---@param index integer
 function api.friendList.delIgnoreByIndex(index) end
 
+---Restrictions: RequiresFriendList
 ---@param name string
 ---@return FriendInfo? info
----Restrictions: RequiresFriendList
 function api.friendList.getFriendInfo(name) end
 
+---Restrictions: RequiresFriendList
 ---@param index integer
 ---@return FriendInfo? info
----Restrictions: RequiresFriendList
 function api.friendList.getFriendInfoByIndex(index) end
 
+---Restrictions: RequiresFriendList
 ---@param index integer
 ---@return string? name
----Restrictions: RequiresFriendList
 function api.friendList.getIgnoreName(index) end
 
----@return number numFriends
 ---Restrictions: RequiresFriendList
+---@return number numFriends
 function api.friendList.getNumFriends() end
 
----@return number numIgnores
 ---Restrictions: RequiresFriendList
+---@return number numIgnores
 function api.friendList.getNumIgnores() end
 
----@return number numOnline
 ---Restrictions: RequiresFriendList
+---@return number numOnline
 function api.friendList.getNumOnlineFriends() end
 
+---Restrictions: RequiresFriendList
 ---@return number numWhos
 ---@return number totalNumWhos
----Restrictions: RequiresFriendList
 function api.friendList.getNumWhoResults() end
 
----@return integer? index
 ---Restrictions: RequiresFriendList
+---@return integer? index
 function api.friendList.getSelectedFriend() end
 
----@return integer? index
 ---Restrictions: RequiresFriendList
+---@return integer? index
 function api.friendList.getSelectedIgnore() end
 
+---Restrictions: RequiresFriendList
 ---@param index integer
 ---@return WhoInfo? info
----Restrictions: RequiresFriendList
 function api.friendList.getWhoInfo(index) end
 
+---Restrictions: RequiresFriendList
 ---@param guid string
 ---@return boolean isFriend
----Restrictions: RequiresFriendList
 function api.friendList.isFriend(guid) end
 
+---Restrictions: RequiresFriendList
 ---@param token string
 ---@return boolean isIgnored
----Restrictions: RequiresFriendList
 function api.friendList.isIgnored(token) end
 
+---Restrictions: RequiresFriendList
 ---@param guid string
 ---@return boolean isIgnored
----Restrictions: RequiresFriendList
 function api.friendList.isIgnoredByGuid(guid) end
 
+---Restrictions: RequiresFriendList
 ---@param token string
 ---@return boolean isIgnored
----Restrictions: RequiresFriendList
 function api.friendList.isOnIgnoredList(token) end
 
+---Restrictions: RequiresFriendList
 ---@param name string
 ---@return boolean removed
----Restrictions: RequiresFriendList
 function api.friendList.removeFriend(name) end
 
----@param index integer
 ---Restrictions: RequiresFriendList
+---@param index integer
 function api.friendList.removeFriendByIndex(index) end
 
+---Restrictions: hasRestrictions, RequiresFriendList
 ---@param filter string
 ---@param origin? number
----Restrictions: hasRestrictions, RequiresFriendList
 function api.friendList.sendWho(filter, origin) end
 
+---Restrictions: RequiresFriendList
 ---@param name string
 ---@param notes string
 ---@return boolean found
----Restrictions: RequiresFriendList
 function api.friendList.setFriendNotes(name, notes) end
 
+---Restrictions: RequiresFriendList
 ---@param index integer
 ---@param notes string
----Restrictions: RequiresFriendList
 function api.friendList.setFriendNotesByIndex(index, notes) end
 
----@param index integer
 ---Restrictions: RequiresFriendList
+---@param index integer
 function api.friendList.setSelectedFriend(index) end
 
----@param index integer
 ---Restrictions: RequiresFriendList
+---@param index integer
 function api.friendList.setSelectedIgnore(index) end
 
----@param whoToUi boolean
 ---Restrictions: RequiresFriendList
+---@param whoToUi boolean
 function api.friendList.setWhoToUi(whoToUi) end
 
 ---Restrictions: RequiresFriendList
 function api.friendList.showFriends() end
 
----@param sorting string
 ---Restrictions: RequiresFriendList
+---@param sorting string
 function api.friendList.sortWho(sorting) end
 
 ---Wraps the global functions of the `GameCursor` system.
@@ -6036,8 +6041,8 @@ function api.gameCursor.getCursorInfo() end
 ---@return number amount
 function api.gameCursor.getCursorMoney() end
 
----@param amount integer
 ---Restrictions: hasRestrictions
+---@param amount integer
 function api.gameCursor.pickupPlayerMoney(amount) end
 
 function api.gameCursor.resetCursor() end
@@ -6068,10 +6073,10 @@ function api.gameError.notWhileDeadError() end
 ---@class wow.classic.mop.api.gamePad
 api.gamePad = {}
 
+---Restrictions: hasRestrictions
 ---@param platform Enum.ClientPlatformType
 ---@param mapping string
 ---@return boolean success
----Restrictions: hasRestrictions
 function api.gamePad.addSDLMapping(platform, mapping) end
 
 ---Restrictions: hasRestrictions
@@ -6095,8 +6100,8 @@ function api.gamePad.buttonIndexToConfigName(buttonIndex) end
 
 function api.gamePad.clearLedColor() end
 
----@param configID GamePadConfigID
 ---Restrictions: hasRestrictions
+---@param configID GamePadConfigID
 function api.gamePad.deleteConfig(configID) end
 
 ---@return number deviceID
@@ -6133,8 +6138,8 @@ function api.gamePad.getPowerLevel(deviceID) end
 ---@return boolean enabled
 function api.gamePad.isEnabled() end
 
----@param config GamePadConfig
 ---Restrictions: hasRestrictions
+---@param config GamePadConfig
 function api.gamePad.setConfig(config) end
 
 ---@param color colorRGB
@@ -6396,12 +6401,12 @@ function api.guildInfo.getGuildRankOrder(guid) end
 ---@return GuildTabardInfo? tabardInfo
 function api.guildInfo.getGuildTabardInfo(unit) end
 
----@return string infoText
 ---Restrictions: hasRestrictions
+---@return string infoText
 function api.guildInfo.getInfoText() end
 
----@return string motd
 ---Restrictions: hasRestrictions
+---@return string motd
 function api.guildInfo.getMOTD() end
 
 ---@param rankOrder integer
@@ -6446,12 +6451,12 @@ function api.guildInfo.queryGuildMemberRecipes(guildMemberGUID, skillLineID) end
 ---@return number? updatedRecipeSpellID
 function api.guildInfo.queryGuildMembersForRecipe(skillLineID, recipeSpellID, recipeLevel) end
 
----@param guid string
 ---Restrictions: hasRestrictions
+---@param guid string
 function api.guildInfo.removeFromGuild(guid) end
 
----@param desiredName string
 ---Restrictions: hasRestrictions
+---@param desiredName string
 function api.guildInfo.requestGuildRename(desiredName) end
 
 ---Restrictions: hasRestrictions
@@ -6463,26 +6468,26 @@ function api.guildInfo.requestRenameNameCheck(desiredName) end
 ---@return boolean ableToRequest
 function api.guildInfo.requestRenameStatus() end
 
+---Restrictions: hasRestrictions
 ---@param guid string
 ---@param rankOrder integer
----Restrictions: hasRestrictions
 function api.guildInfo.setGuildRankOrder(guid, rankOrder) end
 
----@param infoText string
 ---Restrictions: hasRestrictions
+---@param infoText string
 function api.guildInfo.setInfoText(infoText) end
 
 ---@param name string
 function api.guildInfo.setLeader(name) end
 
----@param motd string
 ---Restrictions: hasRestrictions
+---@param motd string
 function api.guildInfo.setMOTD(motd) end
 
+---Restrictions: hasRestrictions
 ---@param guid string
 ---@param note string
 ---@param isPublic boolean
----Restrictions: hasRestrictions
 function api.guildInfo.setNote(guid, note, isPublic) end
 
 ---@param name string
@@ -6777,10 +6782,10 @@ function api.housing.setTrackedHouseGuid(trackedHouse) end
 
 function api.housing.startTutorial() end
 
+---Restrictions: hasRestrictions
 ---@param neighborhoodGUID string
 ---@param houseGUID string
 ---@param plotID number
----Restrictions: hasRestrictions
 function api.housing.teleportHome(neighborhoodGUID, houseGUID, plotID) end
 
 ---@param neighborhoodName string
@@ -6791,10 +6796,10 @@ function api.housing.validateCreateGuildNeighborhoodSize() end
 ---@param neighborhoodName string
 function api.housing.validateNeighborhoodName(neighborhoodName) end
 
+---Restrictions: hasRestrictions
 ---@param neighborhoodGUID string
 ---@param houseGUID string
 ---@param plotID number
----Restrictions: hasRestrictions
 function api.housing.visitHouse(neighborhoodGUID, houseGUID, plotID) end
 
 ---Wraps `C_HousingBasicMode`.
@@ -6986,24 +6991,24 @@ function api.housingCatalog.getMarketInfoForDecor(decorID) end
 ---@return boolean hasEntries
 function api.housingCatalog.hasFeaturedEntries() end
 
+---Restrictions: hasRestrictions
 ---@param productID number
 ---@param withPreview boolean
----Restrictions: hasRestrictions
 function api.housingCatalog.housingMarketActionAddToCart(productID, withPreview) end
 
 ---Restrictions: hasRestrictions
 function api.housingCatalog.housingMarketActionClearCart() end
 
----@param productID number
 ---Restrictions: hasRestrictions
+---@param productID number
 function api.housingCatalog.housingMarketActionRemoveFromCart(productID) end
 
----@param productID number
 ---Restrictions: hasRestrictions
+---@param productID number
 function api.housingCatalog.housingMarketActionViewBundle(productID) end
 
----@param productID number
 ---Restrictions: hasRestrictions
+---@param productID number
 function api.housingCatalog.housingMarketActionViewInStore(productID) end
 
 ---@param decorGUID string
@@ -7221,8 +7226,8 @@ function api.housingDecor.exitPreviewState() end
 
 ---Placed Decor List APIs currently restricted due to being potentially very expensive
 ---operations, may be reworked & opened up in the future
----@return HousingDecorInstanceListEntry[] placedDecor
 ---Restrictions: hasRestrictions
+---@return HousingDecorInstanceListEntry[] placedDecor
 function api.housingDecor.getAllPlacedDecor() end
 
 ---@param decorID number
@@ -7303,8 +7308,8 @@ function api.housingDecor.isPreviewState() end
 
 ---Placed Decor List APIs currently restricted due to being potentially very expensive
 ---operations, may be reworked & opened up in the future
----@param decorGUID string
 ---Restrictions: hasRestrictions
+---@param decorGUID string
 function api.housingDecor.removePlacedDecorEntry(decorGUID) end
 
 ---Attempt to return the currently selected decor instance back to the house chest
@@ -7315,16 +7320,16 @@ function api.housingDecor.setGridVisible(gridVisible) end
 
 ---Placed Decor List APIs currently restricted due to being potentially very expensive
 ---operations, may be reworked & opened up in the future
+---Restrictions: hasRestrictions
 ---@param decorGUID string
 ---@param hovered boolean
----Restrictions: hasRestrictions
 function api.housingDecor.setPlacedDecorEntryHovered(decorGUID, hovered) end
 
 ---Placed Decor List APIs currently restricted due to being potentially very expensive
 ---operations, may be reworked & opened up in the future
+---Restrictions: hasRestrictions
 ---@param decorGUID string
 ---@param selected boolean
----Restrictions: hasRestrictions
 function api.housingDecor.setPlacedDecorEntrySelected(decorGUID, selected) end
 
 ---Wraps `C_HousingExpertMode`.
@@ -7711,30 +7716,30 @@ function api.input.getStringFromModifiers(modifiers) end
 function api.input.makeModifiers() end
 
 ---Insecure code can only call this once in response to gamepad input hardware events.
+---Restrictions: RequiresLimitedInput
 ---@param xPosition number
 ---@param yPosition number
----Restrictions: RequiresLimitedInput
 function api.input.setCursorPosition(xPosition, yPosition) end
 
 ---Effectively the same as SimulateMouseDown plus SimulateMouseUp and consumes limited input for
 ---both.
----@param button string
 ---Restrictions: MouseFocusValidForLimitedInput, RequiresLimitedInput
+---@param button string
 function api.input.simulateMouseClick(button) end
 
 ---Insecure code can only call this once in response to gamepad input hardware events.
----@param button string
 ---Restrictions: MouseFocusValidForLimitedInput, RequiresLimitedInput
+---@param button string
 function api.input.simulateMouseDown(button) end
 
 ---Insecure code can only call this once in response to gamepad input hardware events.
----@param button string
 ---Restrictions: MouseFocusValidForLimitedInput, RequiresLimitedInput
+---@param button string
 function api.input.simulateMouseUp(button) end
 
 ---Insecure code can only call this once in response to gamepad input hardware events.
----@param delta number
 ---Restrictions: MouseFocusValidForLimitedInput, RequiresLimitedInput
+---@param delta number
 function api.input.simulateMouseWheel(delta) end
 
 ---Wraps the global functions of the `Instance` system.
@@ -8302,12 +8307,12 @@ function api.itemUpgrade.upgradeItem(numUpgrades) end
 ---@class wow.classic.mop.api.keyBindings
 api.keyBindings = {}
 
----@param newContext Enum.BindingContext
 ---Restrictions: hasRestrictions
+---@param newContext Enum.BindingContext
 function api.keyBindings.activateBindingContext(newContext) end
 
----@param context Enum.BindingContext
 ---Restrictions: hasRestrictions
+---@param context Enum.BindingContext
 function api.keyBindings.deactivateBindingContext(context) end
 
 ---@param action string
@@ -8427,9 +8432,9 @@ function api.lfgList.clearSearchTextFields() end
 
 function api.lfgList.copyActiveEntryInfoToCreationFields() end
 
+---Restrictions: hasRestrictions
 ---@param createData LfgListingCreateData
 ---@return boolean success
----Restrictions: hasRestrictions
 function api.lfgList.createListing(createData) end
 
 ---@param activityID number
@@ -8556,10 +8561,11 @@ function api.lfgList.isPremadeGroupFinderEnabled() end
 ---@return boolean isEndgameListing
 function api.lfgList.listingUsesEndgameEditRestrictions(activityID) end
 
----@param searchResultID number
 ---Restrictions: hasRestrictions
+---@param searchResultID number
 function api.lfgList.reportGroupAsAdvertisement(searchResultID) end
 
+---Restrictions: hasRestrictions
 ---@param categoryID number
 ---@param filter? number
 ---@param preferredFilters? number
@@ -8567,7 +8573,6 @@ function api.lfgList.reportGroupAsAdvertisement(searchResultID) end
 ---@param searchCrossFactionListings? boolean
 ---@param advancedFilter? AdvancedFilterOptions
 ---@param activityIDsFilter? number[]
----Restrictions: hasRestrictions
 function api.lfgList.search(
     categoryID,
     filter,
@@ -8579,11 +8584,11 @@ function api.lfgList.search(
 )
 end
 
+---Restrictions: hasRestrictions
 ---@param activityID number
 ---@param groupID number
 ---@param playstyle? Enum.LFGEntryPlaystyle
 ---@param generalPlaystyle? Enum.LFGEntryGeneralPlaystyle
----Restrictions: hasRestrictions
 function api.lfgList.setEntryTitle(activityID, groupID, playstyle, generalPlaystyle) end
 
 ---@param activityID number
@@ -8592,9 +8597,9 @@ function api.lfgList.setSearchToActivity(activityID) end
 ---@param questID number
 function api.lfgList.setSearchToQuestID(questID) end
 
+---Restrictions: hasRestrictions
 ---@param createData LfgListingCreateData
 ---@return boolean success
----Restrictions: hasRestrictions
 function api.lfgList.updateListing(createData) end
 
 ---@param dungeonScore number
@@ -8675,9 +8680,9 @@ function api.localization.abbreviateLargeNumbers(number, options) end
 ---@return string result
 function api.localization.abbreviateNumbers(number, options) end
 
+---Restrictions: RequiresRestrictedAbbreviationBreakpoints
 ---@param data NumberAbbreviationBreakpoint[]
 ---@return AbbreviateConfig config
----Restrictions: RequiresRestrictedAbbreviationBreakpoints
 function api.localization.createAbbreviateConfig(data) end
 
 ---@param name string
@@ -8797,13 +8802,13 @@ function api.macro.getNumIcons() end
 ---@return integer textureNum
 function api.macro.getSelectedMacroIcon(macroId) end
 
+---Restrictions: hasRestrictions
 ---@param text string
 ---@param button string
----Restrictions: hasRestrictions
 function api.macro.runMacroText(text, button) end
 
----@param cb MacroExecuteLineCallback
 ---Restrictions: hasRestrictions
+---@param cb MacroExecuteLineCallback
 function api.macro.setMacroExecuteLineCallback(cb) end
 
 ---Wraps `C_Mail`.
@@ -9366,9 +9371,9 @@ function api.namePlate.getNamePlateSize() end
 ---@return NamePlateFrame[] nameplates
 function api.namePlate.getNamePlates() end
 
+---Restrictions: hasRestrictions
 ---@param width number
 ---@param height number
----Restrictions: hasRestrictions
 function api.namePlate.setNamePlateSize(width, height) end
 
 ---Wraps `C_NamePlateManager`.
@@ -9391,12 +9396,12 @@ function api.namePlateManager.isNamePlateUnitBehindCamera(unitToken) end
 ---Provide values to adjust the hit testing area for nameplates. Positive values will decrease
 ---the hit test area, negative values will increase it. Note that all hit testing is clamped to
 ---the bounds of the nameplate and can not be moved outside it.
+---Restrictions: hasRestrictions
 ---@param type Enum.NamePlateType
 ---@param left number
 ---@param right number
 ---@param top number
 ---@param bottom number
----Restrictions: hasRestrictions
 function api.namePlateManager.setNamePlateHitTestInsets(type, left, right, top, bottom) end
 
 ---Set whether the nameplate attached to a unit is considered simplified, which can change the
@@ -9485,10 +9490,10 @@ function api.newItems.removeNewItem(containerIndex, slotIndex) end
 ---@class wow.classic.mop.api.os
 api.os = {}
 
+---Restrictions: hasRestrictions
 ---@param text string
 ---@param removeMarkup? boolean
 ---@return number length
----Restrictions: hasRestrictions
 function api.os.copyToClipboard(text, removeMarkup) end
 
 ---@return number time
@@ -9551,18 +9556,18 @@ function api.partyInfo.challengeModeRestrictionsActive() end
 ---@param category? integer
 function api.partyInfo.confirmLeaveParty(category) end
 
----@param isReady boolean
 ---Restrictions: hasRestrictions
+---@param isReady boolean
 function api.partyInfo.confirmReadyCheck(isReady) end
 
+---Restrictions: hasRestrictions
 ---@param name string
 ---@param exactNameMatch? boolean
----Restrictions: hasRestrictions
 function api.partyInfo.demoteAssistant(name, exactNameMatch) end
 
+---Restrictions: hasRestrictions
 ---@param seconds number
 ---@return boolean success
----Restrictions: hasRestrictions
 function api.partyInfo.doCountdown(seconds) end
 
 ---Restrictions: hasRestrictions
@@ -9592,8 +9597,8 @@ function api.partyInfo.getMinLevel(category) end
 
 ---Attempt to invite the named unit to a party, requires confirmation in some cases (e.g. the
 ---party will convert to a raid, or if there is a party sync in progress).
----@param targetName string
 ---Restrictions: RequiresValidInviteTarget
+---@param targetName string
 function api.partyInfo.inviteUnit(targetName) end
 
 ---@param category? integer
@@ -9616,31 +9621,31 @@ function api.partyInfo.isPartyFull(category) end
 ---@return boolean isPartyWalkIn
 function api.partyInfo.isPartyWalkIn() end
 
+---Restrictions: hasRestrictions
 ---@param name string
 ---@param exactNameMatch? boolean
----Restrictions: hasRestrictions
 function api.partyInfo.promoteToAssistant(name, exactNameMatch) end
 
+---Restrictions: hasRestrictions
 ---@param name string
 ---@param exactNameMatch? boolean
----Restrictions: hasRestrictions
 function api.partyInfo.promoteToLeader(name, exactNameMatch) end
 
+---Restrictions: hasRestrictions
 ---@param isAssistant boolean
 ---@return boolean updated
----Restrictions: hasRestrictions
 function api.partyInfo.setEveryoneIsAssistant(isAssistant) end
 
+---Restrictions: hasRestrictions
 ---@param method Enum.LootMethod
 ---@param lootMaster? string
 ---@return boolean success
----Restrictions: hasRestrictions
 function api.partyInfo.setLootMethod(method, lootMaster) end
 
+---Restrictions: hasRestrictions
 ---@param name string
 ---@param reason? string
 ---@param exactNameMatch? boolean
----Restrictions: hasRestrictions
 function api.partyInfo.uninviteUnit(name, reason, exactNameMatch) end
 
 ---Wraps `C_PartyPose`.
@@ -9951,11 +9956,11 @@ function api.playerInteractionManager.clearInteraction(type) end
 ---@param type? Enum.PlayerInteractionType
 function api.playerInteractionManager.confirmationInteraction(type) end
 
+---Restrictions: hasRestrictions
 ---@param unit string
 ---@param exactMatch? boolean
 ---@param looseTargeting? boolean
 ---@return boolean success
----Restrictions: hasRestrictions
 function api.playerInteractionManager.interactUnit(unit, exactMatch, looseTargeting) end
 
 ---@param type Enum.PlayerInteractionType
@@ -10407,10 +10412,10 @@ function api.pvp.isSubZonePVPPOI() end
 ---@return boolean warModeDesired
 function api.pvp.isWarModeDesired() end
 
+---Restrictions: hasRestrictions
 ---@param battlemasterListId number
 ---@param joinAsGroup? boolean
 ---@param instanceIndex? integer
----Restrictions: hasRestrictions
 function api.pvp.joinBattlefield(battlemasterListId, joinAsGroup, instanceIndex) end
 
 ---@param playerToken string
@@ -10419,8 +10424,8 @@ function api.pvp.requestCrowdControlSpell(playerToken) end
 ---@param mapID number
 function api.pvp.setLocklistMap(mapID) end
 
----@param enablePVP? boolean
 ---Restrictions: hasRestrictions
+---@param enablePVP? boolean
 function api.pvp.setPVP(enablePVP) end
 
 ---@param index integer
@@ -10635,8 +10640,8 @@ api.raidMarkers = {}
 ---@return boolean result
 function api.raidMarkers.canBeRaidTarget(target) end
 
----@param raidMarkerIndex? integer
 ---Restrictions: hasRestrictions
+---@param raidMarkerIndex? integer
 function api.raidMarkers.clearRaidMarker(raidMarkerIndex) end
 
 ---@param target string
@@ -10650,60 +10655,60 @@ function api.raidMarkers.isRaidMarkerActive(index) end
 ---@return boolean enabled
 function api.raidMarkers.isRaidMarkerSystemEnabled() end
 
+---Restrictions: hasRestrictions
 ---@param index integer
 ---@param token? string
----Restrictions: hasRestrictions
 function api.raidMarkers.placeRaidMarker(index, token) end
 
 ---Removes all assigned raid target markers.
 ---Restrictions: hasRestrictions
 function api.raidMarkers.removeRaidTargets() end
 
+---Restrictions: hasRestrictions
 ---@param target string
 ---@param userIndex integer
----Restrictions: hasRestrictions
 function api.raidMarkers.setRaidTarget(target, userIndex) end
 
 ---Wraps `C_RecentAllies`.
 ---@class wow.classic.mop.api.recentAllies
 api.recentAllies = {}
 
+---Restrictions: RequiresRecentAllies
 ---@param characterGUID string
 ---@return boolean canSetNote
----Restrictions: RequiresRecentAllies
 function api.recentAllies.canSetRecentAllyNote(characterGUID) end
 
----@return RecentAllyData[] recentAlliesData
 ---Restrictions: RequiresRecentAllies
+---@return RecentAllyData[] recentAlliesData
 function api.recentAllies.getRecentAllies() end
 
+---Restrictions: RequiresRecentAllies
 ---@param fullCharacterName string
 ---@return RecentAllyData? recentAllyData
----Restrictions: RequiresRecentAllies
 function api.recentAllies.getRecentAllyByFullName(fullCharacterName) end
 
+---Restrictions: RequiresRecentAllies
 ---@param characterGUID string
 ---@return RecentAllyData? recentAllyData
----Restrictions: RequiresRecentAllies
 function api.recentAllies.getRecentAllyByGUID(characterGUID) end
 
+---Restrictions: RequiresRecentAllies
 ---@param fullCharacterName string
 ---@return boolean isRecentAlly
----Restrictions: RequiresRecentAllies
 function api.recentAllies.isRecentAllyByFullName(fullCharacterName) end
 
+---Restrictions: RequiresRecentAllies
 ---@param characterGUID string
 ---@return boolean isRecentAlly
----Restrictions: RequiresRecentAllies
 function api.recentAllies.isRecentAllyByGUID(characterGUID) end
 
----@return boolean isReady
 ---Restrictions: RequiresRecentAllies
+---@return boolean isReady
 function api.recentAllies.isRecentAllyDataReady() end
 
+---Restrictions: RequiresRecentAllies
 ---@param characterGUID string
 ---@return boolean isPinned
----Restrictions: RequiresRecentAllies
 function api.recentAllies.isRecentAllyPinned(characterGUID) end
 
 ---@return boolean isRecentAllySystemEnabled
@@ -10712,14 +10717,14 @@ function api.recentAllies.isSystemEnabled() end
 ---@return boolean isRecentAllySystemSupported
 function api.recentAllies.isSystemSupported() end
 
+---Restrictions: RequiresRecentAllies
 ---@param characterGUID string
 ---@param note string
----Restrictions: RequiresRecentAllies
 function api.recentAllies.setRecentAllyNote(characterGUID, note) end
 
+---Restrictions: RequiresRecentAllies
 ---@param characterGUID string
 ---@param isPinned boolean
----Restrictions: RequiresRecentAllies
 function api.recentAllies.setRecentAllyPinned(characterGUID, isPinned) end
 
 ---Restrictions: hasRestrictions, RequiresRecentAllies
@@ -10733,19 +10738,19 @@ api.recruitAFriend = {}
 ---@return boolean result
 function api.recruitAFriend.canSummonFriend(guid) end
 
+---Restrictions: hasRestrictions
 ---@param activityID number
 ---@param acceptanceID integer
 ---@return boolean success
----Restrictions: hasRestrictions
 function api.recruitAFriend.claimActivityReward(activityID, acceptanceID) end
 
+---Restrictions: hasRestrictions
 ---@param rafVersion? Enum.RecruitAFriendRewardsVersion
 ---@return boolean success
----Restrictions: hasRestrictions
 function api.recruitAFriend.claimNextReward(rafVersion) end
 
----@return boolean success
 ---Restrictions: hasRestrictions
+---@return boolean success
 function api.recruitAFriend.generateRecruitmentLink() end
 
 ---@return RafInfo info
@@ -10778,13 +10783,13 @@ function api.recruitAFriend.isRecruitAFriendLinked(guid) end
 ---@return boolean enabled
 function api.recruitAFriend.isRecruitingEnabled() end
 
+---Restrictions: hasRestrictions
 ---@param wowAccountGUID string
 ---@return boolean success
----Restrictions: hasRestrictions
 function api.recruitAFriend.removeRAFRecruit(wowAccountGUID) end
 
----@return boolean success
 ---Restrictions: hasRestrictions
+---@return boolean success
 function api.recruitAFriend.requestUpdatedRecruitmentInfo() end
 
 ---@param target string
@@ -10880,9 +10885,9 @@ function api.reportSystem.reportStuckInCombat() end
 function api.reportSystem.requiresScreenshotForReportType(reportType, majorCategory) end
 
 ---Not allowed to be called by addons
+---Restrictions: hasRestrictions
 ---@param reportInfo ReportInfo
 ---@param playerLocation? PlayerLocation
----Restrictions: hasRestrictions
 function api.reportSystem.sendReport(reportInfo, playerLocation) end
 
 ---@param textureObject SimpleTexture
@@ -11189,19 +11194,19 @@ function api.secureTransfer.acceptTrade() end
 ---Restrictions: hasRestrictions
 function api.secureTransfer.cancel() end
 
----@return MailInfo mailInfo
 ---Restrictions: hasRestrictions
+---@return MailInfo mailInfo
 function api.secureTransfer.getMailInfo() end
 
----@return string? name
 ---Restrictions: hasRestrictions
+---@return string? name
 function api.secureTransfer.getTradePartner() end
 
 ---Restrictions: hasRestrictions
 function api.secureTransfer.sendMail() end
 
----@return boolean shouldShow
 ---Restrictions: hasRestrictions
+---@return boolean shouldShow
 function api.secureTransfer.shouldShowTradeOfferWarning() end
 
 ---Wraps `C_SettingsUtil`.
@@ -11210,9 +11215,9 @@ api.settingsUtil = {}
 
 function api.settingsUtil.notifySettingsLoaded() end
 
+---Restrictions: hasRestrictions
 ---@param openToCategoryID? number
 ---@param scrollToElementName? string
----Restrictions: hasRestrictions
 function api.settingsUtil.openSettingsPanel(openToCategoryID, scrollToElementName) end
 
 ---Wraps `C_SkillInfo`.
@@ -11416,8 +11421,8 @@ function api.specializationShared.hasLootSpecializations() end
 ---@class wow.classic.mop.api.spell
 api.spell = {}
 
----@param spellID number
 ---Restrictions: hasRestrictions
+---@param spellID number
 function api.spell.cancelSpellByID(spellID) end
 
 ---Returns true if the spell exists, regardless of whether the player has learned it
@@ -11721,23 +11726,23 @@ function api.spellBook.isSpellKnownOrInSpellBook(spellID, spellBank, includeOver
 ---@class wow.classic.mop.api.spellDiminish
 api.spellDiminish = {}
 
+---Restrictions: RequiresSpellDiminishUI
 ---@param ruleset? Enum.SpellDiminishRuleset
 ---@return SpellDiminishCategoryInfo[] categories
----Restrictions: RequiresSpellDiminishUI
 function api.spellDiminish.getAllSpellDiminishCategories(ruleset) end
 
+---Restrictions: RequiresSpellDiminishUI
 ---@param category Enum.SpellDiminishCategory
 ---@return SpellDiminishCategoryInfo? categoryInfo
----Restrictions: RequiresSpellDiminishUI
 function api.spellDiminish.getSpellDiminishCategoryInfo(category) end
 
 ---@return boolean isSystemSupported
 function api.spellDiminish.isSystemSupported() end
 
+---Restrictions: RequiresSpellDiminishUI
 ---@param category Enum.SpellDiminishCategory
 ---@param ruleset Enum.SpellDiminishRuleset
 ---@return boolean isTracked
----Restrictions: RequiresSpellDiminishUI
 function api.spellDiminish.shouldTrackSpellDiminishCategory(category, ruleset) end
 
 ---Wraps `C_StableInfo`.
@@ -11959,9 +11964,9 @@ function api.tableUtil.isfrozen(table) end
 ---@class wow.classic.mop.api.targetScript
 api.targetScript = {}
 
+---Restrictions: hasRestrictions
 ---@param name? string
 ---@param exactMatch? boolean
----Restrictions: hasRestrictions
 function api.targetScript.assistUnit(name, exactMatch) end
 
 function api.targetScript.attackTarget() end
@@ -11971,8 +11976,8 @@ function api.targetScript.clearFocus() end
 ---@return boolean willMakeChange
 function api.targetScript.clearTarget() end
 
----@param name? string
 ---Restrictions: hasRestrictions
+---@param name? string
 function api.targetScript.focusUnit(name) end
 
 ---@return boolean isTargetLoose
@@ -12023,9 +12028,9 @@ function api.targetScript.targetPriorityHighlightStart(useStartDelay) end
 ---Restrictions: hasRestrictions
 function api.targetScript.targetToggle() end
 
+---Restrictions: hasRestrictions
 ---@param name? string
 ---@param exactMatch? boolean
----Restrictions: hasRestrictions
 function api.targetScript.targetUnit(name, exactMatch) end
 
 ---Wraps `C_TaskQuest`.
@@ -12139,9 +12144,9 @@ function api.texture.isTitleIconTextureReady(titleID, version) end
 ---@param version Enum.TitleIconVersion
 function api.texture.setTitleIconTexture(texture, titleID, version) end
 
+---Restrictions: hasRestrictions
 ---@param texture SimpleTexture
 ---@param url string
----Restrictions: hasRestrictions
 function api.texture.setURLTexture(texture, url) end
 
 ---Wraps the global functions of the `Threat` system.
@@ -12260,13 +12265,13 @@ api.tradeInfo = {}
 ---Restrictions: hasRestrictions
 function api.tradeInfo.addTradeMoney() end
 
----@param amount integer
 ---Restrictions: hasRestrictions
+---@param amount integer
 function api.tradeInfo.pickupTradeMoney(amount) end
 
 ---Sets the amount of money in the current trade offer.
----@param amount integer
 ---Restrictions: hasRestrictions
+---@param amount integer
 function api.tradeInfo.setTradeMoney(amount) end
 
 ---@return boolean shouldShow
@@ -12915,9 +12920,9 @@ function api.transmogCollection.updateUsableAppearances() end
 ---@class wow.classic.mop.api.transmogOutfitInfo
 api.transmogOutfitInfo = {}
 
+---Restrictions: hasRestrictions
 ---@param name string
 ---@param icon integer
----Restrictions: hasRestrictions
 function api.transmogOutfitInfo.addNewOutfit(name, icon) end
 
 ---@param outfitID number
@@ -13729,9 +13734,9 @@ function api.unit.createUnitHealPredictionCalculator() end
 ---@return number id
 function api.unit.creatureFamily(unit) end
 
+---Restrictions: RequiresUnitIdentityAccess
 ---@param unit string
 ---@return number? creatureID
----Restrictions: RequiresUnitIdentityAccess
 function api.unit.creatureID(unit) end
 
 ---@param unit string
@@ -14067,10 +14072,10 @@ function api.unit.isPossessed(unit) end
 ---@return boolean result
 function api.unit.isRaidOfficer(unit) end
 
+---Restrictions: RequiresComparableUnitTokens
 ---@param unit1 string
 ---@param unit2 string
 ---@return boolean result
----Restrictions: RequiresComparableUnitTokens
 function api.unit.isUnit(unit1, unit2) end
 
 ---@param unitToken string
@@ -14312,9 +14317,9 @@ function api.unitAuras.addBlockedAura(unit, auraInstanceID) end
 ---@return number? anchorID
 function api.unitAuras.addPrivateAuraAnchor(args) end
 
+---Restrictions: hasRestrictions
 ---@param sound UnitPrivateAuraAppliedSoundInfo
 ---@return number? privateAuraSoundID
----Restrictions: hasRestrictions
 function api.unitAuras.addPrivateAuraAppliedSound(sound) end
 
 ---@param spellID number|string
@@ -14329,19 +14334,19 @@ function api.unitAuras.auraIsPrivate(spellID) end
 function api.unitAuras.clearBlockedAuras(unit) end
 
 ---Returns true if an aura instance will expire after a certain amount of time.
+---Restrictions: RequiresValidUnitAuraInstance
 ---@param auraInstanceUnit string
 ---@param auraInstanceID number
 ---@return boolean hasExpirationTime
----Restrictions: RequiresValidUnitAuraInstance
 function api.unitAuras.doesAuraHaveExpirationTime(auraInstanceUnit, auraInstanceID) end
 
 ---Formats a string for displaying the number of applications an aura has present.
+---Restrictions: RequiresValidUnitAuraInstance
 ---@param auraInstanceUnit string
 ---@param auraInstanceID number
 ---@param minDisplayCount? number
 ---@param maxDisplayCount? number
 ---@return string count
----Restrictions: RequiresValidUnitAuraInstance
 function api.unitAuras.getAuraApplicationDisplayCount(
     auraInstanceUnit,
     auraInstanceID,
@@ -14353,11 +14358,11 @@ end
 ---Returns the base duration of the given spell (or aura). Takes an optional spellID to use as
 ---the new duration if that cannot be derived from the aura, if that value isn't supplied the
 ---aura's spellID will be used
+---Restrictions: RequiresValidUnitAuraInstance
 ---@param auraInstanceUnit string
 ---@param auraInstanceID number
 ---@param spellID? number|string
 ---@return number? newDuration
----Restrictions: RequiresValidUnitAuraInstance
 function api.unitAuras.getAuraBaseDuration(auraInstanceUnit, auraInstanceID, spellID) end
 
 ---@param unit string
@@ -14376,26 +14381,26 @@ function api.unitAuras.getAuraDataByIndex(unit, index, filter) end
 ---@return AuraData? aura
 function api.unitAuras.getAuraDataBySlot(unit, slot) end
 
+---Restrictions: RequiresNonSecretAura
 ---@param unit string
 ---@param spellName string
 ---@param filter? string
 ---@return AuraData? aura
----Restrictions: RequiresNonSecretAura
 function api.unitAuras.getAuraDataBySpellName(unit, spellName, filter) end
 
 ---Queries the dispel type associated with an aura instance and remaps it to a color via a
 ---curve, with the dispel type ID used as the 'x' value.
+---Restrictions: RequiresValidUnitAuraInstance
 ---@param auraInstanceUnit string
 ---@param auraInstanceID number
 ---@param curve LuaColorCurveObject
 ---@return colorRGBA dispelTypeColor
----Restrictions: RequiresValidUnitAuraInstance
 function api.unitAuras.getAuraDispelTypeColor(auraInstanceUnit, auraInstanceID, curve) end
 
+---Restrictions: RequiresValidUnitAuraInstance
 ---@param auraInstanceUnit string
 ---@param auraInstanceID number
 ---@return LuaDurationObject duration
----Restrictions: RequiresValidUnitAuraInstance
 function api.unitAuras.getAuraDuration(auraInstanceUnit, auraInstanceID) end
 
 ---@param unit string
@@ -14422,28 +14427,28 @@ function api.unitAuras.getCooldownAuraBySpellID(spellID) end
 ---@return AuraData? aura
 function api.unitAuras.getDebuffDataByIndex(unit, index, filter) end
 
+---Restrictions: RequiresNonSecretAura
 ---@param spellID number|string
 ---@return AuraData? aura
----Restrictions: RequiresNonSecretAura
 function api.unitAuras.getPlayerAuraBySpellID(spellID) end
 
 ---Returns the client-predicted new duration of this aura if it were cast again right now. Takes
 ---an optional spellID to use as the new duration if that cannot be derived from the aura, if
 ---that value isn't supplied the aura's spellID will be used
+---Restrictions: RequiresValidUnitAuraInstance
 ---@param auraInstanceUnit string
 ---@param auraInstanceID number
 ---@param spellID? number|string
 ---@return number? newDuration
----Restrictions: RequiresValidUnitAuraInstance
 function api.unitAuras.getRefreshExtendedDuration(auraInstanceUnit, auraInstanceID, spellID) end
 
 ---Returns the first instance of an aura on a unit matching a given spell ID. Returns nil if no
 ---such aura is found. Additionally can return nil if querying a unit that is not visible (eg.
 ---party members on other maps).
+---Restrictions: RequiresNonSecretAura
 ---@param unit string
 ---@param spellID number|string
 ---@return AuraData? aura
----Restrictions: RequiresNonSecretAura
 function api.unitAuras.getUnitAuraBySpellID(unit, spellID) end
 
 ---@param unit string
@@ -14510,24 +14515,24 @@ function api.unitRole.initiateRolePoll() end
 ---@return boolean? dps
 function api.unitRole.unitGetAvailableRoles(unit) end
 
+---Restrictions: hasRestrictions
 ---@param unit string
 ---@param roleStr? string
 ---@return boolean result
----Restrictions: hasRestrictions
 function api.unitRole.unitSetRole(unit, roleStr) end
 
+---Restrictions: hasRestrictions
 ---@param unit string
 ---@param role? Enum.LFGRole
 ---@return boolean result
----Restrictions: hasRestrictions
 function api.unitRole.unitSetRoleEnum(unit, role) end
 
 ---Wraps the global functions of the `URL` system.
 ---@class wow.classic.mop.api.url
 api.url = {}
 
----@param url string
 ---Restrictions: hasRestrictions
+---@param url string
 function api.url.launchURL(url) end
 
 ---Wraps `C_UserFeedback`.

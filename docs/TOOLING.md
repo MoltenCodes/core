@@ -17,7 +17,12 @@ tooling/
 │   ├── model.py / SCHEMA.md       # the metadata model and its JSON form
 │   ├── types.json                 # host types with their LuaCATS spelling
 │   ├── normalize.py               # capture → metadata directory
-│   └── validate.py                # checks a metadata directory
+│   ├── validate.py                # checks a metadata directory
+│   ├── diff.py                    # compares two captures; change report and history
+│   ├── render_runtime.py          # the generated Lua bindings file
+│   ├── render_types.py            # the generated LuaCATS definitions
+│   ├── render_reference.py        # the generated reference and search index
+│   └── generate.py                # writes every output of a flavour
 ├── ci/
 │   └── check_commits.py           # checks commit subjects and pull request titles
 ├── package/
@@ -287,8 +292,8 @@ directory of generated files is replaced as a whole, and `--check` compares
 without writing so CI can refuse a metadata change that was committed without
 its outputs (with no metadata committed yet the check has nothing to do and
 passes with a note; the CI step arrives with the first capture). Against the
-Retail metadata the runtime file is about 9,800 lines; a Lua 5.1 interpreter
-parses it in about 3 ms and the installer runs in under 1 ms. A runtime file
+Retail metadata the runtime file is about 9,800 lines; the measured load cost
+is the "Load cost" section of `packages/apiKit/docs/API.md`. A runtime file
 under `src/flavours/` that no flavour of the table owns is removed as stale.
 
 Four files are reviewed data rather than code. `flavours.json` is the one
@@ -305,12 +310,13 @@ tables on their own, for a look at a file the normaliser refuses.
 the code. `python3 -m tooling.validation.validate_repository` reads the
 flavour table with the same loader and fails on a malformed entry.
 
-Two environment variables let the test suite run against real data, which
-never enters the repository: `MOLTENCODES_DOCUMENTATION_SAMPLES` names a
-directory of the client's documentation tables for the parser's corpus test,
-and `MOLTENCODES_API_METADATA` names a normalised metadata directory for the
-generators' and the diff's corpus tests. Without them those tests are skipped
-and the suite runs on invented fixtures alone.
+Two environment variables point the test suite at real data:
+`MOLTENCODES_DOCUMENTATION_SAMPLES` names a directory of the client's
+documentation tables for the parser's corpus test (skipped without it; the
+tables never enter the repository), and `MOLTENCODES_API_METADATA` names a
+normalised metadata directory for the generators' and the diff's corpus tests,
+which otherwise run against the committed Retail metadata under
+`packages/apiKit/metadata/retail`, so they run in CI too.
 
 The builder, the standalone-addon `.toc` and the validator support the layout
 `apiKit` needs: a package's `src/` holds one top-level facade and may hold

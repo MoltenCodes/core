@@ -11,16 +11,16 @@ local AbbreviateConfig = {}
 ---@return NumberAbbreviationBreakpoint[] data
 function AbbreviateConfig:GetAbbreviateNumberData() end
 
----@param data NumberAbbreviationBreakpoint[]
 ---Restrictions: RequiresRestrictedAbbreviationBreakpoints
+---@param data NumberAbbreviationBreakpoint[]
 function AbbreviateConfig:SetAbbreviateNumberData(data) end
 
 ---@class AbbreviatedNumberFormatter
 local AbbreviatedNumberFormatter = {}
 
 ---Adds a new breakpoint to the formatter.
----@param breakpoint NumberAbbreviationBreakpoint
 ---Restrictions: RequiresValidAbbreviationBreakpoints
+---@param breakpoint NumberAbbreviationBreakpoint
 function AbbreviatedNumberFormatter:AddBreakpoint(breakpoint) end
 
 ---Removes all configured breakpoints from the formatter.
@@ -39,8 +39,8 @@ function AbbreviatedNumberFormatter:GetBreakpoints() end
 function AbbreviatedNumberFormatter:ResetBreakpoints() end
 
 ---Replaces all breakpoints on the formatter.
----@param breakpoints NumberAbbreviationBreakpoint[]
 ---Restrictions: RequiresValidAbbreviationBreakpoints
+---@param breakpoints NumberAbbreviationBreakpoint[]
 function AbbreviatedNumberFormatter:SetBreakpoints(breakpoints) end
 
 ---@class DurationTextBindingObject
@@ -1121,6 +1121,7 @@ function FrameAPIModelSceneFrameActorBase:SetModelByFileID(asset, useMips) end
 ---@return boolean success
 function FrameAPIModelSceneFrameActorBase:SetModelByPath(asset, useMips) end
 
+---Restrictions: RequiresDeclassifiedUnitIdentity
 ---@param unit string
 ---@param sheatheWeapons? boolean
 ---@param autoDress? boolean
@@ -1129,7 +1130,6 @@ function FrameAPIModelSceneFrameActorBase:SetModelByPath(asset, useMips) end
 ---@param holdBowString? boolean
 ---@param customRaceID? number
 ---@return boolean success
----Restrictions: RequiresDeclassifiedUnitIdentity
 function FrameAPIModelSceneFrameActorBase:SetModelByUnit(
     unit,
     sheatheWeapons,
@@ -1229,13 +1229,13 @@ function FrameAPINamePlate:GetHitTestPoints() end
 
 ---Sets the anchor points that determine where the mouse interacts with the nameplate to fully
 ---encompass the target region.
----@param relativeTo ScriptRegion
 ---Restrictions: RequiresCanChangeHitTestPoints
+---@param relativeTo ScriptRegion
 function FrameAPINamePlate:SetAllHitTestPoints(relativeTo) end
 
 ---Sets the anchor points that determine where the mouse interacts with the nameplate.
----@param anchors AnchorBinding[]
 ---Restrictions: RequiresCanChangeHitTestPoints
+---@param anchors AnchorBinding[]
 function FrameAPINamePlate:SetHitTestPoints(anchors) end
 
 ---@param frame SimpleFrame
@@ -1281,17 +1281,17 @@ function FrameAPISimpleCheckout:CloseCheckout() end
 
 function FrameAPISimpleCheckout:CopyExternalLink() end
 
+---Restrictions: hasRestrictions
 ---@param checkoutID number
 ---@return boolean wasOpened
----Restrictions: hasRestrictions
 function FrameAPISimpleCheckout:OpenCheckout(checkoutID) end
 
 function FrameAPISimpleCheckout:OpenExternalLink() end
 
 function FrameAPISimpleCheckout:SetFocus() end
 
----@param zoomLevel number
 ---Restrictions: hasRestrictions
+---@param zoomLevel number
 function FrameAPISimpleCheckout:SetZoom(zoomLevel) end
 
 ---@class FrameAPITabardModel
@@ -2698,12 +2698,12 @@ function SimpleButton:GetTextWidth() end
 ---@return boolean isEnabled
 function SimpleButton:IsEnabled() end
 
----@param buttons string
 ---Restrictions: isProtected
+---@param buttons string
 function SimpleButton:RegisterForClicks(buttons) end
 
----@param buttons string
 ---Restrictions: isProtected
+---@param buttons string
 function SimpleButton:RegisterForMouse(buttons) end
 
 ---@param buttonState string
@@ -2719,8 +2719,8 @@ function SimpleButton:SetDisabledFontObject(font) end
 ---@param asset TextureAsset
 function SimpleButton:SetDisabledTexture(asset) end
 
----@param enabled? boolean
 ---Restrictions: isProtected
+---@param enabled? boolean
 function SimpleButton:SetEnabled(enabled) end
 
 ---@param fontString SimpleFontString
@@ -3048,11 +3048,11 @@ function SimpleEditBox:SetEnabled(enabled) end
 
 function SimpleEditBox:SetFocus() end
 
+---Restrictions: RequiresValidFontAsset, RequiresValidFontHeight
 ---@param fontFile string
 ---@param height number
 ---@param flags string
 ---@return boolean success
----Restrictions: RequiresValidFontAsset, RequiresValidFontHeight
 function SimpleEditBox:SetFont(fontFile, height, flags) end
 
 ---@param font SimpleFont
@@ -3193,10 +3193,10 @@ function SimpleFont:GetTextColor() end
 ---@param alpha number
 function SimpleFont:SetAlpha(alpha) end
 
+---Restrictions: RequiresValidFontAsset, RequiresValidFontHeight
 ---@param fontFile string
 ---@param height number
 ---@param flags string
----Restrictions: RequiresValidFontAsset, RequiresValidFontHeight
 function SimpleFont:SetFont(fontFile, height, flags) end
 
 ---Preserves all flags, does correct height conversion due to fixedHeight.
@@ -3237,10 +3237,10 @@ function SimpleFont:SetTextColor(colorR, colorG, colorB, a) end
 ---@class SimpleFontString
 local SimpleFontString = {}
 
+---Restrictions: RequiresFontStringTextAccess
 ---@param leftIndex integer
 ---@param rightIndex integer
 ---@return uiBoundsRect[]? areas
----Restrictions: RequiresFontStringTextAccess
 function SimpleFontString:CalculateScreenAreaFromCharacterSpan(leftIndex, rightIndex) end
 
 ---@return boolean wrap
@@ -3254,11 +3254,11 @@ function SimpleFontString:ClearAlphaGradient() end
 ---Sets text to an empty string and removes the Text secret aspect.
 function SimpleFontString:ClearText() end
 
+---Restrictions: RequiresFontStringTextAccess
 ---@param x number
 ---@param y number
 ---@return integer? characterIndex
 ---@return boolean? inside
----Restrictions: RequiresFontStringTextAccess
 function SimpleFontString:FindCharacterIndexAtCoordinate(x, y) end
 
 ---@return number start
@@ -3361,11 +3361,11 @@ function SimpleFontString:SetAlphaGradient(start, length) end
 ---@param fixedColor boolean
 function SimpleFontString:SetFixedColor(fixedColor) end
 
+---Restrictions: RequiresValidFontAsset, RequiresValidFontHeight
 ---@param fontFile FontAsset
 ---@param fontHeight number
 ---@param flags? string
 ---@return boolean success
----Restrictions: RequiresValidFontAsset, RequiresValidFontHeight
 function SimpleFontString:SetFont(fontFile, fontHeight, flags) end
 
 ---@param height number
@@ -3445,9 +3445,9 @@ function SimpleFrame:CanChangeAttribute() end
 
 function SimpleFrame:ClearAlphaGradient() end
 
+---Restrictions: isProtected
 ---@param attributeName string
 ---@return boolean cleared
----Restrictions: isProtected
 function SimpleFrame:ClearAttribute(attributeName) end
 
 ---Restrictions: isProtected
@@ -3498,16 +3498,16 @@ function SimpleFrame:DoesHyperlinkPropagateToParent() end
 ---@param layer string
 function SimpleFrame:EnableDrawLayer(layer) end
 
----@param enable? boolean
 ---Restrictions: isProtected
+---@param enable? boolean
 function SimpleFrame:EnableGamePadButton(enable) end
 
----@param enable? boolean
 ---Restrictions: isProtected
+---@param enable? boolean
 function SimpleFrame:EnableGamePadStick(enable) end
 
----@param enable? boolean
 ---Restrictions: isProtected
+---@param enable? boolean
 function SimpleFrame:EnableKeyboard(enable) end
 
 ---@param attributeName string
@@ -3541,8 +3541,8 @@ function SimpleFrame:GetClampRectInsets() end
 ---@return boolean dontSave
 function SimpleFrame:GetDontSavePosition() end
 
----@return number effectiveAlpha
 ---Restrictions: RequiresScriptObjectAlphaAccess
+---@return number effectiveAlpha
 function SimpleFrame:GetEffectiveAlpha() end
 
 ---@return number effectiveScale
@@ -3739,15 +3739,15 @@ function SimpleFrame:SetAttribute(attributeName, value) end
 ---@param value string
 function SimpleFrame:SetAttributeNoHandler(attributeName, value) end
 
+---Restrictions: isProtected
 ---@param left number
 ---@param right number
 ---@param top number
 ---@param bottom number
----Restrictions: isProtected
 function SimpleFrame:SetClampRectInsets(left, right, top, bottom) end
 
----@param clampedToScreen boolean
 ---Restrictions: isProtected
+---@param clampedToScreen boolean
 function SimpleFrame:SetClampedToScreen(clampedToScreen) end
 
 ---@param clipsChildren boolean
@@ -3760,33 +3760,33 @@ function SimpleFrame:SetDontSavePosition(dontSave) end
 ---@param isEnabled? boolean
 function SimpleFrame:SetDrawLayerEnabled(layer, isEnabled) end
 
----@param isFixed boolean
 ---Restrictions: isProtected
+---@param isFixed boolean
 function SimpleFrame:SetFixedFrameLevel(isFixed) end
 
----@param isFixed boolean
 ---Restrictions: isProtected
+---@param isFixed boolean
 function SimpleFrame:SetFixedFrameStrata(isFixed) end
 
 ---@param flatten boolean
 function SimpleFrame:SetFlattensRenderLayers(flatten) end
 
----@param frameLevel number
 ---Restrictions: isProtected
+---@param frameLevel number
 function SimpleFrame:SetFrameLevel(frameLevel) end
 
----@param strata string
 ---Restrictions: isProtected
+---@param strata string
 function SimpleFrame:SetFrameStrata(strata) end
 
 ---@param locked boolean
 function SimpleFrame:SetHighlightLocked(locked) end
 
+---Restrictions: isProtected
 ---@param left number
 ---@param right number
 ---@param top number
 ---@param bottom number
----Restrictions: isProtected
 function SimpleFrame:SetHitRectInsets(left, right, top, bottom) end
 
 ---Enables or disables propagating hyperlink events (ex. OnHyperlinkEnter, OnHyperlinkLeave,
@@ -3794,19 +3794,19 @@ function SimpleFrame:SetHitRectInsets(left, right, top, bottom) end
 ---@param canPropagate boolean
 function SimpleFrame:SetHyperlinkPropagateToParent(canPropagate) end
 
----@param enabled? boolean
 ---Restrictions: isProtected
+---@param enabled? boolean
 function SimpleFrame:SetHyperlinksEnabled(enabled) end
 
----@param id number
 ---Restrictions: isProtected
+---@param id number
 function SimpleFrame:SetID(id) end
 
 ---@param ignore boolean
 function SimpleFrame:SetIgnoreParentAlpha(ignore) end
 
----@param ignore boolean
 ---Restrictions: isProtected
+---@param ignore boolean
 function SimpleFrame:SetIgnoreParentScale(ignore) end
 
 ---@param ignore boolean
@@ -3818,8 +3818,8 @@ function SimpleFrame:SetIsFrameBuffer(isFrameBuffer) end
 ---@param movable boolean
 function SimpleFrame:SetMovable(movable) end
 
----@param propagate boolean
 ---Restrictions: hasRestrictions
+---@param propagate boolean
 function SimpleFrame:SetPropagateKeyboardInput(propagate) end
 
 ---@param resizable boolean
@@ -3831,23 +3831,23 @@ function SimpleFrame:SetResizable(resizable) end
 ---@param maxHeight? number
 function SimpleFrame:SetResizeBounds(minWidth, minHeight, maxWidth, maxHeight) end
 
----@param scale number
 ---Restrictions: isProtected
+---@param scale number
 function SimpleFrame:SetScale(scale) end
 
----@param shown? boolean
 ---Restrictions: isProtected
+---@param shown? boolean
 function SimpleFrame:SetShown(shown) end
 
----@param topLevel boolean
 ---Restrictions: isProtected
+---@param topLevel boolean
 function SimpleFrame:SetToplevel(topLevel) end
 
 ---@param userPlaced boolean
 function SimpleFrame:SetUserPlaced(userPlaced) end
 
----@param usingParentLevel boolean
 ---Restrictions: isProtected
+---@param usingParentLevel boolean
 function SimpleFrame:SetUsingParentLevel(usingParentLevel) end
 
 ---@param window? SimpleWindow
@@ -3856,13 +3856,13 @@ function SimpleFrame:SetWindow(window) end
 ---Restrictions: isProtected
 function SimpleFrame:Show() end
 
----@param alwaysStartFromMouse? boolean
 ---Restrictions: isProtected
+---@param alwaysStartFromMouse? boolean
 function SimpleFrame:StartMoving(alwaysStartFromMouse) end
 
+---Restrictions: isProtected
 ---@param resizePoint? string
 ---@param alwaysStartFromMouse? boolean
----Restrictions: isProtected
 function SimpleFrame:StartSizing(resizePoint, alwaysStartFromMouse) end
 
 ---Restrictions: isProtected
@@ -3969,11 +3969,11 @@ function SimpleHTML:GetTextColor(textType) end
 ---@return HTMLContentNode[] content
 function SimpleHTML:GetTextData() end
 
+---Restrictions: RequiresValidFontAsset, RequiresValidFontHeight
 ---@param textType string
 ---@param fontFile string
 ---@param height number
 ---@param flags string
----Restrictions: RequiresValidFontAsset, RequiresValidFontHeight
 function SimpleHTML:SetFont(textType, fontFile, height, flags) end
 
 ---@param textType string
@@ -4151,10 +4151,10 @@ function SimpleMessageFrame:SetFadePower(fadePower) end
 ---@param fading boolean
 function SimpleMessageFrame:SetFading(fading) end
 
+---Restrictions: RequiresValidFontAsset, RequiresValidFontHeight
 ---@param fontFile string
 ---@param height number
 ---@param flags string
----Restrictions: RequiresValidFontAsset, RequiresValidFontHeight
 function SimpleMessageFrame:SetFont(fontFile, height, flags) end
 
 ---@param font SimpleFont
@@ -4404,8 +4404,8 @@ function SimpleModel:SetShadowEffect(strength) end
 ---@param scale? number
 function SimpleModel:SetTransform(translation, rotation, scale) end
 
----@param useGBuffer boolean
 ---Restrictions: hasRestrictions
+---@param useGBuffer boolean
 function SimpleModel:SetUseGBuffer(useGBuffer) end
 
 ---@param left number
@@ -4560,12 +4560,12 @@ function SimpleRegion:SetDrawLayer(layer, sublevel) end
 ---@param ignore boolean
 function SimpleRegion:SetIgnoreParentAlpha(ignore) end
 
----@param ignore boolean
 ---Restrictions: isProtected
+---@param ignore boolean
 function SimpleRegion:SetIgnoreParentScale(ignore) end
 
----@param scale number
 ---Restrictions: isProtected
+---@param scale number
 function SimpleRegion:SetScale(scale) end
 
 ---@param colorR number
@@ -4597,16 +4597,16 @@ function SimpleScriptRegion:ClearScripts() end
 ---@return boolean collapsesLayout
 function SimpleScriptRegion:CollapsesLayout() end
 
----@param enable? boolean
 ---Restrictions: isProtected
+---@param enable? boolean
 function SimpleScriptRegion:EnableMouse(enable) end
 
----@param enable? boolean
 ---Restrictions: isProtected
+---@param enable? boolean
 function SimpleScriptRegion:EnableMouseMotion(enable) end
 
----@param enable? boolean
 ---Restrictions: isProtected
+---@param enable? boolean
 function SimpleScriptRegion:EnableMouseWheel(enable) end
 
 ---@return number? bottom
@@ -4720,32 +4720,32 @@ function SimpleScriptRegion:IsShown() end
 ---@return boolean isVisible
 function SimpleScriptRegion:IsVisible() end
 
----@param collapsesLayout boolean
 ---Restrictions: isProtected
+---@param collapsesLayout boolean
 function SimpleScriptRegion:SetCollapsesLayout(collapsesLayout) end
 
----@param enabled? boolean
 ---Restrictions: isProtected
+---@param enabled? boolean
 function SimpleScriptRegion:SetMouseClickEnabled(enabled) end
 
----@param enabled? boolean
 ---Restrictions: isProtected
+---@param enabled? boolean
 function SimpleScriptRegion:SetMouseMotionEnabled(enabled) end
 
----@param parent? SimpleFrame
 ---Restrictions: isProtected
+---@param parent? SimpleFrame
 function SimpleScriptRegion:SetParent(parent) end
 
----@param buttons string
 ---Restrictions: hasRestrictions, isProtected
+---@param buttons string
 function SimpleScriptRegion:SetPassThroughButtons(buttons) end
 
----@param propagate boolean
 ---Restrictions: hasRestrictions, isProtected
+---@param propagate boolean
 function SimpleScriptRegion:SetPropagateMouseClicks(propagate) end
 
----@param propagate boolean
 ---Restrictions: hasRestrictions, isProtected
+---@param propagate boolean
 function SimpleScriptRegion:SetPropagateMouseMotion(propagate) end
 
 ---@param scriptTypeName string
@@ -4764,9 +4764,9 @@ function SimpleScriptRegion:Show() end
 ---@class SimpleScriptRegionResizing
 local SimpleScriptRegionResizing = {}
 
+---Restrictions: isProtected
 ---@param x number
 ---@param y number
----Restrictions: isProtected
 function SimpleScriptRegionResizing:AdjustPointsOffset(x, y) end
 
 ---Clears all points and immediately invalidates the rect. (Prior to 11.2.0, this would only
@@ -4774,8 +4774,8 @@ function SimpleScriptRegionResizing:AdjustPointsOffset(x, y) end
 ---Restrictions: isProtected
 function SimpleScriptRegionResizing:ClearAllPoints() end
 
----@param point string
 ---Restrictions: isProtected
+---@param point string
 function SimpleScriptRegionResizing:ClearPoint(point) end
 
 ---Restrictions: isProtected
@@ -4802,35 +4802,35 @@ function SimpleScriptRegionResizing:GetPoint(anchorIndex, resolveCollapsed) end
 ---@return number? offsetY
 function SimpleScriptRegionResizing:GetPointByName(point, resolveCollapsed) end
 
+---Restrictions: isProtected
 ---@param relativeTo ScriptRegion
 ---@param doResize? boolean
----Restrictions: isProtected
 function SimpleScriptRegionResizing:SetAllPoints(relativeTo, doResize) end
 
----@param height number
 ---Restrictions: isProtected
+---@param height number
 function SimpleScriptRegionResizing:SetHeight(height) end
 
+---Restrictions: isProtected
 ---@param point string
 ---@param relativeTo ScriptRegion
 ---@param relativePoint string
 ---@param offsetX number
 ---@param offsetY number
----Restrictions: isProtected
 function SimpleScriptRegionResizing:SetPoint(point, relativeTo, relativePoint, offsetX, offsetY) end
 
+---Restrictions: isProtected
 ---@param x number
 ---@param y number
----Restrictions: isProtected
 function SimpleScriptRegionResizing:SetPointsOffset(x, y) end
 
+---Restrictions: isProtected
 ---@param x number
 ---@param y number
----Restrictions: isProtected
 function SimpleScriptRegionResizing:SetSize(x, y) end
 
----@param width number
 ---Restrictions: isProtected
+---@param width number
 function SimpleScriptRegionResizing:SetWidth(width) end
 
 ---@class SimpleScrollFrame
@@ -4851,16 +4851,16 @@ function SimpleScrollFrame:GetVerticalScroll() end
 ---@return number range
 function SimpleScrollFrame:GetVerticalScrollRange() end
 
----@param offset number
 ---Restrictions: isProtected
+---@param offset number
 function SimpleScrollFrame:SetHorizontalScroll(offset) end
 
----@param scrollChild SimpleFrame
 ---Restrictions: isProtected
+---@param scrollChild SimpleFrame
 function SimpleScrollFrame:SetScrollChild(scrollChild) end
 
----@param offset number
 ---Restrictions: isProtected
+---@param offset number
 function SimpleScrollFrame:SetVerticalScroll(offset) end
 
 function SimpleScrollFrame:UpdateScrollChildRect() end
@@ -4971,8 +4971,8 @@ function SimpleStatusBar:GetValue() end
 ---@return boolean isInterpolating
 function SimpleStatusBar:IsInterpolating() end
 
----@return boolean desaturated
 ---Restrictions: RequiresStatusBarDesaturationAccess
+---@return boolean desaturated
 function SimpleStatusBar:IsStatusBarDesaturated() end
 
 ---@param colorR number
@@ -5110,8 +5110,8 @@ function SimpleTextureBase:GetVertexOffset(vertexIndex) end
 ---@return boolean blocking
 function SimpleTextureBase:IsBlockingLoadRequested() end
 
----@return boolean desaturated
 ---Restrictions: RequiresScriptObjectDesaturationAccess
+---@return boolean desaturated
 function SimpleTextureBase:IsDesaturated() end
 
 ---@return boolean snap

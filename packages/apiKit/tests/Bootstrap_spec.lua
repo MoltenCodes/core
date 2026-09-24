@@ -52,13 +52,13 @@ describe("ApiKit bootstrap", function()
         assert.is_table(root.beta.api)
     end)
 
-    it("probes the flavour again on every bootstrap", function()
+    it("keeps the flavour a same-revision copy already probed", function()
+        -- Registry returns a complete same-revision copy unchanged, so the
+        -- re-probe every bootstrap runs is only reachable through an upgrade
+        -- from an older revision, which does not exist yet (see tests/README.md).
         local ApiKit = TestEnv.NewPackageFor("tbc")
         assert.are.equal("unsupported", ApiKit:GetFlavor())
         TestEnv.SetClient({ projectId = 1, testBuild = false, betaBuild = false })
-        -- A same-revision reload is refused by Registry as complete, so the
-        -- re-probe is observed through the state a newer revision would inherit.
-        rawset(ApiKit._state, "flavor", "unsupported")
         package.loaded["ApiKit"] = nil
         require("ApiKit")
         assert.are.equal("unsupported", ApiKit:GetFlavor())

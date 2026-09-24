@@ -27,8 +27,8 @@ author needs to predict a name from the Blizzard one.
    `UnitName` is in `api.unit`.
 4. **Global functions** drop their system's words when their name starts with
    them and more words follow: `UnitName` in `Unit` → `api.unit.name`,
-   `UnitIsPVP` → `api.unit.isPVP`; `GetTime` in `System` keeps its whole
-   name → `api.system.getTime`. Functions in a `C_` namespace never drop
+   `UnitIsPVP` → `api.unit.isPVP`; `GetTime` in `SystemTime` keeps its whole
+   name → `api.systemTime.getTime`. Functions in a `C_` namespace never drop
    anything: `C_Timer.After` → `api.timer.after`.
 5. **Events** are named from their documented PascalCase name and hold the
    event string: `api.events.addonLoaded == "ADDON_LOADED"`.

@@ -129,6 +129,34 @@ describe("ApiKit:RegisterFlavor", function()
         assert.are.equal(5, build)
     end)
 
+    it("passes arguments and multiple returns through an alias untouched", function()
+        local ApiKit = TestEnv.NewPackageFor("retail")
+        local seen
+        local function probe(...)
+            seen = { n = select("#", ...), ... }
+            return nil, "second", nil
+        end
+        -- selene: allow(global_usage)
+        rawset(_G, "C_Probe", { Probe = probe })
+        ApiKit:RegisterFlavor("retail", function(api, host)
+            api.probe = { probe = host.C_Probe.Probe }
+        end)
+
+        -- selene: allow(global_usage)
+        local api = rawget(_G, "MoltenCodes").wow.retail.api
+        local first, second, third = api.probe.probe(1, nil, "x")
+        assert.are.equal(probe, api.probe.probe)
+        assert.are.equal(3, seen.n)
+        assert.are.equal(1, seen[1])
+        assert.is_nil(seen[2])
+        assert.are.equal("x", seen[3])
+        assert.is_nil(first)
+        assert.are.equal("second", second)
+        assert.is_nil(third)
+        -- selene: allow(global_usage)
+        rawset(_G, "C_Probe", nil)
+    end)
+
     it("validates its arguments", function()
         local ApiKit = TestEnv.NewPackageFor("retail")
         assert.has_error(function()

@@ -12,8 +12,8 @@ local AbbreviateConfig = {}
 ---@return NumberAbbreviationBreakpoint[] data
 function AbbreviateConfig:GetAbbreviateNumberData() end
 
----@param data NumberAbbreviationBreakpoint[]
 ---Restrictions: secretArguments=NotAllowed, RequiresRestrictedAbbreviationBreakpoints
+---@param data NumberAbbreviationBreakpoint[]
 function AbbreviateConfig:SetAbbreviateNumberData(data) end
 
 ---A script object of type `Userdata`.
@@ -21,16 +21,16 @@ function AbbreviateConfig:SetAbbreviateNumberData(data) end
 local AbbreviatedNumberFormatter = {}
 
 ---Adds a new breakpoint to the formatter.
----@param breakpoint NumberAbbreviationBreakpoint
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidAbbreviationBreakpoints
+---@param breakpoint NumberAbbreviationBreakpoint
 function AbbreviatedNumberFormatter:AddBreakpoint(breakpoint) end
 
 ---Removes all configured breakpoints from the formatter.
 function AbbreviatedNumberFormatter:ClearBreakpoints() end
 
 ---Returns a new copy of this formatter.
----@return AbbreviatedNumberFormatter copy
 ---Restrictions: ReturnsNeverSecret
+---@return AbbreviatedNumberFormatter copy
 function AbbreviatedNumberFormatter:Copy() end
 
 ---Returns a list of all configured breakpoints on this formatter.
@@ -42,8 +42,8 @@ function AbbreviatedNumberFormatter:GetBreakpoints() end
 function AbbreviatedNumberFormatter:ResetBreakpoints() end
 
 ---Replaces all breakpoints on the formatter.
----@param breakpoints NumberAbbreviationBreakpoint[]
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidAbbreviationBreakpoints
+---@param breakpoints NumberAbbreviationBreakpoint[]
 function AbbreviatedNumberFormatter:SetBreakpoints(breakpoints) end
 
 ---A script object of type `Userdata`.
@@ -51,8 +51,8 @@ function AbbreviatedNumberFormatter:SetBreakpoints(breakpoints) end
 local DurationTextBindingObject = {}
 
 ---Copies another duration text binding and assigns it to this one.
----@param other DurationTextBinding
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param other DurationTextBinding
 function DurationTextBindingObject:Assign(other) end
 
 ---Returns true if this binding has enough configuration to produce formatted text.
@@ -68,8 +68,8 @@ function DurationTextBindingObject:CanUpdateFontString() end
 function DurationTextBindingObject:ClearTextColorCurve() end
 
 ---Returns a copy of this duration text binding.
----@return DurationTextBinding copy
 ---Restrictions: ReturnsNeverSecret
+---@return DurationTextBinding copy
 function DurationTextBindingObject:Copy() end
 
 ---Disables automatic updates for this duration text binding.
@@ -118,8 +118,8 @@ function DurationTextBindingObject:GetUpdateInterval() end
 function DurationTextBindingObject:GetZeroDurationText() end
 
 ---Returns true if the duration text binding has been configured with any secret values.
----@return boolean hasSecretValues
 ---Restrictions: ReturnsNeverSecret
+---@return boolean hasSecretValues
 function DurationTextBindingObject:HasSecretValues() end
 
 ---Returns true if this duration text binding updates its font string automatically.
@@ -127,49 +127,49 @@ function DurationTextBindingObject:HasSecretValues() end
 function DurationTextBindingObject:IsEnabled() end
 
 ---Configures the duration object used by this duration text binding.
----@param duration LuaDurationObject
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param duration LuaDurationObject
 function DurationTextBindingObject:SetDuration(duration) end
 
 ---Configures whether this duration text binding updates its font string automatically.
----@param enabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled boolean
 function DurationTextBindingObject:SetEnabled(enabled) end
 
 ---Configures the text shown when the duration has fully expired.
----@param text? string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param text? string
 function DurationTextBindingObject:SetExpiredText(text) end
 
 ---Configures the font string updated by this duration text binding.
----@param fontString SimpleFontString
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fontString SimpleFontString
 function DurationTextBindingObject:SetFontString(fontString) end
 
 ---Configures the text format used by this duration text binding to display the remaining
 ---duration using the supplied formatter.
----@param formatter NumericFormatter
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param formatter NumericFormatter
 function DurationTextBindingObject:SetFormatter(formatter) end
 
 ---Configures this duration text binding to adjust fontstring text color by evaluating a
 ---duration property through a curve.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param curve LuaColorCurveObject
 ---@param property Enum.DurationTextBindingProperty
----Restrictions: secretArguments=AllowedWhenUntainted
 function DurationTextBindingObject:SetTextColorCurve(curve, property) end
 
 ---Configures the text format used by this duration text binding. The format string may contain
 ---'{}' placeholders, each of which is substituted by the corresponding component in the
 ---supplied array.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param formatString string
 ---@param components DurationTextBindingFormatComponent[]
----Restrictions: secretArguments=AllowedWhenUntainted
 function DurationTextBindingObject:SetTextFormat(formatString, components) end
 
 ---Configures the time modifier used when sampling duration values for this binding.
----@param modifier Enum.DurationTimeModifier
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param modifier Enum.DurationTimeModifier
 function DurationTextBindingObject:SetTimeModifier(modifier) end
 
 ---Resets this duration text binding to its default state, clearing the configured font string,
@@ -178,14 +178,14 @@ function DurationTextBindingObject:SetToDefaults() end
 
 ---Configures the minimum number of seconds between automatic text updates. A value of zero
 ---updates every game tick.
----@param updateInterval number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param updateInterval number
 function DurationTextBindingObject:SetUpdateInterval(updateInterval) end
 
 ---Configures the text shown when the duration is not configured, or represents a zero-duration
 ---time span.
----@param text? string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param text? string
 function DurationTextBindingObject:SetZeroDurationText(text) end
 
 ---Immediately updates the configured font string from the current duration state.
@@ -199,72 +199,72 @@ local FrameAPIBlob = {}
 
 function FrameAPIBlob:DrawAll() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param questID number
 ---@param draw? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIBlob:DrawBlob(questID, draw) end
 
 function FrameAPIBlob:DrawNone() end
 
----@param enable? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enable? boolean
 function FrameAPIBlob:EnableMerging(enable) end
 
----@param enable? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enable? boolean
 function FrameAPIBlob:EnableSmoothing(enable) end
 
 ---@return number uiMapID
 function FrameAPIBlob:GetMapID() end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function FrameAPIBlob:SetBorderAlpha(alpha) end
 
----@param scalar number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scalar number
 function FrameAPIBlob:SetBorderScalar(scalar) end
 
----@param asset FileAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset FileAsset
 function FrameAPIBlob:SetBorderTexture(asset) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function FrameAPIBlob:SetFillAlpha(alpha) end
 
----@param asset FileAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset FileAsset
 function FrameAPIBlob:SetFillTexture(asset) end
 
----@param uiMapID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param uiMapID number
 function FrameAPIBlob:SetMapID(uiMapID) end
 
----@param threshold number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param threshold number
 function FrameAPIBlob:SetMergeThreshold(threshold) end
 
----@param numSplinePoints number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param numSplinePoints number
 function FrameAPIBlob:SetNumSplinePoints(numSplinePoints) end
 
 ---@class FrameAPICharacterModelBase
 local FrameAPICharacterModelBase = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellVisualKitID number
 ---@param oneShot? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICharacterModelBase:ApplySpellVisualKit(spellVisualKitID, oneShot) end
 
----@param unit string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param unit string
 function FrameAPICharacterModelBase:CanSetUnit(unit) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param anim string
 ---@param variation number
 ---@param frame number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICharacterModelBase:FreezeAnimation(anim, variation, frame) end
 
 ---@return number displayID
@@ -276,55 +276,55 @@ function FrameAPICharacterModelBase:GetDoBlend() end
 ---@return boolean keepModelOnHide
 function FrameAPICharacterModelBase:GetKeepModelOnHide() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param anim string
 ---@return boolean hasAnimation
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICharacterModelBase:HasAnimation(anim) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param animKit number
 ---@param loop? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICharacterModelBase:PlayAnimKit(animKit, loop) end
 
 function FrameAPICharacterModelBase:RefreshCamera() end
 
 function FrameAPICharacterModelBase:RefreshUnit() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param anim string
 ---@param variation? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICharacterModelBase:SetAnimation(anim, variation) end
 
 function FrameAPICharacterModelBase:SetBarberShopAlternateForm() end
 
----@param scale number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scale number
 function FrameAPICharacterModelBase:SetCamDistanceScale(scale) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param creatureID number
 ---@param displayID? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICharacterModelBase:SetCreature(creatureID, displayID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param displayID number
 ---@param mountDisplayID? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICharacterModelBase:SetDisplayInfo(displayID, mountDisplayID) end
 
----@param doBlend? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param doBlend? boolean
 function FrameAPICharacterModelBase:SetDoBlend(doBlend) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemID number
 ---@param appearanceModID? number
 ---@param itemVisualID? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICharacterModelBase:SetItem(itemID, appearanceModID, itemVisualID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemAppearanceID number
 ---@param itemVisualID? number
 ---@param itemSubclass? Enum.ItemWeaponSubclass
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICharacterModelBase:SetItemAppearance(
     itemAppearanceID,
     itemVisualID,
@@ -332,24 +332,24 @@ function FrameAPICharacterModelBase:SetItemAppearance(
 )
 end
 
----@param keepModelOnHide boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param keepModelOnHide boolean
 function FrameAPICharacterModelBase:SetKeepModelOnHide(keepModelOnHide) end
 
----@param zoom number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param zoom number
 function FrameAPICharacterModelBase:SetPortraitZoom(zoom) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param radians number
 ---@param animate? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICharacterModelBase:SetRotation(radians, animate) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresDeclassifiedUnitIdentity
 ---@param unit string
 ---@param blend? boolean
 ---@param useNativeForm? boolean
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresDeclassifiedUnitIdentity
 function FrameAPICharacterModelBase:SetUnit(unit, blend, useNativeForm) end
 
 function FrameAPICharacterModelBase:StopAnimKit() end
@@ -359,77 +359,77 @@ function FrameAPICharacterModelBase:ZeroCachedCenterXY() end
 ---@class FrameAPICinematicModel
 local FrameAPICinematicModel = {}
 
----@param itemID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param itemID number
 function FrameAPICinematicModel:EquipItem(itemID) end
 
----@param scaleFactor? number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scaleFactor? number
 function FrameAPICinematicModel:InitializeCamera(scaleFactor) end
 
----@param scaleFactor? number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scaleFactor? number
 function FrameAPICinematicModel:InitializePanCamera(scaleFactor) end
 
 function FrameAPICinematicModel:RefreshCamera() end
 
----@param offset number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param offset number
 function FrameAPICinematicModel:SetAnimOffset(offset) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param positionX number
 ---@param positionY number
 ---@param positionZ number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICinematicModel:SetCameraPosition(positionX, positionY, positionZ) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param positionX number
 ---@param positionY number
 ---@param positionZ number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICinematicModel:SetCameraTarget(positionX, positionY, positionZ) end
 
----@param creatureID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param creatureID number
 function FrameAPICinematicModel:SetCreatureData(creatureID) end
 
----@param isFacingLeft? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isFacingLeft? boolean
 function FrameAPICinematicModel:SetFacingLeft(isFacingLeft) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param fadeInSeconds number
 ---@param fadeOutSeconds number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICinematicModel:SetFadeTimes(fadeInSeconds, fadeOutSeconds) end
 
----@param factor number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param factor number
 function FrameAPICinematicModel:SetHeightFactor(factor) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param jumpLength number
 ---@param jumpHeight number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICinematicModel:SetJumpInfo(jumpLength, jumpHeight) end
 
----@param scale number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scale number
 function FrameAPICinematicModel:SetPanDistance(scale) end
 
----@param visualKitID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param visualKitID number
 function FrameAPICinematicModel:SetSpellVisualKit(visualKitID) end
 
----@param scale number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scale number
 function FrameAPICinematicModel:SetTargetDistance(scale) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param panType integer
 ---@param durationSeconds number
 ---@param doFade? boolean
 ---@param visKitID? number
 ---@param startPositionScale? number
 ---@param speedMultiplier? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICinematicModel:StartPan(
     panType,
     durationSeconds,
@@ -512,143 +512,143 @@ function FrameAPICooldown:Pause() end
 
 function FrameAPICooldown:Resume() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param texture FileAsset
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param colorA number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICooldown:SetBlingTexture(texture, colorR, colorG, colorB, colorA) end
 
+---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 ---@param start number
 ---@param duration number
 ---@param modRate? number
----Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 function FrameAPICooldown:SetCooldown(start, duration, modRate) end
 
+---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 ---@param duration number
 ---@param modRate? number
----Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 function FrameAPICooldown:SetCooldownDuration(duration, modRate) end
 
+---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 ---@param duration LuaDurationObject
 ---@param clearIfZero? boolean
----Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 function FrameAPICooldown:SetCooldownFromDurationObject(duration, clearIfZero) end
 
+---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 ---@param expirationTime number
 ---@param duration number
 ---@param modRate? number
----Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 function FrameAPICooldown:SetCooldownFromExpirationTime(expirationTime, duration, modRate) end
 
+---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 ---@param start number
 ---@param duration number
 ---@param modRate? number
----Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 function FrameAPICooldown:SetCooldownUNIX(start, duration, modRate) end
 
 ---Sets the threshold below which cooldown numbers are displayed as an abbreviated form without
 ---a unit suffix (eg. '1:31').
----@param seconds number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param seconds number
 function FrameAPICooldown:SetCountdownAbbrevThreshold(seconds) end
 
----@param fontName string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fontName string
 function FrameAPICooldown:SetCountdownFont(fontName) end
 
----@param formatter? NumericFormatter
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param formatter? NumericFormatter
 function FrameAPICooldown:SetCountdownFormatter(formatter) end
 
 ---Sets the threshold below which cooldown numbers are displayed as a decimal value with one
 ---place for milliseconds (eg. '8.7').
----@param seconds number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param seconds number
 function FrameAPICooldown:SetCountdownMillisecondsThreshold(seconds) end
 
----@param drawBling? boolean
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param drawBling? boolean
 function FrameAPICooldown:SetDrawBling(drawBling) end
 
----@param drawEdge? boolean
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param drawEdge? boolean
 function FrameAPICooldown:SetDrawEdge(drawEdge) end
 
----@param drawSwipe? boolean
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param drawSwipe? boolean
 function FrameAPICooldown:SetDrawSwipe(drawSwipe) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenTainted
 function FrameAPICooldown:SetEdgeColor(colorR, colorG, colorB, a) end
 
----@param scale number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scale number
 function FrameAPICooldown:SetEdgeScale(scale) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param texture FileAsset
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param colorA number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICooldown:SetEdgeTexture(texture, colorR, colorG, colorB, colorA) end
 
----@param hideNumbers? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param hideNumbers? boolean
 function FrameAPICooldown:SetHideCountdownNumbers(hideNumbers) end
 
 ---Controls the minimum duration above which countdown text will be shown. This is applied based
 ---upon the total duration of the cooldown, not the remaining duration as it ticks down.
----@param milliseconds number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param milliseconds number
 function FrameAPICooldown:SetMinimumCountdownDuration(milliseconds) end
 
----@param paused boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param paused boolean
 function FrameAPICooldown:SetPaused(paused) end
 
----@param reverse? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param reverse? boolean
 function FrameAPICooldown:SetReverse(reverse) end
 
----@param rotationRadians number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param rotationRadians number
 function FrameAPICooldown:SetRotation(rotationRadians) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenTainted
 function FrameAPICooldown:SetSwipeColor(colorR, colorG, colorB, a) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param texture FileAsset
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param colorA number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICooldown:SetSwipeTexture(texture, colorR, colorG, colorB, colorA) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param low vector2
 ---@param high vector2
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPICooldown:SetTexCoordRange(low, high) end
 
 ---Aura durations are displayed slightly differently than cooldown durations. Setting this to
 ---true will adjust the display logic to stay in sync with aura timers.
----@param useAuraDisplayTime? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param useAuraDisplayTime? boolean
 function FrameAPICooldown:SetUseAuraDisplayTime(useAuraDisplayTime) end
 
----@param useCircularEdge? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param useCircularEdge? boolean
 function FrameAPICooldown:SetUseCircularEdge(useCircularEdge) end
 
 ---@class FrameAPIDressUpModel
@@ -659,9 +659,9 @@ function FrameAPIDressUpModel:Dress() end
 ---@return boolean enabled
 function FrameAPIDressUpModel:GetAutoDress() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inventorySlot integer
 ---@return ItemTransmogInfo? itemTransmogInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIDressUpModel:GetItemTransmogInfo(inventorySlot) end
 
 ---@return ItemTransmogInfo[] infoList
@@ -682,25 +682,25 @@ function FrameAPIDressUpModel:GetUseTransmogSkin() end
 ---@return boolean ready
 function FrameAPIDressUpModel:IsGeoReady() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return boolean allowed
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIDressUpModel:IsSlotAllowed(slot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param slot integer
 ---@return boolean visible
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIDressUpModel:IsSlotVisible(slot) end
 
----@param enabled? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled? boolean
 function FrameAPIDressUpModel:SetAutoDress(enabled) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemTransmogInfo ItemTransmogInfo
 ---@param inventorySlot? integer
 ---@param ignoreChildItems? boolean
 ---@return Enum.ItemTryOnReason result
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIDressUpModel:SetItemTransmogInfo(
     itemTransmogInfo,
     inventorySlot,
@@ -708,28 +708,28 @@ function FrameAPIDressUpModel:SetItemTransmogInfo(
 )
 end
 
----@param enabled? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled? boolean
 function FrameAPIDressUpModel:SetObeyHideInTransmogFlag(enabled) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sheathed? boolean
 ---@param hideWeapons? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIDressUpModel:SetSheathed(sheathed, hideWeapons) end
 
----@param enabled? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled? boolean
 function FrameAPIDressUpModel:SetUseTransmogChoices(enabled) end
 
----@param enabled? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled? boolean
 function FrameAPIDressUpModel:SetUseTransmogSkin(enabled) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param linkOrItemModifiedAppearanceID number|string
 ---@param handSlotName? string
 ---@param spellEnchantID? number
 ---@return Enum.ItemTryOnReason? result
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIDressUpModel:TryOn(
     linkOrItemModifiedAppearanceID,
     handSlotName,
@@ -739,8 +739,8 @@ end
 
 function FrameAPIDressUpModel:Undress() end
 
----@param inventorySlot integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param inventorySlot integer
 function FrameAPIDressUpModel:UndressSlot(inventorySlot) end
 
 ---@class FrameAPIFogOfWarFrame
@@ -764,30 +764,30 @@ function FrameAPIFogOfWarFrame:GetMaskScalar() end
 ---@return number uiMapID
 function FrameAPIFogOfWarFrame:GetUiMapID() end
 
----@param atlas string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param atlas string
 function FrameAPIFogOfWarFrame:SetFogOfWarBackgroundAtlas(atlas) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param asset FileAsset
 ---@param horizontalTile boolean
 ---@param verticalTile boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIFogOfWarFrame:SetFogOfWarBackgroundTexture(asset, horizontalTile, verticalTile) end
 
----@param atlas string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param atlas string
 function FrameAPIFogOfWarFrame:SetFogOfWarMaskAtlas(atlas) end
 
----@param asset FileAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset FileAsset
 function FrameAPIFogOfWarFrame:SetFogOfWarMaskTexture(asset) end
 
----@param scalar number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scalar number
 function FrameAPIFogOfWarFrame:SetMaskScalar(scalar) end
 
----@param uiMapID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param uiMapID number
 function FrameAPIFogOfWarFrame:SetUiMapID(uiMapID) end
 
 ---@class FrameAPIModelSceneFrame
@@ -795,13 +795,13 @@ local FrameAPIModelSceneFrame = {}
 
 function FrameAPIModelSceneFrame:ClearFog() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@param template string
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrame:CreateActor(name, template) end
 
----@param index integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param index integer
 function FrameAPIModelSceneFrame:GetActorAtIndex(index) end
 
 ---@return boolean allowOverlappedModels
@@ -888,32 +888,33 @@ function FrameAPIModelSceneFrame:GetViewTranslation() end
 ---@return boolean isVisible
 function FrameAPIModelSceneFrame:IsLightVisible() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pointX number
 ---@param pointY number
 ---@param pointZ number
 ---@return number? point2DX
 ---@return number? point2DY
 ---@return number? depth
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrame:Project3DPointTo2D(pointX, pointY, pointZ) end
 
----@param allowOverlappedModels boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param allowOverlappedModels boolean
 function FrameAPIModelSceneFrame:SetAllowOverlappedModels(allowOverlappedModels) end
 
----@param farClip number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param farClip number
 function FrameAPIModelSceneFrame:SetCameraFarClip(farClip) end
 
 ---Field of view in radians
----@param fov number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fov number
 function FrameAPIModelSceneFrame:SetCameraFieldOfView(fov) end
 
----@param nearClip number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param nearClip number
 function FrameAPIModelSceneFrame:SetCameraNearClip(nearClip) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param forwardX number
 ---@param forwardY number
 ---@param forwardZ number
@@ -923,7 +924,6 @@ function FrameAPIModelSceneFrame:SetCameraNearClip(nearClip) end
 ---@param upX number
 ---@param upY number
 ---@param upZ number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrame:SetCameraOrientationByAxisVectors(
     forwardX,
     forwardY,
@@ -937,84 +937,84 @@ function FrameAPIModelSceneFrame:SetCameraOrientationByAxisVectors(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param yaw number
 ---@param pitch number
 ---@param roll number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrame:SetCameraOrientationByYawPitchRoll(yaw, pitch, roll) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param positionX number
 ---@param positionY number
 ---@param positionZ number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrame:SetCameraPosition(positionX, positionY, positionZ) end
 
----@param strength number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param strength number
 function FrameAPIModelSceneFrame:SetDesaturation(strength) end
 
----@param layer string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param layer string
 function FrameAPIModelSceneFrame:SetDrawLayer(layer) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrame:SetFogColor(colorR, colorG, colorB) end
 
----@param far number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param far number
 function FrameAPIModelSceneFrame:SetFogFar(far) end
 
----@param near number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param near number
 function FrameAPIModelSceneFrame:SetFogNear(near) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrame:SetLightAmbientColor(colorR, colorG, colorB) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrame:SetLightDiffuseColor(colorR, colorG, colorB) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param directionX number
 ---@param directionY number
 ---@param directionZ number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrame:SetLightDirection(directionX, directionY, directionZ) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param positionX number
 ---@param positionY number
 ---@param positionZ number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrame:SetLightPosition(positionX, positionY, positionZ) end
 
----@param lightType Enum.ModelLightType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param lightType Enum.ModelLightType
 function FrameAPIModelSceneFrame:SetLightType(lightType) end
 
----@param visible? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param visible? boolean
 function FrameAPIModelSceneFrame:SetLightVisible(visible) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param paused boolean
 ---@param affectsGlobalPause? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrame:SetPaused(paused, affectsGlobalPause) end
 
----@param insets uiRect
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param insets uiRect
 function FrameAPIModelSceneFrame:SetViewInsets(insets) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param translationX number
 ---@param translationY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrame:SetViewTranslation(translationX, translationY) end
 
 function FrameAPIModelSceneFrame:TakeActor() end
@@ -1022,35 +1022,35 @@ function FrameAPIModelSceneFrame:TakeActor() end
 ---@class FrameAPIModelSceneFrameActor
 local FrameAPIModelSceneFrameActor = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param rider ModelSceneFrameActor
 ---@param animation string
 ---@param spellKitVisualID? number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActor:AttachToMount(rider, animation, spellKitVisualID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param rider ModelSceneFrameActor
 ---@return number scale
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActor:CalculateMountScale(rider) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param rider ModelSceneFrameActor
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActor:DetachFromMount(rider) end
 
 function FrameAPIModelSceneFrameActor:Dress() end
 
----@param invSlot integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param invSlot integer
 function FrameAPIModelSceneFrameActor:DressPlayerSlot(invSlot) end
 
 ---@return boolean autoDress
 function FrameAPIModelSceneFrameActor:GetAutoDress() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inventorySlots number
 ---@return ItemTransmogInfo? itemTransmogInfo
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActor:GetItemTransmogInfo(inventorySlots) end
 
 ---@return ItemTransmogInfo[] infoList
@@ -1075,14 +1075,14 @@ function FrameAPIModelSceneFrameActor:GetUseTransmogSkin() end
 ---@return boolean isReady
 function FrameAPIModelSceneFrameActor:IsGeoReady() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inventorySlots number
 ---@return boolean allowed
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActor:IsSlotAllowed(inventorySlots) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inventorySlots number
 ---@return boolean visible
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActor:IsSlotVisible(inventorySlots) end
 
 ---@return boolean success
@@ -1090,23 +1090,23 @@ function FrameAPIModelSceneFrameActor:ReleaseFrontEndCharacterDisplays() end
 
 function FrameAPIModelSceneFrameActor:ResetNextHandSlot() end
 
----@param autoDress boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param autoDress boolean
 function FrameAPIModelSceneFrameActor:SetAutoDress(autoDress) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param characterIndex number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActor:SetFrontEndLobbyModelFromDefaultCharacterDisplay(
     characterIndex
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param transmogInfo ItemTransmogInfo
 ---@param inventorySlots? number
 ---@param ignoreChildItems? boolean
 ---@return Enum.ItemTryOnReason result
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActor:SetItemTransmogInfo(
     transmogInfo,
     inventorySlots,
@@ -1114,48 +1114,48 @@ function FrameAPIModelSceneFrameActor:SetItemTransmogInfo(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param link string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActor:SetModelByHyperlink(link) end
 
----@param obey boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param obey boolean
 function FrameAPIModelSceneFrameActor:SetObeyHideInTransmogFlag(obey) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param paused boolean
 ---@param affectsGlobalPause? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActor:SetPaused(paused, affectsGlobalPause) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sheathed boolean
 ---@param hidden? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActor:SetSheathed(sheathed, hidden) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param inventorySlots number
 ---@param category Enum.TransmogOutfitSlotOptionSheatheCategory
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActor:SetSheathedCategory(inventorySlots, category) end
 
----@param use boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param use boolean
 function FrameAPIModelSceneFrameActor:SetUseTransmogChoices(use) end
 
----@param use boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param use boolean
 function FrameAPIModelSceneFrameActor:SetUseTransmogSkin(use) end
 
----@param includeWeapons? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param includeWeapons? boolean
 function FrameAPIModelSceneFrameActor:Undress(includeWeapons) end
 
----@param inventorySlots number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param inventorySlots number
 function FrameAPIModelSceneFrameActor:UndressSlot(inventorySlots) end
 
----@param useCategory boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param useCategory boolean
 function FrameAPIModelSceneFrameActor:UseUnitSheatheCategory(useCategory) end
 
 ---@class FrameAPIModelSceneFrameActorBase
@@ -1237,20 +1237,20 @@ function FrameAPIModelSceneFrameActorBase:IsUsingCenterForOrigin() end
 ---@return boolean isVisible
 function FrameAPIModelSceneFrameActorBase:IsVisible() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param animationKit number
 ---@param isLooping? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActorBase:PlayAnimationKit(animationKit, isLooping) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function FrameAPIModelSceneFrameActorBase:SetAlpha(alpha) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param animation string
 ---@param variation? number
 ---@param animSpeed? number
 ---@param animOffsetSeconds? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActorBase:SetAnimation(
     animation,
     variation,
@@ -1259,19 +1259,19 @@ function FrameAPIModelSceneFrameActorBase:SetAnimation(
 )
 end
 
----@param blendOp Enum.ModelBlendOperation
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param blendOp Enum.ModelBlendOperation
 function FrameAPIModelSceneFrameActorBase:SetAnimationBlendOperation(blendOp) end
 
----@param strength number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param strength number
 function FrameAPIModelSceneFrameActorBase:SetDesaturation(strength) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param gradientIndex0 number
 ---@param gradientIndex1 number
 ---@param gradientIndex2 number
 ---@param gradientIndex3 number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActorBase:SetGradientMask(
     gradientIndex0,
     gradientIndex1,
@@ -1280,10 +1280,10 @@ function FrameAPIModelSceneFrameActorBase:SetGradientMask(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param grad0DyeColorID? number
 ---@param grad1DyeColorID? number
 ---@param grad2DyeColorID? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActorBase:SetGradientMaskWithDyes(
     grad0DyeColorID,
     grad1DyeColorID,
@@ -1291,28 +1291,29 @@ function FrameAPIModelSceneFrameActorBase:SetGradientMaskWithDyes(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param creatureDisplayID number
 ---@param useActivePlayerCustomizations? boolean
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActorBase:SetModelByCreatureDisplayID(
     creatureDisplayID,
     useActivePlayerCustomizations
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param asset FileAsset
 ---@param useMips? boolean
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActorBase:SetModelByFileID(asset, useMips) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param asset FileAsset
 ---@param useMips? boolean
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActorBase:SetModelByPath(asset, useMips) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresDeclassifiedUnitIdentity
 ---@param unit string
 ---@param sheatheWeapons? boolean
 ---@param autoDress? boolean
@@ -1321,7 +1322,6 @@ function FrameAPIModelSceneFrameActorBase:SetModelByPath(asset, useMips) end
 ---@param holdBowString? boolean
 ---@param customRaceID? number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresDeclassifiedUnitIdentity
 function FrameAPIModelSceneFrameActorBase:SetModelByUnit(
     unit,
     sheatheWeapons,
@@ -1333,14 +1333,15 @@ function FrameAPIModelSceneFrameActorBase:SetModelByUnit(
 )
 end
 
----@param scale? number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scale? number
 function FrameAPIModelSceneFrameActorBase:SetParticleOverrideScale(scale) end
 
----@param pitch number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param pitch number
 function FrameAPIModelSceneFrameActorBase:SetPitch(pitch) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param characterIndex? number
 ---@param sheatheWeapons? boolean
 ---@param autoDress? boolean
@@ -1348,7 +1349,6 @@ function FrameAPIModelSceneFrameActorBase:SetPitch(pitch) end
 ---@param usePlayerNativeForm? boolean
 ---@param customRaceID? number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActorBase:SetPlayerModelFromGlues(
     characterIndex,
     sheatheWeapons,
@@ -1359,54 +1359,54 @@ function FrameAPIModelSceneFrameActorBase:SetPlayerModelFromGlues(
 )
 end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param positionX number
 ---@param positionY number
 ---@param positionZ number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActorBase:SetPosition(positionX, positionY, positionZ) end
 
 ---If true, will try to use the collision bounds of models for sizing and centering. Will fall
 ---back to default model bounds if set to False, or if collision bounds are unavailable.
----@param preferCollisionBounds boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param preferCollisionBounds boolean
 function FrameAPIModelSceneFrameActorBase:SetPreferModelCollisionBounds(preferCollisionBounds) end
 
----@param roll number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param roll number
 function FrameAPIModelSceneFrameActorBase:SetRoll(roll) end
 
----@param scale number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scale number
 function FrameAPIModelSceneFrameActorBase:SetScale(scale) end
 
----@param show? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param show? boolean
 function FrameAPIModelSceneFrameActorBase:SetShown(show) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param spellVisualKitID? number
 ---@param oneShot? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActorBase:SetSpellVisualKit(spellVisualKitID, oneShot) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param x? boolean
 ---@param y? boolean
 ---@param z? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActorBase:SetUseCenterForOrigin(x, y, z) end
 
----@param yaw number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param yaw number
 function FrameAPIModelSceneFrameActorBase:SetYaw(yaw) end
 
 function FrameAPIModelSceneFrameActorBase:Show() end
 
 function FrameAPIModelSceneFrameActorBase:StopAnimationKit() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param itemLinkOrItemModifiedAppearanceID string
 ---@param handSlotName? string
 ---@param spellEnchantmentID? number
 ---@return Enum.ItemTryOnReason? reason
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIModelSceneFrameActorBase:TryOn(
     itemLinkOrItemModifiedAppearanceID,
     handSlotName,
@@ -1433,17 +1433,17 @@ function FrameAPINamePlate:GetHitTestPoints() end
 
 ---Sets the anchor points that determine where the mouse interacts with the nameplate to fully
 ---encompass the target region.
----@param relativeTo ScriptRegion
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresCanChangeHitTestPoints
+---@param relativeTo ScriptRegion
 function FrameAPINamePlate:SetAllHitTestPoints(relativeTo) end
 
 ---Sets the anchor points that determine where the mouse interacts with the nameplate.
----@param anchors AnchorBinding[]
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresCanChangeHitTestPoints
+---@param anchors AnchorBinding[]
 function FrameAPINamePlate:SetHitTestPoints(anchors) end
 
----@param frame SimpleFrame
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param frame SimpleFrame
 function FrameAPINamePlate:SetStackingBoundsFrame(frame) end
 
 ---@class FrameAPIQuestPOI
@@ -1452,16 +1452,16 @@ local FrameAPIQuestPOI = {}
 ---@return number numObjectives
 function FrameAPIQuestPOI:GetNumTooltips() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index integer
 ---@return number objectiveIndex
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIQuestPOI:GetTooltipIndex(index) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param x number
 ---@param y number
 ---@return number? questID
 ---@return number? numObjectives
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIQuestPOI:UpdateMouseOverTooltip(x, y) end
 
 ---@class FrameAPIScenarioPOI
@@ -1470,10 +1470,10 @@ local FrameAPIScenarioPOI = {}
 ---@return string? tooltipText
 function FrameAPIScenarioPOI:GetScenarioTooltipText() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param x number
 ---@param y number
 ---@return boolean hasTooltip
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIScenarioPOI:UpdateMouseOverTooltip(x, y) end
 
 ---@class FrameAPISimpleCheckout
@@ -1489,17 +1489,17 @@ function FrameAPISimpleCheckout:CloseCheckout() end
 
 function FrameAPISimpleCheckout:CopyExternalLink() end
 
+---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 ---@param checkoutID number
 ---@return boolean wasOpened
----Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
 function FrameAPISimpleCheckout:OpenCheckout(checkoutID) end
 
 function FrameAPISimpleCheckout:OpenExternalLink() end
 
 function FrameAPISimpleCheckout:SetFocus() end
 
----@param zoomLevel number
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param zoomLevel number
 function FrameAPISimpleCheckout:SetZoom(zoomLevel) end
 
 ---@class FrameAPITabardModel
@@ -1529,17 +1529,17 @@ local FrameAPITabardModelBase = {}
 ---@return boolean canSave
 function FrameAPITabardModelBase:CanSaveTabardNow() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param variationIndex integer
 ---@param delta number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPITabardModelBase:CycleVariation(variationIndex, delta) end
 
----@param texture SimpleTexture
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param texture SimpleTexture
 function FrameAPITabardModelBase:GetLowerEmblemTexture(texture) end
 
----@param texture SimpleTexture
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param texture SimpleTexture
 function FrameAPITabardModelBase:GetUpperEmblemTexture(texture) end
 
 function FrameAPITabardModelBase:InitializeTabardColors() end
@@ -1552,17 +1552,17 @@ function FrameAPITabardModelBase:Save() end
 ---@class FrameAPITooltip
 local FrameAPITooltip = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
 ---@param leftFontString SimpleFontString
 ---@param rightFontString SimpleFontString
----Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
 function FrameAPITooltip:AddFontStrings(leftFontString, rightFontString) end
 
 ---Set all padding values to 0.0 and remove the Padding SecretAspect.
 function FrameAPITooltip:ClearPadding() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param line integer
 ---@return SimpleFontString leftFontString
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPITooltip:GetLeftLine(line) end
 
 ---@return number width
@@ -1575,35 +1575,36 @@ function FrameAPITooltip:GetMinimumWidth() end
 ---@return number top
 function FrameAPITooltip:GetPadding() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param line integer
 ---@return SimpleFontString rightFontString
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPITooltip:GetRightLine(line) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param width number
 ---@param force? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPITooltip:SetMinimumWidth(width, force) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param right number
 ---@param bottom number
 ---@param left? number
 ---@param top? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPITooltip:SetPadding(right, bottom, left, top) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param alpha? number
 ---@param wrap? boolean
----Restrictions: secretArguments=AllowedWhenTainted
 function FrameAPITooltip:SetText(text, colorR, colorG, colorB, alpha, wrap) end
 
 ---@class FrameAPIUnitPositionFrame
 local FrameAPIUnitPositionFrame = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unitTokenString string
 ---@param asset TextureAssetDisk
 ---@param width? number
@@ -1614,7 +1615,6 @@ local FrameAPIUnitPositionFrame = {}
 ---@param a? number
 ---@param sublayer? number
 ---@param showFacing? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIUnitPositionFrame:AddUnit(
     unitTokenString,
     asset,
@@ -1642,32 +1642,32 @@ function FrameAPIUnitPositionFrame:GetPlayerPingScale() end
 ---@return number mapID
 function FrameAPIUnitPositionFrame:GetUiMapID() end
 
----@param scale number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scale number
 function FrameAPIUnitPositionFrame:SetPlayerPingScale(scale) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textureType Enum.PingTextureType
 ---@param asset FileAsset
 ---@param width? number
 ---@param height? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIUnitPositionFrame:SetPlayerPingTexture(textureType, asset, width, height) end
 
----@param mapID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param mapID number
 function FrameAPIUnitPositionFrame:SetUiMapID(mapID) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param unit Enum.UnitTokenType
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param colorA number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIUnitPositionFrame:SetUnitColor(unit, colorR, colorG, colorB, colorA) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param duration? number
 ---@param fadeDuration? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function FrameAPIUnitPositionFrame:StartPlayerPing(duration, fadeDuration) end
 
 function FrameAPIUnitPositionFrame:StopPlayerPing() end
@@ -1688,10 +1688,10 @@ function HousingCatalogSearcher:GetCatalogSearchResults() end
 ---@return Enum.HouseEditorMode? editorModeContext
 function HousingCatalogSearcher:GetEditorModeContext() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param groupID number
 ---@param tagID number
 ---@return boolean active
----Restrictions: secretArguments=AllowedWhenUntainted
 function HousingCatalogSearcher:GetFilterTagStatus(groupID, tagID) end
 
 ---@return number? categoryID
@@ -1746,102 +1746,102 @@ function HousingCatalogSearcher:RunSearch() end
 
 ---Set the toggle state of all filter tags within a specific group; If active, only entries that
 ---match Any of the tags in the group will be included in search results
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param groupID number
 ---@param active boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function HousingCatalogSearcher:SetAllInFilterTagGroup(groupID, active) end
 
 ---Search parameter; If true, entries that can be placed in house interiors will be included in
 ---the search; Note many decor objects can be placed both indoors and outdoors, so having only
 ---this toggled on may still include decor that can also be placed outdoors
----@param isActive boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isActive boolean
 function HousingCatalogSearcher:SetAllowedIndoors(isActive) end
 
 ---Search parameter; If true, entries that can be placed outside in plots will be included in
 ---the search; Note many decor objects can be placed both indoors and outdoors, so having only
 ---this toggled on may still include decor that can also be placed indoors
----@param isActive boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isActive boolean
 function HousingCatalogSearcher:SetAllowedOutdoors(isActive) end
 
 ---If true, searcher automatically updates results whenever search param values are changed
----@param autoUpdateActive boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param autoUpdateActive boolean
 function HousingCatalogSearcher:SetAutoUpdateOnParamChanges(autoUpdateActive) end
 
 ---Search parameter; If true, only the base variant of each decor entry will be included
----@param isActive boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isActive boolean
 function HousingCatalogSearcher:SetBaseVariantOnly(isActive) end
 
 ---Search parameter; If true, includes all owned entries, including those that are in storage OR
 ---placed in an owned house or plot; See IsStoredOnlyActive for a more exclusive toggle
----@param isActive boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isActive boolean
 function HousingCatalogSearcher:SetCollected(isActive) end
 
 ---Search parameter; If true, catalog entries that cannot be customized (ie dyed) will be
 ---excluded from the search
----@param isActive boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isActive boolean
 function HousingCatalogSearcher:SetCustomizableOnly(isActive) end
 
 ---Search parameter; If set, limits search results to only entries that are used/valid in the
 ---specified editor mode
----@param editorModeContext? Enum.HouseEditorMode
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param editorModeContext? Enum.HouseEditorMode
 function HousingCatalogSearcher:SetEditorModeContext(editorModeContext) end
 
 ---Set the toggle state of a single filter tag within a specific group
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param groupID number
 ---@param tagID number
 ---@param active boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function HousingCatalogSearcher:SetFilterTagStatus(groupID, tagID, active) end
 
 ---Search parameter; If set, limits search results to only those within the specified category
----@param categoryID? number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param categoryID? number
 function HousingCatalogSearcher:SetFilteredCategoryID(categoryID) end
 
 ---Search parameter; If set, limits search results to only those within the specified
 ---subcategory
----@param subcategoryID? number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param subcategoryID? number
 function HousingCatalogSearcher:SetFilteredSubcategoryID(subcategoryID) end
 
 ---Search parameter; If true, excludes any entries that do not reward house xp when acquired for
 ---the first time
----@param isActive boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isActive boolean
 function HousingCatalogSearcher:SetFirstAcquisitionBonusOnly(isActive) end
 
----@param callback HousingCatalogSearchResultsUpdatedCallback
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param callback HousingCatalogSearchResultsUpdatedCallback
 function HousingCatalogSearcher:SetResultsUpdatedCallback(callback) end
 
 ---Search parameter; If set, multiple text fields are checked for instances of the text,
 ---including name, category, subcategory, and data tags
----@param searchText? string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param searchText? string
 function HousingCatalogSearcher:SetSearchText(searchText) end
 
----@param sortType Enum.HousingCatalogSortType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param sortType Enum.HousingCatalogSortType
 function HousingCatalogSearcher:SetSortType(sortType) end
 
 ---Search parameter; If true, only entries that you have instances of available in storage will
 ---be included; This does not include entries that you own but have all been placed in a house;
 ---See IsCollectedActive for param that includes placed entries
----@param isActive boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isActive boolean
 function HousingCatalogSearcher:SetStoredOnly(isActive) end
 
 ---Search parameter; If true, includes entries that are not owned, meaning not available in
 ---storage nor placed in any owned houses or plots
----@param isActive boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isActive boolean
 function HousingCatalogSearcher:SetUncollected(isActive) end
 
 function HousingCatalogSearcher:ToggleAllowedIndoors() end
@@ -1854,9 +1854,9 @@ function HousingCatalogSearcher:ToggleCollected() end
 
 function HousingCatalogSearcher:ToggleCustomizableOnly() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param groupID number
 ---@param tagID number
----Restrictions: secretArguments=AllowedWhenUntainted
 function HousingCatalogSearcher:ToggleFilterTag(groupID, tagID) end
 
 function HousingCatalogSearcher:ToggleFirstAcquisitionBonusOnly() end
@@ -1879,8 +1879,8 @@ function HousingFixturePointFrame:IsValid() end
 
 function HousingFixturePointFrame:Select() end
 
----@param cb FixturePointUpdatedCallback
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param cb FixturePointUpdatedCallback
 function HousingFixturePointFrame:SetUpdateCallback(cb) end
 
 ---@class HousingLayoutPinFrame
@@ -1895,8 +1895,8 @@ function HousingLayoutPinFrame:CanRemove() end
 ---@return Enum.HousingLayoutRestriction rotateRestriction
 function HousingLayoutPinFrame:CanRotate() end
 
----@param isAccessible boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isAccessible boolean
 function HousingLayoutPinFrame:Drag(isAccessible) end
 
 ---@return DoorConnectionInfo? connectionInfo
@@ -1939,8 +1939,8 @@ function HousingLayoutPinFrame:IsValidForSelectedFloorplan() end
 
 function HousingLayoutPinFrame:Select() end
 
----@param cb PinUpdatedCallback
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param cb PinUpdatedCallback
 function HousingLayoutPinFrame:SetUpdateCallback(cb) end
 
 ---A script object of type `Userdata`.
@@ -1948,38 +1948,38 @@ function HousingLayoutPinFrame:SetUpdateCallback(cb) end
 local LuaColorCurveObject = {}
 
 ---Adds a single point to the curve.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param x number
 ---@param y colorRGBA
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaColorCurveObject:AddPoint(x, y) end
 
 ---Removes all points from the curve. Evaluating an empty curve always yields a zero value.
 function LuaColorCurveObject:ClearPoints() end
 
 ---Returns a new copy of this curve.
----@return LuaColorCurveObject curve
 ---Restrictions: ReturnsNeverSecret
+---@return LuaColorCurveObject curve
 function LuaColorCurveObject:Copy() end
 
 ---Returns a calculated color value from the configured curve points.
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param x number
 ---@return colorRGBA y
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function LuaColorCurveObject:Evaluate(x) end
 
 ---Returns an unpacked calculated color value from the configured curve points.
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param x number
 ---@return number yR
 ---@return number yG
 ---@return number yB
 ---@return number yA
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function LuaColorCurveObject:EvaluateUnpacked(x) end
 
 ---Returns the vector for an individual point index on the curve.
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param index integer
 ---@return LuaColorCurvePoint? point
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function LuaColorCurveObject:GetPoint(index) end
 
 ---Returns the total number of points on the curve.
@@ -1992,13 +1992,13 @@ function LuaColorCurveObject:GetPoints() end
 
 ---Removes a single point from the curve. Raises an error if the supplied point index is out of
 ---range.
----@param index integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param index integer
 function LuaColorCurveObject:RemovePoint(index) end
 
 ---Replaces all points on the curve.
----@param point LuaColorCurvePoint[]
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param point LuaColorCurvePoint[]
 function LuaColorCurveObject:SetPoints(point) end
 
 ---Resets all state on the curve, and clears the secret values flag.
@@ -2009,29 +2009,29 @@ function LuaColorCurveObject:SetToDefaults() end
 local LuaCurveObject = {}
 
 ---Adds a single point to the curve.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param pointX number
 ---@param pointY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaCurveObject:AddPoint(pointX, pointY) end
 
 ---Removes all points from the curve. Evaluating an empty curve always yields a zero value.
 function LuaCurveObject:ClearPoints() end
 
 ---Returns a new copy of this curve.
----@return LuaCurveObject curve
 ---Restrictions: ReturnsNeverSecret
+---@return LuaCurveObject curve
 function LuaCurveObject:Copy() end
 
 ---Returns a calculated 'y' value from the configured curve points.
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param x number
 ---@return number y
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function LuaCurveObject:Evaluate(x) end
 
 ---Returns the vector for an individual point index on the curve.
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param index integer
 ---@return vector2? point
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function LuaCurveObject:GetPoint(index) end
 
 ---Returns the total number of points on the curve.
@@ -2044,13 +2044,13 @@ function LuaCurveObject:GetPoints() end
 
 ---Removes a single point from the curve. Raises an error if the supplied point index is out of
 ---range.
----@param index integer
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param index integer
 function LuaCurveObject:RemovePoint(index) end
 
 ---Replaces all points on the curve.
----@param point vector2[]
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param point vector2[]
 function LuaCurveObject:SetPoints(point) end
 
 ---Resets all state on the curve, and clears the secret values flag.
@@ -2066,13 +2066,13 @@ function LuaCurveObjectBase:GetType() end
 
 ---Returns true if the curve has been configured with any secret values. Curves with secret
 ---values always produce secret results when evaluated.
----@return boolean hasSecretValues
 ---Restrictions: ReturnsNeverSecret
+---@return boolean hasSecretValues
 function LuaCurveObjectBase:HasSecretValues() end
 
 ---Changes the evaluation type of the curve.
----@param type Enum.LuaCurveType
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param type Enum.LuaCurveType
 function LuaCurveObjectBase:SetType(type) end
 
 ---A script object of type `Userdata`.
@@ -2088,21 +2088,21 @@ function LuaDurationClockObject:GetTime() end
 local LuaDurationManualClock = {}
 
 ---Advances the clock by a specified number of seconds.
----@param delta number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param delta number
 function LuaDurationManualClock:AdvanceTime(delta) end
 
 ---Resets the clock to a zero time value.
 function LuaDurationManualClock:ResetTime() end
 
 ---Rewinds the clock by a specified number of seconds.
----@param delta number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param delta number
 function LuaDurationManualClock:RewindTime(delta) end
 
 ---Sets the current clock timestamp to a given value.
----@param time number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param time number
 function LuaDurationManualClock:SetTime(time) end
 
 ---A script object of type `Userdata`.
@@ -2110,71 +2110,71 @@ function LuaDurationManualClock:SetTime(time) end
 local LuaDurationObject = {}
 
 ---Copies another duration object and assigns it to this one.
----@param other LuaDurationObject
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param other LuaDurationObject
 function LuaDurationObject:Assign(other) end
 
 ---Returns a copy of this duration object.
----@return LuaDurationObject copy
 ---Restrictions: ReturnsNeverSecret
+---@return LuaDurationObject copy
 function LuaDurationObject:Copy() end
 
 ---Calculates the elapsed duration in seconds and evaluates it against a supplied curve.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenCurveSecret
 ---@param curve LuaCurveObjectBase
 ---@param modifier? Enum.DurationTimeModifier
 ---@return LuaCurveEvaluatedResult result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenCurveSecret
 function LuaDurationObject:EvaluateElapsedDuration(curve, modifier) end
 
 ---Calculates the elapsed duration as a percentage value and evaluates it against a supplied
 ---curve.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenCurveSecret
 ---@param curve LuaCurveObjectBase
 ---@param modifier? Enum.DurationTimeModifier
 ---@return LuaCurveEvaluatedResult result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenCurveSecret
 function LuaDurationObject:EvaluateElapsedPercent(curve, modifier) end
 
 ---Calculates the remaining duration in seconds and evaluates it against a supplied curve.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenCurveSecret
 ---@param curve LuaCurveObjectBase
 ---@param modifier? Enum.DurationTimeModifier
 ---@return LuaCurveEvaluatedResult result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenCurveSecret
 function LuaDurationObject:EvaluateRemainingDuration(curve, modifier) end
 
 ---Calculates the remaining duration as a percentage value and evaluates it against a supplied
 ---curve.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenCurveSecret
 ---@param curve LuaCurveObjectBase
 ---@param modifier? Enum.DurationTimeModifier
 ---@return LuaCurveEvaluatedResult result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenCurveSecret
 function LuaDurationObject:EvaluateRemainingPercent(curve, modifier) end
 
 ---Calculates the total duration in seconds and evaluates it against a supplied curve.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenCurveSecret
 ---@param curve LuaCurveObjectBase
 ---@param modifier? Enum.DurationTimeModifier
 ---@return LuaCurveEvaluatedResult result
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenCurveSecret
 function LuaDurationObject:EvaluateTotalDuration(curve, modifier) end
 
 ---Formats the elapsed duration of this object to a string.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenNumericFormatterSecret
 ---@param formatter NumericFormatter
 ---@param modifier? Enum.DurationTimeModifier
 ---@return string formatted
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenNumericFormatterSecret
 function LuaDurationObject:FormatElapsedDuration(formatter, modifier) end
 
 ---Formats the remaining duration of this object to a string.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenNumericFormatterSecret
 ---@param formatter NumericFormatter
 ---@param modifier? Enum.DurationTimeModifier
 ---@return string formatted
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenNumericFormatterSecret
 function LuaDurationObject:FormatRemainingDuration(formatter, modifier) end
 
 ---Formats the total duration of this object to a string.
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenNumericFormatterSecret
 ---@param formatter NumericFormatter
 ---@param modifier? Enum.DurationTimeModifier
 ---@return string formatted
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenNumericFormatterSecret
 function LuaDurationObject:FormatTotalDuration(formatter, modifier) end
 
 ---Returns the clock source used by this object.
@@ -2186,21 +2186,21 @@ function LuaDurationObject:GetClock() end
 function LuaDurationObject:GetClockTime() end
 
 ---Calculates the elapsed duration of the stored time span.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modifier? Enum.DurationTimeModifier
 ---@return number elapsedDuration
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:GetElapsedDuration(modifier) end
 
 ---Calculates the elapsed duration as a percentage value.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modifier? Enum.DurationTimeModifier
 ---@return number elapsedPercent
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:GetElapsedPercent(modifier) end
 
 ---Calculates the end time of the stored time span.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modifier? Enum.DurationTimeModifier
 ---@return number endTime
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:GetEndTime(modifier) end
 
 ---Returns the divisor used to convert a duration from real time to base time.
@@ -2208,50 +2208,50 @@ function LuaDurationObject:GetEndTime(modifier) end
 function LuaDurationObject:GetModRate() end
 
 ---Calculates the remaining duration of the stored time span.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modifier? Enum.DurationTimeModifier
 ---@return number remainingDuration
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:GetRemainingDuration(modifier) end
 
 ---Calculates the remaining duration as a percentage value.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modifier? Enum.DurationTimeModifier
 ---@return number remainingPercent
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:GetRemainingPercent(modifier) end
 
 ---Calculates the start time of the stored time span.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modifier? Enum.DurationTimeModifier
 ---@return number startTime
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:GetStartTime(modifier) end
 
 ---Calculates the total duration of the stored time span.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modifier? Enum.DurationTimeModifier
 ---@return number totalDuration
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:GetTotalDuration(modifier) end
 
 ---Returns true once the duration has reached its end time.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modifier? Enum.DurationTimeModifier
 ---@return boolean hasExpired
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:HasExpired(modifier) end
 
 ---Returns true if the duration has been configured with any secret values.
----@return boolean hasSecretValues
 ---Restrictions: ReturnsNeverSecret
+---@return boolean hasSecretValues
 function LuaDurationObject:HasSecretValues() end
 
 ---Returns true once the duration has reached its start time.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modifier? Enum.DurationTimeModifier
 ---@return boolean hasStarted
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:HasStarted(modifier) end
 
 ---Returns true while the duration is at or after its start time and before its end time.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param modifier? Enum.DurationTimeModifier
 ---@return boolean isActive
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:IsActive(modifier) end
 
 ---Returns true if the duration object is measuring a zero duration time span.
@@ -2262,29 +2262,29 @@ function LuaDurationObject:IsZero() end
 function LuaDurationObject:Reset() end
 
 ---Configures the clock source used by this object.
----@param clock? LuaDurationClock
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param clock? LuaDurationClock
 function LuaDurationObject:SetClock(clock) end
 
 ---Configures the duration object to represent an end time and a duration.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param endTime number
 ---@param duration number
 ---@param modRate? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:SetTimeFromEnd(endTime, duration, modRate) end
 
 ---Configures the duration object to represent a start time and a duration.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param startTime number
 ---@param duration number
 ---@param modRate? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:SetTimeFromStart(startTime, duration, modRate) end
 
 ---Configures the duration object to represent a fixed start and end time span. If the end time
 ---is earlier than the start time, the duration will clamp to zero.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param startTime number
 ---@param endTime number
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaDurationObject:SetTimeSpan(startTime, endTime) end
 
 ---Resets all state on the duration, and clears the secret values flag.
@@ -2295,89 +2295,89 @@ function LuaDurationObject:SetToDefaults() end
 local LuaLocaleContext = {}
 
 ---Compares two UTF-8 strings using the options specified on a collator.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param left string
 ---@param right string
 ---@param strength Enum.CollationStrength
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:CompareStrings(left, right, strength) end
 
 ---Opens a break iterator for locating text boundaries in the context locale.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@param breakType Enum.BreakType
 ---@return integer[]? byteOffsets
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:FindBreaks(text, breakType) end
 
 ---Creates a string search iterator using a collator and returns every match position.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@param pattern string
 ---@param strength Enum.CollationStrength
 ---@return integer[]? byteOffsets
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:FindStringMatches(text, pattern, strength) end
 
 ---Case-folds the characters in a string; case-folding is locale-independent and not
 ---context-sensitive.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:FoldCase(text) end
 
 ---Formats a double as a localized currency value using the provided ISO 4217 currency code.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param number number
 ---@param currencyCode string
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:FormatCurrency(number, currencyCode) end
 
 ---Formats Unix time as localized date text using locale date patterns, symbols, style, and
 ---optional time zone.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param unixTimeSeconds number
 ---@param style Enum.DateTimeStyle
 ---@param timeZone string
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:FormatDate(unixTimeSeconds, style, timeZone) end
 
 ---Formats Unix time as localized date and time text using locale patterns, symbols, styles, and
 ---optional time zone.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param unixTimeSeconds number
 ---@param dateStyle Enum.DateTimeStyle
 ---@param timeStyle Enum.DateTimeStyle
 ---@param timeZone string
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:FormatDateTime(unixTimeSeconds, dateStyle, timeStyle, timeZone) end
 
 ---Formats a double with locale number formatting using locale symbols, grouping, and the
 ---selected non-currency style.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param number number
 ---@param style Enum.NumberStyle
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:FormatNumber(number, style) end
 
 ---Formats Unix time as localized time text using locale time patterns, symbols, style, and
 ---optional time zone.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param unixTimeSeconds number
 ---@param style Enum.DateTimeStyle
 ---@param timeZone string
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:FormatTime(unixTimeSeconds, style, timeZone) end
 
 ---Returns the display name for a currency in the context locale.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param currencyCode string
 ---@param style Enum.CurrencyNameStyle
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:GetCurrencyName(currencyCode, style) end
 
 ---Gets a display name suitable for the specified locale.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param displayLocale string
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:GetDisplayName(displayLocale) end
 
 ---Gets the locale used by this locale context.
@@ -2385,67 +2385,67 @@ function LuaLocaleContext:GetDisplayName(displayLocale) end
 function LuaLocaleContext:GetLocale() end
 
 ---Transforms a string into a collation sort key.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@param strength Enum.CollationStrength
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:GetSortKey(text, strength) end
 
 ---Counts character break boundaries in UTF-8 text.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:Length(text) end
 
 ---Parses an entire localized currency string into a double amount and ISO 4217 currency code.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@return CurrencyParseResult? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:ParseCurrency(text) end
 
 ---Parses an entire localized number string into a double using the selected non-currency number
 ---formatter.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@param style Enum.NumberStyle
 ---@return number? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:ParseNumber(text, style) end
 
 ---Returns the keyword of the first plural rule that applies to a number.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param number number
 ---@param pluralType Enum.PluralType
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:SelectPlural(number, pluralType) end
 
 ---Sets the locale used by this locale context.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param locale string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function LuaLocaleContext:SetLocale(locale) end
 
 ---Lowercases the characters in a string; casing is locale-dependent and context-sensitive.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:ToLower(text) end
 
 ---Titlecases a string using titlecase positions determined by the default Unicode algorithm.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:ToTitle(text) end
 
 ---Uppercases the characters in a string; casing is locale-dependent and context-sensitive.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param text string
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:ToUpper(text) end
 
 ---Applies a locale transform to the context locale and returns the transformed locale string.
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param transform Enum.LocaleTransform
 ---@return string? result
----Restrictions: secretArguments=AllowedWhenTainted
 function LuaLocaleContext:TransformLocale(transform) end
 
 ---@class MinimapFrame
@@ -2461,105 +2461,105 @@ function MinimapFrame:GetZoom() end
 ---@return number zoomLevels
 function MinimapFrame:GetZoomLevels() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param locationX number
 ---@param locationY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function MinimapFrame:PingLocation(locationX, locationY) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function MinimapFrame:SetArchBlobInsideAlpha(alpha) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset TextureAsset
 function MinimapFrame:SetArchBlobInsideTexture(asset) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function MinimapFrame:SetArchBlobOutsideAlpha(alpha) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset TextureAsset
 function MinimapFrame:SetArchBlobOutsideTexture(asset) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function MinimapFrame:SetArchBlobRingAlpha(alpha) end
 
----@param scalar number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scalar number
 function MinimapFrame:SetArchBlobRingScalar(scalar) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset TextureAsset
 function MinimapFrame:SetArchBlobRingTexture(asset) end
 
----@param scale number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scale number
 function MinimapFrame:SetIconScale(scale) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset TextureAsset
 function MinimapFrame:SetMaskTexture(asset) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function MinimapFrame:SetQuestBlobInsideAlpha(alpha) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset TextureAsset
 function MinimapFrame:SetQuestBlobInsideTexture(asset) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function MinimapFrame:SetQuestBlobOutsideAlpha(alpha) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset TextureAsset
 function MinimapFrame:SetQuestBlobOutsideTexture(asset) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function MinimapFrame:SetQuestBlobRingAlpha(alpha) end
 
----@param scalar number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scalar number
 function MinimapFrame:SetQuestBlobRingScalar(scalar) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset TextureAsset
 function MinimapFrame:SetQuestBlobRingTexture(asset) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function MinimapFrame:SetTaskBlobInsideAlpha(alpha) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset TextureAsset
 function MinimapFrame:SetTaskBlobInsideTexture(asset) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function MinimapFrame:SetTaskBlobOutsideAlpha(alpha) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset TextureAsset
 function MinimapFrame:SetTaskBlobOutsideTexture(asset) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function MinimapFrame:SetTaskBlobRingAlpha(alpha) end
 
----@param scalar number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scalar number
 function MinimapFrame:SetTaskBlobRingScalar(scalar) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset TextureAsset
 function MinimapFrame:SetTaskBlobRingTexture(asset) end
 
----@param zoomFactor number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param zoomFactor number
 function MinimapFrame:SetZoom(zoomFactor) end
 
 function MinimapFrame:UpdateBlips() end
@@ -2568,9 +2568,9 @@ function MinimapFrame:UpdateBlips() end
 ---@class NumericFormatter
 local NumericFormatter = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param number number
 ---@return string formatted
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function NumericFormatter:FormatNumber(number) end
 
 ---A script object of type `Userdata`.
@@ -2578,16 +2578,16 @@ function NumericFormatter:FormatNumber(number) end
 local NumericRuleFormatter = {}
 
 ---Adds a new breakpoint to the formatter.
----@param breakpoint NumericRuleFormatBreakpoint
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param breakpoint NumericRuleFormatBreakpoint
 function NumericRuleFormatter:AddBreakpoint(breakpoint) end
 
 ---Removes all configured breakpoints from the formatter.
 function NumericRuleFormatter:ClearBreakpoints() end
 
 ---Returns a new copy of this formatter.
----@return NumericRuleFormatter copy
 ---Restrictions: ReturnsNeverSecret
+---@return NumericRuleFormatter copy
 function NumericRuleFormatter:Copy() end
 
 ---Returns a list of all configured breakpoints on this formatter.
@@ -2595,8 +2595,8 @@ function NumericRuleFormatter:Copy() end
 function NumericRuleFormatter:GetBreakpoints() end
 
 ---Replaces all breakpoints on the formatter.
----@param breakpoints NumericRuleFormatBreakpoint[]
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param breakpoints NumericRuleFormatBreakpoint[]
 function NumericRuleFormatter:SetBreakpoints(breakpoints) end
 
 ---@class PingPinFrame
@@ -2608,9 +2608,9 @@ local SecondsFormatter = {}
 
 ---Returns true if the given number of seconds is within an appropriate range for approximated
 ---formatting.
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param seconds number
 ---@return boolean canApproximate
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SecondsFormatter:CanApproximate(seconds) end
 
 ---Returns true if the formatter can promote values to higher interval bands.
@@ -2622,34 +2622,34 @@ function SecondsFormatter:CanRoundUpIntervals() end
 function SecondsFormatter:CanRoundUpLastUnit() end
 
 ---Returns the unit count that a given number of seconds will use for formatting.
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param seconds number
 ---@return number count
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SecondsFormatter:EvaluateDesiredUnitCount(seconds) end
 
 ---Returns the maximum interval band that a given number of seconds will use for formatting.
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param seconds number
 ---@return Enum.SecondsFormatterInterval interval
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SecondsFormatter:EvaluateMaxInterval(seconds) end
 
 ---Returns the minimum interval band that a given number of seconds will use for formatting.
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param seconds number
 ---@return Enum.SecondsFormatterInterval interval
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SecondsFormatter:EvaluateMinInterval(seconds) end
 
 ---Formats a number of seconds and returns the resulting string.
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param seconds number
 ---@param abbreviation? Enum.SecondsFormatterAbbreviation
 ---@return string formattedSeconds
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SecondsFormatter:Format(seconds, abbreviation) end
 
 ---Returns formatted string representing a zero second duration.
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param abbreviation? Enum.SecondsFormatterAbbreviation
 ---@return string formattedSeconds
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SecondsFormatter:FormatZero(abbreviation) end
 
 ---Returns the threshold below which numeric values are formatted as approximated strings.
@@ -2706,77 +2706,77 @@ function SecondsFormatter:Reset() end
 
 ---Configures the formatter to render numeric values between zero and this value as approximated
 ---strings (eg. '< 1m').
----@param seconds number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param seconds number
 function SecondsFormatter:SetApproximationSeconds(seconds) end
 
 ---Configures the formatter to promote intervals if values are large enough (eg. '60m' -> '1h').
----@param canRound boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param canRound boolean
 function SecondsFormatter:SetCanRoundUpIntervals(canRound) end
 
 ---Configures the formatter to round the last formatted unit up, rather than down.
----@param canRound boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param canRound boolean
 function SecondsFormatter:SetCanRoundUpLastUnit(canRound) end
 
 ---Configures the formatter to convert all interval format strings to lowercase.
----@param convert boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param convert boolean
 function SecondsFormatter:SetConvertToLower(convert) end
 
 ---Sets the default abbreviation mode used for formatting.
----@param abbreviation Enum.SecondsFormatterAbbreviation
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param abbreviation Enum.SecondsFormatterAbbreviation
 function SecondsFormatter:SetDefaultAbbreviation(abbreviation) end
 
 ---Sets the desired unit count used for formatting.
----@param count number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param count number
 function SecondsFormatter:SetDesiredUnitCount(count) end
 
 ---Sets the desired unit count used for formatting to a curve that will be evaluated with
 ---seconds values to produce a desired unit count.
----@param curve LuaCurveObject
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param curve LuaCurveObject
 function SecondsFormatter:SetDesiredUnitCountCurve(curve) end
 
 ---Sets the maximum interval band used for formatting.
----@param interval Enum.SecondsFormatterInterval
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param interval Enum.SecondsFormatterInterval
 function SecondsFormatter:SetMaxInterval(interval) end
 
 ---Sets the maximum interval band used for formatting to a curve that will be evaluated with
 ---seconds values to produce a value matching a SecondsFormatterInterval enum member.
----@param curve LuaCurveObject
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param curve LuaCurveObject
 function SecondsFormatter:SetMaxIntervalCurve(curve) end
 
 ---Sets the threshold below which a value will be formatted as a decimal number of seconds with
 ---one place for milliseconds (eg. '3.4')
----@param threshold number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param threshold number
 function SecondsFormatter:SetMillisecondsThreshold(threshold) end
 
 ---Sets the minimum interval band used for formatting.
----@param interval Enum.SecondsFormatterInterval
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param interval Enum.SecondsFormatterInterval
 function SecondsFormatter:SetMinInterval(interval) end
 
 ---Sets the minimum interval band used for formatting to a curve that will be evaluated with
 ---seconds values to produce a value matching a SecondsFormatterInterval enum member.
----@param curve LuaCurveObject
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param curve LuaCurveObject
 function SecondsFormatter:SetMinIntervalCurve(curve) end
 
 ---Sets how fractional seconds are rounded when not displaying milliseconds.
----@param rounding Enum.SecondsFormatterRounding
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param rounding Enum.SecondsFormatterRounding
 function SecondsFormatter:SetRounding(rounding) end
 
 ---Sets the whitespace stripping mode for the formatter.
----@param strip Enum.SecondsFormatterIntervalWhitespace
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param strip Enum.SecondsFormatterIntervalWhitespace
 function SecondsFormatter:SetStripIntervalWhitespace(strip) end
 
 ---@class SimpleAnim
@@ -2800,11 +2800,11 @@ function SimpleAnim:GetProgress() end
 ---@return CScriptObject region
 function SimpleAnim:GetRegionParent() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
+---RequiresSupportedScript
 ---@param scriptTypeName string
 ---@param bindingType? Enum.ScriptBindingType
 ---@return function script
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
----RequiresSupportedScript
 function SimpleAnim:GetScript(scriptTypeName, bindingType) end
 
 ---@return number progress
@@ -2819,16 +2819,16 @@ function SimpleAnim:GetStartDelay() end
 ---@return CScriptObject target
 function SimpleAnim:GetTarget() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param scriptName string
 ---@return boolean hasScript
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleAnim:HasScript(scriptName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresAssignableScript
 ---@param scriptTypeName string
 ---@param script function
 ---@param bindingType? Enum.ScriptBindingType
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresAssignableScript
 function SimpleAnim:HookScript(scriptTypeName, script, bindingType) end
 
 ---@return boolean isDelaying
@@ -2852,65 +2852,65 @@ function SimpleAnim:Play() end
 
 function SimpleAnim:Restart() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param childKey string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnim:SetChildKey(childKey) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param durationSec number
 ---@param recomputeGroupDuration? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnim:SetDuration(durationSec, recomputeGroupDuration) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param delaySec number
 ---@param recomputeGroupDuration? boolean
----Restrictions: secretArguments=NotAllowed
 function SimpleAnim:SetEndDelay(delaySec, recomputeGroupDuration) end
 
----@param newOrder number
 ---Restrictions: secretArguments=NotAllowed
+---@param newOrder number
 function SimpleAnim:SetOrder(newOrder) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
 ---@param parent SimpleAnimGroup
 ---@param order? number
----Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
 function SimpleAnim:SetParent(parent, order) end
 
----@param play boolean
 ---Restrictions: secretArguments=NotAllowed
+---@param play boolean
 function SimpleAnim:SetPlaying(play) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresAssignableScript
 ---@param scriptTypeName string
 ---@param script? function
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresAssignableScript
 function SimpleAnim:SetScript(scriptTypeName, script) end
 
----@param durationSec number
 ---Restrictions: secretArguments=NotAllowed
+---@param durationSec number
 function SimpleAnim:SetSmoothProgress(durationSec) end
 
----@param weights string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param weights string
 function SimpleAnim:SetSmoothing(weights) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param delaySec number
 ---@param recomputeGroupDuration? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnim:SetStartDelay(delaySec, recomputeGroupDuration) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param target CScriptObject
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnim:SetTarget(target) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param key string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnim:SetTargetKey(key) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param name string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnim:SetTargetName(name) end
 
 ---@return boolean success
@@ -2927,12 +2927,12 @@ function SimpleAnimAlpha:GetFromAlpha() end
 ---@return number normalizedAlpha
 function SimpleAnimAlpha:GetToAlpha() end
 
----@param normalizedAlpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param normalizedAlpha number
 function SimpleAnimAlpha:SetFromAlpha(normalizedAlpha) end
 
----@param normalizedAlpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param normalizedAlpha number
 function SimpleAnimAlpha:SetToAlpha(normalizedAlpha) end
 
 ---@class SimpleAnimFlipBook
@@ -2953,34 +2953,34 @@ function SimpleAnimFlipBook:GetFlipBookFrames() end
 ---@return number rows
 function SimpleAnimFlipBook:GetFlipBookRows() end
 
----@param columns number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param columns number
 function SimpleAnimFlipBook:SetFlipBookColumns(columns) end
 
----@param height number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param height number
 function SimpleAnimFlipBook:SetFlipBookFrameHeight(height) end
 
----@param width number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param width number
 function SimpleAnimFlipBook:SetFlipBookFrameWidth(width) end
 
----@param frames number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param frames number
 function SimpleAnimFlipBook:SetFlipBookFrames(frames) end
 
----@param rows number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param rows number
 function SimpleAnimFlipBook:SetFlipBookRows(rows) end
 
 ---@class SimpleAnimGroup
 local SimpleAnimGroup = {}
 
+---Restrictions: secretArguments=NotAllowed
 ---@param animationType? string
 ---@param name? string
 ---@param templateName? string
 ---@return SimpleAnim anim
----Restrictions: secretArguments=NotAllowed
 function SimpleAnimGroup:CreateAnimation(animationType, name, templateName) end
 
 function SimpleAnimGroup:Finish() end
@@ -3006,23 +3006,23 @@ function SimpleAnimGroup:GetLooping() end
 ---@return number progress
 function SimpleAnimGroup:GetProgress() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
+---RequiresSupportedScript
 ---@param scriptTypeName string
 ---@param bindingType? Enum.ScriptBindingType
 ---@return function script
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
----RequiresSupportedScript
 function SimpleAnimGroup:GetScript(scriptTypeName, bindingType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param scriptName string
 ---@return boolean hasScript
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleAnimGroup:HasScript(scriptName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresAssignableScript
 ---@param scriptTypeName string
 ---@param script function
 ---@param bindingType? Enum.ScriptBindingType
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresAssignableScript
 function SimpleAnimGroup:HookScript(scriptTypeName, script, bindingType) end
 
 ---@return boolean isDone
@@ -3045,37 +3045,37 @@ function SimpleAnimGroup:IsSetToFinalAlpha() end
 
 function SimpleAnimGroup:Pause() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param reverse? boolean
 ---@param offset? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnimGroup:Play(reverse, offset) end
 
 function SimpleAnimGroup:RemoveAnimations() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param reverse? boolean
 ---@param offset? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnimGroup:Restart(reverse, offset) end
 
----@param animationSpeedMultiplier number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param animationSpeedMultiplier number
 function SimpleAnimGroup:SetAnimationSpeedMultiplier(animationSpeedMultiplier) end
 
----@param loopType string
 ---Restrictions: secretArguments=NotAllowed
+---@param loopType string
 function SimpleAnimGroup:SetLooping(loopType) end
 
----@param play boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param play boolean
 function SimpleAnimGroup:SetPlaying(play) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresAssignableScript
 ---@param scriptTypeName string
 ---@param script? function
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresAssignableScript
 function SimpleAnimGroup:SetScript(scriptTypeName, script) end
 
----@param setToFinalAlpha boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param setToFinalAlpha boolean
 function SimpleAnimGroup:SetToFinalAlpha(setToFinalAlpha) end
 
 function SimpleAnimGroup:Stop() end
@@ -3083,11 +3083,11 @@ function SimpleAnimGroup:Stop() end
 ---@class SimpleAnimPath
 local SimpleAnimPath = {}
 
+---Restrictions: secretArguments=NotAllowed
 ---@param name? string
 ---@param templateName? string
 ---@param order? number
 ---@return SimpleControlPoint point
----Restrictions: secretArguments=NotAllowed
 function SimpleAnimPath:CreateControlPoint(name, templateName, order) end
 
 ---@return SimpleControlPoint points
@@ -3099,8 +3099,8 @@ function SimpleAnimPath:GetCurveType() end
 ---@return number maxOrder
 function SimpleAnimPath:GetMaxControlPointOrder() end
 
----@param curveType string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param curveType string
 function SimpleAnimPath:SetCurveType(curveType) end
 
 ---@class SimpleAnimRadialProgress
@@ -3112,12 +3112,12 @@ function SimpleAnimRadialProgress:GetFromPercent() end
 ---@return number percent
 function SimpleAnimRadialProgress:GetToPercent() end
 
----@param percent number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param percent number
 function SimpleAnimRadialProgress:SetFromPercent(percent) end
 
----@param percent number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param percent number
 function SimpleAnimRadialProgress:SetToPercent(percent) end
 
 ---@class SimpleAnimRotation
@@ -3134,18 +3134,18 @@ function SimpleAnimRotation:GetOrigin() end
 ---@return number angle
 function SimpleAnimRotation:GetRadians() end
 
----@param angle number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param angle number
 function SimpleAnimRotation:SetDegrees(angle) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param point string
 ---@param originX number
 ---@param originY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnimRotation:SetOrigin(point, originX, originY) end
 
----@param angle number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param angle number
 function SimpleAnimRotation:SetRadians(angle) end
 
 ---@class SimpleAnimScale
@@ -3168,25 +3168,25 @@ function SimpleAnimScale:GetScaleFrom() end
 ---@return number scaleY
 function SimpleAnimScale:GetScaleTo() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param point string
 ---@param originX number
 ---@param originY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnimScale:SetOrigin(point, originX, originY) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param scaleX number
 ---@param scaleY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnimScale:SetScale(scaleX, scaleY) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param scaleX number
 ---@param scaleY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnimScale:SetScaleFrom(scaleX, scaleY) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param scaleX number
 ---@param scaleY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnimScale:SetScaleTo(scaleX, scaleY) end
 
 ---@class SimpleAnimScaleLine
@@ -3199,9 +3199,9 @@ local SimpleAnimTextureCoordTranslation = {}
 ---@return number offsetV
 function SimpleAnimTextureCoordTranslation:GetOffset() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetU number
 ---@param offsetV number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnimTextureCoordTranslation:SetOffset(offsetU, offsetV) end
 
 ---@class SimpleAnimTranslation
@@ -3211,9 +3211,9 @@ local SimpleAnimTranslation = {}
 ---@return number offsetY
 function SimpleAnimTranslation:GetOffset() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetX number
 ---@param offsetY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleAnimTranslation:SetOffset(offsetX, offsetY) end
 
 ---@class SimpleAnimTranslationLine
@@ -3228,21 +3228,21 @@ function SimpleAnimVertexColor:GetEndColor() end
 ---@return colorRGBA color
 function SimpleAnimVertexColor:GetStartColor() end
 
----@param color colorRGBA
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param color colorRGBA
 function SimpleAnimVertexColor:SetEndColor(color) end
 
----@param color colorRGBA
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param color colorRGBA
 function SimpleAnimVertexColor:SetStartColor(color) end
 
 ---@class SimpleAnimatableObject
 local SimpleAnimatableObject = {}
 
+---Restrictions: secretArguments=NotAllowed
 ---@param name? string
 ---@param templateName? string
 ---@return SimpleAnimGroup group
----Restrictions: secretArguments=NotAllowed
 function SimpleAnimatableObject:CreateAnimationGroup(name, templateName) end
 
 ---@return SimpleAnimGroup groups
@@ -3263,8 +3263,8 @@ function SimpleBrowser:NavigateBack() end
 
 function SimpleBrowser:NavigateForward() end
 
----@param urlType string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param urlType string
 function SimpleBrowser:NavigateHome(urlType) end
 
 function SimpleBrowser:NavigateReload() end
@@ -3273,14 +3273,14 @@ function SimpleBrowser:NavigateStop() end
 
 function SimpleBrowser:OpenExternalLink() end
 
----@param index number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param index number
 function SimpleBrowser:OpenTicket(index) end
 
 function SimpleBrowser:SetFocus() end
 
----@param zoom number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param zoom number
 function SimpleBrowser:SetZoom(zoom) end
 
 ---@class SimpleButton
@@ -3294,9 +3294,9 @@ function SimpleButton:ClearNormalTexture() end
 
 function SimpleButton:ClearPushedTexture() end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param button? string
 ---@param isDown? boolean
----Restrictions: secretArguments=NotAllowed
 function SimpleButton:Click(button, isDown) end
 
 ---Restrictions: isProtected
@@ -3351,88 +3351,88 @@ function SimpleButton:GetTextWidth() end
 ---@return boolean isEnabled
 function SimpleButton:IsEnabled() end
 
----@param buttons string
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param buttons string
 function SimpleButton:RegisterForClicks(buttons) end
 
----@param buttons string
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param buttons string
 function SimpleButton:RegisterForMouse(buttons) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param buttonState string
 ---@param lock? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleButton:SetButtonState(buttonState, lock) end
 
----@param atlas string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param atlas string
 function SimpleButton:SetDisabledAtlas(atlas) end
 
----@param font SimpleFont
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param font SimpleFont
 function SimpleButton:SetDisabledFontObject(font) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param asset TextureAsset
 function SimpleButton:SetDisabledTexture(asset) end
 
----@param enabled? boolean
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param enabled? boolean
 function SimpleButton:SetEnabled(enabled) end
 
----@param fontString SimpleFontString
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param fontString SimpleFontString
 function SimpleButton:SetFontString(fontString) end
 
----@param text string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param text string
 function SimpleButton:SetFormattedText(text) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param atlas string
 ---@param blendMode? string
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleButton:SetHighlightAtlas(atlas, blendMode) end
 
----@param font SimpleFont
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param font SimpleFont
 function SimpleButton:SetHighlightFontObject(font) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
 ---@param asset TextureAsset
 ---@param blendMode? string
----Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
 function SimpleButton:SetHighlightTexture(asset, blendMode) end
 
----@param motionScriptsWhileDisabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param motionScriptsWhileDisabled boolean
 function SimpleButton:SetMotionScriptsWhileDisabled(motionScriptsWhileDisabled) end
 
----@param atlas string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param atlas string
 function SimpleButton:SetNormalAtlas(atlas) end
 
----@param font SimpleFont
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param font SimpleFont
 function SimpleButton:SetNormalFontObject(font) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param asset TextureAsset
 function SimpleButton:SetNormalTexture(asset) end
 
----@param atlas string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param atlas string
 function SimpleButton:SetPushedAtlas(atlas) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetX number
 ---@param offsetY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleButton:SetPushedTextOffset(offsetX, offsetY) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param asset TextureAsset
 function SimpleButton:SetPushedTexture(asset) end
 
----@param text? string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param text? string
 function SimpleButton:SetText(text) end
 
 ---@class SimpleCheckbox
@@ -3447,16 +3447,16 @@ function SimpleCheckbox:GetCheckedTexture() end
 ---@return SimpleTexture texture
 function SimpleCheckbox:GetDisabledCheckedTexture() end
 
----@param checked? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param checked? boolean
 function SimpleCheckbox:SetChecked(checked) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param asset TextureAsset
 function SimpleCheckbox:SetCheckedTexture(asset) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param asset TextureAsset
 function SimpleCheckbox:SetDisabledCheckedTexture(asset) end
 
 ---@class SimpleColorSelect
@@ -3495,44 +3495,44 @@ function SimpleColorSelect:GetColorWheelTexture() end
 ---@return SimpleTexture texture
 function SimpleColorSelect:GetColorWheelThumbTexture() end
 
----@param alpha number
 ---Restrictions: secretArguments=NotAllowed
+---@param alpha number
 function SimpleColorSelect:SetColorAlpha(alpha) end
 
----@param texture SimpleTexture
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param texture SimpleTexture
 function SimpleColorSelect:SetColorAlphaTexture(texture) end
 
----@param texture TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param texture TextureAsset
 function SimpleColorSelect:SetColorAlphaThumbTexture(texture) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param hsvX number
 ---@param hsvY number
 ---@param hsvZ number
----Restrictions: secretArguments=NotAllowed
 function SimpleColorSelect:SetColorHSV(hsvX, hsvY, hsvZ) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param rgbR number
 ---@param rgbG number
 ---@param rgbB number
----Restrictions: secretArguments=NotAllowed
 function SimpleColorSelect:SetColorRGB(rgbR, rgbG, rgbB) end
 
----@param texture SimpleTexture
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param texture SimpleTexture
 function SimpleColorSelect:SetColorValueTexture(texture) end
 
----@param texture TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param texture TextureAsset
 function SimpleColorSelect:SetColorValueThumbTexture(texture) end
 
----@param texture SimpleTexture
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param texture SimpleTexture
 function SimpleColorSelect:SetColorWheelTexture(texture) end
 
----@param texture TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param texture TextureAsset
 function SimpleColorSelect:SetColorWheelThumbTexture(texture) end
 
 ---@class SimpleControlPoint
@@ -3545,25 +3545,25 @@ function SimpleControlPoint:GetOffset() end
 ---@return number order
 function SimpleControlPoint:GetOrder() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetX number
 ---@param offsetY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleControlPoint:SetOffset(offsetX, offsetY) end
 
----@param order number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param order number
 function SimpleControlPoint:SetOrder(order) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
 ---@param parent SimplePathAnim
 ---@param order? number
----Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
 function SimpleControlPoint:SetParent(parent, order) end
 
 ---@class SimpleEditBox
 local SimpleEditBox = {}
 
----@param text string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param text string
 function SimpleEditBox:AddHistoryLine(text) end
 
 function SimpleEditBox:ClearFocus() end
@@ -3672,13 +3672,13 @@ function SimpleEditBox:HasFocus() end
 ---@return boolean hasText
 function SimpleEditBox:HasText() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param start? number
 ---@param stop? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleEditBox:HighlightText(start, stop) end
 
----@param text string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param text string
 function SimpleEditBox:Insert(text) end
 
 ---@return boolean enabled
@@ -3713,143 +3713,143 @@ function SimpleEditBox:IsSecureText() end
 
 function SimpleEditBox:ResetInputMode() end
 
----@param enabled? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled? boolean
 function SimpleEditBox:SetAlphabeticOnly(enabled) end
 
----@param altMode? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param altMode? boolean
 function SimpleEditBox:SetAltArrowKeyMode(altMode) end
 
----@param autoFocus? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param autoFocus? boolean
 function SimpleEditBox:SetAutoFocus(autoFocus) end
 
----@param cursorBlinkSpeedSec number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param cursorBlinkSpeedSec number
 function SimpleEditBox:SetBlinkSpeed(cursorBlinkSpeedSec) end
 
----@param countInvisibleLetters? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param countInvisibleLetters? boolean
 function SimpleEditBox:SetCountInvisibleLetters(countInvisibleLetters) end
 
----@param cursorPosition number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param cursorPosition number
 function SimpleEditBox:SetCursorPosition(cursorPosition) end
 
----@param enabled? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled? boolean
 function SimpleEditBox:SetEnabled(enabled) end
 
 function SimpleEditBox:SetFocus() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidFontAsset,
+---RequiresValidFontHeight
 ---@param fontFile string
 ---@param height number
 ---@param flags string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidFontAsset,
----RequiresValidFontHeight
 function SimpleEditBox:SetFont(fontFile, height, flags) end
 
----@param font SimpleFont
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param font SimpleFont
 function SimpleEditBox:SetFontObject(font) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleEditBox:SetHighlightColor(colorR, colorG, colorB, a) end
 
----@param numHistoryLines number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param numHistoryLines number
 function SimpleEditBox:SetHistoryLines(numHistoryLines) end
 
----@param isIndented? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isIndented? boolean
 function SimpleEditBox:SetIndentedWordWrap(isIndented) end
 
----@param justifyH string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param justifyH string
 function SimpleEditBox:SetJustifyH(justifyH) end
 
----@param justifyV string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param justifyV string
 function SimpleEditBox:SetJustifyV(justifyV) end
 
----@param maxBytes number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param maxBytes number
 function SimpleEditBox:SetMaxBytes(maxBytes) end
 
----@param maxLetters number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param maxLetters number
 function SimpleEditBox:SetMaxLetters(maxLetters) end
 
----@param multiline? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param multiline? boolean
 function SimpleEditBox:SetMultiLine(multiline) end
 
----@param number number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param number number
 function SimpleEditBox:SetNumber(number) end
 
----@param isNumeric? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isNumeric? boolean
 function SimpleEditBox:SetNumeric(isNumeric) end
 
----@param isNumeric? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isNumeric? boolean
 function SimpleEditBox:SetNumericFullRange(isNumeric) end
 
----@param isPassword? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isPassword? boolean
 function SimpleEditBox:SetPassword(isPassword) end
 
----@param isSecure? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isSecure? boolean
 function SimpleEditBox:SetSecureText(isSecure) end
 
 function SimpleEditBox:SetSecurityDisablePaste() end
 
 function SimpleEditBox:SetSecurityDisableSetText() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleEditBox:SetShadowColor(colorR, colorG, colorB, a) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetX number
 ---@param offsetY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleEditBox:SetShadowOffset(offsetX, offsetY) end
 
----@param fontHeight number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fontHeight number
 function SimpleEditBox:SetSpacing(fontHeight) end
 
----@param text string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param text string
 function SimpleEditBox:SetText(text) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleEditBox:SetTextColor(colorR, colorG, colorB, a) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param left number
 ---@param right number
 ---@param top number
 ---@param bottom number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleEditBox:SetTextInsets(left, right, top, bottom) end
 
----@param maxVisibleBytes number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param maxVisibleBytes number
 function SimpleEditBox:SetVisibleTextByteLimit(maxVisibleBytes) end
 
 function SimpleEditBox:ToggleInputLanguage() end
@@ -3857,8 +3857,8 @@ function SimpleEditBox:ToggleInputLanguage() end
 ---@class SimpleFont
 local SimpleFont = {}
 
----@param sourceFont SimpleFont
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param sourceFont SimpleFont
 function SimpleFont:CopyFontObject(sourceFont) end
 
 ---@return number alpha
@@ -3876,9 +3876,9 @@ function SimpleFont:GetFontHeight() end
 ---@return SimpleFont font
 function SimpleFont:GetFontObject() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param alphabet string
 ---@return SimpleFont font
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleFont:GetFontObjectForAlphabet(alphabet) end
 
 ---@return boolean wordWrap
@@ -3909,69 +3909,69 @@ function SimpleFont:GetSpacing() end
 ---@return number colorA
 function SimpleFont:GetTextColor() end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function SimpleFont:SetAlpha(alpha) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidFontAsset,
+---RequiresValidFontHeight
 ---@param fontFile string
 ---@param height number
 ---@param flags string
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidFontAsset,
----RequiresValidFontHeight
 function SimpleFont:SetFont(fontFile, height, flags) end
 
 ---Preserves all flags, does correct height conversion due to fixedHeight.
----@param height number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param height number
 function SimpleFont:SetFontHeight(height) end
 
----@param font SimpleFont
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param font SimpleFont
 function SimpleFont:SetFontObject(font) end
 
----@param wordWrap boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param wordWrap boolean
 function SimpleFont:SetIndentedWordWrap(wordWrap) end
 
----@param justifyH string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param justifyH string
 function SimpleFont:SetJustifyH(justifyH) end
 
----@param justifyV string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param justifyV string
 function SimpleFont:SetJustifyV(justifyV) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFont:SetShadowColor(colorR, colorG, colorB, a) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetX number
 ---@param offsetY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFont:SetShadowOffset(offsetX, offsetY) end
 
----@param spacing number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param spacing number
 function SimpleFont:SetSpacing(spacing) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFont:SetTextColor(colorR, colorG, colorB, a) end
 
 ---@class SimpleFontString
 local SimpleFontString = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFontStringTextAccess,
+---SecretWhenAnchoringSecret
 ---@param leftIndex integer
 ---@param rightIndex integer
 ---@return uiBoundsRect[]? areas
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFontStringTextAccess,
----SecretWhenAnchoringSecret
 function SimpleFontString:CalculateScreenAreaFromCharacterSpan(leftIndex, rightIndex) end
 
 ---@return boolean wrap
@@ -3985,12 +3985,12 @@ function SimpleFontString:ClearAlphaGradient() end
 ---Sets text to an empty string and removes the Text secret aspect.
 function SimpleFontString:ClearText() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresFontStringTextAccess,
+---SecretWhenAnchoringSecret
 ---@param x number
 ---@param y number
 ---@return integer? characterIndex
 ---@return boolean? inside
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresFontStringTextAccess,
----SecretWhenAnchoringSecret
 function SimpleFontString:FindCharacterIndexAtCoordinate(x, y) end
 
 ---@return number start
@@ -4005,9 +4005,9 @@ function SimpleFontString:GetFieldSize() end
 ---@return string flags
 function SimpleFontString:GetFont() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param calculated? boolean
 ---@return number height
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFontString:GetFontHeight(calculated) end
 
 ---@return SimpleFont font
@@ -4028,8 +4028,8 @@ function SimpleFontString:GetLineHeight() end
 ---@return number maxLines
 function SimpleFontString:GetMaxLines() end
 
----@return number numLines
 ---Restrictions: SecretWhenAnchoringSecret
+---@return number numLines
 function SimpleFontString:GetNumLines() end
 
 ---@return number radians
@@ -4054,12 +4054,12 @@ function SimpleFontString:GetSmoothScaling() end
 ---@return number spacing
 function SimpleFontString:GetSpacing() end
 
----@return number height
 ---Restrictions: SecretWhenAnchoringSecret
+---@return number height
 function SimpleFontString:GetStringHeight() end
 
----@return number width
 ---Restrictions: SecretWhenAnchoringSecret
+---@return number width
 function SimpleFontString:GetStringWidth() end
 
 ---@return string text
@@ -4074,132 +4074,132 @@ function SimpleFontString:GetTextColor() end
 ---@return number textScale
 function SimpleFontString:GetTextScale() end
 
----@return number width
 ---Restrictions: SecretWhenAnchoringSecret
+---@return number width
 function SimpleFontString:GetUnboundedStringWidth() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenAnchoringSecret
 ---@param text string
 ---@return number width
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenAnchoringSecret
 function SimpleFontString:GetUnboundedStringWidthForText(text) end
 
----@return number width
 ---Restrictions: SecretWhenAnchoringSecret
+---@return number width
 function SimpleFontString:GetWrappedWidth() end
 
----@return boolean isTruncated
 ---Restrictions: SecretWhenAnchoringSecret
+---@return boolean isTruncated
 function SimpleFontString:IsTruncated() end
 
 function SimpleFontString:OnColorsUpdated() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param start number
 ---@param length number
 ---@return boolean isWithinText
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFontString:SetAlphaGradient(start, length) end
 
----@param desaturate boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param desaturate boolean
 function SimpleFontString:SetDesaturateEmbeddedTextures(desaturate) end
 
----@param fixedColor boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fixedColor boolean
 function SimpleFontString:SetFixedColor(fixedColor) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidFontAsset,
+---RequiresValidFontHeight
 ---@param fontFile FontAsset
 ---@param fontHeight number
 ---@param flags? string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidFontAsset,
----RequiresValidFontHeight
 function SimpleFontString:SetFont(fontFile, fontHeight, flags) end
 
----@param height number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param height number
 function SimpleFontString:SetFontHeight(height) end
 
----@param font SimpleFont
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param font SimpleFont
 function SimpleFontString:SetFontObject(font) end
 
----@param text string
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param text string
 function SimpleFontString:SetFormattedText(text) end
 
----@param wrap boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param wrap boolean
 function SimpleFontString:SetIndentedWordWrap(wrap) end
 
----@param justifyH string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param justifyH string
 function SimpleFontString:SetJustifyH(justifyH) end
 
----@param justifyV string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param justifyV string
 function SimpleFontString:SetJustifyV(justifyV) end
 
----@param maxLines number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param maxLines number
 function SimpleFontString:SetMaxLines(maxLines) end
 
----@param wrap boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param wrap boolean
 function SimpleFontString:SetNonSpaceWrap(wrap) end
 
----@param radians number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param radians number
 function SimpleFontString:SetRotation(radians) end
 
----@param scaleAnimationMode Enum.FontStringScaleAnimationMode
 ---Restrictions: secretArguments=NotAllowed
+---@param scaleAnimationMode Enum.FontStringScaleAnimationMode
 function SimpleFontString:SetScaleAnimationMode(scaleAnimationMode) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFontString:SetShadowColor(colorR, colorG, colorB, a) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetX number
 ---@param offsetY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFontString:SetShadowOffset(offsetX, offsetY) end
 
----@param smoothScaling boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param smoothScaling boolean
 function SimpleFontString:SetSmoothScaling(smoothScaling) end
 
----@param spacing number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param spacing number
 function SimpleFontString:SetSpacing(spacing) end
 
----@param text? string
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param text? string
 function SimpleFontString:SetText(text) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleFontString:SetTextColor(colorR, colorG, colorB, a) end
 
----@param height number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param height number
 function SimpleFontString:SetTextHeight(height) end
 
----@param textScale number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param textScale number
 function SimpleFontString:SetTextScale(textScale) end
 
----@param text? string
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param text? string
 function SimpleFontString:SetTextToFit(text) end
 
----@param wrap boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param wrap boolean
 function SimpleFontString:SetWordWrap(wrap) end
 
 ---@class SimpleFrame
@@ -4208,8 +4208,8 @@ local SimpleFrame = {}
 function SimpleFrame:AbortDrag() end
 
 ---Adds a roleset tag to this frame without removing existing ones.
----@param roleset string
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param roleset string
 function SimpleFrame:AddRoleset(roleset) end
 
 ---@return boolean canChangeAttributes
@@ -4217,60 +4217,60 @@ function SimpleFrame:CanChangeAttribute() end
 
 function SimpleFrame:ClearAlphaGradient() end
 
+---Restrictions: isProtected, secretArguments=NotAllowed
 ---@param attributeName string
 ---@return boolean cleared
----Restrictions: isProtected, secretArguments=NotAllowed
 function SimpleFrame:ClearAttribute(attributeName) end
 
 ---Restrictions: isProtected
 function SimpleFrame:ClearAttributes() end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param name? string
 ---@param drawLayer? string
 ---@param templateName? string
 ---@return SimpleFontString line
----Restrictions: secretArguments=NotAllowed
 function SimpleFrame:CreateFontString(name, drawLayer, templateName) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param name? string
 ---@param drawLayer? string
 ---@param templateName? string
 ---@param subLevel? number
 ---@return SimpleLine line
----Restrictions: secretArguments=NotAllowed
 function SimpleFrame:CreateLine(name, drawLayer, templateName, subLevel) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param name? string
 ---@param drawLayer? string
 ---@param templateName? string
 ---@param subLevel? number
 ---@return SimpleMaskTexture maskTexture
----Restrictions: secretArguments=NotAllowed
 function SimpleFrame:CreateMaskTexture(name, drawLayer, templateName, subLevel) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param name? string
 ---@param drawLayer? string
 ---@param templateName? string
 ---@param subLevel? number
 ---@return SimpleTexture texture
----Restrictions: secretArguments=NotAllowed
 function SimpleFrame:CreateTexture(name, drawLayer, templateName, subLevel) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param name? string
 ---@param drawLayer? string
 ---@param templateName? string
 ---@param subLevel? number
 ---@return SimpleVectorGraphics vectorGraphics
----Restrictions: secretArguments=NotAllowed
 function SimpleFrame:CreateVectorGraphics(name, drawLayer, templateName, subLevel) end
 
+---Restrictions: secretArguments=NotAllowed
 ---@param desaturation number
 ---@param excludeRoot? boolean
----Restrictions: secretArguments=NotAllowed
 function SimpleFrame:DesaturateHierarchy(desaturation, excludeRoot) end
 
----@param layer string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param layer string
 function SimpleFrame:DisableDrawLayer(layer) end
 
 ---@return boolean clipsChildren
@@ -4281,35 +4281,35 @@ function SimpleFrame:DoesClipChildren() end
 ---@return boolean canPropagate
 function SimpleFrame:DoesHyperlinkPropagateToParent() end
 
----@param layer string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param layer string
 function SimpleFrame:EnableDrawLayer(layer) end
 
----@param enable? boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param enable? boolean
 function SimpleFrame:EnableGamePadButton(enable) end
 
----@param enable? boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param enable? boolean
 function SimpleFrame:EnableGamePadStick(enable) end
 
----@param enable? boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param enable? boolean
 function SimpleFrame:EnableKeyboard(enable) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param attributeName string
 ---@param arguments? string
 ---@return boolean success
 ---@return string? returns
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:ExecuteAttribute(attributeName, arguments) end
 
 ---@return number alpha
 function SimpleFrame:GetAlpha() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param attributeName string
 ---@return string value
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleFrame:GetAttribute(attributeName) end
 
 ---@return number left
@@ -4330,8 +4330,8 @@ function SimpleFrame:GetClampRectInsets() end
 ---@return boolean dontSave
 function SimpleFrame:GetDontSavePosition() end
 
----@return number effectiveAlpha
 ---Restrictions: RequiresScriptObjectAlphaAccess
+---@return number effectiveAlpha
 function SimpleFrame:GetEffectiveAlpha() end
 
 ---@return number effectiveScale
@@ -4351,9 +4351,9 @@ function SimpleFrame:GetFrameStrata() end
 
 ---Returns the highest framelevel of the frame and its first order children, or all children if
 ---iterateAllChildren is true.
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param iterateAllChildren? boolean
 ---@return number frameLevel
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleFrame:GetHighestFrameLevel(iterateAllChildren) end
 
 ---@return number left
@@ -4416,23 +4416,23 @@ function SimpleFrame:HasFixedFrameStrata() end
 ---Restrictions: isProtected
 function SimpleFrame:Hide() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param delegate SimpleFrame
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:InterceptStartDrag(delegate) end
 
 ---@return boolean clampedToScreen
 function SimpleFrame:IsClampedToScreen() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param layer string
 ---@return boolean isEnabled
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleFrame:IsDrawLayerEnabled(layer) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param eventName string
 ---@return boolean isRegistered
 ---@return Enum.UnitTokenType? units
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleFrame:IsEventRegistered(eventName) end
 
 ---@return boolean isFrameBuffer
@@ -4497,222 +4497,222 @@ function SimpleFrame:Raise() end
 
 function SimpleFrame:RegisterAllEvents() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventName string
 ---@return boolean registered
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:RegisterEvent(eventName) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventName string
 ---@param cb FrameEventCallbackType
 ---@return boolean registered
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:RegisterEventCallback(eventName, cb) end
 
----@param buttons string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param buttons string
 function SimpleFrame:RegisterForDrag(buttons) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventName string
 ---@param units Enum.UnitTokenType
 ---@return boolean registered
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:RegisterUnitEvent(eventName, units) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventName string
 ---@param cb FrameEventCallbackType
 ---@param units Enum.UnitTokenType
 ---@return boolean registered
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:RegisterUnitEventCallback(eventName, cb, units) end
 
 ---Removes a roleset tag from this frame.
----@param roleset string
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param roleset string
 function SimpleFrame:RemoveRoleset(roleset) end
 
 ---Restrictions: isProtected
 function SimpleFrame:ResizeToBoundsRect() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param radians number
 ---@param x? number
 ---@param y? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:RotateTextures(radians, x, y) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param alpha number
 function SimpleFrame:SetAlpha(alpha) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param value boolean
 ---@param alphaIfTrue? number
 ---@param alphaIfFalse? number
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleFrame:SetAlphaFromBoolean(value, alphaIfTrue, alphaIfFalse) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index number
 ---@param gradient vector2
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:SetAlphaGradient(index, gradient) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param attributeName string
 ---@param value string
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:SetAttribute(attributeName, value) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param attributeName string
 ---@param value string
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:SetAttributeNoHandler(attributeName, value) end
 
+---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 ---@param left number
 ---@param right number
 ---@param top number
 ---@param bottom number
----Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 function SimpleFrame:SetClampRectInsets(left, right, top, bottom) end
 
----@param clampedToScreen boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param clampedToScreen boolean
 function SimpleFrame:SetClampedToScreen(clampedToScreen) end
 
----@param clipsChildren boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param clipsChildren boolean
 function SimpleFrame:SetClipsChildren(clipsChildren) end
 
----@param dontSave boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param dontSave boolean
 function SimpleFrame:SetDontSavePosition(dontSave) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param layer string
 ---@param isEnabled? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:SetDrawLayerEnabled(layer, isEnabled) end
 
----@param isFixed boolean
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param isFixed boolean
 function SimpleFrame:SetFixedFrameLevel(isFixed) end
 
----@param isFixed boolean
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param isFixed boolean
 function SimpleFrame:SetFixedFrameStrata(isFixed) end
 
----@param flatten boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param flatten boolean
 function SimpleFrame:SetFlattensRenderLayers(flatten) end
 
----@param frameLevel number
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param frameLevel number
 function SimpleFrame:SetFrameLevel(frameLevel) end
 
----@param strata string
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param strata string
 function SimpleFrame:SetFrameStrata(strata) end
 
----@param locked boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param locked boolean
 function SimpleFrame:SetHighlightLocked(locked) end
 
+---Restrictions: isProtected, secretArguments=NotAllowed
 ---@param left number
 ---@param right number
 ---@param top number
 ---@param bottom number
----Restrictions: isProtected, secretArguments=NotAllowed
 function SimpleFrame:SetHitRectInsets(left, right, top, bottom) end
 
 ---Enables or disables propagating hyperlink events (ex. OnHyperlinkEnter, OnHyperlinkLeave,
 ---OnHyperlinkClick) to this frame's parent.
----@param canPropagate boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param canPropagate boolean
 function SimpleFrame:SetHyperlinkPropagateToParent(canPropagate) end
 
----@param enabled? boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param enabled? boolean
 function SimpleFrame:SetHyperlinksEnabled(enabled) end
 
----@param id number
 ---Restrictions: isProtected, secretArguments=AllowedWhenTainted
+---@param id number
 function SimpleFrame:SetID(id) end
 
----@param ignore boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param ignore boolean
 function SimpleFrame:SetIgnoreParentAlpha(ignore) end
 
----@param ignore boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param ignore boolean
 function SimpleFrame:SetIgnoreParentScale(ignore) end
 
----@param ignore boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param ignore boolean
 function SimpleFrame:SetIgnoringChildrenForBounds(ignore) end
 
----@param isFrameBuffer boolean
 ---Restrictions: secretArguments=NotAllowed
+---@param isFrameBuffer boolean
 function SimpleFrame:SetIsFrameBuffer(isFrameBuffer) end
 
----@param movable boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param movable boolean
 function SimpleFrame:SetMovable(movable) end
 
 ---Changes when OnUpdate scripts are executed for this object.
----@param onUpdateMode Enum.OnUpdateMode
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param onUpdateMode Enum.OnUpdateMode
 function SimpleFrame:SetOnUpdateMode(onUpdateMode) end
 
----@param propagate boolean
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param propagate boolean
 function SimpleFrame:SetPropagateKeyboardInput(propagate) end
 
----@param resizable boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param resizable boolean
 function SimpleFrame:SetResizable(resizable) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param minWidth number
 ---@param minHeight number
 ---@param maxWidth? number
 ---@param maxHeight? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:SetResizeBounds(minWidth, minHeight, maxWidth, maxHeight) end
 
 ---Sets the roleset tags for this frame, used by the UI mode system to gate visibility. Supports
 ---comma-separated names to assign multiple rolesets. Pass nil to clear.
----@param rolesetsString? string
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param rolesetsString? string
 function SimpleFrame:SetRolesets(rolesetsString) end
 
----@param scale number
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param scale number
 function SimpleFrame:SetScale(scale) end
 
----@param shown? boolean
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param shown? boolean
 function SimpleFrame:SetShown(shown) end
 
----@param topLevel boolean
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param topLevel boolean
 function SimpleFrame:SetToplevel(topLevel) end
 
----@param userPlaced boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param userPlaced boolean
 function SimpleFrame:SetUserPlaced(userPlaced) end
 
----@param usingParentLevel boolean
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param usingParentLevel boolean
 function SimpleFrame:SetUsingParentLevel(usingParentLevel) end
 
----@param window? SimpleWindow
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param window? SimpleWindow
 function SimpleFrame:SetWindow(window) end
 
 ---Restrictions: isProtected
 function SimpleFrame:Show() end
 
----@param alwaysStartFromMouse? boolean
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param alwaysStartFromMouse? boolean
 function SimpleFrame:StartMoving(alwaysStartFromMouse) end
 
+---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 ---@param resizePoint? string
 ---@param alwaysStartFromMouse? boolean
----Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 function SimpleFrame:StartSizing(resizePoint, alwaysStartFromMouse) end
 
 ---Restrictions: isProtected
@@ -4722,9 +4722,9 @@ function SimpleFrame:UnlockHighlight() end
 
 function SimpleFrame:UnregisterAllEvents() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param eventName string
 ---@return boolean registered
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrame:UnregisterEvent(eventName) end
 
 ---@class SimpleFrameScriptObject
@@ -4732,18 +4732,18 @@ local SimpleFrameScriptObject = {}
 
 ---Adds access restrictions to a script object, preventing it from being used in API calls when
 ---enforced.
----@param restrictions Enum.ScriptObjectAccessRestriction
 ---Restrictions: hasRestrictions, secretArguments=NotAllowed
+---@param restrictions Enum.ScriptObjectAccessRestriction
 function SimpleFrameScriptObject:AddAccessRestrictions(restrictions) end
 
 ---Adds forbidden aspects to a script object, restricting access to various functionalities such
 ---as script bindings.
----@param aspects Enum.ForbiddenAspect
 ---Restrictions: hasRestrictions, secretArguments=NotAllowed
+---@param aspects Enum.ForbiddenAspect
 function SimpleFrameScriptObject:AddForbiddenAspects(aspects) end
 
----@param aspect Enum.SecretAspect
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param aspect Enum.SecretAspect
 function SimpleFrameScriptObject:AddSecretAspect(aspect) end
 
 ---Returns whether the current Lua execution context has permission to access this object.
@@ -4760,9 +4760,9 @@ function SimpleFrameScriptObject:GetForbiddenAspects() end
 
 ---Returns the mask of all forbidden aspects applied to this object that can propagate to
 ---others.
+---Restrictions: secretArguments=NotAllowed
 ---@param path Enum.ScriptObjectPropagationPath
 ---@return Enum.ForbiddenAspect aspects
----Restrictions: secretArguments=NotAllowed
 function SimpleFrameScriptObject:GetInheritableForbiddenAspects(path) end
 
 ---@return string name
@@ -4780,23 +4780,23 @@ function SimpleFrameScriptObject:GetObjectType() end
 function SimpleFrameScriptObject:HasAccessConstraints() end
 
 ---Returns true if this object has any of the supplied access restrictions applied.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param restrictions? Enum.ScriptObjectAccessRestriction
 ---@return boolean hasAnyAccessRestriction
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrameScriptObject:HasAnyAccessRestrictions(restrictions) end
 
 ---Returns true if this object has any of the supplied forbidden aspects added.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param aspects? Enum.ForbiddenAspect
 ---@return boolean hasAnyForbiddenAspect
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleFrameScriptObject:HasAnyForbiddenAspects(aspects) end
 
 ---@return boolean hasSecretAspect
 function SimpleFrameScriptObject:HasAnySecretAspect() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param aspect Enum.SecretAspect
 ---@return boolean hasSecretAspect
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleFrameScriptObject:HasSecretAspect(aspect) end
 
 ---@return boolean hasSecretValues
@@ -4806,9 +4806,9 @@ function SimpleFrameScriptObject:HasSecretValues() end
 ---@return boolean isForbidden
 function SimpleFrameScriptObject:IsForbidden() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param objectType string
 ---@return boolean isType
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleFrameScriptObject:IsObjectType(objectType) end
 
 ---@return boolean isPreventingSecretValues
@@ -4828,128 +4828,128 @@ local SimpleHTML = {}
 ---@return number height
 function SimpleHTML:GetContentHeight() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param textType string
 ---@return string fontFile
 ---@return number height
 ---@return string flags
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleHTML:GetFont(textType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param textType string
 ---@return SimpleFont font
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleHTML:GetFontObject(textType) end
 
 ---@return string format
 function SimpleHTML:GetHyperlinkFormat() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param textType string
 ---@return boolean wordWrap
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleHTML:GetIndentedWordWrap(textType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param textType string
 ---@return string justifyH
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleHTML:GetJustifyH(textType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param textType string
 ---@return string justifyV
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleHTML:GetJustifyV(textType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param textType string
 ---@return number colorR
 ---@return number colorG
 ---@return number colorB
 ---@return number colorA
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleHTML:GetShadowColor(textType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param textType string
 ---@return number offsetX
 ---@return number offsetY
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleHTML:GetShadowOffset(textType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param textType string
 ---@return number spacing
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleHTML:GetSpacing(textType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param textType string
 ---@return number colorR
 ---@return number colorG
 ---@return number colorB
 ---@return number colorA
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleHTML:GetTextColor(textType) end
 
 ---@return HTMLContentNode[] content
 function SimpleHTML:GetTextData() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidFontAsset,
+---RequiresValidFontHeight
 ---@param textType string
 ---@param fontFile string
 ---@param height number
 ---@param flags string
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidFontAsset,
----RequiresValidFontHeight
 function SimpleHTML:SetFont(textType, fontFile, height, flags) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textType string
 ---@param font SimpleFont
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleHTML:SetFontObject(textType, font) end
 
----@param format string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param format string
 function SimpleHTML:SetHyperlinkFormat(format) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textType string
 ---@param wordWrap boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleHTML:SetIndentedWordWrap(textType, wordWrap) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textType string
 ---@param justifyH string
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleHTML:SetJustifyH(textType, justifyH) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textType string
 ---@param justifyV string
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleHTML:SetJustifyV(textType, justifyV) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textType string
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleHTML:SetShadowColor(textType, colorR, colorG, colorB, a) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textType string
 ---@param offsetX number
 ---@param offsetY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleHTML:SetShadowOffset(textType, offsetX, offsetY) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textType string
 ---@param spacing number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleHTML:SetSpacing(textType, spacing) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param text string
 ---@param ignoreMarkup? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleHTML:SetText(text, ignoreMarkup) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param textType string
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleHTML:SetTextColor(textType, colorR, colorG, colorB, a) end
 
 ---@class SimpleLine
@@ -4976,26 +4976,26 @@ function SimpleLine:GetStartPoint() end
 ---@return number thickness
 function SimpleLine:GetThickness() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relativePoint string
 ---@param relativeTo ScriptRegion
 ---@param offsetX? number
 ---@param offsetY? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleLine:SetEndPoint(relativePoint, relativeTo, offsetX, offsetY) end
 
----@param thickness number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param thickness number
 function SimpleLine:SetHitRectThickness(thickness) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param relativePoint string
 ---@param relativeTo ScriptRegion
 ---@param offsetX? number
 ---@param offsetY? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleLine:SetStartPoint(relativePoint, relativeTo, offsetX, offsetY) end
 
----@param thickness number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param thickness number
 function SimpleLine:SetThickness(thickness) end
 
 ---@class SimpleMapScene
@@ -5014,15 +5014,15 @@ function SimpleMapScene:GetModelDrawLayer() end
 ---@return number bottom
 function SimpleMapScene:GetViewInsets() end
 
----@param layer string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param layer string
 function SimpleMapScene:SetModelDrawLayer(layer) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param left number
 ---@param right number
 ---@param top number
 ---@param bottom number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleMapScene:SetViewInsets(left, right, top, bottom) end
 
 ---@class SimpleMaskTexture
@@ -5031,13 +5031,13 @@ local SimpleMaskTexture = {}
 ---@class SimpleMessageFrame
 local SimpleMessageFrame = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param text string
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
 ---@param messageID? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleMessageFrame:AddMessage(text, colorR, colorG, colorB, a, messageID) end
 
 function SimpleMessageFrame:Clear() end
@@ -5059,9 +5059,9 @@ function SimpleMessageFrame:GetFont() end
 ---@return SimpleFont font
 function SimpleMessageFrame:GetFontObject() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param messageID number
 ---@return SimpleFontString fontString
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleMessageFrame:GetFontStringByID(messageID) end
 
 ---@return boolean wordWrap
@@ -5098,79 +5098,79 @@ function SimpleMessageFrame:GetTextColor() end
 ---@return number timeVisibleSeconds
 function SimpleMessageFrame:GetTimeVisible() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param messageID number
 ---@return boolean hasMessage
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleMessageFrame:HasMessageByID(messageID) end
 
----@param messageID number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param messageID number
 function SimpleMessageFrame:ResetMessageFadeByID(messageID) end
 
----@param fadeDurationSeconds number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fadeDurationSeconds number
 function SimpleMessageFrame:SetFadeDuration(fadeDurationSeconds) end
 
----@param fadePower number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fadePower number
 function SimpleMessageFrame:SetFadePower(fadePower) end
 
----@param fading boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fading boolean
 function SimpleMessageFrame:SetFading(fading) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidFontAsset,
+---RequiresValidFontHeight
 ---@param fontFile string
 ---@param height number
 ---@param flags string
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresValidFontAsset,
----RequiresValidFontHeight
 function SimpleMessageFrame:SetFont(fontFile, height, flags) end
 
----@param font SimpleFont
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param font SimpleFont
 function SimpleMessageFrame:SetFontObject(font) end
 
----@param wordWrap boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param wordWrap boolean
 function SimpleMessageFrame:SetIndentedWordWrap(wordWrap) end
 
----@param mode string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param mode string
 function SimpleMessageFrame:SetInsertMode(mode) end
 
----@param justifyH string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param justifyH string
 function SimpleMessageFrame:SetJustifyH(justifyH) end
 
----@param justifyV string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param justifyV string
 function SimpleMessageFrame:SetJustifyV(justifyV) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleMessageFrame:SetShadowColor(colorR, colorG, colorB, a) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param offsetX number
 ---@param offsetY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleMessageFrame:SetShadowOffset(offsetX, offsetY) end
 
----@param spacing number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param spacing number
 function SimpleMessageFrame:SetSpacing(spacing) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleMessageFrame:SetTextColor(colorR, colorG, colorB, a) end
 
----@param timeVisibleSeconds number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param timeVisibleSeconds number
 function SimpleMessageFrame:SetTimeVisible(timeVisibleSeconds) end
 
 ---@class SimpleModel
@@ -5279,180 +5279,180 @@ function SimpleModel:IsUsingModelCenterToTransform() end
 
 function SimpleModel:MakeCurrentCameraCustom() end
 
----@param asset FileAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param asset FileAsset
 function SimpleModel:ReplaceIconTexture(asset) end
 
----@param cameraIndex number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param cameraIndex number
 function SimpleModel:SetCamera(cameraIndex) end
 
----@param distance number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param distance number
 function SimpleModel:SetCameraDistance(distance) end
 
----@param radians number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param radians number
 function SimpleModel:SetCameraFacing(radians) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param positionX number
 ---@param positionY number
 ---@param positionZ number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModel:SetCameraPosition(positionX, positionY, positionZ) end
 
----@param radians number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param radians number
 function SimpleModel:SetCameraRoll(radians) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param targetX number
 ---@param targetY number
 ---@param targetZ number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModel:SetCameraTarget(targetX, targetY, targetZ) end
 
----@param cameraIndex number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param cameraIndex number
 function SimpleModel:SetCustomCamera(cameraIndex) end
 
----@param strength number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param strength number
 function SimpleModel:SetDesaturation(strength) end
 
----@param facing number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param facing number
 function SimpleModel:SetFacing(facing) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModel:SetFogColor(colorR, colorG, colorB, a) end
 
----@param fogFar number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fogFar number
 function SimpleModel:SetFogFar(fogFar) end
 
----@param fogNear number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fogNear number
 function SimpleModel:SetFogNear(fogNear) end
 
----@param glow number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param glow number
 function SimpleModel:SetGlow(glow) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param grad0 number
 ---@param grad1 number
 ---@param grad2 number
 ---@param grad3 number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModel:SetGradientMask(grad0, grad1, grad2, grad3) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param enabled boolean
 ---@param light ModelLight
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModel:SetLight(enabled, light) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param asset ModelAsset
 ---@param noMip? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModel:SetModel(asset, noMip) end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param alpha number
 function SimpleModel:SetModelAlpha(alpha) end
 
----@param layer string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param layer string
 function SimpleModel:SetModelDrawLayer(layer) end
 
----@param scale number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param scale number
 function SimpleModel:SetModelScale(scale) end
 
----@param enabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled boolean
 function SimpleModel:SetParticlesEnabled(enabled) end
 
----@param paused boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param paused boolean
 function SimpleModel:SetPaused(paused) end
 
----@param pitch number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param pitch number
 function SimpleModel:SetPitch(pitch) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param positionX number
 ---@param positionY number
 ---@param positionZ number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModel:SetPosition(positionX, positionY, positionZ) end
 
----@param roll number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param roll number
 function SimpleModel:SetRoll(roll) end
 
----@param sequence number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param sequence number
 function SimpleModel:SetSequence(sequence) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param sequence number
 ---@param timeOffset number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModel:SetSequenceTime(sequence, timeOffset) end
 
----@param strength number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param strength number
 function SimpleModel:SetShadowEffect(strength) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param translation? vector3
 ---@param rotation? vector3
 ---@param scale? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModel:SetTransform(translation, rotation, scale) end
 
----@param useGBuffer boolean
 ---Restrictions: hasRestrictions, secretArguments=AllowedWhenUntainted
+---@param useGBuffer boolean
 function SimpleModel:SetUseGBuffer(useGBuffer) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param left number
 ---@param right number
 ---@param top number
 ---@param bottom number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModel:SetViewInsets(left, right, top, bottom) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param x number
 ---@param y number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModel:SetViewTranslation(x, y) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param cameraPosition vector3
 ---@return vector3 modelPosition
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModel:TransformCameraSpaceToModelSpace(cameraPosition) end
 
----@param useCenter boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param useCenter boolean
 function SimpleModel:UseModelCenterToTransform(useCenter) end
 
 ---@class SimpleModelFFX
 local SimpleModelFFX = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index? number
 ---@param light ModelLight
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModelFFX:AddCharacterLight(index, light) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index? number
 ---@param light ModelLight
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModelFFX:AddLight(index, light) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param index? number
 ---@param light ModelLight
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleModelFFX:AddPetLight(index, light) end
 
 function SimpleModelFFX:ResetLights() end
@@ -5460,23 +5460,23 @@ function SimpleModelFFX:ResetLights() end
 ---@class SimpleMovie
 local SimpleMovie = {}
 
----@param enable boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enable boolean
 function SimpleMovie:EnableSubtitles(enable) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param movieID number
 ---@param looping? boolean
 ---@return boolean success
 ---@return number returnCode
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleMovie:StartMovie(movieID, looping) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param movieName string
 ---@param looping? boolean
 ---@param resolution? number
 ---@return boolean success
 ---@return number returnCode
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleMovie:StartMovieByName(movieName, looping, resolution) end
 
 function SimpleMovie:StopMovie() end
@@ -5486,9 +5486,9 @@ local SimpleObject = {}
 
 function SimpleObject:ClearParentKey() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param preferParentKey? boolean
 ---@return string debugName
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleObject:GetDebugName(preferParentKey) end
 
 ---@return CScriptObject parent
@@ -5497,18 +5497,18 @@ function SimpleObject:GetParent() end
 ---@return string parentKey
 function SimpleObject:GetParentKey() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param parentKey string
 ---@param clearOtherKeys? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleObject:SetParentKey(parentKey, clearOtherKeys) end
 
 ---@class SimpleOffScreenFrame
 local SimpleOffScreenFrame = {}
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param texture SimpleTexture
 ---@param snapshotID number
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleOffScreenFrame:ApplySnapshot(texture, snapshotID) end
 
 function SimpleOffScreenFrame:Flush() end
@@ -5516,23 +5516,23 @@ function SimpleOffScreenFrame:Flush() end
 ---@return number maxSnapshots
 function SimpleOffScreenFrame:GetMaxSnapshots() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param snapshotID number
 ---@return boolean isValid
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleOffScreenFrame:IsSnapshotValid(snapshotID) end
 
----@param maxSnapshots number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param maxSnapshots number
 function SimpleOffScreenFrame:SetMaxSnapshots(maxSnapshots) end
 
 ---@return number? snapshotID
 function SimpleOffScreenFrame:TakeSnapshot() end
 
 ---Unavailable in public builds
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param snapshotID number
 ---@param filename string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleOffScreenFrame:TestPrintToFile(snapshotID, filename) end
 
 ---@return boolean? usesNPOT
@@ -5569,44 +5569,44 @@ function SimpleRegion:IsIgnoringParentScale() end
 ---@return boolean isLoaded
 function SimpleRegion:IsObjectLoaded() end
 
----@param alpha number
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param alpha number
 function SimpleRegion:SetAlpha(alpha) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param value boolean
 ---@param alphaIfTrue? number
 ---@param alphaIfFalse? number
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleRegion:SetAlphaFromBoolean(value, alphaIfTrue, alphaIfFalse) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param layer string
 ---@param sublevel? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleRegion:SetDrawLayer(layer, sublevel) end
 
----@param ignore boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param ignore boolean
 function SimpleRegion:SetIgnoreParentAlpha(ignore) end
 
----@param ignore boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param ignore boolean
 function SimpleRegion:SetIgnoreParentScale(ignore) end
 
----@param scale number
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param scale number
 function SimpleRegion:SetScale(scale) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleRegion:SetVertexColor(colorR, colorG, colorB, a) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param value boolean
 ---@param colorIfTrue colorRGBA
 ---@param colorIfFalse colorRGBA
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleRegion:SetVertexColorFromBoolean(value, colorIfTrue, colorIfFalse) end
 
 ---@class SimpleScriptRegion
@@ -5627,102 +5627,102 @@ function SimpleScriptRegion:ClearScripts() end
 ---@return boolean collapsesLayout
 function SimpleScriptRegion:CollapsesLayout() end
 
----@param enable? boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param enable? boolean
 function SimpleScriptRegion:EnableMouse(enable) end
 
----@param enable? boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param enable? boolean
 function SimpleScriptRegion:EnableMouseMotion(enable) end
 
----@param enable? boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param enable? boolean
 function SimpleScriptRegion:EnableMouseWheel(enable) end
 
----@return number? bottom
 ---Restrictions: SecretWhenAnchoringSecret
+---@return number? bottom
 function SimpleScriptRegion:GetBottom() end
 
+---Restrictions: SecretWhenAnchoringSecret
 ---@return number? x
 ---@return number? y
----Restrictions: SecretWhenAnchoringSecret
 function SimpleScriptRegion:GetCenter() end
 
----@param ignoreRect? boolean
----@return number height
 ---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
 ---SecretWhenAnchoringSecret
+---@param ignoreRect? boolean
+---@return number height
 function SimpleScriptRegion:GetHeight(ignoreRect) end
 
----@return number? left
 ---Restrictions: SecretWhenAnchoringSecret
+---@return number? left
 function SimpleScriptRegion:GetLeft() end
 
+---Restrictions: SecretWhenAnchoringSecret
 ---@return number? left
 ---@return number? bottom
 ---@return number? width
 ---@return number? height
----Restrictions: SecretWhenAnchoringSecret
 function SimpleScriptRegion:GetRect() end
 
----@return number? right
 ---Restrictions: SecretWhenAnchoringSecret
+---@return number? right
 function SimpleScriptRegion:GetRight() end
 
 ---@return boolean enabled
 function SimpleScriptRegion:GetRoundLayoutToNearestPixel() end
 
+---Restrictions: SecretWhenAnchoringSecret
 ---@return number? left
 ---@return number? bottom
 ---@return number? width
 ---@return number? height
----Restrictions: SecretWhenAnchoringSecret
 function SimpleScriptRegion:GetScaledRect() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
+---RequiresSupportedScript
 ---@param scriptTypeName string
 ---@param bindingType? Enum.ScriptBindingType
 ---@return function script
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
----RequiresSupportedScript
 function SimpleScriptRegion:GetScript(scriptTypeName, bindingType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
+---SecretWhenAnchoringSecret
 ---@param ignoreRect? boolean
 ---@return number width
 ---@return number height
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
----SecretWhenAnchoringSecret
 function SimpleScriptRegion:GetSize(ignoreRect) end
 
 ---@return string location
 function SimpleScriptRegion:GetSourceLocation() end
 
----@return number? top
 ---Restrictions: SecretWhenAnchoringSecret
+---@return number? top
 function SimpleScriptRegion:GetTop() end
 
----@param ignoreRect? boolean
----@return number width
 ---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
 ---SecretWhenAnchoringSecret
+---@param ignoreRect? boolean
+---@return number width
 function SimpleScriptRegion:GetWidth(ignoreRect) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param scriptName string
 ---@return boolean hasScript
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleScriptRegion:HasScript(scriptName) end
 
 function SimpleScriptRegion:Hide() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresAssignableScript
 ---@param scriptTypeName string
 ---@param script function
 ---@param bindingType? Enum.ScriptBindingType
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresAssignableScript
 function SimpleScriptRegion:HookScript(scriptTypeName, script, bindingType) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenAnchoringSecret
 ---@param region ScriptRegion
 ---@return boolean intersects
----Restrictions: secretArguments=AllowedWhenUntainted, SecretWhenAnchoringSecret
 function SimpleScriptRegion:Intersects(region) end
 
 ---@return boolean isRestricted
@@ -5749,13 +5749,13 @@ function SimpleScriptRegion:IsMouseMotionEnabled() end
 ---@return boolean isMouseMotionFocus
 function SimpleScriptRegion:IsMouseMotionFocus() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
+---SecretWhenAnchoringSecret
 ---@param offsetTop? number
 ---@param offsetBottom? number
 ---@param offsetLeft? number
 ---@param offsetRight? number
 ---@return boolean isMouseOver
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
----SecretWhenAnchoringSecret
 function SimpleScriptRegion:IsMouseOver(offsetTop, offsetBottom, offsetLeft, offsetRight) end
 
 ---@return boolean enabled
@@ -5774,50 +5774,50 @@ function SimpleScriptRegion:IsShown() end
 ---@return boolean isVisible
 function SimpleScriptRegion:IsVisible() end
 
----@param collapsesLayout boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param collapsesLayout boolean
 function SimpleScriptRegion:SetCollapsesLayout(collapsesLayout) end
 
----@param enabled? boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param enabled? boolean
 function SimpleScriptRegion:SetMouseClickEnabled(enabled) end
 
----@param enabled? boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param enabled? boolean
 function SimpleScriptRegion:SetMouseMotionEnabled(enabled) end
 
----@param parent? SimpleFrame
 ---Restrictions: isProtected, secretArguments=NotAllowed, CheckAllowChangeParent
+---@param parent? SimpleFrame
 function SimpleScriptRegion:SetParent(parent) end
 
----@param buttons string
 ---Restrictions: hasRestrictions, isProtected, secretArguments=NotAllowed
+---@param buttons string
 function SimpleScriptRegion:SetPassThroughButtons(buttons) end
 
----@param propagate boolean
 ---Restrictions: hasRestrictions, isProtected, secretArguments=NotAllowed
+---@param propagate boolean
 function SimpleScriptRegion:SetPropagateMouseClicks(propagate) end
 
----@param propagate boolean
 ---Restrictions: hasRestrictions, isProtected, secretArguments=NotAllowed
+---@param propagate boolean
 function SimpleScriptRegion:SetPropagateMouseMotion(propagate) end
 
----@param enabled boolean
 ---Restrictions: isProtected, secretArguments=NotAllowed
+---@param enabled boolean
 function SimpleScriptRegion:SetRoundLayoutToNearestPixel(enabled) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresAssignableScript
 ---@param scriptTypeName string
 ---@param script? function
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresAssignableScript
 function SimpleScriptRegion:SetScript(scriptTypeName, script) end
 
----@param show? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param show? boolean
 function SimpleScriptRegion:SetShown(show) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param button string
 ---@return boolean shouldPassThrough
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleScriptRegion:ShouldButtonPassThrough(button) end
 
 function SimpleScriptRegion:Show() end
@@ -5825,9 +5825,9 @@ function SimpleScriptRegion:Show() end
 ---@class SimpleScriptRegionResizing
 local SimpleScriptRegionResizing = {}
 
+---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 ---@param x number
 ---@param y number
----Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 function SimpleScriptRegionResizing:AdjustPointsOffset(x, y) end
 
 ---Clears all points and immediately invalidates the rect. (Prior to 11.2.0, this would only
@@ -5835,8 +5835,8 @@ function SimpleScriptRegionResizing:AdjustPointsOffset(x, y) end
 ---Restrictions: isProtected
 function SimpleScriptRegionResizing:ClearAllPoints() end
 
----@param point string
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param point string
 function SimpleScriptRegionResizing:ClearPoint(point) end
 
 ---Restrictions: isProtected
@@ -5845,6 +5845,8 @@ function SimpleScriptRegionResizing:ClearPointsOffset() end
 ---@return number numPoints
 function SimpleScriptRegionResizing:GetNumPoints() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
+---SecretWhenAnchoringSecret
 ---@param anchorIndex? integer
 ---@param resolveCollapsed? boolean
 ---@return string? point
@@ -5852,10 +5854,10 @@ function SimpleScriptRegionResizing:GetNumPoints() end
 ---@return string? relativePoint
 ---@return number? offsetX
 ---@return number? offsetY
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
----SecretWhenAnchoringSecret
 function SimpleScriptRegionResizing:GetPoint(anchorIndex, resolveCollapsed) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
+---SecretWhenAnchoringSecret
 ---@param point string
 ---@param resolveCollapsed? boolean
 ---@return string? point
@@ -5863,41 +5865,39 @@ function SimpleScriptRegionResizing:GetPoint(anchorIndex, resolveCollapsed) end
 ---@return string? relativePoint
 ---@return number? offsetX
 ---@return number? offsetY
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
----SecretWhenAnchoringSecret
 function SimpleScriptRegionResizing:GetPointByName(point, resolveCollapsed) end
 
----@param relativeTo ScriptRegion
----@param doResize? boolean
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted,
 ---CheckAllowInheritForbiddenLayoutAspects
+---@param relativeTo ScriptRegion
+---@param doResize? boolean
 function SimpleScriptRegionResizing:SetAllPoints(relativeTo, doResize) end
 
----@param height number
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param height number
 function SimpleScriptRegionResizing:SetHeight(height) end
 
+---Restrictions: isProtected, secretArguments=AllowedWhenUntainted,
+---CheckAllowInheritForbiddenLayoutAspects
 ---@param point string
 ---@param relativeTo ScriptRegion
 ---@param relativePoint string
 ---@param offsetX number
 ---@param offsetY number
----Restrictions: isProtected, secretArguments=AllowedWhenUntainted,
----CheckAllowInheritForbiddenLayoutAspects
 function SimpleScriptRegionResizing:SetPoint(point, relativeTo, relativePoint, offsetX, offsetY) end
 
+---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 ---@param x number
 ---@param y number
----Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 function SimpleScriptRegionResizing:SetPointsOffset(x, y) end
 
+---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 ---@param x number
 ---@param y number
----Restrictions: isProtected, secretArguments=AllowedWhenUntainted
 function SimpleScriptRegionResizing:SetSize(x, y) end
 
----@param width number
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param width number
 function SimpleScriptRegionResizing:SetWidth(width) end
 
 ---@class SimpleScrollFrame
@@ -5918,16 +5918,16 @@ function SimpleScrollFrame:GetVerticalScroll() end
 ---@return number range
 function SimpleScrollFrame:GetVerticalScrollRange() end
 
----@param offset number
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param offset number
 function SimpleScrollFrame:SetHorizontalScroll(offset) end
 
----@param scrollChild SimpleFrame
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param scrollChild SimpleFrame
 function SimpleScrollFrame:SetScrollChild(scrollChild) end
 
----@param offset number
 ---Restrictions: isProtected, secretArguments=AllowedWhenUntainted
+---@param offset number
 function SimpleScrollFrame:SetVerticalScroll(offset) end
 
 function SimpleScrollFrame:UpdateScrollChildRect() end
@@ -5967,38 +5967,38 @@ function SimpleSlider:IsDraggingThumb() end
 ---@return boolean enabled
 function SimpleSlider:IsEnabled() end
 
----@param enabled boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param enabled boolean
 function SimpleSlider:SetEnabled(enabled) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param minValue number
 ---@param maxValue number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleSlider:SetMinMaxValues(minValue, maxValue) end
 
----@param obeyStepOnDrag boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param obeyStepOnDrag boolean
 function SimpleSlider:SetObeyStepOnDrag(obeyStepOnDrag) end
 
----@param orientation string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param orientation string
 function SimpleSlider:SetOrientation(orientation) end
 
----@param stepsPerPage number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param stepsPerPage number
 function SimpleSlider:SetStepsPerPage(stepsPerPage) end
 
----@param asset TextureAsset
 ---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
+---@param asset TextureAsset
 function SimpleSlider:SetThumbTexture(asset) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param value number
 ---@param treatAsMouseEvent? boolean
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleSlider:SetValue(value, treatAsMouseEvent) end
 
----@param valueStep number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param valueStep number
 function SimpleSlider:SetValueStep(valueStep) end
 
 ---@class SimpleStatusBar
@@ -6049,94 +6049,94 @@ function SimpleStatusBar:GetValue() end
 ---@return boolean isInterpolating
 function SimpleStatusBar:IsInterpolating() end
 
----@return boolean desaturated
 ---Restrictions: RequiresStatusBarDesaturationAccess
+---@return boolean desaturated
 function SimpleStatusBar:IsStatusBarDesaturated() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleStatusBar:SetColorFill(colorR, colorG, colorB, a) end
 
----@param fillStyle Enum.StatusBarFillStyle
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param fillStyle Enum.StatusBarFillStyle
 function SimpleStatusBar:SetFillStyle(fillStyle) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param minValue number
 ---@param maxValue number
 ---@param interpolation? Enum.StatusBarInterpolation
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleStatusBar:SetMinMaxValues(minValue, maxValue, interpolation) end
 
----@param orientation string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param orientation string
 function SimpleStatusBar:SetOrientation(orientation) end
 
----@param renderMode Enum.StatusBarRenderMode
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param renderMode Enum.StatusBarRenderMode
 function SimpleStatusBar:SetRenderMode(renderMode) end
 
----@param isReverseFill boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param isReverseFill boolean
 function SimpleStatusBar:SetReverseFill(isReverseFill) end
 
----@param rotatesTexture boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param rotatesTexture boolean
 function SimpleStatusBar:SetRotatesTexture(rotatesTexture) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleStatusBar:SetStatusBarColor(colorR, colorG, colorB, a) end
 
----@param desaturated? boolean
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param desaturated? boolean
 function SimpleStatusBar:SetStatusBarDesaturated(desaturated) end
 
----@param desaturation number
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param desaturation number
 function SimpleStatusBar:SetStatusBarDesaturation(desaturation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
 ---@param asset TextureAsset
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted, CheckAllowChangeParent
 function SimpleStatusBar:SetStatusBarTexture(asset) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param duration LuaDurationObject
 ---@param interpolation? Enum.StatusBarInterpolation
 ---@param direction? Enum.StatusBarTimerDirection
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleStatusBar:SetTimerDuration(duration, interpolation, direction) end
 
 ---Immediately finishes any interpolation of the bar and snaps it to the target value.
 function SimpleStatusBar:SetToTargetValue() end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param value number
 ---@param interpolation? Enum.StatusBarInterpolation
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleStatusBar:SetValue(value, interpolation) end
 
 ---@class SimpleTexture
 local SimpleTexture = {}
 
----@param mask SimpleMaskTexture
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param mask SimpleMaskTexture
 function SimpleTexture:AddMaskTexture(mask) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param index integer
 ---@return SimpleMaskTexture mask
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleTexture:GetMaskTexture(index) end
 
 ---@return number count
 function SimpleTexture:GetNumMaskTextures() end
 
----@param mask SimpleMaskTexture
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param mask SimpleMaskTexture
 function SimpleTexture:RemoveMaskTexture(mask) end
 
 ---@class SimpleTextureBase
@@ -6224,17 +6224,17 @@ function SimpleTextureBase:GetTextureSliceMode() end
 ---@return boolean tiling
 function SimpleTextureBase:GetVertTile() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 ---@param vertexIndex integer
 ---@return number offsetX
 ---@return number offsetY
----Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor
 function SimpleTextureBase:GetVertexOffset(vertexIndex) end
 
 ---@return boolean blocking
 function SimpleTextureBase:IsBlockingLoadRequested() end
 
----@return boolean desaturated
 ---Restrictions: RequiresScriptObjectDesaturationAccess
+---@return boolean desaturated
 function SimpleTextureBase:IsDesaturated() end
 
 ---@return boolean snap
@@ -6242,13 +6242,13 @@ function SimpleTextureBase:IsSnappingToPixelGrid() end
 
 function SimpleTextureBase:ResetTexCoord() end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param atlas string
 ---@param useAtlasSize? boolean
 ---@param filterMode? string
 ---@param resetTexCoords? boolean
 ---@param wrapModeHorizontal? string
 ---@param wrapModeVertical? string
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleTextureBase:SetAtlas(
     atlas,
     useAtlasSize,
@@ -6259,109 +6259,109 @@ function SimpleTextureBase:SetAtlas(
 )
 end
 
----@param blendMode string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param blendMode string
 function SimpleTextureBase:SetBlendMode(blendMode) end
 
----@param blocking? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param blocking? boolean
 function SimpleTextureBase:SetBlockingLoadsRequested(blocking) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param colorR number
 ---@param colorG number
 ---@param colorB number
 ---@param a? number
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleTextureBase:SetColorTexture(colorR, colorG, colorB, a) end
 
----@param desaturated? boolean
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param desaturated? boolean
 function SimpleTextureBase:SetDesaturated(desaturated) end
 
----@param desaturation number
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param desaturation number
 function SimpleTextureBase:SetDesaturation(desaturation) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param orientation string
 ---@param minColor colorRGBA
 ---@param maxColor colorRGBA
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleTextureBase:SetGradient(orientation, minColor, maxColor) end
 
----@param tiling? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param tiling? boolean
 function SimpleTextureBase:SetHorizTile(tiling) end
 
----@param file string
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param file string
 function SimpleTextureBase:SetMask(file) end
 
 ---Sets the end angle offset of the radial progress bar as a normalized value (0 to 1).
----@param offset number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param offset number
 function SimpleTextureBase:SetRadialProgressBarEndOffset(offset) end
 
 ---Sets the feather/blur amount applied to the radial progress bar edge (higher = more gradual
 ---falloff).
----@param feather number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param feather number
 function SimpleTextureBase:SetRadialProgressBarFeather(feather) end
 
 ---Sets the fill percentage of the radial progress bar (0 to 1).
----@param percent number
 ---Restrictions: secretArguments=AllowedWhenTainted
+---@param percent number
 function SimpleTextureBase:SetRadialProgressBarPercent(percent) end
 
 ---Sets whether the radial progress bar fills in reverse (counterclockwise) direction.
----@param reverse boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param reverse boolean
 function SimpleTextureBase:SetRadialProgressBarReverse(reverse) end
 
 ---Sets the start angle offset of the radial progress bar as a normalized value (0 to 1), where
 ---0 is at the bottom.
----@param offset number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param offset number
 function SimpleTextureBase:SetRadialProgressBarStartOffset(offset) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param radians number
 ---@param normalizedRotationPoint? vector2
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleTextureBase:SetRotation(radians, normalizedRotationPoint) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param svgAsset FileAsset
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleTextureBase:SetSVG(svgAsset) end
 
----@param snap? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param snap? boolean
 function SimpleTextureBase:SetSnapToPixelGrid(snap) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param cell integer
 ---@param numRows number
 ---@param numColumns number
 ---@param cellWidth? number
 ---@param cellHeight? number
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleTextureBase:SetSpriteSheetCell(cell, numRows, numColumns, cellWidth, cellHeight) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param left number
 ---@param right number
 ---@param bottom number
 ---@param top number
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleTextureBase:SetTexCoord(left, right, bottom, top) end
 
----@param bias number
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param bias number
 function SimpleTextureBase:SetTexelSnappingBias(bias) end
 
+---Restrictions: secretArguments=AllowedWhenTainted
 ---@param textureAsset? string
 ---@param wrapModeHorizontal? string
 ---@param wrapModeVertical? string
 ---@param filterMode? string
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenTainted
 function SimpleTextureBase:SetTexture(
     textureAsset,
     wrapModeHorizontal,
@@ -6372,27 +6372,27 @@ end
 
 ---Enables nineslice texture rendering using the specified pixel margins. Preferred over legacy
 ---nineslice approach that uses 9 separate textures.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param left number
 ---@param top number
 ---@param right number
 ---@param bottom number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleTextureBase:SetTextureSliceMargins(left, top, right, bottom) end
 
 ---Controls whether the center and sides are Stretched or Tiled when using nineslice texture
 ---rendering. Defaults to Stretched.
----@param sliceMode Enum.UITextureSliceMode
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param sliceMode Enum.UITextureSliceMode
 function SimpleTextureBase:SetTextureSliceMode(sliceMode) end
 
----@param tiling? boolean
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param tiling? boolean
 function SimpleTextureBase:SetVertTile(tiling) end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param vertexIndex integer
 ---@param offsetX number
 ---@param offsetY number
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleTextureBase:SetVertexOffset(vertexIndex, offsetX, offsetY) end
 
 ---@class SimpleVectorGraphics
@@ -6406,9 +6406,9 @@ function SimpleVectorGraphics:GetSVGFileID() end
 ---@return boolean hasSVG
 function SimpleVectorGraphics:HasSVG() end
 
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param svgAsset FileAsset
 ---@return boolean success
----Restrictions: secretArguments=AllowedWhenUntainted
 function SimpleVectorGraphics:SetSVG(svgAsset) end
 
 ---An object that manages a collection of integer keys, each scheduled to signal at a specific
@@ -6425,47 +6425,47 @@ local TimedSignalMap = {}
 function TimedSignalMap:CancelAllSignals() end
 
 ---Cancels the scheduled signal for the specified key, if one exists.
----@param key number
 ---Restrictions: secretArguments=AllowedWhenUntainted, RequiresTimedSignalMapAccess
+---@param key number
 function TimedSignalMap:CancelSignal(key) end
 
 ---Returns the next key due to signal along with its scheduled time.
+---Restrictions: RequiresTimedSignalMapAccess
 ---@return number key
 ---@return number time
----Restrictions: RequiresTimedSignalMapAccess
 function TimedSignalMap:GetNextSignal() end
 
 ---Returns the number of keys currently scheduled to signal.
----@return number count
 ---Restrictions: RequiresTimedSignalMapAccess
+---@return number count
 function TimedSignalMap:GetSignalCount() end
 
 ---Returns the absolute time at which the specified key is scheduled to signal.
----@param key number
----@return number? time
 ---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
 ---RequiresTimedSignalMapAccess
+---@param key number
+---@return number? time
 function TimedSignalMap:GetSignalTime(key) end
 
 ---Returns whether the specified key is currently scheduled to signal.
----@param key number
----@return boolean hasSignal
 ---Restrictions: secretArguments=AllowedWhenUntainted, ConstSecretAccessor,
 ---RequiresTimedSignalMapAccess
+---@param key number
+---@return boolean hasSignal
 function TimedSignalMap:HasSignal(key) end
 
 ---Schedules the specified key to signal after a delay from the current time, replacing any
 ---existing schedule for that key.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresTimedSignalMapAccess
 ---@param key number
 ---@param secondsFromNow number
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresTimedSignalMapAccess
 function TimedSignalMap:SignalAfter(key, secondsFromNow) end
 
 ---Schedules the specified key to signal at an absolute time, replacing any existing schedule
 ---for that key.
+---Restrictions: secretArguments=AllowedWhenUntainted, RequiresTimedSignalMapAccess
 ---@param key number
 ---@param time number
----Restrictions: secretArguments=AllowedWhenUntainted, RequiresTimedSignalMapAccess
 function TimedSignalMap:SignalAt(key, time) end
 
 ---A script object of type `Userdata`.
@@ -6473,15 +6473,15 @@ function TimedSignalMap:SignalAt(key, time) end
 local UnitHealPredictionCalculator = {}
 
 ---Calculates the percentage of current unit health and evaluates it against the supplied curve.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param curve LuaCurveObjectBase
 ---@return LuaCurveEvaluatedResult result
----Restrictions: secretArguments=AllowedWhenUntainted
 function UnitHealPredictionCalculator:EvaluateCurrentHealthPercent(curve) end
 
 ---Calculates the percentage of missing unit health and evaluates it against the supplied curve.
+---Restrictions: secretArguments=AllowedWhenUntainted
 ---@param curve LuaCurveObjectBase
 ---@return LuaCurveEvaluatedResult result
----Restrictions: secretArguments=AllowedWhenUntainted
 function UnitHealPredictionCalculator:EvaluateMissingHealthPercent(curve) end
 
 ---Returns the base amount of unit health.
@@ -6493,8 +6493,8 @@ function UnitHealPredictionCalculator:GetCurrentHealth() end
 function UnitHealPredictionCalculator:GetCurrentHealthPercent() end
 
 ---Returns the configured damage absorb clamping mode.
----@return Enum.UnitDamageAbsorbClampMode damageAbsorbClampMode
 ---Restrictions: ReturnsNeverSecret
+---@return Enum.UnitDamageAbsorbClampMode damageAbsorbClampMode
 function UnitHealPredictionCalculator:GetDamageAbsorbClampMode() end
 
 ---Calculates damage absorb values and clamping according to the configured options.
@@ -6503,13 +6503,13 @@ function UnitHealPredictionCalculator:GetDamageAbsorbClampMode() end
 function UnitHealPredictionCalculator:GetDamageAbsorbs() end
 
 ---Returns the configured heal absorb clamping mode.
----@return Enum.UnitHealAbsorbClampMode healAbsorbClampMode
 ---Restrictions: ReturnsNeverSecret
+---@return Enum.UnitHealAbsorbClampMode healAbsorbClampMode
 function UnitHealPredictionCalculator:GetHealAbsorbClampMode() end
 
 ---Returns the configured heal absorb processing mode.
----@return Enum.UnitHealAbsorbMode healAbsorbMode
 ---Restrictions: ReturnsNeverSecret
+---@return Enum.UnitHealAbsorbMode healAbsorbMode
 function UnitHealPredictionCalculator:GetHealAbsorbMode() end
 
 ---Calculates heal absorb values and clamping according to the configured options.
@@ -6518,13 +6518,13 @@ function UnitHealPredictionCalculator:GetHealAbsorbMode() end
 function UnitHealPredictionCalculator:GetHealAbsorbs() end
 
 ---Returns the configured incoming heal clamping mode.
----@return Enum.UnitIncomingHealClampMode incomingHealClampMode
 ---Restrictions: ReturnsNeverSecret
+---@return Enum.UnitIncomingHealClampMode incomingHealClampMode
 function UnitHealPredictionCalculator:GetIncomingHealClampMode() end
 
 ---Returns the configured incoming heal maximum overflow percentage.
----@return number incomingHealOverflowPercent
 ---Restrictions: ReturnsNeverSecret
+---@return number incomingHealOverflowPercent
 function UnitHealPredictionCalculator:GetIncomingHealOverflowPercent() end
 
 ---Calculates incoming heal values and clamping according to the configured options.
@@ -6547,8 +6547,8 @@ function UnitHealPredictionCalculator:GetMaximumHealAbsorbs() end
 function UnitHealPredictionCalculator:GetMaximumHealth() end
 
 ---Returns the configured maximum health mode.
----@return Enum.UnitMaximumHealthMode maximumHealthMode
 ---Restrictions: ReturnsNeverSecret
+---@return Enum.UnitMaximumHealthMode maximumHealthMode
 function UnitHealPredictionCalculator:GetMaximumHealthMode() end
 
 ---Returns the maximum clamping amount for incoming heals.
@@ -6584,8 +6584,8 @@ function UnitHealPredictionCalculator:GetTotalIncomingHeals() end
 function UnitHealPredictionCalculator:GetTotalIncomingHealsFromHealer() end
 
 ---Returns true if the object has been configured with any secret values.
----@return boolean hasSecretValues
 ---Restrictions: ReturnsNeverSecret
+---@return boolean hasSecretValues
 function UnitHealPredictionCalculator:HasSecretValues() end
 
 ---Resets all stored state on the object.
@@ -6595,42 +6595,42 @@ function UnitHealPredictionCalculator:Reset() end
 function UnitHealPredictionCalculator:ResetPredictedValues() end
 
 ---Changes the clamping mode used when calculating damage absorb amounts.
----@param damageAbsorbClampMode Enum.UnitDamageAbsorbClampMode
 ---Restrictions: secretArguments=NotAllowed
+---@param damageAbsorbClampMode Enum.UnitDamageAbsorbClampMode
 function UnitHealPredictionCalculator:SetDamageAbsorbClampMode(damageAbsorbClampMode) end
 
 ---Changes the clamping mode used when calculating heal absorb amounts.
----@param healAbsorbClampMode Enum.UnitHealAbsorbClampMode
 ---Restrictions: secretArguments=NotAllowed
+---@param healAbsorbClampMode Enum.UnitHealAbsorbClampMode
 function UnitHealPredictionCalculator:SetHealAbsorbClampMode(healAbsorbClampMode) end
 
 ---Changes the processing mode used when calculating both heal absorb and incoming heal amounts.
----@param healAbsorbMode Enum.UnitHealAbsorbMode
 ---Restrictions: secretArguments=NotAllowed
+---@param healAbsorbMode Enum.UnitHealAbsorbMode
 function UnitHealPredictionCalculator:SetHealAbsorbMode(healAbsorbMode) end
 
 ---Changes the clamping mode used when calculating incoming heal amounts.
----@param incomingHealClampMode Enum.UnitIncomingHealClampMode
 ---Restrictions: secretArguments=NotAllowed
+---@param incomingHealClampMode Enum.UnitIncomingHealClampMode
 function UnitHealPredictionCalculator:SetIncomingHealClampMode(incomingHealClampMode) end
 
 ---Changes the maximum overflow percentage for incoming heals. Increasing this to a value over
 ---1.0 will mean that incoming heals can extend beyond maximum health.
----@param incomingHealOverflowPercent number
 ---Restrictions: secretArguments=NotAllowed
+---@param incomingHealOverflowPercent number
 function UnitHealPredictionCalculator:SetIncomingHealOverflowPercent(
     incomingHealOverflowPercent
 )
 end
 
 ---Changes the calculation mode for maximum health values used for clamping.
----@param maximumHealthMode Enum.UnitMaximumHealthMode
 ---Restrictions: secretArguments=NotAllowed
+---@param maximumHealthMode Enum.UnitMaximumHealthMode
 function UnitHealPredictionCalculator:SetMaximumHealthMode(maximumHealthMode) end
 
 ---Sets the healing values used for all calculations.
----@param predictedValues UnitHealPredictionValues
 ---Restrictions: secretArguments=AllowedWhenUntainted
+---@param predictedValues UnitHealPredictionValues
 function UnitHealPredictionCalculator:SetPredictedValues(predictedValues) end
 
 ---Resets all state on the object, and clears the secret values flag.

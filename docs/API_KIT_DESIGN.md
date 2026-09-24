@@ -197,8 +197,8 @@ exception is data, not code.
 2. **Function.** The function name becomes lowerCamelCase:
    `MeasureCall` → `measureCall`. A global function whose name starts with
    its system's name drops that prefix: `UnitName` in system `Unit` →
-   `unit.name`; `GetTime` in system `System` keeps its whole name →
-   `system.getTime`.
+   `unit.name`; `GetTime` in system `SystemTime` keeps its whole name →
+   `systemTime.getTime`.
 3. **Initialisms** are lowercased as one unit at the start and kept as a unit
    elsewhere: `C_UIWidgetManager` → `uiWidgetManager`, `GetNPCName` →
    `getNPCName`. A run of capitals is recognised by the splitter itself; only
@@ -234,11 +234,10 @@ single source of truth. Per flavour it records, for every entry: the
 canonical Blizzard name, the wrapper name and any alias, namespace or system,
 parameters (name, type, nilable, default where documented), returns,
 structures, enums and their values, callbacks, events and payloads,
-documentation text, restrictions (protected, secure-only, combat), the
-build range in which the entry existed with that signature, deprecation
-state, and provenance (source commit, build, capture date).
-
-The model supports diffing two captures of one flavour (section 11).
+documentation text, restrictions (protected, secure-only, combat), and
+provenance (source commit, build, capture date). What changed between builds
+is not stored per entry: it is derived by diffing two captures of one flavour
+(section 11) into change reports and a per-capture history.
 
 ### 7.2 Thin runtime facade
 
@@ -319,8 +318,9 @@ one flavour. Load cost (parse time and retained memory per flavour file) is
 measured and recorded in the package's performance review before the first
 release. A flavour file for a client that is not running it costs its parse
 and one registration call, after which the facade drops the installer so its
-prototype is collected; the Retail file parses in about 3 ms in Lua 5.1, and
-the standalone `MoltenCodes` addon carries every flavour file.
+prototype is collected; the measured numbers are the "Load cost" section of
+`packages/apiKit/docs/API.md`, and the standalone `MoltenCodes` addon carries
+every flavour file.
 
 `apiKit` holds no growing state, so constitution principle 4a (bounded by
 default) has nothing to bound here; the package documents that `SetLimits` is
@@ -343,11 +343,13 @@ package README shows the entry.
 ## 11. Version awareness
 
 API availability is versioned data. Each flavour's metadata carries the
-build it was captured from and a history that the update pipeline appends
-to: when an entry first appeared, when its signature changed, when a field
-or enum value changed, when it was deprecated and when it disappeared. The
-history starts at the first capture this repository makes; earlier history is
-not reconstructed.
+build it was captured from, and the update pipeline keeps a per-capture
+history (`history.json`: build, commit, date and the counts of what changed)
+and a change report per refresh naming every entry that appeared,
+disappeared or changed signature, field or enum value. An entry's own build
+range is read off those reports rather than stored on the entry. The history
+starts at the first capture this repository makes; earlier history is not
+reconstructed.
 
 Version data drives the generated definitions, the reference, the change
 reports and, later, compatibility analysis.
@@ -457,7 +459,7 @@ Generation fails rather than producing an incomplete or ambiguous package.
 The validator checks: duplicate wrapper names, duplicate bindings to one
 Blizzard function, missing required metadata, unresolved type, structure or
 enum references, flavour leakage (an entry generated for a flavour whose
-metadata lacks it), build-range contradictions, malformed Lua (`luac -p`),
+metadata lacks it), malformed Lua (`luac -p`),
 malformed JSON, documentation generation failures, and that every runtime
 binding maps to exactly the Blizzard name the metadata records.
 
@@ -611,7 +613,9 @@ documentation, and CI checks that detect use of unavailable APIs, without
 adding runtime cost. Each derives from the canonical metadata rather than
 becoming a second source of truth. The handwritten `meta/wow/*.lua`
 definitions the repository uses today are a candidate for replacement by the
-generated types.
+generated types. Per-entry build ranges and deprecation markers, derived from
+the accumulated change reports, are future work; the tables themselves carry
+no deprecation marker today.
 
 ## 22. Decisions summary
 

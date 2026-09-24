@@ -76,6 +76,8 @@ ignore:
   - packages/*/src/.luarc.json
   - packages/*/metadata
   - packages/*/types
+  - packages/*/docs/changes
+  - packages/*/docs/reference
 
 # Flatten each package's development layout into the one an addon embeds.
 # A package directory is named by its lowerCamelCase package ID; the Lua file

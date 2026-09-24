@@ -20,6 +20,17 @@ describe("ApiKit flavour detection", function()
         end)
     end
 
+    it("gives a Classic test realm its Classic flavour's surface", function()
+        for projectId, expected in pairs({ [2] = "classic-era", [19] = "classic-mop" }) do
+            TestEnv.Reset()
+            TestEnv.InstallWowApi()
+            TestEnv.SetClient({ projectId = projectId, testBuild = true, betaBuild = false })
+            require("Registry")
+            local ApiKit = require("ApiKit")
+            assert.are.equal(expected, ApiKit:GetFlavor())
+        end
+    end)
+
     it("treats a beta client as a test build whatever IsTestBuild says", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()

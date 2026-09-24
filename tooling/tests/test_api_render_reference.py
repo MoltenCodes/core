@@ -19,6 +19,7 @@ import re
 import unittest
 from pathlib import Path
 
+from tooling.validation.validate_manifests import ROOT
 from tooling.api import flavours, model
 from tooling.api import render_reference as module
 from tooling.tests.test_api_model import sample_metadata
@@ -508,7 +509,9 @@ class CorpusTests(unittest.TestCase):
     """
 
     def test_real_metadata_renders_a_self_consistent_reference(self):
-        directory_name = os.environ.get(METADATA_DIRECTORY_VARIABLE)
+        directory_name = os.environ.get(METADATA_DIRECTORY_VARIABLE) or str(
+            ROOT / "packages" / "apiKit" / "metadata" / "retail"
+        )
         if not directory_name or not Path(directory_name).is_dir():
             self.skipTest(f"{METADATA_DIRECTORY_VARIABLE} does not name an existing directory")
         metadata = model.read_metadata(Path(directory_name))

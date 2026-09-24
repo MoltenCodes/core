@@ -43,8 +43,11 @@ The flavour is derived once, when the facade loads, from three host facts:
 | `beta` | `1` | true | true |
 
 Both probes are documented functions of the Retail client (`IsTestBuild` and
-`IsBetaBuild` in its `System` tables at build 69933), which is the only client
-whose project id needs them. A probe the client does not have counts as
+`IsBetaBuild` in its `Build` tables at build 69933), which is the only client
+whose project id needs them: the build facts are consulted for Retail's
+project id alone, because only Retail's test realm and beta builds are
+flavours of their own. A Classic Era or Mists test realm client runs its
+Classic flavour's surface. A probe the client does not have counts as
 `false`; a beta client counts as a test build whatever `IsTestBuild()` says; a probe that raises stops the
 facade's load with that error, as ClientKit's unprotected host calls do. A
 client matching no row (a Burning Crusade Classic client, a client without
@@ -80,7 +83,7 @@ installs from a clean table. Unknown `info` fields are ignored, so a file from
 a newer generator still registers.
 
 Generated files call this method; an addon may call it to install a surface of
-its own for a flavour ApiKit ships no file for.
+its own for a flavour whose generated file it chose not to embed.
 
 ## `MoltenCodes.wow`
 
@@ -131,16 +134,20 @@ flavour. Nothing grows with use.
 
 ## Load cost
 
-Measured on the committed Retail file (client 12.1.0, build 69933; 9,824
-lines, 556 KB) with Lua 5.1.5 on a 2026 desktop, so the numbers are an order
-of magnitude, not a promise:
+Measured on the committed Retail file (client 12.1.0, build 69933; about
+9,800 lines, 560 KB) with Lua 5.1.5 on a 2026 desktop, so the numbers are an
+order of magnitude, not a promise. The other documents quote this table.
 
 | Step | Cost |
 |---|---|
-| Parsing the flavour file | about 3.5 ms |
-| Running the installer (391 namespaces, 6,338 bindings) | under 0.5 ms |
-| Retained by the installed surface | about 316 tables holding 6,000 function references |
+| Parsing the flavour file | about 3 ms |
+| Running the installer (312 namespaces, 4,900 bindings) | under 0.5 ms |
+| Retained by the installed surface | 313 tables (one per namespace, one per alias) holding 4,900 function references, plus the event, enum and constants tables |
 | A flavour file on a client of another flavour | its parse and one registration call; the installer is dropped |
+
+The Retail tables document 6,338 functions; 4,900 of them are bound. The other
+1,438 are methods of 79 script object types (frames, textures, animation
+groups), which are called on host objects and are described in the types only.
 
 A call through the wrapper is one table index more than the raw call and
 allocates nothing. Nothing in the package grows with use.
