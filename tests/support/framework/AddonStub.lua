@@ -1,8 +1,10 @@
---- Addon load state, login state, and the combat-log payload.
+--- Addon load state, login state, and an empty combat-log payload.
 ---
 --- These are the host facts LifecycleKit reads directly rather than receiving
---- as an event payload: whether an addon's files have finished loading, whether
---- the player is logged in, and what the current combat-log event carries. The
+--- as an event payload: whether an addon's files have finished loading and
+--- whether the player is logged in. `CombatLogGetCurrentEventInfo` exists and
+--- returns nothing, as it does outside a combat-log dispatch; a suite that
+--- needs a payload installs its own (EventKit's `SetCombatLogEventInfo`). The
 --- helpers that move an addon through its lifecycle live here too, because each
 --- of them is a host state change plus the event the client would send with it.
 
@@ -13,7 +15,6 @@ local AddonStub = {}
 function AddonStub.Reset(state)
     state.addonLoaded = {}
     state.loggedIn = false
-    state.combatLogEvent = {}
 end
 
 ---Install the globals this stub owns.
@@ -44,9 +45,7 @@ function AddonStub.InstallGlobals(state)
 
     -- The fixture stands in for the World of Warcraft client, whose API and shared namespace only exist in the global table.
     -- selene: allow(global_usage)
-    rawset(_G, "CombatLogGetCurrentEventInfo", function()
-        return unpack(state.combatLogEvent)
-    end)
+    rawset(_G, "CombatLogGetCurrentEventInfo", function() end)
 end
 
 ---Attach this stub's public helpers to `environment`.
@@ -83,14 +82,6 @@ function AddonStub.Attach(environment, state)
     function environment.Logout()
         environment.Emit("PLAYER_LOGOUT")
         state.loggedIn = false
-    end
-
-    ---Set the payload `CombatLogGetCurrentEventInfo()` returns.
-    ---
-    ---`COMBAT_LOG_EVENT_UNFILTERED` carries no event payload; a listener reads
-    ---the event through this function instead.
-    function environment.SetCombatLogEvent(...)
-        state.combatLogEvent = { ... }
     end
 end
 

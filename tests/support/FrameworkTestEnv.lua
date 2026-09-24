@@ -1,10 +1,10 @@
 --- Shared World of Warcraft test fixture for every MoltenCodes package suite.
 ---
---- Every package used to carry its own near-identical copy of the same stubs:
---- a fake `CreateFrame`, a fake `C_Timer`, controllable clocks, a capture for
---- the host error handler, and the `package.loaded` bookkeeping a bootstrap spec
---- needs. Keeping seven copies in step by hand meant a fix to one of them —
---- the two-slot `RegisterUnitEvent` limit, say — silently missed the rest.
+--- Every package suite needs the same stubs: a fake `CreateFrame`, a fake
+--- `C_Timer`, controllable clocks, a capture for the host error handler, and
+--- the `package.loaded` bookkeeping a bootstrap spec needs. They live here once,
+--- so a fix to one of them (the two-slot `RegisterUnitEvent` limit, say)
+--- reaches every suite.
 ---
 --- `FrameworkTestEnv.New` builds one environment per package. Each environment
 --- owns its own stub state, so nothing leaks between environments even when a
