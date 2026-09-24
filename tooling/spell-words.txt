@@ -19,6 +19,7 @@ debugstack
 geterrorhandler
 hooksecurefunc
 issecretvalue
+issecure
 issecurevariable
 secretwrap
 securecallfunction
