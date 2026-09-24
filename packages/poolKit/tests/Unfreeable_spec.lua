@@ -353,22 +353,25 @@ describe("PoolKit pools for objects that can never be freed", function()
             assert.are.equal(0, pool:GetWaitingCount())
         end)
 
-        it("allocates nothing per acquire while requests wait and are served", function()
-            local pool = newFramePool(PoolKit, { maxActive = 1, maxWaiting = 1 })
-            local holder = pool:Acquire()
-            local function waiter(object)
-                holder = object
-            end
-
-            local allocated = allocatedKilobytes(function()
-                for _ = 1, 20000 do
-                    pool:Acquire(waiter)
-                    pool:Release(holder)
+        it(
+            "allocates nothing per acquire while requests wait and are served #allocation",
+            function()
+                local pool = newFramePool(PoolKit, { maxActive = 1, maxWaiting = 1 })
+                local holder = pool:Acquire()
+                local function waiter(object)
+                    holder = object
                 end
-            end)
 
-            assert.are.equal(1, pool:GetCreatedCount())
-            assert.is_true(allocated < 4, "queue traffic allocated " .. allocated .. " KiB")
-        end)
+                local allocated = allocatedKilobytes(function()
+                    for _ = 1, 20000 do
+                        pool:Acquire(waiter)
+                        pool:Release(holder)
+                    end
+                end)
+
+                assert.are.equal(1, pool:GetCreatedCount())
+                assert.is_true(allocated < 4, "queue traffic allocated " .. allocated .. " KiB")
+            end
+        )
     end)
 end)

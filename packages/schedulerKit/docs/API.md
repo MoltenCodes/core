@@ -371,6 +371,10 @@ When WoW's `geterrorhandler()` is available, SchedulerKit also reports the failu
 
 The host error handler is also the seam for non-fatal scheduler diagnostics — a demoted runaway slice and a swallowed `Context:Yield()` are reported there. Those reports never terminate a job.
 
+### Secret values
+
+A secret value (Retail 12.0.0 and later) raises when it is compared, so SchedulerKit refuses one before any check compares it, at the caller's line, with `<argument> must not be a secret value`. The refused arguments are those a check compares: a scope name (`SchedulerKit:ForAddon addonName must not be a secret value`, likewise `SchedulerKit:CloseAddonScopes addonName`), a lane name (`SchedulerKit:Lane name must not be a secret value`), the `priority` and `name` scheduling options (`SchedulerKit:Schedule priority must not be a secret value`), delays, intervals and budgets (`SchedulerKit:After delay must not be a secret value`, `SchedulerKit:SetFrameBudget milliseconds must not be a secret value`), every numeric and boolean option of `Lane`, `Debounce`, `Coalesce` and `Watch` (`SchedulerKit:Lane maxInFlight must not be a secret value`, `SchedulerKit:Debounce leading must not be a secret value`), a `SetLimits` value (`SchedulerKit:SetLimits limits.maxLanes must not be a secret value`) and a coalesce key (`SchedulerKit coalesce handle key must not be a secret value`). The refusal is raised at the level of the method's other argument errors, which is the caller's line except for the package-level `Schedule`, `NextFrame`, `After` and `Every` and the scope `Schedule`, whose argument errors carry no position. A coalesce value is only stored, so a secret one is accepted. An absent option is recognised by its type, never by comparing it with `nil`, and a value a callback hands to a raw `coroutine.yield` is type-checked before it is compared with the yield token. `issecretvalue` is read once at load; a host without it has no secret values.
+
 A failure is signalled **once**. An operation that raises to its direct caller, such as `SchedulerKit:After` failing to arm its TimerKit delay, is not additionally pushed to the error handler; a failure on the driver path, where nothing above SchedulerKit can observe a raise, is reported instead of raised.
 
 ## Scopes
@@ -808,6 +812,10 @@ The facade, Job/Scope/Context prototypes, metatables, ready queues, scopes, acti
 The installed OnUpdate trampoline does not permanently close over one implementation revision. It resolves the current shared dispatch function on every scheduler frame. TimerKit delay callbacks use the same dispatch indirection.
 
 A future compatible SchedulerKit revision can therefore update execution behavior while preserving existing facade, Job, Scope, Context, queue, and addon-scope identity.
+
+Revision 14 changes behaviour only (secret-value checks, absence tested by
+type); package state is unchanged and a revision-13 copy's jobs, coroutines,
+timers and handles carry over as they are.
 
 Revision 13 changes behaviour only; package state is unchanged and a
 revision-12 copy's jobs, coroutines, timers and handles carry over as they

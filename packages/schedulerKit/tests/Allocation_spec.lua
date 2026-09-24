@@ -23,7 +23,7 @@ local function scheduleEndlessJob(SchedulerKit, priority)
     end, { priority = priority })
 end
 
-describe("SchedulerKit tick-path allocation", function()
+describe("SchedulerKit tick-path allocation #allocation", function()
     after_each(TestEnv.Reset)
 
     it("resumes a long-running yielding job without allocating", function()

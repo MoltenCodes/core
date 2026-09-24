@@ -12,6 +12,7 @@ The TimerKit suite covers:
 - who closes an addon scope at logout: a LifecycleKit that lists TimerKit in `CLOSES_ADDON_SCOPES`, an older LifecycleKit through `OnShutdown`, EventKit's `PLAYER_LOGOUT` without LifecycleKit, or nobody, re-examined when a Kit loads later and carried across an upgrade;
 - native creation rollback and strict public input validation;
 - `error` levels: every argument failure reports the caller's own line;
+- secret values on the `mainline` host: secret delays, options, addon names and receivers refused at the caller's line before any comparison, secret user data stored untouched;
 - opaque per-timer user data attached through the public handle;
 - remaining time and deadlines (`GetRemaining`/`GetDeadline`) in every timer
   state, for repeating, restarted, overdue and rolled-back timers, for timers an
@@ -36,5 +37,6 @@ Spec files:
 | `Remaining_spec.lua` | `GetRemaining`/`GetDeadline` in every state, restarts, late hosts, rolled-back starts |
 | `Allocation_spec.lua` | a repeating tick and a cancellation allocate nothing |
 | `Property_spec.lua` | deterministic mixed operations keep the scope active count consistent |
-| `Bootstrap_spec.lua` | duplicate loading, Registry publication, loading with Registry alone, the revision-1, revision-5 and revision-7 upgrades, older revisions' deadlines, no `GetTimePreciseSec` |
+| `Bootstrap_spec.lua` | duplicate loading, Registry publication, loading with Registry alone, the revision-1, revision-5 and revision-7 upgrades and the previous-revision upgrade, older revisions' deadlines, no `GetTimePreciseSec` |
+| `SecretValues_spec.lua` | secret arguments refused at the caller's line, secret user data accepted |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |

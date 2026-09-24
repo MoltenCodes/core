@@ -44,7 +44,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 13
+local IMPLEMENTATION_REVISION = 14
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMER_API = 1
 local STATE_SCHEMA = 1
@@ -376,7 +376,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -442,9 +442,15 @@ local nativeDebugProfileStop = rawget(_G, "debugprofilestop")
 -- debug.traceback captures a failing job's stack while its coroutine is still
 -- inspectable. A host that does not publish the debug library simply reports
 -- the bare error value instead.
--- selene: allow(global_usage)
-local debugLibrary = rawget(_G, "debug")
-local nativeTraceback = type(debugLibrary) == "table" and rawget(debugLibrary, "traceback") or nil
+--
+-- The main chunk is close to Lua 5.1's limit of 200 locals, so a value needed
+-- only while another is resolved lives in a `do` block.
+local nativeTraceback
+do
+    -- selene: allow(global_usage)
+    local debugLibrary = rawget(_G, "debug")
+    nativeTraceback = type(debugLibrary) == "table" and rawget(debugLibrary, "traceback") or nil
+end
 if type(nativeCreateFrame) ~= "function" then
     error("MoltenCodes SchedulerKit requires CreateFrame", 2)
 end
@@ -456,6 +462,29 @@ if type(nativeDebugProfileStop) ~= "function" then
 end
 if type(nativeTraceback) ~= "function" then
     nativeTraceback = nil
+end
+
+-- Secret values (Retail 12.0.0 and later) raise when compared, so an argument
+-- a check would compare is refused first, at the caller's line. The probe is
+-- read once at load; a host without `issecretvalue` has no secret values.
+local refuseSecretValue
+do
+    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local nativeIsSecretValue = rawget(_G, "issecretvalue")
+    if type(nativeIsSecretValue) ~= "function" then
+        nativeIsSecretValue = nil
+    end
+
+    ---Raise `<label> must not be a secret value` when `value` is secret.
+    ---@param value any
+    ---@param label string argument description, used in the argument error
+    ---@param level integer stack level the failure is reported at
+    function refuseSecretValue(value, label, level)
+        if nativeIsSecretValue ~= nil and nativeIsSecretValue(value) then
+            error(label .. " must not be a secret value", level)
+        end
+    end
 end
 
 -- Validation ---------------------------------------------------------------
@@ -577,7 +606,7 @@ end
 ---@param acceptsUnbounded boolean
 ---@return boolean
 local function isLimitValue(value, ceiling, sentinel, acceptsUnbounded)
-    if value == sentinel and sentinel ~= nil then
+    if sentinel ~= nil and value == sentinel then
         return acceptsUnbounded
     end
     return type(value) == "number"
@@ -676,7 +705,7 @@ local SchedulerKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if SchedulerKit == nil then
+if type(SchedulerKit) == "nil" then
     -- Equal or newer compatible revision already owns the shared package table.
     return selected
 end
@@ -693,7 +722,7 @@ local function newQueue()
     return { items = {}, head = 1, tail = 0 }
 end
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if Job ~= nil or Scope ~= nil or Context ~= nil or Priority ~= nil or state ~= nil then
         error("MoltenCodes SchedulerKit package state is corrupted or incomplete", 2)
     end
@@ -864,7 +893,7 @@ end
 -- best-effort: a subscription that cannot be disconnected is dropped all the
 -- same, because its wrapper resolves `dispatch.closeScope` at call time and
 -- closing a closed scope is a no-op.
-if previousRevision ~= nil and previousRevision < IMPLEMENTATION_REVISION then
+if type(previousRevision) ~= "nil" and previousRevision < IMPLEMENTATION_REVISION then
     for _, addonScope in pairs(rawget(state, "addonScopes")) do
         if type(addonScope) == "table" then
             local subscription = rawget(addonScope, "_shutdownSubscription")
@@ -916,6 +945,7 @@ rawset(CONTEXT_METATABLE, "__index", Context)
 ---@param label string argument description, used in the argument error
 ---@param level integer? stack level the failure is reported at; defaults to `3`
 local function validateNonEmptyString(value, label, level)
+    refuseSecretValue(value, label, (level or 3) + 1)
     if type(value) ~= "string" or value == "" then
         error(label .. " must be a non-empty string", level or 3)
     end
@@ -926,6 +956,7 @@ end
 ---@param allowZero boolean whether zero is accepted
 ---@param level integer? stack level the failure is reported at; defaults to `3`
 local function validateFinitePositive(value, label, allowZero, level)
+    refuseSecretValue(value, label, (level or 3) + 1)
     if
         type(value) ~= "number"
         or value ~= value
@@ -946,6 +977,7 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer? stack level the failure is reported at; defaults to `3`
 local function validatePositiveInteger(value, label, level)
+    refuseSecretValue(value, label, (level or 3) + 1)
     if
         type(value) ~= "number"
         or value ~= value
@@ -963,7 +995,8 @@ end
 ---@param level integer? stack level the failure is reported at; defaults to `3`
 ---@return integer priority
 local function validatePriority(priority, label, level)
-    if priority == nil then
+    refuseSecretValue(priority, label, (level or 3) + 1)
+    if type(priority) == "nil" then
         return PRIORITY_NORMAL
     end
     if
@@ -983,7 +1016,7 @@ end
 ---@return integer priority
 ---@return string|nil name
 local function validateOptions(options, methodName)
-    if options == nil then
+    if type(options) == "nil" then
         return PRIORITY_NORMAL, nil
     end
     if type(options) ~= "table" then
@@ -1005,7 +1038,7 @@ local function validateOptions(options, methodName)
 
     local priority = validatePriority(rawget(options, "priority"), methodName .. " priority", 4)
     local name = rawget(options, "name")
-    if name ~= nil then
+    if type(name) ~= "nil" then
         validateNonEmptyString(name, methodName .. " name", 4)
     end
     return priority, name
@@ -1400,7 +1433,7 @@ local function ensureDriver()
     end
 
     frame = nativeCreateFrame("Frame")
-    if frame == nil or type(frame.SetScript) ~= "function" then
+    if type(frame) == "nil" or type(frame.SetScript) ~= "function" then
         error("MoltenCodes SchedulerKit CreateFrame returned an invalid Frame", 0)
     end
 
@@ -1952,7 +1985,9 @@ local function resumeJob(job)
         return
     end
 
-    if yielded ~= rawget(state, "yieldToken") then
+    -- The yielded value comes from the callback. The token is a table, so the
+    -- type test comes first and a secret value is never compared.
+    if type(yielded) ~= "table" or yielded ~= rawget(state, "yieldToken") then
         failJob(job, "SchedulerKit jobs may yield only through Context:Yield()", false)
         return
     end
@@ -2061,7 +2096,7 @@ local function installCoalescingFamily()
     ---@param methodName string public method name, used in the argument errors
     ---@param level integer stack level the failure is reported at
     local function validateOptionTable(options, allowed, methodName, level)
-        if options == nil then
+        if type(options) == "nil" then
             return
         end
         if type(options) ~= "table" then
@@ -2086,7 +2121,8 @@ local function installCoalescingFamily()
     ---@param label string argument description, used in the argument error
     ---@param level integer stack level the failure is reported at
     local function validateOptionalBoolean(value, label, level)
-        if value ~= nil and type(value) ~= "boolean" then
+        refuseSecretValue(value, label, level + 1)
+        if type(value) ~= "nil" and type(value) ~= "boolean" then
             error(label .. " must be a boolean", level)
         end
     end
@@ -2095,6 +2131,7 @@ local function installCoalescingFamily()
     ---@param label string argument description, used in the argument error
     ---@param level integer stack level the failure is reported at
     local function validateCount(value, label, level)
+        refuseSecretValue(value, label, level + 1)
         if
             type(value) ~= "number"
             or value ~= value
@@ -2120,7 +2157,9 @@ local function installCoalescingFamily()
     ---@param label string argument description, used in the argument error
     ---@param level integer stack level the failure is reported at
     local function validateOptionalLane(lane, label, level)
-        if lane ~= nil and (type(lane) ~= "table" or getmetatable(lane) ~= LANE_METATABLE) then
+        if
+            type(lane) ~= "nil" and (type(lane) ~= "table" or getmetatable(lane) ~= LANE_METATABLE)
+        then
             error(label .. " must be a SchedulerKit lane", level)
         end
     end
@@ -2637,15 +2676,15 @@ local function installCoalescingFamily()
         local minInterval = 0
         local maxQueued = DEFAULT_LANE_MAX_QUEUED
         local attempts, backoff, multiplier, maxBackoff = 0, 0, DEFAULT_RETRY_MULTIPLIER, false
-        if options == nil then
+        if type(options) == "nil" then
             return maxInFlight, minInterval, attempts, backoff, multiplier, maxBackoff, maxQueued
         end
 
-        if rawget(options, "maxInFlight") ~= nil then
+        if type(rawget(options, "maxInFlight")) ~= "nil" then
             maxInFlight = rawget(options, "maxInFlight")
             validatePositiveInteger(maxInFlight, methodName .. " maxInFlight", level + 1)
         end
-        if rawget(options, "minIntervalSeconds") ~= nil then
+        if type(rawget(options, "minIntervalSeconds")) ~= "nil" then
             minInterval = rawget(options, "minIntervalSeconds")
             validateFinitePositive(
                 minInterval,
@@ -2654,19 +2693,19 @@ local function installCoalescingFamily()
                 level + 1
             )
         end
-        if rawget(options, "maxQueued") ~= nil then
+        if type(rawget(options, "maxQueued")) ~= "nil" then
             maxQueued = rawget(options, "maxQueued")
             validatePositiveInteger(maxQueued, methodName .. " maxQueued", level + 1)
         end
 
         local retry = rawget(options, "retry")
-        if retry ~= nil then
+        if type(retry) ~= "nil" then
             validateOptionTable(retry, RETRY_OPTION_KEYS, methodName .. " retry", level + 1)
-            if rawget(retry, "attempts") ~= nil then
+            if type(rawget(retry, "attempts")) ~= "nil" then
                 attempts = rawget(retry, "attempts")
                 validateCount(attempts, methodName .. " retry.attempts", level + 1)
             end
-            if rawget(retry, "backoffSeconds") ~= nil then
+            if type(rawget(retry, "backoffSeconds")) ~= "nil" then
                 backoff = rawget(retry, "backoffSeconds")
                 validateFinitePositive(
                     backoff,
@@ -2675,7 +2714,7 @@ local function installCoalescingFamily()
                     level + 1
                 )
             end
-            if rawget(retry, "multiplier") ~= nil then
+            if type(rawget(retry, "multiplier")) ~= "nil" then
                 multiplier = rawget(retry, "multiplier")
                 validateFinitePositive(
                     multiplier,
@@ -2687,7 +2726,7 @@ local function installCoalescingFamily()
                     error(methodName .. " retry.multiplier must be at least 1", level)
                 end
             end
-            if rawget(retry, "maxBackoffSeconds") ~= nil then
+            if type(rawget(retry, "maxBackoffSeconds")) ~= "nil" then
                 maxBackoff = rawget(retry, "maxBackoffSeconds")
                 validateFinitePositive(
                     maxBackoff,
@@ -2714,7 +2753,7 @@ local function installCoalescingFamily()
         local existing = rawget(lanes, name)
         if existing ~= nil then
             if
-                options ~= nil
+                type(options) ~= "nil"
                 and (
                     rawget(existing, "_maxInFlight") ~= maxInFlight
                     or rawget(existing, "_minInterval") ~= minInterval
@@ -2789,24 +2828,25 @@ local function installCoalescingFamily()
         validateOptionTable(options, SUBMIT_OPTION_KEYS, "SchedulerKit.Lane:Submit", 3)
 
         local priority, name, scope = PRIORITY_NORMAL, nil, nil
-        if options ~= nil then
+        if type(options) ~= "nil" then
             priority = validatePriority(
                 rawget(options, "priority"),
                 "SchedulerKit.Lane:Submit priority",
                 3
             )
             name = rawget(options, "name")
-            if name ~= nil then
+            if type(name) ~= "nil" then
                 validateNonEmptyString(name, "SchedulerKit.Lane:Submit name", 3)
             end
             scope = rawget(options, "scope")
             if
-                scope ~= nil and (type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE)
+                type(scope) ~= "nil"
+                and (type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE)
             then
                 error("SchedulerKit.Lane:Submit scope must be a SchedulerKit scope", 2)
             end
         end
-        if scope == nil then
+        if type(scope) == "nil" then
             scope = getDefaultScope()
         elseif rawget(scope, "_closed") == true then
             error("SchedulerKit.Lane:Submit cannot schedule work in a closed scope", 2)
@@ -3344,13 +3384,15 @@ local function installCoalescingFamily()
     ---@param value any stored for `key`; `true` when omitted
     ---@return boolean accepted `false` when the key was refused or the handle is closed.
     local function coalesceCall(member, key, value)
-        if key == nil or key ~= key then
+        refuseSecretValue(key, "SchedulerKit coalesce handle key", 3)
+        if type(key) == "nil" or key ~= key then
             error("SchedulerKit coalesce handle key must not be nil or NaN", 2)
         end
         if rawget(member, "_closed") == true then
             return false
         end
-        if value == nil then
+        -- The value is stored, never compared, so a secret one is accepted.
+        if type(value) == "nil" then
             value = true
         end
 
@@ -3657,10 +3699,10 @@ local function installCoalescingFamily()
         validateOptionTable(options, DEBOUNCE_OPTION_KEYS, methodName, 4)
 
         local leading, maxWait, lane = false, false, false
-        if options ~= nil then
+        if type(options) ~= "nil" then
             validateOptionalBoolean(rawget(options, "leading"), methodName .. " leading", 4)
             leading = rawget(options, "leading") == true
-            if rawget(options, "maxWaitSeconds") ~= nil then
+            if type(rawget(options, "maxWaitSeconds")) ~= "nil" then
                 maxWait = rawget(options, "maxWaitSeconds")
                 validateFinitePositive(maxWait, methodName .. " maxWaitSeconds", false, 4)
                 if maxWait < delay then
@@ -3724,8 +3766,8 @@ local function installCoalescingFamily()
         validateOptionTable(options, COALESCE_OPTION_KEYS, methodName, 4)
 
         local maxKeys, lane = DEFAULT_COALESCE_MAX_KEYS, false
-        if options ~= nil then
-            if rawget(options, "maxKeys") ~= nil then
+        if type(options) ~= "nil" then
+            if type(rawget(options, "maxKeys")) ~= "nil" then
                 maxKeys = rawget(options, "maxKeys")
                 validatePositiveInteger(maxKeys, methodName .. " maxKeys", 4)
             end
@@ -3784,7 +3826,7 @@ local function installCoalescingFamily()
         end
         validateOptionTable(options, WATCH_OPTION_KEYS, methodName, 4)
         local everyTick = false
-        if options ~= nil then
+        if type(options) ~= "nil" then
             validateOptionalBoolean(rawget(options, "everyTick"), methodName .. " everyTick", 4)
             everyTick = rawget(options, "everyTick") == true
         end
@@ -4404,7 +4446,7 @@ end
 ---@return table|nil
 local function findClosingLifecycleKit()
     local LifecycleKit = findOptionalPackage("lifecycleKit", OPTIONAL_LIFECYCLE_KIT_API)
-    if LifecycleKit ~= nil and lifecycleClosesAddonScopes(LifecycleKit) then
+    if type(LifecycleKit) ~= "nil" and lifecycleClosesAddonScopes(LifecycleKit) then
         return LifecycleKit
     end
     return nil
@@ -4498,7 +4540,7 @@ local function ensureLogoutConnection()
         return true
     end
     local EventKit = findOptionalPackage("eventKit", OPTIONAL_EVENT_KIT_API)
-    if EventKit == nil then
+    if type(EventKit) == "nil" then
         return false
     end
 
@@ -4536,7 +4578,7 @@ local function ensureLogoutRoute(scope)
     end
 
     local LifecycleKit = findOptionalPackage("lifecycleKit", OPTIONAL_LIFECYCLE_KIT_API)
-    if LifecycleKit ~= nil then
+    if type(LifecycleKit) ~= "nil" then
         if lifecycleClosesAddonScopes(LifecycleKit) then
             -- LifecycleKit closes the scopes of the addons it has an
             -- instance for, so make sure this addon has one. Nothing is
@@ -4900,7 +4942,7 @@ end
 ---@param addonName string addon folder name
 ---@return boolean closed `false` when the addon has no scope or it was already closed.
 local function closeAddonScopes(self, addonName)
-    if self ~= SchedulerKit then
+    if type(self) ~= "table" or self ~= SchedulerKit then
         error(
             "SchedulerKit:CloseAddonScopes must be called on the SchedulerKit facade; "
                 .. "use SchedulerKit:CloseAddonScopes(addonName)",
@@ -4979,7 +5021,7 @@ local function validateLimitUpdate(limits, level)
         error("SchedulerKit:SetLimits limits must be a table", level)
     end
     local key = next(limits)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         if LIMIT_CEILINGS[key] == nil then
             error(
                 "SchedulerKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
@@ -4987,6 +5029,7 @@ local function validateLimitUpdate(limits, level)
             )
         end
         local value = rawget(limits, key)
+        refuseSecretValue(value, "SchedulerKit:SetLimits limits." .. key, level + 1)
         local refusal = LIMIT_UNBOUNDED_REFUSALS[key]
         local ceiling = LIMIT_CEILINGS[key]
         if value == UNBOUNDED then
@@ -5027,7 +5070,7 @@ end
 ---@param self SchedulerKit
 ---@param limits table any subset of `SchedulerKit.Limits`
 local function setLimits(self, limits)
-    if self ~= SchedulerKit then
+    if type(self) ~= "table" or self ~= SchedulerKit then
         error(
             "SchedulerKit:SetLimits must be called on the SchedulerKit facade; "
                 .. "use SchedulerKit:SetLimits(limits)",
@@ -5038,7 +5081,7 @@ local function setLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, name, value)
         end
     end
@@ -5048,7 +5091,7 @@ end
 ---@param self SchedulerKit
 ---@return SchedulerKit.Limits
 local function getLimits(self)
-    if self ~= SchedulerKit then
+    if type(self) ~= "table" or self ~= SchedulerKit then
         error(
             "SchedulerKit:GetLimits must be called on the SchedulerKit facade; "
                 .. "use SchedulerKit:GetLimits()",
@@ -5162,7 +5205,7 @@ local function routeInheritedAddonScopes()
     end
 end
 
-if previousRevision ~= nil and previousRevision < IMPLEMENTATION_REVISION then
+if type(previousRevision) ~= "nil" and previousRevision < IMPLEMENTATION_REVISION then
     routeInheritedAddonScopes()
 end
 

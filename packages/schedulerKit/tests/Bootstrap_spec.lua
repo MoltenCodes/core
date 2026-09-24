@@ -1,5 +1,9 @@
 local TestEnv = require("SchedulerKitTestEnv")
 
+-- The implementation revision this suite was written against; Manifest_spec
+-- holds it to package.manifest.json.
+local CURRENT_REVISION = 14
+
 describe("SchedulerKit bootstrap", function()
     after_each(TestEnv.Reset)
 
@@ -44,7 +48,7 @@ describe("SchedulerKit bootstrap", function()
             return require("SchedulerKit")
         end)
         assert.is_true(ok)
-        assert.are.equal(13, SchedulerKit.REVISION)
+        assert.are.equal(CURRENT_REVISION, SchedulerKit.REVISION)
 
         local scope = SchedulerKit:CreateScope()
         assert.is_false(scope:IsClosed())
@@ -145,7 +149,7 @@ describe("SchedulerKit bootstrap", function()
 
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(13, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
 
         -- Revision 4's lane bookkeeping is derived from the inherited queues
         -- rather than assumed empty, so work an older copy had already queued
@@ -218,7 +222,7 @@ describe("SchedulerKit bootstrap", function()
 
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(13, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
         local state = rawget(upgraded, "_state")
         assert.are.same({}, rawget(state, "lanes"))
         assert.are.equal(0, rawget(state, "laneCount"))
@@ -255,7 +259,7 @@ describe("SchedulerKit bootstrap", function()
         package.loaded["SchedulerKit"] = nil
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(13, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
         assert.are.equal(lane, upgraded:Lane("upgraded"))
 
         local job = lane:Submit(function()
@@ -301,7 +305,7 @@ describe("SchedulerKit bootstrap", function()
         local upgraded = require("SchedulerKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(13, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
         assert.are.equal(1, disconnects)
         assert.is_nil(rawget(carried, "_shutdownSubscription"))
         assert.is_nil(rawget(failing, "_shutdownSubscription"))
@@ -369,7 +373,7 @@ describe("SchedulerKit bootstrap", function()
         package.loaded["SchedulerKit"] = nil
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(13, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
 
         -- The coroutine the older copy started resumes where it yielded.
         TestEnv.Tick()
@@ -389,6 +393,41 @@ describe("SchedulerKit bootstrap", function()
         TestEnv.FireNative(#timers)
         TestEnv.Tick()
         assert.are.equal(2, repeats)
+    end)
+
+    it("upgrades the previous revision in place and keeps its facade, state and jobs", function()
+        local current = TestEnv.NewPackage().REVISION
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("TimerKit")
+
+        local old = TestEnv.LoadRevision(current - 1)
+        old:SetMaxResumesPerFrame(1)
+        local state = old._state
+        local lane = old:Lane("previous")
+        local slices = 0
+        local yielding = old:Schedule(function(context)
+            for _ = 1, 2 do
+                slices = slices + 1
+                context:Yield()
+            end
+        end)
+        TestEnv.Tick()
+        assert.are.equal(1, slices)
+
+        package.loaded["SchedulerKit"] = nil
+        local upgraded = require("SchedulerKit")
+        assert.are.equal(old, upgraded)
+        assert.are.equal(state, upgraded._state)
+        assert.are.equal(current, upgraded.REVISION)
+        assert.are.equal(lane, upgraded:Lane("previous"))
+
+        -- The coroutine the older copy started resumes where it yielded.
+        TestEnv.Tick()
+        TestEnv.Tick()
+        assert.are.equal(2, slices)
+        assert.are.equal("completed", yielding:GetState())
     end)
 
     it("keeps live family handles working across a compatible reload", function()

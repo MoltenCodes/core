@@ -296,7 +296,7 @@ describe("SchedulerKit Debounce", function()
         end)
     end)
 
-    it("allocates nothing to record calls inside an open window", function()
+    it("allocates nothing to record calls inside an open window #allocation", function()
         local SchedulerKit = TestEnv.NewPackage()
         local debounced = SchedulerKit:Debounce(function() end, 1)
         debounced("warm", 1, 2)

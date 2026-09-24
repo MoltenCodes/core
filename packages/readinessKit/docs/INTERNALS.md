@@ -86,7 +86,7 @@ ReadinessKit hands out three kinds of closure: `state.pollCallback` (one for the
 
 Gates and waiters use the metatables stored in state. An upgrade keeps both metatables and rewrites the prototype methods in place, so existing gates and waiters keep their state and gain the new methods. Each gate carries `_schema`, so a revision that changes the layout can upgrade old gates lazily.
 
-The upgrade spec loads the source as a revision-1 copy (with `IMPLEMENTATION_REVISION` patched to 1 and the `unbounded` sentinel removed from its state, as revision 1 had none), builds a polling gate, a queued waiter, a re-probe subscription and a `WhenAll` group on it, then loads the current revision over it and checks that all four keep working and that the sentinel is published.
+A second upgrade spec loads the source as the previous revision (the current one minus one), queues a waiter on a polling gate and checks that the current revision keeps the facade, the state table, the gate and the waiter. The first upgrade spec loads the source as a revision-1 copy (with `IMPLEMENTATION_REVISION` patched to 1 and the `unbounded` sentinel removed from its state, as revision 1 had none), builds a polling gate, a queued waiter, a re-probe subscription and a `WhenAll` group on it, then loads the current revision over it and checks that all four keep working and that the sentinel is published.
 
 ## Error levels
 

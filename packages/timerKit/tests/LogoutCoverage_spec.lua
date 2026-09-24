@@ -270,6 +270,7 @@ describe("TimerKit logout routes across an upgrade", function()
     after_each(TestEnv.Reset)
 
     it("gives the scopes of a revision without routes one when it upgrades them", function()
+        local current = TestEnv.NewPackage().REVISION
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         require("Registry")
@@ -288,7 +289,7 @@ describe("TimerKit logout routes across an upgrade", function()
         local upgraded = require("TimerKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(8, upgraded.REVISION)
+        assert.are.equal(current, upgraded.REVISION)
         assert.are.equal("playerLogout", rawget(timers, "_logoutRoute"))
         TestEnv.Logout()
         assert.is_true(timers:IsClosed())

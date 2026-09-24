@@ -2,7 +2,7 @@
 
 ReadinessKit API generation **1** provides named gates for host data that arrives after load: a gate probes a fact, polls it while it is not yet true, times out, remembers negative answers for one interval, and calls its waiters once with the outcome.
 
-Implementation revision: **2**.
+Implementation revision: **3**.
 
 ## Loading
 
@@ -216,6 +216,17 @@ per name for the session, so it grows only with the names the consumer defines.
 ## Error behaviour
 
 Argument failures report the line that called the public method, never a line inside ReadinessKit. Messages name the method (`ReadinessKit:Gate`, `ReadinessKit.Gate:Await`, `ReadinessKit.Waiter:Cancel`, `ReadinessKit:WhenAll`). Calling a method on something that is not a gate raises `ReadinessKit.Gate:IsReady must be called on a ReadinessKit gate`.
+
+A secret value (Retail 12.0.0 and later) cannot be compared, so it is refused before any check touches it, at the caller's line:
+
+| Argument | Message |
+|---|---|
+| `name` of `Gate` | `ReadinessKit:Gate name must not be a secret value` |
+| `name` of `Get` | `ReadinessKit:Get name must not be a secret value` |
+| `eventName` of `ReprobeOn` | `ReadinessKit.Gate:ReprobeOn eventName must not be a secret value` |
+| an option of `Gate` | `ReadinessKit:Gate intervalSeconds must not be a secret value` (likewise `timeoutSeconds`, `maxWaiters`) |
+
+An absent option is recognised by its type, never by comparing it with `nil`. On a host without `issecretvalue` nothing is secret and these checks cost one upvalue test.
 
 ## Performance
 

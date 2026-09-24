@@ -23,7 +23,7 @@ local function cycle(pool, count)
     end
 end
 
-describe("PoolKit steady-state allocation", function()
+describe("PoolKit steady-state allocation #allocation", function()
     local PoolKit
     before_each(function()
         PoolKit = Env.NewPackage()

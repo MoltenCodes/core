@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 16
+local IMPLEMENTATION_REVISION = 17
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -194,7 +194,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -208,7 +208,7 @@ if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
 end
 
 local LifecycleKit, lifecycleRevision = getPackage(Registry, "lifecycleKit", REQUIRED_LIFECYCLE_API)
-if LifecycleKit == nil then
+if type(LifecycleKit) == "nil" then
     error("MoltenCodes ModuleKit requires LifecycleKit API 1 to be loaded first", 2)
 end
 if
@@ -292,8 +292,29 @@ local function validateStateBase(currentState)
         and type(rawget(currentState, "addons")) == "table"
 end
 
+-- Secret values (Retail 12.0.0 and later) raise when compared, so every
+-- argument a comparison would touch is checked with the host probe first. A
+-- host without `issecretvalue` has no secret values.
+-- issecretvalue is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
+local nativeIsSecretValue = rawget(_G, "issecretvalue")
+if type(nativeIsSecretValue) ~= "function" then
+    nativeIsSecretValue = nil
+end
+
+---Whether `value` is a secret value the host forbids comparing.
+---@param value any
+---@return boolean
+local function isSecretValue(value)
+    if nativeIsSecretValue == nil then
+        return false
+    end
+    return nativeIsSecretValue(value) and true or false
+end
+
 ---Whether `value` is an exact integer of one or more. `nan` and both
----infinities are rejected before the integer test can accept them.
+---infinities are rejected before the integer test can accept them. A caller
+---that takes the value from outside the Kit refuses a secret value first.
 ---@param value any
 ---@return boolean
 local function isPositiveInteger(value)
@@ -381,7 +402,7 @@ local ModuleKit, previousRevision, selected = bootstrapPackage(Registry, {
     resume = resumeSameRevision,
 })
 
-if ModuleKit == nil then
+if type(ModuleKit) == "nil" then
     -- Equal or newer compatible revision already owns the shared package table.
     return selected
 end
@@ -394,7 +415,7 @@ local Module = rawget(ModuleKit, "Module")
 
 local state = rawget(ModuleKit, "_state")
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if Addon ~= nil or Module ~= nil or state ~= nil then
         error("MoltenCodes ModuleKit package state is corrupted or incomplete", 2)
     end
@@ -474,6 +495,9 @@ local NO_REQUIRED_ADDONS = {}
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at, counted from this function
 local function validateNonEmptyString(value, label, level)
+    if isSecretValue(value) then
+        error(label .. " must not be a secret value", level)
+    end
     if type(value) ~= "string" or value == "" then
         error(label .. " must be a non-empty string", level)
     end
@@ -1079,8 +1103,11 @@ local function compileImplementsNames(list, label, level)
     local seen = {}
     for index = 1, count do
         local name = rawget(list, index)
-        if name == nil then
+        if type(name) == "nil" then
             error(label .. " must be a dense array of method names or a SchemaKit schema", level)
+        end
+        if isSecretValue(name) then
+            error(label .. " entries must not be secret values", level)
         end
         if type(name) ~= "string" or name == "" then
             error(label .. " entries must be non-empty strings", level)
@@ -1103,7 +1130,7 @@ end
 ---@return table schema a sealed SchemaKit schema
 local function compileImplementsSchema(candidate, label, level)
     local SchemaKit = findOptionalPackage(SCHEMA_KIT_PACKAGE, SCHEMA_KIT_API)
-    if SchemaKit == nil then
+    if type(SchemaKit) == "nil" then
         error(
             label
                 .. " is a SchemaKit schema, but SchemaKit API "
@@ -1130,7 +1157,7 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return table|nil contract `{ names = string[] }` or `{ schema = table }`
 local function compileImplements(candidate, label, level)
-    if candidate == nil then
+    if type(candidate) == "nil" then
         return nil
     end
     if type(candidate) ~= "table" then
@@ -1201,7 +1228,7 @@ local function checkImplements(contract, value, subject, level)
     for index = 1, #names do
         local name = names[index]
         local member = value[name]
-        if member == nil then
+        if type(member) == "nil" then
             error(
                 "ModuleKit " .. subject .. ' must implement "' .. name .. '": no such member',
                 level
@@ -1230,7 +1257,7 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return table|nil contract
 local function readProvideOptions(options, methodName, level)
-    if options == nil then
+    if type(options) == "nil" then
         return nil
     end
     local label = "ModuleKit.Addon:" .. methodName .. " options"
@@ -1352,7 +1379,7 @@ local function resolveProvider(addon, name, requestingModule)
     if not ok then
         error(value, 0)
     end
-    if value == nil then
+    if type(value) == "nil" then
         error('ModuleKit provider "' .. name .. '" factory returned nil', 3)
     end
     -- Checked before caching, so a refused value is produced again on the next
@@ -1495,7 +1522,7 @@ local function scopeIndex(scope, key)
     end
 
     local kit = findOptionalPackage(packageName, SCOPE_PACKAGE_API)
-    if kit == nil then
+    if type(kit) == "nil" then
         return nil
     end
 
@@ -1505,7 +1532,7 @@ local function scopeIndex(scope, key)
     else
         created = createKitScope(kit)
     end
-    if created == nil then
+    if type(created) == "nil" then
         -- A Kit revision without owner scopes, or a bus that cannot be had.
         -- Nothing is stored, so a later read tries again.
         return nil
@@ -1602,7 +1629,7 @@ end
 ---@return any errorValue
 local function invokeHook(module, name)
     local callback = rawget(module, name)
-    if callback == nil then
+    if type(callback) == "nil" then
         return true, nil
     end
     if type(callback) ~= "function" then
@@ -1666,7 +1693,7 @@ end
 local function isOtherAddonHalted(addonName)
     local instance = LifecycleKit:ForAddon(addonName)
     local getHaltReason = instance.GetHaltReason
-    return type(getHaltReason) == "function" and getHaltReason(instance) ~= nil
+    return type(getHaltReason) == "function" and type(getHaltReason(instance)) ~= "nil"
 end
 
 ---Whether `module` names `addonName` in `requiresAddons`.
@@ -2603,7 +2630,7 @@ local function addInjections(module, aliasOrMap, target, level)
     ensureNotShutdown(rawget(module, "_addon"), "ModuleKit.Module:Inject", level + 1)
 
     local specification = rawget(module, "_injectSpec")
-    if type(aliasOrMap) == "table" and target == nil then
+    if type(aliasOrMap) == "table" and type(target) == "nil" then
         local aliases = {}
         for alias in next, aliasOrMap do
             if type(alias) ~= "string" or alias == "" then
@@ -2752,6 +2779,9 @@ local DEFINITION_FIELDS = {
 ---@param addonName any
 ---@return ModuleKit.Module module
 local function addRequiredAddon(module, addonName)
+    if isSecretValue(addonName) then
+        error("ModuleKit module definition requiresAddons entries must not be secret values", 5)
+    end
     if type(addonName) ~= "string" or addonName == "" then
         error("ModuleKit module definition requiresAddons entries must be non-empty strings", 5)
     end
@@ -2797,7 +2827,7 @@ end
 ---@param methodName string|nil the `Module` method the field stands for, used in the argument errors
 local function applyDefinitionList(module, definition, key, field, methodName)
     local values = rawget(definition, key)
-    if values == nil then
+    if type(values) == "nil" then
         return
     end
     if type(values) ~= "table" then
@@ -2839,7 +2869,7 @@ end
 ---@param field "OnInitialize"|"OnEnable"|"OnDisable"
 local function applyDefinitionCallback(module, definition, key, field)
     local callback = rawget(definition, key)
-    if callback == nil then
+    if type(callback) == "nil" then
         return
     end
     if type(callback) ~= "function" then
@@ -2855,7 +2885,7 @@ end
 ---@param module ModuleKit.Module
 ---@param definition ModuleKit.Definition|nil
 local function applyDefinition(module, definition)
-    if definition == nil then
+    if type(definition) == "nil" then
         return
     end
     if type(definition) ~= "table" then
@@ -2888,7 +2918,7 @@ local function applyDefinition(module, definition)
     applyDefinitionList(module, definition, "requiresAddons", nil, nil)
 
     local inject = rawget(definition, "inject")
-    if inject ~= nil then
+    if type(inject) ~= "nil" then
         addInjections(module, inject, nil, 4)
     end
 
@@ -2924,7 +2954,7 @@ local function declareRequiredAddons(addon, module)
         -- `"halted"` needs nothing here: the container's own halt already
         -- blocks every module. `"shutdown"` cannot occur, because a shut-down
         -- container refuses `CreateModule` before this point.
-        if recorded == nil and reason == "full" then
+        if type(recorded) == "nil" and reason == "full" then
             error(
                 'ModuleKit.Addon:CreateModule module "'
                     .. rawget(module, "_name")
@@ -2984,7 +3014,7 @@ local function addonCreateModule(self, name, definition)
     -- is what it will carry: ModuleKit's own methods and the hooks the
     -- definition set. Checked before the module is published, so a refusal
     -- leaves the container without it.
-    if definition ~= nil then
+    if type(definition) ~= "nil" then
         local contract = compileImplements(
             rawget(definition, "implements"),
             "ModuleKit module definition implements",
@@ -3012,7 +3042,7 @@ local function addonCreateModule(self, name, definition)
     --
     -- Created from a hook while a whole-container pass is running, the catch-up
     -- is deferred to the end of that pass; see `scheduleCatchUp`.
-    if definition ~= nil then
+    if type(definition) ~= "nil" then
         scheduleCatchUp(self, module)
     end
 
@@ -3106,7 +3136,7 @@ end
 ---@return ModuleKit.Addon self
 local function addonProvideValue(self, name, value, options)
     ensureNotShutdown(self, "ModuleKit.Addon:ProvideValue", 3)
-    if value == nil then
+    if type(value) == "nil" then
         error("ModuleKit.Addon:ProvideValue value must not be nil", 2)
     end
     validateNonEmptyString(name, "ModuleKit.Addon:ProvideValue providerName", 3)
@@ -3192,7 +3222,7 @@ end
 ---@param requestingModule ModuleKit.Module|nil must be owned by this container
 ---@return any
 local function addonResolve(self, name, requestingModule)
-    if requestingModule ~= nil then
+    if type(requestingModule) ~= "nil" then
         local modules = rawget(self, "_modules")
         local requesterName = type(requestingModule) == "table"
                 and rawget(requestingModule, "_name")
@@ -3291,7 +3321,7 @@ local function ensureModuleRuntimeFields(module)
     if type(rawget(module, "_scope")) ~= "table" then
         local scope = newModuleScope(module)
         rawset(module, "_scope", scope)
-        if rawget(module, "scope") == nil then
+        if type(rawget(module, "scope")) == "nil" then
             rawset(module, "scope", scope)
         end
     end
@@ -3586,7 +3616,7 @@ local function validateLimitUpdate(limits, level)
     end
     local ceiling = lifecycleDependencyCeiling()
     local key = next(limits)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         if type(key) ~= "string" or KNOWN_LIMITS[key] ~= true then
             error(
                 "ModuleKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
@@ -3594,7 +3624,9 @@ local function validateLimitUpdate(limits, level)
             )
         end
         local value = rawget(limits, key)
-        if value == UNBOUNDED then
+        if isSecretValue(value) then
+            error("ModuleKit:SetLimits limits." .. key .. " must not be a secret value", level)
+        elseif value == UNBOUNDED then
             if ceiling ~= nil then
                 error(
                     "ModuleKit:SetLimits limits."
@@ -3631,7 +3663,7 @@ end
 ---@param self ModuleKit
 ---@param limits ModuleKit.Limits|table
 local function setLimits(self, limits)
-    if self ~= ModuleKit then
+    if type(self) ~= "table" or self ~= ModuleKit then
         error(
             "ModuleKit:SetLimits must be called on the ModuleKit facade; use ModuleKit:SetLimits(...)",
             2
@@ -3641,7 +3673,7 @@ local function setLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, name, value)
         end
     end
@@ -3651,7 +3683,7 @@ end
 ---@param self ModuleKit
 ---@return ModuleKit.Limits limits
 local function getLimits(self)
-    if self ~= ModuleKit then
+    if type(self) ~= "table" or self ~= ModuleKit then
         error(
             "ModuleKit:GetLimits must be called on the ModuleKit facade; use ModuleKit:GetLimits()",
             2

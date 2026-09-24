@@ -67,7 +67,7 @@ describe("ReadinessKit bootstrap", function()
         package.loaded["ReadinessKit"] = nil
         local upgraded = require("ReadinessKit")
         assert.are.equal(ReadinessKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.is_true(upgraded.REVISION > 1)
         assert.are.equal("table", type(upgraded.UNBOUNDED))
         assert.are.equal(spells, upgraded:Get("spells"))
         assert.is_true(waiter:IsPending())
@@ -82,6 +82,38 @@ describe("ReadinessKit bootstrap", function()
         TestEnv.Emit("GET_ITEM_INFO_RECEIVED")
         assert.are.same({ { "spells", true }, { "all", true } }, results)
         assert.are.equal(0, TestEnv.ArmedTimerCount())
+    end)
+
+    it("upgrades the previous revision in place and keeps its gates and waiters", function()
+        local current = TestEnv.NewPackage().REVISION
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        require("TimerKit")
+        local ReadinessKit = TestEnv.LoadRevision(current - 1)
+        local state = ReadinessKit._state
+        local ready = false
+        local gate = ReadinessKit:Gate("talents", function()
+            return ready
+        end)
+        local results = {}
+        local waiter = gate:Await(function(isReady)
+            results[#results + 1] = isReady
+        end)
+
+        package.loaded["ReadinessKit"] = nil
+        local upgraded = require("ReadinessKit")
+        assert.are.equal(ReadinessKit, upgraded)
+        assert.are.equal(state, upgraded._state)
+        assert.are.equal(current, upgraded.REVISION)
+        assert.are.equal(gate, upgraded:Get("talents"))
+        assert.is_true(waiter:IsPending())
+
+        ready = true
+        TestEnv.Poll(500)
+        assert.are.same({ true }, results)
     end)
 
     it("requires Registry", function()

@@ -36,7 +36,7 @@
 
 local PACKAGE_NAME = "poolKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 2
 local DEFAULT_MAX_RETAINED = 128
@@ -155,7 +155,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -263,7 +263,7 @@ local PoolKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if PoolKit == nil then
+if type(PoolKit) == "nil" then
     -- Equal or newer compatible revision already owns the shared package table.
     return selected
 end
@@ -271,7 +271,7 @@ end
 local Pool = rawget(PoolKit, "Pool")
 local state = rawget(PoolKit, "_state")
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if Pool ~= nil or state ~= nil then
         error("MoltenCodes PoolKit package state is corrupted or incomplete", 2)
     end
@@ -318,13 +318,47 @@ local UNBOUNDED = rawget(state, "unbounded")
 rawset(POOL_METATABLE, "__index", Pool)
 
 -- Validation ----------------------------------------------------------------
+--
+-- Secret values (Retail 12.0.0 and later) raise when compared, so an argument
+-- a check would compare is first asked about with the host probe, and absence
+-- of a caller's value is tested with `type(value) == "nil"`. A host without
+-- `issecretvalue` has no secret values.
+
+-- issecretvalue is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
+local nativeIsSecretValue = rawget(_G, "issecretvalue")
+if type(nativeIsSecretValue) ~= "function" then
+    nativeIsSecretValue = nil
+end
+
+---Whether `value` is a secret value the host forbids comparing.
+---@param value any
+---@return boolean
+local function isSecretValue(value)
+    if nativeIsSecretValue == nil then
+        return false
+    end
+    return nativeIsSecretValue(value) and true or false
+end
+
+---Refuse a secret argument before any comparison touches it.
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+local function refuseSecret(value, label, level)
+    if isSecretValue(value) then
+        error(label .. " must not be a secret value", level)
+    end
+end
 
 ---Whether `value` is an exact integer of zero or more. `nan` and both
----infinities are rejected before the integer test can accept them.
+---infinities are rejected before the integer test can accept them, and a
+---secret value is rejected before any comparison.
 ---@param value any
 ---@return boolean
 local function isNonNegativeInteger(value)
     return type(value) == "number"
+        and not isSecretValue(value)
         and value == value
         and value ~= math.huge
         and value ~= -math.huge
@@ -424,6 +458,7 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return integer|table maxRetained
 local function validateMaxRetained(value, label, level)
+    refuseSecret(value, label, level + 1)
     if value == UNBOUNDED then
         return value
     end
@@ -437,6 +472,7 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateCount(value, label, level)
+    refuseSecret(value, label, level + 1)
     if not isNonNegativeInteger(value) then
         error(label .. " must be a non-negative integer", level)
     end
@@ -446,6 +482,7 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validatePositiveInteger(value, label, level)
+    refuseSecret(value, label, level + 1)
     if not isPositiveInteger(value) then
         error(label .. " must be a positive integer", level)
     end
@@ -456,7 +493,7 @@ end
 ---@param required boolean whether `nil` is rejected
 ---@param level integer stack level the failure is reported at
 local function validateCallback(value, label, required, level)
-    if value == nil and not required then
+    if type(value) == "nil" and not required then
         return
     end
     if type(value) ~= "function" then
@@ -521,7 +558,7 @@ end
 ---@return integer|false maxActiveWarning `false` when leak warnings are disabled
 ---@return integer generation
 local function parseCommonOptions(options, allowed, methodName, level, defaultMaxRetained)
-    if options == nil then
+    if type(options) == "nil" then
         options = {}
     elseif type(options) ~= "table" then
         error(methodName .. " options must be a table", level)
@@ -530,21 +567,22 @@ local function parseCommonOptions(options, allowed, methodName, level, defaultMa
     validateKnownFields(options, allowed, methodName, level + 1)
 
     local maxRetained = rawget(options, "maxRetained")
-    if maxRetained == nil then
+    if type(maxRetained) == "nil" then
         maxRetained = defaultMaxRetained
     else
         maxRetained = validateMaxRetained(maxRetained, methodName .. " maxRetained", level + 1)
     end
 
     local strict = rawget(options, "strict")
-    if strict == nil then
+    refuseSecret(strict, methodName .. " strict", level + 1)
+    if type(strict) == "nil" then
         strict = true
     elseif type(strict) ~= "boolean" then
         error(methodName .. " strict must be a boolean", level)
     end
 
     local prewarm = rawget(options, "prewarm")
-    if prewarm == nil then
+    if type(prewarm) == "nil" then
         prewarm = 0
     else
         validateCount(prewarm, methodName .. " prewarm", level + 1)
@@ -558,14 +596,14 @@ local function parseCommonOptions(options, allowed, methodName, level, defaultMa
     -- the acquire hot path compares against, so the default costs one
     -- comparison per `Acquire`.
     local maxActiveWarning = rawget(options, "maxActiveWarning")
-    if maxActiveWarning == nil then
+    if type(maxActiveWarning) == "nil" then
         maxActiveWarning = false
     else
         validateCount(maxActiveWarning, methodName .. " maxActiveWarning", level + 1)
     end
 
     local generation = rawget(options, "generation")
-    if generation == nil then
+    if type(generation) == "nil" then
         generation = DEFAULT_GENERATION
     else
         validatePositiveInteger(generation, methodName .. " generation", level + 1)
@@ -1495,7 +1533,8 @@ local function poolAcquire(self, onAvailable)
     if rawget(self, "_closed") == true then
         error("PoolKit.Pool:Acquire cannot use a closed pool", 2)
     end
-    if onAvailable ~= nil and type(onAvailable) ~= "function" then
+    local onAvailableType = type(onAvailable)
+    if onAvailableType ~= "nil" and onAvailableType ~= "function" then
         error("PoolKit.Pool:Acquire onAvailable must be a function", 2)
     end
 
@@ -1506,7 +1545,7 @@ local function poolAcquire(self, onAvailable)
     end
 
     if rawget(self, "_waitingCount") > 0 or not hasCapacity(self) then
-        if onAvailable == nil then
+        if onAvailableType == "nil" then
             return nil, REASON_EXHAUSTED
         end
         if rawget(self, "_waitingCount") >= rawget(self, "_maxWaiting") then
@@ -1563,7 +1602,7 @@ end
 local function poolTrim(self, retainCount)
     validatePool(self, "PoolKit.Pool:Trim", 3)
     ensureMutationAllowed(self, "PoolKit.Pool:Trim", 3)
-    if retainCount == nil then
+    if type(retainCount) == "nil" then
         retainCount = 0
     else
         validateCount(retainCount, "PoolKit.Pool:Trim retainCount", 3)
@@ -1939,21 +1978,21 @@ end
 ---@return integer maxWaiting
 local function parseCapacityOptions(options, level)
     local maxCreated = rawget(options, "maxCreated")
-    if maxCreated == nil then
+    if type(maxCreated) == "nil" then
         maxCreated = false
     else
         validatePositiveInteger(maxCreated, "PoolKit:New maxCreated", level + 1)
     end
 
     local maxActive = rawget(options, "maxActive")
-    if maxActive == nil then
+    if type(maxActive) == "nil" then
         maxActive = false
     else
         validatePositiveInteger(maxActive, "PoolKit:New maxActive", level + 1)
     end
 
     local maxWaiting = rawget(options, "maxWaiting")
-    if maxWaiting == nil then
+    if type(maxWaiting) == "nil" then
         maxWaiting = 0
     else
         validateCount(maxWaiting, "PoolKit:New maxWaiting", level + 1)
@@ -1983,10 +2022,12 @@ local function packageNew(_, options)
     -- A construction-time check only: `strictReset` never reaches the pool, so
     -- opting into it costs the acquire/release hot paths nothing.
     local strictReset = rawget(options, "strictReset")
-    if strictReset ~= nil and type(strictReset) ~= "boolean" then
+    refuseSecret(strictReset, "PoolKit:New strictReset", 3)
+    local strictResetType = type(strictReset)
+    if strictResetType ~= "nil" and strictResetType ~= "boolean" then
         error("PoolKit:New strictReset must be a boolean", 2)
     end
-    if strictReset == true and reset == nil then
+    if strictReset == true and type(reset) == "nil" then
         error("PoolKit:New strictReset requires a reset callback", 2)
     end
 

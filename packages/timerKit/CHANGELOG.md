@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2 — 2026-09-24
+
+- Nil rule (decision of 2026-09-24): absence of a value that comes from outside the Kit (the `repeating` option, the Registry lookups, the optional LifecycleKit and EventKit facades, the host timer handle) is tested with `type(value) == "nil"`, never by comparing it with `nil`, because comparing a secret value raises inside the Kit instead of at the caller.
+- A secret delay or interval (`After`, `Every`, `New`), a secret `repeating` option, a secret addon name (`ForAddon`, `CloseAddonScopes`) and a secret receiver of `CloseAddonScopes` are refused at the caller's line before any comparison, instead of raising inside TimerKit. `issecretvalue` is read once at load; a host without it has no secret values. `docs/API.md` lists the messages under "Errors".
+- Implementation revision 9, because the executed implementation changed. No state changed. The upgrade specs compare with the working revision instead of a fixed number, and a new one upgrades the previous revision in place; new `SecretValues_spec.lua`.
+
 ## 0.6.1 — 2026-09-24
 
 - Cancelling a running timer and starting one no longer allocate a closure to read the host handle's `Cancel` method: the protected read calls a file-level function. 2000 cancellations allocated about 170 KiB before and allocate nothing now; `CancelAll()` and `Close()` also stop allocating a sort comparator per call.

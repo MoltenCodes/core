@@ -325,6 +325,10 @@ message in the first table is raised at the caller's line (see
 | `<method> options must be a table` | `New` without an option table |
 | `<method> options contains unknown field "<name>"` | `New` with a field other than `delay`, `callback` and `repeating`; the alphabetically first one is named |
 | `<method> repeating must be a boolean` | `New` with a non-boolean `repeating` |
+| `<method> delay must not be a secret value` | `After`, `Every` and `New` with a secret delay or interval |
+| `<method> repeating must not be a secret value` | `New` with a secret `repeating` |
+| `TimerKit:ForAddon addonName must not be a secret value` | `ForAddon` with a secret addon name |
+| `TimerKit:CloseAddonScopes addonName must not be a secret value` | `CloseAddonScopes` with a secret addon name |
 | `<method> cannot create a timer in a closed scope` | `New`, `After` and `Every` on a closed scope |
 | `<method> cannot start a timer in a closed scope` | `Timer:Start()` when the timer's scope is closed |
 | `<method> cannot restart a timer in a closed scope` | `Timer:Restart()` when the timer's scope is closed |
@@ -332,6 +336,12 @@ message in the first table is raised at the caller's line (see
 | `TimerKit:CloseAddonScopes addonName must be a non-empty string` | `CloseAddonScopes` |
 | `TimerKit:CloseAddonScopes must be called on the TimerKit facade; use TimerKit:CloseAddonScopes(addonName)` | `CloseAddonScopes` with another receiver |
 | `MoltenCodes TimerKit host returned an invalid native timer handle` | a start whose `C_Timer` constructor returned something without a `Cancel` method; the start is rolled back |
+
+A secret value (Retail 12.0.0 and later) raises when it is compared, so the
+secret refusals above run before any other check of that argument. An absent
+option is recognised by its type, never by comparing it with `nil`. A host
+without `issecretvalue` has no secret values. The value given to
+`Timer:SetUserData` is stored and never compared, so it may be secret.
 
 Host and internal failures carry no added position:
 

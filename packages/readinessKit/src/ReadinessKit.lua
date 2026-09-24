@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "readinessKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMERKIT_API = 1
 local OPTIONAL_EVENTKIT_API = 1
@@ -153,7 +153,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -199,6 +199,26 @@ end
 local nativeGetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 if type(nativeGetTimePreciseSec) ~= "function" then
     nativeGetTimePreciseSec = nil
+end
+
+-- Secret values (Retail 12.0.0 and later) raise when compared, so every
+-- argument a comparison would touch is checked with the host probe first. A
+-- host without `issecretvalue` has no secret values.
+-- issecretvalue is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
+local nativeIsSecretValue = rawget(_G, "issecretvalue")
+if type(nativeIsSecretValue) ~= "function" then
+    nativeIsSecretValue = nil
+end
+
+---Whether `value` is a secret value the host forbids comparing.
+---@param value any
+---@return boolean
+local function isSecretValue(value)
+    if nativeIsSecretValue == nil then
+        return false
+    end
+    return nativeIsSecretValue(value) and true or false
 end
 
 ---Return the clock reading in seconds, or `false` on a host without the clock.
@@ -304,14 +324,14 @@ local ReadinessKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if ReadinessKit == nil then
+if type(ReadinessKit) == "nil" then
     -- An equal or newer compatible revision already owns the shared package table.
     return selected
 end
 
 local state = rawget(ReadinessKit, "_state")
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if state ~= nil then
         error("MoltenCodes ReadinessKit package state is corrupted or incomplete", 2)
     end
@@ -397,6 +417,9 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateNonEmptyString(value, label, level)
+    if isSecretValue(value) then
+        error(label .. " must not be a secret value", level)
+    end
     if type(value) ~= "string" or value == "" then
         error(label .. " must be a non-empty string", level)
     end
@@ -411,7 +434,8 @@ local function validateFunction(value, label, level)
     end
 end
 
----Whether `value` is a finite number greater than zero.
+---Whether `value` is a finite number greater than zero. The caller has
+---already refused a secret value, which cannot be compared.
 ---@param value any
 ---@return boolean
 local function isPositiveFiniteNumber(value)
@@ -439,6 +463,16 @@ local function validateOptionKeys(options, level)
     end
 end
 
+---Refuse a secret option value before any comparison touches it.
+---@param value any
+---@param field string option field name, used in the failure
+---@param level integer stack level the failure is reported at
+local function refuseSecretOption(value, field, level)
+    if isSecretValue(value) then
+        error("ReadinessKit:Gate " .. field .. " must not be a secret value", level)
+    end
+end
+
 ---Validate `Gate` options and return them with their defaults applied.
 ---@param options any
 ---@param level integer stack level the failures are reported at
@@ -446,7 +480,7 @@ end
 ---@return number|false timeoutSeconds
 ---@return integer|table maxWaiters a positive integer or `UNBOUNDED`
 local function readGateOptions(options, level)
-    if options == nil then
+    if type(options) == "nil" then
         return DEFAULT_INTERVAL_SECONDS, DEFAULT_TIMEOUT_SECONDS, DEFAULT_MAX_WAITERS
     end
     if type(options) ~= "table" then
@@ -455,14 +489,16 @@ local function readGateOptions(options, level)
     validateOptionKeys(options, level + 1)
 
     local intervalSeconds = options.intervalSeconds
-    if intervalSeconds == nil then
+    refuseSecretOption(intervalSeconds, "intervalSeconds", level + 1)
+    if type(intervalSeconds) == "nil" then
         intervalSeconds = DEFAULT_INTERVAL_SECONDS
     elseif not isPositiveFiniteNumber(intervalSeconds) then
         error("ReadinessKit:Gate intervalSeconds must be a finite number greater than zero", level)
     end
 
     local timeoutSeconds = options.timeoutSeconds
-    if timeoutSeconds == nil then
+    refuseSecretOption(timeoutSeconds, "timeoutSeconds", level + 1)
+    if type(timeoutSeconds) == "nil" then
         timeoutSeconds = DEFAULT_TIMEOUT_SECONDS
     elseif timeoutSeconds ~= false and not isPositiveFiniteNumber(timeoutSeconds) then
         error(
@@ -472,7 +508,8 @@ local function readGateOptions(options, level)
     end
 
     local maxWaiters = options.maxWaiters
-    if maxWaiters == nil then
+    refuseSecretOption(maxWaiters, "maxWaiters", level + 1)
+    if type(maxWaiters) == "nil" then
         maxWaiters = DEFAULT_MAX_WAITERS
     elseif
         maxWaiters ~= UNBOUNDED
@@ -822,7 +859,7 @@ local function resolveEventKit(methodName, level)
     end
 
     local EventKit, reason = findPackage(Registry, "eventKit", OPTIONAL_EVENTKIT_API)
-    if EventKit == nil then
+    if type(EventKit) == "nil" then
         error(
             methodName
                 .. " requires EventKit API 1, which is not loaded ("

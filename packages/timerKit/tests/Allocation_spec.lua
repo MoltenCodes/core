@@ -8,7 +8,7 @@ local THRESHOLD_KILOBYTES = 1
 
 local function noop() end
 
-describe("TimerKit allocation", function()
+describe("TimerKit allocation #allocation", function()
     local TimerKit
     before_each(function()
         TimerKit = TestEnv.NewPackage()

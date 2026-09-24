@@ -36,7 +36,7 @@
 
 local PACKAGE_NAME = "timerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 8
+local IMPLEMENTATION_REVISION = 9
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -135,7 +135,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -277,7 +277,7 @@ local TimerKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if TimerKit == nil then
+if type(TimerKit) == "nil" then
     -- Equal or newer compatible revision already owns the shared package table.
     return selected
 end
@@ -286,7 +286,7 @@ local Timer = rawget(TimerKit, "Timer")
 local Scope = rawget(TimerKit, "Scope")
 local state = rawget(TimerKit, "_state")
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if Timer ~= nil or Scope ~= nil or state ~= nil then
         error("MoltenCodes TimerKit package state is corrupted or incomplete", 2)
     end
@@ -347,7 +347,7 @@ local function releaseInheritedShutdownSubscriptions()
     end
 end
 
-if previousRevision ~= nil and previousRevision < IMPLEMENTATION_REVISION then
+if type(previousRevision) ~= "nil" and previousRevision < IMPLEMENTATION_REVISION then
     releaseInheritedShutdownSubscriptions()
 end
 
@@ -394,11 +394,44 @@ end
 -- position is the line that called the public method, never a line inside
 -- TimerKit. `level` is always the value `error` needs *inside the function that
 -- receives it*, so every further hop towards `error` adds exactly one.
+--
+-- Secret values (Retail 12.0.0 and later) raise when compared, so an argument
+-- a check would compare is first asked about with the host probe, and absence
+-- is tested with `type(value) == "nil"`. A host without `issecretvalue` has no
+-- secret values.
+
+-- issecretvalue is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
+local nativeIsSecretValue = rawget(_G, "issecretvalue")
+if type(nativeIsSecretValue) ~= "function" then
+    nativeIsSecretValue = nil
+end
+
+---Whether `value` is a secret value the host forbids comparing.
+---@param value any
+---@return boolean
+local function isSecretValue(value)
+    if nativeIsSecretValue == nil then
+        return false
+    end
+    return nativeIsSecretValue(value) and true or false
+end
+
+---Refuse a secret argument before any comparison touches it.
+---@param value any
+---@param label string argument description, used in the argument error
+---@param level integer stack level the failure is reported at
+local function refuseSecret(value, label, level)
+    if isSecretValue(value) then
+        error(label .. " must not be a secret value", level)
+    end
+end
 
 ---@param value any
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateNonEmptyString(value, label, level)
+    refuseSecret(value, label, level + 1)
     if type(value) ~= "string" or value == "" then
         error(label .. " must be a non-empty string", level)
     end
@@ -409,6 +442,7 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateDelay(delay, repeating, label, level)
+    refuseSecret(delay, label, level + 1)
     if type(delay) ~= "number" or delay ~= delay or delay == math.huge or delay == -math.huge then
         error(label .. " must be a finite number", level)
     end
@@ -455,7 +489,8 @@ local function validateOptions(options, methodName, level)
     end
 
     local repeating = rawget(options, "repeating")
-    if repeating == nil then
+    refuseSecret(repeating, methodName .. " repeating", level + 1)
+    if type(repeating) == "nil" then
         repeating = false
     elseif type(repeating) ~= "boolean" then
         error(methodName .. " repeating must be a boolean", level)
@@ -555,7 +590,7 @@ end
 ---Cancel one host timer handle, failing loudly when it is unusable.
 ---@param native any|nil
 local function cancelNative(native)
-    if native == nil then
+    if type(native) == "nil" then
         return
     end
     local cancel = getNativeCancel(native)
@@ -663,7 +698,7 @@ local function startTimer(timer, methodName, level)
         error(native, 0)
     end
 
-    if native == nil or getNativeCancel(native) == nil then
+    if type(native) == "nil" or getNativeCancel(native) == nil then
         rollbackStart(timer, previousState)
         error("MoltenCodes TimerKit host returned an invalid native timer handle", level)
     end
@@ -913,7 +948,7 @@ end
 ---@return table|nil
 local function findClosingLifecycleKit()
     local LifecycleKit = findOptionalPackage("lifecycleKit", OPTIONAL_LIFECYCLE_KIT_API)
-    if LifecycleKit ~= nil and lifecycleClosesAddonScopes(LifecycleKit) then
+    if type(LifecycleKit) ~= "nil" and lifecycleClosesAddonScopes(LifecycleKit) then
         return LifecycleKit
     end
     return nil
@@ -1003,7 +1038,7 @@ local function ensureLogoutConnection()
         return true
     end
     local EventKit = findOptionalPackage("eventKit", OPTIONAL_EVENT_KIT_API)
-    if EventKit == nil then
+    if type(EventKit) == "nil" then
         return false
     end
 
@@ -1041,7 +1076,7 @@ local function ensureLogoutRoute(scope)
     end
 
     local LifecycleKit = findOptionalPackage("lifecycleKit", OPTIONAL_LIFECYCLE_KIT_API)
-    if LifecycleKit ~= nil then
+    if type(LifecycleKit) ~= "nil" then
         if lifecycleClosesAddonScopes(LifecycleKit) then
             -- LifecycleKit closes the scopes of the addons it has an
             -- instance for, so make sure this addon has one. Nothing is
@@ -1354,7 +1389,7 @@ end
 ---@param addonName string addon folder name
 ---@return boolean closed `false` when the addon has no scope or it was already closed.
 local function closeAddonScopes(self, addonName)
-    if self ~= TimerKit then
+    if isSecretValue(self) or self ~= TimerKit then
         error(
             "TimerKit:CloseAddonScopes must be called on the TimerKit facade; "
                 .. "use TimerKit:CloseAddonScopes(addonName)",
@@ -1448,7 +1483,7 @@ local function routeInheritedAddonScopes()
     end
 end
 
-if previousRevision ~= nil and previousRevision < IMPLEMENTATION_REVISION then
+if type(previousRevision) ~= "nil" and previousRevision < IMPLEMENTATION_REVISION then
     routeInheritedAddonScopes()
 end
 

@@ -241,6 +241,19 @@ stays the same. The paths that are several frames deep pass the depth on:
 
 `ErrorLevels_spec.lua` pins one refusal per path at the calling line.
 
+## Absent and secret values
+
+On clients with secret values, comparing a secret with anything, `nil`
+included, raises. A value that did not originate in ModuleKit (an argument, a
+definition or option field, an `implements` entry or member, a factory's
+result, a hook field, a Registry or optional-Kit lookup, a LifecycleKit answer)
+is therefore tested for absence with `type(value) == "nil"`; ModuleKit's own
+state keeps plain `== nil`. A value ModuleKit does compare (a name, a list
+entry, a limit) is first passed to `isSecretValue`, which reads the
+`issecretvalue` captured at load and answers `false` on a host without it, and
+a secret is refused at the caller's line. `SetLimits` and `GetLimits` check the
+receiver's type before comparing it with the facade.
+
 ## Hooks run under `pcall`
 
 `invokeHook` calls every user hook through `pcall`. That is what turns a hook failure into a recorded module failure instead of an aborted pass — and it is also why a hook cannot yield. In Lua 5.1 a coroutine cannot suspend across a C function, and `pcall` is one; the attempt fails with "attempt to yield across metamethod/C-call boundary", which ModuleKit then records as an ordinary hook failure. `docs/API.md` states this as a consumer-visible rule.

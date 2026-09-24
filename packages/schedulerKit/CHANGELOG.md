@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.2 — 2026-09-24
+
+Nil rule (decision of 2026-09-24). Implementation revision 14; API generation 1 is unchanged.
+
+- Absence of a value that comes from outside SchedulerKit (an argument, an option or `retry` field, a `SetLimits` value, a coalesce key or value, the Registry lookups, the optional Kits `Registry:Find` returns, the frame `CreateFrame` returns) is tested with `type(value) == "nil"`, never by comparing it with `nil`, because comparing a secret value raises inside the Kit instead of at the caller.
+- A secret argument a check would compare is refused at the caller's line with `<argument> must not be a secret value`: names, priorities, delays, intervals, budgets, counts, the numeric and boolean options of `Lane`, `Debounce`, `Coalesce` and `Watch`, `SetLimits` values and coalesce keys. A coalesce value is stored, never compared, and a secret one is still accepted. `issecretvalue` is read once at load; a host without it has no secret values. `docs/API.md` lists the messages under "Secret values".
+- The facade checks of `CloseAddonScopes`, `SetLimits` and `GetLimits`, and the yield-token check on a raw `coroutine.yield`, test the type before comparing, so a secret receiver or yielded value is never compared.
+- No new top-level local: `debug` and `issecretvalue` are read inside `do` blocks (191 of 200 still).
+- A new bootstrap spec upgrades the previous revision in place; new `SecretValues_spec.lua`.
+
 ## 0.8.1 — 2026-09-24
 
 Audit fixes. Implementation revision 13; API generation 1 is unchanged.

@@ -2,10 +2,10 @@
   "name": "schedulerKit",
   "displayName": "SchedulerKit",
   "description": "Cooperative, frame-budgeted scheduling with priorities, cancellation scopes, and delayed work.",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "license": "MIT",
   "api": 1,
-  "revision": 13,
+  "revision": 14,
   "dependencies": {
     "registry": {
       "api": 2

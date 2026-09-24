@@ -551,7 +551,7 @@ describe("SchedulerKit lanes after the acceptance review", function()
         assert.are.equal(1, rawget(lane, "_head"))
     end)
 
-    it("refuses a full or closed lane without allocating", function()
+    it("refuses a full or closed lane without allocating #allocation", function()
         local SchedulerKit = TestEnv.NewPackage()
         local lane = SchedulerKit:Lane("refusing", { maxQueued = 1 })
         local callback = function() end

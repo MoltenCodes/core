@@ -6,7 +6,7 @@ local TestEnv = require("ReadinessKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("ReadinessKit allocation", function()
+describe("ReadinessKit allocation #allocation", function()
     local ReadinessKit
     before_each(function()
         ReadinessKit = TestEnv.NewPackage()

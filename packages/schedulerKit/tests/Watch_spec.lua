@@ -266,7 +266,7 @@ describe("SchedulerKit Watch", function()
         end)
     end)
 
-    it("allocates nothing on a steady tick", function()
+    it("allocates nothing on a steady tick #allocation", function()
         local SchedulerKit = TestEnv.NewPackage()
         for _ = 1, 16 do
             SchedulerKit:Watch(function()

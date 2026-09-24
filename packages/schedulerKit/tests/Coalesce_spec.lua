@@ -207,7 +207,7 @@ describe("SchedulerKit Coalesce", function()
         end)
     end)
 
-    it("allocates nothing to record known keys in steady state", function()
+    it("allocates nothing to record known keys in steady state #allocation", function()
         local SchedulerKit = TestEnv.NewPackage()
         local coalesced = SchedulerKit:Coalesce(function() end, 1)
         local units = { "player", "target", "focus", "party1", "party2" }

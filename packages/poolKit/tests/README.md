@@ -26,7 +26,8 @@ They also cover the contracts a caller is most likely to get wrong:
 | `Children_spec.lua` | `AttachChild`/`DetachChild`, cascade order, cycles, child and parent reset failures, a child's reset releasing its parent mid-release. |
 | `Deferred_spec.lua` | `ReleaseAfter`: parking, one hook per group, early completion, close, live limit, reported failures. |
 | `Allocation_spec.lua` | Zero allocation for steady-state acquire/release through generic, table and capped pools, and for attach-and-cascade. |
-| `Bootstrap_spec.lua` | Duplicate loads, newer-revision refusal, in-place upgrades from revisions 1, 3 and 5, sentinel drift. |
+| `Bootstrap_spec.lua` | Duplicate loads, newer-revision refusal, in-place upgrades from revisions 1, 3 and 5 and from the previous revision, sentinel drift. |
+| `SecretValues_spec.lua` | Secret options and pool-method arguments refused at the caller's line on the `mainline` host; ordinary and absent ones still accepted. |
 | `Manifest_spec.lua` | Manifest API and revision agree with the runtime. |
 
 `support/PoolKitTestEnv.lua` builds the environment on the shared fixture and adds an animation-group stand-in (`NewAnimationGroup`) and `LoadRevision`, which loads this source as an earlier revision of the same state schema.

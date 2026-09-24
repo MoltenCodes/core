@@ -1,5 +1,11 @@
 local TestEnv = require("TimerKitTestEnv")
 
+---Return the implementation revision the working source carries.
+---@return integer
+local function currentRevision()
+    return TestEnv.NewPackage().REVISION
+end
+
 describe("TimerKit bootstrap", function()
     after_each(TestEnv.Reset)
 
@@ -33,6 +39,7 @@ describe("TimerKit bootstrap", function()
     end)
 
     it("upgrades a revision-1 embedded copy in place", function()
+        local current = currentRevision()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         local Registry = require("Registry")
@@ -74,7 +81,7 @@ describe("TimerKit bootstrap", function()
 
         local upgraded = require("TimerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(8, upgraded.REVISION)
+        assert.are.equal(current, upgraded.REVISION)
         assert.are.equal(timerPrototype, upgraded.Timer)
 
         -- A timer object created by revision 1 gains the revision-2 user-data
@@ -88,6 +95,7 @@ describe("TimerKit bootstrap", function()
     end)
 
     it("upgrades a revision-5 copy and releases its shutdown subscriptions", function()
+        local current = currentRevision()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         local Registry = require("Registry")
@@ -162,7 +170,7 @@ describe("TimerKit bootstrap", function()
         local upgraded = require("TimerKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(8, upgraded.REVISION)
+        assert.are.equal(current, upgraded.REVISION)
         assert.are.equal(1, disconnects)
         assert.is_nil(rawget(carried, "_shutdownSubscription"))
         assert.is_nil(rawget(failing, "_shutdownSubscription"))
@@ -185,6 +193,7 @@ describe("TimerKit bootstrap", function()
     end)
 
     it("upgrades a revision-7 copy with its timers, scopes and logout route", function()
+        local current = currentRevision()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         require("Registry")
@@ -201,12 +210,12 @@ describe("TimerKit bootstrap", function()
         local upgraded = require("TimerKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(8, upgraded.REVISION)
+        assert.are.equal(current, upgraded.REVISION)
         assert.are.equal(timers, upgraded:ForAddon("MyAddon"))
         assert.are.equal("playerLogout", rawget(timers, "_logoutRoute"))
         assert.are.equal(connection, rawget(upgraded, "_state").logoutConnection)
 
-        -- A handle revision 7 started still fires and cancels under revision 8.
+        -- A handle revision 7 started still fires and cancels under the current revision.
         TestEnv.FireNative(1)
         assert.are.equal(1, fired)
         assert.is_true(oneShot:Cancel())
@@ -215,6 +224,34 @@ describe("TimerKit bootstrap", function()
         TestEnv.Logout()
         assert.is_true(timers:IsClosed())
         assert.is_true(ticker:IsCancelled())
+    end)
+
+    it("upgrades the previous revision in place with its timers and scopes", function()
+        local current = currentRevision()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        TestEnv.LoadEventKit()
+        local old = TestEnv.LoadRevision(current - 1)
+        local state = rawget(old, "_state")
+        local timers = old:ForAddon("MyAddon")
+        local fired = 0
+        local ticker = timers:Every(1, function()
+            fired = fired + 1
+        end)
+        ticker:SetUserData("payload")
+
+        local upgraded = require("TimerKit")
+
+        assert.are.equal(old, upgraded)
+        assert.are.equal(state, rawget(upgraded, "_state"))
+        assert.are.equal(current, upgraded.REVISION)
+        assert.are.equal(timers, upgraded:ForAddon("MyAddon"))
+        assert.are.equal("payload", ticker:GetUserData())
+        TestEnv.FireNative(1)
+        assert.are.equal(1, fired)
+        assert.is_true(ticker:Cancel())
+        assert.are.equal(0, timers:GetActiveCount())
     end)
 
     it("reports no remaining time for a timer an older revision started", function()

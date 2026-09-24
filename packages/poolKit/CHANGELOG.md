@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4 — 2026-09-24
+
+- Nil rule (decision of 2026-09-24): absence of a value that comes from outside the Kit (constructor options, `Acquire`'s `onAvailable`, `Trim`'s `retainCount`, the `reset` callback `strictReset` needs, the Registry lookups) is tested with `type(value) == "nil"`, never by comparing it with `nil`, because comparing a secret value raises inside the Kit instead of at the caller.
+- A secret numeric or boolean option (`maxRetained`, `strict`, `prewarm`, `maxActiveWarning`, `generation`, `maxCreated`, `maxActive`, `maxWaiting`, `strictReset`) and a secret argument of `Prewarm`, `Trim`, `SetMaxRetained`, `SetGeneration` and `SetMaxCreated` are refused at the caller's line with `... must not be a secret value` before any comparison, instead of raising inside PoolKit. `issecretvalue` is read once at load; a host without it has no secret values. `docs/API.md` lists the messages under "Secret values".
+- Implementation revision 7, because the executed implementation changed. No state changed. The upgrade specs compare with the working revision instead of a fixed number, and a new one upgrades the previous revision in place; new `SecretValues_spec.lua`.
+
 ## 0.4.3 — 2026-09-24
 
 - `docs/API.md` gained a method reference: the return values, the exact error messages and the cost of every method and constructor, and which methods count as mutating inside a lifecycle callback.

@@ -1,5 +1,9 @@
 local TestEnv = require("SchedulerKitTestEnv")
 
+-- The implementation revision this suite was written against; Manifest_spec
+-- holds it to package.manifest.json.
+local CURRENT_REVISION = 14
+
 -- An addon scope closes at logout whenever the framework can observe logout,
 -- whatever LifecycleKit and EventKit revisions are paired with SchedulerKit.
 -- The first `ForAddon` decides who makes the `CloseAddonScopes` call
@@ -287,7 +291,7 @@ describe("SchedulerKit logout routes across an upgrade", function()
         local upgraded = require("SchedulerKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(13, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
         assert.are.equal("playerLogout", rawget(jobs, "_logoutRoute"))
         TestEnv.Logout()
         assert.is_true(jobs:IsClosed())

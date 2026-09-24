@@ -634,6 +634,21 @@ at the `CreateModule` line. Messages name the public method in full.
 | reading `module.scope.<Field>` outside the enable window | `ModuleKit module "<name>" scope.<Field> is available only while the module is enabling or enabled` |
 | `SetLimits` | see [Limits](#limits) |
 
+A secret value (Retail 12.0.0 and later) cannot be compared, so every name,
+list entry and limit that ModuleKit compares is checked for one first and
+refused at the caller's line:
+
+| Raised by | Message |
+|---|---|
+| every method that takes a name (`ForAddon`, `CreateModule`, `GetModule`, `HasModule`, `DependsOn`, `OptionalDependency`, `Before`, `After`, `Inject`, `Provide*`, `Resolve`) | `<the label of the non-empty-string message above> must not be a secret value`, for example `ModuleKit.Addon:CreateModule name must not be a secret value` or `ModuleKit.Module:Inject target must not be a secret value` |
+| `CreateModule` | `ModuleKit module definition requiresAddons entries must not be secret values` |
+| `CreateModule`, `Provide*` | `<label>.implements entries must not be secret values`, for example `ModuleKit.Addon:ProvideValue options.implements entries must not be secret values` |
+| `SetLimits` | `ModuleKit:SetLimits limits.<name> must not be a secret value` |
+
+A provided value, an injected value and a factory's result are never compared,
+so a secret one is accepted: absence is recognised by type, never by comparing
+with `nil`. On a host without `issecretvalue` nothing is secret.
+
 A hook field that is set but is not a function is not refused when it is
 assigned; the phase that would call it records `ModuleKit module "<name>"
 <Hook> must be a function` as the module's failure and re-raises it.

@@ -1,5 +1,14 @@
 local Env = require("PoolKitTestEnv")
 
+---Return the implementation revision the working source carries, leaving the
+---environment reset.
+---@return integer
+local function currentRevision()
+    local revision = Env.NewPackage().REVISION
+    Env.Reset()
+    return revision
+end
+
 describe("PoolKit bootstrap", function()
     before_each(function()
         Env.Reset()
@@ -30,6 +39,7 @@ describe("PoolKit bootstrap", function()
         assert.are.equal(99, reloaded.REVISION)
     end)
     it("upgrades revision-3 state and pools in place, then retires their objects", function()
+        local current = currentRevision()
         local Registry = require("Registry")
 
         -- What a revision-3 copy left behind: schema-1 state, and a pool with
@@ -76,7 +86,7 @@ describe("PoolKit bootstrap", function()
         local PoolKit = Env.ReloadPackage()
 
         assert.are.equal(legacy, PoolKit)
-        assert.are.equal(6, PoolKit.REVISION)
+        assert.are.equal(current, PoolKit.REVISION)
         assert.are.equal(prototype, PoolKit.Pool)
         assert.are.equal(2, PoolKit._state.schema)
 
@@ -153,6 +163,7 @@ describe("PoolKit bootstrap", function()
     end)
 
     it("upgrades revision-5 pools with their queue, children and parking", function()
+        local current = currentRevision()
         require("Registry")
         local previous = Env.LoadRevision(5)
         assert.are.equal(5, previous.REVISION)
@@ -180,9 +191,9 @@ describe("PoolKit bootstrap", function()
 
         local PoolKit = Env.ReloadPackage()
         assert.are.equal(previous, PoolKit)
-        assert.are.equal(6, PoolKit.REVISION)
+        assert.are.equal(current, PoolKit.REVISION)
 
-        -- The hook revision 5 installed now runs revision 6's completion.
+        -- The hook revision 5 installed now runs the current revision's completion.
         group:Finish()
         assert.are.equal(0, fading:GetParkedCount())
         assert.are.equal(1, fading:GetAvailableCount())
@@ -191,6 +202,24 @@ describe("PoolKit bootstrap", function()
         assert.is_false(textures:IsActive(texture))
         assert.are.equal(frame, served)
         assert.are.equal(0, frames:GetWaitingCount())
+    end)
+
+    it("upgrades the previous revision in place with its pools and objects", function()
+        local current = currentRevision()
+        require("Registry")
+        local previous = Env.LoadRevision(current - 1)
+        local state = rawget(previous, "_state")
+        local pool = previous:NewTablePool({ maxRetained = previous.UNBOUNDED })
+        local borrowed = pool:Acquire()
+
+        local PoolKit = Env.ReloadPackage()
+        assert.are.equal(previous, PoolKit)
+        assert.are.equal(state, rawget(PoolKit, "_state"))
+        assert.are.equal(current, PoolKit.REVISION)
+        assert.are.equal(PoolKit.UNBOUNDED, pool:GetMaxRetained())
+        assert.is_true(pool:IsActive(borrowed))
+        pool:Release(borrowed)
+        assert.are.equal(1, pool:GetAvailableCount())
     end)
 
     it("rejects same-revision UNBOUNDED sentinel drift", function()

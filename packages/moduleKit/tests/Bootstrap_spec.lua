@@ -1,5 +1,17 @@
 local TestEnv = require("ModuleKitTestEnv")
 
+---The implementation revision the manifest declares, which the source under
+---test must register as.
+---@return integer revision
+local function manifestRevision()
+    local file = assert(io.open("packages/moduleKit/package.manifest.json", "r"))
+    local text = file:read("*a")
+    file:close()
+    return assert(tonumber(text:match('"revision"%s*:%s*(%d+)')))
+end
+
+local CURRENT_REVISION = manifestRevision()
+
 describe("ModuleKit bootstrap", function()
     after_each(TestEnv.Reset)
 
@@ -314,12 +326,12 @@ end)
 describe("ModuleKit limits across an in-place upgrade", function()
     after_each(TestEnv.Reset)
 
-    it("registers itself as ModuleKit API 1 revision 16", function()
+    it("registers itself as ModuleKit API 1 at the manifest revision", function()
         local ModuleKit, Registry = TestEnv.NewPackage()
         local _, revision = Registry:Get("moduleKit", 1)
 
-        assert.are.equal(16, ModuleKit.REVISION)
-        assert.are.equal(16, revision)
+        assert.are.equal(CURRENT_REVISION, ModuleKit.REVISION)
+        assert.are.equal(CURRENT_REVISION, revision)
     end)
 
     it("keeps set limits and the sentinel when a newer revision loads", function()
@@ -327,10 +339,11 @@ describe("ModuleKit limits across an in-place upgrade", function()
         local sentinel = ModuleKit.UNBOUNDED
         ModuleKit:SetLimits({ maxRequiredAddons = 5 })
 
-        local upgraded = TestEnv.LoadRevision(ModuleKit.REVISION + 1)
+        local nextRevision = ModuleKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
 
         assert.are.equal(ModuleKit, upgraded)
-        assert.are.equal(17, upgraded.REVISION)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
         assert.are.equal(5, upgraded:GetLimits().maxRequiredAddons)
     end)
@@ -372,7 +385,7 @@ describe("ModuleKit limits across an in-place upgrade", function()
         local upgraded = require("ModuleKit")
 
         assert.are.equal(previous, upgraded)
-        assert.are.equal(16, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
         assert.are.equal(addon, upgraded:ForAddon("MyAddon"))
         assert.are.equal("table", type(upgraded.UNBOUNDED))
         assert.are.equal(rawget(state, "unbounded"), upgraded.UNBOUNDED)
@@ -418,7 +431,7 @@ describe("ModuleKit implements across an in-place upgrade", function()
         local upgraded = require("ModuleKit")
 
         assert.are.equal(previous, upgraded)
-        assert.are.equal(16, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
         assert.are.equal(addon, upgraded:ForAddon("MyAddon"))
         assert.is_nil(rawget(rawget(rawget(addon, "_providers"), "Database"), "implements"))
         assert.is_table(addon:Resolve("Database"))
@@ -435,10 +448,11 @@ describe("ModuleKit implements across an in-place upgrade", function()
             return {}
         end, { implements = { "Save" } })
 
-        local upgraded = TestEnv.LoadRevision(ModuleKit.REVISION + 1)
+        local nextRevision = ModuleKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
 
         assert.are.equal(ModuleKit, upgraded)
-        assert.are.equal(17, upgraded.REVISION)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         TestEnv.expectErrorContaining('provider "Database" must implement "Save"', function()
             upgraded:ForAddon("MyAddon"):Resolve("Database")
         end)
@@ -464,7 +478,7 @@ describe("ModuleKit upgrade from revision 15", function()
         local upgraded = require("ModuleKit")
 
         assert.are.equal(previous, upgraded)
-        assert.are.equal(16, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
         assert.are.equal(addon, upgraded:ForAddon("MyAddon"))
         assert.are.equal(module, addon:GetModule("UI"))
         TestEnv.expectErrorContaining('provider "Database" must implement "Save"', function()
@@ -480,5 +494,30 @@ describe("ModuleKit upgrade from revision 15", function()
             string.find(message, "Bootstrap_spec.lua:" .. line .. ":", 1, true),
             message
         )
+    end)
+end)
+
+-- The nil rule changed how absent arguments are recognised and added secret
+-- checks, but nothing in package state, on a container, on a module or on a
+-- provider record, so what the previous revision created keeps working.
+describe("ModuleKit upgrade from the previous revision", function()
+    after_each(TestEnv.Reset)
+
+    it("keeps the facade, the state, containers, modules and providers", function()
+        TestEnv.LoadDependencies()
+        local previous = TestEnv.LoadRevision(CURRENT_REVISION - 1)
+        local state = rawget(previous, "_state")
+        local addon = previous:ForAddon("MyAddon")
+        local module = addon:CreateModule("UI")
+        addon:ProvideValue("Settings", { scale = 1 })
+
+        local upgraded = require("ModuleKit")
+
+        assert.are.equal(previous, upgraded)
+        assert.are.equal(state, rawget(upgraded, "_state"))
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
+        assert.are.equal(addon, upgraded:ForAddon("MyAddon"))
+        assert.are.equal(module, addon:GetModule("UI"))
+        assert.are.same({ scale = 1 }, addon:Resolve("Settings"))
     end)
 end)

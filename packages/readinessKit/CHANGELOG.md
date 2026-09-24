@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 — 2026-09-24
+
+- Nil rule (decision of 2026-09-24): absence of a value that comes from outside the Kit (an option, the Registry lookups, the EventKit facade `Registry:Find` returns) is tested with `type(value) == "nil"`, never by comparing it with `nil`, because comparing a secret value raises inside the Kit instead of at the caller.
+- A secret `name` (`Gate`, `Get`), `eventName` (`ReprobeOn`) or option value (`intervalSeconds`, `timeoutSeconds`, `maxWaiters`) is refused at the caller's line with `... must not be a secret value` before any comparison, instead of raising inside ReadinessKit. `issecretvalue` is read once at load; a host without it has no secret values. `docs/API.md` lists the messages under "Error behaviour".
+- Implementation revision 3, because the executed implementation changed. A new bootstrap spec upgrades the previous revision in place; new `SecretValues_spec.lua`.
+
 ## 0.1.3 — 2026-09-24
 
 - Documentation only: no runtime change, implementation revision 2 is unchanged. `docs/INTERNALS.md` lists the `unbounded` state field and describes the upgrade spec as it now runs (a revision-1 copy upgraded to the current revision). The comment on the option-key check no longer claims it refuses a non-table option table; its caller does.

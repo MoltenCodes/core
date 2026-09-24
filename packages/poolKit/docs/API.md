@@ -315,6 +315,24 @@ pool:Prewarm(-1)
 
 This holds for constructor options, pool-method arguments, closed-pool rejections, factory results rejected by the pool, methods called on something that is not a PoolKit pool, and mutation attempted from inside a lifecycle callback.
 
+### Secret values
+
+A secret value (Retail 12.0.0 and later) raises when it is compared, so a numeric or boolean argument is asked about with `issecretvalue` before any other check and a secret is refused at the caller's line with `<label> must not be a secret value`:
+
+| Message | Raised by |
+|---|---|
+| `PoolKit:New maxRetained must not be a secret value` (likewise `PoolKit:NewTablePool`) | a secret `maxRetained` option |
+| `PoolKit:New strict must not be a secret value` (likewise `PoolKit:NewTablePool`) | a secret `strict` option |
+| `PoolKit:New prewarm must not be a secret value`, `... maxActiveWarning ...`, `... generation ...` (likewise `PoolKit:NewTablePool`) | those options when secret |
+| `PoolKit:New maxCreated must not be a secret value`, `... maxActive ...`, `... maxWaiting ...`, `PoolKit:New strictReset must not be a secret value` | those options when secret |
+| `PoolKit.Pool:Prewarm count must not be a secret value` | `Prewarm` |
+| `PoolKit.Pool:Trim retainCount must not be a secret value` | `Trim` |
+| `PoolKit.Pool:SetMaxRetained maxRetained must not be a secret value` | `SetMaxRetained` |
+| `PoolKit.Pool:SetGeneration generation must not be a secret value` | `SetGeneration` |
+| `PoolKit.Pool:SetMaxCreated maxCreated must not be a secret value` | `SetMaxCreated` |
+
+An absent option or argument is recognised by its type, never by comparing it with `nil`. A host without `issecretvalue` has no secret values. Pooled objects are tables or userdata, which the type check already requires, so they are never compared as secrets.
+
 Errors that are re-raised after best-effort cleanup keep the original error object unchanged and therefore carry no added position. Constructor-time `prewarm` failures are re-raised the same way.
 
 ## Strict diagnostics
