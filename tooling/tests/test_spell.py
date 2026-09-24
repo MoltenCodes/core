@@ -25,6 +25,13 @@ class SpellConfigurationTests(unittest.TestCase):
         self.assertIn("docs/**/*.md", globs)
         self.assertIn("packages/*/docs/*.md", globs)
 
+    def test_generated_package_documentation_is_ignored(self):
+        """apiKit's generated reference and change reports are data, not prose."""
+        config = json.loads((module.ROOT / module.CONFIG_NAME).read_text(encoding="utf-8"))
+
+        self.assertIn("packages/*/docs/reference/**", config["ignorePaths"])
+        self.assertIn("packages/*/docs/changes/**", config["ignorePaths"])
+
     def test_configuration_uses_the_project_dictionary(self):
         config = json.loads((module.ROOT / module.CONFIG_NAME).read_text(encoding="utf-8"))
         paths = [definition["path"] for definition in config["dictionaryDefinitions"]]

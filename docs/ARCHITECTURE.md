@@ -63,6 +63,8 @@ packages/<name>/
 ├── docs/
 │   └── API.md              # required for packages declaring an API generation
 ├── src/
+│   ├── <Facade>.lua        # the one top-level runtime file, loaded first
+│   └── <subdirectory>/     # optional further runtime files, loaded after it
 └── tests/
 ```
 

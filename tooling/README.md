@@ -41,6 +41,12 @@ Print the supported `## Interface` line from `validation/supported_clients.json`
 python3 -m tooling.validation.interface_numbers
 ```
 
+Print the `apiKit` flavour table from `api/flavours.json`:
+
+```bash
+python3 -m tooling.api.flavours
+```
+
 Build a distributable bundle:
 
 ```bash

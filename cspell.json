@@ -15,7 +15,13 @@
     "packages/*/CHANGELOG.md",
     "packages/*/docs/*.md"
   ],
-  "ignorePaths": ["build/**", "dist/**", "node_modules/**"],
+  "ignorePaths": [
+    "build/**",
+    "dist/**",
+    "node_modules/**",
+    "packages/*/docs/reference/**",
+    "packages/*/docs/changes/**"
+  ],
   "dictionaryDefinitions": [
     {
       "name": "moltencodes",

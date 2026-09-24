@@ -205,6 +205,13 @@ addon does. Both are equivalent to the client; pick one.
 `.xml` paths use backslashes, like `.toc` paths. The client accepts forward
 slashes on some platforms and not on others, so use backslashes everywhere.
 
+Every Kit listed above is one file. A Kit may also carry further runtime files
+in subdirectories of its package directory (the planned `apiKit` ships one
+generated file per client flavour under `apiKit\flavours\`); such a Kit's
+README says which of those files to embed, and the rule is the same for all
+of them: the Kit's facade first, then the further files, in any order among
+themselves, because they depend only on the facade.
+
 
 ## Minimum footprint per Kit
 

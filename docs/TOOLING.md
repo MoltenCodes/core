@@ -9,6 +9,9 @@ tooling/
 ├── lint.py                         # discovers and lints runtime and test Lua
 ├── spell.py                        # runs the pinned cspell over the documentation
 ├── spell-words.txt                 # the project dictionary cspell reads
+├── api/
+│   ├── flavours.json              # the apiKit flavours: namespaces, mirror branches, detection facts
+│   └── flavours.py                # reads and prints that table
 ├── ci/
 │   └── check_commits.py           # checks commit subjects and pull request titles
 ├── package/
@@ -200,6 +203,38 @@ To update the numbers after a patch:
 4. Run `python3 -m tooling.validation.validate_repository` until it passes.
 
 The update is one commit. [`RELEASES.md`](RELEASES.md) makes it a release step.
+
+## API metadata tooling: the flavour table
+
+`tooling/api/` is the development-time side of `apiKit`, the flavour-aware
+wrapper over the World of Warcraft API designed in
+[`API_KIT_DESIGN.md`](API_KIT_DESIGN.md) and delivered as package H of the
+[roadmap](ROADMAP.md#package-h--apikit-the-wow-api-wrapper). Its modules
+arrive with that plan; the first is the flavour table,
+[`tooling/api/flavours.json`](../tooling/api/flavours.json), the one place that
+says which client flavours the wrapper exposes and, for each: its id (the name
+of its directories under the package), its `wow.<…>.api` namespace, the
+generated runtime file under the package's `src/flavours/`, the branches of
+the community `wow-ui-source` mirror its documentation tables are fetched
+from, and the facts (`WOW_PROJECT_ID`, `IsTestBuild()`, `IsBetaBuild()`) the
+runtime facade reads to recognise it.
+
+```bash
+python3 -m tooling.api.flavours       # print the table
+```
+
+`python3 -m tooling.validation.validate_repository` reads the table with the
+same loader and fails on a malformed entry, so a typo surfaces in the gate
+rather than inside a fetch or a generation.
+
+The builder, the standalone-addon `.toc` and the validator support the layout
+`apiKit` needs: a package's `src/` holds one top-level facade and may hold
+further runtime files in subdirectories, which load after the facade
+([`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md#minimum-package-layout)). Two
+package documentation directories are generated from data rather than written,
+`packages/<name>/docs/reference/` and `packages/<name>/docs/changes/`; the
+spell check and the Markdown link check leave them alone, and the generator
+validates what it writes.
 
 ## Spell check
 

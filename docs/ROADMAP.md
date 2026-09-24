@@ -1072,13 +1072,16 @@ way packages A to G were handled. Code starts only after the owner's go.
 Each step ends with the gates green and a read-only review before the next
 begins; H4 to H6 may overlap where they do not share files.
 
-- [ ] **H0 — repository prerequisites.** The builder, the TOC generator, the
+- [x] **H0 — repository prerequisites.** The builder, the TOC generator, the
       standalone-addon TOC and the repository validator list a package's
       additional runtime files (`src/flavours/*.lua`) after its facade in
-      load order, in the bundle manifest and in `.pkgmeta`; the spell and
-      link gates skip generated `docs/reference/` and `docs/changes/`
-      directories; `tooling/api/flavours.json` maps each apiKit flavour to
-      its mirror branch and its detection facts. Tooling tests for each.
+      load order and in the bundle manifest (`.pkgmeta` needed no change: it
+      moves whole `src/` directories); the validator requires exactly one
+      top-level facade named after `displayName`; the spell and link gates
+      skip generated `docs/reference/` and `docs/changes/` directories;
+      `tooling/api/flavours.json` maps each apiKit flavour to its mirror
+      branches and detection facts and is checked by the validator. Tooling
+      tests for each (2026-09-24).
 - [ ] **H1 — metadata schema and normaliser.** `metadata/SCHEMA.md`;
       `tooling.api.fetch` (one flavour, one pinned mirror commit, scratch
       directory outside the repository, provenance recorded);

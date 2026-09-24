@@ -1,0 +1,54 @@
+{
+  "verified": "2026-09-24",
+  "mirror": {
+    "repository": "Gethe/wow-ui-source",
+    "documentationPath": "Interface/AddOns/Blizzard_APIDocumentationGenerated"
+  },
+  "probes": {
+    "projectId": "WOW_PROJECT_ID",
+    "testBuild": "IsTestBuild",
+    "betaBuild": "IsBetaBuild"
+  },
+  "flavours": [
+    {
+      "id": "retail",
+      "displayName": "Retail",
+      "namespace": "wow.retail.api",
+      "runtimeFile": "flavours/Retail.lua",
+      "branches": ["live"],
+      "detection": { "projectId": 1, "testBuild": false, "betaBuild": false }
+    },
+    {
+      "id": "classic-era",
+      "displayName": "Classic Era",
+      "namespace": "wow.classic.era.api",
+      "runtimeFile": "flavours/ClassicEra.lua",
+      "branches": ["classic_era"],
+      "detection": { "projectId": 2, "testBuild": false, "betaBuild": false }
+    },
+    {
+      "id": "classic-mop",
+      "displayName": "Mists of Pandaria Classic",
+      "namespace": "wow.classic.mop.api",
+      "runtimeFile": "flavours/ClassicMop.lua",
+      "branches": ["classic"],
+      "detection": { "projectId": 19, "testBuild": false, "betaBuild": false }
+    },
+    {
+      "id": "ptr",
+      "displayName": "Public Test Realm",
+      "namespace": "wow.ptr.api",
+      "runtimeFile": "flavours/Ptr.lua",
+      "branches": ["ptr", "ptr2"],
+      "detection": { "projectId": 1, "testBuild": true, "betaBuild": false }
+    },
+    {
+      "id": "beta",
+      "displayName": "Beta",
+      "namespace": "wow.beta.api",
+      "runtimeFile": "flavours/Beta.lua",
+      "branches": ["beta"],
+      "detection": { "projectId": 1, "testBuild": true, "betaBuild": true }
+    }
+  ]
+}

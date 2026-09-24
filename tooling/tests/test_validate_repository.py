@@ -63,18 +63,20 @@ class RepositoryValidatorTests(unittest.TestCase):
         return path
 
     def create_package(self, name: str, *, api: bool = True) -> Path:
+        """Write a complete package whose facade is `src/<DisplayName>.lua`."""
         package = self.packages / name
+        display_name = name[0].upper() + name[1:]
         (package / "src").mkdir(parents=True)
         (package / "tests").mkdir()
         (package / "docs").mkdir()
         (package / "README.md").write_text(f"# {name}\n", encoding="utf-8")
         (package / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
-        (package / "src" / f"{name}.lua").write_text("return {}\n", encoding="utf-8")
+        (package / "src" / f"{display_name}.lua").write_text("return {}\n", encoding="utf-8")
         (package / "tests" / f"{name}_spec.lua").write_text("", encoding="utf-8")
 
         manifest = {
             "name": name,
-            "displayName": name.title(),
+            "displayName": display_name,
             "description": f"{name} package",
             "version": "1.0.0",
             "license": "MIT",
@@ -215,6 +217,52 @@ class RepositoryValidatorTests(unittest.TestCase):
 
         self.assertEqual([], module.validate_package_layout())
 
+    def test_package_layout_accepts_further_runtime_files_in_subdirectories(self):
+        package = self.create_package("registry")
+        (package / "src" / "flavours").mkdir()
+        (package / "src" / "flavours" / "Retail.lua").write_text("return {}\n", encoding="utf-8")
+
+        self.assertEqual([], module.validate_package_layout())
+
+    def test_package_layout_refuses_a_second_top_level_lua_file(self):
+        package = self.create_package("registry")
+        (package / "src" / "Second.lua").write_text("return {}\n", encoding="utf-8")
+
+        errors = module.validate_package_layout()
+
+        self.assertTrue(
+            any("expected one top-level Lua facade, found Registry.lua, Second.lua" in error
+                for error in errors),
+            errors,
+        )
+
+    def test_package_layout_requires_the_facade_to_carry_the_display_name(self):
+        package = self.create_package("registry")
+        (package / "src" / "Registry.lua").rename(package / "src" / "Other.lua")
+
+        errors = module.validate_package_layout()
+
+        self.assertTrue(any('"Registry.lua"' in error for error in errors), errors)
+
+    def test_generated_package_documentation_is_not_link_checked(self):
+        package = self.create_package("apiKit")
+        for directory in ("reference", "changes"):
+            generated = package / "docs" / directory / "retail"
+            generated.mkdir(parents=True)
+            (generated / "index.md").write_text("[Broken](missing.md)\n", encoding="utf-8")
+        (package / "docs" / "API.md").write_text("[Broken](missing.md)\n", encoding="utf-8")
+
+        errors = module.validate_markdown_links()
+
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("docs/API.md", errors[0])
+
+    def test_missing_api_flavour_table_is_reported(self):
+        errors = module.validate_api_flavours()
+
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("flavours.json", errors[0])
+
     def test_api_package_requires_api_documentation(self):
         package = self.create_package("registry")
         (package / "docs" / "API.md").unlink()
@@ -256,6 +304,13 @@ class RepositoryValidatorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RepositoryApiFlavourTests(unittest.TestCase):
+    """The committed flavour table passes the validator's check."""
+
+    def test_repository_flavour_table_is_valid(self):
+        self.assertEqual([], module.validate_api_flavours())
 
 
 class PythonFloorTests(unittest.TestCase):

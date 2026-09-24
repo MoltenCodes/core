@@ -376,14 +376,20 @@ writes it into its checkout just before the packager runs. It carries:
 | `## X-License` | `MIT` |
 | `## X-Website` | `https://github.com/MoltenCodes/core` |
 
-followed by one `<packageId>\<Facade>.lua` line per package, in the builder's
-load order, relative to the addon folder: `registry\Registry.lua` first, then
-every Kit after the Kits it requires. Development packages are never listed.
-`--package <id>` prints the single-Kit `.toc` instead.
+followed by the runtime files of every package, in the builder's load order,
+relative to the addon folder: `registry\Registry.lua` first, then every Kit
+after the Kits it requires. A Kit is usually one line, its facade
+`<packageId>\<Facade>.lua`; a Kit with further runtime files in
+subdirectories of its `src/` (the generated per-flavour files of `apiKit`, for
+example) lists its facade first and those files after it, in sorted path
+order. Development packages are never listed. `--package <id>` prints the
+single-Kit `.toc` instead.
 
 There is one layout, not two: the builder's bundle is
-`MoltenCodes/<packageId>/<Facade>.lua`, and so is the packager's zip after
-`.pkgmeta`'s `move-folders`. The same `.toc` therefore serves both.
+`MoltenCodes/<packageId>/<Facade>.lua` plus any subdirectories of the
+package's `src/`, and so is the packager's zip after `.pkgmeta`'s
+`move-folders`, which moves the whole `src/` directory. The same `.toc`
+therefore serves both.
 
 ## Publishing to CurseForge, Wago and WoWInterface
 

@@ -203,11 +203,22 @@ packages/<name>/
 ├── CHANGELOG.md
 ├── README.md
 ├── package.manifest.json
-├── src/                     # contains runtime Lua
-│   └── .luarc.json          # lua-language-server workspace for this directory
+├── src/
+│   ├── <DisplayName>.lua    # the facade: the one top-level Lua file, loaded first
+│   ├── .luarc.json          # lua-language-server workspace for this directory
+│   └── <subdirectory>/      # optional further runtime files, loaded after the facade
 ├── tests/                   # contains at least one *_spec.lua
 └── docs/API.md              # required when api/revision are declared
 ```
+
+`src/` holds exactly one top-level Lua file, named after the manifest's
+`displayName` (`src/TimerKit.lua` for `TimerKit`). That file is the facade:
+the first file of the package the client loads and the one every consumer's
+`.toc` or `embeds.xml` names. Further runtime files, when a package has them,
+live in subdirectories of `src/` and are loaded after the facade in sorted
+path order (`tooling.package.build.runtime_files`); they may depend on the
+facade, never on each other. Repository validation rejects a second top-level
+Lua file because it would leave the load order ambiguous.
 
 `src/.luarc.json` must list exactly the shared `meta/` directory followed by the
 source directory of every package in this package's runtime dependency closure,

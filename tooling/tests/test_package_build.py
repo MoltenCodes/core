@@ -82,12 +82,17 @@ class TemporaryRepositoryTests(unittest.TestCase):
         distribution=None,
         license_name: str | None = "MIT",
         with_api_doc: bool = True,
+        further_runtime_files: tuple[str, ...] = (),
     ) -> Path:
         package_dir = self.packages / name
         (package_dir / "src").mkdir(parents=True)
         (package_dir / "docs").mkdir()
         (package_dir / "tests").mkdir()
         (package_dir / "src" / f"{facade}.lua").write_text("return {}\n", encoding="utf-8")
+        for relative in further_runtime_files:
+            path = package_dir / "src" / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("return {}\n", encoding="utf-8")
         (package_dir / "src" / ".luarc.json").write_text("{}\n", encoding="utf-8")
         (package_dir / "README.md").write_text(f"# {facade}\n", encoding="utf-8")
         (package_dir / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
@@ -357,6 +362,12 @@ class TocModuleTests(unittest.TestCase):
         self.assertEqual("MoltenCodes", toc.addon_name())
         self.assertEqual("MoltenCodes-TimerKit", toc.addon_name("TimerKit"))
 
+    def test_nested_runtime_files_convert_every_separator(self):
+        entry = toc.toc_entry("apiKit", "flavours/Retail.lua")
+
+        self.assertEqual("apiKit\\flavours\\Retail.lua", entry)
+        self.assertEqual("apiKit/flavours/Retail.lua", toc.entry_to_bundle_path(entry))
+
     def test_entries_use_backslashes_and_convert_back(self):
         entry = toc.toc_entry("timerKit", "TimerKit.lua")
 
@@ -402,6 +413,56 @@ class BundleTocTests(TemporaryRepositoryTests):
         self.assertEqual(
             ["registry\\Registry.lua", "signalKit\\SignalKit.lua"], toc.listed_files(text)
         )
+
+    def test_further_runtime_files_load_after_their_facade(self):
+        """A package with generated per-flavour files ships and loads all of them."""
+        self.write_minimal_repository()
+        self.write_package(
+            "apiKit",
+            facade="ApiKit",
+            dependencies={"registry": {"api": 1}},
+            further_runtime_files=("flavours/Retail.lua", "flavours/ClassicEra.lua"),
+        )
+
+        manifest = module.build(self.output)
+
+        self.assertEqual(
+            [
+                "registry/Registry.lua",
+                "apiKit/ApiKit.lua",
+                "apiKit/flavours/ClassicEra.lua",
+                "apiKit/flavours/Retail.lua",
+                "signalKit/SignalKit.lua",
+            ],
+            manifest["loadOrder"],
+        )
+        text = (self.output / "MoltenCodes" / "MoltenCodes.toc").read_text(encoding="utf-8")
+        self.assertEqual(
+            [
+                "registry\\Registry.lua",
+                "apiKit\\ApiKit.lua",
+                "apiKit\\flavours\\ClassicEra.lua",
+                "apiKit\\flavours\\Retail.lua",
+                "signalKit\\SignalKit.lua",
+            ],
+            toc.listed_files(text),
+        )
+        self.assertIn("apiKit/flavours/Retail.lua", manifest["packages"]["apiKit"]["files"])
+        self.assertEqual([], module.verify_toc(self.output / "MoltenCodes"))
+
+    def test_runtime_files_put_the_facade_first(self):
+        self.write_package(
+            "registry", facade="Registry", further_runtime_files=("extra/AAA.lua",)
+        )
+
+        self.assertEqual(["Registry.lua", "extra/AAA.lua"], module.runtime_files("registry"))
+
+    def test_two_top_level_lua_files_are_refused(self):
+        self.write_minimal_repository()
+        (self.packages / "registry" / "src" / "Second.lua").write_text("", encoding="utf-8")
+
+        with self.assertRaisesRegex(module.BuildError, "expected one top-level Lua facade"):
+            module.build(self.output)
 
     def test_package_writes_a_toc_named_after_the_facade(self):
         self.write_minimal_repository()

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote
 
+from tooling.api import flavours
 from tooling.validation.interface_numbers import (
     SupportedClients,
     load_supported_clients,
@@ -116,6 +117,28 @@ PKGMETA = Path(".pkgmeta")
 TRAILING_YAML_COMMENT_RE = re.compile(r"\s+#.*$")
 
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+
+#: Package documentation directories whose Markdown is generated from data
+#: rather than written: the API reference and the build-to-build change reports
+#: of `apiKit`. Their generator validates what it writes, so the link check
+#: (and, through `cspell.json`, the spell check) leaves them alone. The tuple is
+#: the path under `packages/<name>/`.
+GENERATED_DOCUMENT_DIRECTORIES = (
+    ("docs", "reference"),
+    ("docs", "changes"),
+)
+
+
+def is_generated_documentation(path: Path) -> bool:
+    """Whether `path` lies in a package's generated documentation directory."""
+    try:
+        relative = path.resolve().relative_to(ROOT.resolve())
+    except ValueError:
+        return False
+    parts = relative.parts
+    if len(parts) < 4 or parts[0] != "packages":
+        return False
+    return any(parts[2 : 2 + len(marker)] == marker for marker in GENERATED_DOCUMENT_DIRECTORIES)
 IGNORED_DIRECTORY_NAMES = {
     ".git",
     ".luarocks",
@@ -303,6 +326,49 @@ def validate_language_server_configs(manifests: dict[str, dict[str, object]]) ->
     return errors
 
 
+def read_display_name(package_dir: Path) -> str | None:
+    """Return the manifest's `displayName`, or `None` when it cannot be read.
+
+    The manifest checks report a missing or malformed manifest themselves; this
+    helper only feeds the facade check, which is skipped without a name.
+    """
+    manifest_path = package_dir / "package.manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    display_name = manifest.get("displayName") if isinstance(manifest, dict) else None
+    return display_name if isinstance(display_name, str) and display_name.strip() else None
+
+
+def validate_facade_file(package_dir: Path) -> list[str]:
+    """Check that `src/` holds exactly one top-level Lua file, named after the facade.
+
+    The facade (`src/<displayName>.lua`) is the first file of the package the
+    client loads and the file every consumer's `.toc` or `embeds.xml` names.
+    Further runtime files live in subdirectories of `src/` and load after it
+    (`tooling.package.build.runtime_files`); a second top-level Lua file would
+    leave that order ambiguous.
+    """
+    source_dir = package_dir / "src"
+    top_level = sorted(path for path in source_dir.glob("*.lua") if path.is_file())
+    if not top_level:
+        return [error(source_dir, "no top-level Lua facade was found")]
+    if len(top_level) > 1:
+        names = ", ".join(path.name for path in top_level)
+        return [error(source_dir, f"expected one top-level Lua facade, found {names}")]
+
+    display_name = read_display_name(package_dir)
+    if display_name is not None and top_level[0].name != f"{display_name}.lua":
+        return [
+            error(
+                top_level[0],
+                f'facade file must be named after the manifest displayName: "{display_name}.lua"',
+            )
+        ]
+    return []
+
+
 def validate_package_layout() -> list[str]:
     """Check the minimum self-contained layout of every publishable package."""
     errors: list[str] = []
@@ -318,6 +384,8 @@ def validate_package_layout() -> list[str]:
             errors.append(error(source_dir, "required package source directory is missing"))
         elif not any(source_dir.rglob("*.lua")):
             errors.append(error(source_dir, "no Lua source files were found"))
+        else:
+            errors.extend(validate_facade_file(package_dir))
 
         tests_dir = package_dir / "tests"
         if not tests_dir.is_dir():
@@ -544,6 +612,20 @@ def validate_development_packages_ignored(manifests: dict[str, dict[str, object]
     ]
 
 
+def validate_api_flavours() -> list[str]:
+    """Check the apiKit flavour table, `tooling/api/flavours.json`.
+
+    The table is read by the API metadata tooling; a malformed entry would
+    surface late, inside a fetch or a generation, so the validator reads it
+    with the same loader and reports its problems here.
+    """
+    try:
+        flavours.load_flavours(ROOT / flavours.FLAVOURS_PATH)
+    except (OSError, ValueError) as failure:
+        return [error(ROOT / flavours.FLAVOURS_PATH, str(failure))]
+    return []
+
+
 def _is_external_link(target: str) -> bool:
     lowered = target.lower()
     return (
@@ -561,6 +643,8 @@ def validate_markdown_links() -> list[str]:
     for markdown in sorted(ROOT.rglob("*.md")):
         # Generated and local-environment trees are not source documentation.
         if any(part in IGNORED_DIRECTORY_NAMES for part in markdown.parts):
+            continue
+        if is_generated_documentation(markdown):
             continue
 
         try:
@@ -597,6 +681,7 @@ def validate_repository() -> tuple[dict[str, dict[str, object]], list[str]]:
     errors.extend(validate_example_language_server_config())
     errors.extend(validate_package_layout())
     errors.extend(validate_interface_numbers())
+    errors.extend(validate_api_flavours())
     errors.extend(validate_development_packages_ignored(manifests))
     errors.extend(validate_markdown_links())
     return manifests, errors

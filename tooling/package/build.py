@@ -3,9 +3,10 @@
 The repository layout is optimised for development: sources, tests, package
 documentation and tooling sit side by side. A consumer wants none of that. This
 module produces the shape an addon author actually copies into their addon --
-one directory per package, the package's runtime Lua at the top of it, the
-package's own documentation beside it -- plus a ``manifest.json`` that records
-what went in and a ``CHECKSUMS.txt`` that records exactly what came out.
+one directory per package, the package's facade at the top of it and any further
+runtime files in their subdirectories, the package's own documentation beside
+them -- plus a ``manifest.json`` that records what went in and a
+``CHECKSUMS.txt`` that records exactly what came out.
 
 Every bundle is also an installable addon. Its root holds a generated ``.toc``
 named after the bundle (``MoltenCodes/MoltenCodes.toc`` for every release
@@ -144,16 +145,49 @@ def source_files(package_name: str) -> list[Path]:
 
 
 def facade_file_name(package_name: str) -> str:
-    """Return the package's Lua facade file name, for the load-order listing."""
-    for path in source_files(package_name):
-        if path.suffix == ".lua" and path.parent.name == "src":
-            return path.name
-    raise BuildError(f"packages/{package_name}/src: no top-level Lua facade was found")
+    """Return the package's Lua facade file name, the first file the client loads.
+
+    The facade is the one ``.lua`` file directly under ``src/``. A package may
+    carry further runtime files in subdirectories of ``src/`` (see
+    ``runtime_files``); two top-level Lua files would leave the load order
+    ambiguous, so that is an error here as it is in repository validation.
+    """
+    top_level = [
+        path
+        for path in source_files(package_name)
+        if path.suffix == ".lua" and path.parent.name == "src"
+    ]
+    if not top_level:
+        raise BuildError(f"packages/{package_name}/src: no top-level Lua facade was found")
+    if len(top_level) > 1:
+        names = ", ".join(path.name for path in top_level)
+        raise BuildError(
+            f"packages/{package_name}/src: expected one top-level Lua facade, found {names}"
+        )
+    return top_level[0].name
 
 
 def facade_name(package_name: str) -> str:
     """Return the package's PascalCase facade (``TimerKit``), from its facade file."""
     return Path(facade_file_name(package_name)).stem
+
+
+def runtime_files(package_name: str) -> list[str]:
+    """Return a package's runtime Lua files in load order, relative to ``src/``.
+
+    The facade comes first; every other ``.lua`` file under ``src/`` follows in
+    sorted path order. Those further files depend only on the facade, never on
+    each other, so a sorted order is both deterministic and correct. Paths are
+    POSIX-style (``flavours/Retail.lua``) whatever the builder's platform.
+    """
+    source_dir = ROOT / "packages" / package_name / "src"
+    facade = facade_file_name(package_name)
+    others = sorted(
+        path.relative_to(source_dir).as_posix()
+        for path in source_files(package_name)
+        if path.suffix == ".lua" and path.name != facade
+    )
+    return [facade, *others]
 
 
 def load_valid_manifests() -> dict[str, dict[str, Any]]:
@@ -211,7 +245,8 @@ def select_packages(
 def bundle_toc(selection: Selection) -> str:
     """Return the ``.toc`` that makes a bundle an installable addon.
 
-    It lists the facade of every package in the bundle, in load order, as paths
+    It lists the runtime files of every package in the bundle, in load order
+    (each package's facade first, then its further runtime files), as paths
     relative to the bundle folder. The builder writes it into the bundle root,
     and ``python3 -m tooling.release.library_toc`` prints the same text for the
     packager.
@@ -226,7 +261,11 @@ def bundle_toc(selection: Selection) -> str:
         name=selection.bundle_name,
         notes=toc.addon_notes(subject_facade),
         interface_line=interface_line,
-        entries=[toc.toc_entry(name, facade_file_name(name)) for name in selection.ordered],
+        entries=[
+            toc.toc_entry(name, relative)
+            for name in selection.ordered
+            for relative in runtime_files(name)
+        ],
     )
 
 
@@ -293,7 +332,9 @@ def build_manifest(
         "bundle": bundle_name,
         "subject": subject,
         "packages": packages,
-        "loadOrder": [f"{name}/{facade_file_name(name)}" for name in ordered_packages],
+        "loadOrder": [
+            f"{name}/{relative}" for name in ordered_packages for relative in runtime_files(name)
+        ],
     }
 
 
