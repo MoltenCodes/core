@@ -53,6 +53,10 @@ METADATA_FILES = {
 #: The provenance file of a flavour's metadata directory.
 PROVENANCE_FILE = "provenance.json"
 
+#: Files inside a metadata directory that other tools own and `write_metadata`
+#: must leave alone: the generator's search index and the build history.
+FILES_OWNED_ELSEWHERE = frozenset({"search.json", "history.json"})
+
 #: Location of the host type table relative to the repository root.
 HOST_TYPES_PATH = Path("tooling") / "api" / "types.json"
 
@@ -67,6 +71,10 @@ HOST_TYPE_KINDS = ("primitive", "alias", "class", "opaque")
 #: The kinds a namespace may have: a `C_*` (or `string`/`table`) namespace, a
 #: group of global functions, or a script object whose functions are methods.
 NAMESPACE_KINDS = ("namespace", "global", "object")
+
+#: The suffix the tables give an object system's name (`SimpleFrameAPI`); the
+#: class parameters refer to is the name without it.
+OBJECT_SYSTEM_SUFFIX = "API"
 
 #: The kinds a restriction predicate may have.
 RESTRICTION_KINDS = ("precondition", "secret")
@@ -224,6 +232,19 @@ class Namespace:
     functions: tuple[Function, ...] = ()
     sources: tuple[str, ...] = ()
 
+    @property
+    def object_class_name(self) -> str | None:
+        """The type name parameters use for an object system, or `None` for other kinds.
+
+        The tables name an object system `<Class>API` (`AbbreviateConfigAPI`)
+        while parameters refer to the class itself (`AbbreviateConfig`).
+        """
+        if self.kind != "object":
+            return None
+        if self.system.endswith(OBJECT_SYSTEM_SUFFIX) and len(self.system) > len(OBJECT_SYSTEM_SUFFIX):
+            return self.system[: -len(OBJECT_SYSTEM_SUFFIX)]
+        return self.system
+
     def to_json(self) -> dict[str, Any]:
         return json_object(
             wrapper=self.wrapper,
@@ -267,6 +288,7 @@ class Event:
     synchronous: bool = False
     unique: bool = False
     callback: bool = False
+    has_restrictions: bool = False
     flags: tuple[str, ...] = ()
     attributes: dict[str, Any] = field(default_factory=dict)
     source: str = ""
@@ -282,6 +304,7 @@ class Event:
             synchronous=self.synchronous or None,
             unique=self.unique or None,
             callback=self.callback or None,
+            hasRestrictions=self.has_restrictions or None,
             flags=list(self.flags),
             attributes=self.attributes,
             source=self.source,
@@ -299,6 +322,7 @@ class Event:
             synchronous=data.get("synchronous", False),
             unique=data.get("unique", False),
             callback=data.get("callback", False),
+            has_restrictions=data.get("hasRestrictions", False),
             flags=tuple(data.get("flags", ())),
             attributes=dict(data.get("attributes", {})),
             source=data.get("source", ""),
@@ -312,9 +336,17 @@ class EnumField:
     name: str
     value: int
     documentation: tuple[str, ...] = ()
+    flags: tuple[str, ...] = ()
+    attributes: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
-        return json_object(name=self.name, value=self.value, documentation=list(self.documentation))
+        return json_object(
+            name=self.name,
+            value=self.value,
+            documentation=list(self.documentation),
+            flags=list(self.flags),
+            attributes=self.attributes,
+        )
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> "EnumField":
@@ -322,6 +354,8 @@ class EnumField:
             name=data["name"],
             value=data["value"],
             documentation=tuple(data.get("documentation", ())),
+            flags=tuple(data.get("flags", ())),
+            attributes=dict(data.get("attributes", {})),
         )
 
 
@@ -337,6 +371,8 @@ class Enum:
     max_value: int | None = None
     system: str | None = None
     documentation: tuple[str, ...] = ()
+    flags: tuple[str, ...] = ()
+    attributes: dict[str, Any] = field(default_factory=dict)
     source: str = ""
 
     def to_json(self) -> dict[str, Any]:
@@ -349,6 +385,8 @@ class Enum:
             maxValue=self.max_value,
             system=self.system,
             documentation=list(self.documentation),
+            flags=list(self.flags),
+            attributes=self.attributes,
             source=self.source,
         )
 
@@ -363,6 +401,8 @@ class Enum:
             max_value=data.get("maxValue"),
             system=data.get("system"),
             documentation=tuple(data.get("documentation", ())),
+            flags=tuple(data.get("flags", ())),
+            attributes=dict(data.get("attributes", {})),
             source=data.get("source", ""),
         )
 
@@ -375,6 +415,8 @@ class Structure:
     fields: tuple[Parameter, ...]
     system: str | None = None
     documentation: tuple[str, ...] = ()
+    flags: tuple[str, ...] = ()
+    attributes: dict[str, Any] = field(default_factory=dict)
     source: str = ""
 
     def to_json(self) -> dict[str, Any]:
@@ -383,6 +425,8 @@ class Structure:
             fields=[item.to_json() for item in self.fields],
             system=self.system,
             documentation=list(self.documentation),
+            flags=list(self.flags),
+            attributes=self.attributes,
             source=self.source,
         )
 
@@ -393,6 +437,8 @@ class Structure:
             fields=tuple(Parameter.from_json(item) for item in data.get("fields", ())),
             system=data.get("system"),
             documentation=tuple(data.get("documentation", ())),
+            flags=tuple(data.get("flags", ())),
+            attributes=dict(data.get("attributes", {})),
             source=data.get("source", ""),
         )
 
@@ -406,6 +452,8 @@ class Callback:
     returns: tuple[Parameter, ...] = ()
     system: str | None = None
     documentation: tuple[str, ...] = ()
+    flags: tuple[str, ...] = ()
+    attributes: dict[str, Any] = field(default_factory=dict)
     source: str = ""
 
     def to_json(self) -> dict[str, Any]:
@@ -415,6 +463,8 @@ class Callback:
             returns=[item.to_json() for item in self.returns],
             system=self.system,
             documentation=list(self.documentation),
+            flags=list(self.flags),
+            attributes=self.attributes,
             source=self.source,
         )
 
@@ -426,6 +476,8 @@ class Callback:
             returns=tuple(Parameter.from_json(item) for item in data.get("returns", ())),
             system=data.get("system"),
             documentation=tuple(data.get("documentation", ())),
+            flags=tuple(data.get("flags", ())),
+            attributes=dict(data.get("attributes", {})),
             source=data.get("source", ""),
         )
 
@@ -447,9 +499,17 @@ class ConstantValue:
     value: Any = None
     expression: str | None = None
     documentation: tuple[str, ...] = ()
+    flags: tuple[str, ...] = ()
+    attributes: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
-        data = json_object(name=self.name, type=self.type, documentation=list(self.documentation))
+        data = json_object(
+            name=self.name,
+            type=self.type,
+            documentation=list(self.documentation),
+            flags=list(self.flags),
+            attributes=self.attributes,
+        )
         if self.expression is not None:
             data["expression"] = self.expression
         else:
@@ -466,6 +526,8 @@ class ConstantValue:
             value=data.get("value"),
             expression=data.get("expression"),
             documentation=tuple(data.get("documentation", ())),
+            flags=tuple(data.get("flags", ())),
+            attributes=dict(data.get("attributes", {})),
         )
 
 
@@ -478,6 +540,8 @@ class ConstantsTable:
     values: tuple[ConstantValue, ...]
     system: str | None = None
     documentation: tuple[str, ...] = ()
+    flags: tuple[str, ...] = ()
+    attributes: dict[str, Any] = field(default_factory=dict)
     source: str = ""
 
     def to_json(self) -> dict[str, Any]:
@@ -487,6 +551,8 @@ class ConstantsTable:
             values=[item.to_json() for item in self.values],
             system=self.system,
             documentation=list(self.documentation),
+            flags=list(self.flags),
+            attributes=self.attributes,
             source=self.source,
         )
 
@@ -498,6 +564,8 @@ class ConstantsTable:
             values=tuple(ConstantValue.from_json(item) for item in data.get("values", ())),
             system=data.get("system"),
             documentation=tuple(data.get("documentation", ())),
+            flags=tuple(data.get("flags", ())),
+            attributes=dict(data.get("attributes", {})),
             source=data.get("source", ""),
         )
 
@@ -515,6 +583,8 @@ class Restriction:
     failure_mode: str | None = None
     system: str | None = None
     documentation: tuple[str, ...] = ()
+    flags: tuple[str, ...] = ()
+    attributes: dict[str, Any] = field(default_factory=dict)
     source: str = ""
 
     def to_json(self) -> dict[str, Any]:
@@ -524,6 +594,8 @@ class Restriction:
             failureMode=self.failure_mode,
             system=self.system,
             documentation=list(self.documentation),
+            flags=list(self.flags),
+            attributes=self.attributes,
             source=self.source,
         )
 
@@ -535,6 +607,8 @@ class Restriction:
             failure_mode=data.get("failureMode"),
             system=data.get("system"),
             documentation=tuple(data.get("documentation", ())),
+            flags=tuple(data.get("flags", ())),
+            attributes=dict(data.get("attributes", {})),
             source=data.get("source", ""),
         )
 
@@ -607,9 +681,10 @@ class FlavourMetadata:
         names = {enum.name for enum in self.enums}
         names.update(structure.name for structure in self.structures)
         names.update(callback.name for callback in self.callbacks)
-        names.update(
-            namespace.system for namespace in self.namespaces if namespace.kind == "object"
-        )
+        for namespace in self.namespaces:
+            class_name = namespace.object_class_name
+            if class_name is not None:
+                names.add(class_name)
         return names
 
     def to_files(self) -> dict[str, str]:
@@ -643,12 +718,13 @@ def write_metadata(metadata: FlavourMetadata, directory: Path) -> list[Path]:
     """Write a flavour's metadata files into `directory` and return their paths.
 
     Files the model no longer produces are removed, so a directory never
-    carries a stale file from an older schema next to the current ones.
+    carries a stale file from an older schema next to the current ones; the
+    files other tools own (`FILES_OWNED_ELSEWHERE`) are kept.
     """
     directory.mkdir(parents=True, exist_ok=True)
     expected = metadata.to_files()
     for stale in directory.glob("*.json"):
-        if stale.name not in expected:
+        if stale.name not in expected and stale.name not in FILES_OWNED_ELSEWHERE:
             stale.unlink()
     written: list[Path] = []
     for file_name, text in sorted(expected.items()):

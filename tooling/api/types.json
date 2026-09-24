@@ -47,7 +47,7 @@
     },
     "AuraFilters": {
       "kind": "alias",
-      "lua": "integer"
+      "lua": "string"
     },
     "AzeriteEmpoweredItemLocation": {
       "kind": "class",
@@ -104,6 +104,10 @@
     "ClubStreamId": {
       "kind": "alias",
       "lua": "string"
+    },
+    "ColorMixin": {
+      "kind": "class",
+      "lua": "ColorMixin"
     },
     "ConnectionIptype": {
       "kind": "alias",
@@ -249,6 +253,10 @@
       "kind": "class",
       "lua": "ItemLocation"
     },
+    "ItemLocationMixin": {
+      "kind": "class",
+      "lua": "ItemLocationMixin"
+    },
     "ItemSoundType": {
       "kind": "opaque",
       "lua": "any"
@@ -256,6 +264,10 @@
     "ItemTransmogInfo": {
       "kind": "class",
       "lua": "ItemTransmogInfo"
+    },
+    "ItemTransmogInfoMixin": {
+      "kind": "class",
+      "lua": "ItemTransmogInfoMixin"
     },
     "JustifyHorizontal": {
       "kind": "alias",
@@ -369,6 +381,10 @@
       "kind": "class",
       "lua": "PlayerLocation"
     },
+    "PlayerLocationMixin": {
+      "kind": "class",
+      "lua": "PlayerLocationMixin"
+    },
     "PurchaseHouseDisabledReason": {
       "kind": "opaque",
       "lua": "any"
@@ -384,6 +400,10 @@
     "ReportInfo": {
       "kind": "class",
       "lua": "ReportInfo"
+    },
+    "ReportInfoMixin": {
+      "kind": "class",
+      "lua": "ReportInfoMixin"
     },
     "ResidentType": {
       "kind": "opaque",
@@ -513,6 +533,10 @@
       "kind": "class",
       "lua": "TransmogLocation"
     },
+    "TransmogLocationMixin": {
+      "kind": "class",
+      "lua": "TransmogLocationMixin"
+    },
     "UISoundSubType": {
       "kind": "opaque",
       "lua": "any"
@@ -545,9 +569,13 @@
       "kind": "alias",
       "lua": "string"
     },
-    "Userdata": {
+    "Vector2DMixin": {
       "kind": "class",
-      "lua": "Userdata"
+      "lua": "Vector2DMixin"
+    },
+    "Vector3DMixin": {
+      "kind": "class",
+      "lua": "Vector3DMixin"
     },
     "Vocalerrorsounds": {
       "kind": "opaque",
@@ -659,7 +687,7 @@
     },
     "uiFontHeight": {
       "kind": "alias",
-      "lua": "integer"
+      "lua": "number"
     },
     "uiRect": {
       "kind": "class",
@@ -667,7 +695,7 @@
     },
     "uiUnit": {
       "kind": "alias",
-      "lua": "string"
+      "lua": "number"
     },
     "vector2": {
       "kind": "class",

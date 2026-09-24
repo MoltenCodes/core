@@ -181,6 +181,16 @@ class WriteReadTests(unittest.TestCase):
 
             self.assertFalse(stale.exists())
 
+    def test_files_other_tools_own_survive_a_rewrite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ("history.json", "search.json"):
+                (Path(directory) / name).write_text("{}", encoding="utf-8")
+
+            module.write_metadata(sample_metadata(), Path(directory))
+
+            for name in ("history.json", "search.json"):
+                self.assertTrue((Path(directory) / name).exists(), name)
+
     def test_missing_file_is_reported(self):
         with tempfile.TemporaryDirectory() as directory:
             module.write_metadata(sample_metadata(), Path(directory))

@@ -61,6 +61,13 @@ class UniquenessTests(unittest.TestCase):
 
         self.assertIn("namespace wrapper 'addOnProfiler' is used twice", problems_for(metadata))
 
+    def test_reserved_wrapper_names_are_refused(self):
+        metadata = sample_metadata()
+        first = dataclasses.replace(metadata.namespaces[0], alias="events")
+        metadata = dataclasses.replace(metadata, namespaces=(first, metadata.namespaces[1]))
+
+        self.assertTrue(any("'events' is reserved" in problem for problem in problems_for(metadata)))
+
     def test_alias_colliding_with_a_namespace_is_reported(self):
         metadata = sample_metadata()
         first = dataclasses.replace(metadata.namespaces[0], alias="clock")

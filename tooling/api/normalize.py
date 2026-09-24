@@ -38,9 +38,10 @@ error here rather than a suffix in the output.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -114,7 +115,18 @@ EVENT_KEYS = {
     "SynchronousEvent",
     "UniqueEvent",
     "CallbackEvent",
+    "HasRestrictions",
 }
+
+#: The keys the model names on the other table entries; anything else is an
+#: extra, kept as a flag or an attribute like everywhere else.
+ENUM_KEYS = {"Name", "Type", "NumValues", "MinValue", "MaxValue", "Fields", "Documentation"}
+ENUM_FIELD_KEYS = {"Name", "Type", "EnumValue", "Documentation"}
+STRUCTURE_KEYS = {"Name", "Type", "Fields", "Documentation"}
+CALLBACK_KEYS = {"Name", "Type", "Arguments", "Returns", "Documentation"}
+CONSTANTS_KEYS = {"Name", "Type", "Values", "Documentation"}
+CONSTANT_VALUE_KEYS = {"Name", "Type", "Value", "Documentation"}
+RESTRICTION_KEYS = {"Name", "Type", "FailureMode", "Documentation"}
 
 #: The `Type` values a `Tables` entry may have, and the model list each feeds.
 TABLE_ENTRY_KINDS = {
@@ -194,15 +206,16 @@ def _documentation(entry: dict[str, Any], where: str) -> tuple[str, ...]:
 def _json_ready(value: Any, where: str) -> Any:
     """Turn a parsed Lua value into what JSON can carry.
 
-    A reference to another table (`Enum.SecretAspect.Cooldown`) becomes its
-    dotted path and an additive expression its text, exactly as written in the
-    tables; the generators resolve them with the whole flavour at hand. Lists
-    and keyed tables are converted element by element.
+    A reference to another table (`Enum.SecretAspect.Cooldown`) becomes
+    `{"ref": "Enum.SecretAspect.Cooldown"}` and an additive expression
+    `{"expression": "..."}`, so neither can be mistaken for a string literal
+    with the same text; the generators resolve them with the whole flavour at
+    hand. Lists and keyed tables are converted element by element.
     """
     if isinstance(value, LuaName):
-        return value.path
+        return {"ref": value.path}
     if isinstance(value, LuaExpression):
-        return value.text
+        return {"expression": value.text}
     if isinstance(value, list):
         return [_json_ready(item, where) for item in value]
     if isinstance(value, dict):
@@ -292,6 +305,7 @@ def _event(entry: dict[str, Any], *, rules: NamingRules, system: str, source: st
         synchronous=_optional_bool(entry, "SynchronousEvent", where),
         unique=_optional_bool(entry, "UniqueEvent", where),
         callback=_optional_bool(entry, "CallbackEvent", where),
+        has_restrictions=_optional_bool(entry, "HasRestrictions", where),
         flags=flags,
         attributes=attributes,
         source=source,
@@ -304,11 +318,19 @@ def _enum_field(entry: dict[str, Any], where: str) -> EnumField:
     value = entry.get("EnumValue")
     if isinstance(value, bool) or not isinstance(value, int):
         raise NormalizeError(f"{where}: EnumValue must be an integer")
-    return EnumField(name=name, value=value, documentation=_documentation(entry, where))
+    flags, attributes = _extras(entry, ENUM_FIELD_KEYS, where)
+    return EnumField(
+        name=name,
+        value=value,
+        documentation=_documentation(entry, where),
+        flags=flags,
+        attributes=attributes,
+    )
 
 
 def _enum(entry: dict[str, Any], *, rules: NamingRules, system: str | None, source: str, where: str) -> Enum:
     name = entry["Name"]
+    flags, attributes = _extras(entry, ENUM_KEYS, where)
     return Enum(
         name=name,
         wrapper=naming.member_wrapper_name(name, rules),
@@ -318,27 +340,35 @@ def _enum(entry: dict[str, Any], *, rules: NamingRules, system: str | None, sour
         max_value=_optional_integer(entry, "MaxValue", where),
         system=system,
         documentation=_documentation(entry, where),
+        flags=flags,
+        attributes=attributes,
         source=source,
     )
 
 
 def _structure(entry: dict[str, Any], *, system: str | None, source: str, where: str) -> Structure:
+    flags, attributes = _extras(entry, STRUCTURE_KEYS, where)
     return Structure(
         name=entry["Name"],
         fields=_parameters(entry, "Fields", where),
         system=system,
         documentation=_documentation(entry, where),
+        flags=flags,
+        attributes=attributes,
         source=source,
     )
 
 
 def _callback(entry: dict[str, Any], *, system: str | None, source: str, where: str) -> Callback:
+    flags, attributes = _extras(entry, CALLBACK_KEYS, where)
     return Callback(
         name=entry["Name"],
         arguments=_parameters(entry, "Arguments", where),
         returns=_parameters(entry, "Returns", where),
         system=system,
         documentation=_documentation(entry, where),
+        flags=flags,
+        attributes=attributes,
         source=source,
     )
 
@@ -348,19 +378,24 @@ def _constant_value(entry: dict[str, Any], where: str) -> ConstantValue:
     where = _where(where, name)
     if "Value" not in entry:
         raise NormalizeError(f"{where}: Value is missing")
+    flags, attributes = _extras(entry, CONSTANT_VALUE_KEYS, where)
     value = entry["Value"]
     if isinstance(value, (LuaName, LuaExpression)):
         return ConstantValue(
             name=name,
             type=_require_string(entry, "Type", where),
-            expression=_json_ready(value, where),
+            expression=value.path if isinstance(value, LuaName) else value.text,
             documentation=_documentation(entry, where),
+            flags=flags,
+            attributes=attributes,
         )
     return ConstantValue(
         name=name,
         type=_require_string(entry, "Type", where),
         value=_json_ready(value, where),
         documentation=_documentation(entry, where),
+        flags=flags,
+        attributes=attributes,
     )
 
 
@@ -368,24 +403,30 @@ def _constants(
     entry: dict[str, Any], *, rules: NamingRules, system: str | None, source: str, where: str
 ) -> ConstantsTable:
     name = entry["Name"]
+    flags, attributes = _extras(entry, CONSTANTS_KEYS, where)
     return ConstantsTable(
         name=name,
         wrapper=naming.member_wrapper_name(name, rules),
         values=tuple(_constant_value(item, _where(where, "Values")) for item in _entries(entry, "Values", where)),
         system=system,
         documentation=_documentation(entry, where),
+        flags=flags,
+        attributes=attributes,
         source=source,
     )
 
 
 def _restriction(entry: dict[str, Any], *, system: str | None, source: str, where: str) -> Restriction:
     kind = "precondition" if entry["Type"] == "Precondition" else "secret"
+    flags, attributes = _extras(entry, RESTRICTION_KEYS, where)
     return Restriction(
         name=entry["Name"],
         kind=kind,
         failure_mode=_optional_string(entry, "FailureMode", where),
         system=system,
         documentation=_documentation(entry, where),
+        flags=flags,
+        attributes=attributes,
         source=source,
     )
 
@@ -440,6 +481,7 @@ class Normalizer:
         self.rules = rules
         self.namespaces: dict[str, _NamespaceBuilder] = {}
         self.events: list[Event] = []
+        self.event_builders: list[_NamespaceBuilder] = []
         self.enums: list[Enum] = []
         self.structures: list[Structure] = []
         self.callbacks: list[Callback] = []
@@ -485,7 +527,7 @@ class Normalizer:
         for entry in _entries(table, "Functions", where):
             self._add_function(builder, entry, source, _where(where, "Functions"))
         for entry in _entries(table, "Events", where):
-            self._add_event(entry, system_name, source, _where(where, "Events"))
+            self._add_event(entry, builder, source, _where(where, "Events"))
         self._add_tables(table, system=system_name, source=source, where=where)
 
     def _namespace_builder(
@@ -541,13 +583,28 @@ class Normalizer:
         global_system = builder.system if builder.kind == "global" else None
         return naming.function_wrapper_name(name, self.rules, global_system=global_system)
 
-    def _add_event(self, entry: dict[str, Any], system: str, source: str, where: str) -> None:
+    def _add_event(self, entry: dict[str, Any], builder: _NamespaceBuilder, source: str, where: str) -> None:
         try:
             if entry.get("Type") != "Event":
                 raise NormalizeError(f"{_where(where, str(entry.get('Name')))}: Type must be \"Event\"")
-            self.events.append(_event(entry, rules=self.rules, system=system, source=source, where=where))
+            event = _event(entry, rules=self.rules, system=builder.system, source=source, where=where)
         except NormalizeError as failure:
             self.problems.append(str(failure))
+            return
+        self.events.append(event)
+        self.event_builders.append(builder)
+
+    def _events_with_merged_systems(self) -> list[Event]:
+        """Events carry the system name their namespace settled on, not their file's.
+
+        A namespace documented in two files may be named differently in each;
+        `_preferred_system_name` decides once the files are all read, so the
+        events are relabelled at build time.
+        """
+        return [
+            dataclasses.replace(event, system=builder.system)
+            for event, builder in zip(self.events, self.event_builders)
+        ]
 
     def _add_tables(self, table: dict[str, Any], *, system: str | None, source: str, where: str) -> None:
         for entry in _entries(table, "Tables", where):
@@ -648,12 +705,12 @@ class Normalizer:
             ("enum", self.enums),
             ("constants table", self.constants),
         ):
-            by_wrapper: dict[str, list[str]] = defaultdict(list)
+            by_wrapper: dict[str, set[str]] = defaultdict(set)
             for entry in entries:
-                by_wrapper[entry.wrapper].append(entry.name)
+                by_wrapper[entry.wrapper].add(entry.name)
             for wrapper, names in sorted(by_wrapper.items()):
-                if len(set(names)) > 1:
-                    self.problems.append(f"{label} wrapper {wrapper!r} would be shared by {sorted(set(names))}")
+                if len(names) > 1:
+                    self.problems.append(f"{label} wrapper {wrapper!r} would be shared by {sorted(names)}")
         for label, entries in (
             ("event", self.events),
             ("enum", self.enums),
@@ -661,11 +718,13 @@ class Normalizer:
             ("callback", self.callbacks),
             ("constants table", self.constants),
         ):
-            names = [entry.name for entry in entries]
-            for name in sorted({name for name in names if names.count(name) > 1}):
+            counts = Counter(entry.name for entry in entries)
+            for name in sorted(name for name, count in counts.items() if count > 1):
                 self.problems.append(f"{label} {name!r} is documented more than once")
-        keys = [(restriction.system or "", restriction.name) for restriction in self.restrictions]
-        for system, name in sorted({key for key in keys if keys.count(key) > 1}):
+        restriction_counts = Counter(
+            (restriction.system or "", restriction.name) for restriction in self.restrictions
+        )
+        for system, name in sorted(key for key, count in restriction_counts.items() if count > 1):
             self.problems.append(f"restriction {name!r} of {system or 'no system'} is documented more than once")
 
     def build(self, provenance: Provenance) -> FlavourMetadata:
@@ -677,7 +736,7 @@ class Normalizer:
         return FlavourMetadata(
             provenance=provenance,
             namespaces=namespaces,
-            events=model.sorted_by_name(self.events),
+            events=model.sorted_by_name(self._events_with_merged_systems()),
             enums=model.sorted_by_name(self.enums),
             structures=model.sorted_by_name(self.structures),
             callbacks=model.sorted_by_name(self.callbacks),

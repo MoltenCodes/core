@@ -13,7 +13,10 @@ step by `tooling/tests/test_api_model.py`.
   indentation; lists are sorted as stated per file; text is written as UTF-8
   without escaping, so the same capture always produces the same bytes.
 - A key whose value would be `null`, an empty list or an empty object is
-  omitted. `false` and `0` are values and are written.
+  omitted, so a list such as `functions` or `fields` is absent when it would
+  be empty. `false` and `0` are values and are written, with one exception:
+  the markers documented below as "`true`, optional" (`mayReturnNothing`,
+  `synchronous`, ...) are written only when true.
 - Every file carries `"schema": 1` and `"flavour": "<id>"`. The schema
   number changes when a field changes meaning or is removed; a new optional
   field does not change it.
@@ -22,11 +25,15 @@ step by `tooling/tests/test_api_model.py`.
   `tooling/api/naming.py`; `binding` is the raw expression the wrapper aliases.
 - Documentation prose from the tables is kept as `documentation`, a list of
   paragraphs, with provenance in `provenance.json`.
-- Attributes the model does not name are never dropped: a boolean attribute
-  that is `true` appears in `flags` (a sorted list of attribute names), any
-  other value under `attributes` (an object keyed by attribute name). A
-  reference to another table (`Enum.SecretAspect.Cooldown`) is carried as its
-  dotted path, an arithmetic expression as its text.
+- Attributes the model does not name are never dropped, on any entry kind: a
+  boolean attribute that is `true` appears in `flags` (a sorted list of
+  attribute names), any other value under `attributes` (an object keyed by
+  attribute name). Inside `attributes` and `default`, a reference to another
+  table is carried as `{"ref": "Enum.SecretAspect.Cooldown"}` and an
+  arithmetic expression as `{"expression": "..."}`, so neither can be mistaken
+  for a string literal; a constant's own value uses the `value`/`expression`
+  keys described below. Expression text is the parser's rendering of what the
+  tables wrote (numbers in their canonical form, spacing normalised).
 
 ## Files
 
@@ -64,15 +71,15 @@ An entry of `namespaces.json`.
 
 | Key | Type | Meaning |
 |---|---|---|
-| `wrapper` | string | the wrapper name: `api.<wrapper>` |
-| `kind` | string | `namespace` (a `C_*`, `string` or `table` namespace), `global` (functions that are globals, grouped by their documentation system) or `object` (methods of a script object type; typed, never bound) |
+| `wrapper` | string | the wrapper name: `api.<wrapper>`; for kind `object` nothing is bound and the name is only used on the type side (reference pages) |
+| `kind` | string | `namespace` (a `C_*`, `string` or `table` namespace), `global` (functions that are globals, grouped by their documentation system) or `object` (methods of a script object type; typed, never bound; the type parameters refer to is the system name without its `API` suffix) |
 | `system` | string | the documentation system name (`AddOns`, `Unit`); when several files document one namespace under different names, the one equal to the namespace without its prefix, else the alphabetically first |
 | `blizzardNamespace` | string, kind `namespace` only | `C_AddOns` |
 | `alias` | string, optional | the short alias from `naming.json`; `api.<alias>` is the same table |
 | `objectType` | string, kind `object` only | the tables' `ObjectType` |
 | `environment` | string, optional | the tables' `Environment` (`All`, `SecureOnly`) |
 | `documentation` | list of strings, optional | |
-| `functions` | list of Function, sorted by `name` | |
+| `functions` | list of Function, sorted by `name`, optional | |
 | `sources` | list of strings | the documentation files this namespace was read from |
 
 ## Function
@@ -100,11 +107,11 @@ An argument, a return value, an event payload field or a structure field.
 | Key | Type | Meaning |
 |---|---|---|
 | `name` | string | |
-| `type` | string | a type name: a host type from `tooling/api/types.json`, or an enumeration, structure, callback or object type of this flavour |
+| `type` | string | a type name: a host type from `tooling/api/types.json`, or an enumeration, structure, callback or object class of this flavour |
 | `nilable` | boolean | whether the value may be `nil`; written even when `false` |
 | `innerType` | string, optional | element type when `type` is `table` |
 | `keyType` | string, optional | key type when `type` is `table` and the table is a map |
-| `mixin` | string, optional | the mixin the client applies to the table |
+| `mixin` | string, optional | the mixin the client applies to the table; a host type (kind `class`) in `types.json` |
 | `default` | any, optional | the documented default; present only when the tables document one, even when it is `false` or `0` |
 | `strideIndex` | integer, optional | the tables' `StrideIndex` for variadic groups |
 | `documentation` | list of strings, optional | |
@@ -118,12 +125,13 @@ An argument, a return value, an event payload field or a structure field.
 | `name` | string | the tables' PascalCase name (`AddonLoaded`) |
 | `wrapper` | string | `api.events.<wrapper>`, whose value is `literalName` |
 | `literalName` | string | the event string the client fires (`ADDON_LOADED`) |
-| `system` | string | the documentation system |
+| `system` | string | the documentation system, as the namespace it belongs to settled it |
 | `payload` | list of Parameter, optional | in argument order |
 | `documentation` | list of strings, optional | |
 | `synchronous` | `true`, optional | the tables' `SynchronousEvent` |
 | `unique` | `true`, optional | the tables' `UniqueEvent` |
 | `callback` | `true`, optional | the tables' `CallbackEvent` |
+| `hasRestrictions` | `true`, optional | the tables' `HasRestrictions` |
 | `flags`, `attributes` | optional | as for Function |
 | `source` | string | |
 
@@ -133,10 +141,11 @@ An argument, a return value, an event payload field or a structure field.
 |---|---|---|
 | `name` | string | `Enum.<name>` |
 | `wrapper` | string | `api.enums.<wrapper>` |
-| `fields` | list of `{name, value, documentation?}` | in table order |
+| `fields` | list of `{name, value, documentation?, flags?, attributes?}`, optional | in table order |
 | `numValues`, `minValue`, `maxValue` | integer, optional | as the tables state them; the validator checks them against `fields` |
 | `system` | string, optional | absent for constants-only files |
 | `documentation` | list of strings, optional | |
+| `flags`, `attributes` | optional | as for Function |
 | `source` | string | |
 
 ## Structure
@@ -144,9 +153,10 @@ An argument, a return value, an event payload field or a structure field.
 | Key | Type | Meaning |
 |---|---|---|
 | `name` | string | |
-| `fields` | list of Parameter | in table order |
+| `fields` | list of Parameter, optional | in table order |
 | `system` | string, optional | |
 | `documentation` | list of strings, optional | |
+| `flags`, `attributes` | optional | as for Function |
 | `source` | string | |
 
 ## Callback
@@ -158,6 +168,7 @@ An argument, a return value, an event payload field or a structure field.
 | `returns` | list of Parameter, optional | |
 | `system` | string, optional | |
 | `documentation` | list of strings, optional | |
+| `flags`, `attributes` | optional | as for Function |
 | `source` | string | |
 
 ## Constants table
@@ -166,16 +177,16 @@ An argument, a return value, an event payload field or a structure field.
 |---|---|---|
 | `name` | string | `Constants.<name>` |
 | `wrapper` | string | `api.constants.<wrapper>` |
-| `values` | list of constant values | in table order |
+| `values` | list of constant values, optional | in table order |
 | `system` | string, optional | |
 | `documentation` | list of strings, optional | |
+| `flags`, `attributes` | optional | as for Function |
 | `source` | string | |
 
-A constant value is `{name, type, value, documentation?}` when the tables
-give a literal, or `{name, type, expression, documentation?}` when they give
-a reference or arithmetic (`Enum.CalendarGetEventType.Get`,
-`Constants.X.LAST - Constants.X.FIRST + 1`), carried unevaluated exactly as
-written.
+A constant value is `{name, type, value, documentation?, flags?, attributes?}`
+when the tables give a literal, or `{name, type, expression, ...}` when they
+give a reference or arithmetic (`Enum.CalendarGetEventType.Get`,
+`Constants.X.LAST - Constants.X.FIRST + 1`), carried unevaluated.
 
 ## Restriction
 
@@ -186,6 +197,7 @@ written.
 | `failureMode` | string, optional | `Error`, `ReturnNothing`, `ReturnWithError` |
 | `system` | string, optional | the system whose functions the predicate applies to; the same name may carry another failure mode in another system |
 | `documentation` | list of strings, optional | |
+| `flags`, `attributes` | optional | as for Function |
 | `source` | string | |
 
 ## Host types

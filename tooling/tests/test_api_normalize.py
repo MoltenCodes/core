@@ -305,7 +305,7 @@ class NamespaceTests(unittest.TestCase):
         self.assertEqual("Userdata", namespace.object_type)
         self.assertEqual("clockAPI", namespace.wrapper)
         self.assertIsNone(namespace.functions[0].binding)
-        self.assertIn("ClockAPI", normalise(("Clock.lua", CLOCK_OBJECT)).defined_type_names())
+        self.assertIn("Clock", normalise(("Clock.lua", CLOCK_OBJECT)).defined_type_names())
 
     def test_two_files_for_one_namespace_are_merged(self):
         second = PROFILER_TABLE.replace("AddOnProfiler =", "AddOnProfilerExtra =", 1)

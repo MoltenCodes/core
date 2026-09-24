@@ -78,6 +78,13 @@ IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 #: A wrapper name: lowerCamelCase, letters and digits only.
 WRAPPER_NAME_RE = re.compile(r"^[a-z][A-Za-z0-9]*$")
 
+#: Words Lua reserves. A wrapper name that is one of them would need bracket
+#: access everywhere, so the validator refuses it and asks for an exception.
+LUA_KEYWORDS = frozenset(
+    "and break do else elseif end false for function if in local nil not or repeat "
+    "return then true until while".split()
+)
+
 
 class NamingError(ValueError):
     """The rules file exists but does not have the shape this module documents."""

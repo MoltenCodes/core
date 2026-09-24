@@ -26,7 +26,10 @@ from typing import Iterable, Sequence
 
 from tooling.api import flavours, model
 from tooling.api.model import FlavourMetadata, HostTypes, Parameter
-from tooling.api.naming import WRAPPER_NAME_RE
+from tooling.api.naming import LUA_KEYWORDS, WRAPPER_NAME_RE
+
+#: Wrapper names the flavour table itself uses; no namespace may take them.
+RESERVED_WRAPPER_NAMES = frozenset({"events", "enums", "constants"})
 
 
 def _duplicates(values: Iterable[str]) -> list[str]:
@@ -34,22 +37,33 @@ def _duplicates(values: Iterable[str]) -> list[str]:
     return sorted(value for value, count in counts.items() if count > 1)
 
 
+def _wrapper_problem(wrapper: str) -> str | None:
+    """Why `wrapper` cannot be a wrapper name, or `None` when it can."""
+    if not WRAPPER_NAME_RE.fullmatch(wrapper):
+        return "is not lowerCamelCase"
+    if wrapper in LUA_KEYWORDS:
+        return "is a Lua keyword; add an exception to naming.json"
+    return None
+
+
 def _check_wrapper_names(metadata: FlavourMetadata) -> list[str]:
     problems: list[str] = []
     for namespace in metadata.namespaces:
-        if not WRAPPER_NAME_RE.fullmatch(namespace.wrapper):
-            problems.append(f"namespace {namespace.system}: wrapper {namespace.wrapper!r} is not lowerCamelCase")
-        if namespace.alias is not None and not WRAPPER_NAME_RE.fullmatch(namespace.alias):
-            problems.append(f"namespace {namespace.wrapper}: alias {namespace.alias!r} is not lowerCamelCase")
+        reason = _wrapper_problem(namespace.wrapper)
+        if reason:
+            problems.append(f"namespace {namespace.system}: wrapper {namespace.wrapper!r} {reason}")
+        alias_reason = _wrapper_problem(namespace.alias) if namespace.alias is not None else None
+        if alias_reason:
+            problems.append(f"namespace {namespace.wrapper}: alias {namespace.alias!r} {alias_reason}")
         for function in namespace.functions:
-            if not WRAPPER_NAME_RE.fullmatch(function.wrapper):
-                problems.append(
-                    f"{namespace.wrapper}.{function.name}: wrapper {function.wrapper!r} is not lowerCamelCase"
-                )
+            reason = _wrapper_problem(function.wrapper)
+            if reason:
+                problems.append(f"{namespace.wrapper}.{function.name}: wrapper {function.wrapper!r} {reason}")
     for label, entries in (("event", metadata.events), ("enum", metadata.enums), ("constants table", metadata.constants)):
         for entry in entries:
-            if not WRAPPER_NAME_RE.fullmatch(entry.wrapper):
-                problems.append(f"{label} {entry.name}: wrapper {entry.wrapper!r} is not lowerCamelCase")
+            reason = _wrapper_problem(entry.wrapper)
+            if reason:
+                problems.append(f"{label} {entry.name}: wrapper {entry.wrapper!r} {reason}")
     return problems
 
 
@@ -58,6 +72,13 @@ def _check_uniqueness(metadata: FlavourMetadata) -> list[str]:
     namespace_names = [namespace.wrapper for namespace in metadata.namespaces]
     for wrapper in _duplicates(namespace_names):
         problems.append(f"namespace wrapper {wrapper!r} is used twice")
+    for namespace in metadata.namespaces:
+        for candidate in (namespace.wrapper, namespace.alias):
+            if candidate in RESERVED_WRAPPER_NAMES:
+                problems.append(
+                    f"namespace {namespace.system}: {candidate!r} is reserved for the flavour "
+                    "table; add a namespaceExceptions entry to naming.json"
+                )
     taken = set(namespace_names)
     for namespace in metadata.namespaces:
         if namespace.alias is not None and namespace.alias in taken:
@@ -156,6 +177,8 @@ def _check_type_references(metadata: FlavourMetadata, host_types: HostTypes) -> 
         for name in parameter.referenced_types():
             if name not in known and name not in host_types:
                 unresolved[name].append(context)
+        if parameter.mixin is not None and parameter.mixin not in known and parameter.mixin not in host_types:
+            unresolved[parameter.mixin].append(f"{context} (mixin)")
     for table in metadata.constants:
         for value in table.values:
             if value.type not in known and value.type not in host_types:
@@ -187,9 +210,8 @@ def validate_metadata(
 ) -> list[str]:
     """Return every problem with `metadata`; an empty list means it is valid.
 
-    `known_flavours` defaults to the ids in `tooling/api/flavours.json`; pass
-    a list to check against something else, or `[]` to skip the flavour check
-    is not possible: pass the ids you accept.
+    `known_flavours` is the list of flavour ids the provenance may name; it
+    defaults to the ids in `tooling/api/flavours.json`.
     """
     if known_flavours is None:
         known_flavours = flavours.load_flavours().ids()

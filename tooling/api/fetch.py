@@ -72,6 +72,15 @@ CAPTURE_FILE = "capture.json"
 #: Directory inside a capture that holds the downloaded Lua tables.
 DOCUMENTATION_DIRECTORY = "documentation"
 
+#: How long one request may take before it is a failure rather than a wait; a
+#: stalled connection must never hang a fetch forever.
+REQUEST_TIMEOUT_SECONDS = 30
+
+#: The contents API returns at most this many entries for a directory, silently.
+#: The documentation directory holds a few hundred files today; reaching the cap
+#: would mean files were dropped, so it is refused rather than trusted.
+CONTENTS_LISTING_CAP = 1000
+
 #: Suffix of the staging directory a fetch writes into before it is complete.
 STAGING_SUFFIX = ".incomplete"
 
@@ -154,7 +163,7 @@ def default_transport(url: str) -> bytes:
     """
     request = urllib.request.Request(url, headers=_request_headers())
     try:
-        with urllib.request.urlopen(request) as response:
+        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             return response.read()
     except urllib.error.HTTPError as failure:
         raise FetchError(f"GET {url} failed: HTTP {failure.code} {failure.reason}") from None
@@ -277,6 +286,11 @@ def _list_documentation_files(
     entries = _get_json(_contents_url(repository, documentation_path, commit), transport)
     if not isinstance(entries, list):
         raise FetchError(f"{documentation_path} at {commit} is not a directory listing")
+    if len(entries) >= CONTENTS_LISTING_CAP:
+        raise FetchError(
+            f"{documentation_path} at {commit} lists {len(entries)} entries, the contents API's "
+            "cap; the listing may be incomplete and the fetch must move to the git trees API"
+        )
     files = []
     for entry in entries:
         if entry.get("type") != "file" or not str(entry.get("name", "")).endswith(".lua"):
