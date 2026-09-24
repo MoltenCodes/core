@@ -258,7 +258,7 @@ describe("SignalKit logout close", function()
             local upgraded = TestEnv.ReloadPackage()
 
             assert.are.equal(SignalKit, upgraded)
-            assert.are.equal(3, rawget(state, "schema"))
+            assert.are.equal(4, rawget(state, "schema"))
             -- Revision 5 did not record which buses are addon buses.
             assert.is_false(rawget(bus, "_logoutCloser"))
             assert.are.equal(bus, upgraded:ForAddon("MyAddon"))

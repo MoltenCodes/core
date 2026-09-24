@@ -4,7 +4,10 @@
 -- plus named message buses built on the same signals.
 --
 -- A signal is an anonymous dispatch point: whoever holds the reference owns
--- its listeners, and a listener error propagates to the caller of `Fire`.
+-- its listeners, and a listener error propagates to the caller of `Fire`. A
+-- signal may carry two hooks that tell its owner when it becomes observed and
+-- when it stops being observed, counts its firings as a generation, and, as a
+-- journal, records its last firings in a preallocated ring for explicit pull.
 -- A bus is a named, package-wide map from topic to signal, so two modules or
 -- two addons that share no reference can still talk. Because a bus is shared
 -- by every addon in the session, bus listeners are isolated from each other
@@ -29,9 +32,10 @@
 --   Shared state .......... LuaCATS types, state creation and migration
 --   Receiver validation ... signal and connection receiver checks
 --   Listener storage ...... tombstones, compaction, connect and disconnect
---   Signal methods ........ New, Connect, Once, Fire, DisconnectAll
+--   Signal methods ........ New, Connect, Once, Fire, DisconnectAll, GetGeneration
 --   Listener isolation .... allocation-free protected delivery for buses
 --   Bus validation ........ receiver, name, topic and policy checks
+--   Journals .............. NewJournal, the firing ring and History
 --   Bus topics ............ topic records, declaration, subscription
 --   Bus methods ........... DeclareTopic, Publish, Subscribe, Topics, ...
 --   Bus scopes ............ owner scopes over one bus
@@ -43,15 +47,16 @@
 
 local PACKAGE_NAME = "signalKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 
 -- Schema of the private `_state` table. Revisions 1 to 3 carried no state at
 -- all; revision 4 introduced it together with named buses (schema 1),
 -- revision 5 added the `UNBOUNDED` sentinel and the package-wide limits
--- (schema 2), and revision 6 the logout watcher and the two logout fields of
--- every bus (schema 3).
-local STATE_SCHEMA = 3
+-- (schema 2), revision 6 the logout watcher and the two logout fields of
+-- every bus (schema 3), and revision 7 the journal prototype and the two
+-- journal limits (schema 4).
+local STATE_SCHEMA = 4
 
 -- Who closes an addon's bus at logout, as the bus's `_logoutCloser` records it
 -- (docs/API.md, "At logout"). A bus nobody asked for through `ForAddon`
@@ -95,12 +100,41 @@ local DEFAULT_MAX_TOPICS = 256
 -- `options.maxListeners`. Beyond it a subscription answers `nil, "full"`.
 local DEFAULT_MAX_LISTENERS = 256
 
--- Names `SetLimits` recognises, in the order `GetLimits` reads them.
-local LIMIT_NAMES = { "maxBuses" }
+-- A journal records its last firings in a ring of slot tables allocated when
+-- the journal is created, so its capacity must be a size: `UNBOUNDED` is
+-- refused, and the ceiling keeps one `NewJournal` call from allocating an
+-- unbounded number of tables at once. The capacity a call may ask for is
+-- bounded by the package-wide `maxJournalCapacity`.
+local DEFAULT_JOURNAL_CAPACITY = 128
+local DEFAULT_MAX_JOURNAL_CAPACITY = 1024
+local MAX_JOURNAL_CAPACITY_CEILING = 65536
 
--- Payload values staged in the reusable `xpcall` buffer with one multiple
--- assignment; wider payloads fall back to a `select` loop for the remainder.
-local STAGED_ASSIGNMENT_SLOTS = 8
+-- Arguments one journal firing may carry. Each slot is sized in advance for
+-- `MULTIPLE_ASSIGNMENT_SLOTS` values and grows once for a wider firing, then
+-- is reused, so `UNBOUNDED` is refused; the ceiling bounds the `select` loop
+-- that stages values past the multiple assignment, which is quadratic in the
+-- width. A wider firing is refused at the firing line.
+local DEFAULT_MAX_JOURNAL_ARGUMENTS = 8
+local MAX_JOURNAL_ARGUMENTS_CEILING = 64
+
+-- Names `SetLimits` recognises, in the order `GetLimits` reads them, with the
+-- ceiling each accepts and why each refuses `UNBOUNDED`.
+local LIMIT_NAMES = { "maxBuses", "maxJournalCapacity", "maxJournalArguments" }
+local LIMIT_CEILINGS = {
+    maxBuses = MAX_BUSES_CEILING,
+    maxJournalCapacity = MAX_JOURNAL_CAPACITY_CEILING,
+    maxJournalArguments = MAX_JOURNAL_ARGUMENTS_CEILING,
+}
+local LIMIT_UNBOUNDED_REFUSALS = {
+    maxBuses = "buses are shared by every addon and never freed",
+    maxJournalCapacity = "the ring is allocated when the journal is created",
+    maxJournalArguments = "each firing is staged into a reused slot table",
+}
+
+-- Values staged with one multiple assignment, both into the reusable `xpcall`
+-- buffer and into a journal slot; wider payloads fall back to a `select` loop
+-- for the remainder. Journal slots are sized in advance for this many values.
+local MULTIPLE_ASSIGNMENT_SLOTS = 8
 
 -- Lua 5.1 names it `unpack`; `table.unpack` is its later spelling.
 local unpackValues = rawget(table, "unpack") or unpack
@@ -145,6 +179,7 @@ local BUS_METHODS = {
     "CreateScope",
 }
 local BUS_SCOPE_METHODS = { "Subscribe", "SubscribeOnce", "DisconnectAll", "Close", "IsClosed" }
+local JOURNAL_METHODS = { "Fire", "History" }
 
 ---Whether every name in `methods` is a function field of `prototype`.
 ---@param prototype any
@@ -171,10 +206,12 @@ local function validatePublicSurface(implementation)
         and type(rawget(implementation, "REVISION")) == "number"
         and type(rawget(implementation, "Connection")) == "table"
         and type(rawget(implementation, "New")) == "function"
+        and type(rawget(implementation, "NewJournal")) == "function"
         and type(rawget(implementation, "Connect")) == "function"
         and type(rawget(implementation, "Once")) == "function"
         and type(rawget(implementation, "Fire")) == "function"
         and type(rawget(implementation, "DisconnectAll")) == "function"
+        and type(rawget(implementation, "GetGeneration")) == "function"
         and type(rawget(implementation, "Bus")) == "function"
         and type(rawget(implementation, "ForAddon")) == "function"
         and type(rawget(implementation, "CloseAddonBus")) == "function"
@@ -213,26 +250,41 @@ local function isIntegerUpTo(value, ceiling)
         and value == math.floor(value)
 end
 
+---Whether `limits` holds every package-wide limit as an integer within its
+---ceiling.
+---@param limits any
+---@return boolean
+local function validateLimits(limits)
+    if type(limits) ~= "table" then
+        return false
+    end
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        if not isIntegerUpTo(rawget(limits, name), LIMIT_CEILINGS[name]) then
+            return false
+        end
+    end
+    return true
+end
+
 ---Whether `currentState` has this revision's schema: the base fields, the
----`UNBOUNDED` sentinel and a valid set of package-wide limits.
+---`UNBOUNDED` sentinel, the logout watcher, the journal prototype and a valid
+---set of package-wide limits.
 ---@param currentState any
 ---@return boolean
 local function validateState(currentState)
-    if
-        not validateStateBase(currentState)
-        or rawget(currentState, "schema") ~= STATE_SCHEMA
-        or type(rawget(currentState, "unbounded")) ~= "table"
-        or type(rawget(currentState, "logoutWatch")) ~= "table"
-    then
-        return false
-    end
-    local limits = rawget(currentState, "limits")
-    return type(limits) == "table" and isIntegerUpTo(rawget(limits, "maxBuses"), MAX_BUSES_CEILING)
+    return validateStateBase(currentState)
+        and rawget(currentState, "schema") == STATE_SCHEMA
+        and type(rawget(currentState, "unbounded")) == "table"
+        and type(rawget(currentState, "logoutWatch")) == "table"
+        and type(rawget(currentState, "journalPrototype")) == "table"
+        and type(rawget(currentState, "journalMetatable")) == "table"
+        and validateLimits(rawget(currentState, "limits"))
 end
 
 ---Whether `implementation` carries package state of this revision's schema,
----with every bus and scope method committed and the published sentinel the
----one the state keeps.
+---with every bus, scope and journal method committed and the published
+---sentinel the one the state keeps.
 ---@param implementation table
 ---@return boolean
 local function validateCurrentState(implementation)
@@ -243,6 +295,7 @@ local function validateCurrentState(implementation)
         and type(rawget(rawget(currentState, "logoutWatch"), "close")) == "function"
         and hasMethods(rawget(currentState, "busPrototype"), BUS_METHODS)
         and hasMethods(rawget(currentState, "scopePrototype"), BUS_SCOPE_METHODS)
+        and hasMethods(rawget(currentState, "journalPrototype"), JOURNAL_METHODS)
 end
 
 local SignalKit, previousRevision, selected = bootstrapPackage(Registry, {
@@ -276,12 +329,39 @@ end
 ---@field Disconnect fun(self: SignalKit.Connection): boolean
 ---@field IsConnected fun(self: SignalKit.Connection): boolean
 
+---A hook `SignalKit:New` takes in `options.onFirst` or `options.onLast`. It
+---receives the signal and no payload: it is not a listener and `Fire` never
+---calls it. An error it raises propagates to the caller of `Connect`,
+---`Disconnect` or `DisconnectAll` that caused the transition (or of `Fire`,
+---when a `Once` listener's disconnect did).
+---@alias SignalKit.SignalHook fun(signal: SignalKit.Signal)
+
+---Options accepted by `SignalKit:New` and `SignalKit:NewJournal`.
+---@class SignalKit.SignalOptions
+---@field onFirst SignalKit.SignalHook? Runs after the live listener count goes from 0 to 1.
+---@field onLast SignalKit.SignalHook? Runs after the live listener count goes from 1 to 0.
+
 ---An independent dispatch point created by `SignalKit:New()`.
 ---@class SignalKit.Signal
 ---@field Connect fun(self: SignalKit.Signal, callback: fun(...)): SignalKit.Connection
 ---@field Once fun(self: SignalKit.Signal, callback: fun(...)): SignalKit.Connection
 ---@field Fire fun(self: SignalKit.Signal, ...: any)
 ---@field DisconnectAll fun(self: SignalKit.Signal): integer
+---@field GetGeneration fun(self: SignalKit.Signal): integer
+
+---One recorded firing of a journal: `count` arguments in `[1]` to `[count]`,
+---explicit `nil`s included, and the generation `Fire` gave that firing. The
+---table belongs to the journal's ring and is overwritten by a later firing;
+---read it at once and never keep or mutate it.
+---@class SignalKit.HistoryEntry
+---@field count integer How many arguments the firing carried.
+---@field generation integer The journal's generation after that firing.
+---@field [integer] any The arguments, from `1` to `count`.
+
+---A signal that also records its last firings, created by
+---`SignalKit:NewJournal(capacity)`.
+---@class SignalKit.Journal: SignalKit.Signal
+---@field History fun(self: SignalKit.Journal): (fun(journal: SignalKit.Journal, position: integer): integer?, SignalKit.HistoryEntry?), SignalKit.Journal, integer
 
 ---Argument policy of a declared topic: either an exact argument count, or a
 ---validator called with the published arguments that returns `true` to accept
@@ -301,9 +381,11 @@ end
 ---@field maxListeners (integer|table)? Positive integer or `SignalKit.UNBOUNDED`: live listeners one topic may hold. Default `256`.
 
 ---The package-wide limits. `SetLimits` accepts any subset; `GetLimits`
----returns a fresh copy.
+---returns a fresh copy. None accepts `UNBOUNDED`.
 ---@class SignalKit.Limits
----@field maxBuses integer Named buses the session may hold; default `64`, at most `1024`. `UNBOUNDED` is refused.
+---@field maxBuses integer Named buses the session may hold; default `64`, at most `1024`.
+---@field maxJournalCapacity integer Largest `capacity` `NewJournal` accepts; default `1024`, at most `65536`.
+---@field maxJournalArguments integer Arguments one journal firing may record; default `8`, at most `64`.
 
 ---A named message bus shared by everything in the session that asks for its
 ---name. Obtained from `SignalKit:Bus(name)` or `SignalKit:ForAddon(addonName)`.
@@ -336,7 +418,8 @@ end
 ---@field API integer SignalKit API generation.
 ---@field REVISION integer SignalKit implementation revision.
 ---@field Connection SignalKit.Connection Shared method prototype for connection handles.
----@field New fun(self: SignalKit?): SignalKit.Signal
+---@field New fun(self: SignalKit?, options: SignalKit.SignalOptions?): SignalKit.Signal
+---@field NewJournal fun(self: SignalKit, capacity: integer?, options: SignalKit.SignalOptions?): SignalKit.Journal
 ---@field Bus fun(self: SignalKit, name: string, options: SignalKit.BusOptions?): SignalKit.Bus|nil, "full"?
 ---@field ForAddon fun(self: SignalKit, addonName: string): SignalKit.Bus|nil, "full"?
 ---@field CloseAddonBus fun(self: SignalKit, addonName: string): boolean
@@ -347,11 +430,25 @@ end
 local Connection = rawget(SignalKit, "Connection")
 local state = rawget(SignalKit, "_state")
 
+---Build the journal method table and the metatable journal instances carry.
+---
+---A journal's own methods (`Fire`, `History`) shadow the signal methods it
+---inherits from the facade, so the prototype falls back to `SignalKit`, whose
+---identity Registry preserves. Both tables live in the state so that journals
+---survive an upgrade and gain the newer methods when the prototype is refilled.
+---@return table journalPrototype
+---@return table journalMetatable
+local function newJournalTables()
+    local journalPrototype = setmetatable({}, { __index = SignalKit })
+    return journalPrototype, { __index = journalPrototype }
+end
+
 ---Build empty package state of the current schema.
 ---@return table
 local function newState()
     local busPrototype = {}
     local scopePrototype = {}
+    local journalPrototype, journalMetatable = newJournalTables()
     return {
         schema = STATE_SCHEMA,
         -- Bus name to bus, and how many there are, for the `maxBuses` bound.
@@ -364,6 +461,8 @@ local function newState()
         busMetatable = { __index = busPrototype },
         scopePrototype = scopePrototype,
         scopeMetatable = { __index = scopePrototype },
+        journalPrototype = journalPrototype,
+        journalMetatable = journalMetatable,
         -- Delivery closures read the isolation function from here, so a newer
         -- copy replaces it for subscriptions that already exist.
         isolate = false,
@@ -373,7 +472,11 @@ local function newState()
         unbounded = {},
         -- The package-wide limits `SetLimits` writes; a newer copy inherits
         -- what a consumer set.
-        limits = { maxBuses = DEFAULT_MAX_BUSES },
+        limits = {
+            maxBuses = DEFAULT_MAX_BUSES,
+            maxJournalCapacity = DEFAULT_MAX_JOURNAL_CAPACITY,
+            maxJournalArguments = DEFAULT_MAX_JOURNAL_ARGUMENTS,
+        },
         -- The package-level `PLAYER_LOGOUT` watcher (see "Logout close"): the
         -- EventKit scope that owns it, the connection once made, the
         -- trampoline handed to EventKit, and the function it calls, which a
@@ -417,6 +520,26 @@ local function upgradeSchemaTwo(oldState)
             rawset(bus, "_shutdownSubscription", false)
         end
     end
+    rawset(oldState, "schema", 3)
+end
+
+---Bring schema-3 state (revision 6) to schema 4 in place: add the journal
+---prototype and metatable, and the two journal limits with their defaults.
+---Signals revision 6 created carry no generation and no hooks; every read of
+---those fields treats their absence as zero and none, so they need no visit.
+---Schema 3 always carried a `limits` table; a state without one is corrupted
+---and refused here rather than indexed.
+---@param oldState table
+local function upgradeSchemaThree(oldState)
+    local limits = rawget(oldState, "limits")
+    if type(limits) ~= "table" then
+        error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
+    end
+    local journalPrototype, journalMetatable = newJournalTables()
+    rawset(oldState, "journalPrototype", journalPrototype)
+    rawset(oldState, "journalMetatable", journalMetatable)
+    rawset(limits, "maxJournalCapacity", DEFAULT_MAX_JOURNAL_CAPACITY)
+    rawset(limits, "maxJournalArguments", DEFAULT_MAX_JOURNAL_ARGUMENTS)
     rawset(oldState, "schema", STATE_SCHEMA)
 end
 
@@ -446,6 +569,9 @@ else
     if rawget(state, "schema") == 2 then
         upgradeSchemaTwo(state)
     end
+    if rawget(state, "schema") == 3 then
+        upgradeSchemaThree(state)
+    end
     if not validateState(state) then
         error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
     end
@@ -457,6 +583,8 @@ local BUS_PROTOTYPE = rawget(state, "busPrototype")
 local BUS_METATABLE = rawget(state, "busMetatable")
 local SCOPE_PROTOTYPE = rawget(state, "scopePrototype")
 local SCOPE_METATABLE = rawget(state, "scopeMetatable")
+local JOURNAL_PROTOTYPE = rawget(state, "journalPrototype")
+local JOURNAL_METATABLE = rawget(state, "journalMetatable")
 local UNBOUNDED = rawget(state, "unbounded")
 local sharedLimits = rawget(state, "limits")
 local logoutWatch = rawget(state, "logoutWatch")
@@ -481,6 +609,14 @@ local FIRE_RECEIVER_MESSAGE = "SignalKit:Fire" .. RECEIVER_HINT .. "Fire(...)"
 local DISCONNECT_ALL_RECEIVER_MESSAGE = "SignalKit:DisconnectAll"
     .. RECEIVER_HINT
     .. "DisconnectAll()"
+local GET_GENERATION_RECEIVER_MESSAGE = "SignalKit:GetGeneration"
+    .. RECEIVER_HINT
+    .. "GetGeneration()"
+local JOURNAL_RECEIVER_HINT = " must be called on a journal; use journal:"
+local JOURNAL_FIRE_RECEIVER_MESSAGE = "SignalKit.Journal:Fire"
+    .. JOURNAL_RECEIVER_HINT
+    .. "Fire(...)"
+local HISTORY_RECEIVER_MESSAGE = "SignalKit.Journal:History" .. JOURNAL_RECEIVER_HINT .. "History()"
 local DISCONNECT_RECEIVER_MESSAGE = "SignalKit:Disconnect"
     .. CONNECTION_RECEIVER_HINT
     .. "Disconnect()"
@@ -526,6 +662,13 @@ end
 -- therefore keeps its own fixed boundary, and because connection objects are
 -- shared between the old and new arrays the disconnected flag stays visible in
 -- both.
+--
+-- The live listener count is the array length minus the tombstones, both of
+-- which connect and disconnect already maintain, so the `onFirst` and `onLast`
+-- hooks cost a signal without them one truthiness test per connect and
+-- disconnect. A hook runs after its transition is committed and after the
+-- array is in its final shape, so a hook that connects or disconnects inside
+-- itself sees a consistent signal and causes, at most, the opposite hook.
 
 ---Returns the tombstone count of `signal`.
 ---
@@ -603,11 +746,20 @@ local function disconnectConnection(connection)
     releaseConnection(connection)
 
     local listeners = rawget(signal, "_listeners")
+    local total = #listeners
     local tombstones = tombstoneCount(signal) + 1
     rawset(signal, "_tombstones", tombstones)
 
-    if shouldCompact(tombstones, #listeners) then
+    if shouldCompact(tombstones, total) then
         compact(signal, listeners)
+    end
+
+    -- `total - tombstones` is the live count whether or not compaction ran.
+    -- A signal without hooks, or one created before hooks existed, stores
+    -- `false` or nothing here and pays only this test.
+    local onLast = rawget(signal, "_onLast")
+    if onLast and total - tombstones == 0 then
+        onLast(signal)
     end
 
     return true
@@ -641,20 +793,96 @@ local function connect(signal, callback, once, methodName, receiverMessage, busC
         _busScope = busScope,
     }, CONNECTION_METATABLE)
 
-    rawset(listeners, #listeners + 1, connection)
+    local nextIndex = #listeners + 1
+    rawset(listeners, nextIndex, connection)
+
+    -- The listener is in place before the hook runs, so a hook that connects
+    -- again sees two live listeners and one that disconnects everything sees
+    -- the 1→0 transition. The subtraction is paid only when a hook exists.
+    local onFirst = rawget(signal, "_onFirst")
+    if onFirst and nextIndex - tombstoneCount(signal) == 1 then
+        onFirst(signal)
+    end
 
     return connection
 end
 
 -- Signal methods ---------------------------------------------------------------
 
----Creates an independent signal instance.
----@return SignalKit.Signal signal
-local function newSignal()
-    return setmetatable({
+---Validate a `SignalKit:New` or `SignalKit:NewJournal` options table and
+---return its two hooks, `false` for one the caller did not state.
+---@param options any
+---@param label string qualified public method name
+---@param level integer stack level the failures are reported at
+---@return SignalKit.SignalHook|false onFirst
+---@return SignalKit.SignalHook|false onLast
+local function readSignalOptions(options, label, level)
+    if options == nil then
+        return false, false
+    end
+    if type(options) ~= "table" then
+        error(label .. " options must be a table or nil", level)
+    end
+
+    local onFirst = rawget(options, "onFirst")
+    if onFirst == nil then
+        onFirst = false
+    elseif type(onFirst) ~= "function" then
+        error(label .. " options.onFirst must be a function or nil", level)
+    end
+
+    local onLast = rawget(options, "onLast")
+    if onLast == nil then
+        onLast = false
+    elseif type(onLast) ~= "function" then
+        error(label .. " options.onLast must be a function or nil", level)
+    end
+
+    return onFirst, onLast
+end
+
+---Whether `receiver` is an options table handed to `SignalKit.New(options)`
+---with a dot, where it arrives as the receiver and the options would be
+---silently ignored. A signal instance calling `signal:New()` carries its hooks
+---under private names, so it never matches.
+---@param receiver any
+---@return boolean
+local function isMisplacedOptionsTable(receiver)
+    return type(receiver) == "table"
+        and receiver ~= SignalKit
+        and (rawget(receiver, "onFirst") ~= nil or rawget(receiver, "onLast") ~= nil)
+end
+
+---Build a signal table with the shared listener layout.
+---@param onFirst SignalKit.SignalHook|false
+---@param onLast SignalKit.SignalHook|false
+---@return table
+local function newSignalTable(onFirst, onLast)
+    return {
         _listeners = {},
         _tombstones = 0,
-    }, SIGNAL_METATABLE)
+        -- Incremented by every `Fire`; a Lua 5.1 double counts exactly to 2^53.
+        _generation = 0,
+        _onFirst = onFirst,
+        _onLast = onLast,
+    }
+end
+
+---Creates an independent signal instance, with the `onFirst` and `onLast`
+---hooks `options` names.
+---
+---`SignalKit.New()` without options is still accepted; options need the colon
+---form, and an options table arriving as the receiver is refused rather than
+---ignored.
+---@param self SignalKit?
+---@param options SignalKit.SignalOptions?
+---@return SignalKit.Signal signal
+local function newSignal(self, options)
+    if options == nil and isMisplacedOptionsTable(self) then
+        error("SignalKit:New options must be passed with a colon call: SignalKit:New(options)", 2)
+    end
+    local onFirst, onLast = readSignalOptions(options, "SignalKit:New", 3)
+    return setmetatable(newSignalTable(onFirst, onLast), SIGNAL_METATABLE)
 end
 
 ---Connects `callback` for every future dispatch.
@@ -692,6 +920,11 @@ local function fire(self, ...)
     if type(listeners) ~= "table" then
         error(FIRE_RECEIVER_MESSAGE, 2)
     end
+
+    -- The generation moves before any listener runs, so a listener reading it
+    -- sees the firing it is being delivered. A signal created before revision
+    -- 7 has no counter; `or 0` is its in-place upgrade path.
+    rawset(self, "_generation", (rawget(self, "_generation") or 0) + 1)
 
     local count = #listeners
 
@@ -732,6 +965,15 @@ local function disconnectEveryListener(signal, listeners)
         end
     end
 
+    -- One 1→0 transition however many listeners went, so `onLast` runs once,
+    -- after the signal is empty and ready for a hook that connects again.
+    if disconnected > 0 then
+        local onLast = rawget(signal, "_onLast")
+        if onLast then
+            onLast(signal)
+        end
+    end
+
     return disconnected
 end
 
@@ -745,6 +987,18 @@ local function disconnectAll(self)
     end
 
     return disconnectEveryListener(self, listeners)
+end
+
+---Returns how many times this signal has fired: `0` for a new signal, and for
+---a signal created before revision 7 until its next `Fire`.
+---@param self SignalKit.Signal
+---@return integer generation
+local function getGeneration(self)
+    if listenersOf(self) == nil then
+        error(GET_GENERATION_RECEIVER_MESSAGE, 2)
+    end
+
+    return rawget(self, "_generation") or 0
 end
 
 ---Disconnects this connection.
@@ -846,7 +1100,7 @@ local function stagePayload(count, ...)
     local payload = stagedPayload
     payload[1], payload[2], payload[3], payload[4], payload[5], payload[6], payload[7], payload[8] =
         ...
-    for index = STAGED_ASSIGNMENT_SLOTS + 1, count do
+    for index = MULTIPLE_ASSIGNMENT_SLOTS + 1, count do
         payload[index] = select(index, ...)
     end
 end
@@ -1012,6 +1266,209 @@ local function describeRefusal(reason, fallback)
     return fallback
 end
 
+-- Journals ---------------------------------------------------------------------
+--
+-- A journal is a signal that also keeps its last `capacity` firings in a ring
+-- of slot tables, allocated when the journal is created and reused for ever
+-- after: a firing overwrites the oldest slot in place. Nothing is replayed to
+-- a listener that connects; a consumer that wants the past pulls it through
+-- `History()`, which walks the ring oldest to newest through one shared,
+-- stateless iterator function, so the walk allocates nothing either.
+--
+-- Each slot is sized in advance for `MULTIPLE_ASSIGNMENT_SLOTS` values. A wider
+-- firing grows its slot once; after every slot has seen the widest firing the
+-- journal allocates nothing per `Fire`. The width is bounded by the
+-- package-wide `maxJournalArguments` and refused at the firing line with a
+-- message that names the two counts and never a value, which may be secret.
+-- The values themselves are only stored and handed back, never compared, so
+-- a secret value passes through the ring untouched.
+
+---Build one empty slot sized in advance. The eight `nil` items size the array part
+---so the first firing into the slot does not grow it, and the two named
+---fields have to be in the same constructor: adding them afterwards would
+---rehash a table whose array holds only `nil`s and shrink it back to nothing.
+---@return SignalKit.HistoryEntry
+local function newJournalSlot()
+    -- The entry is documented as this exact mixed shape: `count`, `generation` and the arguments at `1` to `count`.
+    -- selene: allow(mixed_table)
+    return { nil, nil, nil, nil, nil, nil, nil, nil, count = 0, generation = 0 }
+end
+
+---Build the ring of `capacity` slots.
+---@param capacity integer
+---@return SignalKit.HistoryEntry[]
+local function newJournalSlots(capacity)
+    local slots = {}
+    for index = 1, capacity do
+        slots[index] = newJournalSlot()
+    end
+    return slots
+end
+
+---Validate a `NewJournal` capacity: `nil` for the default, otherwise an
+---integer from 1 to the package-wide `maxJournalCapacity`. The default is
+---checked too, so a session that lowered the limit below it is told to state
+---a capacity rather than handed a ring over the limit.
+---@param capacity any
+---@param level integer stack level the failures are reported at
+---@return integer
+local function readJournalCapacity(capacity, level)
+    local maxCapacity = rawget(sharedLimits, "maxJournalCapacity")
+    if capacity == nil then
+        if DEFAULT_JOURNAL_CAPACITY > maxCapacity then
+            error(
+                "SignalKit:NewJournal default capacity "
+                    .. DEFAULT_JOURNAL_CAPACITY
+                    .. " exceeds maxJournalCapacity "
+                    .. maxCapacity
+                    .. "; pass a capacity",
+                level
+            )
+        end
+        return DEFAULT_JOURNAL_CAPACITY
+    end
+    if capacity == UNBOUNDED then
+        error(
+            "SignalKit:NewJournal capacity cannot be SignalKit.UNBOUNDED: "
+                .. LIMIT_UNBOUNDED_REFUSALS.maxJournalCapacity,
+            level
+        )
+    end
+    if not isIntegerUpTo(capacity, maxCapacity) then
+        error(
+            "SignalKit:NewJournal capacity must be an integer from 1 to "
+                .. maxCapacity
+                .. " (SignalKit:SetLimits maxJournalCapacity)",
+            level
+        )
+    end
+    return capacity
+end
+
+---Store `...` into `slot`, clearing what a wider earlier firing left behind.
+---
+---The multiple assignment writes the first eight positions, `nil` included,
+---so only positions past eight can hold stale values.
+---@param slot SignalKit.HistoryEntry
+---@param count integer
+---@param ... any
+local function recordArguments(slot, count, ...)
+    local previousCount = slot.count
+    slot[1], slot[2], slot[3], slot[4], slot[5], slot[6], slot[7], slot[8] = ...
+    for index = MULTIPLE_ASSIGNMENT_SLOTS + 1, count do
+        slot[index] = select(index, ...)
+    end
+    local clearFrom = count
+    if clearFrom < MULTIPLE_ASSIGNMENT_SLOTS then
+        clearFrom = MULTIPLE_ASSIGNMENT_SLOTS
+    end
+    for index = clearFrom + 1, previousCount do
+        slot[index] = nil
+    end
+    slot.count = count
+end
+
+---Record `...` as the newest entry, then dispatch it exactly as `signal:Fire`.
+---
+---The entry is recorded before any listener runs, so a listener reading
+---`History` during the dispatch sees the firing being delivered as the newest
+---entry, and a listener error leaves the firing recorded.
+---@param self SignalKit.Journal
+---@param ... any at most `maxJournalArguments` values (8 by default)
+local function journalFire(self, ...)
+    if type(self) ~= "table" then
+        error(JOURNAL_FIRE_RECEIVER_MESSAGE, 2)
+    end
+    local slots = rawget(self, "_journalSlots")
+    if type(slots) ~= "table" then
+        error(JOURNAL_FIRE_RECEIVER_MESSAGE, 2)
+    end
+
+    local count = select("#", ...)
+    local maxArguments = rawget(sharedLimits, "maxJournalArguments")
+    if count > maxArguments then
+        error(
+            "SignalKit.Journal:Fire records at most "
+                .. maxArguments
+                .. " arguments per firing; received "
+                .. count,
+            2
+        )
+    end
+
+    local head = rawget(self, "_journalHead")
+    local slot = slots[head]
+    recordArguments(slot, count, ...)
+    -- `fire` moves the generation to exactly this value before dispatching.
+    slot.generation = (rawget(self, "_generation") or 0) + 1
+
+    local capacity = rawget(self, "_journalCapacity")
+    if head == capacity then
+        rawset(self, "_journalHead", 1)
+    else
+        rawset(self, "_journalHead", head + 1)
+    end
+    local recorded = rawget(self, "_journalRecorded")
+    if recorded < capacity then
+        rawset(self, "_journalRecorded", recorded + 1)
+    end
+
+    fire(self, ...)
+end
+
+---The stateless iterator `History` returns. `position` counts the entries
+---already returned, so the next one is the oldest recorded entry moved
+---forward by `position`; the oldest sits `recorded` slots behind the write
+---position, wrapping around the ring.
+---@param journal SignalKit.Journal
+---@param position integer
+---@return integer|nil nextPosition
+---@return SignalKit.HistoryEntry|nil entry
+local function nextHistoryEntry(journal, position)
+    local recorded = rawget(journal, "_journalRecorded")
+    if position >= recorded then
+        return nil
+    end
+    local index = rawget(journal, "_journalHead") - recorded + position
+    if index < 1 then
+        index = index + rawget(journal, "_journalCapacity")
+    end
+    return position + 1, rawget(journal, "_journalSlots")[index]
+end
+
+---Returns what a generic `for` needs to walk the recorded firings, oldest to
+---newest: `for position, entry in journal:History() do`. The iterator
+---function is shared, so the call allocates nothing.
+---@param self SignalKit.Journal
+---@return fun(journal: SignalKit.Journal, position: integer): integer?, SignalKit.HistoryEntry? iterator
+---@return SignalKit.Journal journal
+---@return integer start
+local function journalHistory(self)
+    if type(self) ~= "table" or type(rawget(self, "_journalSlots")) ~= "table" then
+        error(HISTORY_RECEIVER_MESSAGE, 2)
+    end
+    return nextHistoryEntry, self, 0
+end
+
+---Creates a journal: a signal that also records its last `capacity` firings.
+---@param self SignalKit
+---@param capacity integer? `1` to `maxJournalCapacity`; default `128`.
+---@param options SignalKit.SignalOptions?
+---@return SignalKit.Journal journal
+local function facadeNewJournal(self, capacity, options)
+    validateFacade(self, "SignalKit:NewJournal", 3)
+    local ringCapacity = readJournalCapacity(capacity, 3)
+    local onFirst, onLast = readSignalOptions(options, "SignalKit:NewJournal", 3)
+
+    local journal = newSignalTable(onFirst, onLast)
+    rawset(journal, "_journalCapacity", ringCapacity)
+    rawset(journal, "_journalSlots", newJournalSlots(ringCapacity))
+    -- The slot the next firing writes, and how many slots hold a firing.
+    rawset(journal, "_journalHead", 1)
+    rawset(journal, "_journalRecorded", 0)
+    return setmetatable(journal, JOURNAL_METATABLE)
+end
+
 -- Bus topics -------------------------------------------------------------------
 
 ---Return the record of `topic` on `bus`, creating an undeclared one on demand.
@@ -1061,7 +1518,9 @@ local function subscribe(bus, label, level, topic, callback, once, scope)
 
     local signal = rawget(record, "signal")
     if signal == false then
-        signal = newSignal()
+        -- A topic signal carries no hooks: the bus, not the topic, is what a
+        -- consumer observes.
+        signal = setmetatable(newSignalTable(false, false), SIGNAL_METATABLE)
         rawset(record, "signal", signal)
     end
 
@@ -1894,10 +2353,39 @@ local function facadeCloseAddonBus(self, addonName)
     return true
 end
 
+---Validate one `SetLimits` entry: a recognised name, an integer within the
+---limit's ceiling, never `UNBOUNDED` (each limit names its reason).
+---@param key any
+---@param value any
+---@param level integer stack level the failures are reported at
+local function validateLimitEntry(key, value, level)
+    local ceiling = LIMIT_CEILINGS[key]
+    if ceiling == nil then
+        error("SignalKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+    end
+    if value == UNBOUNDED then
+        error(
+            "SignalKit:SetLimits limits."
+                .. key
+                .. " cannot be SignalKit.UNBOUNDED: "
+                .. LIMIT_UNBOUNDED_REFUSALS[key],
+            level
+        )
+    end
+    if not isIntegerUpTo(value, ceiling) then
+        error(
+            "SignalKit:SetLimits limits." .. key .. " must be an integer from 1 to " .. ceiling,
+            level
+        )
+    end
+end
+
 ---Validate a whole `SetLimits` table before any of it is applied.
 ---
----`maxBuses` guards a session-wide registry whose buses are never freed, so it
----refuses `UNBOUNDED` and accepts a larger integer only up to its ceiling.
+---Every limit here guards memory that is either shared by the session
+---(`maxBuses`) or allocated in one go (`maxJournalCapacity`,
+---`maxJournalArguments`), so each refuses `UNBOUNDED` and accepts a larger
+---integer only up to its ceiling.
 ---@param limits any
 ---@param level integer stack level the failures are reported at
 local function validateLimitUpdate(limits, level)
@@ -1906,34 +2394,15 @@ local function validateLimitUpdate(limits, level)
     end
     local key = next(limits)
     while key ~= nil do
-        if key ~= "maxBuses" then
-            error(
-                "SignalKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
-                level
-            )
-        end
-        local value = rawget(limits, key)
-        if value == UNBOUNDED then
-            error(
-                "SignalKit:SetLimits limits.maxBuses cannot be SignalKit.UNBOUNDED:"
-                    .. " buses are shared by every addon and never freed",
-                level
-            )
-        end
-        if not isIntegerUpTo(value, MAX_BUSES_CEILING) then
-            error(
-                "SignalKit:SetLimits limits.maxBuses must be an integer from 1 to "
-                    .. MAX_BUSES_CEILING,
-                level
-            )
-        end
+        validateLimitEntry(key, rawget(limits, key), level + 1)
         key = next(limits, key)
     end
 end
 
 ---Change any subset of the package-wide limits. The limits are shared by every
----consumer in the session. Lowering one never closes a bus; further buses are
----refused until the count is below it again.
+---consumer in the session. Lowering one never closes a bus or shrinks a
+---journal; further buses, and journals asking for more than the new bound, are
+---refused until the value allows them again.
 ---@param self SignalKit
 ---@param limits table
 local function facadeSetLimits(self, limits)
@@ -1953,7 +2422,12 @@ end
 ---@return SignalKit.Limits
 local function facadeGetLimits(self)
     validateFacade(self, "SignalKit:GetLimits", 3)
-    return { maxBuses = rawget(sharedLimits, "maxBuses") }
+    local copy = {}
+    for index = 1, #LIMIT_NAMES do
+        local name = LIMIT_NAMES[index]
+        copy[name] = rawget(sharedLimits, name)
+    end
+    return copy
 end
 
 -- Commit -----------------------------------------------------------------------
@@ -1980,16 +2454,21 @@ rawset(SCOPE_PROTOTYPE, "DisconnectAll", scopeDisconnectAll)
 rawset(SCOPE_PROTOTYPE, "Close", scopeClose)
 rawset(SCOPE_PROTOTYPE, "IsClosed", scopeIsClosed)
 
+rawset(JOURNAL_PROTOTYPE, "Fire", journalFire)
+rawset(JOURNAL_PROTOTYPE, "History", journalHistory)
+
 rawset(state, "isolate", isolate)
 rawset(logoutWatch, "close", LogoutClose.closeAtLogout)
 
 rawset(SignalKit, "API", API_GENERATION)
 rawset(SignalKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(SignalKit, "New", newSignal)
+rawset(SignalKit, "NewJournal", facadeNewJournal)
 rawset(SignalKit, "Connect", connectListener)
 rawset(SignalKit, "Once", connectOnce)
 rawset(SignalKit, "Fire", fire)
 rawset(SignalKit, "DisconnectAll", disconnectAll)
+rawset(SignalKit, "GetGeneration", getGeneration)
 rawset(SignalKit, "Bus", facadeBus)
 rawset(SignalKit, "ForAddon", facadeForAddon)
 rawset(SignalKit, "CloseAddonBus", facadeCloseAddonBus)

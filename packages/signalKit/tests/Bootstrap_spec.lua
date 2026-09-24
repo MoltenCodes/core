@@ -7,6 +7,9 @@ local function expectErrorContaining(expected, callback)
     assert.is_not_nil(string.find(tostring(message), expected, 1, true))
 end
 
+---The package-wide limits a fresh session starts with.
+local DEFAULT_LIMITS = { maxBuses = 64, maxJournalCapacity = 1024, maxJournalArguments = 8 }
+
 describe("SignalKit package bootstrap", function()
     after_each(TestEnv.Reset)
 
@@ -39,14 +42,14 @@ describe("SignalKit package bootstrap", function()
         end)
     end)
 
-    it("registers itself as SignalKit API 1 revision 6", function()
+    it("registers itself as SignalKit API 1 revision 7", function()
         local SignalKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("signalKit", 1)
 
         assert.are.equal(SignalKit, selected)
-        assert.are.equal(6, revision)
+        assert.are.equal(7, revision)
         assert.are.equal(1, SignalKit.API)
-        assert.are.equal(6, SignalKit.REVISION)
+        assert.are.equal(7, SignalKit.REVISION)
     end)
 
     it("reuses the same package facade on duplicate embedding", function()
@@ -119,6 +122,8 @@ describe("SignalKit package bootstrap", function()
         rawset(SignalKit, "UNBOUNDED", nil)
         rawset(SignalKit, "SetLimits", nil)
         rawset(SignalKit, "GetLimits", nil)
+        rawset(SignalKit, "NewJournal", nil)
+        rawset(SignalKit, "GetGeneration", nil)
         local signal = SignalKit:New()
         local calls = 0
         signal:Connect(function()
@@ -135,7 +140,7 @@ describe("SignalKit package bootstrap", function()
         bus:Publish("Topic", "delivered")
 
         assert.are.equal(SignalKit, upgraded)
-        assert.are.equal(6, upgraded.REVISION)
+        assert.are.equal(7, upgraded.REVISION)
         assert.are.equal(1, calls)
         assert.are.equal("delivered", received)
     end)
@@ -161,15 +166,17 @@ describe("SignalKit package bootstrap", function()
         rawset(SignalKit, "UNBOUNDED", nil)
         rawset(SignalKit, "SetLimits", nil)
         rawset(SignalKit, "GetLimits", nil)
+        rawset(SignalKit, "NewJournal", nil)
+        rawset(SignalKit, "GetGeneration", nil)
 
         local upgraded = TestEnv.ReloadPackage()
 
         assert.are.equal(SignalKit, upgraded)
-        assert.are.equal(6, upgraded.REVISION)
-        assert.are.equal(3, rawget(state, "schema"))
+        assert.are.equal(7, upgraded.REVISION)
+        assert.are.equal(4, rawget(state, "schema"))
         assert.are.equal("table", type(upgraded.UNBOUNDED))
         assert.are.equal(rawget(state, "unbounded"), upgraded.UNBOUNDED)
-        assert.are.same({ maxBuses = 64 }, upgraded:GetLimits())
+        assert.are.same(DEFAULT_LIMITS, upgraded:GetLimits())
         for index = 1, 256 do
             assert.is_true((bus:DeclareTopic("Topic" .. index)))
         end
@@ -187,11 +194,14 @@ describe("SignalKit package bootstrap", function()
         SignalKit:SetLimits({ maxBuses = 200 })
         local bus = SignalKit:Bus("Opened", { maxTopics = sentinel, maxListeners = 2 })
 
-        local upgraded = TestEnv.LoadRevision(7)
+        local upgraded = TestEnv.LoadRevision(8)
 
         assert.are.equal(SignalKit, upgraded)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
-        assert.are.same({ maxBuses = 200 }, upgraded:GetLimits())
+        assert.are.same(
+            { maxBuses = 200, maxJournalCapacity = 1024, maxJournalArguments = 8 },
+            upgraded:GetLimits()
+        )
         assert.are.equal(bus, upgraded:Bus("Opened", { maxTopics = sentinel, maxListeners = 2 }))
         for index = 1, 300 do
             assert.is_true((bus:DeclareTopic("Topic" .. index)))
@@ -232,11 +242,11 @@ describe("SignalKit package bootstrap", function()
             received[#received + 1] = value
         end)
 
-        local upgraded = TestEnv.LoadRevision(7)
+        local upgraded = TestEnv.LoadRevision(8)
         bus:Publish("Topic", "after upgrade")
 
         assert.are.equal(SignalKit, upgraded)
-        assert.are.equal(7, upgraded.REVISION)
+        assert.are.equal(8, upgraded.REVISION)
         assert.are.equal(bus, upgraded:Bus("Carried"))
         assert.are.same({ "Topic" }, bus:Topics())
         assert.are.same({ "after upgrade" }, received)
@@ -245,6 +255,118 @@ describe("SignalKit package bootstrap", function()
         end)
         assert.are.equal(1, scope:DisconnectAll())
         assert.is_false(connection:IsConnected())
+    end)
+
+    it("upgrades revision-6 state in place: journal prototype, limits, generation", function()
+        TestEnv.Reset()
+        require("Registry")
+        local SignalKit = TestEnv.LoadRevision(6)
+        local signal = SignalKit:New()
+        local calls = 0
+        local connection = signal:Connect(function()
+            calls = calls + 1
+        end)
+        -- Reduce the state, the facade and the signal to the shape revision 6
+        -- left behind: no journal tables, no journal limits, no generation and
+        -- no hook fields.
+        local state = rawget(SignalKit, "_state")
+        rawset(state, "schema", 3)
+        rawset(state, "journalPrototype", nil)
+        rawset(state, "journalMetatable", nil)
+        rawset(rawget(state, "limits"), "maxJournalCapacity", nil)
+        rawset(rawget(state, "limits"), "maxJournalArguments", nil)
+        rawset(SignalKit, "NewJournal", nil)
+        rawset(SignalKit, "GetGeneration", nil)
+        rawset(signal, "_generation", nil)
+        rawset(signal, "_onFirst", nil)
+        rawset(signal, "_onLast", nil)
+
+        local upgraded = TestEnv.ReloadPackage()
+
+        assert.are.equal(SignalKit, upgraded)
+        assert.are.equal(7, upgraded.REVISION)
+        assert.are.equal(4, rawget(state, "schema"))
+        assert.are.same(DEFAULT_LIMITS, upgraded:GetLimits())
+        -- The older signal reports generation 0 until it fires, and connects
+        -- and disconnects without hooks.
+        assert.are.equal(0, signal:GetGeneration())
+        signal:Fire()
+        assert.are.equal(1, signal:GetGeneration())
+        assert.are.equal(1, calls)
+        assert.is_true(connection:Disconnect())
+        assert.is_not_nil(signal:Connect(function() end))
+        assert.are.equal(1, signal:DisconnectAll())
+        -- Journals can be created against the upgraded state.
+        local journal = upgraded:NewJournal(2)
+        journal:Fire("recorded")
+        local entries = 0
+        for _, entry in journal:History() do
+            entries = entries + 1
+            assert.are.equal("recorded", entry[1])
+        end
+        assert.are.equal(1, entries)
+    end)
+
+    it("carries journals, their history and their generation into a newer revision", function()
+        local SignalKit = TestEnv.NewPackage()
+        SignalKit:SetLimits({ maxJournalCapacity = 4, maxJournalArguments = 3 })
+        local journal = SignalKit:NewJournal(2)
+        local received = {}
+        journal:Connect(function(value)
+            received[#received + 1] = value
+        end)
+        journal:Fire("before")
+
+        local upgraded = TestEnv.LoadRevision(8)
+        journal:Fire("after")
+
+        assert.are.equal(SignalKit, upgraded)
+        assert.are.equal(8, upgraded.REVISION)
+        assert.are.same(
+            { maxBuses = 64, maxJournalCapacity = 4, maxJournalArguments = 3 },
+            upgraded:GetLimits()
+        )
+        assert.are.same({ "before", "after" }, received)
+        assert.are.equal(2, journal:GetGeneration())
+        local values = {}
+        for _, entry in journal:History() do
+            values[#values + 1] = entry[1]
+        end
+        assert.are.same({ "before", "after" }, values)
+        -- The upgraded copy refilled the prototype the journal resolves through.
+        assert.are.equal(
+            rawget(rawget(rawget(SignalKit, "_state"), "journalPrototype"), "History"),
+            journal.History
+        )
+        assert.has_error(function()
+            journal:Fire(1, 2, 3, 4)
+        end)
+    end)
+
+    it("rejects schema-3 state that carries no limits table instead of indexing it", function()
+        TestEnv.Reset()
+        require("Registry")
+        local SignalKit = TestEnv.LoadRevision(6)
+        local state = rawget(SignalKit, "_state")
+        rawset(state, "schema", 3)
+        rawset(state, "journalPrototype", nil)
+        rawset(state, "journalMetatable", nil)
+        rawset(state, "limits", nil)
+        rawset(SignalKit, "NewJournal", nil)
+        rawset(SignalKit, "GetGeneration", nil)
+
+        expectErrorContaining("corrupted or incomplete", function()
+            TestEnv.ReloadPackage()
+        end)
+    end)
+
+    it("rejects a same-revision facade whose journal prototype is incomplete", function()
+        local SignalKit = TestEnv.NewPackage()
+        rawset(rawget(SignalKit, "_state"), "journalPrototype", {})
+
+        expectErrorContaining("corrupted or incomplete", function()
+            TestEnv.ReloadPackage()
+        end)
     end)
 
     it("rejects a same-revision facade whose bus state is incomplete", function()

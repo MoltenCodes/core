@@ -20,6 +20,37 @@ SignalKit centralizes those semantics:
 - calling a signal or connection method without its receiver is reported as a
   SignalKit error at the calling line.
 
+## Observed sources, generations and journals
+
+Three small additions cover what an observer primitive is usually wrapped in:
+
+- `SignalKit:New({ onFirst = ..., onLast = ... })` runs `onFirst` when the
+  live listener count goes from 0 to 1 and `onLast` when it goes from 1 to 0,
+  so a source (an event registration, a ticker) can be active only while
+  somebody listens. A signal without hooks pays one truthiness test per
+  connect and disconnect; hooks hold under re-entrant connect and disconnect,
+  `Once` listeners count until they disconnect, `DisconnectAll` runs `onLast`
+  once, and a hook error propagates to the caller of the call that caused the
+  transition.
+- `signal:GetGeneration()` is a counter that moves on every `Fire`, for cheap
+  "changed since I looked" checks without a listener. It is exact up to 2^53.
+- `SignalKit:NewJournal(capacity)` is a signal that also keeps its last
+  `capacity` firings (128 by default) in a ring allocated once and reused.
+  `journal:History()` walks them oldest to newest without allocating; nothing
+  is replayed to a listener that connects. One firing carries at most
+  `maxJournalArguments` values (8 by default), refused at the firing line.
+
+```lua
+local recent = SignalKit:NewJournal(16, {
+    onFirst = function() print("somebody is watching") end,
+    onLast = function() print("nobody is watching") end,
+})
+recent:Fire("login", "Alice")
+for position, entry in recent:History() do
+    print(position, entry.generation, entry[1], entry[2])
+end
+```
+
 ## Named message buses
 
 A signal is anonymous, so two modules or two addons that share no reference
@@ -45,7 +76,8 @@ is an ordinary signal underneath, with the same ordering and re-entrancy rules.
   [`docs/API.md`](docs/API.md#at-logout)).
 - Buses (64), topics per bus (256) and listeners per topic (256) are bounded
   by default and opened on purpose: `maxTopics` and `maxListeners` are bus
-  options that accept `SignalKit.UNBOUNDED`, and `maxBuses` is set through
+  options that accept `SignalKit.UNBOUNDED`, and `maxBuses`, together with the
+  journal bounds `maxJournalCapacity` and `maxJournalArguments`, is set through
   `SignalKit:SetLimits` (see "Limits" in `docs/API.md`). A steady-state publish
   allocates nothing.
 
@@ -94,7 +126,7 @@ This keeps the hot dispatch path allocation-free while making both connection an
 
 ## Documentation
 
-- [`docs/API.md`](docs/API.md) — complete API, mutation semantics and named buses.
+- [`docs/API.md`](docs/API.md) — complete API, mutation semantics, hooks, generations, journals and named buses.
 - [`CHANGELOG.md`](CHANGELOG.md) — package evolution.
 - [`tests/README.md`](tests/README.md) — behavior covered by executable specs.
 

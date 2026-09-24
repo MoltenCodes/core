@@ -47,6 +47,22 @@ local function subscribeListeners(bus, topic, count)
     end
 end
 
+---The package-wide limits a fresh session starts with.
+local DEFAULT_LIMITS = { maxBuses = 64, maxJournalCapacity = 1024, maxJournalArguments = 8 }
+
+---`DEFAULT_LIMITS` with one value changed.
+---@param name string
+---@param value integer
+---@return table
+local function limitsWith(name, value)
+    local limits = {}
+    for key, default in pairs(DEFAULT_LIMITS) do
+        limits[key] = default
+    end
+    limits[name] = value
+    return limits
+end
+
 describe("SignalKit limits", function()
     local SignalKit
 
@@ -214,7 +230,7 @@ describe("SignalKit limits", function()
 
     describe("SetLimits maxBuses", function()
         it("defaults to 64", function()
-            assert.are.same({ maxBuses = 64 }, SignalKit:GetLimits())
+            assert.are.same(DEFAULT_LIMITS, SignalKit:GetLimits())
             for index = 1, 64 do
                 assert.is_not_nil((SignalKit:Bus("Bus" .. index)))
             end
@@ -245,8 +261,8 @@ describe("SignalKit limits", function()
 
         it("refuses UNBOUNDED at the caller with its reason", function()
             expectRefusalAtCaller(
-                "SignalKit:SetLimits limits.maxBuses cannot be SignalKit.UNBOUNDED:"
-                    .. " buses are shared by every addon and never freed",
+                "SignalKit:SetLimits limits.maxBuses cannot be SignalKit.UNBOUNDED: "
+                    .. "buses are shared by every addon and never freed",
                 function()
                     SignalKit:SetLimits({ maxBuses = SignalKit.UNBOUNDED })
                 end
@@ -266,7 +282,7 @@ describe("SignalKit limits", function()
                     end
                 )
             end
-            assert.are.same({ maxBuses = 64 }, SignalKit:GetLimits())
+            assert.are.same(DEFAULT_LIMITS, SignalKit:GetLimits())
         end)
 
         it("refuses an unknown name, a non-string key and a non-table", function()
@@ -297,12 +313,150 @@ describe("SignalKit limits", function()
             expectRefusalAtCaller("is not a recognised limit", function()
                 SignalKit:SetLimits({ maxBuses = 10, unknown = 1 })
             end)
-            assert.are.same({ maxBuses = 64 }, SignalKit:GetLimits())
+            expectRefusalAtCaller("limits.maxJournalArguments must be an integer", function()
+                SignalKit:SetLimits({
+                    maxBuses = 10,
+                    maxJournalCapacity = 10,
+                    maxJournalArguments = 0,
+                })
+            end)
+            assert.are.same(DEFAULT_LIMITS, SignalKit:GetLimits())
         end)
 
         it("accepts an empty table as no change", function()
             SignalKit:SetLimits({})
-            assert.are.same({ maxBuses = 64 }, SignalKit:GetLimits())
+            assert.are.same(DEFAULT_LIMITS, SignalKit:GetLimits())
+        end)
+    end)
+
+    describe("SetLimits maxJournalCapacity", function()
+        it("defaults to 1024 and bounds the capacity NewJournal accepts", function()
+            assert.are.equal(1024, SignalKit:GetLimits().maxJournalCapacity)
+            assert.is_not_nil(SignalKit:NewJournal(1024))
+            expectRefusalAtCaller(
+                "SignalKit:NewJournal capacity must be an integer from 1 to 1024",
+                function()
+                    SignalKit:NewJournal(1025)
+                end
+            )
+        end)
+
+        it("honours a larger value up to the 65536 ceiling", function()
+            SignalKit:SetLimits({ maxJournalCapacity = 65536 })
+            assert.is_not_nil(SignalKit:NewJournal(65536))
+            expectRefusalAtCaller(
+                "SignalKit:SetLimits limits.maxJournalCapacity must be an integer from 1 to 65536",
+                function()
+                    SignalKit:SetLimits({ maxJournalCapacity = 65537 })
+                end
+            )
+        end)
+
+        it("never shrinks an existing journal when lowered", function()
+            local journal = SignalKit:NewJournal(4)
+            SignalKit:SetLimits({ maxJournalCapacity = 2 })
+            for index = 1, 4 do
+                journal:Fire(index)
+            end
+
+            local recorded = 0
+            for _ in journal:History() do
+                recorded = recorded + 1
+            end
+            assert.are.equal(4, recorded)
+            expectRefusalAtCaller(
+                "SignalKit:NewJournal capacity must be an integer from 1 to 2",
+                function()
+                    SignalKit:NewJournal(3)
+                end
+            )
+            assert.is_not_nil(SignalKit:NewJournal(2))
+        end)
+
+        it("refuses the default capacity once the limit is below it", function()
+            SignalKit:SetLimits({ maxJournalCapacity = 64 })
+            expectRefusalAtCaller(
+                "SignalKit:NewJournal default capacity 128 exceeds maxJournalCapacity 64; pass a capacity",
+                function()
+                    SignalKit:NewJournal()
+                end
+            )
+            assert.is_not_nil(SignalKit:NewJournal(64))
+        end)
+
+        it("refuses UNBOUNDED and invalid values at the caller", function()
+            expectRefusalAtCaller(
+                "SignalKit:SetLimits limits.maxJournalCapacity cannot be SignalKit.UNBOUNDED: "
+                    .. "the ring is allocated when the journal is created",
+                function()
+                    SignalKit:SetLimits({ maxJournalCapacity = SignalKit.UNBOUNDED })
+                end
+            )
+            for _, case in ipairs(INVALID_VALUES) do
+                expectRefusalAtCaller(
+                    "SignalKit:SetLimits limits.maxJournalCapacity must be an integer from 1 to 65536",
+                    function()
+                        SignalKit:SetLimits({ maxJournalCapacity = case.value })
+                    end
+                )
+            end
+            assert.are.same(DEFAULT_LIMITS, SignalKit:GetLimits())
+        end)
+    end)
+
+    describe("SetLimits maxJournalArguments", function()
+        it("defaults to 8 and is applied at the firing line", function()
+            assert.are.equal(8, SignalKit:GetLimits().maxJournalArguments)
+            local journal = SignalKit:NewJournal(2)
+            journal:Fire(1, 2, 3, 4, 5, 6, 7, 8)
+            expectRefusalAtCaller(
+                "SignalKit.Journal:Fire records at most 8 arguments per firing; received 9",
+                function()
+                    journal:Fire(1, 2, 3, 4, 5, 6, 7, 8, 9)
+                end
+            )
+        end)
+
+        it(
+            "honours a larger value up to the 64 ceiling, for journals that already exist",
+            function()
+                local journal = SignalKit:NewJournal(2)
+                SignalKit:SetLimits({ maxJournalArguments = 64 })
+                local wide = {}
+                for index = 1, 64 do
+                    wide[index] = index
+                end
+                journal:Fire(unpack(wide))
+                for _, entry in journal:History() do
+                    assert.are.equal(64, entry.count)
+                    assert.are.equal(64, entry[64])
+                end
+                expectRefusalAtCaller(
+                    "SignalKit:SetLimits limits.maxJournalArguments must be an integer from 1 to 64",
+                    function()
+                        SignalKit:SetLimits({ maxJournalArguments = 65 })
+                    end
+                )
+            end
+        )
+
+        it("refuses UNBOUNDED and invalid values at the caller", function()
+            expectRefusalAtCaller(
+                "SignalKit:SetLimits limits.maxJournalArguments cannot be SignalKit.UNBOUNDED: "
+                    .. "each firing is staged into a reused slot table",
+                function()
+                    SignalKit:SetLimits({ maxJournalArguments = SignalKit.UNBOUNDED })
+                end
+            )
+            for _, case in ipairs(INVALID_VALUES) do
+                expectRefusalAtCaller(
+                    "SignalKit:SetLimits limits.maxJournalArguments must be an integer from 1 to 64",
+                    function()
+                        SignalKit:SetLimits({ maxJournalArguments = case.value })
+                    end
+                )
+            end
+            assert.are.same(DEFAULT_LIMITS, SignalKit:GetLimits())
         end)
     end)
 
@@ -312,10 +466,10 @@ describe("SignalKit limits", function()
             local first = SignalKit:GetLimits()
             local second = SignalKit:GetLimits()
 
-            assert.are.same({ maxBuses = 100 }, first)
+            assert.are.same(limitsWith("maxBuses", 100), first)
             assert.are_not.equal(first, second)
             first.maxBuses = 1
-            assert.are.same({ maxBuses = 100 }, SignalKit:GetLimits())
+            assert.are.same(limitsWith("maxBuses", 100), SignalKit:GetLimits())
         end)
 
         it("refuses a call without the facade receiver at the caller", function()
@@ -328,9 +482,9 @@ describe("SignalKit limits", function()
         end)
 
         it("is reset for a fresh session", function()
-            SignalKit:SetLimits({ maxBuses = 100 })
+            SignalKit:SetLimits({ maxBuses = 100, maxJournalArguments = 12 })
             TestEnv.Reset()
-            assert.are.same({ maxBuses = 64 }, TestEnv.NewPackage():GetLimits())
+            assert.are.same(DEFAULT_LIMITS, TestEnv.NewPackage():GetLimits())
         end)
     end)
 end)
