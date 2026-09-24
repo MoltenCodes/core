@@ -131,9 +131,10 @@ describe("ApiKit:RegisterFlavor", function()
 
     it("passes arguments and multiple returns through an alias untouched", function()
         local ApiKit = TestEnv.NewPackageFor("retail")
-        local seen
+        local seen, seenCount
         local function probe(...)
-            seen = { n = select("#", ...), ... }
+            seenCount = select("#", ...)
+            seen = { ... }
             return nil, "second", nil
         end
         -- selene: allow(global_usage)
@@ -146,7 +147,7 @@ describe("ApiKit:RegisterFlavor", function()
         local api = rawget(_G, "MoltenCodes").wow.retail.api
         local first, second, third = api.probe.probe(1, nil, "x")
         assert.are.equal(probe, api.probe.probe)
-        assert.are.equal(3, seen.n)
+        assert.are.equal(3, seenCount)
         assert.are.equal(1, seen[1])
         assert.is_nil(seen[2])
         assert.are.equal("x", seen[3])
