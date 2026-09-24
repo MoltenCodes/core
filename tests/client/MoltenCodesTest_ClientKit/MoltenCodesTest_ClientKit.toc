@@ -1,0 +1,17 @@
+## Interface: 120100
+## Title: MoltenCodes Test: ClientKit
+## Title-deDE: MoltenCodes Test: ClientKit (deDE)
+## Notes: Real-client test suites for MoltenCodes ClientKit. Run them with /mct run clientKit.
+## Notes-enUS: Real-client test suites for MoltenCodes ClientKit (enUS notes). Run them with /mct run clientKit.
+## Author: MoltenCodes
+## Version: 1.0.0
+## Dependencies: MoltenCodesTest
+## X-Category: Development Tools
+## X-License: MIT
+## X-MoltenCodes-Probe: yes
+
+# Development only: never ship this addon. See tests/client/README.md.
+# The Title-deDE, Notes-enUS and X-MoltenCodes-Probe fields are read back by
+# the clientKit.manifest and clientKit.shims suites; keep their values in step
+# with ClientKitSuite.lua.
+ClientKitSuite.lua

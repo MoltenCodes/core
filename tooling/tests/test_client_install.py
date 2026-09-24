@@ -212,6 +212,28 @@ class InstallTests(FakeClientTests):
         self.assertIn(str(pool_kit_addon), output)
         self.assert_neighbour_untouched()
 
+    def test_installs_the_cachekit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "cacheKit")
+
+        self.assertEqual(0, status, errors)
+        cache_kit_addon = self.addons / "MoltenCodesTest_CacheKit"
+        self.assertEqual(
+            ["CacheKitSuite.lua", "MoltenCodesTest_CacheKit.toc"],
+            sorted(path.name for path in cache_kit_addon.iterdir()),
+        )
+        toc = (cache_kit_addon / "MoltenCodesTest_CacheKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nCacheKitSuite.lua\n", toc)
+        bundle = self.addons / "MoltenCodes"
+        self.assertTrue((bundle / "cacheKit" / "CacheKit.lua").is_file())
+        # The ClearOn tests need EventKit, CacheKit's optional dependency,
+        # from the same bundle.
+        self.assertTrue((bundle / "eventKit" / "EventKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_EventKit").exists())
+        self.assertIn(str(cache_kit_addon), output)
+        self.assert_neighbour_untouched()
+
     def test_installs_the_schedulerkit_test_addon_without_its_expected_md(self):
         status, output, errors = self.run_command("--package", "schedulerKit")
 
@@ -238,6 +260,34 @@ class InstallTests(FakeClientTests):
         self.assertIn(str(scheduler_kit_addon), output)
         self.assert_neighbour_untouched()
 
+    def test_installs_the_clientkit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "clientKit")
+
+        self.assertEqual(0, status, errors)
+        client_kit_addon = self.addons / "MoltenCodesTest_ClientKit"
+        self.assertEqual(
+            ["ClientKitSuite.lua", "MoltenCodesTest_ClientKit.toc"],
+            sorted(path.name for path in client_kit_addon.iterdir()),
+        )
+        toc = (client_kit_addon / "MoltenCodesTest_ClientKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nClientKitSuite.lua\n", toc)
+        # The manifest and shim suites read these fields back from the client.
+        for field in (
+            "## Version: 1.0.0\n",
+            "## Author: MoltenCodes\n",
+            "## Notes-enUS: ",
+            "## Title-deDE: ",
+            "## X-MoltenCodes-Probe: yes\n",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, toc)
+        self.assertTrue((self.addons / "MoltenCodes" / "clientKit" / "ClientKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_Registry").exists())
+        self.assertIn(str(client_kit_addon), output)
+        self.assert_neighbour_untouched()
+
     def test_installs_several_test_addons_in_one_command(self):
         status, _, errors = self.run_command("--package", "registry", "--package", "signalKit")
 
@@ -258,6 +308,8 @@ class InstallTests(FakeClientTests):
         self.assertIn("moduleKit", available)
         self.assertIn("schedulerKit", available)
         self.assertIn("poolKit", available)
+        self.assertIn("cacheKit", available)
+        self.assertIn("clientKit", available)
         self.assertNotIn("widgetKit", available)
 
     def test_expected_lua_lists_every_bundled_package_and_testkit_at_their_manifest_revisions(self):

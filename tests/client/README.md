@@ -37,6 +37,8 @@ tests/client/
 │   ├── MoltenCodesTest_LifecycleKit.toc
 │   ├── LifecycleKitSuite.lua
 │   └── EXPECTED.md
+├── MoltenCodesTest_ClientKit/         # the test addon of the `clientKit` package (.toc, suite, EXPECTED.md)
+├── MoltenCodesTest_CacheKit/          # the test addon of the `cacheKit` package (.toc, suite, EXPECTED.md)
 ├── MoltenCodesTest_ModuleKit/         # the test addon of the `moduleKit` package (.toc, suite, EXPECTED.md)
 ├── MoltenCodesTest_PoolKit/           # the test addon of the `poolKit` package (.toc, suite, EXPECTED.md)
 ├── MoltenCodesTest_SchedulerKit/      # the test addon of the `schedulerKit` package (.toc, suite, EXPECTED.md)

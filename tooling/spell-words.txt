@@ -62,6 +62,7 @@ metatable
 metatables
 newindex
 pcall
+rawequal
 rawget
 rawset
 setmetatable
