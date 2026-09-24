@@ -147,7 +147,7 @@ Built-in layouts:
 | `Fill` | The first shown child fills the content. Other children are left alone. |
 | `Flow` | Children left to right, wrapping to a new row when the next would pass the right edge. A full-width child takes a row of its own; a full-height child takes the height left below its row's top. |
 
-All three skip hidden children and put no spacing between children; widgets carry their own margins. A content frame with a negative size (insets wider than the container) counts as zero wide or high, so no child is sized below zero. `Flow` lets a row overflow by up to 0.001 pixels, so children whose relative widths add up to the whole row share it despite floating-point rounding.
+All three skip hidden children and put no spacing between children; widgets carry their own margins. A content frame with a negative size (insets wider than the container) counts as zero wide or high, so no child is sized below zero. A size the client answers as a secret is unknown; see [Secret sizes](#secret-sizes). `Flow` lets a row overflow by up to 0.001 pixels, so children whose relative widths add up to the whole row share it despite floating-point rounding.
 
 ## The versioning rule
 
@@ -373,6 +373,21 @@ A font string can display a secret value, but whether one should appear is the c
 
 Callback and hook return values are never read, so they need no rule.
 
+### Secret sizes
+
+`GetWidth`, `GetHeight` and `GetSize` carry `SecretWhenAnchoringSecret` (and `ConstSecretAccessor`) in the client's documentation (`packages/apiKit/metadata/retail`, Retail 12.1.0 b69933): a frame anchored to something secret answers its size as a secret, and `SetWidth`, `SetHeight` and `SetSize` accept a secret argument only from untainted code, which an addon's is not. Arithmetic or a comparison on a secret raises, so every size WidgetKit reads from the client during a layout is asked of `issecretvalue` first, and a secret size is **unknown**:
+
+| Where | A secret size |
+|---|---|
+| The content width in `List`, `Fill` and `Flow` | Sizes no child: a relative-width child keeps its width, a full-width child is still anchored across the content, and children are told no width (`OnWidthSet` is not called). The layout reports no width to `LayoutFinished` (`nil`). `Flow` packs its rows against a width of 0, so each child after the first in a row wraps to a new row. |
+| The content height in `Fill` and `Flow` | Sizes no child: a full-height child keeps its height, and `Fill` tells its child no height and reports none. |
+| A child's own width (`Flow`) or height (`List`, `Flow`) | Counts as 0 in the offsets and row heights. |
+| A container's height before or after `OnLayoutFinished` | Counts as unchanged: the container holding it is not laid out again. |
+| A `ScrollFrame` viewport's width | The scroll child keeps its width instead of being given the secret one. |
+| A `ScrollFrame` viewport's height | Counts as 0: the whole content height is the scroll range. |
+
+A custom layout that reads sizes from the client follows the same care; what it returns is covered by the table above.
+
 ## Error behaviour
 
 Every argument failure and refusal reports the line that called WidgetKit and names the method: `WidgetKit:Create name must be a non-empty string`, `WidgetKit.Container:AddChild beforeWidget must be a child of this container`, `WidgetKit Slider:SetSliderValues minimum must not be greater than maximum`. Calling a method on the wrong receiver raises `... must be called on a WidgetKit widget` (or container, binding, rendering, facade). Errors raised by a constructor and by a layout function propagate unchanged. Callback and hook errors are reported through the host error handler.
@@ -465,7 +480,7 @@ To change `MyAddonProgress` later, register the new constructor with version `2`
 
 ## Embedded copies and upgrades
 
-Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revisions 2, 3 and 4 keep the revision 1 state as it is and replace the methods only; every base widget stays at version 1.
+Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revisions 2, 3, 4 and 5 keep the revision 1 state as it is and replace the methods only; every base widget stays at version 1.
 
 Nothing survives `/reload`: widgets are created again when the addon loads.
 

@@ -28,7 +28,7 @@ ClientKit, EventKit and LifecycleKit are declared under `optionalDependencies`, 
 | `HookScript_spec.lua` | script pre-hooks, replacements and the protected-frame rules |
 | `Scope_spec.lua` | scopes, capacity, `Hooks()`, `UnhookAll`, `Close`, addon scopes |
 | `Limits_spec.lua` | `options.maxHooks`, `HookKit.UNBOUNDED`, `GetMaxHooks`, invalid values |
-| `SecretValues_spec.lua` | secrets passing through; secret names refused |
+| `SecretValues_spec.lua` | secrets passing through; secret names refused; a secret `GetScript` handler left in place at release |
 | `Allocation_spec.lua` | allocation guards |
 | `ErrorLevels_spec.lua` | errors reported at the caller's line |
 | `LogoutClose_spec.lua` | who closes an addon scope at logout, in each of the four cases, and across upgrades |

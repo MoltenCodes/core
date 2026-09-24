@@ -2,7 +2,7 @@
 
 SchemaKit API generation **1** provides value schemas: builders that describe a value, a seal that makes the description immutable, and a checker that reports structured failures which never contain the checked value.
 
-Implementation revision: **2**.
+Implementation revision: **4**.
 
 ## Loading
 
@@ -25,7 +25,7 @@ SchemaKit does not rely on `require()` at runtime.
 
 | Facility | Used by | Without it |
 |---|---|---|
-| `issecretvalue` | every `Check`, `Assert` and `Apply`, and `SetLimits` | Nothing is treated as secret, which is correct on clients without secret values. |
+| `issecretvalue` | every `Check`, `Assert` and `Apply`, `SetLimits`, and the builders' argument checks | Nothing is treated as secret, which is correct on clients without secret values. |
 
 `issecretvalue` is read from the global table at every call, not once at load, so a probe that appears later is used at once. It costs one `rawget` per call.
 
@@ -259,6 +259,21 @@ An array built without `max` while `defaultArrayMax` is `SchemaKit.UNBOUNDED` ac
 On Retail 12.x the client hands tainted code **secret values**, which raise when compared, tested, indexed or used as a table key (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every node asks `issecretvalue(value)` first, before any comparison, type test or index, and a secret fails with rule `secret` and found `secret value`. The failure and the `Assert` message never contain it. `Apply` keeps a secret where it found it and the check of the copy reports it. Custom checks are never called with a secret, and a secret answer from one rejects the value with rule `custom` (see [`SchemaKit.custom`](#schemakitcustomcheck-description)).
 
 The boolean flags `SchemaKit.number{ integer }`, `SchemaKit.table{ open }` and `Seal`'s `freshFailures` are asked about with `issecretvalue` before they are tested. A secret flag is refused at the caller's line with the message an invalid value of that flag gets (`SchemaKit.number integer must be a boolean`, `SchemaKit.table open must be a boolean`, `SchemaKit:Seal freshFailures must be a boolean`), the style `SetLimits` uses for a secret limit.
+
+Every other builder and `Assert` argument that SchemaKit would compare, look up or do arithmetic on is asked about the same way first, and a secret is refused at the caller's line with the message an invalid value gets:
+
+| Argument | Message for a secret |
+|---|---|
+| `string{ min, max }`, `array{ min, max }` | `SchemaKit.<builder> min must be a non-negative integer` (or `max`) |
+| `number{ min, max }` | `SchemaKit.number min must be a number` (or `max`) |
+| `map{ max }` | `SchemaKit.map max must be a positive integer` |
+| `string{ pattern }` | `SchemaKit.string pattern must be a non-empty string` |
+| a literal in `string{ oneOf }` or `enum(values)` | `SchemaKit.string oneOf values must be strings, numbers or booleans`, `SchemaKit.enum values must be strings, numbers or booleans` |
+| `custom(check, description)`'s `description` | `SchemaKit.custom description must be a non-empty string` |
+| `Assert`'s `argumentName` | `SchemaKit.Schema:Assert argumentName must be a non-empty string` |
+| `Assert`'s `level` | `SchemaKit.Schema:Assert level must be a positive integer` |
+
+Without the probe first, a secret bound would raise inside SchemaKit at `min > max` or the NaN test, a secret literal at the NaN test or the set lookup that uses it as a key, a secret `argumentName` at the empty-string test and a secret `level` at the integer test. Plain values pay one `issecretvalue` call each, at build time or per `Assert` call.
 
 ## Cookbook
 

@@ -27,7 +27,7 @@
 
 local PACKAGE_NAME = "apiKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -365,11 +365,38 @@ local function validateReceiver(self, methodName)
   end
 end
 
----Validate a flavour id argument, at the caller's level.
+---Whether `value` is a secret value (Retail 12.x). `issecretvalue` is looked
+---up at call time; a client without it has no secret values.
+---
+---A secret compared with a value of its own type, used in arithmetic or used
+---as a table key raises at that line (measured on Retail 12.1.0 b69933), so
+---the arguments that meet one of those are asked about first.
+---@param value any
+---@return boolean
+local function isSecret(value)
+  local probe = readGlobal("issecretvalue")
+  return type(probe) == "function" and probe(value) == true
+end
+
+---Refuse a secret argument at the caller's level, before it is compared, used
+---in arithmetic or used as a table key. The message names the argument and
+---never formats the value in, because a message built from a secret is secret.
+---@param value any
+---@param methodName string
+---@param argumentName string
+local function refuseSecret(value, methodName, argumentName)
+  if isSecret(value) then
+    error("ApiKit:" .. methodName .. " " .. argumentName .. " must not be a secret value", 4)
+  end
+end
+
+---Validate a flavour id argument, at the caller's level. A secret id is
+---refused before it is used as a key of the flavour table.
 ---@param flavor any
 ---@param methodName string
 ---@return table row
 local function validateFlavorArgument(flavor, methodName)
+  refuseSecret(flavor, methodName, "flavor")
   local row = type(flavor) == "string" and FLAVOR_BY_ID[flavor] or nil
   if row == nil then
     error(
@@ -384,6 +411,9 @@ local function validateFlavorArgument(flavor, methodName)
 end
 
 ---Validate the optional `info` table of a registration, at the caller's level.
+---A secret `info.build` is refused before the integer test, which is
+---arithmetic; a secret `info.version` is only stored and handed back, which
+---the client allows, so it is accepted.
 ---@param info any
 ---@return table|false
 local function validateInfoArgument(info)
@@ -398,6 +428,7 @@ local function validateInfoArgument(info)
   if type(version) ~= "nil" and type(version) ~= "string" then
     error("ApiKit:RegisterFlavor info.version must be a string when given", 3)
   end
+  refuseSecret(build, "RegisterFlavor", "info.build")
   if type(build) ~= "nil" and (type(build) ~= "number" or build % 1 ~= 0) then
     error("ApiKit:RegisterFlavor info.build must be an integer when given", 3)
   end

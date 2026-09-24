@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 — 2026-09-24
+
+- `SetLimits` no longer passes an unknown key to `tostring` for its message. A key `issecretvalue` reports secret is described with the fixed placeholder, `BrokerKit:SetLimits limits.<secret value> is not a recognised limit` (it was `BrokerKit:SetLimits limits must not have a secret key`), and is still asked about before it indexes the limit names; a string or number key is shown as written; any other key is shown by its type (`limits.<table> is not a recognised limit`), so a key's `__tostring`, foreign code whose answer may be secret, never runs. A key read by `next` from a Lua table cannot be secret on Retail 12.1.0 b69933, because storing a secret table key raises, so the secret branch is defensive. Documented under *Limits* and *Secret values* in `docs/API.md`.
+- Implementation revision 3, because the executed implementation changed. No state changed: an upgrade over revision 2 replaces the methods and keeps every object, connection, limit and LibDataBroker link. `docs/API.md` states the revision as 3 in its header and its public-surface table (the table still said `1`).
+- Specs: 130 → 132. A secret `SetLimits` key is reported at the caller with the placeholder and changes no limit; a table key is described by its type without running `__tostring`; the in-place upgrade from the previous revision checks the new description.
+
 ## 0.1.3 — 2026-09-24
 
 - Secret values: API.md (*Secret values*), INTERNALS.md (`writeAttribute`) and the source comments on the facade check and the nil rule no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

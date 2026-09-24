@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.6 — 2026-09-24
+
+- Fixed: a secret `ttlSeconds` (Retail 12.x) given to `NewTtl`, `Memoize` or `cache:PutNegative` is refused at the caller's line with the existing `... ttlSeconds must be a finite number greater than zero` before it is compared with anything, and a secret `NewQueue` `overflow` is refused with the existing `CacheKit:NewQueue overflow must be "dropOldest", "dropNewest" or "reject"` before it is used as a key of the policy set. A secret compared with a value of its own type, or used as a table key, raises at that line (measured on Retail 12.1.0 b69933), which reported the failure inside CacheKit instead. The probe is the `issecretvalue` bound at load, as for the limits; a client without it refuses nothing. `docs/API.md` *Secret values* lists both.
+- Implementation revision 6. No state or object layout changed: an upgrade over revision 5 replaces the methods and keeps every cache, snapshot, lazy tree and queue; a cache an older copy created refuses a secret `PutNegative` lifetime at once.
+- Specs: a secret `ttlSeconds` on all three methods and a secret `overflow` refused at the caller's line, and an in-place upgrade from revision 5. 176 → 179 specs.
+
 ## 0.2.5 — 2026-09-24
 
 - A `Memoize` `cacheable` predicate that answers with a secret value (Retail 12.x) no longer raises inside CacheKit. Testing a secret for truth raises (`attempt to perform boolean test on ... a secret boolean value`, measured on Retail 12.1.0 b69933), so the answer is asked about with `issecretvalue` first and a secret answer counts as `false`: the result is returned to the caller without being remembered. `docs/API.md` documents it under `cacheable` and *Secret values*.

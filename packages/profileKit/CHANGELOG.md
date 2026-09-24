@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4 — 2026-09-24
+
+- Fixed: `Section(name)` and `Measure(name, fn, ...)`, enabled and disabled, refuse a secret `name` (Retail 12.x) at the caller's line with `ProfileKit:<Method> name must not be a secret value`, after the string type check and before the name is compared with `""` or used as a key of the section index. A secret string compared with a string, or used as a table key, raises at that line (measured on Retail 12.1.0 b69933), which reported the failure inside ProfileKit instead. Nothing is created and `fn` is not called. The probe is the `issecretvalue` bound once at load; a client without it refuses nothing.
+- Cost: the disabled `Measure` is now two type checks, one `issecretvalue` call about the name and a tail call (it was two type checks and a tail call); `docs/API.md` (*Enabling and disabling*, *Cost*), the README and the source header say so, and the README no longer says every disabled caller pays one table read and one call, which holds for `Begin` and `End`. `docs/API.md` documents the refusal under *Secret values* and *Errors*.
+- Implementation revision 3. No state changed: an in-place upgrade from revision 2 keeps every section, its statistics, the enabled binding and the limits, and re-binds the methods.
+- Specs: a secret name refused by `Section`, the disabled `Measure` and the enabled `Measure`, an empty and a plain name unchanged, and an in-place upgrade from revision 2; the revision 1 upgrade spec no longer assumes the working revision is 2. 76 → 81 specs.
+
 ## 0.1.3 — 2026-09-24
 
 - Secret values: the source comments on `issecretvalue` and `SetLimits` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

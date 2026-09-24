@@ -2,10 +2,10 @@
   "name": "brokerKit",
   "displayName": "BrokerKit",
   "description": "LibDataBroker-compatible data objects for World of Warcraft display addons: typed attributes as plain fields, per-attribute change signals, sorted enumeration, and a two-way bridge to LibDataBroker-1.1.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "license": "MIT",
   "api": 1,
-  "revision": 2,
+  "revision": 3,
   "dependencies": {
     "registry": {
       "api": 2

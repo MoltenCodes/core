@@ -90,6 +90,63 @@ describe("CacheKit snapshots and secret values", function()
     assert.are.equal(1024, CacheKit:GetLimits().maxQueueCapacity)
   end)
 
+  it("refuses a secret ttlSeconds at the caller before comparing it", function()
+    -- A number stands in for a secret number: without the probe asked
+    -- first, it would pass as a valid lifetime.
+    local CacheKit = loadWithSecret(60)
+    local ttl = CacheKit:NewTtl({ maxEntries = 2, ttlSeconds = 30 })
+    local source = debug.getinfo(1, "S").short_src
+    local cases = {
+      {
+        call = function()
+          CacheKit:NewTtl({ maxEntries = 2, ttlSeconds = 60 })
+        end,
+        message = "CacheKit:NewTtl ttlSeconds must be a finite number greater than zero",
+      },
+      {
+        call = function()
+          CacheKit:Memoize(tostring, { ttlSeconds = 60 })
+        end,
+        message = "CacheKit:Memoize ttlSeconds must be a finite number greater than zero",
+      },
+      {
+        call = function()
+          ttl:PutNegative("gone", 60)
+        end,
+        message = "CacheKit.Cache:PutNegative ttlSeconds must be a finite number greater than zero",
+      },
+    }
+    for index = 1, #cases do
+      local ok, value = pcall(cases[index].call)
+      assert.is_false(ok)
+      -- The position is the closure's line in this file: the caller's.
+      assert.are.equal(source .. ":", value:sub(1, #source + 1))
+      assert.is_truthy(value:find(cases[index].message, 1, true))
+    end
+    assert.are.equal(0, ttl:GetCount())
+  end)
+
+  it("refuses a secret overflow policy at the caller before using it as a key", function()
+    -- A string stands in for a secret string: without the probe asked first,
+    -- it would be looked up in the policy set and accepted.
+    local CacheKit = loadWithSecret("reject")
+    local source = debug.getinfo(1, "S").short_src
+    local line
+    local ok, value = pcall(function()
+      line = debug.getinfo(1, "l").currentline + 1
+      CacheKit:NewQueue(4, "reject")
+    end)
+    assert.is_false(ok)
+    assert.are.equal(
+      source
+        .. ":"
+        .. line
+        .. ': CacheKit:NewQueue overflow must be "dropOldest", "dropNewest" or "reject"',
+      value
+    )
+    assert.is_table(CacheKit:NewQueue(4, "dropOldest"))
+  end)
+
   it("stores and returns a secret value without comparing it", function()
     local secret = {}
     local CacheKit = loadWithSecret(secret)

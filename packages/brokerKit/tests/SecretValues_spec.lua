@@ -207,4 +207,42 @@ describe("BrokerKit and secret values", function()
       object.text = "Late"
     end)
   end)
+
+  it("describes a secret SetLimits key with the placeholder at the caller", function()
+    -- A plain string stands in for a secret key: the probe reports it
+    -- secret, so it must neither index the limit table nor reach the
+    -- message; the limits stay as they were.
+    TestEnv.InstallSecretProbe("maxObjects")
+    local source = debug.getinfo(1, "S").short_src
+    local line = debug.getinfo(1, "l").currentline + 2
+    local ok, value = pcall(function()
+      BrokerKit:SetLimits({ maxObjects = 300 })
+    end)
+    assert.is_false(ok)
+    assert.are.equal(
+      source
+        .. ":"
+        .. line
+        .. ": BrokerKit:SetLimits limits.<secret value> is not a recognised limit",
+      value
+    )
+    assert.are.equal(256, BrokerKit:GetLimits().maxObjects)
+  end)
+
+  it("describes a table SetLimits key by its type without running __tostring", function()
+    local ran = false
+    local key = setmetatable({}, {
+      __tostring = function()
+        ran = true
+        return "foreign"
+      end,
+    })
+    TestEnv.expectErrorContaining(
+      "BrokerKit:SetLimits limits.<table> is not a recognised limit",
+      function()
+        BrokerKit:SetLimits({ [key] = 1 })
+      end
+    )
+    assert.is_false(ran)
+  end)
 end)

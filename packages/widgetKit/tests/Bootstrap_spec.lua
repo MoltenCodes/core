@@ -209,6 +209,46 @@ describe("WidgetKit bootstrap", function()
     assert.is_false(upgraded:IsWidget(slider))
   end)
 
+  it("upgrades a revision 4 copy in place and lays its containers out with secret sizes", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    TestEnv.InstallScreen()
+    for _, name in ipairs({ "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit" }) do
+      require(name)
+    end
+    local old = TestEnv.LoadRevision(4)
+    local state = old._state
+    local group = old:Create("Group") --[[@as WidgetKit.Container]]
+    group:SetWidth(216)
+    group:SetPoint("TOPLEFT", TestEnv.GetGlobal("UIParent"), "TOPLEFT", 0, 0)
+    local half = old:Create("Spacer") ---@cast half -nil
+    half:SetWidth(10)
+    half:SetRelativeWidth(0.5)
+    group:AddChild(half)
+    assert.are.equal(100, half:GetWidth())
+
+    local upgraded = require("WidgetKit")
+    assert.are.equal(old, upgraded)
+    assert.are.equal(state, upgraded._state)
+    assert.is_true(upgraded.REVISION > 4)
+    assert.are.equal(group, half:GetParentContainer())
+
+    -- The container revision 4 built runs the current built-in layout: a
+    -- secret content width sizes no relative-width child.
+    local secretWidth = 123.25
+    TestEnv.SetGlobal("issecretvalue", function(value)
+      return value == secretWidth
+    end)
+    local content = group:GetContent()
+    function content.GetWidth()
+      return secretWidth
+    end
+    half:SetWidth(10)
+    assert.is_true(group:PerformLayout())
+    assert.are.equal(10, half:GetWidth())
+    upgraded:Release(group)
+  end)
+
   it("discards pooled base widgets when a newer copy raises their version", function()
     local WidgetKit = TestEnv.NewPackage()
     local pooled = WidgetKit:Create("Label")

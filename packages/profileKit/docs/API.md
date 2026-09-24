@@ -42,9 +42,11 @@ returns `false, "unavailable"` and ProfileKit stays disabled. There is no
 wall-clock fallback: a section measured in wall time would silently mean
 something else.
 
-`issecretvalue` is also bound once at load and is optional. Only `SetLimits`
-asks it, about each limit value before comparing it; without it nothing is
-treated as secret.
+`issecretvalue` is also bound once at load and is optional. `SetLimits` asks
+it about each limit value before comparing it, and `Section` and `Measure` ask
+it about the section name before comparing it with the empty string or using it
+as a key; without it nothing is treated as secret. See
+[Secret values](#secret-values).
 
 The clock is one process-wide timer that any addon may zero with
 `debugprofilestart()`. An `End` whose reading is smaller than its `Begin`
@@ -62,8 +64,9 @@ The switch is a function swap, not a flag. `Enable` installs the measuring
 measuring `Measure` on the facade; `Disable` installs no-op functions in the
 same places. A caller always looks the method up, so while ProfileKit is off a
 `section:Begin()` costs one table read and one call to an empty function, and
-`ProfileKit:Measure(name, fn, ...)` checks its two arguments and tail-calls
-`fn(...)`. Neither reads the clock or allocates.
+`ProfileKit:Measure(name, fn, ...)` checks its two arguments (two type checks
+and, on a client with `issecretvalue`, one call to it about `name`) and
+tail-calls `fn(...)`. Neither reads the clock or allocates.
 
 The disabled `Begin` and `End` perform no argument checks at all. The enabled
 ones check their receiver, so `section.Begin()` (a dot call) raises only once
@@ -210,6 +213,7 @@ Argument errors are raised at the caller's line:
 
 - `ProfileKit:Section name must be a non-empty string`
 - `ProfileKit:Measure name must be a non-empty string`
+- `ProfileKit:Section name must not be a secret value` and `ProfileKit:Measure name must not be a secret value` (enabled and disabled; see [Secret values](#secret-values))
 - `ProfileKit:Measure fn must be a function`
 - `ProfileKit.Section:Begin must be called on a ProfileKit section` (enabled only)
 - `ProfileKit.Section:End must be called on a ProfileKit section` (enabled only)
@@ -218,12 +222,31 @@ Argument errors are raised at the caller's line:
 - `ProfileKit:SetLimits limits.maxSections must be a positive integer or ProfileKit.UNBOUNDED` (also for a secret value)
 - `ProfileKit:SetLimits must be called on the ProfileKit facade; use ProfileKit:SetLimits(...)` (and the same for `GetLimits`)
 
+## Secret values
+
+On Retail 12.x a secret compared with a value of its own type, or used as a
+table key, raises at that line (measured on Retail 12.1.0 b69933; see
+[`EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
+ProfileKit asks `issecretvalue`, bound once at load, first:
+
+- `Section(name)` and `Measure(name, fn, ...)`, enabled and disabled alike,
+  refuse a secret `name` at the caller's line with `ProfileKit:<Method> name
+  must not be a secret value`, after the string type check and before `name`
+  is compared with `""` or used as a key of the section index. Nothing is
+  created and `fn` is not called. Section names normally come from the addon's
+  own code, so a plain name pays one probe call and nothing else.
+- `SetLimits` refuses a secret limit value with the invalid-value message
+  above, before comparing it.
+
+The messages never format the value in. A client without `issecretvalue` has
+no secret values and refuses nothing.
+
 ## Cost
 
 | Path | Cost |
 |---|---|
 | Disabled `Begin` / `End` | One table read and one call to an empty function. |
-| Disabled `Measure` | Two type checks and a tail call to `fn`. |
+| Disabled `Measure` | Two type checks, one `issecretvalue` call about `name` (bound at load; none on a client without it) and a tail call to `fn`. |
 | Enabled `Begin` + `End` | Two clock reads, one receiver check each, a few field writes. No allocation. |
 | Enabled `Measure` | One table lookup, two clock reads, one `pcall`. No allocation after the section exists. |
 | `Section` (new name) | One table. |

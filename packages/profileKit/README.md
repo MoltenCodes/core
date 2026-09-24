@@ -27,10 +27,11 @@ end
 Three contracts are worth knowing before the first section:
 
 - **Zero cost when off.** ProfileKit loads disabled. While disabled, `Begin`,
-  `End` and `Measure` are no-op functions (`Measure` just calls `fn`), swapped
-  in and out on the shared section prototype by `Disable` and `Enable`. A
-  disabled caller pays one table read and one call; nothing branches on a flag
-  and nothing allocates.
+  `End` and `Measure` are no-op functions (`Measure` just checks its arguments
+  and calls `fn`), swapped in and out on the shared section prototype by
+  `Disable` and `Enable`. A disabled `Begin` or `End` costs one table read and
+  one call; a disabled `Measure` adds two type checks and one `issecretvalue`
+  call about the name. Nothing branches on a flag and nothing allocates.
 - **Milliseconds of addon CPU time.** Every time is read from
   `debugprofilestop`. A client hitch that stalls the frame is not charged to a
   section. On a host without `debugprofilestop`, `Enable()` returns
@@ -62,4 +63,5 @@ Direct runtime dependencies: Registry API 2.
 Every file above is required; omitting one makes this package raise at
 load. `debugprofilestop` is optional: without it the package loads and stays
 disabled. `issecretvalue` is optional too: `SetLimits` uses it to refuse a
-secret limit value, and without it nothing is treated as secret.
+secret limit value and `Section` and `Measure` to refuse a secret section name,
+and without it nothing is treated as secret.

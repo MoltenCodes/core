@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.5 — 2026-09-24
+
+- Fixed: the built-in layouts no longer compute with a size the client answers as a secret. `GetWidth`, `GetHeight` and `GetSize` carry `SecretWhenAnchoringSecret` and `ConstSecretAccessor` in the Retail 12.1.0 b69933 metadata (`packages/apiKit/metadata/retail`), and arithmetic or a comparison on a secret raises (measured on Retail 12.1.0 b69933). `List`, `Fill` and `Flow` ask `issecretvalue` about every size they read: a secret content width or height sizes no child from it and is reported to `LayoutFinished` as `nil` (`Flow` packs rows against a width of 0), and a secret child width or height counts as 0 in offsets and rows.
+- Fixed: `LayoutFinished` compared the container's height before and after `OnLayoutFinished`; a secret height on either side now counts as unchanged and the parent is not laid out again. A `ScrollFrame` no longer passes a secret viewport width to `SetWidth` (which takes a secret only from untainted code) and counts a secret viewport height as 0 when it computes its scroll range.
+- `docs/API.md` gains "Secret sizes" with the rule for each place. No new top-level local: the main chunk stays at Lua's 200-local limit, and each layout keeps its own.
+- Implementation revision 5. No state changed: an in-place upgrade from revision 4 keeps every widget, type, pool and limit and replaces the methods; built-in layouts are resolved by name on every pass, so containers an older copy created use the new ones at once.
+- Specs: `SecretSizes_spec.lua` (secret sizes in each built-in layout, the upward height report and `ScrollFrame`, with a probe stub reporting plain numbers secret), and an in-place upgrade of a revision 4 copy whose container is then laid out with a secret content width. 191 specs (182 before).
+
 ## 0.1.4 — 2026-09-24
 
 - Fixed: WidgetKit no longer tests a value it did not create as a boolean (`if`, `and`, `or`, `not`) or compares it with `true` before asking `issecretvalue`. On Retail 12.1.0 b69933 a boolean test on a secret raises inside the Kit ("attempt to perform boolean test on ... a secret boolean value"), like a same-type comparison. `docs/API.md` gains a "Secret booleans" table with the outcome for every such place.

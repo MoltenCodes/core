@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "brokerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNALKIT_API = 1
 local STATE_SCHEMA = 1
@@ -61,6 +61,10 @@ local MAX_ATTRIBUTES = 32
 -- The limits `SetLimits` accepts, in the order `GetLimits` reports them.
 local LIMIT_NAMES = { "maxObjects", "maxAttributes" }
 local LIMIT_NAME_SET = { maxObjects = true, maxAttributes = true }
+
+-- Error-message stand-in for a value `issecretvalue` reports secret. A message
+-- built from a secret is itself secret, so a secret is never formatted in.
+local SECRET_PLACEHOLDER = "<secret value>"
 
 -- The two object types LibDataBroker's data specification names. A display
 -- addon shows a data source's text and a launcher's icon; nothing else is
@@ -582,6 +586,28 @@ local function validateLimitValue(name, value, level)
   end
 end
 
+---Describe a `SetLimits` key for the unknown-limit message without running or
+---formatting anything that may be secret. A key `next` reads from a Lua table
+---cannot be secret on the measured client (a secret table key raises when it is
+---stored), so the secret branch is defensive. A string or number key is shown
+---as it is; any other key is shown by its type, because `tostring` on a table
+---or userdata runs its `__tostring`, foreign code whose answer may be secret.
+---@param key any
+---@return string
+local function describeLimitKey(key)
+  if isSecret(key) then
+    return SECRET_PLACEHOLDER
+  end
+  local keyType = type(key)
+  if keyType == "string" then
+    return key
+  end
+  if keyType == "number" then
+    return tostring(key)
+  end
+  return "<" .. keyType .. ">"
+end
+
 ---Refuse a `SetLimits` argument before any limit changes, so a call with one
 ---bad entry leaves every limit as it was.
 ---@param limits any
@@ -591,11 +617,12 @@ local function validateLimitUpdate(limits, level)
     error("BrokerKit:SetLimits limits must be a table", level)
   end
   for key, value in next, limits do
-    if isSecret(key) then
-      error("BrokerKit:SetLimits limits must not have a secret key", level)
-    end
-    if type(key) ~= "string" or LIMIT_NAME_SET[key] ~= true then
-      error("BrokerKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
+    -- The secret check runs before the key is used to index `LIMIT_NAME_SET`.
+    if isSecret(key) or type(key) ~= "string" or LIMIT_NAME_SET[key] ~= true then
+      error(
+        "BrokerKit:SetLimits limits." .. describeLimitKey(key) .. " is not a recognised limit",
+        level
+      )
     end
     validateLimitValue(key, value, level + 1)
   end

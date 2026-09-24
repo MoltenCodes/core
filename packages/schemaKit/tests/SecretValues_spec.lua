@@ -159,6 +159,125 @@ describe("SchemaKit and secret values", function()
     end
   end)
 
+  it("refuses a secret builder bound, literal, pattern or description at the caller", function()
+    -- A plain number and plain strings stand in for secrets: without the
+    -- probe asked first, each would pass as a valid spec and be compared.
+    TestEnv.InstallSecretProbe({ [7] = true, ["q"] = true })
+    local source = debug.getinfo(1, "S").short_src
+    local cases = {
+      {
+        call = function()
+          local _ = S.string({ min = 7 })
+        end,
+        message = "SchemaKit.string min must be a non-negative integer",
+      },
+      {
+        call = function()
+          local _ = S.string({ max = 7 })
+        end,
+        message = "SchemaKit.string max must be a non-negative integer",
+      },
+      {
+        call = function()
+          local _ = S.string({ pattern = "q" })
+        end,
+        message = "SchemaKit.string pattern must be a non-empty string",
+      },
+      {
+        call = function()
+          local _ = S.string({ oneOf = { "a", "q" } })
+        end,
+        message = "SchemaKit.string oneOf values must be strings, numbers or booleans",
+      },
+      {
+        call = function()
+          local _ = S.number({ min = 7 })
+        end,
+        message = "SchemaKit.number min must be a number",
+      },
+      {
+        call = function()
+          local _ = S.number({ max = 7 })
+        end,
+        message = "SchemaKit.number max must be a number",
+      },
+      {
+        call = function()
+          local _ = S.enum({ 1, 7 })
+        end,
+        message = "SchemaKit.enum values must be strings, numbers or booleans",
+      },
+      {
+        call = function()
+          local _ = S.array({ of = S.any(), min = 7 })
+        end,
+        message = "SchemaKit.array min must be a non-negative integer",
+      },
+      {
+        call = function()
+          local _ = S.array({ of = S.any(), max = 7 })
+        end,
+        message = "SchemaKit.array max must be a non-negative integer",
+      },
+      {
+        call = function()
+          local _ = S.map({ keys = S.any(), values = S.any(), max = 7 })
+        end,
+        message = "SchemaKit.map max must be a positive integer",
+      },
+      {
+        call = function()
+          local _ = S.custom(tostring, "q")
+        end,
+        message = "SchemaKit.custom description must be a non-empty string",
+      },
+    }
+    for index = 1, #cases do
+      local line = debug.getinfo(cases[index].call, "S").linedefined + 1
+      local ok, value = pcall(cases[index].call)
+      assert.is_false(ok)
+      assert.are.equal(source .. ":" .. line .. ": " .. cases[index].message, value)
+    end
+  end)
+
+  it("refuses a secret Assert argumentName or level at the caller", function()
+    TestEnv.InstallSecretProbe({ [3] = true, ["unit"] = true })
+    local schema = S:Seal(S.number())
+    local source = debug.getinfo(1, "S").short_src
+    local cases = {
+      {
+        call = function()
+          schema:Assert(1, "unit")
+        end,
+        message = "SchemaKit.Schema:Assert argumentName must be a non-empty string",
+      },
+      {
+        call = function()
+          schema:Assert(1, "count", 3)
+        end,
+        message = "SchemaKit.Schema:Assert level must be a positive integer",
+      },
+    }
+    for index = 1, #cases do
+      local line = debug.getinfo(cases[index].call, "S").linedefined + 1
+      local ok, value = pcall(cases[index].call)
+      assert.is_false(ok)
+      assert.are.equal(source .. ":" .. line .. ": " .. cases[index].message, value)
+    end
+  end)
+
+  it("still accepts plain bounds, literals, names and levels while the probe exists", function()
+    TestEnv.InstallSecretProbe({ [7] = true, ["q"] = true })
+    assert.is_true(
+      S:Seal(S.string({ min = 1, max = 4, pattern = "^a", oneOf = { "ab" } })):Check("ab")
+    )
+    assert.is_false(S:Seal(S.number({ min = 0, max = 5 })):Check(6))
+    assert.is_true(S:Seal(S.enum({ 1, "a", false })):Check(false))
+    assert.is_true(S:Seal(S.array({ of = S.any(), min = 1, max = 2 })):Check({ 1 }))
+    assert.is_true(S:Seal(S.map({ keys = S.any(), values = S.any(), max = 2 })):Check({ a = 1 }))
+    assert.are.equal(4, S:Seal(S.number()):Assert(4, "count", 2))
+  end)
+
   it("still accepts plain boolean flags while the probe exists", function()
     assert.is_false(S:Seal(S.number({ integer = true })):Check(1.5))
     assert.is_false(S:Seal(S.table({ fields = {}, open = false })):Check({ extra = 1 }))

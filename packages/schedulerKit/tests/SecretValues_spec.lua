@@ -181,6 +181,42 @@ describe("SchedulerKit and secret values", function()
       end,
     },
     {
+      label = "SchedulerKit:Schedule options field name",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Schedule(noop, { [secret] = true })
+      end,
+    },
+    {
+      label = "SchedulerKit:Lane options field name",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Lane("secret-lane", { [secret] = true })
+      end,
+    },
+    {
+      label = "SchedulerKit:Lane retry options field name",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Lane("secret-lane", { retry = { [secret] = true } })
+      end,
+    },
+    {
+      label = "SchedulerKit:Debounce options field name",
+      call = function(secret, mark)
+        mark()
+        SchedulerKit:Debounce(noop, 1, { [secret] = true })
+      end,
+    },
+    {
+      label = "SchedulerKit.Lane:Submit options field name",
+      call = function(secret, mark)
+        local lane = SchedulerKit:Lane("secret-submit-lane")
+        mark()
+        lane:Submit(noop, { [secret] = true })
+      end,
+    },
+    {
       label = "SchedulerKit:SetLimits limits.maxLanes",
       call = function(secret, mark)
         mark()
@@ -219,6 +255,44 @@ describe("SchedulerKit and secret values", function()
     assert.is_true(handle("key", secretValue))
     TestEnv.FireNative(#TestEnv.NativeTimers())
     assert.are.equal(secretValue, delivered)
+  end)
+
+  it("refuses an option field name the host reports secret before looking it up", function()
+    -- A plain string stands in for a secret string: without the probe asked
+    -- first, it would be looked up and reported as an unknown field by name.
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    -- The package reads this host global at load time, so the spec installs it in the global table.
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", function(value)
+      return value == "hiddenField"
+    end)
+    require("Registry")
+    require("TimerKit")
+    local stubbed = require("SchedulerKit")
+
+    local line
+    local ok, value = pcall(function()
+      line = currentLine() + 1
+      stubbed:Schedule(noop, { hiddenField = 1 })
+    end)
+    assertReportedAt(
+      line,
+      "SchedulerKit:Schedule options field name must not be a secret value",
+      ok,
+      value
+    )
+
+    ok, value = pcall(function()
+      line = currentLine() + 1
+      stubbed:Watch(noop, 1, noop, { hiddenField = 1 })
+    end)
+    assertReportedAt(
+      line,
+      "SchedulerKit:Watch options field name must not be a secret value",
+      ok,
+      value
+    )
   end)
 
   it("reports a secret facade-method argument at the caller's own line", function()

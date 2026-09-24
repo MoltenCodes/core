@@ -161,6 +161,34 @@ describe("HookKit bootstrap", function()
     assertUpgradesFrom(TestEnv.NewPackage().REVISION - 1)
   end)
 
+  it(
+    "releases a script hook of a revision 4 copy by the secret-handler rule after an upgrade",
+    function()
+      local secretHandler = nil
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      TestEnv.InstallHookApi()
+      TestEnv.SetGlobal("issecretvalue", function(value)
+        return secretHandler ~= nil and rawequal(value, secretHandler)
+      end)
+      require("Registry")
+      local previous = TestEnv.LoadRevision(4)
+      local scope = previous:ForAddon("MyAddon")
+      local frame = TestEnv.NewFrame()
+      frame:SetScript("OnShow", function() end)
+      assert.is_true(scope:HookScript(frame, "OnShow", function() end))
+      local installed = frame:GetScript("OnShow")
+
+      local current = require("HookKit")
+      assert.are.equal(previous, current)
+      assert.is_true(current.REVISION > 4)
+      secretHandler = installed
+
+      assert.is_true(scope:Unhook(frame, "OnShow"))
+      assert.are.equal(installed, frame:GetScript("OnShow"))
+    end
+  )
+
   it("keeps the UNBOUNDED sentinel and every scope's limit across an upgrade", function()
     local HookKit = TestEnv.NewPackage()
     local sentinel = HookKit.UNBOUNDED

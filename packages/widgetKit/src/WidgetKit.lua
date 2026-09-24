@@ -56,7 +56,7 @@
 
 local PACKAGE_NAME = "widgetKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -1680,7 +1680,11 @@ function ContainerBase:LayoutFinished(width, height)
   local frame = self.frame
   local heightBefore = frame:GetHeight()
   callHook(self, "OnLayoutFinished", width, height)
-  if frame:GetHeight() == heightBefore then
+  -- A secret height (Retail 12.x) raises when compared, so a height that is
+  -- secret before or after the hook is unknown and counts as unchanged: the
+  -- parent is not asked to lay out again, and would read it as 0 anyway.
+  local heightAfter = frame:GetHeight()
+  if isSecret(heightBefore) or isSecret(heightAfter) or heightAfter == heightBefore then
     return
   end
 
@@ -1762,6 +1766,16 @@ end
 -- content frame. A child that is itself a container is laid out as soon as
 -- its width is known, so a pass runs top-down and each container reports its
 -- height before its parent reads it. Hidden children are skipped.
+--
+-- Sizes read from the host may be secret (Retail 12.x): `GetWidth`,
+-- `GetHeight` and `GetSize` carry `SecretWhenAnchoringSecret` in the client's
+-- documentation, and arithmetic or a comparison on a secret raises. Every size
+-- a layout reads is asked of `issecretvalue` first, and a secret one counts as
+-- unknown: an unknown content width or height sizes no child from it (relative
+-- widths and full heights are left alone, and the child is told no size) and
+-- is reported to `LayoutFinished` as `nil`; an unknown child width or height
+-- adds 0 to the offsets and rows. No new local sits at the top level: the main
+-- chunk is at Lua's 200-local limit, so each layout keeps its own.
 
 ---Tell a child that a layout sized it.
 ---@param child WidgetKit.Widget
@@ -1790,8 +1804,13 @@ end
 ---@type WidgetKit.Layout
 local function listLayout(content, children)
   -- Insets larger than the container leave the content a negative width;
-  -- no child is ever sized below zero.
-  local width = math.max(content:GetWidth(), 0)
+  -- no child is ever sized below zero. A secret width is unknown (`nil`).
+  local width = content:GetWidth()
+  if isSecret(width) then
+    width = nil
+  else
+    width = math.max(width, 0)
+  end
   local offset = 0
   for index = 1, #children do
     local child = children[index]
@@ -1803,13 +1822,16 @@ local function listLayout(content, children)
       if childRecord.fullWidth then
         frame:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -offset)
         notifySized(child, width, nil)
-      elseif childRecord.relativeWidth ~= nil then
+      elseif childRecord.relativeWidth ~= nil and width ~= nil then
         local childWidth = width * childRecord.relativeWidth
         frame:SetWidth(childWidth)
         notifySized(child, childWidth, nil)
       end
       layoutNested(child, childRecord)
-      offset = offset + frame:GetHeight()
+      local childHeight = frame:GetHeight()
+      if not isSecret(childHeight) then
+        offset = offset + childHeight
+      end
     end
   end
   return width, offset
@@ -1818,8 +1840,18 @@ end
 ---`Fill`: the first shown child fills the content; the others are left alone.
 ---@type WidgetKit.Layout
 local function fillLayout(content, children)
-  local width = math.max(content:GetWidth(), 0)
-  local height = math.max(content:GetHeight(), 0)
+  -- A secret width or height is unknown (`nil`); the child is told no size.
+  local width, height = content:GetWidth(), content:GetHeight()
+  if isSecret(width) then
+    width = nil
+  else
+    width = math.max(width, 0)
+  end
+  if isSecret(height) then
+    height = nil
+  else
+    height = math.max(height, 0)
+  end
   for index = 1, #children do
     local child = children[index]
     local childRecord = records[child]
@@ -1845,8 +1877,18 @@ local function flowLayout(content, children)
   -- fill a row may sum to a hair above its width in floating point. A row
   -- overflows only past this many pixels, far below anything visible.
   local fitTolerance = 0.001
-  local width = math.max(content:GetWidth(), 0)
+  -- A secret content width is unknown: rows are packed against a width of
+  -- 0, so each child after the first in a row wraps, and no child is sized
+  -- from it. A secret content height sizes no full-height child.
+  local width = content:GetWidth()
+  local widthKnown = not isSecret(width)
+  if widthKnown then
+    width = math.max(width, 0)
+  else
+    width = 0
+  end
   local contentHeight = content:GetHeight()
+  local heightKnown = not isSecret(contentHeight)
   local x = 0
   local rowTop = 0
   local rowHeight = 0
@@ -1856,12 +1898,20 @@ local function flowLayout(content, children)
     local frame = child.frame
     if childRecord ~= nil and frame:IsShown() then
       local childWidth
+      local sizedWidth = nil
       if childRecord.fullWidth then
         childWidth = width
-      elseif childRecord.relativeWidth ~= nil then
+        if widthKnown then
+          sizedWidth = childWidth
+        end
+      elseif childRecord.relativeWidth ~= nil and widthKnown then
         childWidth = width * childRecord.relativeWidth
+        sizedWidth = childWidth
       else
         childWidth = frame:GetWidth()
+        if isSecret(childWidth) then
+          childWidth = 0
+        end
       end
 
       -- Wrap before a child that does not fit, or before a full-width
@@ -1876,22 +1926,25 @@ local function flowLayout(content, children)
       frame:SetPoint("TOPLEFT", content, "TOPLEFT", x, -rowTop)
       if childRecord.fullWidth then
         frame:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -rowTop)
-      elseif childRecord.relativeWidth ~= nil then
+      elseif childRecord.relativeWidth ~= nil and widthKnown then
         frame:SetWidth(childWidth)
       end
 
       local sizedHeight = nil
-      if childRecord.fullHeight then
+      if childRecord.fullHeight and heightKnown then
         sizedHeight = contentHeight - rowTop
         if sizedHeight < 0 then
           sizedHeight = 0
         end
         frame:SetHeight(sizedHeight)
       end
-      notifySized(child, childWidth, sizedHeight)
+      notifySized(child, sizedWidth, sizedHeight)
       layoutNested(child, childRecord)
 
       local childHeight = frame:GetHeight()
+      if isSecret(childHeight) then
+        childHeight = 0
+      end
       if childHeight > rowHeight then
         rowHeight = childHeight
       end
@@ -1902,6 +1955,9 @@ local function flowLayout(content, children)
         rowHeight = 0
       end
     end
+  end
+  if not widthKnown then
+    return nil, rowTop + rowHeight
   end
   return width, rowTop + rowHeight
 end
@@ -3499,7 +3555,12 @@ do
 
   ---The scroll child has no anchors, so its width is set before each pass.
   local function scrollOnLayoutStart(self)
-    self.content:SetWidth(self.scroll:GetWidth())
+    -- `SetWidth` takes a secret argument only from untainted code, so a
+    -- secret viewport width is unknown and the content keeps its width.
+    local viewportWidth = self.scroll:GetWidth()
+    if not isSecret(viewportWidth) then
+      self.content:SetWidth(viewportWidth)
+    end
   end
 
   ---Size the scroll child to what the layout used and update the scrollbar.
@@ -3507,7 +3568,13 @@ do
     height = height or 0
     self._contentHeight = height
     self.content:SetHeight(height)
-    local range = height - self.scroll:GetHeight()
+    -- A secret viewport height is unknown and counts as 0: every pixel of
+    -- the content is then scrollable.
+    local viewportHeight = self.scroll:GetHeight()
+    if isSecret(viewportHeight) then
+      viewportHeight = 0
+    end
+    local range = height - viewportHeight
     if range < 0 then
       range = 0
     end

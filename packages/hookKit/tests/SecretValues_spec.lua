@@ -173,4 +173,57 @@ describe("HookKit and secret values", function()
       assert.is_true(scope:Hook(target, "Pre", function() end, { forceSecure = true }))
     end)
   end
+
+  for _, withClientKit in ipairs({ true, false }) do
+    local label = withClientKit and "with ClientKit" or "with issecretvalue alone"
+
+    it("leaves a script closure inert when GetScript returns a secret " .. label, function()
+      -- GetScript is a ConstSecretAccessor: the probe below reports the
+      -- installed closure itself as secret, standing in for a secret
+      -- function the host hands back. Comparing it would raise on the
+      -- client, so release must ask first and keep the closure.
+      local secretHandler = nil
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      TestEnv.InstallHookApi()
+      TestEnv.SetGlobal("issecretvalue", function(value)
+        return secretHandler ~= nil and rawequal(value, secretHandler)
+      end)
+      require("Registry")
+      if withClientKit then
+        require("ClientKit")
+      end
+      local HookKit = require("HookKit")
+      local scope = HookKit:CreateScope()
+      for _, methodName in ipairs({ "HookScript", "RawHookScript" }) do
+        local frame = TestEnv.NewFrame()
+        local previousCalls = 0
+        frame:SetScript("OnShow", function()
+          previousCalls = previousCalls + 1
+        end)
+        assert.is_true(scope[methodName](scope, frame, "OnShow", function() end))
+        local installed = frame:GetScript("OnShow")
+        secretHandler = installed
+
+        assert.is_true(scope:Unhook(frame, "OnShow"))
+
+        assert.are.equal(installed, frame:GetScript("OnShow"))
+        assert.is_false(scope:IsHooked(frame, "OnShow"))
+        TestEnv.RunScript(frame, "OnShow")
+        assert.are.equal(1, previousCalls)
+        secretHandler = nil
+      end
+    end)
+  end
+
+  it("still restores the previous script when GetScript is not secret", function()
+    local HookKit = loadWithSecret(TestEnv.NewSecretValue(), true)
+    local scope = HookKit:CreateScope()
+    local frame = TestEnv.NewFrame()
+    local previous = function() end
+    frame:SetScript("OnShow", previous)
+    scope:HookScript(frame, "OnShow", function() end)
+    assert.is_true(scope:Unhook(frame, "OnShow"))
+    assert.are.equal(previous, frame:GetScript("OnShow"))
+  end)
 end)

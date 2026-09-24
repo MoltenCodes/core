@@ -55,7 +55,7 @@
 
 local PACKAGE_NAME = "hookKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local OPTIONAL_CLIENTKIT_API = 1
 local STATE_SCHEMA = 1
@@ -1229,7 +1229,12 @@ local function releaseRecord(scope, object, method, record)
       -- A frame that became inaccessible keeps the inert closure.
       return
     end
-    if object:GetScript(method) ~= installed then
+    -- `GetScript` is a ConstSecretAccessor in the Retail metadata: while
+    -- restrictions apply it may hand back a secret function, and comparing
+    -- a secret with a function raises. A secret handler is therefore asked
+    -- about first and treated as someone else's: the closure stays, inert.
+    local current = object:GetScript(method)
+    if isSecret(current) or current ~= installed then
       return
     end
     local secureCounts = rawget(secureScripts, object)

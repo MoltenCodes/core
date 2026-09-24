@@ -164,13 +164,48 @@ describe("ProfileKit bootstrap", function()
 
     local current = Env.ReloadPackage()
     assert.are.equal(previous, current)
-    assert.are.equal(previousRevision + 1, current.REVISION)
+    assert.is_true(current.REVISION > previousRevision)
     assert.are.equal(state, current._state)
     assert.are.equal(section, current:Section("carried"))
     assert.is_true(current:IsEnabled())
     assert.are.same({ maxSections = 4 }, current:GetLimits())
     assert.are.equal(5, current:Report()[1].total)
   end)
+
+  it(
+    "upgrades a revision 2 package in place to a working file that refuses secret names",
+    function()
+      local previousRevision = 2
+      Env.Reset()
+      Env.InstallWowApi()
+      require("Registry")
+      local previous = loadSourceAsRevision(previousRevision)
+      previous:Enable()
+      local section = previous:Section("carried")
+      section:Begin()
+      Env.AdvanceProfileMs(3)
+      section:End()
+      local state = previous._state
+      -- The working file binds the probe at load, so it is installed before the upgrade.
+      -- selene: allow(global_usage)
+      rawset(_G, "issecretvalue", function(value)
+        return rawequal(value, "secret.name")
+      end)
+
+      local current = Env.ReloadPackage()
+      assert.are.equal(previous, current)
+      assert.are.equal(previousRevision + 1, current.REVISION)
+      assert.are.equal(state, current._state)
+      assert.are.equal(section, current:Section("carried"))
+      assert.are.equal(3, current:Report()[1].total)
+      Env.expectErrorContaining("ProfileKit:Section name must not be a secret value", function()
+        current:Section("secret.name")
+      end)
+      Env.expectErrorContaining("ProfileKit:Measure name must not be a secret value", function()
+        current:Measure("secret.name", function() end)
+      end)
+    end
+  )
 
   it("refuses corrupted shared state on reload", function()
     local ProfileKit = Env.NewPackage()

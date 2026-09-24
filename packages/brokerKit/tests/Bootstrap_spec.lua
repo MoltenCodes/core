@@ -123,12 +123,22 @@ describe("BrokerKit bootstrap", function()
     mine.text = "After"
     assert.are.same({ "After" }, seen)
 
-    -- The fix the shipped revision carries: a foreign change whose data
+    -- The fix revision 2 carries: a foreign change whose data
     -- object is not the adopted table is ignored before it is compared.
     library.Fire("LibDataBroker_AttributeChanged", "Theirs", "text", "Changed", "other")
     assert.are.equal("T", BrokerKit:Get("Theirs").text)
     library:GetDataObjectByName("Theirs").text = "Changed"
     assert.are.equal("Changed", BrokerKit:Get("Theirs").text)
+
+    -- The fix revision 3 carries: an unknown SetLimits key is described
+    -- without `tostring`, and the limits set by the older copy stay.
+    TestEnv.expectErrorContaining(
+      "BrokerKit:SetLimits limits.<boolean> is not a recognised limit",
+      function()
+        BrokerKit:SetLimits({ [true] = 1 })
+      end
+    )
+    assert.are.equal(300, BrokerKit:GetLimits().maxObjects)
   end)
 
   it("upgrades in place and keeps the set limits and the UNBOUNDED sentinel", function()

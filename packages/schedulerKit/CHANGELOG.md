@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.5 — 2026-09-24
+
+Secret option field names. Implementation revision 17; API generation 1 is unchanged.
+
+- The two option-table validators (scheduling options of `Schedule`, `NextFrame`, `After` and `Every`, and the options of `Lane`, its `retry` table, `Lane:Submit`, `Debounce`, `Coalesce` and `Watch`) read each field name as a table key (`allowed[key]`) and then compared its `tostring` form. A secret used as a table key or compared with a string raises (measured on Retail 12.1.0 b69933), so each field name is now asked of `issecretvalue` first and a secret one is refused at the caller's line with `<method> options field name must not be a secret value` (`SchedulerKit:Lane retry options field name` for the `retry` table). The keys come from `pairs` over a Lua table, which cannot hold a secret key on the measured client, so this is a defensive check rather than a fix for an observed failure.
+- No new top-level local (191 of 200 still) and no new installer upvalue: the checks call the existing `refuseSecretValue`.
+- An in-place upgrade from revision 16 needs no state change; jobs, coroutines, timers and handles carry over.
+- Specs: a secret field name is refused at the caller's line for `Schedule`, `Lane`, `Lane` `retry`, `Lane:Submit` and `Debounce`, and a host stub that reports a plain string secret is refused for `Schedule` and `Watch`; the revision constants of the upgrade specs follow revision 17. 248 specs (242 before).
+- Docs: `docs/API.md` "Secret values" lists the option field name and the upgrade notes gain revision 17; `docs/INTERNALS.md` updates the local headroom note.
+
 ## 0.8.4 — 2026-09-24
 
 Argument errors at the caller's line. Implementation revision 16; API generation 1 is unchanged.

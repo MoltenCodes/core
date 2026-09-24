@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "schemaKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -372,8 +372,10 @@ local function currentSecretProbe()
 end
 
 ---Whether the host marks `value` secret; always `false` on a client without
----secret values. Builders and `Seal` ask it about a boolean flag before
----testing it, because testing a secret boolean raises inside SchemaKit.
+---secret values. Builders, `Seal` and `Assert` ask it about a caller's flag,
+---bound, literal, pattern, description, name or level before testing,
+---comparing or doing arithmetic on it, each of which raises on a secret
+---inside SchemaKit.
 ---@param value any
 ---@return boolean
 local function isSecretValue(value)
@@ -1381,10 +1383,13 @@ local function validateSpecKeys(spec, allowedKeys, label, level)
   end
 end
 
+---Whether `value` is a non-negative integer. A secret number answers `false`
+---before it is compared, so every caller refuses it with its own message.
 ---@param value any
 ---@return boolean
 local function isNonNegativeInteger(value)
   return type(value) == "number"
+    and not isSecretValue(value)
     and value == value
     and value >= 0
     and value ~= HUGE
@@ -1517,7 +1522,12 @@ local function compileLiterals(list, length, label, level)
   for index = 1, length do
     local value = list[index]
     local valueType = type(value)
-    if valueType ~= "string" and valueType ~= "number" and valueType ~= "boolean" then
+    -- A secret literal is refused before the NaN test and the set lookup,
+    -- which compare it and use it as a key.
+    if
+      (valueType ~= "string" and valueType ~= "number" and valueType ~= "boolean")
+      or isSecretValue(value)
+    then
       error(label .. " values must be strings, numbers or booleans", level)
     end
     if value ~= value then
@@ -1694,7 +1704,7 @@ local function buildString(spec)
 
   local pattern = rawget(spec, "pattern")
   if type(pattern) ~= "nil" then
-    if type(pattern) ~= "string" or pattern == "" then
+    if type(pattern) ~= "string" or isSecretValue(pattern) or pattern == "" then
       error("SchemaKit.string pattern must be a non-empty string", 2)
     end
     if not isValidPattern(pattern) then
@@ -1740,10 +1750,11 @@ local function buildNumber(spec)
   node.expected = noun
 
   local min, max = rawget(spec, "min"), rawget(spec, "max")
-  if type(min) ~= "nil" and (type(min) ~= "number" or min ~= min) then
+  -- `issecretvalue` first: the NaN test compares the bound with itself.
+  if type(min) ~= "nil" and (type(min) ~= "number" or isSecretValue(min) or min ~= min) then
     error("SchemaKit.number min must be a number", 2)
   end
-  if type(max) ~= "nil" and (type(max) ~= "number" or max ~= max) then
+  if type(max) ~= "nil" and (type(max) ~= "number" or isSecretValue(max) or max ~= max) then
     error("SchemaKit.number max must be a number", 2)
   end
   if type(min) ~= "nil" and type(max) ~= "nil" and min > max then
@@ -1966,7 +1977,7 @@ local function buildCustom(check, description)
   if type(check) ~= "function" then
     error("SchemaKit.custom check must be a function", 2)
   end
-  if type(description) ~= "string" or description == "" then
+  if type(description) ~= "string" or isSecretValue(description) or description == "" then
     error("SchemaKit.custom description must be a non-empty string", 2)
   end
   local node = newCompiledNode(KIND_CUSTOM, description)
@@ -2015,7 +2026,7 @@ local function schemaAssert(self, value, argumentName, level)
   local record = recordOf(self, "SchemaKit.Schema:Assert", 3)
   if type(argumentName) == "nil" then
     argumentName = "value"
-  elseif type(argumentName) ~= "string" or argumentName == "" then
+  elseif type(argumentName) ~= "string" or isSecretValue(argumentName) or argumentName == "" then
     error("SchemaKit.Schema:Assert argumentName must be a non-empty string", 2)
   end
   if type(level) == "nil" then

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 — 2026-09-24
+
+- A secret builder argument or `Assert` argument (Retail 12.x) is refused at the caller's line, with the message an invalid value of that argument gets, before SchemaKit compares it, uses it as a key or does arithmetic on it. Measured on Retail 12.1.0 (build 69933): comparing a secret with a value of its own type and using it as a table key raise in tainted code. The sites were the `min` and `max` of `SchemaKit.string`, `SchemaKit.number` and `SchemaKit.array` (the NaN test, the integer test and `min > max`), `SchemaKit.map`'s `max`, `SchemaKit.string`'s `pattern` (the empty-string test), the literals of `SchemaKit.string{ oneOf }` and `SchemaKit.enum` (the NaN test and the set lookup), `SchemaKit.custom`'s `description`, and `Assert`'s `argumentName` (the empty-string test) and `level` (the integer test and `level + 1`). `docs/API.md` lists each message under "Secret values", and its implementation revision line, which still said 2, says 4.
+- Implementation revision 4, because the executed implementation changed. No state changed: an in-place upgrade from revision 3 keeps every node, schema, failure table and limit and replaces the methods only.
+- Specs: the secret builder arguments, the secret `Assert` arguments, plain values still accepted while the probe exists; the in-place upgrade from the previous revision now runs from revision 3. 132 specs.
+
 ## 0.1.3 — 2026-09-24
 
 - A secret answer from a `SchemaKit.custom` check (Retail 12.x) rejects the value with rule `custom`, like a falsy answer, instead of raising inside SchemaKit when the answer was tested as a boolean. Measured on Retail 12.1.0 (build 69933): a boolean test of a secret raises in tainted code.

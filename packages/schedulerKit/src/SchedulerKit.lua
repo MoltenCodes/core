@@ -44,7 +44,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 16
+local IMPLEMENTATION_REVISION = 17
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMER_API = 1
 local STATE_SCHEMA = 1
@@ -1031,6 +1031,9 @@ local function validateOptions(options, methodName)
 
   local unknown = nil
   for key in pairs(options) do
+    -- A secret key would raise at the table read below with no useful line;
+    -- it is refused first, at the caller's.
+    refuseSecretValue(key, methodName .. " options field name", 5)
     if SCHEDULING_OPTION_KEYS[key] ~= true then
       local display = tostring(key)
       if unknown == nil or display < unknown then
@@ -2160,6 +2163,9 @@ local function installCoalescingFamily()
 
     local unknown = nil
     for key in pairs(options) do
+      -- A secret key would raise at the table read below with no useful
+      -- line; it is refused first, at the caller's.
+      refuseSecretValue(key, methodName .. " options field name", level + 1)
       if allowed[key] ~= true then
         local display = tostring(key)
         if unknown == nil or display < unknown then

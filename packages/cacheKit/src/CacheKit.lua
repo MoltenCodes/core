@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "cacheKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local OPTIONAL_EVENTKIT_API = 1
 
@@ -697,7 +697,9 @@ end
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateOverflowPolicy(value, methodName, level)
-  if type(value) ~= "string" or QUEUE_OVERFLOW_POLICIES[value] ~= true then
+  -- A secret string raises when it is used as a key of the policy set, so the
+  -- probe is asked first and a secret is refused like any unknown policy.
+  if type(value) ~= "string" or isSecretValue(value) or QUEUE_OVERFLOW_POLICIES[value] ~= true then
     error(methodName .. " overflow must be " .. QUEUE_OVERFLOW_POLICY_TEXT, level)
   end
 end
@@ -797,7 +799,15 @@ local function validateTtlSeconds(value, methodName, level)
   if type(value) == "nil" then
     error(methodName .. " ttlSeconds is required", level)
   end
-  if type(value) ~= "number" or value ~= value or value <= 0 or value == math.huge then
+  -- The secret check runs before the value is compared with anything; a
+  -- secret is refused like any other invalid lifetime.
+  if
+    type(value) ~= "number"
+    or isSecretValue(value)
+    or value ~= value
+    or value <= 0
+    or value == math.huge
+  then
     error(methodName .. " ttlSeconds must be a finite number greater than zero", level)
   end
 end

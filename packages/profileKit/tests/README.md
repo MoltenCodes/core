@@ -27,9 +27,11 @@ The ProfileKit suite covers:
 - duplicate embedded loading, refusal to downgrade, an in-place upgrade to the
   next revision (the real source with its revision constant rewritten) that
   keeps the set limits and the `UNBOUNDED` sentinel, an in-place upgrade from
-  the previous revision to the working file, and corrupted-state refusals;
+  revisions 1 and 2 to the working file, and corrupted-state refusals;
 - secret values (a `issecretvalue` stub installed before load): a secret
-  `maxSections` and a secret receiver refused at the caller's line;
+  `maxSections` and a secret receiver refused at the caller's line, a secret
+  section name refused by `Section` and by the disabled and enabled `Measure`
+  before it is compared or used as a key, `fn` not called;
 - `error` levels: every argument failure reports the caller's own line;
 - manifest/runtime API and revision consistency.
 
@@ -45,6 +47,6 @@ the clock calls `ProfileKitTestEnv.NewPackageWithoutProfilingClock()`, because
 | `Cap_spec.lua` | the section cap |
 | `Limits_spec.lua` | `SetLimits`, `GetLimits` and `UNBOUNDED` for `maxSections` |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
-| `SecretValues_spec.lua` | a secret limit value and a secret receiver refused at the caller's line |
+| `SecretValues_spec.lua` | a secret limit value, a secret receiver and a secret section name refused at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades, corrupted state |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement, declared dependencies |

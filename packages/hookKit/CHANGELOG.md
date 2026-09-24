@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5 — 2026-09-24
+
+- Unhooking a `HookScript` or `RawHookScript` no longer compares a secret script handler. `GetScript` is flagged `ConstSecretAccessor` in the Retail 12.1.0 metadata, so while restrictions apply it may return a secret function, and comparing a secret with a value of its own type raises (measured on Retail 12.1.0 b69933). The handler is now asked about with `IsSecret` (or `issecretvalue`) first, and a secret one is treated as "someone hooked the target after HookKit": the closure stays, inert, forwarding to the previous script, `SetScript` is not called, and `Unhook` returns `true`. Documented under "Unhook: restore or go inert" in `docs/API.md`.
+- Implementation revision 5, because the executed implementation changed. No state or scope layout changed: an upgrade over revision 4 replaces the methods, and scopes an older copy opened release by the new rule at once. `docs/API.md` states the implementation revision as 5 (it still said 3).
+- Specs: 117 → 121. A secret current handler leaves the `HookScript` and `RawHookScript` closure in place, with ClientKit and with `issecretvalue` alone; a plain handler is still restored; a script hook installed by a revision 4 copy is released by the new rule after an in-place upgrade.
+
 ## 0.2.4 — 2026-09-24
 
 - A secret `options.forceSecure` of `Hook`, `RawHook`, `HookScript` or `RawHookScript` is refused at the caller's line with `<method> options.forceSecure must not be a secret value`, before HookKit compares or tests it. A secret boolean passes the type check, and on Retail 12.1.0 (build 69933) testing a secret boolean raises in tainted code, so before this the call raised inside HookKit. Documented under "Refusals" in `docs/API.md`.

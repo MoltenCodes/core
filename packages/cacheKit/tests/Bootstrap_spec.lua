@@ -303,6 +303,47 @@ describe("CacheKit bootstrap", function()
     assert.are.equal(1, memo:GetCount())
   end)
 
+  it(
+    "upgrades a revision 5 package in place to a working file that refuses secret lifetimes",
+    function()
+      local previousRevision = 5
+      local workingRevision = TestEnv.NewPackage().REVISION
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      require("Registry")
+      require("SignalKit")
+      require("EventKit")
+      local previous = TestEnv.LoadRevision(previousRevision)
+      assert.are.equal(previousRevision, previous.REVISION)
+      local state = rawget(previous, "_state")
+      local ttl = previous:NewTtl({ maxEntries = 2, ttlSeconds = 60 })
+      ttl:Set("kept", 1)
+      local queue = previous:NewQueue(2, "reject")
+      queue:Push("a")
+      -- The working file binds the probe at load, so it is installed before the upgrade.
+      -- selene: allow(global_usage)
+      rawset(_G, "issecretvalue", function(value)
+        return rawequal(value, 45)
+      end)
+
+      local upgraded = TestEnv.ReloadPackage()
+      assert.are.equal(previous, upgraded)
+      assert.are.equal(workingRevision, upgraded.REVISION)
+      assert.are.equal(state, rawget(upgraded, "_state"))
+      assert.are.equal(1, ttl:Get("kept"))
+      assert.are.equal("a", queue:Pop())
+      -- A cache the older copy created runs the working, secret-aware check.
+      TestEnv.expectErrorContaining(
+        "CacheKit.Cache:PutNegative ttlSeconds must be a finite number greater than zero",
+        function()
+          ttl:PutNegative("gone", 45)
+        end
+      )
+      ttl:PutNegative("gone", 5)
+      assert.are.equal("negative", select(2, ttl:Get("gone")))
+    end
+  )
+
   it("rejects a same-revision state whose limits are invalid", function()
     local CacheKit = TestEnv.NewPackage()
     rawset(rawget(rawget(CacheKit, "_state"), "limits"), "maxQueueCapacity", 0)

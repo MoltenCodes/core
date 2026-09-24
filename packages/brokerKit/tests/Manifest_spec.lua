@@ -23,7 +23,7 @@ describe("BrokerKit manifest metadata", function()
 
     assert.is_truthy(text:find('"registry"%s*:%s*{%s*"api"%s*:%s*2%s*}'))
     assert.is_truthy(text:find('"signalKit"%s*:%s*{%s*"api"%s*:%s*1%s*}'))
-    assert.is_truthy(text:find('"version"%s*:%s*"0%.1%.3"'))
+    assert.is_truthy(text:find('"version"%s*:%s*"0%.1%.4"'))
     assert.is_truthy(text:find('"license"%s*:%s*"MIT"'))
   end)
 end)

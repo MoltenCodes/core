@@ -2,10 +2,10 @@
   "name": "profileKit",
   "displayName": "ProfileKit",
   "description": "Zero-cost-when-off performance sections with call count, total, worst spike and last time, and a sorted report.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "license": "MIT",
   "api": 1,
-  "revision": 2,
+  "revision": 3,
   "dependencies": {
     "registry": {
       "api": 2

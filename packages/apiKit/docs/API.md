@@ -114,6 +114,8 @@ Argument and receiver failures are raised at the caller's line:
 | `ApiKit:RegisterFlavor info must be a table when given` | |
 | `ApiKit:RegisterFlavor info.version must be a string when given` | |
 | `ApiKit:RegisterFlavor info.build must be an integer when given` | |
+| `ApiKit:<Method> flavor must not be a secret value` | A flavour id `issecretvalue` reports secret; see [Secret values](#secret-values). |
+| `ApiKit:RegisterFlavor info.build must not be a secret value` | See [Secret values](#secret-values). |
 | `ApiKit.SUPPORTED_FLAVORS is read-only; index "<key>" cannot be written` | |
 
 Load-time failures: `MoltenCodes ApiKit requires Registry API 2 to be loaded
@@ -123,6 +125,25 @@ ApiKit found MoltenCodes.wow owned by something else`. A generated flavour
 file raises `MoltenCodes ApiKit (<Flavour> bindings) requires Registry API 2
 to be loaded first`, `... requires a valid Registry API 2 facade` or `...
 requires ApiKit API 1 to be loaded first` when it loads out of order.
+
+## Secret values
+
+On Retail 12.x a secret compared with a value of its own type, used in
+arithmetic or used as a table key raises at that line (measured on Retail
+12.1.0 b69933; see [`EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
+ApiKit asks the host's `issecretvalue`, looked up at call time, about the two
+arguments that meet one of those operations, and refuses a secret one at the
+caller's line before it is used:
+
+- `flavor` of `RegisterFlavor` and `GetMetadataBuild`, which is used as a key
+  of the flavour table;
+- `info.build` of `RegisterFlavor`, whose integer test is arithmetic.
+
+The message names the argument and never formats the value in. A refused
+registration records nothing and runs no installer. `info.version` is only
+stored and handed back by `GetMetadataBuild`, which the client allows, so a
+secret version is accepted. A client without `issecretvalue` has no secret
+values and refuses nothing.
 
 ## Limits
 
@@ -160,3 +181,5 @@ the older one's state: the namespace tables, the installed flavours and their
 `info` survive an in-place upgrade, and a flavour file that registered before
 the upgrade is not run again. Revision 2 keeps the revision 1 state as it is
 and replaces the methods only; the flavour is probed again on the upgrade.
+Revision 3 keeps the revision 2 state the same way; the replaced methods refuse
+secret arguments as described under [Secret values](#secret-values).

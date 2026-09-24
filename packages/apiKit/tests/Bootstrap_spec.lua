@@ -98,6 +98,39 @@ describe("ApiKit bootstrap", function()
     assert.is_false(upgraded:RegisterFlavor("classic-era", function() end, nil))
   end)
 
+  it("upgrades a revision 2 copy in place and refuses secrets with the current methods", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    TestEnv.SetClient({ projectId = 1, testBuild = false, betaBuild = false })
+    require("Registry")
+    local old = TestEnv.LoadRevision(2)
+    local state = old._state
+    assert.is_true(old:RegisterFlavor("retail", function(api)
+      api.marker = true
+    end, { version = "12.1.0", build = 69933 }))
+    -- selene: allow(global_usage)
+    local root = rawget(_G, "MoltenCodes").wow
+
+    local upgraded = TestEnv.requireAfterFailedLoad("ApiKit")
+
+    assert.are.equal(old, upgraded)
+    assert.is_true(upgraded.REVISION > 2)
+    assert.are.equal(state, upgraded._state)
+    assert.is_true(root.retail.api.marker)
+    assert.are.same({ "12.1.0", 69933 }, { upgraded:GetMetadataBuild("retail") })
+    -- The replaced methods ask `issecretvalue` before the key use.
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", function(value)
+      return rawequal(value, "classic-era")
+    end)
+    TestEnv.expectErrorContaining(
+      "ApiKit:RegisterFlavor flavor must not be a secret value",
+      function()
+        upgraded:RegisterFlavor("classic-era", function() end)
+      end
+    )
+  end)
+
   it("re-probes the client when a newer revision upgrades in place", function()
     local ApiKit = TestEnv.NewPackageFor("tbc")
     assert.are.equal("unsupported", ApiKit:GetFlavor())

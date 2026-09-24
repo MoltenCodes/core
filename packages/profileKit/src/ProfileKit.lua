@@ -6,8 +6,9 @@
 --
 -- ProfileKit costs nothing worth measuring while it is off. `Begin`, `End` and
 -- `Measure` are swapped for no-op functions on `Disable` and for the measuring
--- functions on `Enable`, so a disabled caller pays one table read and one call
--- and never branches on a flag. Nothing is shipped enabled.
+-- functions on `Enable`, so a disabled `Begin` or `End` costs one table read
+-- and one call, a disabled `Measure` checks its arguments and tail-calls `fn`,
+-- and nothing branches on a flag. Nothing is shipped enabled.
 --
 -- Contents
 -- --------
@@ -29,7 +30,7 @@
 
 local PACKAGE_NAME = "profileKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -137,8 +138,12 @@ if type(readClock) ~= "function" then
 end
 
 -- `issecretvalue` (Retail 12.0 and later, and the current Classic clients) is
--- asked only by `SetLimits`, before a caller's limit value is compared with
--- anything: a secret compared with a number raises. Without it nothing is secret.
+-- asked by `SetLimits`, before a caller's limit value is compared with
+-- anything, and by `Section` and `Measure`, before a section name is compared
+-- with the empty string or used as a key: a secret compared with a value of its
+-- own type, or used as a table key, raises. It is bound once here so the
+-- disabled `Measure` pays one call for it and no global lookup. Without it
+-- nothing is secret.
 -- issecretvalue is a World of Warcraft client API reachable only through the global table.
 -- selene: allow(global_usage)
 local nativeIsSecretValue = rawget(_G, "issecretvalue")
@@ -288,7 +293,15 @@ rawset(SECTION_METATABLE, "__index", SECTION_PROTOTYPE)
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateName(name, methodName, level)
-  if type(name) ~= "string" or name == "" then
+  if type(name) ~= "string" then
+    error(methodName .. " name must be a non-empty string", level)
+  end
+  -- A secret string raises when it is compared with "" below or used as a
+  -- key of `sectionsByName` afterwards, so it is refused first.
+  if nativeIsSecretValue ~= nil and nativeIsSecretValue(name) == true then
+    error(methodName .. " name must not be a secret value", level)
+  end
+  if name == "" then
     error(methodName .. " name must be a non-empty string", level)
   end
 end

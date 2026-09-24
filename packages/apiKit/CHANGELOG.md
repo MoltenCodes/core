@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- Fixed: `RegisterFlavor` and `GetMetadataBuild` refuse a secret `flavor` (Retail 12.x) at the caller's line with `ApiKit:<Method> flavor must not be a secret value` before it is used as a key of the flavour table, and `RegisterFlavor` refuses a secret `info.build` with `ApiKit:RegisterFlavor info.build must not be a secret value` before its integer test (`build % 1`). A secret used as a table key or in arithmetic raises at that line (measured on Retail 12.1.0 b69933), which reported the failure inside ApiKit instead. `issecretvalue` is looked up at call time; a client without it refuses nothing. A secret `info.version` is only stored and handed back, so it stays accepted. `docs/API.md` documents it under *Secret values* and *Errors*. The generated flavour files are unchanged.
+- Implementation revision 3. No state changed: an in-place upgrade from revision 2 keeps the namespace tables, the installed flavours and their `info`, and replaces the methods only.
+- Specs: `SecretValues_spec.lua` (a secret flavour id on both methods, a secret `info.build`, a secret `info.version` accepted, a host without `issecretvalue`) and an in-place upgrade from revision 2. 71 → 76 specs.
+- `ApiKit` API generation 1 is unchanged.
+
 ## 0.1.2 — 2026-09-24
 
 - Fixed: absence of a value that did not originate in the facade is tested with `type(value) == "nil"` rather than compared with `nil`: the optional `info` of `RegisterFlavor` with its `version` and `build` fields, the short `wow` global another addon may own, and the `wow` field of the `MoltenCodes` namespace. No argument is newly refused, and the generated flavour files are unchanged.

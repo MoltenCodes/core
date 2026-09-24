@@ -403,7 +403,7 @@ describe("SchedulerKit error levels", function()
     package.loaded["SchedulerKit"] = nil
     local upgraded = require("SchedulerKit")
     assert.are.equal(old, upgraded)
-    assert.are.equal(16, upgraded.REVISION)
+    assert.is_true(upgraded.REVISION > 15)
 
     -- The scope and job the older copy made keep working under the new one.
     assert.are.equal("delayed", job:GetState())

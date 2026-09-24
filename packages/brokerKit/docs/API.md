@@ -2,7 +2,7 @@
 
 BrokerKit API generation **1** provides data objects for display addons in the LibDataBroker-1.1 idiom: named objects whose attributes are plain fields, typed at the caller's line; change signals per object and per attribute; sorted enumeration; and a two-way bridge to LibDataBroker-1.1.
 
-Implementation revision: **2**.
+Implementation revision: **3**.
 
 ## Loading
 
@@ -49,7 +49,7 @@ BrokerKit reads two host globals, each at call time rather than at load, and wor
 | `GetLimits()` | A fresh table of both limits; allocates. |
 | `MAX_OBJECTS`, `MAX_ATTRIBUTES` | `256` and `32`, the defaults of the two limits. |
 | `UNBOUNDED` | Sentinel that lifts either limit; the same table for every revision. |
-| `API`, `REVISION` | `1`, `1`. |
+| `API`, `REVISION` | `1`, `3`. |
 
 An object has three methods, `Set`, `Get` and `OnChange`, and the read-only field `name`; everything else on it is an attribute.
 
@@ -238,6 +238,7 @@ On Retail 12.x the client hands tainted code secret values that raise when compa
 - a secret **name** or **attribute name** is refused at the caller in every method, and skipped when it comes from LibDataBroker;
 - a secret value for a **known attribute** is refused at the caller (`BrokerKit.Object:Set attribute "text" must not be a secret value`), because displays format those and LibDataBroker compares them;
 - a secret value for a **custom attribute** is stored without being compared, so every write of it counts as a change and fires, and it is never mirrored into LibDataBroker; a secret foreign value is kept the same way;
+- a secret **`SetLimits` key** is reported as an unknown limit with the fixed placeholder (`BrokerKit:SetLimits limits.<secret value> is not a recognised limit`), asked about before it indexes the limit names; a key read from a Lua table cannot be secret on the measured client, because storing a secret key raises, so this guard is defensive;
 - a secret **receiver** is reported as a call without the facade (`BrokerKit:Get must be called on the BrokerKit facade; use BrokerKit:Get(...)`), and a `LibDataBroker_AttributeChanged` whose data object is secret is ignored, both without comparing it.
 
 Absence of a value BrokerKit did not create (an argument, a definition or limits field, anything LibDataBroker hands over) is tested with `type`, never with `== nil`: that is the repository rule, which never compares anything. A secret compared with `nil` happens not to raise; one compared with a value of its own type, or used as a table key, does (measured on Retail 12.1.0 b69933).
@@ -257,7 +258,7 @@ BrokerKit:SetLimits({ maxAttributes = BrokerKit.UNBOUNDED })
 local limits = BrokerKit:GetLimits() -- a fresh table; allocates
 ```
 
-`SetLimits` accepts any subset of the limits and returns nothing. It raises at the caller's line, **before changing anything**, when `limits` is not a table, names an unknown limit (`BrokerKit:SetLimits limits.<name> is not a recognised limit`), or gives a secret or invalid value: each limit must be a positive integer or `BrokerKit.UNBOUNDED`. `GetLimits` returns a new table on every call, with `BrokerKit.UNBOUNDED` itself for a lifted limit.
+`SetLimits` accepts any subset of the limits and returns nothing. It raises at the caller's line, **before changing anything**, when `limits` is not a table, names an unknown limit (`BrokerKit:SetLimits limits.<name> is not a recognised limit`, where `<name>` is a string or number key as written, `<secret value>` for a key `issecretvalue` reports secret, and `<table>`, `<boolean>` and so on for any other key, so no `__tostring` runs and no secret is formatted in; a secret key is asked about before it indexes anything), or gives a secret or invalid value: each limit must be a positive integer or `BrokerKit.UNBOUNDED`. `GetLimits` returns a new table on every call, with `BrokerKit.UNBOUNDED` itself for a lifted limit.
 
 Both limits accept `UNBOUNDED` and have no ceiling: objects and their attributes are the consumers' own data, one object per panel entry an addon publishes, held by the displays that show them; nothing is sorted or scanned per frame. `maxObjects` counts every object, adopted ones included, so a large LibDataBroker population is raised for by the display addon that adopts it. `maxAttributes` counts the attributes an object holds now, the default `type` included; clearing one frees a slot.
 
@@ -289,6 +290,8 @@ A duplicate name and a limit reached are errors, not results, because both are t
 ## Embedded copies and upgrades
 
 Several addons may embed BrokerKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: objects and their identity, connections, the sorted name cache, the limits a consumer set, the `UNBOUNDED` sentinel, and the LibDataBroker exposure, adoption and subscription all survive. Each proxy's `__newindex` and the callbacks LibDataBroker holds dispatch through package state, so a newer revision replaces their behaviour without touching existing objects or subscribing again; the object methods are rewritten on the shared prototype every object reads through.
+
+Revision 3 changes no state: an upgrade over revision 2 replaces the methods, keeps every object, connection and limit, and describes an unknown `SetLimits` key without `tostring` from then on.
 
 Nothing survives `/reload`: addons create their objects again.
 

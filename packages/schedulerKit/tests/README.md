@@ -48,7 +48,7 @@ Spec files:
 | `Allocation_spec.lua` | the resume path allocates nothing; a never-drained priority queue keeps its indices at the front |
 | `Lane_spec.lua` | lanes: sharing, `maxInFlight`, `minIntervalSeconds`, retries, `maxQueued`, `Close`, allocation-free refusals, family delivery |
 | `Bootstrap_spec.lua` | duplicate loading, live job identity, the revision-3, -6, -7, -9, -10 and -12 upgrades and the previous-revision upgrade, live family handles |
-| `SecretValues_spec.lua` | secret arguments, options, limits and coalesce keys refused with `... must not be a secret value` at the caller's line, the scheduling methods' included; a secret coalesce value delivered |
+| `SecretValues_spec.lua` | secret arguments, options, option field names, limits and coalesce keys refused with `... must not be a secret value` at the caller's line, the scheduling methods' included; a secret coalesce value delivered |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
 
 `support/SchedulerKitTestEnv.lua` adds the optional-Kit loaders, `LoadRevision` (this source loaded as an older revision for upgrade specs) and `AllocatedKilobytes` (the allocation meter every allocation guard uses) to the shared fixture.

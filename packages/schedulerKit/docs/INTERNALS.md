@@ -223,7 +223,7 @@ Internal/native failures that occur in direct API operations may still be re-rai
 `installCoalescingFamily`, rather than at the top level of the chunk: Lua 5.1
 allows 200 locals per function and the main chunk is close to that.
 
-Headroom at revision 16: the main chunk holds 191 top-level locals of the 200
+Headroom at revision 17: the main chunk holds 191 top-level locals of the 200
 Lua 5.1 allows active at once (`luac -l -l` reports 213 declared, counting
 block-scoped ones, in 194 stack slots); the installer declares 111 locals and
 uses 41 of 60 upvalues. Revision 14 added the secret-value check without a new
@@ -232,7 +232,9 @@ only `nativeTraceback` and `refuseSecretValue` stay at the top level. Revision
 15 reads `debugstack` the same way, inside the `do` block that defines
 `captureTraceback`, and once more as an installer local for `captureFailure`.
 Revision 16 adds no local: its argument-error fix only moves receiver checks
-into the public methods and keeps their results in function locals. New top-level code belongs in the installer or in a
+into the public methods and keeps their results in function locals.
+Revision 17 adds no local and no installer upvalue: the option-table checks
+call the existing `refuseSecretValue`. New top-level code belongs in the installer or in a
 function of its own. The
 installer commits its own methods; only four hooks forward-declared above the
 job machinery (`laneJobFinished`, `retryLaneJob`, `cancelFamilyMembers`,
