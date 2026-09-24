@@ -364,6 +364,34 @@ describe("ExampleAddon", function()
         assertNoReportedErrors()
     end)
 
+    it("manages profiles through the ProfileOptions group", function()
+        local addonTable = loadExampleAddon()
+        logIn()
+        local database = addonTable.Main.database
+        runSlash("/exampleaddon set windowScale 1.5")
+
+        -- `new` creates a profile and switches to it; its settings start at
+        -- their defaults.
+        runSlash("/exampleaddon set profiles.new Raid")
+        assert.are.equal("Raid", database:GetProfile())
+        assert.are.equal(1, database.profile.windowScale)
+
+        -- `current` switches back; the first profile kept its value.
+        runSlash("/exampleaddon set profiles.current Default")
+        assert.are.equal("Default", database:GetProfile())
+        assert.are.equal(1.5, database.profile.windowScale)
+
+        -- `copySource` and `copy` bring the Default settings into Raid. The
+        -- button asks for confirmation, so the command line wants the word.
+        runSlash("/exampleaddon set profiles.current Raid")
+        runSlash("/exampleaddon set profiles.copySource Default")
+        runSlash("/exampleaddon exec profiles.copy")
+        assert.are.equal(1, database.profile.windowScale)
+        runSlash("/exampleaddon exec profiles.copy confirm")
+        assert.are.equal(1.5, database.profile.windowScale)
+        assertNoReportedErrors()
+    end)
+
     it("opens the options window from its command and releases it again", function()
         local addonTable = loadExampleAddon()
         logIn()

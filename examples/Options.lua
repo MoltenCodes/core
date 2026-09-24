@@ -3,9 +3,11 @@
 -- Shows: an OptionsKit tree bound to the SettingsKit database. The tree says
 -- what is configurable and how it is presented; `bind` points each option at a
 -- database field, so reads fall back to the schema defaults and writes are
--- validated twice, by the option and by the stored field. The same tree drives
--- both the `/exampleaddon` command line (Commands.lua) and the settings window
--- (Window.lua); neither knows the options by name.
+-- validated twice, by the option and by the stored field. `ProfileOptions`
+-- adds the ready-made group that switches, creates, copies, resets and deletes
+-- the database's profiles. The same tree drives both the `/exampleaddon`
+-- command line (Commands.lua) and the settings window (Window.lua); neither
+-- knows the options by name.
 
 local ADDON_NAME, ADDON_TABLE = ...
 ---@cast ADDON_TABLE ExampleAddon.Private
@@ -54,7 +56,12 @@ local TREE = {
 ---@param modules ModuleKit.Addon
 ---@return OptionsKit.Tree
 local function defineOptions(modules)
-    return OptionsKit:Define(ADDON_NAME, TREE, { db = modules:Resolve("Database") })
+    local database = modules:Resolve("Database")
+    -- The profile group needs the open database, so it joins the tree here.
+    -- It is placed as it is: `Define` recognises the table and connects it to
+    -- the database's profile signals, so the window redraws after a switch.
+    TREE.args.profiles = OptionsKit:ProfileOptions(database, { order = 10 })
+    return OptionsKit:Define(ADDON_NAME, TREE, { db = database })
 end
 
 ADDON_TABLE.Modules:ProvideSingleton("Options", defineOptions)

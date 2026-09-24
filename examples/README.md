@@ -25,17 +25,18 @@ examples/
 | File | Shows |
 |---|---|
 | `ExampleAddon.toc` | `## Interface` for every supported client, `## SavedVariables`, `## X-Embeds` naming every embedded Kit, and the load order: `embeds.xml`, then `Core.lua`, then the locales, then the rest. |
-| `embeds.xml` | The release bundle's `loadOrder`, all 24 release packages; ApiKit is the one Kit with further files, one per client flavour under `apiKit\flavours\`; the example lists all five, an addon embeds only the flavours it supports. Those this example does not use are marked `optional here`; an addon keeps only what it uses plus its dependencies. TestKit is development-only and never embedded. |
+| `embeds.xml` | The release bundle's `loadOrder`, all 27 release packages; ApiKit is the one Kit with further files, one per client flavour under `apiKit\flavours\`; the example lists all five, an addon embeds only the flavours it supports. Those this example does not use are marked `optional here`; an addon keeps only what it uses plus its dependencies. TestKit is development-only and never embedded. |
 | `Core.lua` | Resolving Registry API 2 and each Kit by API generation; the LifecycleKit and ModuleKit handles; a `ready` phase callback; the `Main` module, whose `module.scope` owns an event, an `EventKit:Coalesce` burst, a timer, a secure hook and the slash commands, all released on disable; a ReadinessKit gate for spell data; a ClientKit capability check. |
 | `Locales/enUS.lua` | LocaleKit's default locale, with `L[key] = true`. |
 | `Locales/deDE.lua` | A translation that reorders arguments with indexed specifiers (`%4$d`) and leaves some keys to the default. |
 | `Settings.lua` | A SettingsKit database over `ExampleAddonDB`, described by a SchemaKit schema with a `global` scope and a `profile`, opened in the `loaded` phase through a ModuleKit singleton, with a versioned migration. |
-| `Options.lua` | An OptionsKit tree whose options `bind` to the database. |
+| `Options.lua` | An OptionsKit tree whose options `bind` to the database, with the ready-made profile group from `OptionsKit:ProfileOptions`. |
 | `Window.lua` | WidgetKit rendering the options tree into a `Frame` widget, created on open and released on close. |
 | `Commands.lua` | CommandKit: `/exampleaddon`, a command line generated from the options tree by `BindOptions` (`list`, `get`, `set`, `reset`, `exec`), and `/exampleaddonwindow`, which opens and closes the window. |
 
 In the game, `/exampleaddon list` shows the settings, `/exampleaddon set
-windowScale 1.25` changes one, and `/exampleaddonwindow` opens the window.
+windowScale 1.25` changes one, `/exampleaddon set profiles.new Raid` creates a
+profile and switches to it, and `/exampleaddonwindow` opens the window.
 
 ## Running it in a client
 
@@ -62,6 +63,8 @@ WidgetKit to rest released widgets on. The spec first checks that every package
   migrated, and the greeting reports the client;
 - types `/exampleaddon set ...` through `SlashCmdList` and checks the value
   reached the saved variable, and that an out-of-range value was refused;
+- creates, switches and copies profiles through the `ProfileOptions` group,
+  with the `confirm` word the copy button asks for;
 - opens the window with `/exampleaddonwindow`, closes it through the hooked
   `ToggleGameMenu`, and checks the pooled frame is reused;
 - fires a burst of health events and checks they are reported once;
