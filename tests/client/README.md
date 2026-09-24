@@ -25,9 +25,13 @@ tests/client/
 │   ├── MoltenCodesTest_Registry.toc
 │   ├── RegistrySuite.lua              # the TestKit suites
 │   └── EXPECTED.md                    # what a run should print, and what to send back
-└── MoltenCodesTest_SignalKit/         # the test addon of the `signalKit` package
-    ├── MoltenCodesTest_SignalKit.toc
-    ├── SignalKitSuite.lua
+├── MoltenCodesTest_SignalKit/         # the test addon of the `signalKit` package
+│   ├── MoltenCodesTest_SignalKit.toc
+│   ├── SignalKitSuite.lua
+│   └── EXPECTED.md
+└── MoltenCodesTest_EventKit/          # the test addon of the `eventKit` package
+    ├── MoltenCodesTest_EventKit.toc
+    ├── EventKitSuite.lua
     └── EXPECTED.md
 ```
 
