@@ -152,6 +152,23 @@ def _dependency_block(flavour: flavours.Flavour) -> list[str]:
     ]
 
 
+def _registration_close(metadata: model.FlavourMetadata) -> list[str]:
+    """Close the installer and pass the metadata's version and build to the facade.
+
+    `ApiKit:GetMetadataBuild` reports them, so an addon can compare the
+    bindings' build with `GetBuildInfo()`.
+    """
+    provenance = metadata.provenance
+    fields = []
+    if provenance.version is not None:
+        fields.append(f"version = {_lua_string(provenance.version)}")
+    if provenance.build is not None:
+        fields.append(f"build = {provenance.build}")
+    if not fields:
+        return ["end)"]
+    return ["end, { " + ", ".join(fields) + " })"]
+
+
 def _namespace_block(namespace: model.Namespace) -> list[str]:
     """Bind one `C_*`-style namespace: only when the host has it, function by function."""
     assert namespace.blizzard_namespace is not None
@@ -266,7 +283,7 @@ def render_runtime(metadata: model.FlavourMetadata, flavour: flavours.Flavour) -
             ((table.wrapper, table.name) for table in metadata.constants),
         )
     )
-    lines.append("end)")
+    lines.extend(_registration_close(metadata))
     return "\n".join(lines) + "\n"
 
 

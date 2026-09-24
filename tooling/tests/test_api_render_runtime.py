@@ -40,7 +40,15 @@ class HeaderAndDependencyTests(unittest.TestCase):
         self.assertIn("requires Registry API 2 to be loaded first", text)
         self.assertIn("requires ApiKit API 1 to be loaded first", text)
         self.assertIn('ApiKit:RegisterFlavor("retail", function(api, host)', text)
-        self.assertTrue(text.endswith("end)\n"))
+        self.assertTrue(text.endswith('end, { version = "12.1.0", build = 69933 })\n'))
+
+    def test_registration_without_a_known_build_passes_no_info(self):
+        metadata = sample_metadata()
+        metadata = dataclasses.replace(
+            metadata, provenance=dataclasses.replace(metadata.provenance, version=None, build=None)
+        )
+
+        self.assertTrue(render(metadata).endswith("end)\n"))
 
 
 class BindingTests(unittest.TestCase):
@@ -141,7 +149,13 @@ HARNESS = textwrap.dedent(
         end,
     }
     MoltenCodes = { Registries = { [2] = { API = 2, Get = function() return ApiKit end } } }
+    local infos = {}
+    ApiKit.RegisterFlavor = function(_, flavour, install, info)
+        installers[flavour] = install
+        infos[flavour] = info
+    end
     assert(loadfile(arg[1]))()
+    assert(infos.retail.build == 69933 and infos.retail.version == "12.1.0", "info")
     local function measure() return 1 end
     local host = {
         C_AddOnProfiler = { MeasureCall = measure },

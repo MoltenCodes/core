@@ -45,7 +45,9 @@ enable-nolib-creation: no
 
 license-output: LICENSE
 
-# Everything that exists for development rather than for the game client.
+# Everything that exists for development rather than for the game client. A
+# package's `metadata/` (the normalised API tables apiKit is generated from)
+# and `types/` (LuaCATS definitions for editors) are development data too.
 ignore:
   - packages/testKit
   - .busted
@@ -72,6 +74,8 @@ ignore:
   - packages/*/tests
   - packages/*/package.manifest.json
   - packages/*/src/.luarc.json
+  - packages/*/metadata
+  - packages/*/types
 
 # Flatten each package's development layout into the one an addon embeds.
 # A package directory is named by its lowerCamelCase package ID; the Lua file
@@ -123,3 +127,5 @@ move-folders:
   MoltenCodes/packages/commKit/docs: MoltenCodes/commKit/docs
   MoltenCodes/packages/widgetKit/src: MoltenCodes/widgetKit
   MoltenCodes/packages/widgetKit/docs: MoltenCodes/widgetKit/docs
+  MoltenCodes/packages/apiKit/src: MoltenCodes/apiKit
+  MoltenCodes/packages/apiKit/docs: MoltenCodes/apiKit/docs

@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from tooling.api import flavours
+from tooling.package import toc
 from tooling.package.build import top_level_lua_files
 from tooling.validation.interface_numbers import (
     SupportedClients,
@@ -250,8 +251,7 @@ def embedded_script_names(embeds: Path) -> list[str]:
     """Return the Lua file names an `embeds.xml` loads, in the order it loads them.
 
     A reference is written the way the client reads it, as a path under the
-    consuming addon (`Libs\\MoltenCodes\\signalKit\\SignalKit.lua`); only the
-    file name at its end identifies the package.
+    consuming addon (`Libs\\MoltenCodes\\signalKit\\SignalKit.lua`).
     """
     references = EMBEDDED_SCRIPT_RE.findall(embeds.read_text(encoding="utf-8"))
     return [reference.replace("\\", "/").rsplit("/", 1)[-1] for reference in references]
@@ -268,9 +268,31 @@ def package_id_for(script_name: str) -> str:
     return facade[:1].lower() + facade[1:]
 
 
+def package_id_of_reference(reference: str) -> str:
+    """Return the package a `<Script file=...>` reference belongs to.
+
+    The package is the directory right after the framework directory in the
+    embedded path (`Libs\\MoltenCodes\\apiKit\\flavours\\Retail.lua` → `apiKit`),
+    which is what a further runtime file needs: its file name says nothing
+    about its package. A reference without a framework directory (a test
+    fixture written as a bare file name) falls back to the facade rule.
+    """
+    parts = reference.replace("\\", "/").split("/")
+    if len(parts) >= 3 and parts[-3].lower() == toc.FRAMEWORK_ADDON_NAME.lower():
+        return parts[-2]
+    if len(parts) >= 2 and toc.FRAMEWORK_ADDON_NAME in parts:
+        return parts[parts.index(toc.FRAMEWORK_ADDON_NAME) + 1]
+    return package_id_for(parts[-1])
+
+
 def embedded_package_names(embeds: Path) -> list[str]:
-    """Return the package IDs an `embeds.xml` loads, in the order it loads them."""
-    return [package_id_for(script) for script in embedded_script_names(embeds)]
+    """Return the package IDs an `embeds.xml` loads, once each, in first-load order."""
+    names: list[str] = []
+    for reference in EMBEDDED_SCRIPT_RE.findall(embeds.read_text(encoding="utf-8")):
+        package_id = package_id_of_reference(reference)
+        if package_id not in names:
+            names.append(package_id)
+    return names
 
 
 def validate_example_language_server_config() -> list[str]:

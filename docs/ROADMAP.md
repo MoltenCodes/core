@@ -1111,14 +1111,21 @@ begins; H4 to H6 may overlap where they do not share files.
       is replaced as a whole, `--check` refuses stale outputs for CI, and the
       whole run takes under a second for Retail. 752 tooling tests
       (2026-09-24).
-- [ ] **H3 — the facade.** `packages/apiKit/src/ApiKit.lua` with the surface
-      in point 4, its specs, manifest, README, `docs/API.md`, `docs/NAMING.md`,
-      CHANGELOG; the `wow` publication rule; error levels at the caller.
-      `.pkgmeta` gains `ignore` lines for `packages/*/metadata` and
-      `packages/*/types` (development data the packager must not ship), and
-      the validator's `embeds.xml` reading derives the package id from the
-      directory after `MoltenCodes\`, not from the file name, so an embedded
-      `apiKit\flavours\Retail.lua` line is understood.
+- [x] **H3 — the facade.** `packages/apiKit/src/ApiKit.lua` (API 1, revision
+      1): `MoltenCodes.wow` with one `api` table per flavour, the `wow`
+      global published only when free (`GetGlobalStatus`), flavour detection
+      once at load from `WOW_PROJECT_ID`, `IsTestBuild` and `IsBetaBuild`
+      (`GetFlavor`, `"unsupported"` for a client matching no row),
+      `RegisterFlavor(flavor, install, info?)` running the running flavour's
+      installer once with its `api` table and the host, `GetMetadataBuild`,
+      the read-only `SUPPORTED_FLAVORS`; state survives an in-place upgrade;
+      errors at the caller. Manifest, README, `docs/API.md`, `docs/NAMING.md`,
+      CHANGELOG, 41 specs including one that holds the facade's flavour table
+      to `tooling/api/flavours.json`. `.pkgmeta` ignores `packages/*/metadata`
+      and `packages/*/types` and moves apiKit; the validator derives an
+      embedded script's package from its directory; the generated runtime
+      file passes the metadata's version and build to `RegisterFlavor`
+      (2026-09-24).
 - [ ] **H4 — Retail.** First capture at a pinned mirror commit and build;
       metadata, runtime file, types, reference and search index committed
       together; the sampled generated-output spec; the naming exception table

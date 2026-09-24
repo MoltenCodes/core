@@ -156,6 +156,22 @@ class RepositoryValidatorTests(unittest.TestCase):
             ["registry", "signalKit", "eventKit"], module.embedded_package_names(embeds)
         )
 
+    def test_a_further_runtime_file_belongs_to_its_package_directory(self):
+        path = self.root / module.EXAMPLE_EMBEDS
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "<Ui>\n"
+            '    <Script file="Libs\\MoltenCodes\\registry\\Registry.lua" />\n'
+            '    <Script file="Libs\\MoltenCodes\\apiKit\\ApiKit.lua" />\n'
+            '    <Script file="Libs\\MoltenCodes\\apiKit\\flavours\\Retail.lua" />\n'
+            "</Ui>\n",
+            encoding="utf-8",
+        )
+
+        self.assertEqual(["registry", "apiKit"], module.embedded_package_names(path))
+        self.assertEqual("apiKit", module.package_id_of_reference("Libs\\MoltenCodes\\apiKit\\flavours\\Retail.lua"))
+        self.assertEqual("timerKit", module.package_id_of_reference("TimerKit.lua"))
+
     def test_example_config_must_list_meta_and_the_embedded_packages(self):
         self.write_example_embeds("Registry.lua", "SignalKit.lua")
         self.write_example_language_server_config(
