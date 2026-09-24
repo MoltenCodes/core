@@ -2,7 +2,7 @@ local TestEnv = require("EventKitTestEnv")
 
 ---The implementation revision `src/EventKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 14
+local CURRENT_REVISION = 15
 
 local function expectErrorContaining(expected, callback)
     local ok, message = pcall(callback)
@@ -35,6 +35,7 @@ local function installFutureEventsFacade(Registry)
     EventKit.ConnectUnit = stub
     EventKit.OnceUnit = stub
     EventKit.ConnectCombatLog = stub
+    EventKit.IsCombatLogAvailable = stub
     EventKit.CreateScope = stub
     EventKit.Coalesce = stub
     EventKit.Derive = stub
@@ -528,6 +529,49 @@ describe("EventKit package bootstrap", function()
         EventKit:CloseAddonScopes("MyAddon")
         assert.is_false(connection:IsConnected())
     end)
+
+    it(
+        "upgrades the previous revision in place, adding IsCombatLogAvailable and name checks",
+        function()
+            TestEnv.Reset()
+            TestEnv.InstallWowApi()
+            local Registry = require("Registry")
+            require("SignalKit")
+
+            -- The previous revision published no IsCombatLogAvailable and checked
+            -- no event name; its copy loaded on a client without C_EventUtils.
+            local legacy = TestEnv.LoadSourceAtRevision(CURRENT_REVISION - 1)
+            rawset(legacy, "IsCombatLogAvailable", nil)
+            local calls = 0
+            local connection = legacy:Connect("CUSTOM_EVENT", function()
+                calls = calls + 1
+            end)
+
+            -- The newer copy probes the client when it loads.
+            TestEnv.InstallEventValidity({ "PLAYER_LOGIN" })
+            local EventKit = require("EventKit")
+            local _, revision = Registry:Get("eventKit", 1)
+            assert.are.equal(legacy, EventKit)
+            assert.are.equal(CURRENT_REVISION, revision)
+            assert.are.equal(8, EventKit._state.schema)
+            assert.is_true(EventKit:IsCombatLogAvailable())
+
+            -- The listener the older copy connected keeps delivering, although
+            -- the newer copy would now refuse its name.
+            TestEnv.Emit("CUSTOM_EVENT")
+            assert.are.equal(1, calls)
+            expectErrorContaining(
+                'EventKit:Connect eventName "CUSTOM_EVENT" is not an event',
+                function()
+                    EventKit:Connect("CUSTOM_EVENT", function() end)
+                end
+            )
+            assert.is_true(EventKit:Connect("PLAYER_LOGIN", function() end):IsConnected())
+
+            assert.is_true(connection:Disconnect())
+            assert.are.same({ "CUSTOM_EVENT" }, TestEnv.Frames()[1].unregisterEventCalls)
+        end
+    )
 
     it("carries set limits and the sentinel to a newer revision", function()
         local EventKit, Registry = TestEnv.NewPackage()

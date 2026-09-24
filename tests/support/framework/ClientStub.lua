@@ -139,6 +139,45 @@ local function defaultItems()
     return { [6948] = hearthstone, Hearthstone = hearthstone }
 end
 
+-- The event names `C_EventUtils.IsEventValid` knows by default: every literal
+-- event name in the retail client metadata ApiKit ships. A framework package
+-- or an example that subscribes to a real client event (EventKit asks the
+-- client since its revision 15) therefore gets the answer a real client gives,
+-- and a name no client defines is still unknown. Every profile with
+-- `C_EventUtils` shares this set; a spec changes it with `SetEventValid`.
+local CLIENT_EVENTS_PATH = "packages/apiKit/metadata/retail/events.json"
+
+-- Read once per run, on the first `Reset`: a set of event names.
+local clientEvents = nil
+
+---The repository root, derived from where this file was loaded, so the
+---metadata is found whatever directory the runner started in.
+---@return string root with a trailing separator, or `""` for the working directory
+local function repositoryRoot()
+    local source = debug.getinfo(1, "S").source
+    return source:match("^@(.-)tests[/\\]support[/\\]framework[/\\]ClientStub%.lua$") or ""
+end
+
+---Return the set of client event names, reading the metadata on first use.
+---@return table<string, boolean>
+local function readClientEvents()
+    if clientEvents ~= nil then
+        return clientEvents
+    end
+    local path = repositoryRoot() .. CLIENT_EVENTS_PATH
+    local file = io.open(path, "rb")
+    if file == nil then
+        error("ClientStub cannot read the client event list at " .. path, 2)
+    end
+    local content = file:read("*a")
+    file:close()
+    clientEvents = {}
+    for eventName in content:gmatch('"literalName"%s*:%s*"([%w_]+)"') do
+        clientEvents[eventName] = true
+    end
+    return clientEvents
+end
+
 ---Return this stub's state fields to their initial values.
 ---@param state table shared stub state
 function ClientStub.Reset(state)
@@ -146,12 +185,9 @@ function ClientStub.Reset(state)
     state.spells = defaultSpells()
     state.items = defaultItems()
     state.addonMetadata = {}
-    state.validEvents = {
-        ADDON_LOADED = true,
-        PLAYER_LOGIN = true,
-        PLAYER_LOGOUT = true,
-        SPELLS_CHANGED = true,
-    }
+    -- Names a spec set are stored as `true` or `false`; every other name
+    -- falls back to the client's event list.
+    state.validEvents = setmetatable({}, { __index = readClientEvents() })
     state.secretValues = setmetatable({}, { __mode = "k" })
 end
 
@@ -367,7 +403,7 @@ function ClientStub.Attach(environment, state)
     ---@param eventName string
     ---@param valid boolean
     function environment.SetEventValid(eventName, valid)
-        state.validEvents[eventName] = valid == true or nil
+        state.validEvents[eventName] = valid == true
     end
 
     ---Add a spell both spell calls know, by ID and by name.

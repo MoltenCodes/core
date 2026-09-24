@@ -418,22 +418,33 @@ describe("EventKit combat-log routing", function()
             assert.is_true(connection:IsConnected())
         end)
 
-        it("refuses to attach without the client API, registering nothing", function()
+        it("refuses at the caller's line without a client reader, registering nothing", function()
             -- The package resolves this host global when its first combat-log listener connects.
             -- selene: allow(global_usage)
             rawset(_G, "CombatLogGetCurrentEventInfo", nil)
+            local scope = EventKit:CreateScope()
 
-            local ok, message = pcall(function()
-                EventKit:ConnectCombatLog("SPELL_DAMAGE", noop)
-            end)
-
-            assert.is_false(ok)
-            assert.are.equal(
-                "EventKit: requires the World of Warcraft CombatLogGetCurrentEventInfo API",
-                tostring(message)
+            expectCallerError(
+                "EventKit:ConnectCombatLog the combat log is not available to addons on this client"
+                    .. " (no CombatLogGetCurrentEventInfo reader);"
+                    .. " check EventKit:IsCombatLogAvailable() first",
+                function()
+                    EventKit:ConnectCombatLog("SPELL_DAMAGE", noop)
+                end
             )
+            expectCallerError(
+                "EventKit.Scope:ConnectCombatLog the combat log is not available to addons",
+                function()
+                    scope:ConnectCombatLog("*", noop)
+                end
+            )
+
+            assert.is_false(EventKit:IsCombatLogAvailable())
             assert.are.equal(0, #TestEnv.Frames())
             assert.are.equal(0, EventKit._state.combatLog.listenerCount)
+            assert.is_false(EventKit._state.combatLog.channel)
+            assert.is_nil(next(EventKit._state.combatLog.routes))
+            assert.are.equal(0, scope:GetActiveCount())
         end)
 
         it("reads C_CombatLog.GetCurrentEventInfo when the global is absent", function()
@@ -468,6 +479,76 @@ describe("EventKit combat-log routing", function()
 
             assert.are.equal(EventKit, reloaded)
             assert.are.equal(1, calls)
+        end)
+    end)
+
+    describe("IsCombatLogAvailable", function()
+        it("answers true when the global reader exists", function()
+            assert.is_true(EventKit:IsCombatLogAvailable())
+        end)
+
+        it("answers true with only C_CombatLog.GetCurrentEventInfo", function()
+            -- The package resolves these host APIs on every call.
+            -- selene: allow(global_usage)
+            local readGlobal = rawget(_G, "CombatLogGetCurrentEventInfo")
+            -- selene: allow(global_usage)
+            rawset(_G, "CombatLogGetCurrentEventInfo", nil)
+            -- selene: allow(global_usage)
+            rawset(_G, "C_CombatLog", { GetCurrentEventInfo = readGlobal })
+
+            assert.is_true(EventKit:IsCombatLogAvailable())
+        end)
+
+        it("answers false on a client that gives addon code no reader", function()
+            -- A Retail 12 client: C_CombatLog exists without the reader.
+            -- selene: allow(global_usage)
+            rawset(_G, "CombatLogGetCurrentEventInfo", nil)
+            -- selene: allow(global_usage)
+            rawset(_G, "C_CombatLog", {
+                IsCombatLogRestricted = function()
+                    return true
+                end,
+            })
+
+            assert.is_false(EventKit:IsCombatLogAvailable())
+        end)
+
+        it("follows a reader installed after load, and ConnectCombatLog agrees", function()
+            -- selene: allow(global_usage)
+            local readGlobal = rawget(_G, "CombatLogGetCurrentEventInfo")
+            -- selene: allow(global_usage)
+            rawset(_G, "CombatLogGetCurrentEventInfo", nil)
+            assert.is_false(EventKit:IsCombatLogAvailable())
+            assert.is_false(pcall(EventKit.ConnectCombatLog, EventKit, "SPELL_DAMAGE", noop))
+
+            -- selene: allow(global_usage)
+            rawset(_G, "CombatLogGetCurrentEventInfo", readGlobal)
+            assert.is_true(EventKit:IsCombatLogAvailable())
+            local connection = EventKit:ConnectCombatLog("SPELL_DAMAGE", noop)
+            assert.is_true(connection:IsConnected())
+        end)
+
+        it("does not read the combat log, register anything or care about the receiver", function()
+            assert.is_true(EventKit.IsCombatLogAvailable())
+            assert.are.equal(0, TestEnv.CombatLogEventInfoReads())
+            assert.are.equal(0, #TestEnv.Frames())
+        end)
+
+        it("allocates nothing #allocation", function()
+            -- selene: allow(global_usage)
+            rawset(_G, "CombatLogGetCurrentEventInfo", nil)
+            -- selene: allow(global_usage)
+            rawset(_G, "C_CombatLog", {})
+            local isAvailable = EventKit.IsCombatLogAvailable
+            isAvailable(EventKit)
+
+            local allocated = allocatedKilobytes(function()
+                for _ = 1, 10000 do
+                    isAvailable(EventKit)
+                end
+            end)
+
+            assert.is_true(allocated < 1, "allocated " .. allocated .. " KiB")
         end)
     end)
 

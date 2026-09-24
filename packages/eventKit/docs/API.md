@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **14**.
+Implementation revision: **15**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -27,6 +27,12 @@ EventKit does not rely on `require()` at runtime.
 ## `EventKit:Connect(eventName, callback)`
 
 Subscribes to a normal WoW event and returns a connection. The callback receives `eventName, ...`: the WoW event name followed by the original event payload. The first active listener for an event registers the underlying Frame; additional listeners reuse that registration; the final disconnect unregisters it.
+
+On a client with `C_EventUtils.IsEventValid`, a name the client does not know
+is refused at the caller's line before anything is registered:
+`EventKit:Connect eventName "X" is not an event this client knows`. Every
+method that registers an event name does the same; see
+[Event names the client does not know](#event-names-the-client-does-not-know).
 
 ## `EventKit:Once(eventName, callback)`
 
@@ -66,7 +72,9 @@ effect.
 
 EventKit deliberately does not hard-code the host client's accepted unit-token
 catalog beyond that slot count. The running WoW client remains authoritative and
-registration errors are propagated.
+registration errors are propagated. The event name itself is checked with the
+client's `C_EventUtils.IsEventValid` where the client has it (see
+[Event names the client does not know](#event-names-the-client-does-not-know)).
 
 ## `EventKit:OnceUnit(eventName, callback, unit1 [, unit2])`
 
@@ -94,8 +102,9 @@ end)
 - `subEvent` is the client's sub-event name, the second return of
   `CombatLogGetCurrentEventInfo()` (`"SPELL_DAMAGE"`, `"SWING_DAMAGE"`,
   `"UNIT_DIED"`, ...), or **`"*"`** for every sub-event. It must be a
-  non-empty string; the running client stays authoritative on which names
-  exist, as it does for event names.
+  non-empty string. Sub-event names are not checked against the client, which
+  has no function that knows them: a listener of a sub-event that never
+  occurs is simply never called.
 - The listener receives **no event name** in front: the first value is the
   timestamp and the second the sub-event. The first eleven values are the same
   for every sub-event; what follows is the sub-event's own suffix, whose count
@@ -121,16 +130,27 @@ registered as long as either kind of listener remains. The delivery order
 between plain listeners and combat-log listeners of the same event is not
 defined.
 
-`ConnectCombatLog` resolves the client API when the first combat-log listener
-connects: the global `CombatLogGetCurrentEventInfo`, or
+`ConnectCombatLog` resolves the client's **reader** when the first
+combat-log listener connects: the global `CombatLogGetCurrentEventInfo`, or
 `C_CombatLog.GetCurrentEventInfo` when the global is absent (the current
-classic clients document only the namespaced function). Without either, as on retail 12 clients (see
+classic clients document only the namespaced function). Without either, as on
+retail 12 clients (see
 [World of Warcraft specifics](#the-combat-log-no-payload-two-ways-to-listen)),
-the call raises `EventKit: requires the World of Warcraft
-CombatLogGetCurrentEventInfo API` and registers nothing. A registration the
-host refuses raises `EventKit:ConnectCombatLog could not register event
+the call raises at the caller's line and registers nothing:
+
+```text
+EventKit:ConnectCombatLog the combat log is not available to addons on this client (no CombatLogGetCurrentEventInfo reader); check EventKit:IsCombatLogAvailable() first
+```
+
+Through a scope the message starts with `EventKit.Scope:ConnectCombatLog`.
+Ask [`EventKit:IsCombatLogAvailable()`](#eventkitiscombatlogavailable) first
+to take another path on such a client instead of catching the error. Before
+revision 15 the refusal was `EventKit: requires the World of Warcraft
+CombatLogGetCurrentEventInfo API`, raised without a position. A registration
+the host refuses raises `EventKit:ConnectCombatLog could not register event
 COMBAT_LOG_EVENT_UNFILTERED` at the caller's line and also leaves nothing
-behind.
+behind. The combat-log event is EventKit's own registration, so it is not
+checked with `C_EventUtils.IsEventValid`.
 
 ### Cost
 
@@ -152,6 +172,28 @@ no limit of their own.
 
 There is no one-shot form: a combat-log sub-event is a stream, and a listener
 that wants a single occurrence disconnects itself.
+
+## `EventKit:IsCombatLogAvailable()`
+
+Returns `true` when EventKit can read the combat log on this client, that is
+when the global `CombatLogGetCurrentEventInfo` or
+`C_CombatLog.GetCurrentEventInfo` exists, and `false` otherwise. It is exactly
+the condition under which `ConnectCombatLog` connects instead of refusing, so
+an addon that wants combat-log data on every client asks first:
+
+```lua
+if EventKit:IsCombatLogAvailable() then
+    EventKit:ForAddon("MyAddon"):ConnectCombatLog("SPELL_DAMAGE", onSpellDamage)
+else
+    -- Retail 12: addon code gets no combat-log reader; degrade or stay quiet.
+end
+```
+
+Cost: two table reads and no allocation, so it may be asked whenever needed;
+it neither reads the combat log nor registers anything. The answer is looked
+up on every call rather than once at load, so it follows a reader another
+addon installs later; within a session it otherwise does not change. The
+receiver is not used, so `EventKit.IsCombatLogAvailable()` answers too.
 
 ## Owner scopes
 
@@ -627,6 +669,12 @@ one would.
 
 Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
 
+Revision 15 keeps `_state` at schema 8 and adopts the state of revision 14
+as it is, adding `IsCombatLogAvailable` to the facade. The loading copy probes
+`C_EventUtils.IsEventValid` itself, so every event name subscribed through the
+facade from then on is checked; listeners the older copy connected keep
+delivering whatever their names.
+
 Revision 14 keeps `_state` at schema 8 and adopts the state of revision 13
 as it is. It tests values it did not create for absence with `type` and
 handles [secret values](#secret-values) before any comparison.
@@ -727,17 +775,65 @@ end)
 Either way, keep the handler short: this is the highest-frequency event in the
 client.
 
-**Retail 12 clients do not document an event reader for addons.** The
-retail, PTR and beta metadata under `packages/apiKit/metadata/` list
-`GetCurrentEventInfo` only under `C_CombatLogSecure` (restricted) and
-`C_CombatLogInternal`; `C_CombatLog` keeps its filter and retention functions
-but not the reader, and no `CombatLogGetCurrentEventInfo` global is listed.
-With neither function present, `ConnectCombatLog` raises the missing-API
-error above and registers nothing. The classic-era and classic-mop metadata
+**Retail 12 clients give addon code no event reader.** The retail, PTR and
+beta metadata under `packages/apiKit/metadata/` list `GetCurrentEventInfo`
+only under `C_CombatLogSecure` (restricted) and `C_CombatLogInternal`;
+`C_CombatLog` keeps its filter and retention functions but not the reader, and
+no `CombatLogGetCurrentEventInfo` global is listed. Measured in a real Retail
+12.1.0 (build 69933) client on 2026-09-24 by
+`tests/client/MoltenCodesTest_EventKit`: the global
+`CombatLogGetCurrentEventInfo` and `GetCurrentEventInfo` under `C_CombatLog`,
+`C_CombatLogInternal` and `C_CombatLogSecure` are all absent from addon code,
+and `C_CombatLog.IsCombatLogRestricted()` returns `true`. There
+`EventKit:IsCombatLogAvailable()` answers `false`, and `ConnectCombatLog`
+raises the refusal above at the caller's line and registers nothing. The classic-era and classic-mop metadata
 list `C_CombatLog.GetCurrentEventInfo`, which EventKit reads when the global
 is absent. `COMBAT_LOG_EVENT_UNFILTERED` is a normal event, not a unit event. The
 routed form is specified under
 [`EventKit:ConnectCombatLog`](#eventkitconnectcombatlogsubevent-callback).
+
+### Event names the client does not know
+
+Every method that registers an event name the caller gave checks it with the
+client's `C_EventUtils.IsEventValid` when the client has that function:
+`Connect`, `Once`, `ConnectUnit`, `OnceUnit`, their scope forms, and every
+event of `Coalesce` and `Derive`, as a single name or in an `events` array. A
+name the client does not know is refused at the caller's line before anything
+is registered or allocated (revision 15 and later):
+
+```text
+<Method> eventName "<name>" is not an event this client knows
+<Method> events entry "<name>" is not an event this client knows
+```
+
+`<Method>` is `EventKit:Connect`, `EventKit.Scope:ConnectUnit`,
+`EventKit:Coalesce` and so on. A `Coalesce` or `Derive` event given as a single
+string is reported as `eventName`, like its other argument errors; an entry of
+an `events` array as `events entry`.
+
+Without the check, the client refuses the name inside `Frame:RegisterEvent`.
+Measured on Retail 12.1.0 (2026-09-24), that error reads
+`Frame:RegisterEvent(): Attempt to register unknown event "X"` and carries no
+caller position, so the mistake could not be traced to the line that made it.
+
+- **Order.** The name is checked for its type, then for being a
+  [secret value](#secret-values), then with the client, so a wrong type or a
+  secret is refused before the client is asked.
+- **Probed once.** EventKit looks `C_EventUtils.IsEventValid` up once, when its
+  file loads, as it does with the rest of the client's fixed API set. A client
+  without it (older classic clients) keeps the previous behaviour: the name
+  reaches `RegisterEvent`, and a registration the host refuses by returning
+  `false` raises `<Method> could not register event <name>` at the caller's
+  line.
+- **Only a plain `false` refuses.** Any other answer leaves the verdict to the
+  host's registration, so a client quirk never refuses a real event.
+- **EventKit's own registrations are not checked**: its `PLAYER_LOGOUT`
+  listener for addon scopes and the `COMBAT_LOG_EVENT_UNFILTERED` registration
+  behind `ConnectCombatLog`. Combat-log sub-event names are not checked either;
+  the client has no function that knows them.
+- **Cost.** One `IsEventValid` call per subscribing call, and one per distinct
+  name of a `Coalesce` or `Derive` list, asked only after the list passed its
+  32-event bound. Nothing is added to event dispatch.
 
 ### Taint
 

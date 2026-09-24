@@ -15,11 +15,14 @@
 --   * listener error isolation through the client's real `securecallfunction`
 --     and error handler;
 --   * scopes, `Coalesce` and `Derive` (SchedulerKit is in the bundle);
---   * argument errors pointing at this file as the client names it, and the
---     client's refusal of an event name it does not know;
---   * what `ConnectCombatLog` does on this client, with every fact about the
---     client's combat-log reader logged (docs/API.md of eventKit, "The combat
---     log: no payload, two ways to listen").
+--   * argument errors pointing at this file as the client names it, including
+--     EventKit's refusal of an event name the client does not know (checked
+--     with `C_EventUtils.IsEventValid`, or left to the client's `RegisterEvent`
+--     where that function is absent);
+--   * what `IsCombatLogAvailable` answers and `ConnectCombatLog` does on this
+--     client, with every fact about the client's combat-log reader logged
+--     (docs/API.md of eventKit, "The combat log: no payload, two ways to
+--     listen").
 --
 -- Every test uses only events that the test raises itself through a harmless
 -- call, or that the server sends in reply to one, so a run needs no combat, no
@@ -77,6 +80,12 @@ local COMBAT_LOG_EVENT = "COMBAT_LOG_EVENT_UNFILTERED"
 --- An event name no client defines.
 local UNKNOWN_EVENT = "MOLTENCODES_TEST_NO_SUCH_EVENT"
 
+--- The refusal `Connect` raises for `UNKNOWN_EVENT` on a client with
+--- `C_EventUtils.IsEventValid`, after the `file:line: ` position.
+local UNKNOWN_EVENT_MESSAGE = 'EventKit:Connect eventName "'
+    .. UNKNOWN_EVENT
+    .. '" is not an event this client knows'
+
 --- Seconds a test waits for an event the client raises locally.
 local LOCAL_EVENT_TIMEOUT_SECONDS = 3
 
@@ -90,9 +99,11 @@ local COALESCE_QUIET_SECONDS = 0.5
 --- The Coalesce interval; both CVar changes land inside it.
 local COALESCE_INTERVAL_SECONDS = 0.25
 
---- The error `ConnectCombatLog` raises when the client has no event reader.
-local MISSING_READER_MESSAGE =
-    "EventKit: requires the World of Warcraft CombatLogGetCurrentEventInfo API"
+--- The refusal `ConnectCombatLog` raises when the client has no event reader,
+--- after the `file:line: ` position.
+local MISSING_READER_MESSAGE = "EventKit:ConnectCombatLog the combat log is not available"
+    .. " to addons on this client (no CombatLogGetCurrentEventInfo reader);"
+    .. " check EventKit:IsCombatLogAvailable() first"
 
 --- Text a deliberately failing listener raises, so a test can recognise it.
 local LISTENER_FAILURE = "mctEventKit deliberate listener failure"
@@ -104,6 +115,7 @@ local FACADE_METHODS = {
     "ConnectUnit",
     "OnceUnit",
     "ConnectCombatLog",
+    "IsCombatLogAvailable",
     "CreateScope",
     "ForAddon",
     "CloseAddonScopes",
@@ -1045,7 +1057,7 @@ errors:Test(
 )
 
 errors:Test(
-    "Connect to an event name the client does not know raises on every attempt and caches nothing",
+    "Connect to an event name the client does not know is refused on every attempt, at the calling line where the client can tell, and caches nothing",
     function(ctx)
         local isEventValid = readHostFunction("C_EventUtils", "IsEventValid")
         if type(isEventValid) == "function" then
@@ -1059,15 +1071,28 @@ errors:Test(
             ctx:Log("the client has no C_EventUtils.IsEventValid")
         end
 
-        -- EventKit leaves the verdict to the client's RegisterEvent; a second
-        -- attempt raising again proves no channel was kept from the first.
+        -- A second attempt refused again proves no channel was kept from the
+        -- first.
         for attempt = 1, 2 do
-            local succeeded, problem = pcall(EventKit.Connect, EventKit, UNKNOWN_EVENT, ignore)
-            if succeeded then
-                track(problem)
+            if type(isEventValid) == "function" then
+                -- Documented: EventKit asks the client and refuses the name
+                -- itself, at the calling line, before registering anything.
+                local startLine = 0
+                local line = expectErrorAtCallingLine(ctx, function()
+                    startLine = currentLine()
+                    track(EventKit:Connect(UNKNOWN_EVENT, ignore))
+                end, UNKNOWN_EVENT_MESSAGE)
+                ctx:Expect(line):ToBe(startLine + 1)
+            else
+                -- Documented: without the function the client's RegisterEvent
+                -- is the authority, and its refusal reaches the caller.
+                local succeeded, problem = pcall(EventKit.Connect, EventKit, UNKNOWN_EVENT, ignore)
+                if succeeded then
+                    track(problem)
+                end
+                ctx:Log(("attempt %d: %s"):format(attempt, describeFact(problem)))
+                ctx:Expect(succeeded):ToBe(false)
             end
-            ctx:Log(("attempt %d: %s"):format(attempt, describeFact(problem)))
-            ctx:Expect(succeeded):ToBe(false)
         end
 
         local connection = track(EventKit:Connect(CVAR_EVENT, ignore))
@@ -1150,6 +1175,10 @@ combatLog:Test(
 
         local readerAvailable = type(globalReader) ~= "nil" or type(namespacedReader) ~= "nil"
         ctx:Log("EventKit finds a reader: " .. tostring(readerAvailable))
+        -- Documented: IsCombatLogAvailable answers exactly whether a reader exists.
+        local reported = EventKit:IsCombatLogAvailable()
+        ctx:Log("EventKit:IsCombatLogAvailable() answered " .. describeFact(reported))
+        ctx:Expect(reported):ToBe(readerAvailable)
 
         local before = nil
         if REGISTRATIONS_READABLE then
@@ -1165,27 +1194,33 @@ combatLog:Test(
         end
 
         for attempt = 1, 2 do
-            local succeeded, result = pcall(EventKit.ConnectCombatLog, EventKit, "*", ignore)
-            ctx:Log(
-                ("ConnectCombatLog attempt %d: %s"):format(
-                    attempt,
-                    succeeded and "connected" or ("raised " .. describeFact(result))
+            if readerAvailable then
+                local succeeded, result = pcall(EventKit.ConnectCombatLog, EventKit, "*", ignore)
+                ctx:Log(
+                    ("ConnectCombatLog attempt %d: %s"):format(
+                        attempt,
+                        succeeded and "connected" or ("raised " .. describeFact(result))
+                    )
                 )
-            )
-            if succeeded then
-                local connection = track(result)
-                -- Documented: with a reader, the listener connects like any other.
-                ctx:Expect(readerAvailable):ToBe(true)
-                ctx:Expect(connection:IsConnected()):ToBe(true)
-                ctx:Expect(connection:Disconnect()):ToBe(true)
-            elseif not readerAvailable then
-                -- Documented: without a reader the call raises the missing-API
-                -- error, on every attempt, and registers nothing.
-                ctx:Expect(result):ToBe(MISSING_READER_MESSAGE)
+                if succeeded then
+                    local connection = track(result)
+                    -- Documented: with a reader, the listener connects like any other.
+                    ctx:Expect(connection:IsConnected()):ToBe(true)
+                    ctx:Expect(connection:Disconnect()):ToBe(true)
+                else
+                    -- Documented: the running client is authoritative, and a
+                    -- registration it refuses is raised to the caller.
+                    ctx:Expect(type(result)):ToBe("string")
+                end
             else
-                -- Documented: the running client is authoritative, and a
-                -- registration it refuses is raised to the caller.
-                ctx:Expect(type(result)):ToBe("string")
+                -- Documented: without a reader the call is refused at the
+                -- calling line, on every attempt, and registers nothing.
+                local startLine = 0
+                local line = expectErrorAtCallingLine(ctx, function()
+                    startLine = currentLine()
+                    track(EventKit:ConnectCombatLog("*", ignore))
+                end, MISSING_READER_MESSAGE)
+                ctx:Expect(line):ToBe(startLine + 1)
             end
         end
 

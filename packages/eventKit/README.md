@@ -5,15 +5,15 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.8.1`
+- Version: `0.9.0`
 - API generation: `1`
-- Implementation revision: `13`
+- Implementation revision: `15`
 - Runtime dependencies: Registry API 2, SignalKit API 1
 - Optional partners: SchedulerKit API 1, found at call time by `Coalesce` and `Derive`;
   LifecycleKit API 1, found by the first `ForAddon` to close addon scopes at logout
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW
-session. That shapes four of its guarantees:
+session. That shapes five of its guarantees:
 
 - **Listeners are isolated.** One addon's erroring handler is reported through
   the host error handler and never stops delivery to the others.
@@ -29,8 +29,15 @@ session. That shapes four of its guarantees:
   callback)` calls `CombatLogGetCurrentEventInfo()` once for every combat-log
   listener in the session and routes by sub-event, so the client's hottest
   event costs one read and one lookup however many addons listen. Retail 12
-  clients document no event reader for addons, so there it raises (see
-  "World of Warcraft specifics" in [`docs/API.md`](docs/API.md)).
+  clients give addon code no event reader (measured on 12.1.0), so there
+  `EventKit:IsCombatLogAvailable()` answers `false` and `ConnectCombatLog`
+  raises at the caller's line (see "World of Warcraft specifics" in
+  [`docs/API.md`](docs/API.md)).
+- **An unknown event name is refused at the caller's line.** Where the client
+  has `C_EventUtils.IsEventValid`, every subscribing call checks the name with
+  it before registering anything, instead of leaving the client's
+  `RegisterEvent` to raise an error that names no caller line (see "Event
+  names the client does not know" in [`docs/API.md`](docs/API.md)).
 
 ## Example
 
@@ -59,11 +66,13 @@ EventKit reads `CombatLogGetCurrentEventInfo()` once per event and hands every
 return to the listeners of that sub-event (or of `"*"`, every sub-event):
 
 ```lua
-local damage = EventKit:ConnectCombatLog("SPELL_DAMAGE", function(timestamp, subEvent,
-        hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
-        destGUID, destName, destFlags, destRaidFlags, spellId, spellName, spellSchool, amount)
-    print(spellName, "hit", destName, "for", amount)
-end)
+if EventKit:IsCombatLogAvailable() then
+    local damage = EventKit:ConnectCombatLog("SPELL_DAMAGE", function(timestamp, subEvent,
+            hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
+            destGUID, destName, destFlags, destRaidFlags, spellId, spellName, spellSchool, amount)
+        print(spellName, "hit", destName, "for", amount)
+    end)
+end
 ```
 
 Owner scopes tear down everything an owner subscribed to in one call. They

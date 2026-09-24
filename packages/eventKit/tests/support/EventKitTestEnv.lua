@@ -20,6 +20,14 @@
 --- forwards every return of `CombatLogGetCurrentEventInfo()` with its count
 --- intact, so the fake has to return exactly the values a spec set, holes and
 --- trailing `nil`s included, and count how often it was read.
+---
+--- EventKit probes `C_EventUtils.IsEventValid` once, when it loads. The shared
+--- fixture installs no `C_EventUtils` without a client profile, so by default
+--- the suite runs the "absent" profile: an unknown event name reaches the
+--- Frame stub's `RegisterEvent`, as on a client without the function.
+--- `NewPackageKnowingEvents` and `Scheduled.NewEventKitKnowingEvents` run the
+--- "present" profile: a `C_EventUtils.IsEventValid` fake that knows exactly the
+--- names given and counts its calls, installed before EventKit loads.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local EventKitTestEnv = FrameworkTestEnv.New({
@@ -55,6 +63,48 @@ function EventKitTestEnv.InstallCombatLogEventInfo()
     end)
 end
 
+-- The names the `C_EventUtils.IsEventValid` fake knows, and how often it was
+-- asked since it was installed.
+local knownEvents = {}
+local eventValidityChecks = 0
+
+---Install a `C_EventUtils` whose `IsEventValid` answers `true` for the names
+---in `names` and `false` for every other string, counting its calls.
+---
+---EventKit probes the function once, when it loads, so a spec installs the
+---fake before loading EventKit (`NewPackageKnowingEvents` does both) to run the
+---"present" profile. Installed after EventKit loaded, it is never consulted.
+---The shared fixture owns the `C_EventUtils` global and clears it on `Reset`.
+---@param names string[] the event names the client knows
+function EventKitTestEnv.InstallEventValidity(names)
+    knownEvents = {}
+    for index = 1, #names do
+        knownEvents[names[index]] = true
+    end
+    eventValidityChecks = 0
+    -- The fixture stands in for the World of Warcraft client, whose API only exists in the global table.
+    -- selene: allow(global_usage)
+    rawset(_G, "C_EventUtils", {
+        IsEventValid = function(eventName)
+            eventValidityChecks = eventValidityChecks + 1
+            return knownEvents[eventName] == true
+        end,
+    })
+end
+
+---Make the installed `IsEventValid` fake know, or forget, one event name.
+---@param eventName string
+---@param known boolean
+function EventKitTestEnv.SetEventKnown(eventName, known)
+    knownEvents[eventName] = known == true or nil
+end
+
+---How many times the `IsEventValid` fake was called since it was installed.
+---@return integer checks
+function EventKitTestEnv.EventValidityChecks()
+    return eventValidityChecks
+end
+
 ---Install the shared host stubs, then this package's combat-log fake on top.
 function EventKitTestEnv.InstallWowApi()
     installWowApi()
@@ -72,6 +122,24 @@ function EventKitTestEnv.Reset()
     combatLogValues = {}
     combatLogValueCount = 0
     combatLogReads = 0
+    knownEvents = {}
+    eventValidityChecks = 0
+end
+
+---Load Registry, SignalKit and EventKit, as `NewPackage` does, on a client
+---whose `C_EventUtils.IsEventValid` knows exactly `names` (the "present"
+---profile).
+---@param names string[] the event names the client knows
+---@return table EventKit
+---@return table Registry
+---@return table SignalKit
+function EventKitTestEnv.NewPackageKnowingEvents(names)
+    EventKitTestEnv.Reset()
+    EventKitTestEnv.InstallWowApi()
+    EventKitTestEnv.InstallEventValidity(names)
+    local Registry = require("Registry")
+    local SignalKit = require("SignalKit")
+    return require("EventKit"), Registry, SignalKit
 end
 
 ---Set what `CombatLogGetCurrentEventInfo()` returns next: exactly these
@@ -122,6 +190,22 @@ local Scheduled = FrameworkTestEnv.New({
 function Scheduled.NewEventKit()
     local SchedulerKit, _, _, EventKit = Scheduled.NewPackage()
     return EventKit, SchedulerKit
+end
+
+---Load the full chain, as `NewEventKit` does, on a client whose
+---`C_EventUtils.IsEventValid` knows exactly `names`.
+---@param names string[] the event names the client knows
+---@return table EventKit
+---@return table SchedulerKit
+function Scheduled.NewEventKitKnowingEvents(names)
+    Scheduled.Reset()
+    Scheduled.InstallWowApi()
+    EventKitTestEnv.InstallEventValidity(names)
+    require("Registry")
+    require("SignalKit")
+    local EventKit = require("EventKit")
+    require("TimerKit")
+    return EventKit, require("SchedulerKit")
 end
 
 EventKitTestEnv.Scheduled = Scheduled

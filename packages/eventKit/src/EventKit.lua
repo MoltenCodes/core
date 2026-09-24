@@ -20,7 +20,14 @@
 -- `COMBAT_LOG_EVENT_UNFILTERED` carries no payload; the client hands the event
 -- out through `CombatLogGetCurrentEventInfo()`. `ConnectCombatLog` reads it
 -- once per event and routes it by sub-event, so the hottest event in the
--- client costs one read and one lookup however many addons listen.
+-- client costs one read and one lookup however many addons listen. Retail 12
+-- gives addon code no such reader, so `IsCombatLogAvailable` answers whether
+-- this client has one, and `ConnectCombatLog` refuses at the caller without it.
+--
+-- Event names a subscribing call receives are checked with the client's
+-- `C_EventUtils.IsEventValid`, probed once when this copy loads, so an unknown
+-- name is refused at the caller's line before anything is registered. Clients
+-- without the function leave the verdict to `RegisterEvent`, as before.
 --
 -- Contents
 -- --------
@@ -30,12 +37,13 @@
 --   Public-surface validation  facade shape accepted from other copies
 --   Bootstrap ............. Registry registration
 --   Shared state .......... LuaCATS types, state creation and migration
---   Validation ............ receiver and argument checks
+--   Validation ............ receiver and argument checks, including the
+--                           client's verdict on an event name
 --   WoW Frame boundary .... CreateFrame and Frame method access
 --   Unit-group Frames ..... bounded, reused unit-filter Frames
 --   Channels .............. per-event host registration and fan-out
 --   Listener isolation .... allocation-free protected dispatch
---   Combat log routing .... one CombatLogGetCurrentEventInfo read per event,
+--   Combat log routing .... the client's reader, one read per event,
 --                           fanned out by sub-event
 --   Scope ownership ....... intrusive scope links and bulk teardown
 --   Connections ........... connection lifecycle and handle methods
@@ -51,7 +59,7 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 14
+local IMPLEMENTATION_REVISION = 15
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local STATE_SCHEMA = 8
@@ -174,6 +182,7 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "ConnectUnit")) ~= "function"
         or type(rawget(implementation, "OnceUnit")) ~= "function"
         or type(rawget(implementation, "ConnectCombatLog")) ~= "function"
+        or type(rawget(implementation, "IsCombatLogAvailable")) ~= "function"
         or type(rawget(implementation, "CreateScope")) ~= "function"
         or type(rawget(implementation, "ForAddon")) ~= "function"
         or type(rawget(implementation, "CloseAddonScopes")) ~= "function"
@@ -391,6 +400,7 @@ end
 ---@field ConnectUnit fun(self: EventKit, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
 ---@field OnceUnit fun(self: EventKit, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
 ---@field ConnectCombatLog fun(self: EventKit, subEvent: string, callback: EventKit.CombatLogListener): EventKit.Connection
+---@field IsCombatLogAvailable fun(self: EventKit): boolean Whether this client gives addon code a combat-log reader, so `ConnectCombatLog` can connect.
 ---@field CreateScope fun(self: EventKit): EventKit.Scope
 ---@field ForAddon fun(self: EventKit, addonName: string): EventKit.Scope
 ---@field CloseAddonScopes fun(self: EventKit, addonName: string): boolean
@@ -650,6 +660,44 @@ local function refuseSecret(value, label, level)
     end
 end
 
+-- `C_EventUtils.IsEventValid(eventName)` is the client's own answer to "is this
+-- an event I know?". It is probed once, when this copy loads, like the rest of
+-- the client's API set, which is fixed for the session. Registering an unknown
+-- name raises inside `Frame:RegisterEvent` with a message that names no caller
+-- line (measured on Retail 12.1.0), so with the function EventKit refuses the
+-- name itself, at the caller's line, before it registers or allocates anything.
+-- `false` means the client has no such function (older clients); the verdict
+-- is then left to `RegisterEvent`, as before revision 15.
+local hostIsEventValid = false
+do
+    -- C_EventUtils is a World of Warcraft client namespace reachable only through the global table.
+    -- selene: allow(global_usage)
+    local eventUtils = rawget(_G, "C_EventUtils")
+    if type(eventUtils) == "table" and type(rawget(eventUtils, "IsEventValid")) == "function" then
+        hostIsEventValid = rawget(eventUtils, "IsEventValid")
+    end
+end
+
+---Raise at `level` when the client says it does not know `eventName`.
+---
+---Only called with a non-empty string that is not secret. Only a plain `false`
+---refuses: any other answer, a secret one included, leaves the verdict to the
+---host's registration, so a client quirk can never refuse a real event.
+---@param eventName string
+---@param description string qualified argument name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function refuseUnknownEvent(eventName, description, level)
+    if hostIsEventValid == false then
+        return
+    end
+    local known = hostIsEventValid(eventName)
+    if type(known) == "boolean" and not isSecret(known) and known == false then
+        error(description .. ' "' .. eventName .. '" is not an event this client knows', level)
+    end
+end
+
+---Validate an event name a public method will register: its type, whether it
+---is secret, then whether the client knows it, in that order.
 ---@param eventName any
 ---@param label string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
@@ -658,10 +706,12 @@ local function validateEventName(eventName, label, level)
     if type(eventName) ~= "string" or eventName == "" then
         error(label .. " eventName must be a non-empty string", level)
     end
+    refuseUnknownEvent(eventName, label .. " eventName", level + 1)
 end
 
 ---Sub-event names are the client's (`SPELL_DAMAGE`), plus the `*` wildcard.
----The running client stays authoritative on which exist, as for event names.
+---They are not checked against the client, which has no function that knows
+---them; a sub-event that never occurs simply never delivers.
 ---@param subEvent any
 ---@param label string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
@@ -1200,34 +1250,56 @@ local function dispatchCombatLog()
     return routeCombatLogEvent(combatLog, rawget(combatLog, "readEventInfo")())
 end
 
----Take the router's share of the combat-log registration.
----
----Called for the first combat-log listener. The client API is resolved here
----rather than at load so a copy loaded before the API existed still works,
----and it is checked before anything is registered so a refusal leaves nothing
----behind. The registration itself is refused at the caller, like `Connect`.
+---Return the client's combat-log reader, or `nil` when addon code has none.
 ---
 ---The global `CombatLogGetCurrentEventInfo` is preferred, so a replacement
----another addon installed there is honoured as before. Current classic
----clients document only `C_CombatLog.GetCurrentEventInfo`, so the namespaced
----function is used when the global is absent. Retail 12 clients document
----neither for addons (only `C_CombatLogSecure`), so there the call raises.
----@param combatLog EventKit.CombatLogRouter
----@param label string qualified public method name, used in the argument error
----@param level integer stack level a refused registration is reported at
-local function attachCombatLogRouter(combatLog, label, level)
+---another addon installed there is honoured. Current classic clients document
+---only `C_CombatLog.GetCurrentEventInfo`, so the namespaced function is used
+---when the global is absent. Retail 12 clients give addon code neither: the
+---reader exists only under `C_CombatLogSecure` and `C_CombatLogInternal`, which
+---a measured Retail 12.1.0 client also withholds from addon code, and
+---`C_CombatLog.IsCombatLogRestricted()` answers `true` there.
+---
+---Resolved on every call rather than once at load, so a copy loaded before
+---the reader existed still finds it. Two table reads; allocates nothing.
+---@return function|nil readEventInfo
+local function findCombatLogReader()
     -- CombatLogGetCurrentEventInfo and C_CombatLog are World of Warcraft client APIs reachable only through the global table.
     -- selene: allow(global_usage)
     local readEventInfo = rawget(_G, "CombatLogGetCurrentEventInfo")
-    if type(readEventInfo) ~= "function" then
-        -- selene: allow(global_usage)
-        local combatLogNamespace = rawget(_G, "C_CombatLog")
-        if type(combatLogNamespace) == "table" then
-            readEventInfo = rawget(combatLogNamespace, "GetCurrentEventInfo")
+    if type(readEventInfo) == "function" then
+        return readEventInfo
+    end
+    -- selene: allow(global_usage)
+    local combatLogNamespace = rawget(_G, "C_CombatLog")
+    if type(combatLogNamespace) == "table" then
+        readEventInfo = rawget(combatLogNamespace, "GetCurrentEventInfo")
+        if type(readEventInfo) == "function" then
+            return readEventInfo
         end
     end
-    if type(readEventInfo) ~= "function" then
-        error("EventKit: requires the World of Warcraft CombatLogGetCurrentEventInfo API", 0)
+    return nil
+end
+
+---Take the router's share of the combat-log registration.
+---
+---Called for the first combat-log listener. The reader is resolved here (see
+---`findCombatLogReader`) and checked before anything is registered, so a
+---client without one refuses at the caller's line and leaves nothing behind.
+---The registration itself is refused at the caller too, like `Connect`.
+---@param combatLog EventKit.CombatLogRouter
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level a refusal is reported at
+local function attachCombatLogRouter(combatLog, label, level)
+    local readEventInfo = findCombatLogReader()
+    if type(readEventInfo) == "nil" then
+        error(
+            label
+                .. " the combat log is not available to addons on this client"
+                .. " (no CombatLogGetCurrentEventInfo reader);"
+                .. " check EventKit:IsCombatLogAvailable() first",
+            level
+        )
     end
 
     local channel = createRegularChannel(COMBAT_LOG_EVENT, label, level + 1)
@@ -2004,6 +2076,11 @@ local function readEventList(events, label, level)
     if #list > MAXIMUM_COMPOSITE_EVENTS then
         error(label .. " accepts at most " .. MAXIMUM_COMPOSITE_EVENTS .. " distinct events", level)
     end
+    -- The client is asked only once the list is known to be bounded, and once
+    -- per distinct name.
+    for index = 1, #list do
+        refuseUnknownEvent(list[index], label .. " events entry", level + 1)
+    end
     return list
 end
 
@@ -2594,6 +2671,18 @@ local function connectCombatLog(_, subEvent, callback)
     return connection
 end
 
+---Whether EventKit can read the combat log on this client, which is whether
+---`ConnectCombatLog` can connect. `false` on clients that give addon code no
+---reader, as Retail 12 does. Cheap and allocation-free: two table reads, so it
+---may be asked at any time; the answer does not change within a session unless
+---another addon installs a reader. See docs/API.md,
+---"EventKit:IsCombatLogAvailable".
+---@param _ EventKit
+---@return boolean available
+local function isCombatLogAvailable(_)
+    return type(findCombatLogReader()) == "function"
+end
+
 ---Coalesce `events` into at most one `callback(set)` per interval. Requires
 ---SchedulerKit; see docs/API.md, "Coalescing events".
 ---@param _ EventKit
@@ -2969,6 +3058,7 @@ rawset(EventKit, "Once", onceEvent)
 rawset(EventKit, "ConnectUnit", connectUnitEvent)
 rawset(EventKit, "OnceUnit", onceUnitEvent)
 rawset(EventKit, "ConnectCombatLog", connectCombatLog)
+rawset(EventKit, "IsCombatLogAvailable", isCombatLogAvailable)
 rawset(EventKit, "CreateScope", createScope)
 rawset(EventKit, "ForAddon", forAddon)
 rawset(EventKit, "CloseAddonScopes", closeAddonScopes)

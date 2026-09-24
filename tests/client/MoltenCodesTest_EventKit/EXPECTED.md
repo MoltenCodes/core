@@ -40,7 +40,7 @@ MoltenCodes Test: PASS eventKit.coalesce: Coalesce delivers two CVar changes ins
 MoltenCodes Test: PASS eventKit.coalesce: Derive recomputes after a CVar change and OnChange reports the new and the previous value
 MoltenCodes Test: PASS eventKit.errors: Connect with an event name that is not a string names EventKitSuite.lua at the calling line
 MoltenCodes Test: PASS eventKit.errors: ConnectUnit with three distinct unit tokens is refused at the calling line
-MoltenCodes Test: PASS eventKit.errors: Connect to an event name the client does not know raises on every attempt and caches nothing
+MoltenCodes Test: PASS eventKit.errors: Connect to an event name the client does not know is refused on every attempt, at the calling line where the client can tell, and caches nothing
 MoltenCodes Test: PASS eventKit.combatLog: ConnectCombatLog does what docs/API.md documents for the combat-log reader this client has (every fact is logged)
 MoltenCodes Test: SKIP eventKit.allocation: dispatch allocates nothing per event (allocation guard) -- not measurable here without side effects: EventKit has no public dispatch entry point, and no harmless event can be raised thousands of times without the client's own handlers allocating; packages/eventKit/tests guards it
 MoltenCodes Test: eventKit: 18 passed, 0 failed, 1 skipped, 0 timed out (19 tests)
@@ -91,7 +91,7 @@ reuse, because the client never frees a Frame.
 
 | Test | Proves in the real client |
 |---|---|
-| `Registry:Get('eventKit', 1) is the EventKit facade ...` | The facade the client loaded is API 1 and carries `Connect`, `Once`, `ConnectUnit`, `OnceUnit`, `ConnectCombatLog`, `CreateScope`, `ForAddon`, `CloseAddonScopes`, `Coalesce`, `Derive`, `SetLimits`, `GetLimits` and the `UNBOUNDED` sentinel. |
+| `Registry:Get('eventKit', 1) is the EventKit facade ...` | The facade the client loaded is API 1 and carries `Connect`, `Once`, `ConnectUnit`, `OnceUnit`, `ConnectCombatLog`, `IsCombatLogAvailable`, `CreateScope`, `ForAddon`, `CloseAddonScopes`, `Coalesce`, `Derive`, `SetLimits`, `GetLimits` and the `UNBOUNDED` sentinel. |
 | `the installed EventKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's, not an older or newer embedded copy. |
 | `a C_CVar.SetCVar change reaches two Connect listeners ...` | A CVAR_UPDATE the client raises reaches both listeners in connection order, with the event name first, then the CVar name and the value that was written. The log says whether it arrived before `SetCVar` returned. |
 | `a Once listener runs for the first CVAR_UPDATE only ...` | Over two real CVar changes, a `Once` listener runs once and `IsConnected()` is already `false` inside its callback. |
@@ -107,7 +107,7 @@ reuse, because the client never frees a Frame.
 | `Derive recomputes after a CVar change ...` | The derived value follows the CVar within three seconds and `OnChange` reports the new and the previous value once. |
 | `Connect with an event name that is not a string ...` | The argument error names this file at the calling line. |
 | `ConnectUnit with three distinct unit tokens ...` | The two-slot refusal names this file at the calling line, with the documented message. |
-| `Connect to an event name the client does not know ...` | The client refuses `MOLTENCODES_TEST_NO_SUCH_EVENT` on two attempts in a row, so EventKit kept nothing from the first, and a real event still connects afterwards. The log holds the client's message and what `C_EventUtils.IsEventValid` answers (EventKit itself does not call it; the client's `RegisterEvent` is the authority). |
+| `Connect to an event name the client does not know ...` | `MOLTENCODES_TEST_NO_SUCH_EVENT` is refused on two attempts in a row, so EventKit kept nothing from the first, and a real event still connects afterwards. Where the client has `C_EventUtils.IsEventValid` (Retail 12.1 does), each refusal is EventKit's own, `EventKit:Connect eventName "MOLTENCODES_TEST_NO_SUCH_EVENT" is not an event this client knows`, naming `EventKitSuite.lua` at the calling line; without the function it is the client's `RegisterEvent` refusal, which names no caller line. The log holds what `IsEventValid` answers and each message. |
 | `ConnectCombatLog does what docs/API.md documents ...` | See below. |
 
 ### The combat-log facts
@@ -120,15 +120,19 @@ The `combatLog` test logs, before it asserts anything:
 - what calling `C_CombatLogInternal.GetCurrentEventInfo()` from addon code does
   (how many values it returned, or the error it raised);
 - what `C_CombatLog.IsCombatLogRestricted()` answers;
-- whether EventKit finds a reader (the global, or `C_CombatLog.GetCurrentEventInfo`).
+- whether EventKit finds a reader (the global, or `C_CombatLog.GetCurrentEventInfo`);
+- what `EventKit:IsCombatLogAvailable()` answers, which must agree with the
+  line before.
 
 It then calls `EventKit:ConnectCombatLog("*", ...)` twice and passes when the
 outcome matches the documented contract for the facts it found:
 
-- **No reader** (what docs/API.md expects on Retail 12): both calls raise exactly
-  `EventKit: requires the World of Warcraft CombatLogGetCurrentEventInfo API`,
-  and no frame is registered for `COMBAT_LOG_EVENT_UNFILTERED` afterwards.
-- **A reader**: each call either connects (and disconnects cleanly) or raises
+- **No reader** (measured on Retail 12.1.0 on 2026-09-24): `IsCombatLogAvailable()`
+  answers `false`, and both calls raise, naming `EventKitSuite.lua` at the
+  calling line,
+  `EventKit:ConnectCombatLog the combat log is not available to addons on this client (no CombatLogGetCurrentEventInfo reader); check EventKit:IsCombatLogAvailable() first`;
+  no frame is registered for `COMBAT_LOG_EVENT_UNFILTERED` afterwards.
+- **A reader**: `IsCombatLogAvailable()` answers `true`, and each call either connects (and disconnects cleanly) or raises
   the client's refusal of the registration; either way nothing stays registered.
 
 The log is the answer to the open question of which reader Retail 12.1 gives

@@ -250,8 +250,11 @@ describe("EventKit logout routes across an upgrade", function()
 
         local EventKit = require("EventKit")
 
+        -- The loading copy is the current source, whatever its revision.
+        local _, revision = require("Registry"):Get("eventKit", 1)
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(14, EventKit.REVISION)
+        assert.are.equal(revision, EventKit.REVISION)
+        assert.is_true(EventKit.REVISION > 10)
         assert.are.equal(8, privateState(EventKit).schema)
         assert.are.equal("playerLogout", rawget(events, "_logoutRoute"))
         TestEnv.Logout()
