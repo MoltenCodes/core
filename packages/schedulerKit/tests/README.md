@@ -40,7 +40,7 @@ Spec files:
 | `LogoutCoverage_spec.lua` | the four logout routes, re-examination, subscription release on close, carrying routes across the revision-11 upgrade |
 | `Errors_spec.lua` | error isolation, `nil`/`false` error objects, tracebacks, arming and re-arm failures |
 | `Traceback_spec.lua` | the two traceback sources: `debug.traceback`, preferred when both exist, and `debugstack` on a host without `debug.traceback` (a stub installed, and `debug` swapped for a copy without `traceback` only while the package loads); `tostring` rendering, resolution once at load, a failing source, neither source, the revision-14 upgrade on that host; the `xpcall` handler's `Watch`, `Debounce` and `Coalesce` reports from level 3 on both sources, and a lane submission's traceback |
-| `ErrorLevels_spec.lua` | `ShouldYield`, `Yield` and context receiver guards, and `CloseAddonScopes` argument and receiver errors, at the caller's line |
+| `ErrorLevels_spec.lua` | `ShouldYield`, `Yield` and context receiver guards, and `CloseAddonScopes` argument and receiver errors, at the caller's line; every argument, closed-scope and wrong-receiver error of the package-level and scope `Schedule`, `NextFrame`, `After` and `Every`, and the wrong-receiver errors of `Scope:CancelAll`, `Scope:Close` and `Job:Cancel`, at the caller's line with no tail call into the Kit on the way (a line hook checks, since standard Lua 5.1 still counts the level of a tail-called frame); the same after a revision-15 upgrade |
 | `Property_spec.lua` | randomized scope and package active-count invariants |
 | `Debounce_spec.lua` | `Debounce`: restart, last arguments, `leading`, `maxWaitSeconds`, `Cancel`, `Flush`, scope release, allocation guard |
 | `Coalesce_spec.lua` | `Coalesce`: key sets, `maxKeys`, set reuse, `Flush`, raising callbacks, scope release |
@@ -48,7 +48,7 @@ Spec files:
 | `Allocation_spec.lua` | the resume path allocates nothing; a never-drained priority queue keeps its indices at the front |
 | `Lane_spec.lua` | lanes: sharing, `maxInFlight`, `minIntervalSeconds`, retries, `maxQueued`, `Close`, allocation-free refusals, family delivery |
 | `Bootstrap_spec.lua` | duplicate loading, live job identity, the revision-3, -6, -7, -9, -10 and -12 upgrades and the previous-revision upgrade, live family handles |
-| `SecretValues_spec.lua` | secret arguments, options, limits and coalesce keys refused with `... must not be a secret value`; a secret coalesce value delivered |
+| `SecretValues_spec.lua` | secret arguments, options, limits and coalesce keys refused with `... must not be a secret value` at the caller's line, the scheduling methods' included; a secret coalesce value delivered |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
 
 `support/SchedulerKitTestEnv.lua` adds the optional-Kit loaders, `LoadRevision` (this source loaded as an older revision for upgrade specs) and `AllocatedKilobytes` (the allocation meter every allocation guard uses) to the shared fixture.

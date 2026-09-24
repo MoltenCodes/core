@@ -174,6 +174,33 @@ All delays share one SchedulerKit wake callback rather than allocating a new cal
 
 Staleness is decided by handle identity: a cancelled or re-armed job no longer points at the handle that fired, so the wake callback resolves a generation that cannot match. The dispatch entry still takes `(job, generation)`, unchanged from revision 3, so a delay armed before a live upgrade wakes correctly against the new implementation.
 
+## Argument-error levels
+
+Every argument and wrong-receiver error names the caller's line, so the
+`error` level each check uses counts the frames between it and the caller. A
+public method must therefore never end in `return helper(...)` when the helper
+can raise an argument error: that is a tail call, the public method's frame is
+replaced, and the level lands on a frame that no longer exists. The Retail
+client then prints the message with no position at all (measured on 12.1.0
+build 69933, 2026-09-24). Standard Lua 5.1 keeps a "(tail call)" placeholder
+level, so under Busted the count can still come out right; the unit specs
+check with a line hook that no tail-called frame of SchedulerKit.lua runs on
+the way to the raise.
+
+The pattern the source uses instead:
+
+- the public method validates its own receiver (`validateScope`,
+  `validateJob`), at level 3;
+- it keeps the helper's result in a local (`local job = helper(...)`, then
+  `return job`), so its frame stays on the stack;
+- `scheduleInScope` and `scheduleAfterInScope` raise their own errors at
+  level 3 and pass level 4 to the validators they call; `validateOptions`
+  raises at level 4 and passes level 5 on.
+
+Revisions 15 and older used the tail call for the package-level and scope
+`Schedule`, `NextFrame`, `After` and `Every`, and for `Scope:CancelAll`,
+`Scope:Close` and `Job:Cancel`.
+
 ## Error containment
 
 User callback failure is a Job outcome, not an OnUpdate failure.
@@ -196,14 +223,16 @@ Internal/native failures that occur in direct API operations may still be re-rai
 `installCoalescingFamily`, rather than at the top level of the chunk: Lua 5.1
 allows 200 locals per function and the main chunk is close to that.
 
-Headroom at revision 15: the main chunk holds 191 top-level locals of the 200
+Headroom at revision 16: the main chunk holds 191 top-level locals of the 200
 Lua 5.1 allows active at once (`luac -l -l` reports 213 declared, counting
 block-scoped ones, in 194 stack slots); the installer declares 111 locals and
 uses 41 of 60 upvalues. Revision 14 added the secret-value check without a new
 top-level slot: `debug` and `issecretvalue` are read inside `do` blocks, so
 only `nativeTraceback` and `refuseSecretValue` stay at the top level. Revision
 15 reads `debugstack` the same way, inside the `do` block that defines
-`captureTraceback`, and once more as an installer local for `captureFailure`. New top-level code belongs in the installer or in a
+`captureTraceback`, and once more as an installer local for `captureFailure`.
+Revision 16 adds no local: its argument-error fix only moves receiver checks
+into the public methods and keeps their results in function locals. New top-level code belongs in the installer or in a
 function of its own. The
 installer commits its own methods; only four hooks forward-declared above the
 job machinery (`laneJobFinished`, `retryLaneJob`, `cancelFamilyMembers`,

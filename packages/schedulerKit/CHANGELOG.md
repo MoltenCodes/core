@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.4 — 2026-09-24
+
+Argument errors at the caller's line. Implementation revision 16; API generation 1 is unchanged.
+
+- The package-level and scope `Schedule`, `NextFrame`, `After` and `Every` ended in a tail call to their shared helper (`return scheduleInScope(...)`), so the level their argument errors used named a vanished frame. On the Retail client (12.1.0 build 69933, measured 2026-09-24 by the SchedulerKit client suite) the priority, name, delay and interval checks and their secret refusals carried no position at all; under standard Lua 5.1 the placeholder level of the tail call hid it for some checks only. Each method now keeps the helper's result in a local, and the helpers' levels count the public method's frame: every argument, options, callback and closed-scope error of the eight methods names the caller's line.
+- The wrong-receiver errors of `Scope:Schedule`, `Scope:NextFrame`, `Scope:After`, `Scope:Every`, `Scope:CancelAll`, `Scope:Close` and `Job:Cancel` were raised inside the tail-called helper and carried no position on the client either. Those methods now check their receiver themselves before calling the helper, so the error names the caller's line; `cancelJob`, `cancelAll` and `closeScope` no longer check it, since every other caller hands them a scope or job SchedulerKit made.
+- The whole file was audited for the same `return helper(...)` before a check that raises: no other public method has it. No new top-level local (191 of 200 still).
+- LuaCATS: the `Watch` fields of the `SchedulerKit` and `SchedulerKit.Scope` classes parenthesise their `predicate` type, `(fun(): any)`, because a `fun(...)` return list without parentheses is greedy and swallowed the parameters after it.
+- An in-place upgrade from revision 15 needs no state change; jobs, coroutines, timers and handles carry over.
+- Docs: `docs/API.md` gains "Argument errors" (every argument and wrong-receiver error at the caller's line) and "Secret values" no longer excepts the scheduling methods; `docs/INTERNALS.md` gains "Argument-error levels".
+- Specs: `ErrorLevels_spec.lua` pins the caller's line for 29 paths (argument, options, callback and closed-scope checks of the eight scheduling methods, and the seven wrong receivers) and checks with a line hook that no tail-called SchedulerKit frame runs before the raise, then repeats all of them after a revision-15 upgrade; `SecretValues_spec.lua` requires the caller's line for the package-level `Schedule` and `After` refusals, which it used to accept without a position, and adds `NextFrame`, `Every` and four scope cases. The client suite's two tests that accepted "no position or the calling line" now require the calling line, and the first also covers the scope methods and the wrong receivers (still 37 tests).
+
 ## 0.8.3 — 2026-09-24
 
 Traceback on the Retail client. Implementation revision 15; API generation 1 is unchanged.

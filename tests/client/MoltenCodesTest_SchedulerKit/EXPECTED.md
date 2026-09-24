@@ -54,7 +54,7 @@ MoltenCodes Test: PASS schedulerKit.coalescing: two Watch(0.1) of one interval s
 MoltenCodes Test: PASS schedulerKit.allocation: 20000 resumes of one yielding job allocate nothing, counted in chunks of 1000 that stayed inside one driver pass (allocation guard; chunks logged)
 MoltenCodes Test: PASS schedulerKit.allocation: 10000 Debounce calls inside an open window and 10000 Coalesce calls of a known key allocate nothing (allocation guard)
 MoltenCodes Test: SKIP schedulerKit.allocation: a Watch tick whose value did not change allocates nothing (allocation guard) -- not measurable here: C_Timer delivers a tick between frames, where every other addon allocates too; packages/schedulerKit/tests/Watch_spec.lua guards it
-MoltenCodes Test: PASS schedulerKit.errors: package-level Schedule, NextFrame, After and Every refuse bad arguments with their documented messages, with no position or at the calling line, never inside SchedulerKit (positions logged)
+MoltenCodes Test: PASS schedulerKit.errors: package-level and scope Schedule, NextFrame, After and Every refuse bad arguments, and a scope's methods and Job:Cancel a wrong receiver, at the calling line (messages logged)
 MoltenCodes Test: PASS schedulerKit.errors: ForAddon with an empty name and CloseAddonScopes on another receiver are refused at the calling line
 MoltenCodes Test: PASS schedulerKit.errors: SetFrameBudget(0), SetRunawayThreshold(-1) and SetMaxResumesPerFrame(1.5) are refused at the calling line and change nothing
 MoltenCodes Test: PASS schedulerKit.errors: Schedule on a scope with unknown option fields names the alphabetically first one at the calling line, and schedules nothing
@@ -63,7 +63,7 @@ MoltenCodes Test: PASS schedulerKit.errors: Debounce with maxWaitSeconds below i
 MoltenCodes Test: PASS schedulerKit.secrets: ForAddon, CloseAddonScopes and Lane refuse a secret name at the calling line before comparing it
 MoltenCodes Test: PASS schedulerKit.secrets: SetFrameBudget, SetRunawayThreshold and SetMaxResumesPerFrame refuse a secret at the calling line and change nothing
 MoltenCodes Test: PASS schedulerKit.secrets: Debounce leading, Coalesce maxKeys, Watch intervalSeconds and SetLimits maxLanes refuse a secret at the calling line and change no limit
-MoltenCodes Test: PASS schedulerKit.secrets: package-level Schedule priority and name, After delay and a scope's Every interval refuse a secret with the documented message, never positioned inside SchedulerKit, and schedule nothing (positions logged)
+MoltenCodes Test: PASS schedulerKit.secrets: package-level Schedule priority and name, After delay and a scope's Every interval refuse a secret at the calling line and schedule nothing (messages logged)
 MoltenCodes Test: PASS schedulerKit.secrets: a coalesce handle refuses a secret key at the calling line and delivers a secret value still secret
 MoltenCodes Test: schedulerKit: 35 passed, 0 failed, 2 skipped, 0 timed out (37 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
@@ -94,7 +94,7 @@ prints these five lines instead, and the totals line reads
 MoltenCodes Test: SKIP schedulerKit.secrets: ForAddon, CloseAddonScopes and Lane refuse a secret name at the calling line before comparing it -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP schedulerKit.secrets: SetFrameBudget, SetRunawayThreshold and SetMaxResumesPerFrame refuse a secret at the calling line and change nothing -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP schedulerKit.secrets: Debounce leading, Coalesce maxKeys, Watch intervalSeconds and SetLimits maxLanes refuse a secret at the calling line and change no limit -- the client has no issecretvalue and secretwrap; the secret path was not exercised
-MoltenCodes Test: SKIP schedulerKit.secrets: package-level Schedule priority and name, After delay and a scope's Every interval refuse a secret with the documented message, never positioned inside SchedulerKit, and schedule nothing (positions logged) -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+MoltenCodes Test: SKIP schedulerKit.secrets: package-level Schedule priority and name, After delay and a scope's Every interval refuse a secret at the calling line and schedule nothing (messages logged) -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP schedulerKit.secrets: a coalesce handle refuses a secret key at the calling line and delivers a secret value still secret -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
@@ -180,7 +180,7 @@ method, so every such message names the same line number.
 | `two Watch(0.1) of one interval share the real ticker ...` | Two watches of one interval are first called in the same frame, the first with `previous = nil`; the first watch is called again only when its value changes, with the old value as `previous`; after `Cancel` (which answers `true`, then `false`) it is no longer called, while the second watch (`everyTick`) keeps being called on the shared ticker. The log gives every count. |
 | `20000 resumes of one yielding job allocate nothing ...` | With a 20 ms budget and a 5000-resume ceiling for this test only, a HIGH job yields 1000 times per chunk and reads `collectgarbage("count")` around each chunk; only chunks that stayed in one frame with no other job resumed in between are counted, until twenty such chunks (20000 resumes) grew the heap by at most 1 KB in total. The budget and ceiling are back to their defaults afterwards. The log gives the chunks measured and discarded and the delta. |
 | `10000 Debounce calls inside an open window ...` | After a full collection, 10000 calls of a `Debounce` handle whose window is open, and 10000 calls of a `Coalesce` handle with a key it already holds, each grow the heap by at most 1 KB. |
-| `package-level Schedule, NextFrame, After and Every refuse bad arguments ...` | Each refusal carries its documented message, either with no position (what docs/API.md says of these four methods) or naming this file at the calling line, never a line inside SchedulerKit. Nothing is scheduled. The log says which, per message. Under the reference Lua 5.1 the callback checks name the calling line and the priority, delay and interval checks carry no position. |
+| `package-level and scope Schedule, NextFrame, After and Every refuse bad arguments ...` | Each refusal carries its documented message and names this file at the calling line: the package-level callback, priority, delay and interval checks, the scope `Schedule` name, `NextFrame` priority, `After` delay and `Every` interval checks, and the wrong-receiver refusals of a scope's `Schedule`, `After`, `CancelAll` and `Close` and of `Job:Cancel`. Nothing is scheduled, the scope stays open and its delayed job stays delayed. The log gives each client message. Before SchedulerKit 0.8.4 these methods reached their checks through a tail call, and on Retail 12.1.0 build 69933 (2026-09-24) the priority, delay, interval and wrong-receiver messages carried no position at all. |
 | `ForAddon with an empty name and CloseAddonScopes on another receiver ...` | Both refusals name this file at the calling line. |
 | `SetFrameBudget(0), SetRunawayThreshold(-1) and SetMaxResumesPerFrame(1.5) ...` | Each is refused with its documented message at the calling line, and none of the three settings changes. |
 | `Schedule on a scope with unknown option fields ...` | With `zeta` and `alpha` unknown, the refusal names `alpha`, at the calling line, and no job is scheduled. |
@@ -189,7 +189,7 @@ method, so every such message names the same line number.
 | `ForAddon, CloseAddonScopes and Lane refuse a secret name ...` | A genuine secret name is refused with `... must not be a secret value` at the calling line, before SchedulerKit compares it. |
 | `SetFrameBudget, SetRunawayThreshold and SetMaxResumesPerFrame refuse a secret ...` | The three setters refuse a secret at the calling line and no setting changes. |
 | `Debounce leading, Coalesce maxKeys, Watch intervalSeconds and SetLimits maxLanes ...` | The four refusals name this file at the calling line; `GetLimits()` is unchanged. |
-| `package-level Schedule priority and name, After delay and a scope's Every interval ...` | Each secret is refused with its documented message, with no position or at the calling line, never inside SchedulerKit, and nothing is scheduled. The log says which. docs/API.md promises the caller's line for a scope's `Every`; under the reference Lua 5.1 it carries no position, like the package-level methods (reported as a documentation mismatch). |
+| `package-level Schedule priority and name, After delay and a scope's Every interval ...` | Each secret is refused with its documented message at the calling line, as docs/API.md ("Argument errors") promises, and nothing is scheduled. Before SchedulerKit 0.8.4 these four refusals carried no position. |
 | `a coalesce handle refuses a secret key ...` | A secret key is refused at the calling line; a secret value is stored and `Flush` delivers it still secret. |
 
 ## What counts as unexpected
@@ -236,8 +236,8 @@ method, so every such message names the same line number.
    It holds the full report, each test's logs (the clock deltas, the
    milliseconds per frame, the service order, the lateness and gaps, the
    runaway slice and its report, the client's yield-boundary message, the
-   job traceback and the debug library probe, the logout route, the measured memory deltas, and which
-   argument errors carried a position) and the client facts. Lua shortens a
+   job traceback and the debug library probe, the logout route, the measured memory deltas, and each
+   argument-error message with its position) and the client facts. Lua shortens a
    long file path from the left, so a logged message may start with `...`; the
    tests compare only the `SchedulerKitSuite.lua:<line>` part (or
    `SchedulerKitSuite.lua]:<line>` in a `debugstack` frame). Send it back

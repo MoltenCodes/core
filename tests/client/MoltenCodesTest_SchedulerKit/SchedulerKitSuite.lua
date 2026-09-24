@@ -568,35 +568,6 @@ local function expectErrorAtCallingLine(ctx, raise, expected)
     return line
 end
 
----Call `raise` and check the message is `expected`, either with no position
----at all or with this file's position, never a position inside SchedulerKit.
----
----docs/API.md ("Secret values") says the argument errors of the package-level
----`Schedule`, `NextFrame`, `After` and `Every` carry no position: those methods
----reach their checks through a tail call. Under the reference Lua 5.1 that
----holds for the delay, interval, priority and name checks, while the callback
----check still names the caller; the log line records what this client did.
----@param ctx TestKit.Context
----@param raise fun() Records its start line with `currentLine()`, then raises on the next line.
----@param expected string The whole message without a position.
----@return integer|nil line The line the message names, or `nil` for no position.
-local function expectErrorWithoutForeignPosition(ctx, raise, expected)
-    local succeeded, message = pcall(raise)
-    ctx:Expect(succeeded):ToBe(false)
-    ctx:Expect(type(message)):ToBe("string")
-    if type(message) ~= "string" then
-        return nil
-    end
-    ctx:Expect(message:sub(-#expected)):ToBe(expected)
-    local prefix = message:sub(1, #message - #expected)
-    if prefix == "" then
-        ctx:Log("no position: " .. message)
-        return nil
-    end
-    ctx:Log("with a position: " .. message)
-    return expectThisFile(ctx, message)
-end
-
 ---One refused call: `receiver[method](receiver, ...arguments)` must raise
 ---`expected`.
 ---@class SchedulerKitSuite.RefusalCase
@@ -607,28 +578,24 @@ end
 ---@field expected string the message after the position
 
 ---Make each case's call on the line after `currentLine()` and check the
----message. With `allowNoPosition`, a message without any position also
----passes (see `expectErrorWithoutForeignPosition`); otherwise it must name
----this file at the calling line.
+---message names this file at the calling line.
+---
+---docs/API.md ("Argument errors") promises the caller's line for every
+---argument and wrong-receiver error. Before SchedulerKit 0.8.4 the scheduling
+---methods, `Scope:CancelAll`, `Scope:Close` and `Job:Cancel` reached their
+---checks through a tail call, and this client (Retail 12.1.0 build 69933,
+---2026-09-24) gave their messages no position at all.
 ---@param ctx TestKit.Context
 ---@param cases SchedulerKitSuite.RefusalCase[]
----@param allowNoPosition boolean
-local function expectRefusals(ctx, cases, allowNoPosition)
+local function expectRefusals(ctx, cases)
     for _, case in ipairs(cases) do
         local startLine = 0
         local function raise()
             startLine = currentLine()
             case.receiver[case.method](case.callAs or case.receiver, unpack(case.arguments))
         end
-        local line
-        if allowNoPosition then
-            line = expectErrorWithoutForeignPosition(ctx, raise, case.expected)
-        else
-            line = expectErrorAtCallingLine(ctx, raise, case.expected)
-        end
-        if type(line) ~= "nil" or not allowNoPosition then
-            ctx:Expect(line):ToBe(startLine + 1)
-        end
+        local line = expectErrorAtCallingLine(ctx, raise, case.expected)
+        ctx:Expect(line):ToBe(startLine + 1)
     end
 end
 
@@ -1954,8 +1921,11 @@ local errors = newSuite("errors")
 local untypedSchedulerKit = SchedulerKit
 
 errors:Test(
-    "package-level Schedule, NextFrame, After and Every refuse bad arguments with their documented messages, with no position or at the calling line, never inside SchedulerKit (positions logged)",
+    "package-level and scope Schedule, NextFrame, After and Every refuse bad arguments, and a scope's methods and Job:Cancel a wrong receiver, at the calling line (messages logged)",
     function(ctx)
+        local scope = trackScope(SchedulerKit:CreateScope())
+        local untypedScope = scope --[[@as any]]
+        local job = scope:After(60, ignore)
         local activeBefore = SchedulerKit:GetActiveCount()
         expectRefusals(ctx, {
             {
@@ -1988,8 +1958,70 @@ errors:Test(
                 arguments = { 0, ignore },
                 expected = "SchedulerKit:Every interval must be a finite number greater than zero",
             },
-        }, true)
+            {
+                receiver = untypedScope,
+                method = "Schedule",
+                arguments = { ignore, { name = "" } },
+                expected = "SchedulerKit.Scope:Schedule name must be a non-empty string",
+            },
+            {
+                receiver = untypedScope,
+                method = "NextFrame",
+                arguments = { ignore, { priority = 0 } },
+                expected = "SchedulerKit.Scope:NextFrame priority must be one of SchedulerKit.Priority values",
+            },
+            {
+                receiver = untypedScope,
+                method = "After",
+                arguments = { -1, ignore },
+                expected = "SchedulerKit.Scope:After delay must be a finite number greater than or equal to zero",
+            },
+            {
+                receiver = untypedScope,
+                method = "Every",
+                arguments = { 0, ignore },
+                expected = "SchedulerKit.Scope:Every interval must be a finite number greater than zero",
+            },
+            {
+                receiver = untypedScope,
+                callAs = {},
+                method = "Schedule",
+                arguments = { ignore },
+                expected = "SchedulerKit.Scope:Schedule must be called on a SchedulerKit scope",
+            },
+            {
+                receiver = untypedScope,
+                callAs = {},
+                method = "After",
+                arguments = { 1, ignore },
+                expected = "SchedulerKit.Scope:After must be called on a SchedulerKit scope",
+            },
+            {
+                receiver = untypedScope,
+                callAs = {},
+                method = "CancelAll",
+                arguments = {},
+                expected = "SchedulerKit.Scope:CancelAll must be called on a SchedulerKit scope",
+            },
+            {
+                receiver = untypedScope,
+                callAs = {},
+                method = "Close",
+                arguments = {},
+                expected = "SchedulerKit.Scope:Close must be called on a SchedulerKit scope",
+            },
+            {
+                receiver = job,
+                callAs = {},
+                method = "Cancel",
+                arguments = {},
+                expected = "SchedulerKit.Job:Cancel must be called on a SchedulerKit job",
+            },
+        })
         ctx:Expect(SchedulerKit:GetActiveCount()):ToBe(activeBefore)
+        ctx:Expect(scope:GetActiveCount()):ToBe(1)
+        ctx:Expect(scope:IsClosed()):ToBe(false)
+        ctx:Expect(job:GetState()):ToBe("delayed")
     end
 )
 
@@ -2010,7 +2042,7 @@ errors:Test(
                 arguments = { addonName },
                 expected = "SchedulerKit:CloseAddonScopes must be called on the SchedulerKit facade; use SchedulerKit:CloseAddonScopes(addonName)",
             },
-        }, false)
+        })
     end
 )
 
@@ -2039,7 +2071,7 @@ errors:Test(
                 arguments = { 1.5 },
                 expected = "SchedulerKit:SetMaxResumesPerFrame count must be a finite positive integer",
             },
-        }, false)
+        })
         ctx:Expect(SchedulerKit:GetFrameBudget()):ToBe(budgetBefore)
         ctx:Expect(SchedulerKit:GetRunawayThreshold()):ToBe(thresholdBefore)
         ctx:Expect(SchedulerKit:GetMaxResumesPerFrame()):ToBe(ceilingBefore)
@@ -2057,7 +2089,7 @@ errors:Test(
                 arguments = { ignore, { zeta = 1, alpha = 2 } },
                 expected = 'SchedulerKit.Scope:Schedule options contains unknown field "alpha"',
             },
-        }, false)
+        })
         ctx:Expect(scope:GetActiveCount()):ToBe(0)
     end
 )
@@ -2091,7 +2123,7 @@ errors:Test(
                 arguments = {},
                 expected = "SchedulerKit.Context:Yield may only be called while its job is running",
             },
-        }, false)
+        })
     end
 )
 
@@ -2118,7 +2150,7 @@ errors:Test(
                 arguments = { "" },
                 expected = "SchedulerKit:Lane name must be a non-empty string",
             },
-        }, false)
+        })
         ctx:Expect(scope:GetActiveCount()):ToBe(0)
     end
 )
@@ -2185,7 +2217,7 @@ secretTest(
                 arguments = { secretName },
                 expected = "SchedulerKit:Lane name must not be a secret value",
             },
-        }, false)
+        })
     end
 )
 
@@ -2215,7 +2247,7 @@ secretTest(
                 arguments = { secretNumber },
                 expected = "SchedulerKit:SetMaxResumesPerFrame count must not be a secret value",
             },
-        }, false)
+        })
         ctx:Expect(SchedulerKit:GetFrameBudget()):ToBe(budgetBefore)
         ctx:Expect(SchedulerKit:GetRunawayThreshold()):ToBe(thresholdBefore)
         ctx:Expect(SchedulerKit:GetMaxResumesPerFrame()):ToBe(ceilingBefore)
@@ -2253,13 +2285,13 @@ secretTest(
                 arguments = { { maxLanes = secretNumber } },
                 expected = "SchedulerKit:SetLimits limits.maxLanes must not be a secret value",
             },
-        }, false)
+        })
         ctx:Expect(SchedulerKit:GetLimits()):ToEqual(limitsBefore)
     end
 )
 
 secretTest(
-    "package-level Schedule priority and name, After delay and a scope's Every interval refuse a secret with the documented message, never positioned inside SchedulerKit, and schedule nothing (positions logged)",
+    "package-level Schedule priority and name, After delay and a scope's Every interval refuse a secret at the calling line and schedule nothing (messages logged)",
     function(ctx)
         local scope = trackScope(SchedulerKit:CreateScope())
         local secretNumber = makeSecret(ctx, 1)
@@ -2290,7 +2322,7 @@ secretTest(
                 arguments = { secretNumber, ignore },
                 expected = "SchedulerKit.Scope:Every interval must not be a secret value",
             },
-        }, true)
+        })
         ctx:Expect(SchedulerKit:GetActiveCount()):ToBe(activeBefore)
         ctx:Expect(scope:GetActiveCount()):ToBe(0)
     end

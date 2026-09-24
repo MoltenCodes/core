@@ -59,7 +59,6 @@ describe("SchedulerKit and secret values", function()
         },
         {
             label = "SchedulerKit:Schedule priority",
-            unpositioned = true,
             call = function(secret, mark)
                 mark()
                 SchedulerKit:Schedule(noop, { priority = secret })
@@ -67,7 +66,6 @@ describe("SchedulerKit and secret values", function()
         },
         {
             label = "SchedulerKit:Schedule name",
-            unpositioned = true,
             call = function(secret, mark)
                 mark()
                 SchedulerKit:Schedule(noop, { name = secret })
@@ -75,10 +73,55 @@ describe("SchedulerKit and secret values", function()
         },
         {
             label = "SchedulerKit:After delay",
-            unpositioned = true,
             call = function(secret, mark)
                 mark()
                 SchedulerKit:After(secret, noop)
+            end,
+        },
+        {
+            label = "SchedulerKit:NextFrame priority",
+            call = function(secret, mark)
+                mark()
+                SchedulerKit:NextFrame(noop, { priority = secret })
+            end,
+        },
+        {
+            label = "SchedulerKit:Every interval",
+            call = function(secret, mark)
+                mark()
+                SchedulerKit:Every(secret, noop)
+            end,
+        },
+        {
+            label = "SchedulerKit.Scope:Schedule priority",
+            call = function(secret, mark)
+                local scope = SchedulerKit:CreateScope()
+                mark()
+                scope:Schedule(noop, { priority = secret })
+            end,
+        },
+        {
+            label = "SchedulerKit.Scope:NextFrame name",
+            call = function(secret, mark)
+                local scope = SchedulerKit:CreateScope()
+                mark()
+                scope:NextFrame(noop, { name = secret })
+            end,
+        },
+        {
+            label = "SchedulerKit.Scope:After delay",
+            call = function(secret, mark)
+                local scope = SchedulerKit:CreateScope()
+                mark()
+                scope:After(secret, noop)
+            end,
+        },
+        {
+            label = "SchedulerKit.Scope:Every interval",
+            call = function(secret, mark)
+                local scope = SchedulerKit:CreateScope()
+                mark()
+                scope:Every(secret, noop)
             end,
         },
         {
@@ -155,14 +198,6 @@ describe("SchedulerKit and secret values", function()
                 line = debug.getinfo(2, "l").currentline + 1
             end
             local ok, value = pcall(call, TestEnv.NewSecretValue(), mark)
-            if case.unpositioned then
-                -- These facade methods reach their option and delay checks
-                -- through a tail call, so the level every argument error of
-                -- theirs uses (the secret refusal included) names no line.
-                assert.is_false(ok)
-                assert.are.equal(label .. " must not be a secret value", value)
-                return
-            end
             assertReportedAt(line, label .. " must not be a secret value", ok, value)
         end)
     end

@@ -240,9 +240,10 @@ describe("SchedulerKit traceback sources", function()
             assert(upgradedOk, upgraded)
             assert.are.equal(old, upgraded)
             assert.are.equal(state, upgraded._state)
-            assert.are.equal(15, upgraded.REVISION)
+            assert.is_true(upgraded.REVISION > 14)
 
-            -- The coroutine the revision-14 copy started fails under revision 15.
+            -- The coroutine the revision-14 copy started fails under the
+            -- current revision.
             TestEnv.Tick()
             assert.are.equal("failed", job:GetState())
             local header = "after the upgrade\nstack traceback:\n"

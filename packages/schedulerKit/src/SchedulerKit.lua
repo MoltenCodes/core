@@ -44,7 +44,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 15
+local IMPLEMENTATION_REVISION = 16
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMER_API = 1
 local STATE_SCHEMA = 1
@@ -223,7 +223,7 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@field GetActiveCount fun(self: SchedulerKit.Scope): integer
 ---@field Debounce fun(self: SchedulerKit.Scope, callback: function, delaySeconds: number, options: SchedulerKit.DebounceOptions?): SchedulerKit.DebounceHandle
 ---@field Coalesce fun(self: SchedulerKit.Scope, callback: SchedulerKit.CoalesceCallback, intervalSeconds: number, options: SchedulerKit.CoalesceOptions?): SchedulerKit.CoalesceHandle
----@field Watch fun(self: SchedulerKit.Scope, predicate: fun(): any, intervalSeconds: number, callback: SchedulerKit.WatchCallback, options: SchedulerKit.WatchOptions?): SchedulerKit.WatchHandle
+---@field Watch fun(self: SchedulerKit.Scope, predicate: (fun(): any), intervalSeconds: number, callback: SchedulerKit.WatchCallback, options: SchedulerKit.WatchOptions?): SchedulerKit.WatchHandle
 
 ---Options accepted by `Debounce`.
 ---@class SchedulerKit.DebounceOptions
@@ -351,7 +351,7 @@ local SUBMIT_OPTION_KEYS = { priority = true, name = true, scope = true }
 ---@field GetActiveCount fun(self: SchedulerKit): integer
 ---@field Debounce fun(self: SchedulerKit, callback: function, delaySeconds: number, options: SchedulerKit.DebounceOptions?): SchedulerKit.DebounceHandle
 ---@field Coalesce fun(self: SchedulerKit, callback: SchedulerKit.CoalesceCallback, intervalSeconds: number, options: SchedulerKit.CoalesceOptions?): SchedulerKit.CoalesceHandle
----@field Watch fun(self: SchedulerKit, predicate: fun(): any, intervalSeconds: number, callback: SchedulerKit.WatchCallback, options: SchedulerKit.WatchOptions?): SchedulerKit.WatchHandle
+---@field Watch fun(self: SchedulerKit, predicate: (fun(): any), intervalSeconds: number, callback: SchedulerKit.WatchCallback, options: SchedulerKit.WatchOptions?): SchedulerKit.WatchHandle
 ---@field Lane fun(self: SchedulerKit, name: string, options: SchedulerKit.LaneOptions?): SchedulerKit.Lane
 ---@field UNBOUNDED table Sentinel a limit takes to be lifted, where that is allowed.
 ---@field SetLimits fun(self: SchedulerKit, limits: table)
@@ -1012,6 +1012,13 @@ local function validatePriority(priority, label, level)
 end
 
 ---Validate one scheduling option table and apply its defaults.
+---
+---Every argument error names the public method's caller. `error` counts
+---levels from the function that calls it, so this function raises its own
+---errors at level 4 (itself, the scheduling helper, the public method, the
+---caller) and hands level 5 to the validators it calls. That holds only while
+---the public method calls the helper without a tail call; see "Argument errors
+---and tail calls" below.
 ---@param options any
 ---@param methodName string public method name, used in the argument errors
 ---@return integer priority
@@ -1037,10 +1044,10 @@ local function validateOptions(options, methodName)
         error(methodName .. ' options contains unknown field "' .. unknown .. '"', 4)
     end
 
-    local priority = validatePriority(rawget(options, "priority"), methodName .. " priority", 4)
+    local priority = validatePriority(rawget(options, "priority"), methodName .. " priority", 5)
     local name = rawget(options, "name")
     if type(name) ~= "nil" then
-        validateNonEmptyString(name, methodName .. " name", 4)
+        validateNonEmptyString(name, methodName .. " name", 5)
     end
     return priority, name
 end
@@ -1593,10 +1600,12 @@ local function failJob(job, value, traceback)
 end
 
 ---Cancel `job`, cancelling its pending delay and updating the driver.
+---
+---`job` is already validated: `Job:Cancel` checks its receiver itself, so the
+---wrong-receiver error names the caller's line.
 ---@param job SchedulerKit.Job
 ---@return boolean cancelled `false` when the job was already terminal.
 local function cancelJob(job)
-    validateJob(job, "SchedulerKit.Job:Cancel")
     local jobState = rawget(job, "_state")
     if isTerminalJobState(jobState) then
         return false
@@ -1801,14 +1810,29 @@ local function wakeDelayed(job, generation)
     return true
 end
 
+-- Argument errors and tail calls -------------------------------------------
+--
+-- The scheduling helpers below raise their argument errors at the level of the
+-- public method's caller: level 3 for their own `error` calls (helper, public
+-- method, caller) and level 4 for the validators they call. That level names
+-- the caller only while the public method is still on the stack. A public
+-- method ending in `return helper(...)` makes a tail call: its frame is
+-- replaced, the level names a vanished frame, and the message carries no
+-- position at all (standard Lua 5.1 and the Retail client alike).
+-- Every public method therefore keeps the result in a local first
+-- (`local job = helper(...)` then `return job`), and a method whose helper
+-- validates the receiver validates it itself, before the call.
+
 ---Validate and queue one immediately eligible job.
+---
+---`scope` is already validated by the public method. Argument errors name the
+---public method's caller; see "Argument errors and tail calls" above.
 ---@param scope SchedulerKit.Scope
 ---@param callback any
 ---@param options SchedulerKit.ScheduleOptions|nil
 ---@param methodName string public method name, used in the argument errors
 ---@return SchedulerKit.Job
 local function scheduleInScope(scope, callback, options, methodName)
-    validateScope(scope, methodName)
     if rawget(scope, "_closed") == true then
         error(methodName .. " cannot schedule work in a closed scope", 3)
     end
@@ -1828,6 +1852,9 @@ local function scheduleInScope(scope, callback, options, methodName)
 end
 
 ---Validate and arm one delayed or repeating job.
+---
+---`scope` is already validated by the public method. Argument errors name the
+---public method's caller; see "Argument errors and tail calls" above.
 ---@param scope SchedulerKit.Scope
 ---@param delay any seconds to wait; the repeat interval when `repeating`
 ---@param callback any
@@ -1836,7 +1863,6 @@ end
 ---@param methodName string public method name, used in the argument errors
 ---@return SchedulerKit.Job
 local function scheduleAfterInScope(scope, delay, callback, options, repeating, methodName)
-    validateScope(scope, methodName)
     if rawget(scope, "_closed") == true then
         error(methodName .. " cannot schedule work in a closed scope", 3)
     end
@@ -1844,7 +1870,7 @@ local function scheduleAfterInScope(scope, delay, callback, options, repeating, 
         delay,
         methodName .. (repeating and " interval" or " delay"),
         not repeating,
-        3
+        4
     )
     if type(callback) ~= "function" then
         error(methodName .. " callback must be a function", 3)
@@ -4386,10 +4412,12 @@ installCoalescingFamily()
 -- Scope cleanup -------------------------------------------------------------
 
 ---Cancel every job of `scope`, keeping the scope itself usable.
+---
+---`scope` is already validated: `Scope:CancelAll` checks its receiver itself,
+---so the wrong-receiver error names the caller's line.
 ---@param scope SchedulerKit.Scope
 ---@return boolean cancelled
 local function cancelAll(scope)
-    validateScope(scope, "SchedulerKit.Scope:CancelAll")
     local firstError = nil
     local job = rawget(scope, "_head")
     while job ~= false do
@@ -4431,10 +4459,12 @@ end
 ---Terminally close `scope`, its jobs, its coalescing handles and its timer
 ---scope. An addon scope also lets go of its LifecycleKit shutdown
 ---subscription, which has nothing left to do.
+---
+---`scope` is already validated: `Scope:Close` checks its receiver itself, so
+---the wrong-receiver error names the caller's line.
 ---@param scope SchedulerKit.Scope
 ---@return boolean closed `false` when the scope was already closed.
 local function closeScope(scope)
-    validateScope(scope, "SchedulerKit.Scope:Close")
     if rawget(scope, "_closed") == true then
         return false
     end
@@ -4816,7 +4846,9 @@ end
 ---@param self SchedulerKit.Job
 ---@return boolean cancelled `false` when the job was already terminal.
 local function jobCancel(self)
-    return cancelJob(self)
+    validateJob(self, "SchedulerKit.Job:Cancel")
+    local cancelled = cancelJob(self)
+    return cancelled
 end
 
 -- Scope public methods ------------------------------------------------------
@@ -4827,7 +4859,9 @@ end
 ---@param options SchedulerKit.ScheduleOptions?
 ---@return SchedulerKit.Job job
 local function scopeSchedule(self, callback, options)
-    return scheduleInScope(self, callback, options, "SchedulerKit.Scope:Schedule")
+    validateScope(self, "SchedulerKit.Scope:Schedule")
+    local job = scheduleInScope(self, callback, options, "SchedulerKit.Scope:Schedule")
+    return job
 end
 
 ---Schedule work that must not run during the current pass.
@@ -4836,7 +4870,10 @@ end
 ---@param options SchedulerKit.ScheduleOptions?
 ---@return SchedulerKit.Job job
 local function scopeNextFrame(self, callback, options)
-    return scheduleAfterInScope(self, 0, callback, options, false, "SchedulerKit.Scope:NextFrame")
+    validateScope(self, "SchedulerKit.Scope:NextFrame")
+    local job =
+        scheduleAfterInScope(self, 0, callback, options, false, "SchedulerKit.Scope:NextFrame")
+    return job
 end
 
 ---Schedule work to become eligible after `delay` seconds.
@@ -4846,7 +4883,10 @@ end
 ---@param options SchedulerKit.ScheduleOptions?
 ---@return SchedulerKit.Job job
 local function scopeAfter(self, delay, callback, options)
-    return scheduleAfterInScope(self, delay, callback, options, false, "SchedulerKit.Scope:After")
+    validateScope(self, "SchedulerKit.Scope:After")
+    local job =
+        scheduleAfterInScope(self, delay, callback, options, false, "SchedulerKit.Scope:After")
+    return job
 end
 
 ---Schedule work that re-arms `interval` seconds after each run completes.
@@ -4856,21 +4896,28 @@ end
 ---@param options SchedulerKit.ScheduleOptions?
 ---@return SchedulerKit.Job job
 local function scopeEvery(self, interval, callback, options)
-    return scheduleAfterInScope(self, interval, callback, options, true, "SchedulerKit.Scope:Every")
+    validateScope(self, "SchedulerKit.Scope:Every")
+    local job =
+        scheduleAfterInScope(self, interval, callback, options, true, "SchedulerKit.Scope:Every")
+    return job
 end
 
 ---Cancel every job in this scope while keeping the scope reusable.
 ---@param self SchedulerKit.Scope
 ---@return boolean cancelled
 local function scopeCancelAll(self)
-    return cancelAll(self)
+    validateScope(self, "SchedulerKit.Scope:CancelAll")
+    local cancelled = cancelAll(self)
+    return cancelled
 end
 
 ---Terminally close this scope after cancelling everything it owns.
 ---@param self SchedulerKit.Scope
 ---@return boolean closed `false` when the scope was already closed.
 local function scopeClose(self)
-    return closeScope(self)
+    validateScope(self, "SchedulerKit.Scope:Close")
+    local closed = closeScope(self)
+    return closed
 end
 
 ---Whether this scope is terminally closed.
@@ -4905,7 +4952,8 @@ end
 ---@param options SchedulerKit.ScheduleOptions?
 ---@return SchedulerKit.Job job
 local function packageSchedule(_, callback, options)
-    return scheduleInScope(getDefaultScope(), callback, options, "SchedulerKit:Schedule")
+    local job = scheduleInScope(getDefaultScope(), callback, options, "SchedulerKit:Schedule")
+    return job
 end
 
 ---Schedule next-pass work in SchedulerKit's internal manual scope.
@@ -4914,7 +4962,7 @@ end
 ---@param options SchedulerKit.ScheduleOptions?
 ---@return SchedulerKit.Job job
 local function packageNextFrame(_, callback, options)
-    return scheduleAfterInScope(
+    local job = scheduleAfterInScope(
         getDefaultScope(),
         0,
         callback,
@@ -4922,6 +4970,7 @@ local function packageNextFrame(_, callback, options)
         false,
         "SchedulerKit:NextFrame"
     )
+    return job
 end
 
 ---Schedule delayed work in SchedulerKit's internal manual scope.
@@ -4931,7 +4980,7 @@ end
 ---@param options SchedulerKit.ScheduleOptions?
 ---@return SchedulerKit.Job job
 local function packageAfter(_, delay, callback, options)
-    return scheduleAfterInScope(
+    local job = scheduleAfterInScope(
         getDefaultScope(),
         delay,
         callback,
@@ -4939,6 +4988,7 @@ local function packageAfter(_, delay, callback, options)
         false,
         "SchedulerKit:After"
     )
+    return job
 end
 
 ---Schedule repeating work in SchedulerKit's internal manual scope.
@@ -4948,7 +4998,7 @@ end
 ---@param options SchedulerKit.ScheduleOptions?
 ---@return SchedulerKit.Job job
 local function packageEvery(_, interval, callback, options)
-    return scheduleAfterInScope(
+    local job = scheduleAfterInScope(
         getDefaultScope(),
         interval,
         callback,
@@ -4956,6 +5006,7 @@ local function packageEvery(_, interval, callback, options)
         true,
         "SchedulerKit:Every"
     )
+    return job
 end
 
 ---Create a manually owned scope, closed only by its owner.
