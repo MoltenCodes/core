@@ -7,6 +7,7 @@
 - `docs/API.md` lists every argument, state and load-time error message, documents that `resume` may return `0` to inherit nothing, names everything an entry retains under "Limits", names `Bootstrap` among the methods whose argument errors point at the calling line, and states the identifier-bound, `Bootstrap`, retirement and generation-coexistence passages in current form rather than as history.
 - Five specs: `Bootstrap`'s `api` and `revision` errors at the package's `Bootstrap` call (the path the shared helper now serves), a `resume` hook returning a non-revision, a `resume` hook returning `0`, `Find` and `Get` allocating nothing, and a public alias that is not a table.
 - Implementation revision 11. The private state layout is unchanged from revision 10, and the in-place facade upgrade from revision 10 is covered by the existing upgrade specs. `Registry` API generation 2 is unchanged.
+- The header comment names `interopKit` as the package the LibStub bridge became.
 
 ## 0.6.3 — 2026-09-23
 

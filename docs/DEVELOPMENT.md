@@ -8,17 +8,23 @@ Repository tooling requires:
 
 | Tool | Version | Why |
 |---|---|---|
-| Python | 3.10 or newer (CI runs 3.10 and 3.13) | repository tooling, validation, test orchestration |
+| Python | 3.10 or newer (CI runs 3.10 and 3.14) | repository tooling, validation, test orchestration |
+| hererocks | 0.25.1 | builds the private Lua 5.1 tree below |
 | Lua | 5.1.5 | the World of Warcraft client runtime; runtime code must stay 5.1-compatible |
-| LuaRocks | 3.13.0 | installs Busted |
+| LuaRocks | 3.13.0 | installs Busted and LuaCov |
 | Busted | 2.3.0-1 | pure-Lua test framework |
+| LuaCov | 0.17.0-1 | line coverage (`python3 -m tooling.test.coverage`); optional locally |
 | StyLua | 2.5.2 | the authoritative Lua formatter |
-| Selene | 0.31.0 | runtime Lua linting |
-| Node.js | 22.18 or newer (CI runs 24) | runs the pinned cspell for the spell check; optional locally |
+| Selene | 0.31.0 | runtime and test Lua linting |
+| lua-language-server | 3.19.0 | type-checking with `--check`, and editor support |
+| actionlint | 1.7.12 | lints the workflows; needed only when `.github/workflows/` changes |
+| Node.js | 22.18 or newer (CI runs 24) | runs the pinned cspell for the spell check through `npx`; optional locally |
+| lychee | 0.24.2 | the Markdown link check; optional locally |
 
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) pins these versions and
-is the source of truth. When the table above and CI disagree, CI wins and this
-document is the thing that needs fixing.
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) and the shared toolchain
+action [`.github/actions/setup-lua`](../.github/actions/setup-lua/action.yml) pin
+these versions and are the source of truth. When the table above and CI
+disagree, CI wins and this document is the thing that needs fixing.
 
 No Python third-party package is required by the repository tooling itself.
 cspell is not installed into the repository either: `python3 -m tooling.spell`
@@ -38,11 +44,15 @@ behaviour leak into runtime code unnoticed.
 Lua + LuaRocks pair into one directory and is the recommended route:
 
 ```bash
-pipx install hererocks
-hererocks ~/.local/lua51 --lua 5.1.5 --luarocks latest
+pipx install hererocks==0.25.1
+hererocks ~/.local/lua51 --lua 5.1.5 --luarocks 3.13.0
 export PATH="$HOME/.local/lua51/bin:$PATH"
 luarocks install busted 2.3.0-1
+luarocks install luacov 0.17.0-1   # optional: only the coverage command needs it
 ```
+
+These are the commands and versions CI runs; its tree is cached between runs
+and rebuilt only when one of the versions changes.
 
 Put the `export` line in your shell profile so `lua`, `luarocks` and `busted`
 resolve to that prefix in every new shell. Nothing outside that directory is
@@ -56,6 +66,7 @@ asdf plugin add lua
 asdf install lua 5.1.5
 asdf local lua 5.1.5
 luarocks install busted 2.3.0-1
+luarocks install luacov 0.17.0-1
 ```
 
 Verify the result before running anything else:
@@ -65,19 +76,27 @@ lua -v        # Lua 5.1.5
 busted --version
 ```
 
-### StyLua, Selene and the language server
+### StyLua, Selene, the language server, actionlint and lychee
 
 These are standalone binaries and come from Homebrew:
 
 ```bash
-brew install stylua selene lua-language-server
+brew install stylua selene lua-language-server actionlint lychee
 ```
 
-`lua-language-server` is used both by editors and by the `--check` gate below;
-it is not needed to run the Lua test suite. CI installs the published
-`selene-light` and `lua-language-server` binaries and verifies each download
-against a SHA-256 recorded in the workflow, so the versions here and there stay
-the same without CI rebuilding Selene from source on every run.
+Check that each reports the version in the table above (`stylua --version`,
+`selene --version`, `lua-language-server --version`, `actionlint -version`,
+`lychee --version`); Homebrew installs the current release, which can run ahead
+of CI's pin until the pin is bumped. `lua-language-server` is used both by
+editors and by the `--check` gate below; it is not needed to run the Lua test
+suite. CI installs the published binaries and verifies each download against a
+SHA-256 recorded in the workflow.
+
+### Node.js, for the spell check
+
+`python3 -m tooling.spell` runs the cspell release pinned in `tooling/spell.py`
+with `npx`, so Node.js 22.18 or newer is all it needs; nothing is installed into
+the repository. Without Node the command prints a note and exits 0.
 
 ## Troubleshooting
 
@@ -200,20 +219,45 @@ normalising, diffing and generating) is described in
 [`TOOLING.md`](TOOLING.md#api-metadata-tooling); the refresh procedure for a
 new client build is `packages/apiKit/docs/UPDATING.md`.
 
-Check the workflow file after editing it:
+Measure line coverage of the package sources (a report, not a gate; see
+[`TOOLING.md`](TOOLING.md#coverage)):
+
+```bash
+python3 -m tooling.test.coverage
+python3 -m tooling.test.coverage timerKit
+```
+
+Check whether any apiKit flavour's committed metadata is behind the mirror
+(network; the scheduled workflow runs the same command daily):
+
+```bash
+python3 -m tooling.api.heads
+```
+
+Check the workflows after editing them, and the Markdown links (network):
 
 ```bash
 actionlint
+lychee --config lychee.toml '**/*.md'
 ```
+
+Check commit subjects before pushing, as the pull request gate does:
+
+```bash
+python3 -m tooling.ci.check_commits origin/main..HEAD
+```
+
+What CI runs, job by job, and why, is in
+[`TOOLING.md`](TOOLING.md#continuous-integration).
 
 ## Supported Python
 
 Repository tooling supports Python 3.10 and newer, declared once as
 `requires-python` in [`../pyproject.toml`](../pyproject.toml). Repository
 validation refuses to run on anything older and checks that the declaration and
-the validator's own constant agree. Every CI job that runs repository tooling —
-the Lua tests, the linter, the spell check, repository validation and the
-release build — runs on both 3.10 and 3.13, so the floor is exercised rather than asserted.
+the validator's own constant agree. Every CI job that runs repository tooling
+runs on both 3.10 and 3.14, so the floor is exercised rather than asserted
+([`TOOLING.md`](TOOLING.md#supported-python)).
 
 ## Client behaviour the test stubs model on request
 
@@ -221,8 +265,8 @@ The shared fixture under `tests/support/` stands in for the client; its stubs
 are described in [`TESTING.md`](TESTING.md). The Retail 12.x access rules that
 [`EMBEDDING.md`](EMBEDDING.md#secret-values-retail-12x) documents for consumers
 are modelled by `ClientStub.lua`, which is off unless a test environment asks
-for a host profile (`wowProfile`), so every other suite sees the same host as
-before:
+for a host profile (`wowProfile`), so every other suite sees a host without
+them:
 
 - `issecretvalue(value)` reports a **secret value** (patch 12.0.0 and later).
   Tainted code may store one, pass it to functions, and concatenate or format
@@ -319,7 +363,7 @@ See [`RELEASES.md`](RELEASES.md) for the artifact layout and checksums.
 
 Monorepo commands must not require contributors to update CI, editor tasks, and root configuration every time a package is added.
 
-The test runner discovers package manifests, generates the Lua module path for selected packages, and invokes Busted. The lint runner recursively discovers runtime Lua under every package. Repository validation verifies package structure and documentation navigation.
+The test runner discovers package manifests, generates the Lua module path for selected packages, and invokes Busted. The lint runner recursively discovers runtime and test Lua under every package. Repository validation verifies package structure, packaging metadata and documentation navigation.
 
 This keeps package discovery in tooling rather than in shell globs or hard-coded package names.
 
@@ -338,3 +382,5 @@ A new publishable package begins as a directory under `packages/` with a valid `
 Capability packages follow the canonical `Kit` convention: lowerCamelCase package/directory/Registry identity (`signalKit`) and PascalCase Lua facade/module identity (`SignalKit`). `registry` / `Registry` is the infrastructure exception.
 
 After adding a package, the normal repository commands should discover it automatically. If adding a package requires editing CI merely to make tests or linting see it, repository tooling is missing an abstraction and should be improved instead of adding another hard-coded package entry.
+
+What a reader or a packager needs to find the package is listed by hand, and repository validation names each place that is still missing: the two `move-folders` lines in `.pkgmeta`, the entries in `docs/README.md` and `packages/README.md`, the `kit: <packageId>` label and labeler rule, the Kit options of the issue forms, and the quoted load order in `docs/EMBEDDING.md` ([`TOOLING.md`](TOOLING.md#repository-validation)).

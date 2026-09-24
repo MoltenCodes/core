@@ -180,12 +180,12 @@ apiKit/flavours/ClassicEra.lua
 apiKit/flavours/ClassicMop.lua
 apiKit/flavours/Ptr.lua
 apiKit/flavours/Retail.lua
+signalKit/SignalKit.lua
+brokerKit/BrokerKit.lua
 cacheKit/CacheKit.lua
 clientKit/ClientKit.lua
 poolKit/PoolKit.lua
 codecKit/CodecKit.lua
-signalKit/SignalKit.lua
-brokerKit/BrokerKit.lua
 eventKit/EventKit.lua
 timerKit/TimerKit.lua
 schedulerKit/SchedulerKit.lua
@@ -279,7 +279,7 @@ into `Interface/AddOns/ExampleAddon/`, drop the framework files into
 ## IconTexture: Interface\Icons\INV_Misc_Gear_01
 ## X-Category: Development Tools
 ## X-License: MIT
-## X-Embeds: MoltenCodes-Registry, MoltenCodes-CacheKit, MoltenCodes-ClientKit, MoltenCodes-PoolKit, MoltenCodes-CodecKit, MoltenCodes-SignalKit, MoltenCodes-EventKit, MoltenCodes-LifecycleKit, MoltenCodes-TimerKit, MoltenCodes-SchedulerKit, MoltenCodes-CommKit, MoltenCodes-SchemaKit, MoltenCodes-CommandKit, MoltenCodes-HookKit, MoltenCodes-InteropKit, MoltenCodes-LocaleKit, MoltenCodes-MediaKit, MoltenCodes-BrokerKit, MoltenCodes-LogKit, MoltenCodes-CompatKit, MoltenCodes-ModuleKit, MoltenCodes-OptionsKit, MoltenCodes-ProfileKit, MoltenCodes-ReadinessKit, MoltenCodes-SettingsKit, MoltenCodes-WidgetKit
+## X-Embeds: MoltenCodes-Registry, MoltenCodes-ApiKit, MoltenCodes-SignalKit, MoltenCodes-BrokerKit, MoltenCodes-CacheKit, MoltenCodes-ClientKit, MoltenCodes-PoolKit, MoltenCodes-CodecKit, MoltenCodes-EventKit, MoltenCodes-TimerKit, MoltenCodes-SchedulerKit, MoltenCodes-CommKit, MoltenCodes-SchemaKit, MoltenCodes-CommandKit, MoltenCodes-CompatKit, MoltenCodes-HookKit, MoltenCodes-InteropKit, MoltenCodes-LifecycleKit, MoltenCodes-LocaleKit, MoltenCodes-LogKit, MoltenCodes-MediaKit, MoltenCodes-ModuleKit, MoltenCodes-OptionsKit, MoltenCodes-ProfileKit, MoltenCodes-ReadinessKit, MoltenCodes-SettingsKit, MoltenCodes-WidgetKit
 
 # Embedded framework packages. This file must come first: every package below
 # resolves its dependencies at load time and raises if one is missing.
@@ -324,21 +324,30 @@ by the example and are listed so the file is a complete template.
         used by this example and can be removed from a copy of it.
     -->
     <Script file="Libs\MoltenCodes\registry\Registry.lua" />
+    <Script file="Libs\MoltenCodes\apiKit\ApiKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\apiKit\flavours\Beta.lua" /> <!-- optional here; an addon embeds only the flavours it supports -->
+    <Script file="Libs\MoltenCodes\apiKit\flavours\ClassicEra.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\apiKit\flavours\ClassicMop.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\apiKit\flavours\Ptr.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\apiKit\flavours\Retail.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\signalKit\SignalKit.lua" />
+    <Script file="Libs\MoltenCodes\brokerKit\BrokerKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\cacheKit\CacheKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\clientKit\ClientKit.lua" />
     <Script file="Libs\MoltenCodes\poolKit\PoolKit.lua" /> <!-- WidgetKit needs it -->
     <Script file="Libs\MoltenCodes\codecKit\CodecKit.lua" /> <!-- optional here -->
-    <Script file="Libs\MoltenCodes\signalKit\SignalKit.lua" />
     <Script file="Libs\MoltenCodes\eventKit\EventKit.lua" />
-    <Script file="Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua" />
     <Script file="Libs\MoltenCodes\timerKit\TimerKit.lua" /> <!-- module scope timers; ReadinessKit needs it -->
     <Script file="Libs\MoltenCodes\schedulerKit\SchedulerKit.lua" /> <!-- EventKit:Coalesce needs it -->
     <Script file="Libs\MoltenCodes\commKit\CommKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\schemaKit\SchemaKit.lua" />
     <Script file="Libs\MoltenCodes\commandKit\CommandKit.lua" />
+    <Script file="Libs\MoltenCodes\compatKit\CompatKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\hookKit\HookKit.lua" /> <!-- module scope hooks -->
     <Script file="Libs\MoltenCodes\interopKit\InteropKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\lifecycleKit\LifecycleKit.lua" />
     <Script file="Libs\MoltenCodes\localeKit\LocaleKit.lua" />
+    <Script file="Libs\MoltenCodes\logKit\LogKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\mediaKit\MediaKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\moduleKit\ModuleKit.lua" />
     <Script file="Libs\MoltenCodes\optionsKit\OptionsKit.lua" />
@@ -639,13 +648,13 @@ actually touch, which is deliberately small:
 | `commKit` | SignalKit's, EventKit's, TimerKit's, SchedulerKit's and PoolKit's surfaces; `GetTimePreciseSec`; `C_ChatInfo.SendAddonMessage` (legacy global fallback; else `Send` refuses `"unavailable"`) | `C_ChatInfo.RegisterAddonMessagePrefix` and `IsAddonMessagePrefixRegistered` (legacy globals, then nothing registered), `C_ChatInfo.SendAddonMessageLogged` (logged sends refused), the events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE`, `PLAYER_ENTERING_WORLD`, `GetFramerate` (no low-frame-rate mode), `UnitInParty` and `UnitInRaid` (no roster eviction; streams still expire), `Enum` (12.x values assumed), `securecallfunction` (`pcall`), `issecretvalue`, `geterrorhandler` (`print`), CodecKit API 1 (`SyncSet` raises), HookKit API 1 (outside traffic uncharged), SchemaKit API 1 (`schema` raises); LifecycleKit API 1 through `Registry:Find` (otherwise CommKit's own `PLAYER_LOGOUT` watcher closes its addon scopes) |
 | `widgetKit` | PoolKit's and SignalKit's surfaces; `CreateFrame` | `UIParent` (released frames rest on a hidden holder), `issecretvalue` (nothing secret), `geterrorhandler` (`print`), `ColorPickerFrame:SetupColorPickerAndShow` (a click fires the current colour), `IsAltKeyDown`, `IsControlKeyDown`, `IsShiftKeyDown` (no modifiers), OptionsKit API 1 through `Registry:Find` (`RenderOptions` raises at the caller), SchedulerKit API 1 (saves are immediate), MediaKit API 1 (`CreateMediaPicker` raises; the renderer uses the option's `values`) |
 | `hookKit` | nothing but Lua 5.1 | `hooksecurefunc` (`SecureHook` raises at the caller), `issecurevariable` (nothing treated as secure), `Frame:HookScript` / `Frame:GetScript` / `Frame:SetScript` (the matching script hooks raise at the caller), `Frame:IsProtected` (frame not protected), `InCombatLockdown` (never in combat), ClientKit API 1 (`issecretvalue`); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes an addon scope at logout (with neither, call `HookKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
-| `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript`; `CombatLogGetCurrentEventInfo` for `ConnectCombatLog` alone (it raises when the host lacks it) | `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`), SchedulerKit API 1 through `Registry:Find` (`Coalesce` refused, `Derive` recomputes synchronously); LifecycleKit API 1 through `Registry:Find` (addon scopes close at logout either way: through LifecycleKit when loaded, otherwise through EventKit's own `PLAYER_LOGOUT` listener) |
-| `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat), TimerKit, SchedulerKit, HookKit, CommandKit and CommKit API 1 through `Registry:Find` (their addon scopes are closed at logout in that order, then the EventKit scope and the SignalKit addon bus); publishes the read-only `LifecycleKit.CLOSES_ADDON_SCOPES` naming the seven packages it closes at shutdown, and pairs with any revision of them |
+| `eventKit` | `CreateFrame`, `Frame:RegisterEvent`, `Frame:RegisterUnitEvent`, `Frame:UnregisterEvent`, `Frame:SetScript`; `CombatLogGetCurrentEventInfo`, or `C_CombatLog.GetCurrentEventInfo` without it, for `ConnectCombatLog` alone (it raises when the host has neither, as on retail 12) | `securecallfunction` (falls back to `xpcall`), `geterrorhandler` (falls back to `print`), SchedulerKit API 1 through `Registry:Find` (`Coalesce` refused, `Derive` recomputes synchronously); LifecycleKit API 1 through `Registry:Find` (addon scopes close at logout either way: through LifecycleKit when loaded, otherwise through EventKit's own `PLAYER_LOGOUT` listener) |
+| `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat), TimerKit, SchedulerKit, HookKit, CommandKit and CommKit API 1 through `Registry:Find` (at logout the addon's TimerKit, SchedulerKit, EventKit, HookKit, CommandKit and CommKit scopes and then its SignalKit bus are closed, in that order); publishes the read-only `LifecycleKit.CLOSES_ADDON_SCOPES` naming the seven packages it closes at shutdown, and pairs with any revision of them |
 | `readinessKit` | TimerKit's surface | `GetTimePreciseSec` (negative cache disabled, timeouts counted in polls), EventKit API 1 through `Registry:Find` (`gate:ReprobeOn` raises at the caller), `geterrorhandler` (probe and waiter failures fall back to `print`) |
-| `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | `GetTimePreciseSec` (`GetRemaining` and `GetDeadline` then return `nil`); LifecycleKit is not needed: it calls `TimerKit:CloseAddonScopes` at logout when both are present, otherwise call it yourself on `PLAYER_LOGOUT`; LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes the addon scope at logout (with neither, call `TimerKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
+| `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | `GetTimePreciseSec` (`GetRemaining` and `GetDeadline` then return `nil`); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes the addon scope at logout (with neither, call `TimerKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
 | `apiKit` | nothing but Lua 5.1 | `WOW_PROJECT_ID`, `IsTestBuild`, `IsBetaBuild` (a client matching no flavour is `"unsupported"` and gets no surface); every namespace or function the running build lacks is simply absent from the wrapper; the `wow` global when another addon owns it (`GetGlobalStatus` says `"taken"`; use `MoltenCodes.wow`) |
 | `compatKit` | nothing but Lua 5.1 | `issecretvalue` (nothing treated as secret), `geterrorhandler` (failing shims and probes fall back to `print`), ClientKit API 1 through `Registry:Find` (`context.flavour` is `false` and every shim applies whatever its `flavours`), ApiKit API 1 with the client's flavour file through `Registry:Find` (`context.hasApi` answers `false` for every name; a shim record's `missing` stays `false`) |
-| `clientKit` | nothing but Lua 5.1 | `WOW_PROJECT_ID` (flavour `"classic"`), `C_AddOns.GetAddOnMetadata` / `GetAddOnMetadata` (`GetManifest` answers `nil, "unavailable"`), `GetLocale` (no localized `Title`/`Notes` fallback), `GetBuildInfo` (interface `0`), `issecretvalue` (`IsSecret` false), `C_EventUtils.IsEventValid` (`IsEventValid` nil), `IsForbidden` / `CanBeAccessedInContext` (`CanAccessFrame` true), `C_AddOns` / `C_Spell` / `C_Item` (legacy globals, then nil or false); any other probed facility (`Has` answers `false`) |
+| `clientKit` | nothing but Lua 5.1 | `WOW_PROJECT_ID` (flavour `"classic"`), `C_AddOns.GetAddOnMetadata` / `GetAddOnMetadata` (`GetManifest` answers `nil, "unavailable"`), `GetLocale` (no localized `Title`/`Notes` fallback), `C_AddOns.GetAddOnInfo` / `GetAddOnInfo` (an addon is recognised by a readable `## Title`), `GetBuildInfo` (interface `0`), `issecretvalue` (`IsSecret` false), `C_EventUtils.IsEventValid` (`IsEventValid` nil), `IsForbidden` / `CanBeAccessedInContext` (`CanAccessFrame` true), `C_AddOns` / `C_Spell` / `C_Item` (legacy globals, then nil or false); any other probed facility (`Has` answers `false`) |
 | `cacheKit` | nothing but Lua 5.1 | `GetTimePreciseSec` (age limits disabled: TTL caches never expire and `PutNegative` entries never lapse), EventKit API 1 (`cache:ClearOn` raises at the caller), `issecretvalue` (snapshot `fill` treats nothing as secret) |
 | `profileKit` | nothing but Lua 5.1 | `debugprofilestop` (`Enable` returns `false, "unavailable"`) |
 | `schedulerKit` | TimerKit's surface, `CreateFrame`, `GetTimePreciseSec` | `debugprofilestop` (falls back to the wall clock), `debug.traceback` (failures then report the error value only); LifecycleKit is not needed: it calls `SchedulerKit:CloseAddonScopes` at logout when both are present; LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes the addon scope at logout (with neither, call `SchedulerKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
@@ -762,7 +771,7 @@ do not assume one does.
 
 `issecretvalue(value)` returns `true` for a secret. Ask it before any of the
 operations above on a value that came from the client during combat. Clients
-without secret values (the Classic flavours, and Retail before 12.0) do not have
+without secret values (Retail before 12.0 and older Classic builds; current Classic Era 1.15.9 and Mists Classic 5.5.4 do expose it) do not have
 the function, so probe it once:
 
 ```lua
@@ -950,6 +959,13 @@ Three rules:
 - It is the highest-frequency event in the client. Keep the handler short, filter
   on `subEvent` before doing anything else, and do the real work on a
   SchedulerKit job rather than inline.
+
+`EventKit:ConnectCombatLog(subEvent, callback)` does the read once per event for
+every listener and routes by sub-event; prefer it to reading the client yourself.
+On retail 12 clients the metadata documents no combat-log event reader for addons
+(`GetCurrentEventInfo` exists only under `C_CombatLogSecure`), so
+`ConnectCombatLog` raises there; classic clients document
+`C_CombatLog.GetCurrentEventInfo`, which EventKit reads when the global is absent.
 
 ## `/reload` and saved variables
 
@@ -1172,9 +1188,9 @@ answer today.
 
 ### `EventKit:ConnectUnit accepts at most 2 distinct unit tokens ...`
 
-`Frame:RegisterUnitEvent` has exactly two filter slots. A third token used to be
-silently dropped by the client, which gave you a filter you never asked for, so
-it is an error instead. Use two subscriptions, or subscribe without a filter and
+`Frame:RegisterUnitEvent` has exactly two filter slots. The client silently
+drops a third token, which would give you a filter you never asked for, so
+EventKit makes it an error instead. Use two subscriptions, or subscribe without a filter and
 check the unit in your handler.
 
 ### `EventKit: refusing to create more than 64 unit-filter Frames ...`

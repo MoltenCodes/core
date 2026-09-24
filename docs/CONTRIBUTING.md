@@ -21,7 +21,7 @@ Before submitting a change:
 7. Run `lua-language-server --check packages/<name>/src --checklevel=Warning` for every
    package you touched, and `lua-language-server --check examples --checklevel=Warning`
    when the public surface changed.
-8. Run `actionlint` when you changed `.github/workflows/`.
+8. Run `actionlint` when you changed `.github/workflows/` or `.github/actions/`.
 9. Run `python3 -m tooling.ci.check_commits origin/main..HEAD` to check your
    commit subjects (see [Commit subjects](#commit-subjects)).
 10. Update package documentation when public behavior changes.
@@ -178,7 +178,7 @@ A breaking public contract must not be hidden behind an implementation revision.
 
 ## New packages
 
-New packages must satisfy the package layout and manifest contract in [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md), which includes a `src/.luarc.json` and, for a package consumers embed, a line in [`.pkgmeta`](../.pkgmeta) and an "Embedding" section in its README.
+New packages must satisfy the package layout and manifest contract in [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md), which includes a `src/.luarc.json`, a `tests/README.md` and a `tests/support/<Facade>TestEnv.lua`, and, for a package consumers embed, its two `move-folders` lines in [`.pkgmeta`](../.pkgmeta) and an "Embedding" section in its README. A new package is also listed in `docs/README.md`, `packages/README.md`, the quoted load order in `EMBEDDING.md` and the Kit lists under `.github/`; repository validation names every place still missing ([`TOOLING.md`](TOOLING.md#repository-validation)).
 
 Public framework capability packages use a lowerCamelCase `Kit` package ID and matching PascalCase Lua facade/module name (for example `eventKit` / `EventKit`). `registry` / `Registry` is the infrastructure exception.
 

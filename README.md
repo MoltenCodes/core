@@ -3,188 +3,202 @@
 [![CI](https://github.com/MoltenCodes/core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MoltenCodes/core/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/MoltenCodes/core?include_prereleases&sort=semver)](https://github.com/MoltenCodes/core/releases)
 
+A modular Lua 5.1 framework for professional World of Warcraft addon
+development: 28 small packages, called Kits, each independently versioned,
+tested and publishable, that an addon embeds one by one or loads together as the
+standalone addon `MoltenCodes`.
 
-A modular Lua framework for professional World of Warcraft addon development.
+Every Kit registers itself with `registry`, which keys it by package ID and API
+generation and keeps one shared instance per session however many addons embed
+their own copy: a newer revision upgrades the shared table in place, an older
+one steps aside. Runtime code is Lua 5.1, allocation-conscious on hot paths,
+bounded by default and safe around the Retail secret-value and taint rules.
 
-This repository is a monorepo. Every publishable runtime package lives under `packages/` and owns its source, tests, documentation, changelog, and package manifest. Repository tooling discovers packages from that structure instead of maintaining a second hard-coded package list.
+## Packages
 
-## Current packages
+Twenty-seven release packages and one development package. Each links to its
+README; its full contract is the package's `docs/API.md`.
 
-| Package | Status | Purpose |
-|---|---|---|
-| [`registry`](packages/registry/) | Implemented | Zero-dependency shared package registration, discovery, and in-place revision upgrades. |
-| [`signalKit`](packages/signalKit/) | Implemented | Deterministic, re-entrant pure-Lua callback dispatch with explicit connection lifetimes, and named message buses with a declared topic policy. |
-| [`eventKit`](packages/eventKit/) | Implemented | Lazy World of Warcraft event subscriptions backed by SignalKit, including unit-event filtering. |
-| [`lifecycleKit`](packages/lifecycleKit/) | Implemented | Replay-aware per-addon loading, readiness, and shutdown coordination, a shared combat gate with a bounded out-of-combat queue, and a halted state announced to dependents. |
-| [`moduleKit`](packages/moduleKit/) | Implemented | Addon-scoped module lifecycle, dependency graphs, dependency injection, and automatic/strict dependency policies. |
-| [`timerKit`](packages/timerKit/) | Implemented | Cancelable one-shot/repeating timers, ownership scopes, and LifecycleKit-driven cleanup. |
-| [`schedulerKit`](packages/schedulerKit/) | Implemented | Cooperative frame-budgeted scheduling with priorities, cancellation scopes, and TimerKit delays. |
-| [`poolKit`](packages/poolKit/) | Implemented | Allocation-conscious bounded object pooling with deterministic ownership and cleanup. |
-| [`clientKit`](packages/clientKit/) | Implemented | Client flavour, build floor, probed capability flags, secret-value and frame-access probes, and shims with one shape per host call. |
-| [`cacheKit`](packages/cacheKit/) | Implemented | Bounded LRU and TTL caches, memoisation, snapshots with diffs and clear-on-event. |
-| [`profileKit`](packages/profileKit/) | Implemented | Zero-cost-when-off performance sections with count, total, spike and a sorted report. |
-| [`readinessKit`](packages/readinessKit/) | Implemented | Named readiness gates for host data that arrives after load: polling, timeouts, negative caching and bounded waiters. |
-| [`schemaKit`](packages/schemaKit/) | Implemented | Sealed value schemas with structured, secret-safe failures: one validation core for arguments, saved variables, options and received messages. |
-| [`localeKit`](packages/localeKit/) | Implemented | Per-addon translations at the cost of one table, missing-key reporting and coverage, indexed format specifiers. |
-| [`hookKit`](packages/hookKit/) | Implemented | Reversible, secure-first hooking of functions, methods and frame scripts in three named semantics. |
-| [`settingsKit`](packages/settingsKit/) | Implemented | Saved variables with scopes, schema-validated writes, defaults never written back, profiles and versioned migrations. |
-| [`optionsKit`](packages/optionsKit/) | Implemented | Typed, validated, introspectable options tree bound to getters or a SettingsKit database, with no renderer. |
-| [`commandKit`](packages/commandKit/) | Implemented | Slash commands with hyperlink-aware parsing, generated usage, schema-checked arguments, sinks, completion and an OptionsKit command line. |
-| [`codecKit`](packages/codecKit/) | Implemented | Serialise, compress (pure-Lua DEFLATE) and channel-encode values behind a self-describing header; decoding never raises. |
-| [`interopKit`](packages/interopKit/) | Implemented | The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries as read-only foreign entries. |
-| [`mediaKit`](packages/mediaKit/) | Implemented | Typed media registry (fonts with scripts, bars, borders, backgrounds, sounds, textures, icons), sorted cached lists, per-consumer defaults, LibSharedMedia adoption and mirroring. |
-| [`brokerKit`](packages/brokerKit/) | Implemented | LibDataBroker-compatible data objects for display addons: the fifteen LibDataBroker attributes typed at the caller, plain-field reads and writes, per-attribute change signals, sorted enumeration, exposure into and read-only adoption from LibDataBroker-1.1. |
-| [`logKit`](packages/logKit/) | Implemented | Levelled, structured logging: per-addon loggers whose disabled calls cost one comparison, lazy secret-safe formatting, addon, global and default level precedence, a bounded journal on SignalKit, chat, callback and table sinks, an optional `/log` command and optional persisted levels. |
-| [`compatKit`](packages/compatKit/) | Implemented | Named, versioned shims applied once per session with the newest version winning across embedded copies and a host opt-out, provider registries with liveness probes and a deterministic fallback cascade, and the catalogue of taint-hostile subsystems published as data checked against the apiKit metadata. |
-| [`commKit`](packages/commKit/) | Implemented | Addon messaging of any length: prefixes, a chunk protocol with bounded reassembly, priority queues that refuse rather than grow, a session-wide bandwidth budget, content-hash sync sets. |
-| [`widgetKit`](packages/widgetKit/) | Implemented | Pooled, versioned widgets with explicit layouts, saveable anchors with position persistence, and an OptionsKit renderer. |
-| [`apiKit`](packages/apiKit/) | Implemented | Flavour-aware, typed, documented wrapper over the public World of Warcraft API (`wow.retail.api`, `wow.classic.era.api`, ...), generated from the client's own documentation tables; every entry is a direct alias, the raw API stays valid. |
-| [`testKit`](packages/testKit/) | Implemented (development only) | In-client test suites against LifecycleKit phases in SchedulerKit jobs: save-and-restore mocking, secret-safe expectations, structured results; never in a release bundle. |
+| Package | Purpose |
+|---|---|
+| [`registry`](packages/registry/) | Zero-dependency shared package registration, discovery and in-place revision upgrades. |
+| [`signalKit`](packages/signalKit/) | Deterministic, re-entrant callback dispatch with explicit connection lifetimes, subscriber-transition hooks, journals and named message buses. |
+| [`eventKit`](packages/eventKit/) | Lazy game-event subscriptions on SignalKit, unit-event filtering and combat-log routing by sub-event. |
+| [`lifecycleKit`](packages/lifecycleKit/) | Replay-aware per-addon loading, readiness and shutdown, a shared combat gate with a bounded out-of-combat queue, and a halted state. |
+| [`moduleKit`](packages/moduleKit/) | Addon-scoped module lifecycle, dependency graphs, dependency injection with checked interfaces, and dependency policies. |
+| [`timerKit`](packages/timerKit/) | Cancelable one-shot and repeating timers with ownership scopes, and addon scopes closed at logout through LifecycleKit or EventKit when present. |
+| [`schedulerKit`](packages/schedulerKit/) | Cooperative, frame-budgeted scheduling with priorities, cancellation scopes and TimerKit delays. |
+| [`poolKit`](packages/poolKit/) | Allocation-conscious bounded object pooling with deterministic ownership and cleanup. |
+| [`clientKit`](packages/clientKit/) | Client flavour, build floor, probed capability flags, secret-value and frame-access probes, and shims with one shape per host call. |
+| [`cacheKit`](packages/cacheKit/) | Bounded LRU and TTL caches, memoisation, negative entries, lazy namespaces, bounded queues and snapshots with diffs. |
+| [`profileKit`](packages/profileKit/) | Zero-cost-when-off performance sections with count, total, spike and a sorted report. |
+| [`readinessKit`](packages/readinessKit/) | Named readiness gates for host data that arrives after load: polling, timeouts, negative caching and bounded waiters. |
+| [`schemaKit`](packages/schemaKit/) | Sealed value schemas with structured, secret-safe failures: one validation core for arguments, saved variables, options and messages. |
+| [`localeKit`](packages/localeKit/) | Per-addon translations, missing-key reporting and coverage, indexed format specifiers. |
+| [`hookKit`](packages/hookKit/) | Reversible, secure-first hooking of functions, methods and frame scripts in three named semantics. |
+| [`settingsKit`](packages/settingsKit/) | Saved variables with scopes, schema-validated writes, defaults never written back, profiles and versioned migrations. |
+| [`optionsKit`](packages/optionsKit/) | A typed, validated, introspectable options tree bound to getters or a SettingsKit database, with no renderer. |
+| [`commandKit`](packages/commandKit/) | Slash commands with hyperlink-aware parsing, generated usage, schema-checked arguments, sinks, completion and an OptionsKit command line. |
+| [`codecKit`](packages/codecKit/) | Serialise, compress and channel-encode values behind a self-describing header; decoding never raises. |
+| [`interopKit`](packages/interopKit/) | The LibStub bridge: expose Kits to LibStub consumers and adopt LibStub libraries read-only. |
+| [`mediaKit`](packages/mediaKit/) | A typed media registry with font scripts, sorted cached lists, per-consumer defaults and LibSharedMedia adoption and mirroring. |
+| [`brokerKit`](packages/brokerKit/) | LibDataBroker-compatible data objects: typed attributes as plain fields, per-attribute change signals and a two-way LibDataBroker-1.1 bridge. |
+| [`logKit`](packages/logKit/) | Levelled, structured logging with lazy secret-safe formatting, a bounded journal and chat, callback and table sinks. |
+| [`compatKit`](packages/compatKit/) | Versioned shims with a host opt-out, provider registries with a fallback cascade, and the catalogue of taint-hostile subsystems as data. |
+| [`commKit`](packages/commKit/) | Addon messaging of any length: a chunk protocol with bounded reassembly, refusing priority queues, a session bandwidth budget and sync sets. |
+| [`widgetKit`](packages/widgetKit/) | Pooled, versioned widgets with explicit layouts, saveable anchors and an OptionsKit renderer. |
+| [`apiKit`](packages/apiKit/) | The flavour-aware, typed wrapper over the World of Warcraft API (`wow.retail.api`, ...), generated from the client's own documentation tables. |
+| [`testKit`](packages/testKit/) | Development only, never bundled: in-client test suites in LifecycleKit phases and SchedulerKit jobs, with structured results. |
 
 ## Using the framework in an addon
 
-The framework embeds or installs: you copy the Kits you need into your addon
-and list them in your `.toc`, or your addon depends on the installed
-`MoltenCodes` addon that loads every Kit. Embedded copies leave nothing for
-your users to download separately, and several addons shipping different copies of the same Kit
-reconcile to one shared instance at runtime.
+An addon either embeds the Kits it needs or depends on the installed
+`MoltenCodes` addon, which loads every release Kit. Embedded copies leave
+nothing for players to download separately, and several addons shipping
+different copies of one Kit reconcile to one shared instance at runtime.
 
-- [`docs/EMBEDDING.md`](docs/EMBEDDING.md) is the guide: directory layout, load
-  order, supported Interface numbers, coexistence with LibStub, taint rules, the
-  combat-log constraint, `/reload` semantics, performance guidance, and the exact
-  error message each load-order mistake produces.
-- [`examples/`](examples/) is a complete, runnable example addon (`.toc`,
-  `embeds.xml`, `Core.lua` and one small file per Kit it shows, plus two
-  locale files) that a spec loads from login to logout and the language server
-  type-checks on every run, so it cannot drift from the framework.
+Load `Registry.lua` first and every other Kit after the Kits it depends on,
+then resolve each Kit by package ID and API generation:
 
-Build the artifact you embed:
-
-```bash
-python3 -m tooling.package.build --all --out dist
+```xml
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <Script file="Libs\MoltenCodes\registry\Registry.lua" />
+    <Script file="Libs\MoltenCodes\timerKit\TimerKit.lua" />
+</Ui>
 ```
 
-This writes `dist/MoltenCodes/` in the layout an addon embeds, with a
-`MoltenCodes.toc` so the same folder also installs as a standalone addon that
-addons may depend on (`## OptionalDeps: MoltenCodes`), a `manifest.json`
-recording every package's version, API generation, revision and the load order,
-and SHA-256 checksums in `dist/CHECKSUMS.txt`. Published artifacts come from the
-same layout through [`.pkgmeta`](.pkgmeta); see
-[`docs/RELEASES.md`](docs/RELEASES.md) and the "Embed or depend" section of
-[`docs/EMBEDDING.md`](docs/EMBEDDING.md).
+```lua
+local ADDON_NAME = ...
+local Registry = MoltenCodes.Registries[2]
+local TimerKit = Registry:Get("timerKit", 1)
 
-## Quick start
-
-Repository validation and Python tooling tests require Python 3.10 or newer:
-
-```bash
-python3 -m tooling.validation.validate_repository
-python3 -m unittest discover -s tooling/tests -p "test_*.py"
+-- A scope owned by this addon, closed with the addon's other scopes at logout.
+local timers = TimerKit:ForAddon(ADDON_NAME)
+timers:After(5, function()
+    print("five seconds later")
+end)
 ```
 
-Lua tests require the Lua/Busted toolchain documented in
-[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md). One command runs every package
-suite and the example addon's specs:
+- [`docs/EMBEDDING.md`](docs/EMBEDDING.md) is the guide: directory layout, the
+  load order and the files each Kit needs, supported Interface numbers,
+  coexistence with LibStub, taint and secret values, the combat log, `/reload`
+  semantics, performance guidance, and the exact error each load-order mistake
+  produces.
+- [`examples/`](examples/) is a complete example addon that a spec loads from
+  login to logout and the language server type-checks on every run, so it
+  cannot drift from the framework.
+
+Build the bundle you embed or install:
 
 ```bash
-python3 -m tooling.test.run
+python3 -m tooling.package.build --all --out dist --verify
 ```
 
-Lua linting is package-aware and recursive, and covers test code as well as
-runtime code:
+This writes `dist/MoltenCodes/` in the layout an addon embeds, with a generated
+`MoltenCodes.toc` so the same folder installs as a standalone addon, a
+`manifest.json` recording every package's version, API generation, revision and
+the load order, and SHA-256 checksums in `dist/CHECKSUMS.txt`.
+`--package <id>` builds one Kit with the Kits it requires instead. Every commit
+on `main` also leaves this bundle behind as a CI artefact, and releases are
+described in [`docs/RELEASES.md`](docs/RELEASES.md).
+
+## Quick start for contributors
+
+Install the toolchain from [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md):
+Python 3.10 or newer, Lua 5.1.5 with LuaRocks and Busted (built with hererocks),
+StyLua, Selene and lua-language-server, and Node.js for the spell check. Then:
 
 ```bash
-python3 -m tooling.lint
+python3 -m tooling.validation.validate_repository             # layout, indexes, packaging, links
+python3 -m unittest discover -s tooling/tests -p "test_*.py"  # the tooling's own tests
+python3 -m tooling.test.run                                   # every Kit's specs and the example addon
+python3 -m tooling.lint                                       # Selene over runtime and test Lua
+stylua --check .                                              # formatting
+python3 -m tooling.spell                                      # the documentation's spelling
 ```
 
-The documentation is spell-checked with a pinned cspell, which needs Node.js:
+`python3 -m tooling.test.run timerKit` runs one Kit's suite. Every command
+answers `--help`.
 
-```bash
-python3 -m tooling.spell
-```
-
-## Repository structure
+## How the repository is organised
 
 ```text
 .
-├── .github/                 # CI, templates, labels, Dependabot, CODEOWNERS
-├── .pkgmeta                 # Addon-site packager metadata
-├── .vscode/                 # Editor integration only
+├── .github/                 # workflows, the shared Lua setup action, issue forms, labels, Dependabot, CODEOWNERS
+├── .luacov                  # LuaCov configuration for the coverage report
+├── .pkgmeta                 # addon-site packager metadata
+├── .vscode/                 # shared editor settings and tasks
 ├── busted.yml               # Selene standard library for Busted test code
-├── cspell.json              # Spell-check configuration for the documentation
-├── docs/                    # Repository-wide documentation
-│   └── EMBEDDING.md         # How an addon embeds the framework
-├── examples/                # A complete example addon, loaded by its own spec
-├── meta/                    # Editor-only Lua metadata, including the WoW API
-├── packages/                # Independently publishable runtime packages
-│   ├── registry/
-│   ├── signalKit/
-│   ├── eventKit/
-│   ├── lifecycleKit/
-│   ├── moduleKit/
-│   ├── timerKit/
-│   ├── schedulerKit/
-│   ├── poolKit/
-│   ├── clientKit/
-│   ├── cacheKit/
-│   ├── profileKit/
-│   ├── readinessKit/
-│   ├── schemaKit/
-│   ├── localeKit/
-│   ├── hookKit/
-│   ├── settingsKit/
-│   ├── optionsKit/
-│   ├── commandKit/
-│   ├── codecKit/
-│   ├── interopKit/
-│   ├── mediaKit/
-│   ├── brokerKit/
-│   ├── logKit/
-│   ├── compatKit/
-│   ├── testKit/
-│   ├── commKit/
-│   ├── widgetKit/
-│   └── apiKit/
-├── pyproject.toml           # Python tooling metadata and the supported floor
+├── cspell.json              # spell-check configuration for the documentation
+├── docs/                    # repository-wide documentation; start at docs/README.md
+├── examples/                # a complete example addon, loaded by its own spec
+├── lychee.toml              # Markdown link-check configuration
+├── meta/                    # editor-only LuaCATS definitions, including the game API
+├── packages/                # the 28 Kits, one directory each (see packages/README.md)
+├── pyproject.toml           # the supported Python floor for the tooling
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua
-├── tests/support/           # Shared test fixture: the fake WoW client
-└── tooling/                 # Repository tooling; never a runtime dependency
+├── stylua.toml              # StyLua formatting rules
+├── tests/support/           # the shared test fixture: the fake game client
+└── tooling/                 # repository tooling; never a runtime dependency
 ```
+
+Every Kit has the same layout: `package.manifest.json`, a README, a changelog,
+`docs/API.md`, one facade under `src/` with its `.luarc.json`, and specs under
+`tests/` with a `tests/README.md` and `tests/support/<Facade>TestEnv.lua`.
+Tooling discovers the Kits from their manifests; nothing keeps a second
+hard-coded list, and repository validation enforces the layout
+([`docs/PACKAGE_MANIFEST.md`](docs/PACKAGE_MANIFEST.md)).
+
+## Tooling and CI
+
+Repository tooling is Python, standard library only, under `tooling/`:
+validation, test orchestration, linting, coverage, packaging, the release
+steps and the apiKit metadata pipeline. [`docs/TOOLING.md`](docs/TOOLING.md)
+describes every command.
+
+Every push to `main` and every pull request runs one required check, `ci`,
+which needs every gate: the Lua 5.1 tests, lua-language-server type checks,
+StyLua, Selene, the bundle build with checksum verification, the spell check,
+repository validation and the tooling tests on Python 3.10 and 3.14, commit
+subjects, a secret scan and actionlint, plus a line-coverage report. Separate
+workflows check Markdown links, watch the community mirror for new client
+builds for apiKit, keep labels in sync and build releases. Every action is
+pinned to a commit SHA and every downloaded binary to a SHA-256;
+[`docs/TOOLING.md`](docs/TOOLING.md#continuous-integration) explains each job
+and why it is there.
 
 ## Documentation
 
-Start with [`docs/README.md`](docs/README.md) for the documentation map.
+Start with [`docs/README.md`](docs/README.md), the documentation map.
 
 - [`docs/EMBEDDING.md`](docs/EMBEDDING.md) — how an addon embeds and loads the framework.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — package boundaries and runtime architecture.
-- [`docs/DESIGN_CONSTITUTION.md`](docs/DESIGN_CONSTITUTION.md) — non-negotiable design principles.
-- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — local setup and canonical development commands.
-- [`docs/TESTING.md`](docs/TESTING.md) — testing layers, conventions, and orchestration.
-- [`docs/PACKAGE_MANIFEST.md`](docs/PACKAGE_MANIFEST.md) — package metadata and dependency contracts.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — package boundaries, dependency direction and runtime architecture.
+- [`docs/DESIGN_CONSTITUTION.md`](docs/DESIGN_CONSTITUTION.md) — the design principles every change preserves.
+- [`docs/PACKAGE_MANIFEST.md`](docs/PACKAGE_MANIFEST.md) — package metadata, layout and versioning contracts.
+- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — local setup and the canonical commands.
+- [`docs/TESTING.md`](docs/TESTING.md) — test layers, conventions and orchestration.
+- [`docs/TOOLING.md`](docs/TOOLING.md) — repository tooling and continuous integration.
 - [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — contribution workflow and annotation rules.
-- [`docs/RELEASES.md`](docs/RELEASES.md) — tags, build command, and release artifacts.
+- [`docs/RELEASES.md`](docs/RELEASES.md) — versioning, tags, the build and release artifacts.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — what was decided and delivered, and what remains.
 
 ## Principles
 
-- Small, composable runtime packages.
-- Explicit API generations and implementation revisions.
-- Independent package publication.
-- Lua 5.1-compatible runtime code.
-- Minimal allocation, indirection, and global state.
-- Stable package identity across independently embedded addon copies.
-- Testable pure-Lua core behavior.
-- English technical documentation.
+- Small, composable runtime packages with explicit API generations and implementation revisions.
+- Independent publication, and one shared instance per Kit however many addons embed it.
+- Lua 5.1-compatible runtime code with minimal allocation, indirection and global state.
+- Bounded by default, deterministic ordering, explicit ownership and cleanup.
+- Testable pure-Lua core behaviour against a shared fake client.
 - Repository automation that discovers packages rather than hard-coding them.
 
-## Project roadmap
+The full set is [`docs/DESIGN_CONSTITUTION.md`](docs/DESIGN_CONSTITUTION.md).
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the canonical framework development roadmap.
-
-## Community
+## Contributing
 
 Contributions are welcome: start with [`CONTRIBUTING.md`](CONTRIBUTING.md),
 which links to the full guide in [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md).
 Ask questions and report bugs as [`SUPPORT.md`](SUPPORT.md) describes, report
 vulnerabilities privately as [`SECURITY.md`](SECURITY.md) describes, and follow
-the [Code of Conduct](CODE_OF_CONDUCT.md) in every project space.
+the [Code of Conduct](CODE_OF_CONDUCT.md) in every project space. The framework
+is released under the [MIT licence](LICENSE).

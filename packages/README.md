@@ -9,15 +9,15 @@ A package owns its source, tests, documentation, changelog, and runtime dependen
 Current packages:
 
 - [`registry`](registry/) — shared package registration and revision resolution.
-- [`signalKit`](signalKit/) — deterministic pure-Lua callback dispatch and connection lifecycle.
+- [`signalKit`](signalKit/) — deterministic pure-Lua callback dispatch and connection lifecycle, observer hooks, firing generations and journals, and named message buses with a declared topic policy.
 - [`eventKit`](eventKit/) — lazy WoW Frame-event subscriptions and unit-event filtering built on SignalKit.
 - [`lifecycleKit`](lifecycleKit/) — replay-aware per-addon loading, readiness, and shutdown coordination, a shared combat gate with a bounded out-of-combat queue, and a halted state announced to dependents.
 - [`moduleKit`](moduleKit/) — addon-scoped module lifecycle, dependency graphs, dependency injection, and dependency policies.
-- [`timerKit`](timerKit/) — cancelable one-shot/repeating timers, ownership scopes, and lifecycle-driven cleanup.
+- [`timerKit`](timerKit/) — cancelable one-shot/repeating timers, ownership scopes, and addon scopes closed at logout through LifecycleKit or EventKit when present.
 - [`schedulerKit`](schedulerKit/) — cooperative frame-budgeted scheduling, priorities, cancellation scopes, and delayed work.
 - [`poolKit`](poolKit/) — allocation-conscious bounded object pooling with deterministic ownership and cleanup.
 - [`clientKit`](clientKit/) — client flavour, build floor, probed capability flags, secret-value and frame-access probes, shims with one shape per host call.
-- [`cacheKit`](cacheKit/) — bounded LRU and TTL caches, memoisation, snapshots with diffs, clear-on-event.
+- [`cacheKit`](cacheKit/) — bounded LRU and TTL caches with negative entries, memoisation, snapshots with diffs, lazy namespace trees, ring queues, clear-on-event.
 - [`profileKit`](profileKit/) — zero-cost-when-off performance sections with count, total, spike and a report.
 - [`readinessKit`](readinessKit/) — named readiness gates for late host data: polling, timeouts, negative caching, bounded waiters.
 - [`schemaKit`](schemaKit/) — sealed value schemas with structured, secret-safe failures; the validation core for arguments, saved variables, options and messages.

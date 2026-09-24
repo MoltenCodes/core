@@ -14,8 +14,8 @@
 -- Line budget: 1000 lines, comments included. Registry sits at the bottom of
 -- every dependency chain and is loaded by every addon that embeds a Kit, so it
 -- stays small and boring. A change that would push this file past the budget
--- moves behaviour into a package of its own (the planned LibStub bridge is the
--- first candidate) or first shrinks what is here.
+-- moves behaviour into a package of its own (as the LibStub bridge did: it is
+-- `interopKit`) or first shrinks what is here.
 --
 -- Contents
 --

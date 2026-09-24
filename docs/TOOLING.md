@@ -22,7 +22,8 @@ tooling/
 │   ├── render_runtime.py          # the generated Lua bindings file
 │   ├── render_types.py            # the generated LuaCATS definitions
 │   ├── render_reference.py        # the generated reference and search index
-│   └── generate.py                # writes every output of a flavour
+│   ├── generate.py                # writes every output of a flavour
+│   └── heads.py                   # compares committed metadata builds with the mirror heads
 ├── ci/
 │   └── check_commits.py           # checks commit subjects and pull request titles
 ├── package/
@@ -37,18 +38,25 @@ tooling/
 │   ├── pkgmeta.py                 # narrows .pkgmeta to one Kit for a package release
 │   └── publish_mode.py            # decides dry run or upload, and whether to draft a release
 ├── test/
-│   └── run.py                     # package-aware Busted orchestration
+│   ├── run.py                     # package-aware Busted orchestration
+│   └── coverage.py                # the same run under LuaCov, with a per-package report
 ├── tests/                         # Python unit tests for repository tooling
 └── validation/
     ├── interface_numbers.py       # reads the supported-client table, prints the .toc line
     ├── supported_clients.json     # the supported `## Interface` numbers, by flavour
     ├── validate_manifests.py      # manifest schema and dependency graph checks
-    └── validate_repository.py     # structure, editor configuration, Interface and link checks
+    └── validate_repository.py     # layout, indexes, packaging, editor configuration, Interface and link checks
 ```
 
-[`../cspell.json`](../cspell.json) at the repository root configures the spell
-check; it lives there because that is where cspell and its editor extension look
-for it.
+Three configuration files the tooling reads live at the repository root,
+because that is where their tools look for them:
+[`../cspell.json`](../cspell.json) (the spell check),
+[`../.luacov`](../.luacov) (coverage) and [`../lychee.toml`](../lychee.toml)
+(the Markdown link check).
+
+Every command answers `--help` with its usage and options;
+`tooling/tests/test_entry_points.py` discovers the commands and holds each one to
+that.
 
 `tooling/test/` (singular) is the Busted orchestration package; `tooling/tests/`
 (plural) is the tooling's own unit-test suite. The names differ by one letter, so
@@ -66,8 +74,9 @@ exists so the floor is written down once, in a machine-readable place.
 repository from an older interpreter, and checks that the declaration and the
 constant in the validator still agree, so the two cannot drift apart. Every CI
 job that runs repository tooling — the Lua tests, the linter, the spell check,
-repository validation and the release build — runs on both the floor and the release
-developers use, so the documented minimum is exercised rather than merely
+the bundle build, repository validation, the commit-subject check and the
+release workflow's verification — runs on both the floor (3.10) and the current
+release (3.14), so the documented minimum is exercised rather than merely
 asserted. There is no exemption: a job that could only run on the newer
 interpreter would make the floor a claim instead of a supported version.
 
@@ -109,7 +118,7 @@ does with a package:
 | Tool | `"release"` (default) | `"development"` |
 |---|---|---|
 | `validation/validate_manifests.py` | may not depend on a development package | may depend on anything |
-| `validation/validate_repository.py` | layout checks | the same layout checks, plus a `- packages/<id>` line under `.pkgmeta` `ignore:` |
+| `validation/validate_repository.py` | layout checks, plus its `src` and `docs` entries under `.pkgmeta` `move-folders:`, once each | the same layout checks, plus a `- packages/<id>` line under `.pkgmeta` `ignore:` and no `move-folders:` entry |
 | `test/run.py` | tested | tested the same way |
 | `lint.py` | linted | linted the same way |
 | `package/build.py --all` | bundled | skipped, printed as skipped, listed under `skipped` in `manifest.json` |
@@ -117,6 +126,44 @@ does with a package:
 
 A fidelity suite under `packages/<id>/fidelity/` runs inside the game client, so
 the linter judges it as runtime Lua, not test Lua.
+
+## Repository validation
+
+`python3 -m tooling.validation.validate_repository` is the check that holds the
+repository to the layout and cross-references the documents describe. It runs
+every check below, then reports every error it found, each naming the file and,
+where there is one, the line to add:
+
+- the Python floor (see "Supported Python") and every manifest, with the
+  dependency graph (`validate_manifests.py`);
+- the root files the documentation points readers to;
+- every package's layout
+  ([`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md#minimum-package-layout)): the
+  manifest, README and changelog, `src/` with one facade named after
+  `displayName`, `tests/` with at least one `*_spec.lua`, `tests/README.md`,
+  `tests/support/<displayName>TestEnv.lua`, and `docs/API.md` when the manifest
+  declares `api`;
+- each `src/.luarc.json` and `examples/.luarc.json` against the dependency
+  closure and the example's `embeds.xml`;
+- every quoted `## Interface` line and the supported-client table (see
+  "Supported clients: one table") and the apiKit flavour table;
+- `.pkgmeta`: every release package moved (`src` and `docs`) exactly once, no
+  development or unknown package moved, every development package ignored,
+  and every root entry except `LICENSE` and `packages/` ignored, so the
+  addon-site zip carries only the Kits and the licence, like the builder's
+  bundle (root entries `.gitignore` names are local output and skipped);
+- the load order quoted in [`EMBEDDING.md`](EMBEDDING.md#load-order) equals the
+  one the builder computes from the manifests, file by file, and the example
+  `.toc` and `embeds.xml` it quotes equal the files in `examples/`;
+- the indexes: [`README.md`](README.md) in `docs/` links every other document
+  there and every package README, and
+  [`../packages/README.md`](../packages/README.md) links every package;
+- the GitHub metadata: a `kit: <packageId>` label in `.github/labels.yml`, a
+  labeler rule for `packages/<packageId>/**` in `.github/labeler.yml`, and an
+  option in the Kit dropdown of the bug report and feature request forms, for
+  every package and for no package that does not exist;
+- every repository-relative Markdown link names a file that exists (generated
+  reference and change reports excepted).
 
 ## Lint policy: deliberate `_G` access
 
@@ -244,7 +291,8 @@ tooling/api/
 ├── render_runtime.py  # the generated Lua bindings file the client loads
 ├── render_types.py    # the generated LuaCATS definitions
 ├── render_reference.py# the generated Markdown reference and the search index
-└── generate.py        # writes every output of a flavour from its metadata (steps 4 and 5)
+├── generate.py        # writes every output of a flavour from its metadata (steps 4 and 5)
+└── heads.py           # compares every flavour's committed build with the mirror heads
 ```
 
 The pipeline, as the design document lists it (section 14):
@@ -259,6 +307,7 @@ python3 -m tooling.api.diff <previous metadata> packages/apiKit/metadata/retail 
 python3 -m tooling.api.generate --flavour retail --previous <previous metadata>    # steps 4 and 5
 python3 -m tooling.api.generate --all --check                     # CI: outputs match the metadata
 python3 -m tooling.api.generate --all --reference-out build/reference   # the reference, locally
+python3 -m tooling.api.heads                                      # which flavours are behind the mirror
 ```
 
 `fetch` records the branch, commit, date, client version and build of the
@@ -290,8 +339,7 @@ workflow attaches them to each release instead. Generated Lua is checked with `l
 and the repository's StyLua configuration before anything is written, a
 directory of generated files is replaced as a whole, and `--check` compares
 without writing so CI can refuse a metadata change that was committed without
-its outputs (with no metadata committed yet the check has nothing to do and
-passes with a note; the CI step arrives with the first capture). Against the
+its outputs (the `repository` job runs it). Against the
 Retail metadata the runtime file is about 9,800 lines; the measured load cost
 is the "Load cost" section of `packages/apiKit/docs/API.md`. A runtime file
 under `src/flavours/` that no flavour of the table owns is removed as stale.
@@ -317,6 +365,16 @@ tables never enter the repository), and `MOLTENCODES_API_METADATA` names a
 normalised metadata directory for the generators' and the diff's corpus tests,
 which otherwise run against the committed Retail metadata under
 `packages/apiKit/metadata/retail`, so they run in CI too.
+
+`heads` answers the question that starts an update. For every flavour it
+looks up the head of each mirror branch the flavour names, picks the one
+`fetch` would capture (the highest build) and compares that build with the
+`build` in `packages/apiKit/metadata/<flavour>/provenance.json`; a head whose
+commit subject carries no build is never reported as newer. It prints one line
+per flavour, and with `--markdown FILE` and `--github-output FILE` writes the
+report and `newer=true|false` for the scheduled workflow described under
+"Continuous integration". It exits 0 whether or not a flavour is behind, and 1
+only when a lookup or a provenance file fails.
 
 The builder, the standalone-addon `.toc` and the validator support the layout
 `apiKit` needs: a package's `src/` holds one top-level facade and may hold
@@ -445,6 +503,29 @@ The release notes live in `RELEASES.md` rather than in a generated release
 manifest because the package manifests already are the machine-readable record
 of every version; a second file would be a second list to keep in step.
 
+## Coverage
+
+`python3 -m tooling.test.coverage [target ...]` runs the same suites as
+`python3 -m tooling.test.run`, each in its own Busted process, with Busted's
+`--coverage` flag, then runs `luacov` and prints one row per package: lines hit,
+lines missed and the percentage. [`../.luacov`](../.luacov) limits the
+measurement to `packages/*/src/`, so specs, the shared fixture and the example
+addon do not dilute a package's figure. LuaCov adds every process to one
+statistics file; the command deletes the previous `luacov.stats.out` and
+`luacov.report.out` first, and both are ignored by Git. `--summary FILE` appends
+the table as Markdown, which is how CI fills its job summary.
+
+It needs LuaCov in the same Lua 5.1 tree as Busted (`luarocks install luacov
+0.17.0-1`, see [`DEVELOPMENT.md`](DEVELOPMENT.md)).
+
+The figure is a report, not a gate, for two reasons. LuaCov's line hook
+allocates on every line it counts, so the allocation specs, which prove that a
+hot path allocates nothing, fail while it is active; the command prints the
+suite's result but exits 0 whenever a report was produced (1 when `luacov`
+fails, 127 when a tool is missing). And a percentage threshold would reward
+specs that execute lines over specs that assert behaviour. The per-package
+table is there to show where a Kit's specs leave code unexercised.
+
 ## Continuous integration
 
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every push to
@@ -454,12 +535,13 @@ timeout:
 | Job | What it checks |
 |---|---|
 | `test` | `python3 -m tooling.test.run`: every package suite and the example addon, under Lua 5.1.5 and Busted |
+| `coverage` | `python3 -m tooling.test.coverage`: the per-package table in the job summary, the LuaCov report as the `luacov-report` artefact |
 | `types` | `lua-language-server --check` for every package source directory and `examples/` |
 | `format` | `stylua --check .` |
 | `lint` | `python3 -m tooling.lint`, both scopes |
-| `package` | `tooling.package.build --all --verify`, then `sha256sum --check --strict` |
+| `package` | `tooling.package.build --all --verify`, then `sha256sum --check --strict`; on a push to `main`, the bundle is uploaded as the artefact `MoltenCodes-<commit>` |
 | `spell` | `python3 -m tooling.spell --require` and the cspell integration tests |
-| `repository` | repository validation, the tooling unit tests, `compileall` |
+| `repository` | repository validation, `tooling.api.generate --all --check`, the tooling unit tests, `compileall` |
 | `commits` | pull requests only: `python3 -m tooling.ci.check_commits` over the new commits and the title |
 | `secrets` | gitleaks over the whole history, with found values redacted from the log |
 | `workflows` | actionlint (and the shellcheck it runs) over every workflow |
@@ -469,29 +551,87 @@ Branch protection requires the one check `ci`, so adding a gate means adding
 it to that job's `needs`, not editing the protection rule. The workflow has no
 path filter: every file is judged by some gate, and a skipped workflow would
 leave the required check waiting. Jobs that run repository tooling use both
-supported Pythons, as described above.
+supported Pythons, as described above; `coverage` runs once, on 3.14, because
+it measures Lua, not Python.
+
+Why the jobs that are not plain gates are there:
+
+- **`coverage`** shows, per Kit, which lines no spec reaches, at no cost to
+  anyone who does not look. It stays inside the repository (an artefact and a
+  job summary, no external service or token) and is a report for the reasons
+  given under "Coverage"; it fails only when the tooling cannot produce a
+  report, which is why it is still in `ci`'s `needs`.
+- **The `package` artefact** makes every merged commit installable without a
+  release: download `MoltenCodes-<commit>`, drop its `MoltenCodes/` folder into
+  `Interface/AddOns`. It is uploaded from one matrix row (the builds are
+  byte-identical) and kept for 30 days.
+- **`commits`** holds every commit subject and the pull request title to
+  `type(scope): subject` (`CONTRIBUTING.md`), because a squash merge turns the
+  title into the commit on `main` and `RELEASES.md` is written from that
+  history.
+
+### The Lua toolchain
+
+The `test` and `coverage` jobs and the release workflow's `verify` job share
+the local composite action
+[`.github/actions/setup-lua`](../.github/actions/setup-lua/action.yml). It
+builds Lua 5.1.5, LuaRocks 3.13.0, Busted 2.3.0-1 and LuaCov 0.17.0-1 with
+hererocks, the same way [`DEVELOPMENT.md`](DEVELOPMENT.md) builds them locally,
+into `~/.local/lua51`, and caches that tree with `actions/cache`. The cache key
+is every one of those versions plus the runner image, so a version bump or a
+new image rebuilds the tree and anything else restores it in seconds instead of
+compiling Lua and installing the rocks on every run. The versions are the
+action's input defaults, in one place.
+
+### Pins
 
 Every `uses:` is pinned to a full commit SHA with the release it came from in a
 trailing comment. [`.github/dependabot.yml`](../.github/dependabot.yml) proposes
-updates to those pins once a week, grouped into one pull request with a
-`ci(deps):` subject. The downloaded binaries (Selene, lua-language-server,
-actionlint, gitleaks) are pinned by version and SHA-256 in the workflow's `env`
-and are bumped by hand, both values in the same change. gitleaks runs as the
-release binary rather than through its action, because the action needs a
-licence key for repositories that belong to an organisation.
+updates to those pins once a week, in the workflows and in the composite
+action, grouped into one pull request with a `ci(deps):` subject. The
+downloaded binaries (Selene, StyLua, lua-language-server, actionlint, gitleaks
+and lychee) are pinned by version and SHA-256 in each workflow's `env` and are
+bumped by hand, both values in the same change; so are the toolchain versions
+of the composite action. gitleaks runs as the release binary rather than
+through its action, because the action needs a licence key for repositories
+that belong to an organisation, and lychee runs as the release binary so it is
+checksum-verified like the others.
 
-The other workflows maintain the repository rather than judge a change:
+### Other workflows
+
+These maintain the repository rather than judge a change:
 
 | Workflow | What it does |
 |---|---|
+| [`links.yml`](../.github/workflows/links.yml) | lychee over every Markdown file with [`../lychee.toml`](../lychee.toml): external URLs and `#fragment` anchors; on pull requests and pushes that change Markdown, and weekly |
+| [`api-heads.yml`](../.github/workflows/api-heads.yml) | daily, `python3 -m tooling.api.heads` for every flavour; keeps one issue, "apiKit: the mirror carries a newer client build", open while any flavour's committed metadata is behind the mirror and closes it once all are current |
 | [`labels.yml`](../.github/workflows/labels.yml) | applies [`.github/labels.yml`](../.github/labels.yml), the source of truth for labels, on a push to `main` that changes it; a hand-started run from another branch is a dry run |
 | [`pr-labeler.yml`](../.github/workflows/pr-labeler.yml) | labels a pull request `kit: <packageId>` and `area: ...` from the paths it changes, following [`.github/labeler.yml`](../.github/labeler.yml) |
 | [`stale.yml`](../.github/workflows/stale.yml) | marks issues inactive for 60 days `stale` and closes them 30 days later; never touches pull requests or issues labelled `pinned`, `security` or `roadmap` |
 | [`release.yml`](../.github/workflows/release.yml) | builds and drafts a release; see [`RELEASES.md`](RELEASES.md#the-release-workflow) |
 
+The link check is its own workflow, not a `ci` job, on purpose: whether an
+external page answers depends on that site, not on the change under review, so
+as a required check it would fail pull requests at random. Repository-relative
+links stay a gate through repository validation. lychee adds external pages and
+heading anchors (which the validator does not follow), keeps a one-day cache of
+confirmed pages between runs, treats `429 Too Many Requests` as success and
+retries transient failures; links to this repository's own pages on github.com
+are excluded, because from a pull request they name content that only exists
+after the merge.
+
+The mirror-heads workflow turns "a new client build shipped" from something a
+maintainer has to notice into an issue. It is idempotent: one run at a time
+(its concurrency group queues rather than cancels), the issue is found by its
+exact title and label, its body is rewritten only when the report changes, and
+the report depends only on builds and commits, never on the time of the run.
+It uses the job token alone, to raise the GitHub API rate limit for the
+mirror's public commit lookups and to write that one issue.
+
 A new Kit needs a `kit: <packageId>` label in `labels.yml`, a matching rule in
 `labeler.yml` and an option in the Kit lists of the bug report and feature
-request forms under `.github/ISSUE_TEMPLATE/`.
+request forms under `.github/ISSUE_TEMPLATE/`; repository validation fails
+until all four exist.
 
 ## Future tooling
 

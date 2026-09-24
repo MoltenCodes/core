@@ -4,17 +4,20 @@ Testing is a first-class architectural concern.
 
 ## Layers
 
-```text
-Pure Lua unit tests
-        ↓
-Package integration tests
-        ↓
-Cross-package tests
-        ↓
-In-client suites (testKit)
-        ↓
-World of Warcraft integration tests
-```
+Each layer answers a question the one before it cannot, and each has one place
+in the repository and one command:
+
+| Layer | What it proves | Where | Run by |
+|---|---|---|---|
+| Package specs | a Kit's documented behaviour, error messages and upgrade paths, against the shared fake client | `packages/<id>/tests/*_spec.lua` | `python3 -m tooling.test.run <id>` |
+| Allocation guards | a hot path allocates nothing (`collectgarbage("count")` around it, collector stopped) | the same suites, usually `Allocation_spec.lua` | the same command |
+| Cross-package specs | a Kit with its optional dependencies present and absent, and several embedded copies resolving through Registry | the same suites (optional dependencies are on their `LUA_PATH`) | the same command |
+| Example addon | the embedding instructions work as written: `.toc`, `embeds.xml`, load order, type-checking | `examples/tests/` | `python3 -m tooling.test.run examples` |
+| Fixture fidelity | the shared fake client behaves like the real one | `packages/testKit/fidelity/` (runs under Busted and in the client) | `python3 -m tooling.test.run testKit`, and testKit in the client |
+| In-client suites | what only the client shows: event order and payloads, combat lockdown, taint | testKit suites | the game client, by hand |
+
+Line coverage (`python3 -m tooling.test.coverage`) is a report over the first
+four layers, not a layer of its own; see [`TOOLING.md`](TOOLING.md#coverage).
 
 ### In-client suites
 

@@ -207,7 +207,11 @@ packages/<name>/
 │   ├── <DisplayName>.lua    # the facade: the one top-level Lua file, loaded first
 │   ├── .luarc.json          # lua-language-server workspace for this directory
 │   └── <subdirectory>/      # optional further runtime files, loaded after the facade
-├── tests/                   # contains at least one *_spec.lua
+├── tests/
+│   ├── README.md            # what the suite covers and how it is organised
+│   ├── <name>_spec.lua ...  # at least one Busted spec
+│   └── support/
+│       └── <DisplayName>TestEnv.lua   # the suite's environment on the shared fixture
 └── docs/API.md              # required when api/revision are declared
 ```
 
@@ -227,11 +231,19 @@ at as its workspace root and ignores parent configuration, so this file is what
 makes a package type-checkable on its own. Repository validation derives the
 expected list from the manifests and fails when the two disagree.
 
-A package's `tests/support/` directory is package-owned and published with it,
-but the World of Warcraft stubs it used to hold now live in the repository-wide
-fixture at `tests/support/FrameworkTestEnv.lua`. That directory is test
-scaffolding rather than a package: it has no manifest, is not discovered as one,
-and is never included in a release artifact. See [`TESTING.md`](TESTING.md).
+A package's `tests/support/` directory is package-owned: it holds
+`<DisplayName>TestEnv.lua`, the suite's environment (the load order of the
+package's module chain and the helpers only its specs use), and any further
+helper the suite needs. The World of Warcraft stubs themselves live once, in
+the repository-wide fixture at `tests/support/FrameworkTestEnv.lua`, which is
+test scaffolding rather than a package: it has no manifest, is not discovered
+as one, and is never included in a release artifact. Neither directory ships in
+a release. See [`TESTING.md`](TESTING.md).
+
+Outside its own directory, a package must be named in `.pkgmeta`, in
+[`README.md`](README.md) here and in `packages/README.md`, and in the Kit lists
+of `.github/`; repository validation checks each of them
+([`TOOLING.md`](TOOLING.md#repository-validation)).
 
 Additional package-owned documentation and internal source directories may be added without changing the manifest contract.
 

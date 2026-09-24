@@ -46,6 +46,9 @@ those defaults when they are documented and observable.
 - [x] `commKit`
 - [x] `widgetKit`
 - [x] `apiKit`
+- [x] `brokerKit`
+- [x] `logKit`
+- [x] `compatKit`
 
 These entries describe packages present in this repository snapshot. A checked
 item means its implementation is part of the repository; it does not mean the
@@ -153,6 +156,16 @@ Repository mechanics that keep the above honest as the framework grows.
       publishes the facade the helper lives on.
 - [x] Write `packages/moduleKit/docs/INTERNALS.md` describing the dependency
       graph and resolution order.
+- [x] Repository audit (2026-09-24). CI moved to Python 3.10 and 3.14 and to one
+      shared, cached hererocks toolchain (`.github/actions/setup-lua`); it
+      gained a LuaCov coverage report (`tooling.test.coverage`), the bundle of
+      every `main` commit as an artefact, a lychee link-check workflow and a
+      daily mirror-heads workflow (`tooling.api.heads`) that keeps one issue
+      open while apiKit metadata is behind the mirror. Repository validation
+      now also checks each package's `tests/README.md` and suite environment,
+      `.pkgmeta` against every package and root entry, the documentation and
+      package indexes, the quoted load order and the Kit lists under
+      `.github/`; every tooling command answers `--help`.
 
 ### Phase 4 — Growing the framework from what the ecosystem taught
 
@@ -1235,7 +1248,7 @@ under their Kit, new Kits carry nine points.
       definitions: a list of method names checked once at registration,
       failing at the caller's line with the missing name; a SchemaKit schema
       accepted in its place when SchemaKit is loaded. Done 2026-09-24
-      (ModuleKit 0.8.0, revision 15).
+      (ModuleKit 0.8.0, revision 15; error levels fixed in 0.8.1, revision 16).
 - [x] **optionsKit** (AceDBOptions parity) — `OptionsKit:ProfileOptions(db,
       options?)`: a ready-made options group over a SettingsKit database
       (choose the active profile, create one by name, copy from another,
@@ -1248,7 +1261,7 @@ under their Kit, new Kits carry nine points.
       `.toc` fields with locale-suffixed fallback (`## Notes-deDE` before
       `## Notes`), read once per addon and cached. Registry's `Deprecate` and
       data-package kinds stay unbuilt until a consumer needs them.
-      Done 2026-09-24 (clientKit 0.2.0, revision 2).
+      Done 2026-09-24 (clientKit 0.2.0, revision 2; revised in 0.2.1, revision 3).
 - [ ] Deferred to the user-interface phase: **timerKit** engine-driven
       pausable ticker (W15, needs an animation host), **frameKit** (W14,
       folded into widgetKit's anchors), Registry deprecation warnings (W13).
@@ -1420,6 +1433,7 @@ duplicating those specifications.
 ---
 
 Last roadmap baseline update: 2026-09-24 (phases 0 through 4 and packages F,
-G and H complete; phase 5 packages I, J, K and L complete: 28 packages, every gate
-green; the user-interface phase (package M) is what remains; the standing obligations
+G and H complete; phase 5 packages I, J, K and L complete: 28 packages, 27 of them
+release packages, every gate green; the repository audit of phase 3 done; the
+user-interface phase (package M) is what remains; the standing obligations
 continue).
