@@ -26,6 +26,7 @@ securecallfunction
 ARIALN
 CLEU
 CURSEFORGE
+dataobj
 FRIZQT
 Gethe
 langmask
@@ -39,6 +40,7 @@ Quadrata
 REGEN
 Skurri
 spellbook
+tocname
 Wago
 WOWGUID
 WOWI
