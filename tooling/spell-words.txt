@@ -29,13 +29,19 @@ seterrorhandler
 # (`PLAYER_REGEN_ENABLED`, `CURSEFORGE_PROJECT_ID`, `WOWI_ID`).
 ARIALN
 CLEU
+COMMANDKIT
 CURSEFORGE
 dataobj
 FRIZQT
 Gethe
+Hitem
 langmask
 libstub
 MAXEMOTEINDEX
+mcttestcmd
+mcttestinert
+mcttestopts
+mcttestsecret
 MOLTENCODES
 MOLTENCODESTEST
 myaddon

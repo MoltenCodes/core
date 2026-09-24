@@ -45,6 +45,11 @@ tests/client/
 ├── MoltenCodesTest_SchemaKit/         # the test addon of the `schemaKit` package (.toc, suite, EXPECTED.md)
 ├── MoltenCodesTest_LocaleKit/         # the test addon of the `localeKit` package (.toc, suite, EXPECTED.md)
 ├── MoltenCodesTest_HookKit/           # the test addon of the `hookKit` package (.toc, suite, EXPECTED.md)
+├── MoltenCodesTest_SettingsKit/       # the test addon of the `settingsKit` package (.toc, suite, EXPECTED.md)
+├── MoltenCodesTest_OptionsKit/        # the test addon of the `optionsKit` package (.toc, suite, EXPECTED.md)
+├── MoltenCodesTest_CommandKit/        # the test addon of the `commandKit` package (.toc, suite, EXPECTED.md)
+├── MoltenCodesTest_CodecKit/          # the test addon of the `codecKit` package (.toc, suite, EXPECTED.md)
+├── MoltenCodesTest_CommKit/           # the test addon of the `commKit` package (.toc, suite, EXPECTED.md)
 ├── MoltenCodesTest_PoolKit/           # the test addon of the `poolKit` package (.toc, suite, EXPECTED.md)
 ├── MoltenCodesTest_SchedulerKit/      # the test addon of the `schedulerKit` package (.toc, suite, EXPECTED.md)
 └── MoltenCodesTest_TimerKit/          # the test addon of the `timerKit` package (.toc, suite, EXPECTED.md)
@@ -97,8 +102,8 @@ python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --
 ```
 
 That deletes `MoltenCodes`, `MoltenCodesTest` and every `MoltenCodesTest_*`
-folder from `AddOns`, and every `MoltenCodesTest.lua` and
-`MoltenCodesTest.lua.bak` under `WTF/Account/*/SavedVariables/` and
+folder from `AddOns`, and every `MoltenCodesTest.lua`, `MoltenCodesTest_*.lua`
+and their `.bak` copies under `WTF/Account/*/SavedVariables/` and
 `WTF/Account/*/*/*/SavedVariables/`. Add `--dry-run` to see the list first.
 Both commands refuse when the `AddOns` folder does not exist, and neither
 follows a symbolic link out of the game folder.

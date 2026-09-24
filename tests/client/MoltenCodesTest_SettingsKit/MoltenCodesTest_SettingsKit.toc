@@ -1,0 +1,20 @@
+## Interface: 120100
+## Title: MoltenCodes Test: SettingsKit
+## Notes: Real-client test suites for MoltenCodes SettingsKit. Run them with /mct run settingsKit.
+## Author: MoltenCodes
+## Version: 1.0.0
+## Dependencies: MoltenCodesTest
+## SavedVariables: MoltenCodesTest_SettingsKitDB
+## SavedVariablesPerCharacter: MoltenCodesTest_SettingsKitCharDB
+## X-Category: Development Tools
+## X-License: MIT
+
+# Development only: never ship this addon. See tests/client/README.md.
+#
+# The two saved variables are the real tables the suites open SettingsKit
+# databases over. The client writes them to
+# WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest_SettingsKit.lua and
+# WTF/Account/<ACCOUNT>/<Realm>/<Character>/SavedVariables/MoltenCodesTest_SettingsKit.lua;
+# EXPECTED.md explains the two-run persistence test and how the last run
+# leaves both empty.
+SettingsKitSuite.lua

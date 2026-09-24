@@ -20,7 +20,8 @@ client loads them. This command does that and nothing else:
 
 * ``--remove`` deletes ``MoltenCodes``, ``MoltenCodesTest`` and every
   ``MoltenCodesTest_*`` folder from ``AddOns``, and every
-  ``MoltenCodesTest.lua`` / ``MoltenCodesTest.lua.bak`` saved-variables file
+  saved-variables file of the harness and of every test addon
+  (``MoltenCodesTest.lua``, ``MoltenCodesTest_<Facade>.lua`` and their ``.bak``)
   under ``WTF/Account/*/SavedVariables/`` and
   ``WTF/Account/*/*/*/SavedVariables/``, so the client is left as it was.
 
@@ -70,6 +71,11 @@ ADDON_FILE_SUFFIXES = (".toc", ".lua")
 
 #: The saved-variables files the harness writes, per account or per character.
 SAVED_VARIABLES_NAMES = (f"{HARNESS_ADDON}.lua", f"{HARNESS_ADDON}.lua.bak")
+
+#: Test addons may declare saved variables of their own (the SettingsKit suite
+#: persists two databases across /reload); the client names each file after
+#: its addon, so these patterns match exactly the test addons' files.
+TEST_ADDON_SAVED_VARIABLES_PATTERNS = (f"{HARNESS_ADDON}_*.lua", f"{HARNESS_ADDON}_*.lua.bak")
 
 #: Where the client keeps saved variables, relative to the flavour folder:
 #: account-wide, then per character (``<account>/<realm>/<character>``).
@@ -333,7 +339,7 @@ def addons_to_remove(layout: ClientLayout) -> list[Path]:
 
 
 def saved_variables_to_remove(layout: ClientLayout) -> tuple[list[Path], list[Path]]:
-    """The harness's saved-variables files, and the folders skipped as links out.
+    """The harness's and test addons' saved-variables files, and the folders skipped as links out.
 
     ``glob`` would walk through a linked account or character folder; a folder
     that resolves outside the game folder is reported instead of searched.
@@ -349,6 +355,10 @@ def saved_variables_to_remove(layout: ClientLayout) -> tuple[list[Path], list[Pa
                 candidate = folder / name
                 if candidate.is_file() or candidate.is_symlink():
                     files.append(candidate)
+            for file_pattern in TEST_ADDON_SAVED_VARIABLES_PATTERNS:
+                for candidate in sorted(folder.glob(file_pattern)):
+                    if candidate.is_file() or candidate.is_symlink():
+                        files.append(candidate)
     return files, skipped
 
 
