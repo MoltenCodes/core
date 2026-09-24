@@ -19,7 +19,8 @@
 --   * that a slice over the default 8 ms runaway threshold demotes its job one
 --     lane and is reported once through the client's error handler, and that a
 --     `Yield` inside `pcall` cannot cross the client's C-call boundary;
---   * that a job error is captured with a traceback naming this file;
+--   * that a job error is captured with a traceback naming this file, from
+--     `debug.traceback` or, on a client without `debug`, `debugstack`;
 --   * that `CancelAll`, `Close` and `CloseAddonScopes` stop real work, and
 --     `ForAddon` with this addon's name;
 --   * `Debounce`, `Coalesce` and `Watch` against real frames and timers;
@@ -1304,6 +1305,69 @@ runaway:Test(
 
 local jobErrors = newSuite("jobErrors")
 
+---Describe one probe result for the log without formatting a secret or a table.
+---@param ok boolean
+---@param value any
+---@return string
+local function describeProbe(ok, value)
+    if not ok then
+        return "raised " .. tostring(value)
+    end
+    if type(value) == "string" then
+        return "string of " .. #value .. " bytes: " .. value:gsub("\n", " | "):sub(1, 300)
+    end
+    return type(value)
+end
+
+jobErrors:Test(
+    "the client's debug library is logged: what debug.traceback and debugstack return for a failed coroutine",
+    function(ctx)
+        -- selene: allow(global_usage)
+        local debugLibrary = rawget(_G, "debug")
+        ctx:Log("type(debug): " .. type(debugLibrary))
+        local traceback = type(debugLibrary) == "table" and rawget(debugLibrary, "traceback") or nil
+        ctx:Log("type(debug.traceback): " .. type(traceback))
+        -- selene: allow(global_usage)
+        local debugstack = rawget(_G, "debugstack")
+        ctx:Log("type(debugstack): " .. type(debugstack))
+
+        local thread = coroutine.create(function()
+            error("mctSchedulerKit traceback probe")
+        end)
+        local resumed, failure = coroutine.resume(thread)
+        ctx:Log("coroutine failed: " .. tostring(not resumed) .. "; error: " .. tostring(failure))
+
+        if type(traceback) == "function" then
+            ctx:Log(
+                "debug.traceback(thread, message): "
+                    .. describeProbe(pcall(traceback, thread, tostring(failure)))
+            )
+            ctx:Log(
+                "debug.traceback(message): " .. describeProbe(pcall(traceback, tostring(failure)))
+            )
+        end
+        if type(debugstack) == "function" then
+            ctx:Log("debugstack(thread): " .. describeProbe(pcall(debugstack, thread)))
+            ctx:Log(
+                "debugstack(thread, 1, 12, 12): "
+                    .. describeProbe(pcall(debugstack, thread, 1, 12, 12))
+            )
+            ctx:Log("debugstack(): " .. describeProbe(pcall(debugstack)))
+            -- SchedulerKit's xpcall handler reads the failing frames with
+            -- `pcall(debugstack, 3)`: level 1 is pcall, 2 the handler, so 3
+            -- should be the first failing frame. This logs what the client shows.
+            local _, handlerStack = xpcall(function()
+                error("mctSchedulerKit handler probe")
+            end, function()
+                local stackOk, stack = pcall(debugstack, 3)
+                return describeProbe(stackOk, stack)
+            end)
+            ctx:Log("debugstack(3) inside an xpcall handler: " .. tostring(handlerStack))
+        end
+        ctx:Expect(resumed):ToBe(false)
+    end
+)
+
 jobErrors:Test(
     "a job that raises is failed with its original error object and a traceback naming SchedulerKitSuite.lua at the raising line, is reported once, and does not stop an unrelated job",
     function(ctx)
@@ -1345,8 +1409,15 @@ jobErrors:Test(
         ctx:Log("GetErrorTraceback: " .. tracebackText:gsub("\n", " | "):sub(1, 400))
         local stackStart = tracebackText:find("stack traceback:", 1, true)
         ctx:Expect(type(stackStart)):ToBe("number")
-        local raisingFrame = SUITE_FILE .. ":" .. (failingLine + 1) .. ":"
-        ctx:Expect(tracebackText:find(raisingFrame, stackStart or 1, true) ~= nil):ToBe(true)
+        -- `debug.traceback` writes the raising frame as `SchedulerKitSuite.lua:<line>:`;
+        -- the client's `debugstack`, SchedulerKit's source when the client has
+        -- no `debug` global, brackets the path: `SchedulerKitSuite.lua]:<line>:`.
+        local raisingLine = ":" .. (failingLine + 1) .. ":"
+        local namedByTraceback =
+            tracebackText:find(SUITE_FILE .. raisingLine, stackStart or 1, true)
+        local namedByDebugStack =
+            tracebackText:find(SUITE_FILE .. "]" .. raisingLine, stackStart or 1, true)
+        ctx:Expect(namedByTraceback ~= nil or namedByDebugStack ~= nil):ToBe(true)
 
         ctx:Expect(objectJob:GetState()):ToBe("failed")
         ctx:Expect(objectJob:HasError()):ToBe(true)

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.3 — 2026-09-24
+
+Traceback on the Retail client. Implementation revision 15; API generation 1 is unchanged.
+
+- The Retail client publishes no `debug` global (measured on 12.1.0 build 69933, 2026-09-24, by the SchedulerKit client suite), so `debug.traceback` was absent there and `Job:GetErrorTraceback()` returned `nil` in game. A failed job's stack now falls back to the client's `debugstack(thread)` when `debug.traceback` is absent. Its bare stack is prefixed with the error object rendered by `tostring` and a `stack traceback:` header, so both sources give "message, then `stack traceback:`, then the frames", and the error handler receives that text. `debug.traceback` stays the first choice (standard Lua, Busted); with neither, or when the source raises or returns a non-string, the traceback is `nil` and the bare error object is reported, as before.
+- The same fallback for failures that are not jobs: a raising `Debounce` or `Coalesce` callback, or `Watch` predicate or callback, is reported through the host error handler with the stack its `xpcall` handler captured, from `debug.traceback(message, 3)` or, on the Retail client, `debugstack(3)` prefixed with the message and `stack traceback:`. Before, the client got the bare error object. Level 3 skips `pcall` and the handler's own frame, so the stack now starts at the raise (`[C]: in function 'error'`) on both sources; with `debug.traceback` the handler frame used to be listed first.
+- `debugstack` is resolved once at load, inside the `do` block that defines `captureTraceback` and as an installer local for the `xpcall` handler: no new top-level local (191 of 200 still; the installer declares 111 locals).
+- An in-place upgrade from revision 14 needs no state change; jobs, coroutines, timers and handles carry over.
+- Docs: `docs/API.md` ("Error isolation") names both sources and the real-client fact, and says what non-job callback reports and lane failures carry; `docs/INTERNALS.md` updates the traceback and headroom notes; `docs/EMBEDDING.md` names `debugstack` in the host-requirements row; `meta/wow/Runtime.lua` declares `debugstack`.
+- Specs: new `Traceback_spec.lua` (both sources, `debug.traceback` preferred when both exist, `tostring` rendering, resolution once at load, a raising or non-string `debugstack`, neither source, and a revision-14 upgrade on a host without `debug.traceback`; the `xpcall` handler's report of a raising `Watch` predicate, `Debounce` and `Coalesce` callback with a stub `debugstack` called with level 3, its first frame under `debug.traceback`, a lane submission's `GetErrorTraceback()`, and the bare message when `debugstack` raises or neither source exists; the spec swaps `debug` for a copy without `traceback` while the package loads, since LuaCov needs the global). The client suite's `jobErrors` test accepts the raising frame from either source; `EXPECTED.md` lists the debug-library diagnostic test (37 tests).
+
 ## 0.8.2 — 2026-09-24
 
 Nil rule (decision of 2026-09-24). Implementation revision 14; API generation 1 is unchanged.

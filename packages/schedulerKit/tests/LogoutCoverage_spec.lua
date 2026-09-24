@@ -2,7 +2,7 @@ local TestEnv = require("SchedulerKitTestEnv")
 
 -- The implementation revision this suite was written against; Manifest_spec
 -- holds it to package.manifest.json.
-local CURRENT_REVISION = 14
+local CURRENT_REVISION = 15
 
 -- An addon scope closes at logout whenever the framework can observe logout,
 -- whatever LifecycleKit and EventKit revisions are paired with SchedulerKit.

@@ -186,7 +186,7 @@ SchedulerKit:
 4. best-effort reports it through WoW's current error handler;
 5. continues unrelated scheduler work.
 
-The traceback is captured by `debug.traceback(thread, message)` **before** the job's coroutine reference is dropped. Lua 5.1 does not unwind an errored coroutine's stack, so this is the only point at which the raising frame can still be named.
+The traceback is captured by `debug.traceback(thread, message)` **before** the job's coroutine reference is dropped. Lua 5.1 does not unwind an errored coroutine's stack, so this is the only point at which the raising frame can still be named. The Retail client publishes no `debug` global (measured on 12.1.0 build 69933, 2026-09-24), so there the capture falls back to the client's `debugstack(thread)`, whose bare stack is prefixed with `tostring(message)` and a `stack traceback:` header to keep the shape `debug.traceback` gives. `Debounce`, `Coalesce` and `Watch` run their callbacks under `xpcall` instead, and its handler `captureFailure` (in the installer) captures the current stack from level 3, skipping `pcall` and itself, with `debug.traceback(message, 3)` or `debugstack(3)`; the installer reads `debugstack` into a local of its own.
 
 Internal/native failures that occur in direct API operations may still be re-raised to the direct caller after logical cleanup has been committed. Such a failure is recorded on the job but **not** reported to the error handler, because the direct caller already has it; the same operation reached from the driver, where no caller can observe a raise, reports instead. One failure therefore produces exactly one signal.
 
@@ -196,12 +196,14 @@ Internal/native failures that occur in direct API operations may still be re-rai
 `installCoalescingFamily`, rather than at the top level of the chunk: Lua 5.1
 allows 200 locals per function and the main chunk is close to that.
 
-Headroom at revision 14: the main chunk holds 191 top-level locals of the 200
-Lua 5.1 allows active at once (`luac -l -l` reports 212 declared, counting
-block-scoped ones, in 194 stack slots); the installer declares 109 locals and
+Headroom at revision 15: the main chunk holds 191 top-level locals of the 200
+Lua 5.1 allows active at once (`luac -l -l` reports 213 declared, counting
+block-scoped ones, in 194 stack slots); the installer declares 111 locals and
 uses 41 of 60 upvalues. Revision 14 added the secret-value check without a new
 top-level slot: `debug` and `issecretvalue` are read inside `do` blocks, so
-only `nativeTraceback` and `refuseSecretValue` stay at the top level. New top-level code belongs in the installer or in a
+only `nativeTraceback` and `refuseSecretValue` stay at the top level. Revision
+15 reads `debugstack` the same way, inside the `do` block that defines
+`captureTraceback`, and once more as an installer local for `captureFailure`. New top-level code belongs in the installer or in a
 function of its own. The
 installer commits its own methods; only four hooks forward-declared above the
 job machinery (`laneJobFinished`, `retryLaneJob`, `cancelFamilyMembers`,

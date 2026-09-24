@@ -13,7 +13,7 @@ The suite covers:
 - lazy package bootstrap plus per-scope TimerKit allocation;
 - addon scopes closed through `CloseAddonScopes` (the two-step); the shutdown order against LifecycleKit lives in LifecycleKit's suite;
 - who closes an addon scope at logout: a LifecycleKit that lists SchedulerKit in `CLOSES_ADDON_SCOPES`, an older LifecycleKit through `OnShutdown`, EventKit's `PLAYER_LOGOUT` without LifecycleKit, or nobody, re-examined when a Kit loads later and carried across an upgrade;
-- callback/error isolation and tracebacks captured at the point of failure;
+- callback/error isolation and tracebacks captured at the point of failure, from `debug.traceback` or, on a host without it (the Retail client), the client's `debugstack`;
 - delayed wakeups carried on TimerKit's public user-data seam;
 - scopes closed from inside a running job, including during an `Every` callback;
 - bootstrap/reload identity and in-place revision upgrade;
@@ -24,7 +24,7 @@ The suite covers:
 - lanes: sharing by name, `maxInFlight`, `minIntervalSeconds`, retry with capped backoff, `maxQueued` refusal with an allocation guard on full and closed refusals, queue compaction, `Close`, scope release, and `Debounce`/`Coalesce` delivering through a lane;
 - lane and family edge cases: newest debounce arguments against a full lane, `Flush` deferral, member close against admitted and waiting deliveries, timer-arm failure recovery, retries against the minimum interval and `Close`, backwards clock steps, Watch callback tracebacks, and FIFO index reset;
 - an allocation guard on the resume path: a job yielding slice after slice, across every priority, allocates nothing, and a never-drained priority queue keeps its indices at the front;
-- in-place upgrades from revisions 3, 6, 7, 9, 10, 11 and 12, and from the previous revision (the current one minus one), keeping the facade and state tables;
+- in-place upgrades from revisions 3, 6, 7, 9, 10, 11, 12 and 14, and from the previous revision (the current one minus one), keeping the facade and state tables;
 - secret values on the `mainline` host: every argument a check would compare refused before the comparison, a secret coalesce value stored, ordinary arguments still accepted.
 
 Spec files:
@@ -39,6 +39,7 @@ Spec files:
 | `Scope_spec.lua` | lazy TimerKit scopes, cancellation, terminal close, self-closing jobs, addon scopes and `CloseAddonScopes` |
 | `LogoutCoverage_spec.lua` | the four logout routes, re-examination, subscription release on close, carrying routes across the revision-11 upgrade |
 | `Errors_spec.lua` | error isolation, `nil`/`false` error objects, tracebacks, arming and re-arm failures |
+| `Traceback_spec.lua` | the two traceback sources: `debug.traceback`, preferred when both exist, and `debugstack` on a host without `debug.traceback` (a stub installed, and `debug` swapped for a copy without `traceback` only while the package loads); `tostring` rendering, resolution once at load, a failing source, neither source, the revision-14 upgrade on that host; the `xpcall` handler's `Watch`, `Debounce` and `Coalesce` reports from level 3 on both sources, and a lane submission's traceback |
 | `ErrorLevels_spec.lua` | `ShouldYield`, `Yield` and context receiver guards, and `CloseAddonScopes` argument and receiver errors, at the caller's line |
 | `Property_spec.lua` | randomized scope and package active-count invariants |
 | `Debounce_spec.lua` | `Debounce`: restart, last arguments, `leading`, `maxWaitSeconds`, `Cancel`, `Flush`, scope release, allocation guard |

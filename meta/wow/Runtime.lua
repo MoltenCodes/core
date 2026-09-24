@@ -1,7 +1,7 @@
 ---@meta
 
--- Client runtime services used for budgeting, error reporting, taint isolation,
--- secret-value checks and combat-log payload access.
+-- Client runtime services used for budgeting, error reporting, stack capture,
+-- taint isolation, secret-value checks and combat-log payload access.
 
 ---Addon CPU milliseconds since the profiler was last reset.
 ---
@@ -9,6 +9,22 @@
 ---hitch is not charged to a cooperating job.
 ---@return number milliseconds
 function debugprofilestop() end
+
+---The call stack of the running code, or of `thread`, as text.
+---
+---The Retail client publishes no `debug` global (measured on 12.1.0 build
+---69933, 2026-09-24), so this is the only stack source there. The result has
+---no message and no `stack traceback:` header, one frame per line, each ending
+---in a newline, with an addon file in brackets:
+---`[Interface/AddOns/MyAddon/Jobs.lua]:12: in function <...>`. SchedulerKit
+---falls back to it when `debug.traceback` is absent.
+---@param thread? thread The coroutine to describe; the current stack when omitted.
+---@param start? integer The first frame to include.
+---@param count1? integer How many frames to include from the top.
+---@param count2? integer How many frames to include from the bottom.
+---@return string stack
+---@overload fun(start?: integer, count1?: integer, count2?: integer): string
+function debugstack(thread, start, count1, count2) end
 
 ---A high-resolution wall clock in seconds, monotonic within a session.
 ---@return number seconds

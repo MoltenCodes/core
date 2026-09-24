@@ -15,6 +15,7 @@
 # World of Warcraft client API names, written as one lowercase word.
 debugprofilestart
 debugprofilestop
+debugstack
 geterrorhandler
 hooksecurefunc
 issecretvalue

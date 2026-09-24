@@ -356,7 +356,7 @@ end
 
 `HasError()` exists separately because valid Lua error objects include `nil` and `false`.
 
-SchedulerKit captures `debug.traceback` against the failing coroutine **while that coroutine is still available**, before the job's execution references are released. Lua 5.1 leaves an errored coroutine's frames in place, so the traceback names the function that actually raised rather than the driver frame that observed the failure:
+SchedulerKit captures the failing coroutine's stack **while that coroutine is still available**, before the job's execution references are released. Lua 5.1 leaves an errored coroutine's frames in place, so the traceback names the function that actually raised rather than the driver frame that observed the failure:
 
 ```lua
 if job:HasError() then
@@ -365,9 +365,18 @@ if job:HasError() then
 end
 ```
 
-`GetErrorTraceback()` returns `nil` for a job that did not fail through a callback error, and on a host that publishes no `debug.traceback`.
+The stack comes from one of two sources, resolved once when SchedulerKit loads:
+
+- `debug.traceback(thread, message)`, when the host publishes it (standard Lua 5.1, Busted);
+- otherwise the client's `debugstack(thread)`. The Retail client publishes no `debug` global at all (measured on Retail 12.1.0 build 69933 on 2026-09-24), so this is the source in game. `debugstack` returns the bare stack, so SchedulerKit prefixes the error message and a `stack traceback:` header, and both sources give the same shape: the message, then `stack traceback:`, then the frames. The frames are written differently: `debug.traceback` gives `MyAddon/Jobs.lua:12:`, `debugstack` gives `[Interface/AddOns/MyAddon/Jobs.lua]:12:`.
+
+Either way the message is the error object rendered with `tostring`, so a non-string error object still gives a readable string; `GetError()` keeps the object itself.
+
+`GetErrorTraceback()` returns `nil` for a job that did not fail through a callback error, on a host that publishes neither `debug.traceback` nor `debugstack`, and when the source raised or returned something other than a string.
 
 When WoW's `geterrorhandler()` is available, SchedulerKit also reports the failure through the host error handler on a best-effort basis: the traceback when one was captured, otherwise the original error object. `GetError()` always keeps the original object unchanged, including `nil` and `false`. Failure of the error handler itself cannot poison scheduler execution.
+
+`Debounce` and `Coalesce` callbacks and `Watch` predicates and callbacks do not run in a job, so a raise there has no `GetErrorTraceback()`: it is reported to the host error handler only. That report is captured by the `xpcall` handler while the failing frames are still on the stack, from the same two sources and in the same shape: `debug.traceback(message, level)` when the host has it, otherwise the client's `debugstack(level)` prefixed with the message and `stack traceback:`, in both cases starting at the first failing frame (`[C]: in function 'error'` for a raise) rather than at the handler. With neither source, or when the source fails, the original error object is reported. A lane submission is a job, so its failure has a `GetErrorTraceback()` like any other.
 
 The host error handler is also the seam for non-fatal scheduler diagnostics — a demoted runaway slice and a swallowed `Context:Yield()` are reported there. Those reports never terminate a job.
 
@@ -703,7 +712,9 @@ least until `minIntervalSeconds` have passed since the lane's last start; a
 retry counts as a start when its backoff expires. It keeps its in-flight slot
 while it waits, which is what backing off a resource means. A retried attempt
 is **not** reported; the attempt that exhausts the policy fails the job and is
-reported with its traceback, like any job failure.
+reported with its traceback, like any job failure: `GetErrorTraceback()`
+holds the stack of the attempt's coroutine, from `debug.traceback` or, on the
+Retail client, `debugstack` (see [Error isolation](#error-isolation)).
 
 | Method | Purpose |
 |---|---|
@@ -812,6 +823,11 @@ The facade, Job/Scope/Context prototypes, metatables, ready queues, scopes, acti
 The installed OnUpdate trampoline does not permanently close over one implementation revision. It resolves the current shared dispatch function on every scheduler frame. TimerKit delay callbacks use the same dispatch indirection.
 
 A future compatible SchedulerKit revision can therefore update execution behavior while preserving existing facade, Job, Scope, Context, queue, and addon-scope identity.
+
+Revision 15 changes behaviour only (the `debugstack` traceback source for
+jobs and for `Debounce`, `Coalesce` and `Watch` callback reports);
+package state is unchanged and a revision-14 copy's jobs, coroutines, timers
+and handles carry over as they are.
 
 Revision 14 changes behaviour only (secret-value checks, absence tested by
 type); package state is unchanged and a revision-13 copy's jobs, coroutines,

@@ -40,6 +40,7 @@ MoltenCodes Test: PASS schedulerKit.timers: After(0.25) keeps its job delayed, t
 MoltenCodes Test: PASS schedulerKit.timers: Every(0.1) is fixed-delay on the real C_Timer: each iteration of a job that yields once starts one interval after the previous one finished, never overlapping, and Cancel stops it (gaps logged)
 MoltenCodes Test: PASS schedulerKit.runaway: under the 8 ms default threshold, a 15 ms slice demotes a HIGH job to NORMAL, is reported once through the client's error handler, and the job runs on to completion (slice logged)
 MoltenCodes Test: PASS schedulerKit.runaway: Context:Yield inside pcall cannot cross the client's C-call boundary: the job runs on, completes, and the swallowed yield is reported once (client message logged)
+MoltenCodes Test: PASS schedulerKit.jobErrors: the client's debug library is logged: what debug.traceback and debugstack return for a failed coroutine
 MoltenCodes Test: PASS schedulerKit.jobErrors: a job that raises is failed with its original error object and a traceback naming SchedulerKitSuite.lua at the raising line, is reported once, and does not stop an unrelated job
 MoltenCodes Test: PASS schedulerKit.scopes: CancelAll stops a yielding job between slices and cancels a delayed and a repeating job before the real C_Timer fires, and the scope still runs new work
 MoltenCodes Test: PASS schedulerKit.scopes: Close cancels a delayed job before the real C_Timer fires, answers true then false, and the closed scope refuses Schedule at the calling line
@@ -64,7 +65,7 @@ MoltenCodes Test: PASS schedulerKit.secrets: SetFrameBudget, SetRunawayThreshold
 MoltenCodes Test: PASS schedulerKit.secrets: Debounce leading, Coalesce maxKeys, Watch intervalSeconds and SetLimits maxLanes refuse a secret at the calling line and change no limit
 MoltenCodes Test: PASS schedulerKit.secrets: package-level Schedule priority and name, After delay and a scope's Every interval refuse a secret with the documented message, never positioned inside SchedulerKit, and schedule nothing (positions logged)
 MoltenCodes Test: PASS schedulerKit.secrets: a coalesce handle refuses a secret key at the calling line and delivers a secret value still secret
-MoltenCodes Test: schedulerKit: 34 passed, 0 failed, 2 skipped, 0 timed out (36 tests)
+MoltenCodes Test: schedulerKit: 35 passed, 0 failed, 2 skipped, 0 timed out (37 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -87,7 +88,7 @@ The five `schedulerKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`, which Retail 12.1 has. `secretwrap` only converts the value
 handed to it into a secret and changes no game state. A client without them
 prints these five lines instead, and the totals line reads
-`29 passed, 0 failed, 7 skipped, 0 timed out (36 tests)`:
+`30 passed, 0 failed, 7 skipped, 0 timed out (37 tests)`:
 
 ```text
 MoltenCodes Test: SKIP schedulerKit.secrets: ForAddon, CloseAddonScopes and Lane refuse a secret name at the calling line before comparing it -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -167,7 +168,8 @@ method, so every such message names the same line number.
 | `Every(0.1) is fixed-delay on the real C_Timer ...` | Each iteration of a job that yields once (so it spans two slices) starts one interval after the previous iteration finished, within 21 ms early and two frames plus 20 ms late; the job reads `delayed` between iterations; after `Cancel` no iteration starts within 0.35 s. The log gives the gaps. |
 | `under the 8 ms default threshold, a 15 ms slice demotes ...` | With the threshold set to the 8 ms default for this test only, a HIGH job whose first slice works 15 ms and then yields is demoted to NORMAL, keeps running (its second slice sees NORMAL) and completes; the client's error handler receives exactly one report naming the job, `exceeded the cooperative slice threshold`, and `> 8ms`. The harness's threshold is back afterwards. The log gives the slice on both clocks and the report. |
 | `Context:Yield inside pcall cannot cross ...` | The client's Lua refuses to yield across `pcall` (`attempt to yield across metamethod/C-call boundary`); the job runs on and completes without an error, and the swallowed yield is reported exactly once, naming the job and `never reached the scheduler`. The log gives the client's message and the report. |
-| `a job that raises is failed ...` | A job raising a string fails; `GetError` names this file at the raising line; `GetErrorTraceback` holds a `stack traceback:` whose frames name this file at the raising line. A job raising a table fails with that very table as `GetError`. Each failure reaches the error handler exactly once, as its traceback. A job scheduled after them completes without an error. |
+| `the client's debug library is logged ...` | A diagnostic: a coroutine that raises fails, and the log records whether the client publishes `debug`, `debug.traceback` and `debugstack`, and what each available one returns for the failed coroutine and for the current stack. Measured on Retail 12.1.0 build 69933 on 2026-09-24: there is no `debug` global, and `debugstack(thread)` returns the bare stack (`[C]: in function 'error'`, then `[Interface/AddOns/MoltenCodesTest_SchedulerKit/SchedulerKitSuite.lua]:<line>: in function <...>`), with `debugstack(thread, 1, 12, 12)` the same without the `[C]` line. |
+| `a job that raises is failed ...` | A job raising a string fails; `GetError` names this file at the raising line; `GetErrorTraceback` holds a `stack traceback:` whose frames name this file at the raising line, written `SchedulerKitSuite.lua:<line>:` when SchedulerKit captured it with `debug.traceback` and `SchedulerKitSuite.lua]:<line>:` when it used the client's `debugstack` (the Retail client has no `debug` global). A job raising a table fails with that very table as `GetError`. Each failure reaches the error handler exactly once, as its traceback. A job scheduled after them completes without an error. |
 | `CancelAll stops a yielding job between slices ...` | A job that yields forever, an `After(0.25)` and an `Every(0.25)` job are all cancelled by `CancelAll`: no slice, delayed run or repeat follows within 0.6 s, and a new job in the same scope completes. |
 | `Close cancels a delayed job ...` | `Close` answers `true`, then `false`; the delayed job never runs; `Schedule` on the closed scope is refused with `SchedulerKit.Scope:Schedule cannot schedule work in a closed scope` at the calling line. |
 | `ForAddon with this test addon's name ...` | `ForAddon("MoltenCodesTest_SchedulerKit")` returns the same open scope every time, naming the addon, and a job in it completes. The log says whether LifecycleKit is loaded and lists `schedulerKit` in `CLOSES_ADDON_SCOPES` (it should: that is the route that closes the scope at logout). |
@@ -194,7 +196,7 @@ method, so every such message names the same line number.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` other than the two above on Retail
   12.1, or a totals line other than
-  `34 passed, 0 failed, 2 skipped, 0 timed out (36 tests)`.
+  `35 passed, 0 failed, 2 skipped, 0 timed out (37 tests)`.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -234,10 +236,11 @@ method, so every such message names the same line number.
    It holds the full report, each test's logs (the clock deltas, the
    milliseconds per frame, the service order, the lateness and gaps, the
    runaway slice and its report, the client's yield-boundary message, the
-   job traceback, the logout route, the measured memory deltas, and which
+   job traceback and the debug library probe, the logout route, the measured memory deltas, and which
    argument errors carried a position) and the client facts. Lua shortens a
    long file path from the left, so a logged message may start with `...`; the
-   tests compare only the `SchedulerKitSuite.lua:<line>` part. Send it back
+   tests compare only the `SchedulerKitSuite.lua:<line>` part (or
+   `SchedulerKitSuite.lua]:<line>` in a `debugstack` frame). Send it back
    whatever the result: the per-frame milliseconds, the clock deltas and the
    argument-error positions are the facts the run exists to collect.
 3. The text of any Lua error, with `/console scriptErrors 1` turned on.

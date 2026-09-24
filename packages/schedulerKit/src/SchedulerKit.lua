@@ -44,7 +44,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 14
+local IMPLEMENTATION_REVISION = 15
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMER_API = 1
 local STATE_SCHEMA = 1
@@ -440,8 +440,9 @@ local nativeGetTimePreciseSec = rawget(_G, "GetTimePreciseSec")
 -- selene: allow(global_usage)
 local nativeDebugProfileStop = rawget(_G, "debugprofilestop")
 -- debug.traceback captures a failing job's stack while its coroutine is still
--- inspectable. A host that does not publish the debug library simply reports
--- the bare error value instead.
+-- inspectable. The Retail client publishes no `debug` global, so
+-- `captureTraceback` falls back to the client's `debugstack`, resolved beside
+-- it; a host with neither simply reports the bare error value instead.
 --
 -- The main chunk is close to Lua 5.1's limit of 200 locals, so a value needed
 -- only while another is resolved lives in a `do` block.
@@ -1518,20 +1519,50 @@ end
 ---Capture a failing coroutine's stack while the thread is still inspectable.
 ---Lua 5.1 leaves an errored coroutine's stack in place, so this must run before
 ---the job's thread reference is dropped.
----@param thread thread
----@param value any Original Lua error object.
----@return string|false traceback `false` when the host has no `debug.traceback`.
-local function captureTraceback(thread, value)
-    if nativeTraceback == nil then
-        return false
+---
+---Two sources, tried in order: `debug.traceback(thread, message)`, which
+---standard Lua and Busted publish, and the client's `debugstack(thread)`. The
+---Retail client publishes no `debug` global at all (measured on 12.1.0 build
+---69933, 2026-09-24), so `debugstack` is the only source there. Its result is
+---the bare stack, so the message and a `stack traceback:` header are prefixed
+---to give both sources the same "message, then stack traceback:" shape.
+---@type fun(thread: thread, value: any): string|false
+local captureTraceback
+do
+    -- `debugstack` is resolved once at load, like `debug.traceback`, inside a
+    -- `do` block: the main chunk is close to Lua 5.1's limit of 200 locals and
+    -- only `captureTraceback` itself needs it.
+    -- selene: allow(global_usage)
+    local nativeDebugStack = rawget(_G, "debugstack")
+    if type(nativeDebugStack) ~= "function" then
+        nativeDebugStack = false
     end
-    -- `debug.traceback` returns a non-string message unchanged, so a non-string
-    -- error object is rendered first to keep the report a readable string.
-    local ok, traceback = pcall(nativeTraceback, thread, tostring(value))
-    if not ok or type(traceback) ~= "string" then
-        return false
+
+    ---@param thread thread
+    ---@param value any Original Lua error object.
+    ---@return string|false traceback `false` when the host has neither
+    ---`debug.traceback` nor `debugstack`, or the call failed.
+    captureTraceback = function(thread, value)
+        -- Both sources want a string message: `debug.traceback` returns a
+        -- non-string message unchanged, and `debugstack` takes none, so the
+        -- error object is rendered with `tostring` to keep the report a
+        -- readable string.
+        if type(nativeTraceback) == "function" then
+            local ok, traceback = pcall(nativeTraceback, thread, tostring(value))
+            if not ok or type(traceback) ~= "string" then
+                return false
+            end
+            return traceback
+        end
+        if nativeDebugStack == false then
+            return false
+        end
+        local ok, stack = pcall(nativeDebugStack, thread)
+        if not ok or type(stack) ~= "string" then
+            return false
+        end
+        return tostring(value) .. "\nstack traceback:\n" .. stack
     end
-    return traceback
 end
 
 ---Record a failure on the job without reporting it. The caller decides whether
@@ -2354,17 +2385,46 @@ local function installCoalescingFamily()
         return callWithCount(callback, count, a1, a2, a3, a4, a5, a6, a7, a8)
     end
 
+    -- The client's `debugstack`, read once at load: the Retail client publishes
+    -- no `debug` global, so it is `captureFailure`'s only stack source there, as
+    -- it is `captureTraceback`'s. The installer runs once per load, and its
+    -- locals do not count against the main chunk's limit.
+    -- selene: allow(global_usage)
+    local nativeDebugStack = rawget(_G, "debugstack")
+    if type(nativeDebugStack) ~= "function" then
+        nativeDebugStack = false
+    end
+
+    -- The stack level both sources start from. Inside an `xpcall` handler the
+    -- failing frames are still on the current stack; called through `pcall`,
+    -- level 1 is `pcall` itself and level 2 this handler, so level 3 is the
+    -- first frame of the failure (`[C]: in function 'error'` for a raise).
+    local FAILURE_STACK_LEVEL = 3
+
     ---`xpcall` handler: capture the stack while the failing frame still exists.
+    ---
+    ---`debug.traceback` is used when the host has it, otherwise the client's
+    ---`debugstack`, whose bare stack is prefixed with the rendered message and a
+    ---`stack traceback:` header so both give the same shape as `captureTraceback`.
+    ---With neither, or when the source fails, the original message is returned.
     ---@param message any
     ---@return any report
     local function captureFailure(message)
         if nativeTraceback ~= nil then
-            local ok, traceback = pcall(nativeTraceback, tostring(message), 2)
+            local ok, traceback = pcall(nativeTraceback, tostring(message), FAILURE_STACK_LEVEL)
             if ok and type(traceback) == "string" then
                 return traceback
             end
+            return message
         end
-        return message
+        if nativeDebugStack == false then
+            return message
+        end
+        local ok, stack = pcall(nativeDebugStack, FAILURE_STACK_LEVEL)
+        if not ok or type(stack) ~= "string" then
+            return message
+        end
+        return tostring(message) .. "\nstack traceback:\n" .. stack
     end
 
     ---Run `callback` with `count` arguments, reporting a raise to the host error
@@ -4739,8 +4799,8 @@ local function jobGetError(self)
 end
 
 ---Return the stack captured at the point a callback error was raised, or `nil`
----when the job did not fail through a callback error or the host publishes no
----`debug.traceback`.
+---when the job did not fail through a callback error or the host publishes
+---neither `debug.traceback` nor the client's `debugstack`.
 ---@param self SchedulerKit.Job
 ---@return string? traceback
 local function jobGetErrorTraceback(self)
