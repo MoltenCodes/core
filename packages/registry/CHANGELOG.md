@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.4 — 2026-09-24
+
+- `Registry.lua` is back inside its documented 1000-line budget (1012 lines before). The `api` and `revision` argument checks share one `validatePositiveInteger` helper, which `Bootstrap` now also uses for `request.revision`; `Bootstrap` reads the existing entry once instead of looking it up a second time before retiring the outgoing copy, and no longer re-checks that the implementation is a table after the entry accessor already did. Every error message and stack level is unchanged.
+- Corrected the `docs/API.md` header, which still named revision 9, and the `tests/README.md` row for `Retirement_spec.lua`, which still named the upgrade from revision 8; the spec upgrades from whichever revision precedes the current one.
+- `docs/API.md` lists every argument, state and load-time error message, documents that `resume` may return `0` to inherit nothing, names everything an entry retains under "Limits", names `Bootstrap` among the methods whose argument errors point at the calling line, and states the identifier-bound, `Bootstrap`, retirement and generation-coexistence passages in current form rather than as history.
+- Five specs: `Bootstrap`'s `api` and `revision` errors at the package's `Bootstrap` call (the path the shared helper now serves), a `resume` hook returning a non-revision, a `resume` hook returning `0`, `Find` and `Get` allocating nothing, and a public alias that is not a table.
+- Implementation revision 11. The private state layout is unchanged from revision 10, and the in-place facade upgrade from revision 10 is covered by the existing upgrade specs. `Registry` API generation 2 is unchanged.
+
 ## 0.6.3 — 2026-09-23
 
 - Corrupted package state found through `Registry:Bootstrap` is raised at the package file's `Bootstrap` call, like the same error from `Get`, `GetInfo` and `OnRetire`. `Bootstrap` read the existing copy through `get`, registered through `register` and adopted through `findEntry` one frame deeper, so the error named a line inside `Registry.lua`. `findEntry` now takes the level from its caller, the registration work behind `Register` and `Bootstrap` is `registerEntry`, and every path passes the level that names the caller.

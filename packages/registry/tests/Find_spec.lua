@@ -62,6 +62,27 @@ describe("Registry:Find", function()
         assert.are.equal("retired", reason)
     end)
 
+    it("allocates nothing, hit or miss, and neither does Get", function()
+        Registry:Register("demoKit", 1, 3)
+        Registry:Find("demoKit", 1)
+        Registry:Find("missingKit", 1)
+        Registry:Get("demoKit", 1)
+
+        collectgarbage()
+        collectgarbage("stop")
+        local before = collectgarbage("count")
+        for _ = 1, 200 do
+            Registry:Find("demoKit", 1)
+            Registry:Find("demoKit", 2)
+            Registry:Find("missingKit", 1)
+            Registry:Get("demoKit", 1)
+        end
+        local after = collectgarbage("count")
+        collectgarbage("restart")
+
+        assert.are.equal(before, after)
+    end)
+
     it("raises at the caller for malformed arguments", function()
         local source = debug.getinfo(1, "S").short_src
         local line

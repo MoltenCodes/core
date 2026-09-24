@@ -37,7 +37,7 @@ local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 10
+local IMPLEMENTATION_REVISION = 11
 
 -- Lua 5.1 numbers are doubles, which represent consecutive integers exactly only
 -- up to 2^53. Past that boundary distinct values start comparing equal, so a
@@ -97,25 +97,21 @@ local function validatePackageName(packageName, methodName)
     end
 end
 
----@param api any
+---Refuse an `api` or `revision` argument that is not a bounded positive
+---integer, at the caller of the public method (level 3: this function, the
+---method, its caller).
+---@param value any
 ---@param methodName string
-local function validateApi(api, methodName)
-    if not isPositiveInteger(api) then
+---@param fieldName "api"|"revision"
+local function validatePositiveInteger(value, methodName, fieldName)
+    if not isPositiveInteger(value) then
         error(
             "Registry:"
                 .. methodName
-                .. " api must be a positive integer up to "
+                .. " "
+                .. fieldName
+                .. " must be a positive integer up to "
                 .. MAXIMUM_INTEGER_TEXT,
-            3
-        )
-    end
-end
-
----@param revision any
-local function validateRevision(revision)
-    if not isPositiveInteger(revision) then
-        error(
-            "Registry:Register revision must be a positive integer up to " .. MAXIMUM_INTEGER_TEXT,
             3
         )
     end
@@ -350,8 +346,8 @@ local function register(_, packageName, api, revision, ...)
     end
 
     validatePackageName(packageName, "Register")
-    validateApi(api, "Register")
-    validateRevision(revision)
+    validatePositiveInteger(api, "Register", "api")
+    validatePositiveInteger(revision, "Register", "revision")
 
     -- Not a tail call: a tail call would drop this frame, and the level
     -- `registerEntry` raises at counts it.
@@ -366,7 +362,7 @@ end
 ---@return integer|nil revision
 local function get(_, packageName, api)
     validatePackageName(packageName, "Get")
-    validateApi(api, "Get")
+    validatePositiveInteger(api, "Get", "api")
 
     local entry = findEntry(packageName, api, 4)
     if entry == nil then
@@ -382,7 +378,7 @@ end
 ---@return Registry.PackageInfo|nil
 local function getInfo(_, packageName, api)
     validatePackageName(packageName, "GetInfo")
-    validateApi(api, "GetInfo")
+    validatePositiveInteger(api, "GetInfo", "api")
 
     local entry = findEntry(packageName, api, 4)
     if entry == nil then
@@ -407,7 +403,7 @@ end
 ---@return integer|Registry.FindReason revisionOrReason the revision, or why nothing was found
 local function find(_, packageName, api)
     validatePackageName(packageName, "Find")
-    validateApi(api, "Find")
+    validatePositiveInteger(api, "Find", "api")
 
     local packageEntries = getPackageEntries(packageName, 3)
     if packageEntries == nil or next(packageEntries) == nil then
@@ -486,7 +482,7 @@ end
 ---@param retire fun(implementation: table, incomingRevision: integer): any
 local function onRetire(_, packageName, api, retire)
     validatePackageName(packageName, "OnRetire")
-    validateApi(api, "OnRetire")
+    validatePositiveInteger(api, "OnRetire", "api")
     if type(retire) ~= "function" then
         error("Registry:OnRetire retire must be a function", 2)
     end
@@ -742,13 +738,8 @@ local function bootstrap(_, request)
     local sealFacade = rawget(request, "sealFacade")
 
     validatePackageName(packageName, "Bootstrap")
-    validateApi(api, "Bootstrap")
-    if not isPositiveInteger(revision) then
-        error(
-            "Registry:Bootstrap revision must be a positive integer up to " .. MAXIMUM_INTEGER_TEXT,
-            2
-        )
-    end
+    validatePositiveInteger(api, "Bootstrap", "api")
+    validatePositiveInteger(revision, "Bootstrap", "revision")
     if type(label) ~= "string" or label == "" then
         error("Registry:Bootstrap request.label must be a non-empty string", 2)
     end
@@ -817,14 +808,12 @@ local function bootstrap(_, request)
 
     -- The entry is read directly rather than through `get`, so corruption is
     -- raised at the package file's `Bootstrap` call, not inside Registry.
-    local existing, existingRevision = nil, nil
     local existingEntry = findEntry(packageName, api, 4)
+    local existing, existingRevision = nil, nil
     if existingEntry ~= nil then
         existing = rawget(existingEntry, "implementation")
         existingRevision = rawget(existingEntry, "revision")
-    end
-    if existing ~= nil then
-        if type(existing) ~= "table" or rawget(existing, "API") ~= api then
+        if rawget(existing, "API") ~= api then
             refuse("package state is corrupted or incomplete")
         end
 
@@ -878,9 +867,8 @@ local function bootstrap(_, request)
     -- An older revision is selected: its copy hands over before this one
     -- registers, so the hook still sees the state it owns.
     local handover = nil
-    if existing ~= nil then
-        local outgoingEntry = findEntry(packageName, api, 4) --[[@as table]]
-        handover = retireOutgoing(outgoingEntry, existing, revision, label)
+    if existingEntry ~= nil then
+        handover = retireOutgoing(existingEntry, existing, revision, label)
     end
 
     local implementation, previousRevision = registerEntry(packageName, api, revision, 4)

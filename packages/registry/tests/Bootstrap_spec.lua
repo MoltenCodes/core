@@ -37,15 +37,7 @@ local function completeSurface(implementation, revision)
     return implementation
 end
 
----Assert that `callback` fails with a message containing `expected`.
----@param expected string
----@param callback fun()
-local function expectErrorContaining(expected, callback)
-    local ok, message = pcall(callback)
-
-    assert.is_false(ok)
-    assert.is_not_nil(string.find(tostring(message), expected, 1, true))
-end
+local expectErrorContaining = TestEnv.expectErrorContaining
 
 describe("Registry:Bootstrap", function()
     before_each(TestEnv.Reset)
@@ -235,6 +227,67 @@ describe("Registry:Bootstrap", function()
         end)
 
         assert.is_nil((Registry:Get("demoKit", 1)))
+    end)
+
+    it("raises its api and revision argument errors at the Bootstrap call", function()
+        local Registry = TestEnv.NewRegistry()
+        local source = debug.getinfo(1, "S").short_src
+
+        for _, case in ipairs({
+            {
+                field = "api",
+                message = "Registry:Bootstrap api must be a positive integer up to 2^53",
+            },
+            {
+                field = "revision",
+                message = "Registry:Bootstrap revision must be a positive integer up to 2^53",
+            },
+        }) do
+            local line
+            local ok, message = pcall(function()
+                line = debug.getinfo(1, "l").currentline + 1
+                Registry:Bootstrap(newRequest({ [case.field] = 1e300 }))
+            end)
+
+            assert.is_false(ok)
+            assert.are.equal(source .. ":" .. line .. ": " .. case.message, message)
+        end
+    end)
+
+    it("refuses a resume hook that returns something other than a revision", function()
+        local Registry = TestEnv.NewRegistry()
+        completeSurface(Registry:Register("demoKit", 1, 2), 2)
+        local source = debug.getinfo(1, "S").short_src
+
+        local line
+        local ok, message = pcall(function()
+            line = debug.getinfo(1, "l").currentline + 1
+            Registry:Bootstrap(newRequest({
+                resume = function()
+                    return "again"
+                end,
+            }))
+        end)
+
+        assert.is_false(ok)
+        assert.are.equal(
+            source .. ":" .. line .. ": Registry:Bootstrap request.resume must return a revision",
+            message
+        )
+    end)
+
+    it("lets a resume hook return 0 to inherit nothing", function()
+        local Registry = TestEnv.NewRegistry()
+        local current = completeSurface(Registry:Register("demoKit", 1, 2), 2)
+
+        local implementation, previousRevision = Registry:Bootstrap(newRequest({
+            resume = function()
+                return 0
+            end,
+        }))
+
+        assert.are.equal(current, implementation)
+        assert.are.equal(0, previousRevision)
     end)
 
     it("reports the failure against the package that called it", function()

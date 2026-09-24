@@ -8,7 +8,7 @@ describe("Registry bootstrap", function()
         local Registry = require("Registry")
 
         assert.are.equal(2, Registry.API)
-        assert.are.equal(10, Registry.REVISION)
+        assert.are.equal(11, Registry.REVISION)
     end)
 
     it("publishes the shared facade through the portable WoW global namespace", function()
@@ -82,7 +82,7 @@ describe("Registry bootstrap", function()
         assert.is_not_nil(state)
         assert.are.equal(1, state.schema)
         assert.are.equal(2, state.registryApi)
-        assert.are.equal(10, state.registryRevision)
+        assert.are.equal(11, state.registryRevision)
         assert.are.equal(Registry, state.facade)
     end)
 
@@ -132,17 +132,33 @@ describe("Registry bootstrap", function()
         assert.is_not_nil(string.find(tostring(message), "is not the shared facade", 1, true))
     end)
 
+    it("rejects a public alias that is not a Registry facade at all", function()
+        -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
+        -- selene: allow(global_usage)
+        rawset(_G, TestEnv.NAMESPACE_KEY, {
+            Registry = "not a facade",
+        })
+
+        local ok, message = pcall(require, "Registry")
+
+        assert.is_false(ok)
+        assert.are.equal(
+            "Registry: MoltenCodes.Registry is owned by an incompatible value",
+            message
+        )
+    end)
+
     it("rejects a corrupted compatible facade instead of returning it", function()
         -- Registry's bootstrap handshake happens through the global table, so this spec sets it up there directly.
         -- selene: allow(global_usage)
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
-            registryRevision = 10,
+            registryRevision = 11,
             entries = {},
             facade = {
                 API = 2,
-                REVISION = 10,
+                REVISION = 11,
             },
         })
 
@@ -177,7 +193,7 @@ describe("Registry bootstrap", function()
         local Registry = require("Registry")
 
         assert.are.equal(oldFacade, Registry)
-        assert.are.equal(10, Registry.REVISION)
+        assert.are.equal(11, Registry.REVISION)
         assert.are_not.equal(oldRegister, Registry.Register)
         assert.are.equal(Registry, TestEnv.GetNamespace().Registry)
     end)
@@ -189,7 +205,7 @@ describe("Registry bootstrap", function()
         local bootstrapPackage = function() end
         local futureFacade = {
             API = 2,
-            REVISION = 11,
+            REVISION = 12,
             Register = register,
             Get = get,
             GetInfo = getInfo,
@@ -204,7 +220,7 @@ describe("Registry bootstrap", function()
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
-            registryRevision = 11,
+            registryRevision = 12,
             entries = {},
             facade = futureFacade,
         })
@@ -213,7 +229,7 @@ describe("Registry bootstrap", function()
 
         assert.are.equal(futureFacade, Registry)
         assert.are.equal(register, Registry.Register)
-        assert.are.equal(11, Registry.REVISION)
+        assert.are.equal(12, Registry.REVISION)
         assert.are.equal(Registry, TestEnv.GetNamespace().Registry)
     end)
 
@@ -243,7 +259,7 @@ describe("Registry bootstrap", function()
         local facade = setmetatable({}, {
             __index = {
                 API = 2,
-                REVISION = 10,
+                REVISION = 11,
                 Register = function() end,
                 Get = function() end,
                 GetInfo = function() end,
@@ -255,7 +271,7 @@ describe("Registry bootstrap", function()
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
-            registryRevision = 10,
+            registryRevision = 11,
             entries = {},
             facade = facade,
         })
@@ -292,7 +308,7 @@ describe("Registry bootstrap", function()
         local Registry = require("Registry")
 
         assert.are.equal(oldFacade, Registry)
-        assert.are.equal(10, rawget(Registry, "REVISION"))
+        assert.are.equal(11, rawget(Registry, "REVISION"))
         assert.are.equal(0, writes)
         assert.are.equal(Registry, TestEnv.GetNamespace().Registry)
     end)

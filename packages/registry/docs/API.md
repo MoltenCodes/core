@@ -1,7 +1,7 @@
 # Registry API
 
 Registry API generation: **2**  
-Implementation revision: **9**
+Implementation revision: **11**
 
 Registry is a zero-dependency runtime resolver for independently embedded framework packages.
 
@@ -79,8 +79,8 @@ API generations and revisions are positive integers no greater than `2^53`.
 That upper bound is not cosmetic. Lua 5.1 numbers are doubles, which represent
 consecutive integers exactly only up to `2^53`; past that boundary distinct
 values start comparing equal. Without the bound, `Register("someKit", 1, 1e300)`
-passed the "positive integer" test and became a revision no future embedded copy
-could ever beat. Values above the bound, non-integers, `nan` and both infinities
+would pass a plain "positive integer" test and become a revision no future
+embedded copy could ever beat. Values above the bound, non-integers, `nan` and both infinities
 are rejected.
 
 Repository package manifests additionally require public framework packages to end in `Kit`; Registry itself validates identifier syntax rather than repository naming policy.
@@ -225,8 +225,8 @@ is not a function. See [Retirement and migration](#retirement-and-migration).
 
 ## `Registry:Bootstrap(request)`
 
-Performs the reconciliation every embedded package used to repeat by hand, and
-returns what the package needs in order to finish.
+Performs the reconciliation every embedded package would otherwise repeat by
+hand, and returns what the package needs in order to finish.
 
 ```lua
 local SignalKit, previousRevision, selected = Registry:Bootstrap({
@@ -309,7 +309,10 @@ through. For those, "Registry already accepted this revision" does not imply
 `resume` runs only in case 3, receives the selected copy and whether it looks
 complete, and returns either `nil` to accept the copy as it is, or the revision
 to inherit so the package re-runs its own setup against the existing shared
-table. It may also raise on state it judges unrepairable.
+table. `0` is accepted and means "inherit nothing". Any other return value
+raises `Registry:Bootstrap request.resume must return a revision` at the
+package's `Bootstrap` call. The hook may also raise on state it judges
+unrepairable.
 
 ### Reading Registry forward-compatibly
 
@@ -336,8 +339,9 @@ bootstrap has to run before any facade method exists. It stays hand-written.
 
 ## Retirement and migration
 
-Revision 7 turns "the incoming copy guesses from `previousRevision`" into a
-two-sided contract.
+Retirement is a two-sided contract (revision 7 and later): the outgoing copy
+says what it hands over, and the incoming copy says how to convert it, instead
+of guessing from `previousRevision` alone.
 
 **The outgoing side.** A copy that registered a `retire` hook — through
 `request.retire` or `Registry:OnRetire` — is asked to retire exactly once, when
@@ -427,7 +431,8 @@ Registry API generation. No `Unseal` method exists, by design.
 
 Registry has no limits and no `UNBOUNDED` sentinel. What it retains is one
 entry per package and API generation that some embedded file registers, plus
-that entry's retirement hook. It grows only when a file registers a package
+that entry's retire hook, its seal metatable when the package asked for one,
+and, only while a migration run is unfinished, the state that run has reached. It grows only when a file registers a package
 it ships, once at load, so its size follows what the session's addons embed
 rather than anything they do at runtime. The only bound it enforces is on
 identifiers: an API generation or revision above `2^53` is refused because Lua
@@ -482,7 +487,6 @@ Private state that must survive upgrades should also be designed for in-place mi
 
 Registry cannot roll back arbitrary mutations made by package initialization. If initialization raises an error after registration is accepted, the shared table can remain partially updated at the accepted revision. Package authors should therefore keep initialization deterministic, validate failure-prone inputs before mutating the shared table, and perform explicit migration carefully when upgrading existing state.
 
-
 ## Registry API-generation coexistence
 
 Registry is the bootstrap layer itself, so all embedded Registry copies that
@@ -523,9 +527,7 @@ files load in, the newest generation owns the alias and both generations remain
 reachable by number.
 
 Loading a second generation therefore never aborts the load of the addon that
-embedded the other one. That was the previous behaviour — a fatal
-`MoltenCodes.Registry API generation conflict` at file scope — and it took down
-an unrelated addon for no reason the user could act on.
+embedded the other one.
 
 ### Migration story
 
@@ -560,17 +562,45 @@ both by number.
 
 Registry raises two kinds of error, and the stack level differs on purpose.
 
-**Argument errors** from `Register()`, `Get()`, `GetInfo()`, `Find()` and
-`OnRetire()`, and corrupted package state discovered while serving one of those
-calls or `Packages()`, point at the calling line. A package author sees their own `Registry:Register(...)` call, not a line
-inside `Registry.lua`. Failures `Bootstrap` raises on a package's behalf — a
+**Argument errors** from `Register()`, `Get()`, `GetInfo()`, `Find()`,
+`OnRetire()` and `Bootstrap()`, and corrupted package state discovered while
+serving one of those calls or `Packages()`, point at the calling line. A package
+author sees their own `Registry:Register(...)` call, not a line inside
+`Registry.lua`. Failures `Bootstrap` raises on a package's behalf — a
 refused state, a failed migration step, a seal that cannot be applied — carry
 the package's `label` and point at the package's `Bootstrap` call. Corrupted
 package state that `Bootstrap` finds, in its own lookup, while registering or
 while adopting the state a hook handed over, raises the same
 `Registry: package state is corrupted` error and also points at the package's
-`Bootstrap` call (revision 10 and later; earlier revisions named a line inside
-`Registry.lua`).
+`Bootstrap` call (revision 10 and later).
+
+The argument and state messages, with `<Method>` the public method's name and
+`<label>` the request's label:
+
+```text
+Registry:<Method> packageName must be a non-empty string
+Registry:<Method> packageName must match ^[a-z][A-Za-z0-9]*$
+Registry:<Method> api must be a positive integer up to 2^53
+Registry:Register revision must be a positive integer up to 2^53
+Registry:Register does not accept an implementation argument; initialize the returned shared package table instead
+Registry:OnRetire retire must be a function
+Registry:OnRetire package "<packageName>" is not registered
+Registry:Bootstrap request must be a table
+Registry:Bootstrap revision must be a positive integer up to 2^53
+Registry:Bootstrap request.label must be a non-empty string
+Registry:Bootstrap request.validatePublicSurface must be a function
+Registry:Bootstrap request.<field> must be a <function|table|boolean>
+Registry:Bootstrap request.resume must return a revision
+Registry: package state is corrupted
+<label> package state is corrupted or incomplete
+<label> request.migrations must map positive revisions to functions
+<label> migration to revision <n> failed: <error>
+<label> cannot seal a facade that already carries a metatable
+<label> Registry state changed unexpectedly during bootstrap
+```
+
+A retire hook that raises is not an error at any call site: it is reported as
+`<label> retire hook failed: <error>` through the host error handler.
 
 **Load-time failures** — incompatible or corrupted bootstrap state, a corrupted
 facade, a hostile owner of `MoltenCodes` or `MoltenCodes.Registries` — raise with
@@ -579,9 +609,14 @@ prefix instead:
 
 ```text
 Registry: bootstrap state is incompatible
+Registry: bootstrap state is corrupted
 Registry: API generation is incompatible
 Registry: facade is corrupted or incompatible
 Registry: MoltenCodes global namespace is owned by an incompatible value
+Registry: MoltenCodes.Registries is owned by an incompatible value
+Registry: MoltenCodes.Registries[2] is not this facade
+Registry: MoltenCodes.Registry is owned by an incompatible value
+Registry: MoltenCodes.Registry claims API 2 but is not the shared facade
 ```
 
 These run at file scope, where the only "caller" is whichever addon TOC happened
