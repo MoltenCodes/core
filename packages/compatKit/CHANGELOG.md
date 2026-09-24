@@ -1,0 +1,13 @@
+# Changelog
+
+## 0.1.0 — 2026-09-24
+
+- Added CompatKit API generation 1, implementation revision 1: shims, provider registries and the catalogue of taint-hostile subsystems.
+- `Shim(name, version, implementation, options?)` records a named, integer-versioned shim; before `Apply` the highest version registered wins across embedded copies, after `Apply` a higher version is recorded but not run. Returns `true` with `"pending"`, `"replaced"` or `"recorded"`, or `false` with `"ignored"` (equal or lower version) or `"full"` (the `maxShims` limit). Options: `description`, `flavours` (ClientKit flavour ids the shim applies to), `covers` (documented API names checked against ApiKit's installed surface at apply time).
+- `SkipShim(name)` marks a shim never to run, before or after its registration, dropping a pending implementation; a skipped shim still lists. Returns `true`, or `false, "full"` for a name without a shim when the shims plus the skips waiting for theirs reach `maxShims`.
+- `Apply()` runs every pending shim that is not skipped and that applies to the client, in name order, each under `pcall`; a failing shim is reported through the host error handler (itself called under `pcall`, with `print` as the fallback), recorded as `failed`, and does not stop the others. Returns the applied, skipped and failed counts of that call; a second call runs only shims registered since. Every shim receives a read-only context `{ flavour, hasApi, hasGlobal }`.
+- `GetShims()` returns fresh, name-sorted records `{ name, version, applied, skipped, failed, status, description, flavours, covers, missing }`.
+- `Providers(kind)` returns one registry per kind with `Register(name, implementation, probe?, priority?)` (`true`, or `false` with `"exists"` or `"full"`), `Unregister(name)`, `Resolve(preferred?)` (`implementation, name` or `nil, "none"`: a live preferred provider, else the memoised answer re-validated by its probe, else the highest-priority live provider with ties broken by name; allocation-free) and `List()`.
+- `SetLimits{ maxShims, maxProviders, maxProviderKinds }` (defaults 64, 32, 32; each accepts `CompatKit.UNBOUNDED`; `maxShims` counts skips waiting for their shim) and `GetLimits()`.
+- `CATALOGUE` and `CATALOGUE_COUNT`: the read-only catalogue of taint-hostile subsystems, mirrored from `docs/EMBEDDING.md`, each row with `subsystem`, `reason`, `replacement`, `replacementApi`, `flavours` and `flavourCount`.
+- Argument errors name the method and parameter and point at the caller's line; a secret name, version, priority, implementation, option or limit is refused before it is compared or formatted.

@@ -41,6 +41,7 @@ REGEN
 Skurri
 spellbook
 tocname
+UIDROPDOWNMENU
 Wago
 WOWGUID
 WOWI
@@ -85,6 +86,7 @@ stylua
 entrancy
 indegree
 introspectable
+memoises
 resetless
 serialiser
 unregistration
