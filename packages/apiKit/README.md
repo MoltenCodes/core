@@ -12,8 +12,8 @@ local api = wow.retail.api          -- or MoltenCodes.wow.retail.api, always the
 local elapsed = api.profiler.measureCall(myFunction)   -- C_AddOnProfiler.MeasureCall
 api.timer.after(1, callback)                            -- C_Timer.After
 local name = api.unit.name("player")                    -- UnitName
-api.events.playerLogin                                  -- "PLAYER_LOGIN"
-api.enums.phaseReason.Sharding                          -- Enum.PhaseReason.Sharding
+local event = api.events.playerLogin                    -- "PLAYER_LOGIN"
+local reason = api.enums.phaseReason.Sharding           -- Enum.PhaseReason.Sharding
 ```
 
 Every entry is the Blizzard function itself, reached through one more table

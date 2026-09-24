@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — 2026-09-24
+
+- Documentation only: no runtime change, implementation revision 1 is unchanged. `docs/API.md` says the namespace root is written into `MoltenCodes` when the facade first loads (it said "at the first registration", but the facade publishes it before any flavour file registers), and the load-cost table counts what the installed Retail surface retains as 312 tables, one per bound namespace, with `api.profiler` reusing its namespace's table (it said 313 tables, "one per namespace, one per alias"). The README's opening example assigns the event and enumeration it reads, so it compiles.
+
 ## 0.1.0 — 2026-09-24
 
 - Initial facade of the flavour-aware wrapper over the World of Warcraft API

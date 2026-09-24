@@ -87,8 +87,8 @@ its own for a flavour whose generated file it chose not to embed.
 
 ## `MoltenCodes.wow`
 
-The namespace root is written into the framework's `MoltenCodes` table at the
-first registration. A value already there that is not ApiKit's root is
+The namespace root is written into the framework's `MoltenCodes` table when
+the facade first loads, before any flavour file registers. A value already there that is not ApiKit's root is
 corruption of the framework's own namespace, and the load stops with
 `MoltenCodes ApiKit found MoltenCodes.wow owned by something else`; the short
 `wow` global, which another addon may legitimately own, is never overwritten
@@ -142,7 +142,7 @@ order of magnitude, not a promise. The other documents quote this table.
 |---|---|
 | Parsing the flavour file | about 3 ms |
 | Running the installer (312 namespaces, 4,900 bindings) | under 0.5 ms |
-| Retained by the installed surface | 313 tables (one per namespace, one per alias) holding 4,900 function references, plus the event, enum and constants tables |
+| Retained by the installed surface | 312 tables (one per bound namespace; an alias such as `api.profiler` reuses its namespace's table) holding 4,900 function references, plus the event, enumeration and constants tables |
 | A flavour file on a client of another flavour | its parse and one registration call; the installer is dropped |
 
 The Retail tables document 6,338 functions; 4,900 of them are bound. The other
