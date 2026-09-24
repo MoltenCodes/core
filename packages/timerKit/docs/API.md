@@ -298,6 +298,7 @@ Revision 5 and older required LifecycleKit and subscribed each addon scope to it
 ## Package-level convenience timers
 
 ```lua
+TimerKit:New({ delay = 1, callback = callback })
 TimerKit:After(1, callback)
 TimerKit:Every(5, callback)
 ```
@@ -305,6 +306,61 @@ TimerKit:Every(5, callback)
 These methods use an internal manual scope. They are intentionally **not addon-owned**, because TimerKit cannot infer ownership from arbitrary callers. Framework and addon code that requires deterministic shutdown cleanup should prefer `ForAddon` (closed through `CloseAddonScopes`) or an explicitly managed scope.
 
 If the internal convenience scope is explicitly reached through `timer:GetScope()` and closed, the next package-level timer operation creates a fresh internal scope rather than permanently disabling the facade.
+
+## Errors
+
+`<method>` below is the public name of the method called, such as
+`TimerKit:After`, `TimerKit.Scope:New` or `TimerKit.Timer:Restart`. Every
+message in the first table is raised at the caller's line (see
+[Argument errors point at the caller](#argument-errors-point-at-the-caller)).
+
+| Message | Raised by |
+|---|---|
+| `<method> must be called on a TimerKit timer` | a timer method called on anything but a TimerKit timer |
+| `<method> must be called on a TimerKit scope` | a scope method called on anything but a TimerKit scope |
+| `<method> callback must be a function` | `After`, `Every`, and `New` without a function `callback` |
+| `<method> delay must be a finite number` | a delay or interval that is not a number, or is NaN or infinite |
+| `<method> delay must be zero or greater` | a negative one-shot delay |
+| `<method> delay must be greater than zero for repeating timers` | a repeating interval of zero or less |
+| `<method> options must be a table` | `New` without an option table |
+| `<method> options contains unknown field "<name>"` | `New` with a field other than `delay`, `callback` and `repeating`; the alphabetically first one is named |
+| `<method> repeating must be a boolean` | `New` with a non-boolean `repeating` |
+| `<method> cannot create a timer in a closed scope` | `New`, `After` and `Every` on a closed scope |
+| `<method> cannot start a timer in a closed scope` | `Timer:Start()` when the timer's scope is closed |
+| `<method> cannot restart a timer in a closed scope` | `Timer:Restart()` when the timer's scope is closed |
+| `TimerKit:ForAddon addonName must be a non-empty string` | `ForAddon` |
+| `TimerKit:CloseAddonScopes addonName must be a non-empty string` | `CloseAddonScopes` |
+| `TimerKit:CloseAddonScopes must be called on the TimerKit facade; use TimerKit:CloseAddonScopes(addonName)` | `CloseAddonScopes` with another receiver |
+| `MoltenCodes TimerKit host returned an invalid native timer handle` | a start whose `C_Timer` constructor returned something without a `Cancel` method; the start is rolled back |
+
+Host and internal failures carry no added position:
+
+| Message | Raised by |
+|---|---|
+| the host's own error object, unchanged | a start whose `C_Timer` constructor raised (the start is rolled back), and the first native `Cancel` failure of `Cancel()`, `Restart()`, `CancelAll()`, `Close()` and `CloseAddonScopes` |
+| `MoltenCodes TimerKit native timer handle is invalid` | a cancellation whose stored host handle lost its `Cancel` method after the start checked it |
+| `MoltenCodes TimerKit runtime dispatch is corrupted` | a native callback that finds the shared dispatch table damaged |
+
+Loading raises `MoltenCodes TimerKit requires Registry API 2 to be loaded
+first`, `MoltenCodes TimerKit requires a valid Registry API 2 facade`,
+`MoltenCodes TimerKit requires C_Timer.NewTimer and C_Timer.NewTicker`, or
+`MoltenCodes TimerKit package state is corrupted or incomplete`.
+
+## Cost
+
+- Every getter, `SetUserData`, `IsPending`, `IsCancelled` and
+  `GetActiveCount` is a receiver check and a field read; none allocates.
+- `New`, `After` and `Every` allocate the timer handle. Every start
+  (`Start`, `Restart`, `After`, `Every`) allocates one callback closure and
+  whatever the host allocates for its native handle, and reads
+  `GetTimePreciseSec` once when the client has it.
+- `Cancel()` allocates nothing beyond what the host's `Cancel` does.
+- A delivered repeating tick allocates nothing and reads the clock once; a
+  delivered one-shot allocates nothing.
+- `CancelAll()`, `Close()` and `CloseAddonScopes` allocate one snapshot array
+  of the scope's running timers and sort it by creation, O(n log n) in them.
+- `ForAddon` is one table lookup once the addon's logout route is decided; see
+  [At logout](#at-logout) for what deciding it costs.
 
 ## Limits
 
@@ -319,7 +375,7 @@ grows only with the consumer's calls:
 - the logout routing holds at most one LifecycleKit subscription per addon
   scope (released when the scope closes) and one EventKit connection for the
   package;
-- the internal convenience scope behind `TimerKit:After` / `Every` is one scope,
+- the internal convenience scope behind `TimerKit:New` / `After` / `Every` is one scope,
   replaced only when it is closed.
 
 The host bounds the number of native timers, not TimerKit.

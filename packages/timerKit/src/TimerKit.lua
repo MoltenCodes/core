@@ -22,7 +22,8 @@
 --                           LifecycleKit and EventKit (optional)
 --   Validation ............ public-surface and shared-state validation
 --   Bootstrap ............. Registry registration and inherited state
---   In-place upgrade ...... revision-5 shutdown subscriptions released
+--   In-place upgrade ...... revision-5 shutdown subscriptions released,
+--                           revision-7 logout fields added
 --   Generic helpers ....... error capture and argument validation
 --   Timer internals ....... start, cancel, fire, restart, deadlines
 --   Scope internals ....... active-set bookkeeping, bulk cancel, close
@@ -35,7 +36,7 @@
 
 local PACKAGE_NAME = "timerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -502,7 +503,18 @@ local function deadlineAfter(delay)
     return nativeGetTimePreciseSec() + delay
 end
 
+---Read the `Cancel` field of a host handle. Kept at file level so the
+---protected read in `getNativeCancel` allocates no closure per start or cancel.
+---@param native table|userdata
+---@return any cancel
+local function readNativeCancel(native)
+    return native.Cancel
+end
+
 ---Return the host handle's `Cancel` method, or `nil` when it has none.
+---
+---The read is protected because indexing a userdata the host does not expect
+---to be indexed raises rather than returning `nil`.
 ---@param native any handle returned by `C_Timer.NewTimer`/`NewTicker`
 ---@return fun(native: any)|nil
 local function getNativeCancel(native)
@@ -511,9 +523,7 @@ local function getNativeCancel(native)
         return nil
     end
 
-    local ok, cancel = pcall(function()
-        return native.Cancel
-    end)
+    local ok, cancel = pcall(readNativeCancel, native)
     if not ok or type(cancel) ~= "function" then
         return nil
     end
@@ -763,6 +773,15 @@ end
 
 -- Scope internals -----------------------------------------------------------
 
+---Order two timers by creation. File-level, so a bulk cancel allocates only
+---its snapshot.
+---@param left TimerKit.Timer
+---@param right TimerKit.Timer
+---@return boolean
+local function createdBefore(left, right)
+    return rawget(left, "_id") < rawget(right, "_id")
+end
+
 ---Return every running timer of `scope`, ordered by creation, as a snapshot.
 ---@param scope TimerKit.Scope
 ---@return TimerKit.Timer[]
@@ -772,9 +791,7 @@ local function snapshotActive(scope)
     for timer in pairs(active) do
         timers[#timers + 1] = timer
     end
-    table.sort(timers, function(left, right)
-        return rawget(left, "_id") < rawget(right, "_id")
-    end)
+    table.sort(timers, createdBefore)
     return timers
 end
 

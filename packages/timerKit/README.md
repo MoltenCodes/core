@@ -21,7 +21,7 @@ end)
 
 TimerKit adds a logical timer state machine, restart/cancel generation guards, deterministic scope cleanup, and per-addon ownership without exposing native FunctionContainer details to consumers.
 
-Use `TimerKit:CreateScope()` for manually owned groups and `TimerKit:ForAddon(addonName)` for the addon's canonical scope. `TimerKit:CloseAddonScopes(addonName)` closes the addon scope and cancels every timer in it. An addon scope closes at logout whenever LifecycleKit or EventKit is loaded, and otherwise by your own call: TimerKit finds either through `Registry:Find` without depending on it (see "At logout" in [`docs/API.md`](docs/API.md)). Package-level `TimerKit:After` / `Every` are convenience methods backed by an internal manual scope and are therefore not tied to an addon.
+Use `TimerKit:CreateScope()` for manually owned groups and `TimerKit:ForAddon(addonName)` for the addon's canonical scope. `TimerKit:CloseAddonScopes(addonName)` closes the addon scope and cancels every timer in it. An addon scope closes at logout whenever LifecycleKit or EventKit is loaded, and otherwise by your own call: TimerKit finds either through `Registry:Find` without depending on it (see "At logout" in [`docs/API.md`](docs/API.md)). Package-level `TimerKit:New` / `After` / `Every` are convenience methods backed by an internal manual scope and are therefore not tied to an addon.
 
 A caller that needs to carry its own bookkeeping on a timer attaches it through `timer:SetUserData(value)` and reads it back with `timer:GetUserData()`. One opaque value per timer, stored by reference, never read or cleared by TimerKit. This is the supported alternative to writing private fields onto a timer handle.
 

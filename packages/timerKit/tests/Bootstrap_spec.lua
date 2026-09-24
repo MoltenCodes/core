@@ -74,7 +74,7 @@ describe("TimerKit bootstrap", function()
 
         local upgraded = require("TimerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(7, upgraded.REVISION)
+        assert.are.equal(8, upgraded.REVISION)
         assert.are.equal(timerPrototype, upgraded.Timer)
 
         -- A timer object created by revision 1 gains the revision-2 user-data
@@ -162,7 +162,7 @@ describe("TimerKit bootstrap", function()
         local upgraded = require("TimerKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(7, upgraded.REVISION)
+        assert.are.equal(8, upgraded.REVISION)
         assert.are.equal(1, disconnects)
         assert.is_nil(rawget(carried, "_shutdownSubscription"))
         assert.is_nil(rawget(failing, "_shutdownSubscription"))
@@ -182,6 +182,39 @@ describe("TimerKit bootstrap", function()
         -- A revision-5 wrapper that could not be disconnected still resolves
         -- `closeScope` through dispatch; closing again is a no-op.
         assert.is_false(upgraded._state.dispatch.closeScope(carried))
+    end)
+
+    it("upgrades a revision-7 copy with its timers, scopes and logout route", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        TestEnv.LoadEventKit()
+        local old = TestEnv.LoadRevision(7)
+        local timers = old:ForAddon("MyAddon")
+        local fired = 0
+        local ticker = timers:Every(1, function()
+            fired = fired + 1
+        end)
+        local oneShot = timers:After(5, function() end)
+        local connection = rawget(old, "_state").logoutConnection
+
+        local upgraded = require("TimerKit")
+
+        assert.are.equal(old, upgraded)
+        assert.are.equal(8, upgraded.REVISION)
+        assert.are.equal(timers, upgraded:ForAddon("MyAddon"))
+        assert.are.equal("playerLogout", rawget(timers, "_logoutRoute"))
+        assert.are.equal(connection, rawget(upgraded, "_state").logoutConnection)
+
+        -- A handle revision 7 started still fires and cancels under revision 8.
+        TestEnv.FireNative(1)
+        assert.are.equal(1, fired)
+        assert.is_true(oneShot:Cancel())
+        assert.are.equal(1, timers:GetActiveCount())
+
+        TestEnv.Logout()
+        assert.is_true(timers:IsClosed())
+        assert.is_true(ticker:IsCancelled())
     end)
 
     it("reports no remaining time for a timer an older revision started", function()

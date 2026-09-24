@@ -288,7 +288,7 @@ describe("TimerKit logout routes across an upgrade", function()
         local upgraded = require("TimerKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(7, upgraded.REVISION)
+        assert.are.equal(8, upgraded.REVISION)
         assert.are.equal("playerLogout", rawget(timers, "_logoutRoute"))
         TestEnv.Logout()
         assert.is_true(timers:IsClosed())

@@ -16,6 +16,7 @@ The TimerKit suite covers:
 - remaining time and deadlines (`GetRemaining`/`GetDeadline`) in every timer
   state, for repeating, restarted, overdue and rolled-back timers, for timers an
   older revision started, and on a host without `GetTimePreciseSec`;
+- no allocation on a repeating tick or a cancellation;
 - duplicate embedded loading, in-place revision upgrade, and Registry publication;
 - manifest/runtime API and revision consistency.
 
@@ -33,6 +34,7 @@ Spec files:
 | `ErrorLevels_spec.lua` | every argument failure at the caller's line |
 | `UserData_spec.lua` | opaque per-timer user data |
 | `Remaining_spec.lua` | `GetRemaining`/`GetDeadline` in every state, restarts, late hosts, rolled-back starts |
+| `Allocation_spec.lua` | a repeating tick and a cancellation allocate nothing |
 | `Property_spec.lua` | deterministic mixed operations keep the scope active count consistent |
-| `Bootstrap_spec.lua` | duplicate loading, Registry publication, loading with Registry alone, the revision-1 and revision-5 upgrades, older revisions' deadlines, no `GetTimePreciseSec` |
+| `Bootstrap_spec.lua` | duplicate loading, Registry publication, loading with Registry alone, the revision-1, revision-5 and revision-7 upgrades, older revisions' deadlines, no `GetTimePreciseSec` |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |

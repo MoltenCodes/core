@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.1 — 2026-09-24
+
+- Cancelling a running timer and starting one no longer allocate a closure to read the host handle's `Cancel` method: the protected read calls a file-level function. 2000 cancellations allocated about 170 KiB before and allocate nothing now; `CancelAll()` and `Close()` also stop allocating a sort comparator per call.
+- Implementation revision 8. No state changed: an in-place upgrade from revision 7 keeps its timers, their host handles, the addon scopes and their logout routes, and the upgrade from older revisions is unchanged.
+- `docs/API.md` gains "Errors", listing every message TimerKit raises and where it points, and "Cost", what each operation allocates. The README names `TimerKit:New` beside the other package-level convenience methods.
+- Specs: new `Allocation_spec.lua` (a repeating tick and a cancellation allocate nothing); `Bootstrap_spec.lua` covers the revision-7 upgrade with running timers and a `PLAYER_LOGOUT` route. The test environment gains `AllocatedKilobytes`.
+- `Property_spec.lua` draws its random operations from the high bits of an exact Park-Miller generator. The previous power-of-two-modulus generator overflowed double precision and its low bits, which picked the operation, cycled within a few steps.
+- `TimerKit` API generation 1 is unchanged.
+
 ## 0.6.0 — 2026-09-23
 
 - An addon scope now closes at logout whenever LifecycleKit or EventKit is loaded, whatever revisions are paired; 0.5.0 left it open when paired with a LifecycleKit older than 0.5.0 or loaded without LifecycleKit. The first `TimerKit:ForAddon(addonName)` decides who calls `CloseAddonScopes`, finding the optional Kits through `Registry:Find`: a LifecycleKit that lists `"timerKit"` in `CLOSES_ADDON_SCOPES` (LifecycleKit 0.6.0) makes the call itself; the Kit subscribes nothing and only calls `LifecycleKit:ForAddon(addonName)` once, so an addon that never used LifecycleKit is still closed, and nothing else is subscribed; an older LifecycleKit gets one `OnShutdown` subscription per addon, kept on the scope and disconnected when the scope closes, and it steps aside if a capable LifecycleKit replaced it before logout; without LifecycleKit, one package-level EventKit `PLAYER_LOGOUT` one-shot, in an EventKit scope of TimerKit's own, closes every addon scope neither LifecycleKit route covers; with neither, nothing is subscribed and the addon makes the call. The last outcome is examined again at the next `ForAddon`. Documented under "At logout" in `docs/API.md`, including the ordering each case gives.
