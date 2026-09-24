@@ -32,6 +32,12 @@
       "problemMatcher": []
     },
     {
+      "label": "Check generated apiKit outputs",
+      "type": "shell",
+      "command": "python3 -m tooling.api.generate --all --check",
+      "problemMatcher": []
+    },
+    {
       "label": "Lint Lua (runtime and tests)",
       "type": "shell",
       "command": "python3 -m tooling.lint",

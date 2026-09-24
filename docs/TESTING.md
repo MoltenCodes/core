@@ -261,7 +261,18 @@ judged against the `busted.yml` standard library selected by
 
 CI validates formatting, Lua linting for runtime and test code, the
 lua-language-server check for every source directory, repository structure,
-repository-tooling unit tests on the supported Python floor and the current
-release, and the Lua package and example test suites.
+that the generated `apiKit` outputs match their committed metadata
+(`python3 -m tooling.api.generate --all --check`), repository-tooling unit
+tests on the supported Python floor and the current release, and the Lua
+package and example test suites.
+
+The generated data of `apiKit` has tests of its own in the tooling suite:
+for every committed flavour a stub host is built from the metadata and the
+committed runtime file must bind every documented function and nothing else
+(`tooling/tests/test_api_committed_flavours.py`), the generators' and the
+diff's corpus tests run against the committed Retail metadata, and a Busted
+spec per flavour loads the file against the real facade. Two environment
+variables point those tests at other data; see
+[`TOOLING.md`](TOOLING.md#api-metadata-tooling).
 
 As dependency graphs become larger, orchestration may optimize toward affected-package testing, but the full-suite command remains the correctness baseline.

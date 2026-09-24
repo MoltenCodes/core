@@ -188,6 +188,18 @@ describe: a package's file with the manifests, and `examples/.luarc.json` with
 `examples/embeds.xml`, so the example is only ever type-checked against the
 packages it actually embeds. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
+Check that the generated `apiKit` outputs (runtime bindings, types, history)
+match the committed metadata, as CI does:
+
+```bash
+python3 -m tooling.api.generate --all --check
+```
+
+The metadata pipeline itself (capturing the client's documentation tables,
+normalising, diffing and generating) is described in
+[`TOOLING.md`](TOOLING.md#api-metadata-tooling); the refresh procedure for a
+new client build is `packages/apiKit/docs/UPDATING.md`.
+
 Check the workflow file after editing it:
 
 ```bash

@@ -13,6 +13,12 @@
         used by this example and can be removed from a copy of it.
     -->
     <Script file="Libs\MoltenCodes\registry\Registry.lua" />
+    <Script file="Libs\MoltenCodes\apiKit\ApiKit.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\apiKit\flavours\Beta.lua" /> <!-- optional here; an addon embeds only the flavours it supports -->
+    <Script file="Libs\MoltenCodes\apiKit\flavours\ClassicEra.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\apiKit\flavours\ClassicMop.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\apiKit\flavours\Ptr.lua" /> <!-- optional here -->
+    <Script file="Libs\MoltenCodes\apiKit\flavours\Retail.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\cacheKit\CacheKit.lua" /> <!-- optional here -->
     <Script file="Libs\MoltenCodes\clientKit\ClientKit.lua" />
     <Script file="Libs\MoltenCodes\poolKit\PoolKit.lua" /> <!-- WidgetKit needs it -->

@@ -6,6 +6,7 @@
     "library": [
       "../meta",
       "../packages/registry/src",
+      "../packages/apiKit/src",
       "../packages/cacheKit/src",
       "../packages/clientKit/src",
       "../packages/poolKit/src",

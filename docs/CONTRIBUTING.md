@@ -184,6 +184,18 @@ Public framework capability packages use a lowerCamelCase `Kit` package ID and m
 
 Repository tooling should discover a new package automatically. Avoid adding package names directly to CI or editor configuration.
 
+## Generated files
+
+Some files are produced by tooling from data and are never edited by hand:
+the `apiKit` runtime bindings (`packages/apiKit/src/flavours/*.lua`), its
+LuaCATS definitions (`packages/apiKit/types/`), its metadata
+(`packages/apiKit/metadata/`), its change reports and history. Each says so
+in its first lines. A change to them is a change to the metadata, the naming
+data (`tooling/api/naming.json`), the host type table (`tooling/api/types.json`)
+or the generator, followed by `python3 -m tooling.api.generate --all`; CI
+refuses an output that no longer matches its metadata. The procedure is
+`packages/apiKit/docs/UPDATING.md`.
+
 ## Documentation language
 
 Repository and package documentation is written in English.

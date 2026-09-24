@@ -206,13 +206,19 @@ local function readFile(path)
     return contents
 end
 
----Return the script file names listed in `embeds.xml`, in load order.
+---Return the scripts listed in `embeds.xml`, in load order, as paths under the
+---framework directory (`registry/Registry.lua`, `apiKit/flavours/Retail.lua`).
+---
+---The package is the directory right after `MoltenCodes`; a Kit may embed
+---further files in subdirectories of it (ApiKit's flavour files), so the path
+---is kept rather than reduced to a file name.
 ---@return string[]
 local function embeddedScriptNames()
     local names = {}
     local xml = readFile(EXAMPLES_DIRECTORY .. "/embeds.xml")
     for reference in string.gmatch(xml, '<Script%s+file="([^"]+)"') do
-        names[#names + 1] = string.match(reference, "([^\\/]+)$")
+        local path = string.gsub(reference, "\\", "/")
+        names[#names + 1] = string.match(path, "MoltenCodes/(.+)$") or path
     end
     return names
 end
@@ -232,20 +238,19 @@ local function addonFilePaths()
     return paths
 end
 
----Map a facade file name to its package source path.
+---Map an embedded script path to its package source path.
 ---
----The framework's naming rule is that a PascalCase Lua facade belongs to the
----lowerCamelCase package of the same name, so the mapping needs no table that
----could fall out of date.
----@param scriptName string for example `"SignalKit.lua"`
+---`registry/Registry.lua` lives at `packages/registry/src/Registry.lua` and
+---`apiKit/flavours/Retail.lua` at `packages/apiKit/src/flavours/Retail.lua`:
+---the first segment is the package, the rest is its path inside `src/`.
+---@param scriptPath string for example `"signalKit/SignalKit.lua"`
 ---@return string path
-local function packageSourcePath(scriptName)
-    local facade = string.match(scriptName, "^(.+)%.lua$")
-    if facade == nil then
-        error("not a Lua file: " .. scriptName, 0)
+local function packageSourcePath(scriptPath)
+    local packageId, rest = string.match(scriptPath, "^([^/]+)/(.+%.lua)$")
+    if packageId == nil then
+        error("not a package Lua file: " .. scriptPath, 0)
     end
-    local packageId = string.lower(string.sub(facade, 1, 1)) .. string.sub(facade, 2)
-    return "packages/" .. packageId .. "/src/" .. scriptName
+    return "packages/" .. packageId .. "/src/" .. rest
 end
 
 ---Load and run one file, passing `...` the way the client does.

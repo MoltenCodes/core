@@ -25,7 +25,7 @@ examples/
 | File | Shows |
 |---|---|
 | `ExampleAddon.toc` | `## Interface` for every supported client, `## SavedVariables`, `## X-Embeds` naming every embedded Kit, and the load order: `embeds.xml`, then `Core.lua`, then the locales, then the rest. |
-| `embeds.xml` | The release bundle's `loadOrder`, all 23 release packages. Those this example does not use are marked `optional here`; an addon keeps only what it uses plus its dependencies. TestKit is development-only and never embedded. |
+| `embeds.xml` | The release bundle's `loadOrder`, all 24 release packages; ApiKit is the one Kit with further files, one per client flavour under `apiKit\flavours\`; the example lists all five, an addon embeds only the flavours it supports. Those this example does not use are marked `optional here`; an addon keeps only what it uses plus its dependencies. TestKit is development-only and never embedded. |
 | `Core.lua` | Resolving Registry API 2 and each Kit by API generation; the LifecycleKit and ModuleKit handles; a `ready` phase callback; the `Main` module, whose `module.scope` owns an event, an `EventKit:Coalesce` burst, a timer, a secure hook and the slash commands, all released on disable; a ReadinessKit gate for spell data; a ClientKit capability check. |
 | `Locales/enUS.lua` | LocaleKit's default locale, with `L[key] = true`. |
 | `Locales/deDE.lua` | A translation that reorders arguments with indexed specifiers (`%4$d`) and leaves some keys to the default. |

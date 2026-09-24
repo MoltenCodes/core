@@ -12,7 +12,11 @@ from tooling.validation.validate_manifests import ROOT, load_manifests
 # Reading ``embeds.xml`` belongs to the validator, which enforces the example's
 # editor configuration against it; the tests read it through the same helpers so
 # the two can never disagree about what the example embeds.
-from tooling.validation.validate_repository import embedded_script_names, package_id_for
+from tooling.validation.validate_repository import (
+    EMBEDDED_SCRIPT_RE,
+    embedded_package_names,
+    package_id_of_reference,
+)
 
 
 EXAMPLES = ROOT / "examples"
@@ -22,28 +26,40 @@ class ExampleAddonLayoutTests(unittest.TestCase):
     def setUp(self):
         self.manifests, errors = load_manifests()
         self.assertEqual([], errors)
-        self.scripts = embedded_script_names(EXAMPLES / "embeds.xml")
+        embeds = EXAMPLES / "embeds.xml"
+        # Every `<Script file=...>` reference, as `<package>/<path inside src>`.
+        self.scripts = [
+            self.source_relative(reference)
+            for reference in EMBEDDED_SCRIPT_RE.findall(embeds.read_text(encoding="utf-8"))
+        ]
+        self.packages = embedded_package_names(embeds)
+
+    @staticmethod
+    def source_relative(reference: str) -> str:
+        """`Libs\\MoltenCodes\\apiKit\\flavours\\Retail.lua` → `apiKit/flavours/Retail.lua`."""
+        parts = reference.replace("\\", "/").split("/")
+        package_id = package_id_of_reference(reference)
+        return f"{package_id}/" + "/".join(parts[parts.index(package_id) + 1 :])
 
     def test_embeds_xml_lists_scripts(self):
         self.assertTrue(self.scripts, "embeds.xml lists no scripts")
 
     def test_every_embedded_script_belongs_to_a_package(self):
         for script in self.scripts:
-            package_id = package_id_for(script)
+            package_id, relative = script.split("/", 1)
             self.assertIn(package_id, self.manifests, f"{script} has no package")
-            source = ROOT / "packages" / package_id / "src" / script
+            source = ROOT / "packages" / package_id / "src" / relative
             self.assertTrue(source.is_file(), f"missing source: {source}")
 
     def test_embedded_scripts_are_in_dependency_order(self):
         seen: set[str] = set()
-        for script in self.scripts:
-            package_id = package_id_for(script)
+        for package_id in self.packages:
             dependencies = self.manifests[package_id].get("dependencies", {})
             for dependency in sorted(dependencies):
                 self.assertIn(
                     dependency,
                     seen,
-                    f"{script} is listed before its dependency {dependency}",
+                    f"{package_id} is listed before its dependency {dependency}",
                 )
             seen.add(package_id)
 
@@ -72,12 +88,11 @@ class ExampleAddonLayoutTests(unittest.TestCase):
 
     def test_load_order_matches_the_builder(self):
         """The builder's `loadOrder` is what the documentation tells readers to copy."""
-        ordered = package_build.load_order(
-            [package_id_for(script) for script in self.scripts], self.manifests
-        )
-        expected = [f"{name}/{package_build.facade_file_name(name)}" for name in ordered]
-        actual = [f"{package_id_for(script)}/{script}" for script in self.scripts]
-        self.assertEqual(expected, actual)
+        ordered = package_build.load_order(self.packages, self.manifests)
+        expected = [
+            f"{name}/{relative}" for name in ordered for relative in package_build.runtime_files(name)
+        ]
+        self.assertEqual(expected, self.scripts)
 
 
 class ExampleAddonSpecTests(unittest.TestCase):
