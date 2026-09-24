@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "clientKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -275,7 +275,8 @@ end
 ---Whether `currentState` has the shape this revision's schema requires.
 ---
 ---Revision 2 added `locale`, `manifests` and `manifestPrototype` without a
----schema change; a copy carrying this revision has all three.
+---schema change and revision 3 changed no field, so a copy carrying this
+---revision has all three.
 ---@param currentState any
 ---@return boolean
 local function validateState(currentState)
@@ -376,12 +377,17 @@ then
 else
     -- Upgrade over revision 1, which had no manifests: add the two tables
     -- revision 2 introduced. Both are created empty exactly once; a later
-    -- revision inherits them with whatever manifests were read meanwhile.
-    if rawget(state, "manifests") == nil then
-        rawset(state, "manifests", {})
-    end
-    if rawget(state, "manifestPrototype") == nil then
-        rawset(state, "manifestPrototype", {})
+    -- revision inherits them with whatever manifests were read meanwhile. A
+    -- value that is present but not a table was written from outside, since
+    -- no revision creates either field as anything else, and is refused like
+    -- a missing capability or host table rather than indexed later.
+    for _, tableName in ipairs({ "manifests", "manifestPrototype" }) do
+        local inherited = rawget(state, tableName)
+        if inherited == nil then
+            rawset(state, tableName, {})
+        elseif type(inherited) ~= "table" then
+            error("MoltenCodes ClientKit package state is corrupted or incomplete", 2)
+        end
     end
 end
 
@@ -684,12 +690,14 @@ end
 ---Whether the host exposes `capability`.
 ---
 ---An unknown name raises at the caller instead of answering `false`, so a typo
----cannot silently disable a feature.
+---cannot silently disable a feature. A secret name is refused before it is
+---used as the table key, which the host would raise on with no useful line.
 ---@param _ ClientKit
 ---@param capability ClientKit.Capability
 ---@return boolean
 local function packageHas(_, capability)
     validateString(capability, "ClientKit:Has", "capability", 3)
+    validateNotSecret(capability, "ClientKit:Has", "capability", 3)
     local value = rawget(capabilities, capability)
     if value == nil then
         error("ClientKit:Has does not know capability " .. describeValue(capability), 2)
@@ -844,8 +852,9 @@ end
 ---this shim only chooses between them: `itemName, itemLink, itemQuality,
 ---itemLevel, itemMinLevel, itemType, itemSubType, itemStackCount,
 ---itemEquipLoc, itemTexture, sellPrice, classID, subclassID, bindType,
----expansionID, setID, isCraftingReagent`. Nothing is returned while the item is
----not in the client's cache; the client then requests it and fires
+---expansionID, setID, isCraftingReagent, itemDescription`, with trailing
+---values a client does not provide left `nil`. Nothing is returned while the
+---item is not in the client's cache; the client then requests it and fires
 ---`GET_ITEM_INFO_RECEIVED`.
 ---@param _ ClientKit
 ---@param item integer|string item ID, item name or item link
@@ -1018,16 +1027,13 @@ end
 ---`GetAddOnInfo` does not raise for a name it does not know on either client
 ---generation: it echoes the name back with the fifth return, `reason`, set to
 ---`"MISSING"`. The `pcall` guards only against an argument the host rejects
----outright. A host without the call cannot confirm anything and answers
----`false`; the caller then falls back to whether a `## Title` reads.
+---outright. The caller asks this only on a host that has the call; a host
+---without it is recognised through `hostHasTitle` instead.
+---@param getAddOnInfo function the bound `GetAddOnInfo`
 ---@param addonName string
 ---@return boolean listed
 ---@return string? hostName the folder name as the host spells it, when listed
-local function hostListsAddOn(addonName)
-    local getAddOnInfo = rawget(host, "getAddOnInfo")
-    if not getAddOnInfo then
-        return false
-    end
+local function hostListsAddOn(getAddOnInfo, addonName)
     local ok, hostName, _, _, _, reason = pcall(getAddOnInfo, addonName)
     if not ok or type(hostName) ~= "string" or reason == "MISSING" then
         return false
@@ -1124,6 +1130,11 @@ end
 ---addon the host does not list; nothing is cached for it, so a misspelt name
 ---costs one host round trip per call and never grows the cache.
 ---`nil, "unavailable"` is a host with no metadata call at all.
+---
+---Whether the host lists the addon is asked of `GetAddOnInfo` when the host
+---has it, and of a readable `## Title` only when it does not: once
+---`GetAddOnInfo` has answered `"MISSING"` no metadata can read for that name,
+---so asking for the title would only add host calls for every unknown name.
 ---@param _ ClientKit
 ---@param addonName string addon folder name
 ---@return ClientKit.Manifest? manifest
@@ -1141,12 +1152,20 @@ local function packageGetManifest(_, addonName)
     if not rawget(host, "getAddOnMetadata") then
         return nil, "unavailable"
     end
-    local listed, hostName = hostListsAddOn(addonName)
-    if not listed and not hostHasTitle(addonName) then
+
+    local hostName = addonName
+    local getAddOnInfo = rawget(host, "getAddOnInfo")
+    if getAddOnInfo then
+        local listed, spelling = hostListsAddOn(getAddOnInfo, addonName)
+        if not listed then
+            return nil, "unknown"
+        end
+        hostName = spelling or addonName
+    elseif not hostHasTitle(addonName) then
         return nil, "unknown"
     end
 
-    record = buildManifestRecord(hostName or addonName)
+    record = buildManifestRecord(hostName)
     rawset(manifests, key, record)
     return rawget(record, "view")
 end

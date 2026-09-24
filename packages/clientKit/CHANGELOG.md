@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 — 2026-09-24
+
+- `GetManifest` trusts `GetAddOnInfo` on a host that has it: once it answers `"MISSING"` the name is `nil, "unknown"` without asking for `## Title`, so an unknown name costs one host call instead of up to three metadata reads. The `## Title` probe remains the way a host without `GetAddOnInfo` recognises an addon.
+- `Has(capability)` refuses a secret `capability` at the caller (`ClientKit:Has capability must not be a secret value`) before using it as a table key.
+- An upgrade refuses inherited `manifests` or `manifestPrototype` state that is present but not a table (`package state is corrupted or incomplete`) instead of indexing it.
+- `docs/API.md`: `issecretvalue` is present on the current Classic Era and Mists Classic clients as well as Retail 12.0 and later; `GetItemInfo` lists the eighteenth host return, `itemDescription`; the listed-addon rule and the `Has` secret refusal are documented.
+- Implementation revision 3. Revision 3 changes no state field, so an upgrade over revision 2 keeps every cached manifest and its identity.
+- 129 specs: an upgrade over a revision 2 layout that keeps the manifest cache, both non-table state refusals, an unknown name answered without any `Title` read, and the `Has` secret refusal with its error level. `ClientKitTestEnv.NewHostFor` installs a profile and ClientKit's own host functions without loading ClientKit, for upgrade specs.
+
 ## 0.2.0 — 2026-09-24
 
 - Added `ClientKit:GetManifest(addonName)`: a read-only snapshot of an addon's `.toc`, read through `C_AddOns.GetAddOnMetadata` (else the legacy `GetAddOnMetadata`) once per addon on the first call and cached for the session. The snapshot carries `name`, `title`, `notes`, `version`, `author`, `interface`, `iconTexture`, `iconAtlas`, `category`, `group`, `loadOnDemand`, `defaultState` and `addonCompartmentFunc` as the raw `.toc` strings (`nil` when absent, empty or not exported by the client), and `dependencies`, `optionalDependencies`, `savedVariables` and `savedVariablesPerCharacter` as arrays split on commas. `Dependencies` and `RequiredDeps` are one list; when the metadata call exports no dependency list the host's own `GetAddOnDependencies` / `GetAddOnOptionalDependencies` (either form) fill the arrays.

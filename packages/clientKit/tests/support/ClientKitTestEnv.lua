@@ -202,17 +202,26 @@ function ClientKitTestEnv.Reset()
 end
 
 ---Reset, install the host as `profileName` models it plus this environment's
----own host functions, then load Registry and ClientKit.
+---own host functions, then load Registry only. An upgrade spec follows this
+---with `LoadSourceAtRevision` to load an older revision against that host.
+---@param profileName string? a name from `WOW_PROFILES`, or `nil` for the shared host with no client identity
+---@param hostOptions ClientKitTestEnv.HostOptions? locale and addon-info surface; every field has a default
+---@return table Registry
+function ClientKitTestEnv.NewHostFor(profileName, hostOptions)
+    ClientKitTestEnv.Reset()
+    ClientKitTestEnv.SetWowProfile(profileName)
+    ClientKitTestEnv.InstallWowApi()
+    installClientKitHost(hostOptions or {})
+    return require("Registry")
+end
+
+---`NewHostFor`, then load ClientKit against that host.
 ---@param profileName string? a name from `WOW_PROFILES`, or `nil` for the shared host with no client identity
 ---@param hostOptions ClientKitTestEnv.HostOptions? locale and addon-info surface; every field has a default
 ---@return table ClientKit
 ---@return table Registry
 function ClientKitTestEnv.NewPackageFor(profileName, hostOptions)
-    ClientKitTestEnv.Reset()
-    ClientKitTestEnv.SetWowProfile(profileName)
-    ClientKitTestEnv.InstallWowApi()
-    installClientKitHost(hostOptions or {})
-    local Registry = require("Registry")
+    local Registry = ClientKitTestEnv.NewHostFor(profileName, hostOptions)
     return require("ClientKit"), Registry
 end
 

@@ -18,7 +18,7 @@ describe("ClientKit bootstrap", function()
         local ClientKit, Registry = Env.NewPackageFor("mainline")
         assert.are.equal(ClientKit, Registry:Get("clientKit", 1))
         assert.are.equal(1, ClientKit.API)
-        assert.are.equal(2, ClientKit.REVISION)
+        assert.are.equal(3, ClientKit.REVISION)
     end)
 
     it("reuses the shared facade and state on a duplicate load", function()
@@ -51,9 +51,11 @@ describe("ClientKit bootstrap", function()
         assert.is_false(ClientKit:Has("secretValues"))
 
         -- The host gained a facility between the two copies loading, as it
-        -- would when a newer embedded copy loads after a client patch.
-        setGlobal("issecretvalue", function()
-            return true
+        -- would when a newer embedded copy loads after a client patch. Only
+        -- `secret` is secret, so the capability names stay usable as keys.
+        local secret = {}
+        setGlobal("issecretvalue", function(value)
+            return rawequal(value, secret)
         end)
 
         local nextRevision = ClientKit.REVISION + 1
@@ -68,7 +70,8 @@ describe("ClientKit bootstrap", function()
 
         -- A reference taken before the upgrade reads the re-probed state.
         assert.is_true(ClientKit:Has("secretValues"))
-        assert.is_true(ClientKit:IsSecret({}))
+        assert.is_true(ClientKit:IsSecret(secret))
+        assert.is_false(ClientKit:IsSecret({}))
         assert.are.equal("mists", GetFlavor(ClientKit))
     end)
 
@@ -109,10 +112,10 @@ describe("ClientKit bootstrap", function()
         end)
         Env.SetAddOnMetadata("MyAddon", "Title-deDE", "Mein Addon")
 
-        local upgraded = Env.LoadSourceAtRevision(2)
+        local upgraded = Env.LoadSourceAtRevision(3)
 
         assert.are.equal(ClientKit, upgraded)
-        assert.are.equal(2, ClientKit.REVISION)
+        assert.are.equal(3, ClientKit.REVISION)
         assert.are.equal(state, ClientKit._state)
         assert.are.equal(host, ClientKit._state.host)
         assert.is_table(state.manifests)
@@ -121,8 +124,29 @@ describe("ClientKit bootstrap", function()
         assert.are.equal("Mein Addon", ClientKit:GetManifest("MyAddon").title)
     end)
 
+    it("upgrades a revision 2 layout in place and keeps its manifest cache", function()
+        Env.NewHostFor("mainline")
+        local ClientKit = Env.LoadSourceAtRevision(2)
+        local state = ClientKit._state
+        Env.RegisterAddOn("MyAddon")
+        Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")
+        local manifest = ClientKit:GetManifest("MyAddon")
+
+        -- Revision 3 changed no state field, so the real file loads over the
+        -- revision 2 layout as a plain in-place upgrade.
+        local upgraded = Env.ReloadPackage()
+
+        assert.are.equal(ClientKit, upgraded)
+        assert.are.equal(3, ClientKit.REVISION)
+        assert.are.equal(state, ClientKit._state)
+        assert.are.equal(manifest, ClientKit:GetManifest("MyAddon"))
+        assert.are.equal("My Addon", manifest:Get("Title"))
+        assert.are.equal(1, Env.MetadataReads("MyAddon", "Title"))
+    end)
+
     it("keeps cached manifests and their Get across an upgrade", function()
         local ClientKit = Env.NewPackageFor("mainline")
+        Env.RegisterAddOn("MyAddon")
         Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")
         Env.SetAddOnMetadata("MyAddon", "X-Website", "https://example.invalid")
         local manifest = ClientKit:GetManifest("MyAddon")
@@ -181,6 +205,20 @@ describe("ClientKit bootstrap", function()
             end
         )
     end)
+
+    for _, tableName in ipairs({ "manifests", "manifestPrototype" }) do
+        it("refuses to upgrade over a " .. tableName .. " value that is not a table", function()
+            local ClientKit = Env.NewPackageFor("mainline")
+            rawset(ClientKit._state, tableName, "not a table")
+            local nextRevision = ClientKit.REVISION + 1
+            Env.expectErrorContaining(
+                "MoltenCodes ClientKit package state is corrupted or incomplete",
+                function()
+                    Env.LoadSourceAtRevision(nextRevision)
+                end
+            )
+        end)
+    end
 
     it("rejects same-revision state that lost its manifest cache", function()
         local ClientKit = Env.NewPackageFor("mainline")

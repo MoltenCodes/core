@@ -16,8 +16,8 @@ The suite covers:
 - `IsAtLeast` boundaries, including the cross-flavour ordering it does not
   promise;
 - the capability table flag by flag for every profile, a host that exposes
-  nothing, flags probed from the host rather than the flavour, unknown names,
-  and zero allocation after bootstrap;
+  nothing, flags probed from the host rather than the flavour, unknown and
+  secret names, and zero allocation after bootstrap;
 - `IsSecret` with the `issecretvalue` stub and without it; `CanAccessFrame`
   for forbidden, context-restricted, unrestricted and method-less frames;
   `IsEventValid` for a known, an invalid and an unknowable name;
@@ -30,22 +30,23 @@ The suite covers:
   list source, `X-` fields through `Get` with the host asked once per field,
   absent fields not remembered, a field the client refuses reading as absent,
   the same snapshot on every call, an unknown addon (`GetAddOnInfo` reason
-  `"MISSING"`) answering `nil, "unknown"` and never being cached even after
-  fifty unknown names, names matched case-insensitively with one record and
+  `"MISSING"`) answering `nil, "unknown"` without any `Title` read and never
+  being cached even after fifty unknown names, names matched case-insensitively with one record and
   the host's spelling in `name`, a host without `GetAddOnInfo` recognising an
   addon by its `Title` and keeping the caller's spelling, a host with neither
   metadata call answering `nil, "unavailable"`, secret names and fields
   refused, writes refused at the writer's line, a cache holding one record per
   listed addon, and zero allocation for a cached manifest;
-- `error` levels: every argument failure, secret refusal and manifest write
-  reports the caller's own line;
+- `error` levels: every argument failure, secret refusal (`Has`,
+  `GetManifest`, `Get`) and manifest write reports the caller's own line;
 - Registry publication, duplicate loads, a newer revision not being
   downgraded, an in-place upgrade that re-reads the host into the same state
   tables (a copy of the source loaded with a higher revision), an upgrade
-  over a revision 1 layout that adds the locale and the manifest tables, a
-  cached manifest keeping its identity and its rewritten `Get` across an
-  upgrade, load-order failures, and corrupted-state refusal on a reload and
-  on an upgrade;
+  over a revision 1 layout that adds the locale and the manifest tables, an
+  upgrade over a revision 2 layout that keeps the manifest cache, a cached
+  manifest keeping its identity and its rewritten `Get` across an upgrade,
+  load-order failures, and corrupted-state refusal on a reload and on an
+  upgrade, including a `manifests` or `manifestPrototype` that is not a table;
 - manifest/runtime API and revision consistency.
 
 | Spec | Covers |
@@ -61,7 +62,9 @@ The suite covers:
 
 `support/ClientKitTestEnv.lua` selects a client profile, builds frame doubles
 for `CanAccessFrame` and loads the source at a patched revision for the
-upgrade specs. It also installs the host functions only ClientKit reads and
+upgrade specs; `NewHostFor(profile, options)` prepares the same host as
+`NewPackageFor` without loading ClientKit, so an upgrade spec can load an
+older revision first. It also installs the host functions only ClientKit reads and
 the shared fixture does not stub: `GetLocale` (`NewPackageFor(profile, {
 locale = "deDE" })`, `false` for a host without it) and `GetAddOnInfo` with
 the two dependency-list calls (`RegisterAddOn(name, { dependencies,

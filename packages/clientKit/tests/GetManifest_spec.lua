@@ -311,15 +311,27 @@ describe("ClientKit:GetManifest", function()
         assert.is_nil(ClientKit._state.manifests.hidden)
     end)
 
-    it("knows a listed addon without a Title, and an unlisted one with a Title", function()
+    it("knows a listed addon without a Title", function()
         local ClientKit = Env.NewPackageFor("mainline")
         Env.RegisterAddOn("Untitled")
-        Env.SetAddOnMetadata("Unlisted", "Title", "Unlisted Addon")
 
         local untitled = ClientKit:GetManifest("Untitled")
         assert.is_table(untitled)
         assert.is_nil(untitled.title)
-        assert.are.equal("Unlisted Addon", ClientKit:GetManifest("Unlisted").title)
+    end)
+
+    it("trusts GetAddOnInfo and asks for no Title once it answers MISSING", function()
+        local ClientKit = Env.NewPackageFor("mainline")
+        -- Metadata that reads for a name the host does not list cannot happen
+        -- on a real client; the stub allows it so the spec can see that the
+        -- Title is never asked for after a "MISSING" answer.
+        Env.SetAddOnMetadata("Unlisted", "Title", "Unlisted Addon")
+
+        local manifest, reason = ClientKit:GetManifest("Unlisted")
+        assert.is_nil(manifest)
+        assert.are.equal("unknown", reason)
+        assert.are.equal(0, Env.MetadataReads("Unlisted", "Title"))
+        assert.are.equal(0, Env.MetadataReads("Unlisted", "Title-enUS"))
     end)
 
     it("falls back to the Title when the host has no GetAddOnInfo", function()

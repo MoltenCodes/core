@@ -167,11 +167,23 @@ describe("ClientKit error levels", function()
         )
     end)
 
-    it("points secret-value refusals of GetManifest and Get at the caller", function()
+    it("points secret-value refusals of Has, GetManifest and Get at the caller", function()
         ClientKit = Env.NewPackageFor("mainline", { secretStrings = { "Hidden" } })
         Env.RegisterAddOn("MyAddon")
         Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")
         local manifest = ClientKit:GetManifest("MyAddon")
+
+        local capabilityLine
+        local capabilityOk, capabilityValue = pcall(function()
+            capabilityLine = currentLine() + 1
+            ClientKit:Has("Hidden")
+        end)
+        assertReportedAt(
+            capabilityLine,
+            "ClientKit:Has capability must not be a secret value",
+            capabilityOk,
+            capabilityValue
+        )
 
         local nameLine
         local nameOk, nameValue = pcall(function()

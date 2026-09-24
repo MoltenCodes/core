@@ -183,19 +183,12 @@ describe("ClientKit:Has", function()
         end)
     end)
 
-    it("does not format a secret capability name into its error", function()
-        local ClientKit = Env.NewPackageFor("mainline")
-        -- A string cannot be registered with the secret stub, so mark the name
-        -- secret by swapping in a probe that says every value is.
-        rawset(ClientKit._state.host, "isSecretValue", function()
-            return true
+    it("refuses a secret capability name before using it as a key", function()
+        local ClientKit = Env.NewPackageFor("mainline", { secretStrings = { "C_Spell" } })
+        Env.expectErrorContaining("ClientKit:Has capability must not be a secret value", function()
+            ClientKit:Has("C_Spell")
         end)
-        Env.expectErrorContaining(
-            "ClientKit:Has does not know capability <secret value>",
-            function()
-                ClientKit:Has("C_Foo")
-            end
-        )
+        assert.is_true(ClientKit:Has("C_Item"))
     end)
 
     it("allocates nothing after bootstrap", function()

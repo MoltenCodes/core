@@ -107,7 +107,7 @@ expose the facility; none is inferred from the flavour.
 | `C_Timer` | the `C_Timer` namespace |
 | `spellbookApi` | `C_SpellBook.GetSpellBookItemInfo`, the `C_SpellBook` item API that replaced the global `GetSpellBookItemInfo` |
 | `eventValidity` | `C_EventUtils.IsEventValid`, which `IsEventValid` uses |
-| `secretValues` | `issecretvalue`, which `IsSecret` uses (Retail 12.0 and later) |
+| `secretValues` | `issecretvalue`, which `IsSecret` uses (Retail 12.0 and later, and the current Classic Era and Mists Classic clients) |
 | `forbiddenFrames` | `UIParent:IsForbidden` |
 | `restrictedFrames` | `UIParent:CanBeAccessedInContext` (Retail 12.1 and later) |
 | `secureCall` | `securecallfunction` |
@@ -142,7 +142,7 @@ The rules these probes serve are in
 ### `IsSecret(value)`
 
 Returns `issecretvalue(value)` on a client that has it. On a client without
-secret values — the Classic flavours, Retail before 12.0 — every value
+`issecretvalue` — Retail before 12.0, older Classic builds — every value
 answers `false`, which is correct there: nothing is secret. Ask it before
 comparing, indexing, doing arithmetic on or keying a table by a value the
 client handed you.
@@ -226,7 +226,8 @@ unchanged:
 ```text
 itemName, itemLink, itemQuality, itemLevel, itemMinLevel, itemType,
 itemSubType, itemStackCount, itemEquipLoc, itemTexture, sellPrice,
-classID, subclassID, bindType, expansionID, setID, isCraftingReagent
+classID, subclassID, bindType, expansionID, setID, isCraftingReagent,
+itemDescription
 ```
 
 Trailing values an older client does not provide are `nil`. Nothing is
@@ -270,10 +271,12 @@ An addon is *listed* when `C_AddOns.GetAddOnInfo` (else `GetAddOnInfo`)
 describes it without the reason `"MISSING"`: on both client generations the
 call never raises for an unknown name but echoes it back with that reason as
 its fifth return. The call is still made through `pcall`, so an argument the
-host rejects outright reads as "not listed" too. A host without either call
-cannot confirm anything; there, an addon is known when its `## Title`
-(localised or plain) reads, and one without a readable title answers
-`nil, "unknown"`.
+host rejects outright reads as "not listed" too. On a host that has the call
+its answer is final: after `"MISSING"` no metadata can read for that name,
+so no `## Title` is asked for and an unknown name costs exactly one host
+call. A host without either call cannot confirm anything; there, an addon is
+known when its `## Title` (localised or plain) reads, and one without a
+readable title answers `nil, "unknown"`.
 
 ### Snapshot fields
 
@@ -376,9 +379,12 @@ MyAddon/Core.lua:12: ClientKit:IsAtLeast interfaceNumber must be a number
 
 A caller-supplied value is formatted into a message only when `IsSecret`
 says it is not secret; a secret is described as `<secret value>`. A secret
-`addonName` or `field` passed to `GetManifest` or `manifest:Get` is refused
-at the caller (`ClientKit:GetManifest addonName must not be a secret value`)
-before it is compared or used as a table key.
+`capability` passed to `Has`, and a secret `addonName` or `field` passed to
+`GetManifest` or `manifest:Get`, is refused at the caller
+(`ClientKit:Has capability must not be a secret value`,
+`ClientKit:GetManifest addonName must not be a secret value`,
+`ClientKit.Manifest:Get field must not be a secret value`) before it is
+compared or used as a table key.
 
 Bootstrap failures raise at the line that loaded the file:
 
@@ -421,6 +427,9 @@ copy rewrote. An older copy loading after a newer one yields to it.
 
 Revision 2 added the locale, the manifest cache and the manifest prototype to
 the state without a schema change; an upgrade over revision 1 creates them
-empty and binds the four host functions the manifests use.
+empty and binds the four host functions the manifests use. Revision 3 changed
+no state field, so an upgrade over revision 2 keeps every cached manifest as
+it is. An inherited `manifests` or `manifestPrototype` that is present but not
+a table is refused as corrupted state rather than indexed.
 
 `_state` is private; its layout is not part of the contract.
