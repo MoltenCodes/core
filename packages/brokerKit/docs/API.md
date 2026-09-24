@@ -240,7 +240,7 @@ On Retail 12.x the client hands tainted code secret values that raise when compa
 - a secret value for a **custom attribute** is stored without being compared, so every write of it counts as a change and fires, and it is never mirrored into LibDataBroker; a secret foreign value is kept the same way;
 - a secret **receiver** is reported as a call without the facade (`BrokerKit:Get must be called on the BrokerKit facade; use BrokerKit:Get(...)`), and a `LibDataBroker_AttributeChanged` whose data object is secret is ignored, both without comparing it.
 
-Absence of a value BrokerKit did not create (an argument, a definition or limits field, anything LibDataBroker hands over) is tested with `type`, never with `== nil`, because comparing a secret with `nil` raises too.
+Absence of a value BrokerKit did not create (an argument, a definition or limits field, anything LibDataBroker hands over) is tested with `type`, never with `== nil`: that is the repository rule, which never compares anything. A secret compared with `nil` happens not to raise; one compared with a value of its own type, or used as a table key, does (measured on Retail 12.1.0 b69933).
 
 `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 

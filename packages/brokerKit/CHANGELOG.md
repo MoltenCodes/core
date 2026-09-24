@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- Secret values: API.md (*Secret values*), INTERNALS.md (`writeAttribute`) and the source comments on the facade check and the nil rule no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.1.2 — 2026-09-24
 
 - Implementation revision 2, applying the repository rule for values BrokerKit did not create: their absence is tested with `type`, never with `== nil`, and a secret is never compared. The facade check tests the receiver's type before comparing it with the facade, so a secret receiver is reported as a call without the facade at the caller's line instead of raising inside BrokerKit. A `LibDataBroker_AttributeChanged` whose data object is not a table (a secret included) is ignored before the data object is compared with the adopted one. `Iterate`'s iterator, `New`'s default `type` and `SetLimits` test absence with `type`. Behaviour for every non-secret value is unchanged.

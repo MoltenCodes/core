@@ -1242,7 +1242,7 @@ end
 ---@param label string the option, qualified by its method
 ---@param level integer
 local function validateObjectLimit(value, label, level)
-    -- Asked before the sentinel comparison: comparing a secret raises.
+    -- Asked before any comparison: a secret compared with a number raises.
     if isSecret(value) then
         error(label .. " must not be a secret value", level)
     end
@@ -3651,8 +3651,8 @@ local function readSendRequest(request, level)
         error(label .. ".distribution must not be a secret value", level)
     end
 
-    -- A field may hold a secret, which may not even be compared with `nil`:
-    -- only `type` and `isSecret` look at a value before it is known not to be.
+    -- A field may hold a secret; by the repository rule only `type` and
+    -- `isSecret` look at a value before it is known not to be one.
     local target = rawget(request, "target")
     local targetType = type(target)
     if targetType ~= "nil" and targetType ~= "string" and targetType ~= "number" then
@@ -4589,8 +4589,8 @@ function FacadeMethods.SetLimits(self, newLimits)
     validateKeys(newLimits, LIMIT_RANGES, "CommKit:SetLimits limits", 3)
     for name, value in pairs(newLimits) do
         local range = LIMIT_RANGES[name]
-        -- Asked first, whatever the type: comparing a secret with the
-        -- sentinel would raise inside CommKit instead of at the caller.
+        -- Asked first, whatever the type: comparing a secret with a number
+        -- bound would raise inside CommKit instead of at the caller.
         if isSecret(value) then
             error("CommKit:SetLimits limits." .. name .. " must not be a secret value", 2)
         end

@@ -301,11 +301,11 @@ if type(nativeGetTimePreciseSec) ~= "function" then
     nativeGetTimePreciseSec = nil
 end
 
--- Retail 12.x hands tainted code secret values that raise when compared or used
--- as a table key. A snapshot does both with what its reader reports, so `fill`
--- asks this probe first and refuses a secret with a message naming CacheKit
--- instead of a host error inside it. Clients without secret values have no
--- probe, and nothing there is secret.
+-- Retail 12.x hands tainted code secret values that raise when compared with a
+-- value of their own type or used as a table key. A snapshot does both with what
+-- its reader reports, so `fill` asks this probe first and refuses a secret with a
+-- message naming CacheKit instead of a host error inside it. Clients without
+-- secret values have no probe, and nothing there is secret.
 -- issecretvalue is a World of Warcraft client API reachable only through the global table.
 -- selene: allow(global_usage)
 local nativeIsSecretValue = rawget(_G, "issecretvalue")
@@ -1196,7 +1196,7 @@ local function cacheGet(self, key)
         return nil
     end
     local value = entry.value
-    -- `rawequal`: the stored value is the caller's, and may be a secret.
+    -- `rawequal` with our own table: a secret stored value differs in type.
     if rawequal(value, NEGATIVE) then
         return nil, "negative"
     end
@@ -1283,7 +1283,7 @@ local function cachePeek(self, key)
         return nil
     end
     local value = entry.value
-    -- `rawequal`: the stored value is the caller's, and may be a secret.
+    -- `rawequal` with our own table: a secret stored value differs in type.
     if rawequal(value, NEGATIVE) then
         return nil, "negative"
     end

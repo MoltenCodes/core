@@ -602,10 +602,14 @@ Registry: package state is corrupted
 A retire hook that raises is not an error at any call site: it is reported as
 `<label> retire hook failed: <error>` through the host error handler.
 
-**Secret values.** On a client with secret values, comparing a secret with
-anything, `nil` included, raises. Registry therefore tests every value it did
-not create for absence with `type(value) == "nil"`, and asks `issecretvalue`
-before it compares one. A secret is never a valid argument, and it is refused
+**Secret values.** On a client with secret values, comparing a secret with a
+value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike), and
+so does using it as a table key; a comparison with `nil` or with a value of
+another type happens not to raise (measured on Retail 12.1.0 b69933, see
+[`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
+Registry still tests every value it did not create for absence with
+`type(value) == "nil"`, the repository rule, which never compares anything, and
+asks `issecretvalue` before it compares one. A secret is never a valid argument, and it is refused
 at the same line and with the same message as a value of the wrong type
 (revision 12 and later):
 

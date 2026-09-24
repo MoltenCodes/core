@@ -738,7 +738,8 @@ rather than expecting a `pcall` to catch it.
 
 The rules below follow the warcraft.wiki.gg page
 [Secret Values](https://warcraft.wiki.gg/wiki/Secret_Values), re-read on
-2026-09-23; when the two disagree, the page wins.
+2026-09-23; when the two disagree, the page wins, except where the measurements
+recorded below show what the client itself did.
 
 Since patch 12.0.0, some Retail APIs hand addon code **secret values** instead of
 ordinary ones while restrictions apply — in combat and in instanced content, and
@@ -747,18 +748,23 @@ the unit token an event carries. A secret looks like an ordinary string, number
 or boolean, but tainted code may not look inside it. Each of these raises an
 immediate Lua error at the line that tries it:
 
-- comparing it (`==`, `~=`, `<`, …);
+- comparing it with a value of its own type (`==`, `~=`, `<`, `<=`, …), and
+  `rawequal` too: a secret number against a number, a secret string against a
+  string, a secret against itself;
 - a boolean test on a secret *boolean* (`if secret then`);
 - arithmetic on it;
 - the length operator (`#secret`);
 - indexing into it or assigning through it (`secret.foo`, `secret["foo"] = 1`);
 - calling it as a function;
-- storing it as a table *key*.
+- using it as a table *key*, to read (`plainTable[secret]`) as well as to
+  store.
 
 What stays allowed:
 
 - storing it in a local, an upvalue or as a table *value*, and passing it to
-  Lua functions;
+  Lua functions (`select("#", secret)` counts it);
+- comparing it with `nil` or with a value of another type (`secret == nil`,
+  `rawequal(secret, {})`): the answer is `false`, without an error;
 - concatenating secret strings and numbers, and passing secrets to
   `string.format`, `string.concat` and `string.join`. The result is itself a
   secret string, with every restriction above;
@@ -768,6 +774,27 @@ What stays allowed:
 
 Which client APIs accept a secret argument is documented per API on the wiki;
 do not assume one does.
+
+**Measured on the client.** On Retail 12.1.0 build 69933 (2026-09-24), with a
+secret made by `secretwrap(42)`, the in-game suites logged:
+
+| Operation | Result |
+|-----------|--------|
+| `type(secret)` | `"number"`, the underlying type |
+| `rawequal(secret, secret)` | raises `attempt to compare a secret number value (execution tainted by '<addon>')` |
+| `rawequal(secret, {})`, `rawequal({}, secret)` | `false`, no error |
+| `secret == nil`, `type(secret) == "nil"` | `false`, no error |
+| `policy ~= "automatic"` with a secret string `policy` (an earlier run, inside ModuleKit) | raises `attempt to compare local 'policy' (a secret string value, while execution tainted by 'MoltenCodes')` |
+| `plainTable[secret]` | raises `attempted to index a table that cannot be indexed with secret keys` |
+| `select("#", secret)`; a secret stored as a table value and returned | works; the value comes back still secret |
+
+So a comparison raises when both sides have the same type, and answers without
+raising when one side is `nil` or of another type; a secret used as a key
+raises; storing and passing one is fine. The Kits still test the absence of a
+foreign value with `type(value) == "nil"` rather than `value == nil` (see the
+checklist in [`CONTRIBUTING.md`](CONTRIBUTING.md#taint-and-secret-values)): the rule is uniform, cheap
+and never compares anything, so it does not depend on the comparison with
+`nil` staying harmless.
 
 `issecretvalue(value)` returns `true` for a secret. Ask it before any of the
 operations above on a value that came from the client during combat. Clients
@@ -784,9 +811,9 @@ end
 listener receives whatever the client or the emitter passed, secrets included,
 and no Kit inspects or unwraps an event's payload. Your handler may store the
 value, forward it, and build a string from it — knowing that the string is
-secret too, so it can no more be compared or used as a key than the value
-itself. It may not compare the value, key a cache by it, do arithmetic on it or
-index it. Filter on something that is never secret first — the event name, a
+secret too, so it can no more be compared with another string or used as a
+key than the value itself. It may not compare the value with one of its own
+type, key a cache by it, do arithmetic on it or index it. Filter on something that is never secret first — the event name, a
 frame you own — and check `isSecret(value)` before any such operation on the
 value itself.
 

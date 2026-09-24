@@ -138,7 +138,7 @@ end
 
 -- `issecretvalue` (Retail 12.0 and later, and the current Classic clients) is
 -- asked only by `SetLimits`, before a caller's limit value is compared with
--- anything: a secret raises when compared. Without it nothing is secret.
+-- anything: a secret compared with a number raises. Without it nothing is secret.
 -- issecretvalue is a World of Warcraft client API reachable only through the global table.
 -- selene: allow(global_usage)
 local nativeIsSecretValue = rawget(_G, "issecretvalue")
@@ -342,8 +342,8 @@ local function validateLimitUpdate(limits, level)
             )
         end
         local value = rawget(limits, key)
-        -- The secret check comes first: comparing a secret with the sentinel,
-        -- or with a number, would raise inside ProfileKit.
+        -- The secret check comes first: comparing a secret with a number
+        -- would raise inside ProfileKit.
         local secret = nativeIsSecretValue ~= nil and nativeIsSecretValue(value) == true
         if secret or (value ~= UNBOUNDED and not isPositiveInteger(value)) then
             error(

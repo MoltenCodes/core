@@ -118,7 +118,7 @@ A halt or shutdown *later* disconnects the pending phase subscription without ca
 
 ## Secret values
 
-`isSecret` reads `issecretvalue` from the global table on every call, so the probe a test installs with `Replace` is honoured. Every value that reaches a message goes through `describeValue` or `describeMessage`, which ask `isSecret` first and never call `tostring` on a table. Comparisons check `isSecret` before any equality test, because comparing a secret raises in the client; an absent argument is told apart with `type(value) == "nil"` rather than `value == nil` for the same reason. `compareValues` returns a third value, `secret`, so that `ToEqual` can fail a comparison a secret made impossible even under `Not`.
+`isSecret` reads `issecretvalue` from the global table on every call, so the probe a test installs with `Replace` is honoured. Every value that reaches a message goes through `describeValue` or `describeMessage`, which ask `isSecret` first and never call `tostring` on a table. Comparisons check `isSecret` before any equality test, because a secret compared with a value of its own type raises in the client (`rawequal` included); an absent argument is told apart with `type(value) == "nil"` rather than `value == nil` by the repository rule, which never compares anything (a comparison with `nil` happens not to raise; measured on Retail 12.1.0 b69933). `compareValues` returns a third value, `secret`, so that `ToEqual` can fail a comparison a secret made impossible even under `Not`.
 
 ## Closures and upgrades
 

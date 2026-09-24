@@ -801,7 +801,7 @@ local function readSuiteOptions(name, options, level)
     validateSuiteOptionKeys(options, level + 1)
 
     -- Absent options are told apart with `type`, and a secret is refused
-    -- before any comparison: comparing a secret, even with `nil`, raises.
+    -- before any comparison with a value of its own type, which raises.
     local phase = rawget(options, "phase")
     if type(phase) == "nil" then
         phase = PHASE_READY
@@ -2289,8 +2289,8 @@ local function validateLimitUpdate(limits, level)
             error("TestKit:SetLimits limits." .. keyText .. " is not a recognised limit", level)
         end
         local value = rawget(limits, key)
-        -- Before any comparison with the sentinel or a bound, which would
-        -- raise on a secret.
+        -- Before any comparison with the sentinel or a bound: a secret
+        -- compared with a number bound raises.
         if isSecret(value) then
             error("TestKit:SetLimits limits." .. key .. " must not be a secret value", level)
         end

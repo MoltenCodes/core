@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- Secret values: API.md (error behaviour), INTERNALS.md (absent values), the source comments on `maxScannedEntries`, value equality and `readMap`, and a spec comment no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.1.2 — 2026-09-24
 
 - Fixed: values that do not originate in SettingsKit were compared with `nil`, which raises on a client with secret values. Arguments, option and limit fields, saved-variable entries (values and keys, including `next` on a saved table), migration functions and schema defaults are now tested with `type(value) == "nil"`, so a secret stored in a saved table is read back, iterated and compacted without a comparison.

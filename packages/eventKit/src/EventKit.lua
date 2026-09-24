@@ -634,11 +634,11 @@ end
 -- EventKit. `level` is always the value `error` needs *inside the function that
 -- receives it*, so every further hop towards `error` adds exactly one.
 --
--- On a client with secret values, comparing a secret with anything, `nil`
--- included, raises inside EventKit instead of at the caller. Values EventKit
--- did not create are therefore tested for absence with `type(value) == "nil"`,
--- and a secret is refused (or, for event payloads, not compared) before any
--- other comparison.
+-- On a client with secret values, comparing a secret with a value of its own
+-- type (`rawequal` included) or using it as a key raises inside EventKit instead
+-- of at the caller; a comparison with `nil` happens not to raise. Values EventKit
+-- did not create are tested for absence with `type(value) == "nil"`, the
+-- repository rule, and a secret is refused (payloads: not compared) first.
 
 ---Whether the client reports `value` as secret; always `false` elsewhere.
 ---@param value any

@@ -856,11 +856,15 @@ addon-created Frame is safe from any code.
 
 ### Secret values
 
-On a client with secret values, comparing a secret with anything, `nil`
-included, raises. EventKit therefore tests every value it did not create —
-arguments, option and limit fields, event payloads, `compute` results — for
-absence with `type(value) == "nil"`, and deals with a secret before it would
-compare one (revision 14 and later):
+On a client with secret values, comparing a secret with a value of its own
+type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike), and so does using it
+as a table key; a comparison with `nil` or with a value of another type happens
+not to raise (measured on Retail 12.1.0 b69933, see
+[`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
+EventKit still tests every value it did not create — arguments, option and
+limit fields, event payloads, `compute` results — for absence with
+`type(value) == "nil"`, the repository rule, which never compares anything, and
+deals with a secret before it would compare one (revision 14 and later):
 
 - A secret argument or option value is refused at the caller's line:
 

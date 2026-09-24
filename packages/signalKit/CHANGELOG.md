@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.3 — 2026-09-24
+
+- Secret values: API.md (validators and error behaviour) and the source comment on `isSecret` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.7.2 — 2026-09-24
 
 - SignalKit follows the repository-wide nil rule. On a client with secret values a comparison with a secret, `nil` included, raises inside SignalKit instead of at the caller, so every value SignalKit did not create — method arguments, `New`, `NewJournal`, `Bus` and `DeclareTopic` option fields, `SetLimits` entries, validator verdicts and what Registry returns — is tested for absence with `type(value) == "nil"`.

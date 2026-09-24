@@ -1149,10 +1149,10 @@ end
 
 ---Whether the client reports `value` as secret; always `false` elsewhere.
 ---
----On a client with secret values, comparing a secret with anything, `nil`
----included, raises inside SignalKit instead of at the caller. Values SignalKit
----did not create are therefore tested for absence with `type(value) == "nil"`,
----and checked with this before any other comparison.
+---On a client with secret values, comparing a secret with a value of its own
+---type, or using it as a key, raises inside SignalKit instead of at the caller.
+---Values SignalKit did not create are tested for absence with `type`, the
+---repository rule, and checked with this before any comparison.
 ---@param value any
 ---@return boolean
 local function isSecret(value)

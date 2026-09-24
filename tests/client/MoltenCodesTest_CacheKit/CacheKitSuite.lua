@@ -1229,16 +1229,71 @@ local function makeSecret(ctx, value)
     return secret
 end
 
----Check that `received` is still secret and is `secret` itself. `rawequal`
----compares identity without reading the value, which is what CacheKit's own
----negative-entry test does with a stored secret.
+---Check that `received` is still secret and of the secret's type. Identity
+---cannot be checked: comparing a secret with a value of its own type raises,
+---`rawequal(secret, secret)` included (measured on Retail 12.1.0 b69933).
 ---@param ctx TestKit.Context
 ---@param received any
 ---@param secret any
 local function expectSameSecret(ctx, received, secret)
     ctx:Expect(isSecretValue(received)):ToBe(true)
-    ctx:Expect(rawequal(received, secret)):ToBe(true)
+    ctx:Expect(type(received)):ToBe(type(secret))
 end
+
+---Describe a pcall outcome for the log without formatting a secret.
+---@param ok boolean
+---@param value any
+---@return string
+local function describeOutcome(ok, value)
+    if not ok then
+        return "raised: " .. tostring(value)
+    end
+    if isSecretValue(value) then
+        return "returned a secret " .. type(value)
+    end
+    return "returned " .. type(value) .. " " .. tostring(value)
+end
+
+secretTest(
+    "the client's handling of secrets is logged: rawequal, ==, type, table keys, and CacheKit's read paths",
+    function(ctx)
+        local secret = makeSecret(ctx, 42)
+        local plainTable = {}
+        ctx:Log("type(secret): " .. type(secret))
+        ctx:Log("rawequal(secret, secret): " .. describeOutcome(pcall(rawequal, secret, secret)))
+        ctx:Log("rawequal(secret, {}): " .. describeOutcome(pcall(rawequal, secret, plainTable)))
+        ctx:Log("rawequal({}, secret): " .. describeOutcome(pcall(rawequal, plainTable, secret)))
+        ctx:Log("secret == nil: " .. describeOutcome(pcall(function()
+            return secret == nil
+        end)))
+        ctx:Log("type(secret) == 'nil': " .. describeOutcome(pcall(function()
+            return type(secret) == "nil"
+        end)))
+        ctx:Log("plainTable[secret] read: " .. describeOutcome(pcall(function()
+            return plainTable[secret]
+        end)))
+        ctx:Log("select('#', secret): " .. describeOutcome(pcall(select, "#", secret)))
+
+        local cache = track(CacheKit:NewTtl({ maxEntries = 4, ttlSeconds = LONG_TTL_SECONDS }))
+        ctx:Log(
+            "cache:Set(key, secret): " .. describeOutcome(pcall(cache.Set, cache, "health", secret))
+        )
+        ctx:Log("cache:Get(key): " .. describeOutcome(pcall(cache.Get, cache, "health")))
+        ctx:Log("cache:Peek(key): " .. describeOutcome(pcall(cache.Peek, cache, "health")))
+        local probeQueue = CacheKit:NewQueue(4, "reject")
+        ctx:Log(
+            "queue:Push(secret): " .. describeOutcome(pcall(probeQueue.Push, probeQueue, secret))
+        )
+        ctx:Log("queue:Pop(): " .. describeOutcome(pcall(probeQueue.Pop, probeQueue)))
+        local memoised, memoCache = CacheKit:Memoize(function()
+            return secret
+        end)
+        track(memoCache)
+        ctx:Log("memoised(1) first: " .. describeOutcome(pcall(memoised, 1)))
+        ctx:Log("memoised(1) second: " .. describeOutcome(pcall(memoised, 1)))
+        ctx:Expect(isSecretValue(secret)):ToBe(true)
+    end
+)
 
 secretTest(
     "a secret value stored with Set comes back from Get and Peek still secret and untouched",

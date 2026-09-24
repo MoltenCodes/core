@@ -603,7 +603,7 @@ end
 ---Validate `maxScannedEntries` and return the budget the scan counts down:
 ---the integer itself, or `math.huge` for `SettingsKit.UNBOUNDED`, so the scan
 ---compares numbers and never tests for the sentinel. A secret is refused
----before it is compared with the sentinel, which would raise.
+---before any comparison, since comparing it with a number would raise.
 ---@param value any
 ---@param level integer stack level the failure is reported at
 ---@return number budget
@@ -764,7 +764,7 @@ end
 
 ---Whether two plain values are equal, comparing tables by content.
 ---
----A secret is never equal to anything: comparing it would raise.
+---A secret is never equal to anything: comparing it with its own type would raise.
 ---@param left any
 ---@param right any
 ---@param isSecretValue (fun(value: any): boolean)|nil
@@ -1394,8 +1394,8 @@ end
 ---@param key any
 ---@return any
 local function readMap(node, key)
-    -- The secret probe comes first: even `key == nil` compares the key, which
-    -- raises on a secret.
+    -- The secret probe comes first: the key is compared and used to index
+    -- below, and either raises on a secret.
     if isSecret(key) then
         -- readMap <- viewIndex <- the reading line
         error(

@@ -113,7 +113,13 @@ runtime Lua, check it against this list:
       fields, host returns, callback, probe and factory results, values read
       from foreign libraries or saved variables) is tested with
       `type(x) == "nil"` or `type(x) ~= "nil"`, never with `== nil` or
-      `~= nil`: comparing a secret raises, `nil` included. Where a contract
+      `~= nil`. This is the house style because it is uniform, cheap and
+      never compares anything. The hazard it keeps clear of is precise: a
+      secret compared with a value of its own type (`==`, `~=`, `<`, `<=`,
+      `rawequal`) raises, and a secret used as a table key raises, while a
+      comparison with `nil` or with a value of another type happens not to
+      raise (measured on Retail 12.1.0 b69933; see
+      [`EMBEDDING.md`](EMBEDDING.md#secret-values-retail-12x)). Where a contract
       refuses secrets, the refusal comes before any comparison, key use or
       string operation. Values the Kit created itself may keep `== nil`.
 - [ ] New error messages describe a value that may be secret with a fixed

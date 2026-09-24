@@ -59,8 +59,8 @@ local STATUS_RETIRED = "retired"
 -- Validation ---------------------------------------------------------------
 
 ---Whether the client reports `value` as secret; always `false` elsewhere.
----Comparing a secret (with `nil` too) raises inside Registry, so outside values
----are tested with `type` and `isSecret` first; a secret is never a valid argument.
+---Comparing a secret with a value of its own type raises inside Registry, so
+---outside values are tested with `type` and `isSecret` first; a secret is never valid.
 ---@param value any
 ---@return boolean
 local function isSecret(value)

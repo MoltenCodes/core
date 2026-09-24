@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- Secret values: the source comments on `issecretvalue` and `SetLimits` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.1.2 — 2026-09-24
 
 - Implementation revision 2 applies the repository nil rule: the absence of a value that came from a caller is tested with `type(value) == "nil"`, never by comparing it with `nil`, so a secret value (Retail 12.x) is never compared inside ProfileKit. The Registry lookup in the shared namespace and the results of `Registry:Bootstrap` are tested the same way.

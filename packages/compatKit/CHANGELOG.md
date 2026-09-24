@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- Secret values: API.md (*Secret values*) and the source comment on the facade check no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.1.2 — 2026-09-24
 
 - Implementation revision 2, applying the repository rule for values CompatKit did not create: their absence is tested with `type`, never with `== nil`, and a secret is never compared. A provider probe's answer is checked with `issecretvalue` before it is compared with `true`: only `true` still counts as alive, and a secret answer counts as dead instead of raising inside `Resolve` or `List`. `hasGlobal` tests the host value with `type`, so a global holding a secret is reported present. The facade check tests the receiver's type before comparing it with the facade, so a secret receiver raises `CompatKit:<Method> must be called on the CompatKit facade; use CompatKit:<Method>(...)` at the caller's line. `Shim` options, `Register`'s `implementation`, `probe` and `priority`, `Resolve`'s `preferred` and `SetLimits` test absence with `type`. Behaviour for every non-secret value is unchanged.

@@ -242,10 +242,15 @@ Every public method validates its arguments and raises at the caller's own file 
 | `LifecycleKit:SetLimits` | `limits must be a table`, `limits.<name> is not a recognised limit`, `limits.<name> must be a positive integer or LifecycleKit.UNBOUNDED`, `must be called on the LifecycleKit facade` |
 | `LifecycleKit:GetLimits` | `must be called on the LifecycleKit facade` |
 
-On a client with secret values, comparing a secret with anything, `nil`
-included, raises. LifecycleKit therefore tests every value it did not create
-for absence with `type(value) == "nil"`, and refuses a secret at the caller
-before it would compare one (revision 14 and later):
+On a client with secret values, comparing a secret with a value of its own
+type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike), and so does using it
+as a table key; a comparison with `nil` or with a value of another type happens
+not to raise (measured on Retail 12.1.0 b69933, see
+[`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
+LifecycleKit still tests every value it did not create for absence with
+`type(value) == "nil"`, the repository rule, which never compares anything, and
+refuses a secret at the caller before it would compare one (revision 14 and
+later):
 
 | Call | Message |
 |---|---|

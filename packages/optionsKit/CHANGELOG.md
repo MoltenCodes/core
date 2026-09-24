@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 — 2026-09-24
+
+- Secret values: the source comment on the limit-option secret refusal no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.2.2 — 2026-09-24
 
 - Absence of a value OptionsKit did not create is asked with `type(value) == "nil"` rather than compared with `nil`: the optional fields of a tree definition, the `Define` and `ProfileOptions` options, the Registry lookups at load, a `values` function's table and the tables read along a bind path. On a client with secret values such a comparison raised inside OptionsKit.

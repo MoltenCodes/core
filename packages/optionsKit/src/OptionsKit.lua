@@ -2304,8 +2304,8 @@ local function readCapacityOption(value, default, name, level)
     if type(value) == "nil" then
         return default
     end
-    -- Refused before the comparison with `UNBOUNDED`: on a client with secret
-    -- values, comparing a secret raises inside OptionsKit, not at the caller.
+    -- Refused before any comparison: the checks below compare numbers, and a
+    -- secret compared with a number raises inside OptionsKit, not at the caller.
     if isSecret(value) then
         error("OptionsKit:Define options." .. name .. " must not be a secret value", level)
     end

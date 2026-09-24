@@ -289,9 +289,11 @@ them:
 
 - `issecretvalue(value)` reports a **secret value** (patch 12.0.0 and later).
   Tainted code may store one, pass it to functions, and concatenate or format
-  it into another secret string; comparing it, arithmetic, `#`, indexing,
-  calling it, a boolean test on a secret boolean and using it as a table key
-  raise. Some unit and aura APIs return secrets in combat.
+  it into another secret string; comparing it with a value of its own type
+  (`rawequal` included), arithmetic, `#`, indexing, calling it, a boolean test
+  on a secret boolean and using it as a table key raise, while a comparison
+  with `nil` or a value of another type answers without raising (see
+  [`EMBEDDING.md`](EMBEDDING.md#secret-values-retail-12x)). Some unit and aura APIs return secrets in combat.
 - `frame:IsForbidden()` and `frame:CanBeAccessedInContext()` (patch 12.1.0)
   say whether a frame found by enumeration may be touched at all.
 - `issecurevariable` and `securecallfunction` are the taint probes and the

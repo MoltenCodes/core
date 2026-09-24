@@ -693,7 +693,7 @@ end
 
 ---Refuse a receiver other than the CommandKit facade (a `.` call, say). The
 ---type is tested first: a `.` call passes the first argument as the receiver,
----and comparing a secret value would raise before the refusal.
+---and only a table is ever compared with the facade.
 ---@param receiver any
 ---@param label string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at

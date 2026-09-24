@@ -56,7 +56,7 @@ One per object, created by `createRecord` and kept in `objects` and `records`:
 
 `writeAttribute(record, key, value, valueIsSecret)` is the only writer of attribute storage, used by `Set`, a field write (`assignFromProxy` → `assignAttribute`), `New` (indirectly: `New` copies a validated definition with `rawset` and sets the count, because no listener can exist yet) and adoption. It returns `unchanged`, `changed` or `full`:
 
-- `unchanged` when both sides are `nil`, or when neither side is secret and they are equal; `nil` is tested with `type` because a secret compared with `nil` would raise;
+- `unchanged` when both sides are `nil`, or when neither side is secret and they are equal; `nil` is tested with `type`, the repository rule, which never compares (a secret compared with `nil` happens not to raise, but one compared with a string or number of its own type does);
 - `full` when the write would add an attribute past `maxAttributes`; replacing and clearing never hit the limit, and clearing decrements the count;
 - `changed` otherwise, after storing.
 

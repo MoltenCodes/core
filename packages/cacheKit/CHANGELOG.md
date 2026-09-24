@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.4 — 2026-09-24
+
+- Secret values: API.md *Secret values* states that a secret used as a key raises the client's own error, `attempted to index a table that cannot be indexed with secret keys`, and that the negative-entry check compares a stored value by identity with CacheKit's own marker table, which the client allows for a secret number or string because the two differ in type; INTERNALS.md (*Negative entries*, snapshot `fill`), the README and the source comments on the probe and the negative-entry check follow no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.2.3 — 2026-09-24
 
 - LuaCATS: the `Memoize` field of the `CacheKit` class parenthesises its `fn` type, `(fun(key: string|number): any)`. Without parentheses, a `fun(...)` return list is greedy, so the language server read `, options: CacheKit.MemoizeOptions?` as a second return of `fn` and the method appeared to take no `options`. Annotation only: `luac -s -l` gives the same instruction listing before and after, so implementation revision 4 is unchanged.

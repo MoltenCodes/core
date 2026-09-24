@@ -641,7 +641,7 @@ rawset(CHAT_SINK_METATABLE, "__index", CHAT_SINK_PROTOTYPE)
 ---@param label string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-    -- `type` first: a secret receiver is never a table, and comparing it raises.
+    -- `type` first: a secret receiver is never a table, and only a table is compared.
     if type(receiver) ~= "table" or receiver ~= LogKit then
         error(label .. " must be called on the LogKit facade; use " .. label .. "(...)", level)
     end

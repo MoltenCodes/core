@@ -277,8 +277,10 @@ as present; neither compares it. A secret receiver is reported as a call
 without the facade, before it is compared.
 
 Absence of a value CompatKit did not create (an argument, an options or limits
-field, a host global) is tested with `type`, never with `== nil`, because
-comparing a secret with `nil` raises too.
+field, a host global) is tested with `type`, never with `== nil`: that is the
+repository rule, uniform and cheap, and it never compares anything. (A secret
+compared with `nil` happens not to raise; one compared with a value of its own
+type, or used as a table key, does. Measured on Retail 12.1.0 b69933.)
 
 ## Limits
 

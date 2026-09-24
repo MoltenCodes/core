@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- Secret values: the source comments on limit validation, `SetRelativeWidth`, `SetUserData`, `GetUserData` and `RegisterType` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.1.2 — 2026-09-24
 
 - Fixed: absence of a value that did not originate in WidgetKit is tested with `type(value) == "nil"` rather than compared with `nil`, so no comparison runs on a caller's or the host's value before its secret check. This covers optional arguments (`SetCallback` callback, `SetUserData` value, `SetParent` parent, `AddChild` beforeWidget, `LayoutFinished` width and height, `Anchor.FromRect` into, the `Anchor.Normalize` forms, `CheckBox:SetValue`, `Dropdown:SetList` order and the labels it reads, the `disabled` of every `SetDisabled`), option tables and their fields (`RegisterType`, `BindPosition`, text setters, `RenderOptions` with `allowSecret`, `confirmText` and `media`), anchor fields read from saved variables, the fields of a constructor's widget and its metatable, `SetLimits` keys, host results (`GetPoint`, `GetRect`, `GetParent`, a Group title's `GetText`) and the option values and `confirm` field the renderer reads. `SetUserData(key, secret)` in particular compared the value with `nil` and raised on the client; a secret value is now stored as it is.

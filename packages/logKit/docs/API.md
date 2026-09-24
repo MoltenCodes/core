@@ -409,8 +409,10 @@ is under the limit again. `maxMessageLength` applies to the next message.
 
 Argument errors are raised at the caller's line and never format a value that
 may be secret. Absence of a value LogKit did not create (an argument, a limits
-field, a saved level) is tested with `type`, never with `== nil`, because
-comparing a secret with `nil` raises too:
+field, a saved level) is tested with `type`, never with `== nil`: that is the
+repository rule, which never compares anything (a secret compared with `nil`
+happens not to raise; one compared with a value of its own type, or used as a
+table key, does; measured on Retail 12.1.0 b69933):
 
 - `LogKit:ForAddon addonName must be a non-empty string` / `... must not be a secret value`
 - `LogKit.Logger:<Method> must be called on a LogKit logger` (every logger method)

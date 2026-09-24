@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- Secret values: the source comments on `arrayPartLength`, the facade check and the secret refusal of option and limit values no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.1.2 — 2026-09-24
 
 - Every absent value that comes from outside CodecKit is tested with `type`, never with `== nil`: the `options` argument of every method, option and limit keys, `SetLimits` values, the Registry alias read from the `MoltenCodes` namespace and the SchedulerKit facade `Registry:Find` returns. The receiver check tests `type` before comparing with the facade. A secret receiver or `options` argument is now refused at the caller with the ordinary message (`CodecKit:Encode must be called on the CodecKit facade; use CodecKit:Encode(...)`, `CodecKit:Encode options must be a table or nil`) instead of raising inside CodecKit on the comparison. Every value accepted before is still accepted.

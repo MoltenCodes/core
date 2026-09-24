@@ -2,7 +2,7 @@
   "name": "optionsKit",
   "displayName": "OptionsKit",
   "description": "A typed, validated, introspectable options tree for World of Warcraft addons, bound to getters and setters or to a SettingsKit database, with no renderer.",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "license": "MIT",
   "api": 1,
   "revision": 4,

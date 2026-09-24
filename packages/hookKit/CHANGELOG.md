@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 — 2026-09-24
+
+- Secret values: the source comments on `maxHooks` validation and the facade check no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.2.2 — 2026-09-24
 
 - Implementation revision 3 applies the repository nil rule: the absence of a caller's option table or option field (`options`, `options.forceSecure`, `options.maxHooks`) and of a caller object's raw field (the `__index` holder search and `_hadRaw`) is tested with `type(value) == "nil"`, never by comparing the value with `nil`. The Registry lookup, the results of `Registry:Bootstrap` and the optional ClientKit, LifecycleKit and EventKit that `Registry:Find` returns are tested the same way.

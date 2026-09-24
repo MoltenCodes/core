@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.2 — 2026-09-24
+
+- Secret values: API.md (*Secret values*) and the source comment above `isSecret` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.9.1 — 2026-09-24
 
 - LuaCATS: the `Derive` fields of the `EventKit` and `EventKit.Scope` classes parenthesise their `compute` type, `(fun(): any)`. Without parentheses, a `fun(...)` return list is greedy, so the language server read `, options: EventKit.DeriveOptions?` as a second return of `compute` and the method appeared to take no `options`. Annotation only: `luac -s -l` gives the same instruction listing before and after, so implementation revision 15 is unchanged.

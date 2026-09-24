@@ -135,7 +135,7 @@ Views are built recursively down to SchemaKit's `maxDepth` limit (16 by default)
 
 Both kinds ask `issecretvalue` about the key before comparing it or using it to index anything; a secret key raises at the reading line.
 
-A saved value, a key from the caller's path and a default from the caller's schema did not originate in SettingsKit, so their absence is tested with `type(value) == "nil"`: comparing a secret, even with `nil`, raises in the client. Only values SettingsKit built (its nodes, plans, caches and the results of its own lookups) are compared with `nil` directly.
+A saved value, a key from the caller's path and a default from the caller's schema did not originate in SettingsKit, so their absence is tested with `type(value) == "nil"`, the repository rule, which never compares anything. In the client a secret compared with a value of its own type raises, as does a secret used as a key; a comparison with `nil` happens not to raise (measured on Retail 12.1.0 b69933). Only values SettingsKit built (its nodes, plans, caches and the results of its own lookups) are compared with `nil` directly.
 
 ### Iteration
 

@@ -606,7 +606,7 @@ end
 ---@param label string public method name
 ---@param level integer
 local function validateFacade(receiver, label, level)
-    -- `type` first: a secret receiver is never a table, and comparing it raises.
+    -- `type` first: a secret receiver is never a table, and only a table is compared.
     if type(receiver) ~= "table" or receiver ~= CompatKit then
         error(label .. " must be called on the CompatKit facade; use " .. label .. "(...)", level)
     end

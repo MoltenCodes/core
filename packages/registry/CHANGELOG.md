@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.6 — 2026-09-24
+
+- Secret values: API.md (*Secret values*) and the source comment on `isSecret` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.6.5 — 2026-09-24
 
 - Registry follows the repository-wide nil rule. On a client with secret values a comparison with a secret, `nil` included, raises inside Registry instead of at the caller, so every value Registry did not create — `Bootstrap` request fields, the results of `resume`, `validateState` and migration steps, and the public `MoltenCodes` namespace entries — is tested for absence with `type(value) == "nil"`.

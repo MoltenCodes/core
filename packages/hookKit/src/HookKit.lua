@@ -615,7 +615,7 @@ local function readScopeOptions(options, methodName, level)
     if type(maxHooks) == "nil" then
         return nil
     end
-    -- The secret check comes first: comparing a secret with the sentinel, or
+    -- The secret check comes first: comparing a secret with a number, or
     -- arithmetic on it, raises.
     local secret = isSecret(maxHooks)
     if not secret and rawequal(maxHooks, UNBOUNDED) then
@@ -1784,7 +1784,7 @@ end
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
     -- `rawequal`: the receiver is caller-supplied, and `~=` could run an
-    -- `__eq` metamethod or raise on a secret value.
+    -- `__eq` metamethod; a secret is never a table, so this answers false.
     if not rawequal(receiver, HookKit) then
         error(label .. " must be called on the HookKit facade; use " .. label .. "(...)", level)
     end

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 — 2026-09-24
+
+- Secret values: the source comments on limit validation, send-request fields and `SetLimits` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.2.2 — 2026-09-24
 
 - Values CommKit did not create are no longer compared before `issecretvalue` is asked about them, so a secret raises nowhere inside CommKit. Absence of a caller's or a host's value is tested with `type` (options, the `maxRegistrations` repeat check, the `maxReassemblyBytesPerSender` bound, a send target, a `nil` passed to `SyncSet:Set`, the group-membership answer, delivered SyncSet fields). A facade method called with a secret receiver raises its ordinary receiver error at the caller.

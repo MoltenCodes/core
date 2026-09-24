@@ -486,13 +486,13 @@ end
 -- BrokerKit. `level` is always the value `error` needs *inside the function
 -- that receives it*, so every further hop towards `error` adds exactly one.
 -- Secrets are checked first, because comparing one raises, and `nil` is
--- tested with `type` for the same reason.
+-- tested with `type`, the repository rule, which never compares anything.
 
 ---@param receiver any the table the method was called on
 ---@param label string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-    -- `type` first: a secret receiver is never a table, and comparing it raises.
+    -- `type` first: a secret receiver is never a table, and only a table is compared.
     if type(receiver) ~= "table" or receiver ~= BrokerKit then
         error(label .. " must be called on the BrokerKit facade; use " .. label .. "(...)", level)
     end

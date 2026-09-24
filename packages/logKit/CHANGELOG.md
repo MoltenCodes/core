@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- Secret values: API.md (argument errors) and the source comment on the facade check no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.1.2 — 2026-09-24
 
 - Implementation revision 3, applying the repository rule for values LogKit did not create: their absence is tested with `type`, never with `== nil`, and a secret is refused before it is compared. `SetLimits` no longer compares a limit key with `nil` before asking `issecretvalue` (a secret key is still refused with `LogKit:SetLimits limits must not have a secret key`). The facade check tests the receiver's type before comparing it with the facade, so a secret receiver raises `LogKit:<Method> must be called on the LogKit facade; use LogKit:<Method>(...)` at the caller's line instead of raising inside LogKit. `/log` and `/log show` answer a secret addon name or level word with the usage and change nothing. `BindLevels` skips a secret saved level name, and checks that the database's `Pairs` is a function before comparing it. `SetLevel`, `SetGlobalLevel`, `History`, `ChatSink`, `BindLevels` and `SetLimits` test an omitted argument or field with `type`. Behaviour for every non-secret value is unchanged.

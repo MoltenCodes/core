@@ -727,8 +727,8 @@ end
 
 ---The length of the array part of `value`: the leading run of non-nil indexes
 ---up to `#value`, so a hole ends it whatever border `#` picked. Elements are
----tested with `type` rather than `~= nil`, because an element may be a secret
----and comparing a secret raises.
+---tested with `type` rather than `~= nil`, the repository rule for a value
+---that may be a secret, which never compares anything.
 ---@param value table
 ---@return integer
 local function arrayPartLength(value)
@@ -2989,8 +2989,8 @@ end
 ---@param label string qualified public method name
 ---@param level integer
 local function validateFacade(receiver, label, level)
-    -- `type` first: the receiver is the caller's value, and comparing a secret
-    -- with the facade would raise here instead of at the caller.
+    -- `type` first: the receiver is the caller's value, and only a table is
+    -- ever compared with the facade.
     if type(receiver) ~= "table" or receiver ~= CodecKit then
         error(label .. " must be called on the CodecKit facade; use " .. label .. "(...)", level)
     end
@@ -3011,9 +3011,9 @@ local function validateBytes(value, label, level)
     end
 end
 
----Refuse a secret option or limit value before anything compares it, `nil`
----included: comparing a secret raises in the client. Callers test for an
----absent value with `type`, never with `== nil`, for the same reason. The
+---Refuse a secret option or limit value before anything compares it: comparing
+---a secret with a value of its own type raises in the client. Callers test for an
+---absent value with `type`, never with `== nil`, by the repository rule. The
 ---message is built only on refusal, so the check allocates nothing.
 ---@param value any
 ---@param label string the method, qualified

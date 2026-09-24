@@ -2,7 +2,7 @@
   "name": "testKit",
   "displayName": "TestKit",
   "description": "In-client test suites for World of Warcraft addons, run against LifecycleKit phases inside SchedulerKit jobs, with structured results. Development only.",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "license": "MIT",
   "api": 1,
   "distribution": "development",

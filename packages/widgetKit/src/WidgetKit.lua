@@ -973,7 +973,7 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateLimitOrUnbounded(value, label, level)
-    -- Before the sentinel comparison, which would raise on a secret.
+    -- Before any comparison: a secret number compared with a bound raises.
     if isSecret(value) then
         error(label .. " must not be a secret value", level)
     end
@@ -1235,7 +1235,7 @@ end
 ---@param value any
 function WidgetBase:SetUserData(key, value)
     local record = activeRecord(self, "WidgetKit.Widget:SetUserData", 3)
-    -- Before the nil test, which would raise on a secret.
+    -- Refused first: the key indexes `userData`, and a secret key raises.
     refuseSecret(key, "WidgetKit.Widget:SetUserData key", 3)
     if type(key) == "nil" then
         error("WidgetKit.Widget:SetUserData key must not be nil", 2)
@@ -1255,7 +1255,7 @@ end
 ---@return any
 function WidgetBase:GetUserData(key)
     local record = activeRecord(self, "WidgetKit.Widget:GetUserData", 3)
-    -- Before the nil test, which would raise on a secret.
+    -- Refused first: the key indexes `userData`, and a secret key raises.
     refuseSecret(key, "WidgetKit.Widget:GetUserData key", 3)
     if type(key) == "nil" then
         return nil
@@ -1323,7 +1323,7 @@ end
 ---@param fraction number? of the container's width, above 0 and at most 1; `nil` clears it
 function WidgetBase:SetRelativeWidth(fraction)
     local record = activeRecord(self, "WidgetKit.Widget:SetRelativeWidth", 3)
-    -- `type`, not `~= nil`: comparing a secret raises before validation refuses it.
+    -- `type`, not `~= nil`: the repository nil rule; validation refuses a secret.
     if type(fraction) ~= "nil" then
         validateNumber(fraction, "WidgetKit.Widget:SetRelativeWidth fraction", 3)
         if fraction <= 0 or fraction > 1 then
@@ -2093,7 +2093,7 @@ local function registerType(self, name, constructor, version, options)
     if type(options) ~= "nil" then
         validateOptionKeys(options, TYPE_OPTION_KEYS, "WidgetKit:RegisterType options", 3)
         if type(options.maxCreated) ~= "nil" then
-            -- Before the sentinel comparison, which would raise on a secret.
+            -- Before any comparison: a secret compared with a number raises.
             refuseSecret(options.maxCreated, "WidgetKit:RegisterType options.maxCreated", 3)
             if options.maxCreated == UNBOUNDED then
                 error(
@@ -2435,7 +2435,7 @@ local function setLimits(self, limits)
     end
 
     -- Every value is checked for a secret before it is compared with the
-    -- sentinel or a bound: comparing a secret raises.
+    -- sentinel or a bound: comparing a secret with a number bound raises.
 
     -- `maxDropdownEntries`: a positive integer or `WidgetKit.UNBOUNDED`, since
     -- the entries are the consumer's own keys and labels, not frames.

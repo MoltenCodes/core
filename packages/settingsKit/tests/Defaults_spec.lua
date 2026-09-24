@@ -129,8 +129,8 @@ describe("SettingsKit defaults", function()
                 {}
             ),
         })
-        -- Comparing a secret with `nil` raises in the client, so the probe
-        -- must see the key before the nil test does.
+        -- The key is compared and used as a key after the nil test, both of
+        -- which raise on a secret in the client, so the probe asks first.
         local asked = 0
         TestEnv.SetGlobal("issecretvalue", function()
             asked = asked + 1

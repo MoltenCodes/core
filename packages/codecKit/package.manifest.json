@@ -2,7 +2,7 @@
   "name": "codecKit",
   "displayName": "CodecKit",
   "description": "Serialise, compress and channel-encode Lua values into transport-safe strings behind a self-describing header, with decoding that never raises, for World of Warcraft addons.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "license": "MIT",
   "api": 1,
   "revision": 3,

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6 — 2026-09-24
+
+- Secret values: INTERNALS.md (*Secret values*) and the source comments on `Suite` options and `SetLimits` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.
+
 ## 0.1.5 — 2026-09-24
 
 - Annotation: the `TestKit.Context` field `WaitUntil` wrote its predicate as `fun(): any` inside the outer function type, where the language server reads the inner return list greedily and took `timeoutSeconds` for a second return of the predicate. The predicate type is now parenthesised, `(fun(): any)`. The other `fun(...)` fields of `TestKit.Context`, `TestKit.Suite` and `TestKit.Matcher` have no nested function type followed by a parameter and are unchanged. The compiled listing is identical, so implementation revision 4 is unchanged.

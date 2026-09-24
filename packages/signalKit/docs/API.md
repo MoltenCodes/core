@@ -549,7 +549,8 @@ never matters. The declaration governs publishing only.
 
 **Secret values.** The bus never inspects published arguments; only a
 validator does. On clients that mark values secret, comparing a secret value
-raises, so a validator that compares its arguments must test each with
+with one of its own type raises, so a validator that compares its arguments
+must test each with
 `issecretvalue` first and refuse or skip a secret one. A refusal reason that is
 itself secret is never placed in the error message. A validator that answers
 with a secret instead of `true` has not accepted the arguments: the verdict
@@ -740,11 +741,15 @@ Every error below is raised at the caller's line, never inside SignalKit.
 `<...>` marks a value filled in from the call; a published or fired argument
 value never appears in a message.
 
-On a client with secret values, comparing a secret with anything, `nil`
-included, raises. SignalKit therefore tests every value it did not create —
-arguments, option and limit fields, validator verdicts — for absence with
-`type(value) == "nil"`, and refuses a secret at the caller before it would
-compare one. Published and fired arguments are never compared, so a secret
+On a client with secret values, comparing a secret with a value of its own
+type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike), and so does using it
+as a table key; a comparison with `nil` or with a value of another type happens
+not to raise (measured on Retail 12.1.0 b69933, see
+[`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
+SignalKit still tests every value it did not create — arguments, option and
+limit fields, validator verdicts — for absence with `type(value) == "nil"`, the
+repository rule, which never compares anything, and refuses a secret at the
+caller before it would compare one. Published and fired arguments are never compared, so a secret
 passes through them untouched.
 
 | Raised by | Message |

@@ -204,9 +204,9 @@ end
 ---@param self ExampleAddon.Main
 local function waitForSpellData(self)
     local gate = Kits.ReadinessKit:Gate(ADDON_NAME .. ".spellData", function()
-        -- Absence of a value the addon did not create is tested with `type`:
-        -- on Retail 12.x a client value may be secret, and comparing a secret
-        -- with anything, `nil` included, raises.
+        -- Absence of a value the addon did not create is tested with `type`, the
+        -- repository rule: it never compares anything, and on Retail 12.x a client
+        -- value may be secret (docs/EMBEDDING.md, "Secret values").
         return type(Kits.ClientKit:GetSpellInfo(SPELL_ID)) ~= "nil"
     end, { intervalSeconds = 1, timeoutSeconds = 30 })
     self.spellGate = gate

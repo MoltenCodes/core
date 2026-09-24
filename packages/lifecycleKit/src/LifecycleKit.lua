@@ -332,10 +332,10 @@ end
 
 ---Whether the client reports `value` as secret; always `false` elsewhere.
 ---
----On a client with secret values, comparing a secret with anything, `nil`
----included, raises inside LifecycleKit instead of at the caller. Values
----LifecycleKit did not create are therefore tested for absence with
----`type(value) == "nil"`, and a secret is refused before any other comparison.
+---On a client with secret values, comparing a secret with a value of its own
+---type, or using it as a key, raises inside LifecycleKit instead of at the
+---caller. Values LifecycleKit did not create are tested for absence with
+---`type(value) == "nil"`, the repository rule, and a secret is refused first.
 ---@param value any
 ---@return boolean
 local function isSecret(value)

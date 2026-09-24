@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.4 — 2026-09-24
+
+- Secret values: INTERNALS.md (*Absent and secret values*) no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Documentation only; the implementation revision is unchanged.
+
 ## 0.8.3 — 2026-09-24
 
 - Fixed `ModuleKit.Addon:SetDependencyPolicy` raising inside ModuleKit on a secret policy. The real client (Retail 12.1.0 b69933) reported `attempt to compare local 'policy' (a secret string value ...)` at the policy comparison; a secret policy is now refused at the caller's line with `ModuleKit.Addon:SetDependencyPolicy policy must not be a secret value` before it is compared, and the policy is kept.

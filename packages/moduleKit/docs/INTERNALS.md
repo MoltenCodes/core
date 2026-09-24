@@ -250,12 +250,16 @@ stays the same. The paths that are several frames deep pass the depth on:
 
 ## Absent and secret values
 
-On clients with secret values, comparing a secret with anything, `nil`
-included, raises. A value that did not originate in ModuleKit (an argument, a
-definition or option field, an `implements` entry or member, a factory's
-result, a hook field, a Registry or optional-Kit lookup, a LifecycleKit answer)
-is therefore tested for absence with `type(value) == "nil"`; ModuleKit's own
-state keeps plain `== nil`. A value ModuleKit does compare, format or use as a
+On clients with secret values, comparing a secret with a value of its own
+type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike; the dependency policy
+check once raised `attempt to compare local 'policy' (a secret string value
+...)` on Retail 12.1.0 b69933), and so does using it as a table key. A
+comparison with `nil` or with a value of another type happens not to raise. A
+value that did not originate in ModuleKit (an argument, a definition or option
+field, an `implements` entry or member, a factory's result, a hook field, a
+Registry or optional-Kit lookup, a LifecycleKit answer) is still tested for
+absence with `type(value) == "nil"`, the repository rule, which never compares
+anything; ModuleKit's own state keeps plain `== nil`. A value ModuleKit does compare, format or use as a
 key (a name, a list entry, the dependency policy, a limit, a key of the
 caller's definition, options, alias-map, limits or `implements` table, the
 `requestingModule` of `Resolve`) is first passed to `isSecretValue`, which

@@ -52,6 +52,7 @@ MoltenCodes Test: PASS cacheKit.errors: PutNegative on a NewLru cache is refused
 MoltenCodes Test: PASS cacheKit.errors: a memoised function called with a table key names CacheKitSuite.lua at the calling line and never runs
 MoltenCodes Test: PASS cacheKit.errors: NewQueue with an unknown overflow policy or a capacity above maxQueueCapacity is refused at the calling line
 MoltenCodes Test: PASS cacheKit.errors: a Lazy path part that is a table, a nil queue value and Get on a closed tree are each refused at the calling line
+MoltenCodes Test: PASS cacheKit.secrets: the client's handling of secrets is logged: rawequal, ==, type, table keys, and CacheKit's read paths
 MoltenCodes Test: PASS cacheKit.secrets: a secret value stored with Set comes back from Get and Peek still secret and untouched
 MoltenCodes Test: PASS cacheKit.secrets: a memoised function that returns a secret hands it back still secret on the second call without running again
 MoltenCodes Test: PASS cacheKit.secrets: a secret value pushed on a queue comes back from Iterate and Pop still secret
@@ -59,7 +60,7 @@ MoltenCodes Test: PASS cacheKit.secrets: a secret maxEntries is refused by NewLr
 MoltenCodes Test: PASS cacheKit.secrets: a secret NewQueue capacity and a secret SetLimits maxQueueCapacity are refused at the calling line and the limits stay as they were
 MoltenCodes Test: PASS cacheKit.secrets: a snapshot read that fills a secret value fails Refresh at the fill line in CacheKitSuite.lua and keeps nothing
 MoltenCodes Test: PASS cacheKit.secrets: a secret key reaching Get raises the client's own error, as docs/API.md says, and the cache is unchanged
-MoltenCodes Test: cacheKit: 37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)
+MoltenCodes Test: cacheKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -91,16 +92,17 @@ the harness's own results.
 
 ### On a client without secret values
 
-The seven `cacheKit.secrets` tests need the client's `issecretvalue` and
+The eight `cacheKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`. `secretwrap` is the one documented way to obtain a genuine secret
 out of combat without side effects: the client's own API documentation
 (`FrameScriptDocumentation`, mirrored in
 `packages/apiKit/metadata/retail/namespaces.json`) lists it with no
 restriction, and it only converts the values handed to it. Retail 12.1 has
-both. A client without them prints these seven lines instead, and the totals
-line reads `30 passed, 0 failed, 7 skipped, 0 timed out (37 tests)`:
+both. A client without them prints these eight lines instead, and the totals
+line reads `30 passed, 0 failed, 8 skipped, 0 timed out (38 tests)`:
 
 ```text
+MoltenCodes Test: SKIP cacheKit.secrets: the client's handling of secrets is logged: rawequal, ==, type, table keys, and CacheKit's read paths -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP cacheKit.secrets: a secret value stored with Set comes back from Get and Peek still secret and untouched -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP cacheKit.secrets: a memoised function that returns a secret hands it back still secret on the second call without running again -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP cacheKit.secrets: a secret value pushed on a queue comes back from Iterate and Pop still secret -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -150,18 +152,19 @@ there is unexpected.
 | `a memoised function called with a table key ...` | The key refusal of a memoised function reaches the caller of the memoised function, and `fn` never runs. |
 | `NewQueue with an unknown overflow policy or a capacity above maxQueueCapacity ...` | Both refusals at the calling line; the capacity message names the session's limit. |
 | `a Lazy path part that is a table, a nil queue value and Get on a closed tree ...` | Path, queue value and closed-tree errors at the calling line. |
-| `a secret value stored with Set comes back from Get and Peek ...` | A genuine secret value is stored and handed back by `Get` and `Peek` still secret and identical (`rawequal`), because the negative-entry check is a raw identity test. |
+| `the client's handling of secrets is logged ...` | A diagnostic: the log records what the client does with a secret made by `secretwrap(42)`. On Retail 12.1.0 b69933 (2026-09-24) it read: `type(secret)` is `number`; `rawequal(secret, secret)` raises `attempt to compare a secret number value (execution tainted by '<addon>')`; `rawequal(secret, {})`, `rawequal({}, secret)`, `secret == nil` and `type(secret) == 'nil'` return `false` without raising; reading `plainTable[secret]` raises `attempted to index a table that cannot be indexed with secret keys`; `select('#', secret)` works; and CacheKit's `Set`, `Get`, `Peek`, queue `Push` and `Pop`, and both memoised calls hand the value back still secret. The test itself only checks that the value is still secret afterwards; send the log whenever a line differs. |
+| `a secret value stored with Set comes back from Get and Peek ...` | A genuine secret value is stored and handed back by `Get` and `Peek` still secret and of its own type. Identity cannot be checked, because `rawequal` of a secret with itself raises; the negative-entry check compares the value with CacheKit's own marker table, which the client allows for a secret of another type. |
 | `a memoised function that returns a secret ...` | A secret result is remembered and handed back untouched without running `fn` again. |
-| `a secret value pushed on a queue ...` | A queue never compares its values: `Iterate` and `Pop` hand the secret back still secret and identical. |
+| `a secret value pushed on a queue ...` | A queue never compares its values: `Iterate` and `Pop` hand the secret back still secret and of its own type. |
 | `a secret maxEntries is refused ...` | All four constructors refuse a secret `maxEntries` at the calling line, before comparing it with anything. |
 | `a secret NewQueue capacity and a secret SetLimits maxQueueCapacity ...` | Both refusals at the calling line, with the messages any other invalid value gets, and `GetLimits` unchanged. |
 | `a snapshot read that fills a secret value ...` | `fill` asks the client's `issecretvalue`, refuses at the reader's `fill` line in this file, and `Refresh` re-raises that position unchanged and keeps nothing from the failed read. |
-| `a secret key reaching Get raises the client's own error ...` | What docs/API.md says of cache keys: CacheKit does not probe a key, and the client itself refuses a secret used as a table key. The log holds the client's message. The Busted fixture cannot show this: its stand-in secret is a plain table. |
+| `a secret key reaching Get raises the client's own error ...` | What docs/API.md says of cache keys: CacheKit does not probe a key, and the client itself refuses a secret used as a table key, even to read (measured on Retail 12.1.0 b69933: `attempted to index a table that cannot be indexed with secret keys`). The log holds the client's message. The Busted fixture cannot show this: its stand-in secret is a plain table. |
 
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1, or a totals
-  line other than `37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)`.
+  line other than `38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
