@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 — 2026-09-24
+
+- Fixed: a saved entry of a keyed section declared without a default of its own (`auras = S.optional(S.map{ ... })`) read `nil` for every field it did not store, instead of the wildcard default and the record's field defaults, and so did the records below it; `db:Pairs` skipped those defaults too. `Compact` compared the same entry with the wildcard, so it could remove a value that then read back as `nil`. An entry view now reads the section's own default entry, else the wildcard default, else the record's field defaults, whether or not the section has a default.
+- Implementation revision 2. The state schema and every layout are unchanged; an upgrade over revision 1 recomputes the defaults of every live view once, so entry views revision 1 built read their defaults at once.
+- API.md: a validated write or a `Validate` of a table value allocates the one table `SchemaKit:GetLimits()` returns; the path in a schema refusal follows SchemaKit's `pathKeyLimit`; the scan depth is SchemaKit's `maxDepth`. INTERNALS.md names `maxDepth` and `pathKeyLimit` instead of their defaults.
+- 133 specs: a saved entry of a section without a default read, iterated and compacted, and the upgrade over revision 1 repairing entry views it built; the upgrade specs load the next revision.
+
 ## 0.1.0 — 2026-09-23
 
 - Added SettingsKit API generation 1, implementation revision 1.

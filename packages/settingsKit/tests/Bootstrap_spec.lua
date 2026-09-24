@@ -56,9 +56,9 @@ describe("SettingsKit bootstrap", function()
                 switched = switched + 1
             end)
 
-            local upgraded = TestEnv.LoadRevision(2)
+            local upgraded = TestEnv.LoadRevision(3)
             assert.are.equal(SettingsKit, upgraded)
-            assert.are.equal(2, upgraded.REVISION)
+            assert.are.equal(3, upgraded.REVISION)
             assert.are.equal(prototype, upgraded.Database)
             assert.are.equal(db, upgraded:Open("MyAddonDB"))
             assert.are.equal(profile, db.profile)
@@ -77,6 +77,60 @@ describe("SettingsKit bootstrap", function()
             assert.are.same({}, TestEnv.GetGlobal("MyAddonDB").profiles.Default)
         end
     )
+
+    it("repairs the defaults revision 1 gave entry views of a section without a default", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        local S = require("SchemaKit")
+        local previous = TestEnv.LoadRevision(1)
+        TestEnv.SetPlayer()
+        assert.are.equal(1, previous.REVISION)
+
+        TestEnv.SavedVariable("MyAddonDB", {
+            profiles = { Default = { auras = { [5] = { glow = {} } } } },
+        })
+        local db = previous:Open("MyAddonDB", {
+            profile = S.table({
+                fields = {
+                    auras = S.optional(S.map({
+                        keys = S.number(),
+                        max = 8,
+                        values = S.optional(
+                            S.table({
+                                fields = {
+                                    shown = S.optional(S.boolean(), true),
+                                    glow = S.optional(
+                                        S.table({ fields = { alpha = S.optional(S.number(), 0.5) } })
+                                    ),
+                                },
+                            }),
+                            { shown = true }
+                        ),
+                    })),
+                },
+            }),
+        })
+        local entry = db.profile.auras[5]
+        local glow = entry.glow
+
+        -- Leave the two nodes as revision 1 built them: `false` handed down
+        -- from the section, which was declared without a default.
+        local views = rawget(previous, "_state").views
+        rawget(views, entry).defaults = false
+        rawget(views, glow).defaults = false
+        assert.is_nil(entry.shown)
+        assert.is_nil(glow.alpha)
+
+        local upgraded = TestEnv.ReloadPackage()
+        assert.are.equal(previous, upgraded)
+        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(entry, db.profile.auras[5])
+        assert.are.equal(true, entry.shown)
+        assert.are.equal(0.5, glow.alpha)
+    end)
 
     it("loads without EventKit", function()
         local SettingsKit, Registry = TestEnv.NewPackageWithoutEventKit()

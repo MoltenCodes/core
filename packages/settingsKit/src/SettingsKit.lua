@@ -37,6 +37,7 @@
 --   Saved table ........... layout, migrations, profile selection
 --   Database methods ...... the handle `Open` returns
 --   Package public API .... the facade published through Registry
+--   Upgrades .............. repairs of state an older revision built
 --   Commit ................ prototype/facade assignment and self-check
 --
 -- Layout and invariants are described in `docs/INTERNALS.md`.
@@ -45,7 +46,7 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -1141,6 +1142,32 @@ local function resolveForWrite(node)
     return container
 end
 
+---The defaults a view of `plan` reads when it sits at `key` below a view
+---reading `parentDefaults`: the parent's default for that key, else the
+---declared default of `plan` (for a keyed-section entry, the wildcard
+---default), else the record's own field defaults.
+---
+---`parentDefaults` is `false` below a keyed section declared without a default,
+---so it is tested before it is indexed; `x and rawget(x, key)` would yield
+---that `false` and skip both fallbacks.
+---@param parentDefaults table|false
+---@param key any
+---@param plan SettingsKit.Plan
+---@return table|false defaults
+local function viewDefaults(parentDefaults, key, plan)
+    local defaults = nil
+    if parentDefaults then
+        defaults = rawget(parentDefaults, key)
+    end
+    if defaults == nil then
+        defaults = plan.default
+    end
+    if defaults == nil then
+        defaults = plan.ownDefaults
+    end
+    return defaults
+end
+
 ---Build a view: a proxy and its node, and for a record every child view.
 ---@param db table
 ---@param scope table the scope record
@@ -1191,10 +1218,6 @@ local function newView(db, scope, plan, parent, key, defaults, displayPath, path
             local name = fieldNames[index]
             local field = plan.fields[name]
             if field.proxied ~= false then
-                local childDefaults = defaults and rawget(defaults, name)
-                if childDefaults == nil then
-                    childDefaults = field.ownDefaults
-                end
                 local segment = formatKey(name)
                 children[name] = newView(
                     db,
@@ -1202,7 +1225,7 @@ local function newView(db, scope, plan, parent, key, defaults, displayPath, path
                     field,
                     node,
                     name,
-                    childDefaults,
+                    viewDefaults(defaults, name, field),
                     displayPath .. segment,
                     joinRelative(path, segment)
                 )
@@ -1242,13 +1265,6 @@ local function entryView(node, key)
     end
 
     local valuesPlan = node.plan.values --[[@as SettingsKit.Plan]]
-    local defaults = node.defaults and rawget(node.defaults, key)
-    if defaults == nil then
-        defaults = valuesPlan.default
-    end
-    if defaults == nil then
-        defaults = valuesPlan.ownDefaults
-    end
     local segment = formatKey(key)
     proxy = newView(
         node.db,
@@ -1256,7 +1272,7 @@ local function entryView(node, key)
         valuesPlan,
         node,
         key,
-        defaults,
+        viewDefaults(node.defaults, key, valuesPlan),
         node.displayPath .. segment,
         joinRelative(node.path, segment)
     )
@@ -2766,6 +2782,39 @@ local function getLimits(self)
         maxProfileNameLength = rawget(sharedLimits, "maxProfileNameLength"),
         pathKeyLimit = rawget(sharedLimits, "pathKeyLimit"),
     }
+end
+
+-- Upgrades -------------------------------------------------------------------
+
+---Recompute the defaults of `node`, after those of every node above it, once
+---each. A scope root always read its plan's own field defaults, so the walk
+---stops there.
+---@param node table
+---@param repaired table<table, boolean> nodes already recomputed
+local function repairNodeDefaults(node, repaired)
+    if repaired[node] then
+        return
+    end
+    repaired[node] = true
+    local parent = node.parent
+    if parent == false then
+        return
+    end
+    repairNodeDefaults(parent, repaired)
+    node.defaults = viewDefaults(parent.defaults, node.key, node.plan)
+end
+
+-- Revision 1 gave an entry view of a keyed section declared without a default
+-- `false` for its defaults, and passed that `false` on to the record views
+-- below it, so those views read `nil` where the wildcard and field defaults
+-- apply. Their nodes survive the upgrade in `state.views`; recompute every
+-- node's defaults the way `viewDefaults` builds them now. A node revision 1
+-- built correctly gets the same table back.
+if previousRevision ~= nil and previousRevision < 2 then
+    local repaired = {}
+    for _, node in next, views do
+        repairNodeDefaults(node, repaired)
+    end
 end
 
 -- Commit ---------------------------------------------------------------------

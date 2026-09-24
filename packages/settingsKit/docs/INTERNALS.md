@@ -79,7 +79,7 @@ A missing scope field falls through to the metatable's `__index`, which looks fo
 
 | Field | Meaning |
 |---|---|
-| `proxied` | `"record"` for a `table`, `"map"` for a `map`, `false` for everything else or below depth 16. |
+| `proxied` | `"record"` for a `table`, `"map"` for a `map`, `false` for everything else or below SchemaKit's `maxDepth` as it stood at `Open` (16 by default). |
 | `fieldNames`, `fields` | Record: sorted names and each field's plan. |
 | `ownDefaults` | Record: every field default, filled the way `schema:Apply` fills them. |
 | `values`, `max` | Map: the plan of the values and the entry bound. |
@@ -110,8 +110,8 @@ Each proxy maps, through `state.views`, to a node:
 | `root` | The scope root node. |
 | `sectionName`, `sectionKey` | Root only: where the root's saved table lives (`profiles`/`"Default"`, `char`/`"Name - Realm"`, `global`/`false`). |
 | `dead` | Root only: detached by `DeleteProfile` or `ResetDatabase`. |
-| `defaults` | The defaults this view reads: the parent's default for this field, else the record's `ownDefaults`; for a map entry, the section's own default entry, else the wildcard default, else `ownDefaults`. |
-| `displayPath`, `path` | `profile.frame` for messages, `frame` for `OnChange`. Each key is rendered by `formatKey` with SchemaKit's rule for failure-path keys (`|` doubled, control bytes as `\ddd`, cut at 32 bytes between UTF-8 characters). |
+| `defaults` | The defaults this view reads, built by `viewDefaults`: the parent's default for this key (a record's field default, or a keyed section's own default entry), else the plan's declared `default` (for a map entry, the wildcard default), else the record's `ownDefaults`. A map declared without a default has `false` here, and the entries below it still fall back to the wildcard. |
+| `displayPath`, `path` | `profile.frame` for messages, `frame` for `OnChange`. Each key is rendered by `formatKey` with SchemaKit's rule for failure-path keys (`|` doubled, control bytes as `\ddd`, cut at the shared `pathKeyLimit`, 32 bytes by default, between UTF-8 characters). |
 | `probe`, `probeSet`, `probeKey` | The scratch table this view contributes to a write's probe, and the one key set in it. |
 | `children` | Record: field name to child view, built with the record. |
 | `entries` | Map: key to entry view, weak-valued, built on first access. |
@@ -144,7 +144,7 @@ Both kinds ask `issecretvalue` about the key before comparing it or using it to 
 `viewNewIndex` → `writeView`:
 
 1. Refuse on a detached root.
-2. Refuse a secret key, then a secret value, then a table value that contains a secret, is or contains a view (`state.views` lookup), or is or contains a table with a metatable (`scanValue`, bounded by depth 16 and the database's `_maxScannedEntries`, 65536 by default and `math.huge` when opened with `SettingsKit.UNBOUNDED`). The scan runs on every client: a view stored in a saved table would be a non-empty proxy, so later writes to its keys would skip `__newindex` and validation, and it would alias the other view's data on disk.
+2. Refuse a secret key, then a secret value, then a table value that contains a secret, is or contains a view (`state.views` lookup), or is or contains a table with a metatable (`scanValue`, bounded by SchemaKit's `maxDepth` read when the write starts and the database's `_maxScannedEntries`, 65536 by default and `math.huge` when opened with `SettingsKit.UNBOUNDED`). The scan runs on every client: a view stored in a saved table would be a non-empty proxy, so later writes to its keys would skip `__newindex` and validation, and it would alias the other view's data on disk.
 3. **Probe check.** Each view from the written one up to the root sets its key in its parent's probe to its own probe, the written view sets `key = value` in its probe, and the scope's sealed schema checks the root probe. The probe holds exactly the path to the written value, and every other field of every record on the path is optional (`compilePlan` guarantees it), so the check passes exactly when the value is valid where it is written. The probes are cleared again before any error is raised. A valid check allocates nothing; the reported path is SchemaKit's own, relative to the scope, and the message is built only on failure.
 4. Refuse a write that would add an entry to a keyed section already holding `max` entries (the probe holds one entry, so the bound is counted against the saved table, stopping at `max`).
 5. Store with `rawset` into the resolved (or created) table.
@@ -156,11 +156,13 @@ A probe key left behind by a custom check that raised mid-check is cleared by th
 
 ## Compaction
 
-`compactRecord`, `compactMap` and `compactValue` walk a saved table together with its plan and defaults. A value deeply equal to its default is removed (`deepEqual` treats a secret as unequal to everything and stops at depth 16). A record or map table is compacted first and then removed when it is empty and has a default to fall back to. The walk follows the plan, which `compilePlan` stops at depth 16, so it carries no depth counter of its own; keys the plan does not declare are never visited, so undeclared data survives. `compactScope` walks every entry of a section, removes empty character, realm, class and faction entries, and keeps empty profiles. The logout listener calls `dispatch.compactOnLogout(db)`, which runs `compactDatabase` under `pcall` and reports a failure through `geterrorhandler()`.
+`compactRecord`, `compactMap` and `compactValue` walk a saved table together with its plan and defaults. A value deeply equal to its default is removed (`deepEqual` treats a secret as unequal to everything and stops at SchemaKit's `maxDepth`, read when the compaction starts). A record or map table is compacted first and then removed when it is empty and has a default to fall back to. The walk follows the plan, which `compilePlan` stops at the `maxDepth` in force at `Open`, so it carries no depth counter of its own; keys the plan does not declare are never visited, so undeclared data survives. `compactScope` walks every entry of a section, removes empty character, realm, class and faction entries, and keeps empty profiles. The logout listener calls `dispatch.compactOnLogout(db)`, which runs `compactDatabase` under `pcall` and reports a failure through `geterrorhandler()`.
 
 ## Closures and upgrades
 
-SettingsKit hands out one closure per database: the `PLAYER_LOGOUT` listener, which calls through `state.dispatch`. The connection EventKit returns is not kept: a database lives for the session and is never disconnected. Views and databases get their behaviour from the two metatables in `_state` and the `Database` prototype, which a newer revision rewrites in place. Databases, nodes and plans carry layout numbers so a revision that changes a layout can upgrade them lazily. The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to 2 and checks that a database opened before the upgrade, its views, its `OnChange` and profile listeners and its logout compaction keep working.
+SettingsKit hands out one closure per database: the `PLAYER_LOGOUT` listener, which calls through `state.dispatch`. The connection EventKit returns is not kept: a database lives for the session and is never disconnected. Views and databases get their behaviour from the two metatables in `_state` and the `Database` prototype, which a newer revision rewrites in place. Databases, nodes and plans carry layout numbers so a revision that changes a layout can upgrade them lazily. The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to 3 and checks that a database opened before the upgrade, its views, its `OnChange` and profile listeners and its logout compaction keep working.
+
+Revision 1 gave an entry view of a keyed section declared without a default `false` for its `defaults`, and handed that `false` down to the record views below it, so a saved entry read `nil` where the wildcard or a field default applied. Revision 2 builds every node's `defaults` through `viewDefaults`, and an upgrade over revision 1 walks `state.views` once and recomputes the `defaults` of every live node, parents first; a node revision 1 built correctly gets the same table back. A spec leaves two nodes in the revision 1 shape, reloads, and checks that they read their defaults.
 
 ## Error levels
 

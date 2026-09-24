@@ -217,6 +217,60 @@ describe("SettingsKit defaults", function()
         assert.are.equal(1, TestEnv.GetGlobal("OtherDB").profiles.Default.anything)
     end)
 
+    -- A keyed section declared without a default of its own: its saved
+    -- entries still read the wildcard default and their record field defaults.
+    local function auraSection()
+        return S.optional(S.map({
+            keys = S.number({ integer = true }),
+            max = 8,
+            values = S.optional(
+                S.table({
+                    fields = {
+                        shown = S.optional(S.boolean(), true),
+                        sound = S.optional(S.string()),
+                        glow = S.optional(
+                            S.table({ fields = { alpha = S.optional(S.number(), 0.5) } })
+                        ),
+                    },
+                }),
+                { shown = true }
+            ),
+        }))
+    end
+
+    it("reads the wildcard default through a saved entry of a section without a default", function()
+        TestEnv.SavedVariable("MyAddonDB", {
+            profiles = { Default = { auras = { [5] = { sound = "ping", glow = {} } } } },
+        })
+        local db = openProfile({ auras = auraSection() })
+
+        local entry = db.profile.auras[5]
+        assert.are.equal(true, entry.shown)
+        assert.are.equal("ping", entry.sound)
+        assert.are.equal(0.5, entry.glow.alpha)
+
+        local seen = {}
+        for key, value in db:Pairs(entry) do
+            seen[key] = value
+        end
+        assert.are.equal(true, seen.shown)
+        assert.are.equal("ping", seen.sound)
+    end)
+
+    it("reads a saved entry the same way before and after Compact removes its defaults", function()
+        TestEnv.SavedVariable("MyAddonDB", {
+            profiles = { Default = { auras = { [5] = { shown = true, sound = "ping" } } } },
+        })
+        local db = openProfile({ auras = auraSection() })
+
+        assert.are.equal(1, db:Compact())
+        assert.are.same(
+            { auras = { [5] = { sound = "ping" } } },
+            TestEnv.GetGlobal("MyAddonDB").profiles.Default
+        )
+        assert.are.equal(true, db.profile.auras[5].shown)
+    end)
+
     it("shows nothing to pairs, because a view is an empty proxy", function()
         local db = openProfile({ scale = S.optional(S.number(), 1) })
         db.profile.scale = 2

@@ -2,7 +2,7 @@
 
 SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles, change signals, versioned migrations and compaction.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -238,7 +238,7 @@ Reading a default never writes, with the one exception in the table: an array (o
 
 `view[key] = value` runs, in order:
 
-1. **Value refusal.** A secret key, a secret value, or a table containing a secret anywhere raises `SettingsKit (MyAddonDB) profile.name refused a secret value: saved variables never hold secret values`. Every table value is scanned (to 16 levels and at most `maxScannedEntries` entries, 65536 by default; a larger table is refused too), on every client, and is also refused when it or any table inside it is a **view** (`db.profile.b = db.profile.a` would alias `a` and let writes through `b` bypass validation) or carries a **metatable** (the client saves neither). Nothing is stored.
+1. **Value refusal.** A secret key, a secret value, or a table containing a secret anywhere raises `SettingsKit (MyAddonDB) profile.name refused a secret value: saved variables never hold secret values`. Every table value is scanned (to SchemaKit's `maxDepth` levels, 16 by default, and at most `maxScannedEntries` entries, 65536 by default; a larger table is refused too), on every client, and is also refused when it or any table inside it is a **view** (`db.profile.b = db.profile.a` would alias `a` and let writes through `b` bypass validation) or carries a **metatable** (the client saves neither). Nothing is stored.
 2. **Schema check.** The value is checked where it is written, against the scope's schema, and a failure raises with SchemaKit's text: `SettingsKit (MyAddonDB) profile.frame.x: expected number, found string`. An undeclared field of a closed record is refused the same way.
 3. **Bounds.** A write that adds an entry to a keyed section already holding `max` entries raises `SettingsKit (MyAddonDB) profile.auras: expected at most 256 entries`.
 4. **Store.** Missing tables on the way are created. Writing `nil` removes the saved value, so the field reads its default again.
@@ -280,7 +280,7 @@ Deletes a profile other than the current one and fires `OnProfileDeleted(db, nam
 
 ### `db:ResetDatabase()`
 
-Empties the saved variable in place, keeps its `version`, recreates the layout, switches to the default profile, fires `OnProfileReset(db, name)` and, when the profile name changed, `OnProfileChanged(db, name, previous)`. Every profile view obtained before is detached, and `db.profile` is a new view. The scope views of `global`, `char` and the rest stay valid.
+Empties the saved variable in place, stamps `options.version` again when the database was opened with one, recreates the layout, switches to the default profile, fires `OnProfileReset(db, name)` and, when the profile name changed, `OnProfileChanged(db, name, previous)`. Every profile view obtained before is detached, and `db.profile` is a new view. The scope views of `global`, `char` and the rest stay valid.
 
 ## Change signals
 
@@ -288,7 +288,7 @@ Empties the saved variable in place, keeps its `version`, recreates the layout, 
 
 `scope` names a declared, available scope. After every validated write through that scope's views, `callback(db, scope, key, value, path)` is called with the key and value written (`nil` when a field was reset) and `path`, the path of the table holding the key relative to the scope: `""` for `db.profile.scale`, `"frame"` for `db.profile.frame.x`, `"auras[118]"` for `db.profile.auras[118].shown`.
 
-Keys in `path`, and in every SettingsKit message, are rendered the way SchemaKit renders the keys of its failure paths: an identifier of at most `pathKeyLimit` bytes (32 by default) is joined with a dot, numbers and booleans are bracketed, and any other string is quoted in brackets with `|` doubled (so no World of Warcraft `|T`, `|H` or `|c` escape sequence survives), `\` and `"` backslash-escaped and every other control byte shown as `\ddd`. A longer key is cut at `pathKeyLimit` bytes, never inside a UTF-8 sequence, and marked with `...`, so `path` is for display and logging; use `key` and the view itself to find the value. A key that is a table, a function or userdata appears as its type (`[table]`).
+Keys in `path`, and in every SettingsKit message, are rendered the way SchemaKit renders the keys of its failure paths: an identifier of at most `pathKeyLimit` bytes (32 by default) is joined with a dot, numbers and booleans are bracketed, and any other string is quoted in brackets with `|` doubled (so no World of Warcraft `|T`, `|H` or `|c` escape sequence survives), `\` and `"` backslash-escaped and every other control byte shown as `\ddd`. A longer key is cut at `pathKeyLimit` bytes, never inside a UTF-8 sequence, and marked with `...`, so `path` is for display and logging; use `key` and the view itself to find the value. A key that is a table, a function or userdata appears as its type (`[table]`). The path in a schema refusal (`profile.frame.x: expected number, found string`) is SchemaKit's own failure path, so its keys follow SchemaKit's `pathKeyLimit` rather than this one.
 
 The signal fires after the value is stored. SignalKit's dispatch rules apply: listeners run in connection order, and a listener that raises stops the dispatch and propagates to the writing line.
 
@@ -316,7 +316,7 @@ Returns `true` when writing `value` at `path` in `scope` would be accepted, and 
 
 `path` is either:
 
-- **an array of keys**, `{ "auras", 118, "shown" }`, used exactly as given. A valid check allocates nothing, provided the entry views on the path are alive: entry views are cached while referenced, and a collection may drop an unreferenced one, which the next check rebuilds;
+- **an array of keys**, `{ "auras", 118, "shown" }`, used exactly as given. A valid check of a value that is not a table allocates nothing, provided the entry views on the path are alive (a table value costs the one table `SchemaKit:GetLimits()` returns, read to bound its scan): entry views are cached while referenced, and a collection may drop an unreferenced one, which the next check rebuilds;
 - **a dotted string**, `"auras.118.shown"`. Each segment is a string key, except that a segment indexing a keyed section whose key schema is a number becomes a number when it reads as one. Splitting the string allocates the segments.
 
 Every step but the last must lead to a record or keyed-section field; otherwise the result is `false, "SettingsKit (MyAddonDB) profile.scale is not a record or keyed section"`. A secret, `nil` or NaN key on the path gives `false` and the matching message. A scope that is not declared and available, an empty array, an empty segment (`"frame..x"`) or a path of another type raises at your line.
@@ -363,7 +363,7 @@ Argument failures report the line that called SettingsKit, never a line inside i
 |---|---|
 | Reading a field through a view | One table lookup per nesting level to find the saved table, then one read or one default lookup. No allocation. |
 | Reading a keyed-section entry the first time | Builds that entry's view (cached while referenced). |
-| A validated write | One schema check of a probe holding only the written path, one table write, one signal dispatch. No allocation when the key already exists. |
+| A validated write | One schema check of a probe holding only the written path, one table write, one signal dispatch. No allocation when the key already exists and the value is not a table; a table value adds the scan of its contents and the one table `SchemaKit:GetLimits()` returns. |
 | `Open`, `SetProfile` to a new profile | Build the views of the scope: one proxy and node per record and keyed section in the schema. |
 | `GetProfiles`, `CopyProfile`, `Compact` | Allocate or walk by design; not for hot paths. |
 
