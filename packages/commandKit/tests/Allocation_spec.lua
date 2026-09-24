@@ -65,6 +65,32 @@ describe("CommandKit allocation", function()
         assert.is_true(total > 0)
     end)
 
+    it("does not lower-case the argument of a command without sub-commands", function()
+        -- Lower-casing an item link would build a new string on every
+        -- dispatch once the collector freed the previous one, which the
+        -- allocation guard above cannot see with the collector stopped.
+        local link = "|cffa335ee|Hitem:1|h[Some Item]|h|r"
+        local received
+        CommandKit:CreateScope():Register("watch", {
+            handler = function(_, itemLink)
+                received = itemLink
+            end,
+        })
+        -- `text:lower()` looks `lower` up in the `string` table at every call,
+        -- so a counting stand-in written there sees every call dispatch makes.
+        local lowered = {}
+        local originalLower = string.lower
+        rawset(string, "lower", function(text)
+            lowered[#lowered + 1] = text
+            return originalLower(text)
+        end)
+        local ok, failure = pcall(TestEnv.RunSlash, "/watch " .. link)
+        rawset(string, "lower", originalLower)
+        assert(ok, failure)
+        assert.are.equal(link, received)
+        assert.are.same({}, lowered)
+    end)
+
     it("allocates nothing in an inert dispatcher", function()
         local scope = CommandKit:CreateScope()
         scope:Register("gone", { handler = function() end })

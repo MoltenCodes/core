@@ -126,6 +126,44 @@ describe("CommandKit bootstrap", function()
         )
     end)
 
+    it("upgrades a revision 2 package in place", function()
+        local previousRevision = 2
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        TestEnv.InstallChatApi()
+        require("Registry")
+        require("SignalKit")
+        require("SchemaKit")
+        require("OptionsKit")
+        local previous = TestEnv.LoadRevision(previousRevision)
+        local scope = previous:ForAddon("MyAddon")
+        local words = {}
+        scope:Register("kept", {
+            handler = function(_, word)
+                words[#words + 1] = word
+            end,
+        })
+        scope:EnableCompletion()
+
+        local current = require("CommandKit")
+        assert.are.equal(previous, current)
+        assert.are.equal(previousRevision + 1, current.REVISION)
+        assert.are.equal(scope, current:ForAddon("MyAddon"))
+        TestEnv.RunSlash("/kept Word")
+        assert.are.same({ "Word" }, words)
+        TestEnv.expectErrorContaining(
+            "CommandKit:Parse must be called on the CommandKit facade",
+            function()
+                current.Parse("text")
+            end
+        )
+        assert.is_true(current:CloseAddonScopes("MyAddon"))
+        assert.are.equal(
+            TestEnv.OriginalTabPressed(),
+            TestEnv.GetGlobal("ChatEdit_CustomTabPressed")
+        )
+    end)
+
     it("requires Registry", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()

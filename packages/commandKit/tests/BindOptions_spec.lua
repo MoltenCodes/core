@@ -294,6 +294,84 @@ describe("CommandKit BindOptions", function()
         assert.is_false(values.locked)
     end)
 
+    ---Bind a small tree of its own to `/extra`, for the specs that need options
+    ---the shared tree does not have.
+    ---@param args table the root group's `args`
+    ---@return fun(line: string): string[] run
+    local function bindExtra(args)
+        local extraTree = OptionsKit:Define("ExtraAddon", { type = "group", args = args })
+        local extraSink = CommandKit:CaptureSink()
+        local extraScope = CommandKit:CreateScope()
+        extraScope:SetSink(extraSink)
+        assert.is_true(extraScope:BindOptions(extraTree, "extra"))
+        return function(line)
+            extraSink:Clear()
+            TestEnv.RunSlash(line)
+            return extraSink:Messages()
+        end
+    end
+
+    it("lists the text a desc function returns when Describe runs", function()
+        local mode = "calm"
+        local runExtra = bindExtra({
+            mode = {
+                type = "input",
+                name = "Mode",
+                desc = function(info)
+                    return info.path .. " is " .. mode
+                end,
+                get = function()
+                    return mode
+                end,
+                set = function(_, value)
+                    mode = value
+                end,
+            },
+        })
+        assert.are.same({ "mode = calm - Mode", "mode is calm" }, runExtra("/extra list mode"))
+        runExtra("/extra set mode busy")
+        assert.are.same({ "mode = busy - Mode", "mode is busy" }, runExtra("/extra list mode"))
+    end)
+
+    it("reports a desc function that raises as a failure of the bound sub-command", function()
+        local runExtra = bindExtra({
+            broken = {
+                type = "input",
+                name = "Broken",
+                desc = function()
+                    error("desc exploded", 0)
+                end,
+                get = function()
+                    return "x"
+                end,
+                set = function() end,
+            },
+        })
+        local lines = runExtra("/extra get broken")
+        assert.are.equal(1, #lines)
+        assert.is_truthy(lines[1]:find("/extra get failed: ", 1, true))
+        assert.is_truthy(lines[1]:find("desc exploded", 1, true))
+        assert.are.equal(1, #TestEnv.ReportedErrors())
+    end)
+
+    it("replaces an empty validate message with a fixed one", function()
+        local runExtra = bindExtra({
+            word = {
+                type = "input",
+                name = "Word",
+                get = function()
+                    return "a"
+                end,
+                set = function() end,
+                validate = function()
+                    return false, ""
+                end,
+            },
+        })
+        assert.are.same({ "/extra set: refused by validate" }, runExtra("/extra set word empty"))
+        assert.are.same({}, TestEnv.ReportedErrors())
+    end)
+
     it("refuses a tree that is not an OptionsKit tree", function()
         TestEnv.expectErrorContaining(
             "CommandKit.Scope:BindOptions tree must be an OptionsKit tree",

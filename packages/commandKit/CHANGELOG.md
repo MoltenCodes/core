@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1 — 2026-09-24
+
+- `BindOptions` follows OptionsKit 0.2.0: `list <path>` prints the text a `desc` function returned when `Describe` ran, and a secret one as `(secret value)` instead of failing inside its own `Print`. A `desc` function that raises or returns no string, another tree callback that raises, or a tree that was undefined is reported like any handler failure (`/cmd get failed: <message>` and the host error handler), as `docs/API.md` now says. A tree holding `OptionsKit:ProfileOptions` needs nothing specific.
+- A bound `multiselect` or `color` value holding a secret prints as `(secret value)`; before, the `multiselect` entry was compared and the `color` components formatted into a line `Print` refused. A secret `select` label is tested before it is compared with `nil`, and an `execute` option's `confirm` is tested by type before any comparison, its question left unprinted when secret.
+- A `validate` refusal whose message is empty or secret prints as `refused by validate` instead of making `Fail` raise inside the bound handler.
+- A facade method called with a dot tests the receiver's type before comparing it with the facade, so a secret first argument is refused with the documented message.
+- Dispatch no longer lower-cases the first argument of a command or sub-command that has no sub-commands: a shift-clicked item link was copied into lower case on every dispatch once the collector had freed the previous copy.
+- `README.md` lists LifecycleKit and EventKit among the optional dependencies; `docs/API.md` states implementation revision 3 (it still said 1) and records logout closing among the deviations from the plan; a stale source comment on `ownedKeys` is corrected.
+- Implementation revision 3. No layout changes: revision 3 takes over revision 2's state as it is; a command bound before the upgrade keeps the `BindOptions` handlers of the revision that bound it.
+- 140 specs: `desc` functions, a raising `desc` function, an empty `validate` message, secret `desc` text and secrets inside table values, the argument of a leaf command left as it is, and the upgrade from revision 2.
+
 ## 0.2.0 — 2026-09-23
 
 - CommandKit addon scopes are now closed at logout whenever the framework can observe logout, whichever revisions are paired. `CommandKit:ForAddon(addonName)` finds LifecycleKit and EventKit with `Registry:Find` and leaves the scope to a LifecycleKit whose `CLOSES_ADDON_SCOPES` names `commandKit` (making sure the addon has a LifecycleKit instance), subscribes once to an older LifecycleKit's `OnShutdown`, or, without LifecycleKit, connects one package-level `PLAYER_LOGOUT` watcher in CommandKit's own EventKit scope. With neither, nothing is subscribed and the consumer calls `CloseAddonScopes` on `PLAYER_LOGOUT`, as before. The decision is taken again by later `ForAddon` calls until LifecycleKit has taken the scope over. See "At logout" in `docs/API.md`.

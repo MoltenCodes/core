@@ -53,7 +53,7 @@
 
 local PACKAGE_NAME = "commandKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local OPTIONAL_OPTIONSKIT_API = 1
@@ -497,9 +497,10 @@ if previousRevision == nil then
         -- registered under. Kept for the session: the client caches the
         -- function behind a name, so a name keeps its key and its dispatcher.
         keyByName = {},
-        -- Slash-table key to `true` for every key CommandKit ever wrote, so
-        -- the taken check never mistakes CommandKit's own inert entries for
-        -- another owner's.
+        -- Slash-table key to the lower-case name it serves, for every key
+        -- CommandKit ever wrote. The taken check skips these keys, so it never
+        -- mistakes CommandKit's own inert entries for another owner's, and the
+        -- dispatcher under a key reads its name here.
         ownedKeys = {},
         -- Slash-table key to the permanent dispatcher closure written there.
         slashHandlers = {},
@@ -675,12 +676,14 @@ local function ensureOpen(scope, methodName, level)
     end
 end
 
----Refuse a receiver other than the CommandKit facade (a `.` call, say).
+---Refuse a receiver other than the CommandKit facade (a `.` call, say). The
+---type is tested first: a `.` call passes the first argument as the receiver,
+---and comparing a secret value would raise before the refusal.
 ---@param receiver any
 ---@param label string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-    if receiver ~= CommandKit then
+    if type(receiver) ~= "table" or receiver ~= CommandKit then
         error(label .. " must be called on the CommandKit facade; use " .. label .. "(...)", level)
     end
 end
@@ -1759,7 +1762,10 @@ local function openContext(frame, record, text)
     return context
 end
 
----Follow sub-command names from `tokens[1]` on.
+---Follow sub-command names from `tokens[1]` on. The walk stops at a record
+---without sub-commands before lower-casing the next token: that token is an
+---argument, often a long item link, and its lower-case copy would be a new
+---string on every dispatch.
 ---@param record table the top-level record
 ---@param tokens string[]
 ---@param count integer
@@ -1768,7 +1774,7 @@ end
 local function walkSubcommands(record, tokens, count)
     local node = record
     local index = 1
-    while index <= count do
+    while index <= count and #rawget(node, "_subcommandNames") > 0 do
         local child = rawget(rawget(node, "_subcommands"), tokens[index]:lower())
         if child == nil then
             break
@@ -2120,7 +2126,10 @@ local function valueKeys(node)
     return keys
 end
 
----A value as the command line shows it.
+---A value as the command line shows it. A secret, at the top or inside a
+---`multiselect` or `color` table (OptionsKit's `Describe` passes nested
+---secrets through), is shown as `(secret value)` before anything compares or
+---formats it.
 ---@param node table
 ---@param value any
 ---@return string
@@ -2140,7 +2149,10 @@ local function formatValue(node, value)
     end
     if kind == "select" then
         local label = type(node.values) == "table" and node.values[value] or nil
-        if label ~= nil and not isSecret(label) and tostring(label) ~= tostring(value) then
+        if isSecret(label) then
+            return tostring(value)
+        end
+        if label ~= nil and tostring(label) ~= tostring(value) then
             return tostring(value) .. " (" .. tostring(label) .. ")"
         end
         return tostring(value)
@@ -2149,7 +2161,11 @@ local function formatValue(node, value)
         local chosen = {}
         local keys = valueKeys(node)
         for index = 1, #keys do
-            if value[keys[index]] == true then
+            local entry = value[keys[index]]
+            if isSecret(entry) then
+                return "(secret value)"
+            end
+            if entry == true then
                 chosen[#chosen + 1] = tostring(keys[index])
             end
         end
@@ -2159,6 +2175,9 @@ local function formatValue(node, value)
         return table.concat(chosen, ", ")
     end
     if kind == "color" and type(value) == "table" then
+        if isSecret(value.r) or isSecret(value.g) or isSecret(value.b) or isSecret(value.a) then
+            return "(secret value)"
+        end
         local text = string.format("%.2f %.2f %.2f", value.r or 0, value.g or 0, value.b or 0)
         if value.a ~= nil then
             text = text .. string.format(" %.2f", value.a)
@@ -2361,6 +2380,25 @@ end
 local function newOptionHandlers(tree)
     local handlers = {}
 
+    ---Print a refusal the tree returned. `validate` may answer with anything:
+    ---a message that is secret, or empty once converted with `tostring`, is
+    ---replaced by `fallback` rather than making `Fail` raise inside this
+    ---handler.
+    ---@param context CommandKit.Context
+    ---@param message any
+    ---@param fallback string
+    local function failWithRefusal(context, message, fallback)
+        if isSecret(message) then
+            message = fallback
+        else
+            message = tostring(message)
+            if message == "" then
+                message = fallback
+            end
+        end
+        contextFail(context, message)
+    end
+
     function handlers.get(context, path)
         local node = findOption(context, tree, path, false)
         if node == nil or not ensureValueOption(context, node) then
@@ -2385,12 +2423,12 @@ local function newOptionHandlers(tree)
         end
         local valid, message = tree:Validate(node.path, value)
         if not valid then
-            contextFail(context, tostring(message))
+            failWithRefusal(context, message, "refused by validate")
             return
         end
         local written, refusal = tree:Set(node.path, value)
         if not written then
-            contextFail(context, tostring(refusal))
+            failWithRefusal(context, refusal, "refused by validate")
             return
         end
         contextPrint(context, node.path .. " = " .. formatValue(node, tree:Get(node.path)))
@@ -2423,8 +2461,15 @@ local function newOptionHandlers(tree)
             if line ~= nil then
                 contextPrint(context, line)
             end
-            if type(node.desc) == "string" then
-                contextPrint(context, node.desc)
+            -- `Describe` has called a `desc` function already; its string may
+            -- be secret, and `Print` would refuse it.
+            local desc = node.desc
+            if type(desc) == "string" then
+                if isSecret(desc) then
+                    contextPrint(context, "(secret value)")
+                else
+                    contextPrint(context, desc)
+                end
             end
             if node.kind == "select" or node.kind == "multiselect" then
                 contextPrint(context, "values: " .. joinValues(valueKeys(node), ", "))
@@ -2462,8 +2507,9 @@ local function newOptionHandlers(tree)
             return
         end
         local confirm = node.confirm
-        if confirm ~= nil and confirm ~= false and confirmation ~= "confirm" then
-            if type(confirm) == "string" then
+        local asks = type(confirm) == "string" or confirm == true
+        if asks and confirmation ~= "confirm" then
+            if type(confirm) == "string" and not isSecret(confirm) then
                 contextPrint(context, confirm)
             end
             contextPrint(

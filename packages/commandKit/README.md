@@ -73,7 +73,9 @@ any order:
 - LocaleKit API 1, used by `context:Printf` for indexed specifiers such as
   `%2$s`; without it `Printf` uses `string.format`;
 - ClientKit API 1, used to recognise a secret value; without it CommandKit asks
-  the host's `issecretvalue` directly.
+  the host's `issecretvalue` directly;
+- LifecycleKit API 1 and EventKit API 1, used to close an addon scope at
+  logout (below).
 
 Register commands at load or in your addon's loaded phase. At logout an addon
 scope is closed by LifecycleKit, or by CommandKit's own `PLAYER_LOGOUT` watcher

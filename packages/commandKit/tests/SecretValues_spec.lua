@@ -124,4 +124,56 @@ describe("CommandKit and secret values", function()
         TestEnv.RunSlash("/opts get name")
         assert.are.same({ "name = (secret value)" }, capture:Messages())
     end)
+
+    it("shows a secret desc text and secrets inside a table value as placeholders", function()
+        TestEnv.Reset()
+        local Kit, _, _, _, OptionsKit = TestEnv.NewPackage()
+        TestEnv.SetGlobal("issecretvalue", function(value)
+            return rawequal(value, secret) or value == "hidden help"
+        end)
+        local function constant(value)
+            return function()
+                return value
+            end
+        end
+        local tree = OptionsKit:Define("MyAddon", {
+            type = "group",
+            args = {
+                label = {
+                    type = "input",
+                    name = "Label",
+                    desc = constant("hidden help"),
+                    get = constant("shown"),
+                    set = function() end,
+                },
+                tint = {
+                    type = "color",
+                    name = "Tint",
+                    get = constant({ r = secret, g = 0, b = 0 }),
+                    set = function() end,
+                },
+                channels = {
+                    type = "multiselect",
+                    name = "Channels",
+                    values = { guild = "Guild" },
+                    get = constant({ guild = secret }),
+                    set = function() end,
+                },
+            },
+        })
+        local bound = Kit:CreateScope()
+        local capture = Kit:CaptureSink()
+        bound:SetSink(capture)
+        bound:BindOptions(tree, "opts")
+        TestEnv.RunSlash("/opts list label")
+        TestEnv.RunSlash("/opts get tint")
+        TestEnv.RunSlash("/opts get channels")
+        assert.are.same({
+            "label = shown - Label",
+            "(secret value)",
+            "tint = (secret value)",
+            "channels = (secret value)",
+        }, capture:Messages())
+        assert.are.same({}, TestEnv.ReportedErrors())
+    end)
 end)

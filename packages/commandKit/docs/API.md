@@ -2,7 +2,7 @@
 
 CommandKit API generation **1** provides slash commands for World of Warcraft addons: collision-safe registration owned by a scope, a hyperlink-aware argument parser, sub-commands with generated usage, schema-checked arguments, output sinks, optional tab completion, and a command line over an OptionsKit tree.
 
-Implementation revision: **1**.
+Implementation revision: **3**.
 
 ## Loading
 
@@ -346,7 +346,7 @@ Registers `/commandName` with five sub-commands over an OptionsKit tree handle (
 | `get <path>` | Prints `path = value`. |
 | `set <path> <value...>` | Parses the value for the option's kind, asks `tree:Validate`, then `tree:Set`; prints `path = value`, or the refusal. |
 | `reset <path>` | `tree:Reset` for a bound option; prints the value it reset to. An option with its own `get`/`set` has no default: `"path" has no default to reset to`. |
-| `list [path]` | Lists the visible children of a group (the root without a path): `path = value - Name`, `path - Name (group)`, `path - Name (exec)`, with ` (disabled)` appended where it applies. For one option: its line, its `desc`, and its values. |
+| `list [path]` | Lists the visible children of a group (the root without a path): `path = value - Name`, `path - Name (group)`, `path - Name (exec)`, with ` (disabled)` appended where it applies; `header` and `description` options have no line. For one option: its line, its `desc` text, and its values. |
 | `exec <path> [confirm]` | `tree:Execute`. An option with `confirm` prints its question (when it is a string) and `Type /cmd exec path confirm to run it.` unless the word `confirm` follows. |
 
 Paths are OptionsKit's dotted paths (`frame.scale`). Hidden options are unknown to the command line (`unknown option "x"`); disabled options can be read and listed but not set, reset or run.
@@ -365,7 +365,11 @@ Values typed after `set <path>`:
 
 Every refusal is printed as `/cmd set: <message>`: CommandKit's own (`expected on, off or toggle`, `expected a number`, `expected one of: TOP, CENTER`), the schema's (`expected number <= 2, found larger number`), or the one your `validate` returned (`that label is taken`).
 
-Each bound sub-command calls `tree:Describe()` once per run to see the tree as it is now (values, labels from a `values` function, hidden and disabled flags). That allocates by design: a typed command is not a hot path.
+Each bound sub-command calls `tree:Describe()` once per run to see the tree as it is now (values, labels from a `values` function, hidden and disabled flags, and the text of a `desc` function, which OptionsKit calls there). That allocates by design: a typed command is not a hot path. An error raised while a bound sub-command runs — a `desc` function that raises or returns something other than a string (`Describe` refuses it), another callback of the tree, or a tree that was undefined — is reported like any handler failure: `/cmd get failed: <message>` on the sink, and the error to the host error handler.
+
+A refusal from `validate` is printed as it comes, converted with `tostring`; one that is empty or secret is printed as `refused by validate`, OptionsKit's own wording for a refusal without a message.
+
+The group `OptionsKit:ProfileOptions(db)` returns is built from the kinds above, so a bound tree that holds it offers the profile choice on the command line too, with nothing specific to profiles in CommandKit.
 
 ## Tab completion
 
@@ -402,7 +406,7 @@ On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDD
 
 - `context:Print` and `context:Printf` refuse a secret argument (the template included) at the caller: `CommandKit.Context:Print argument 2 must not be a secret value`. A secret never becomes part of chat output by accident.
 - `Parse`, `ParseInto`, every name argument, and `Fail`'s reason refuse a secret before comparing it.
-- A bound option whose getter returns a secret prints as `(secret value)`; a secret `select` label is neither shown nor matched.
+- A bound option whose getter returns a secret prints as `(secret value)`, as does a `multiselect` or `color` value holding a secret, and a `desc` text that is secret; a secret `select` label is neither shown nor matched, and a secret `confirm` question is not printed.
 - A secret completion candidate is skipped, and the taken check skips a secret `SLASH_<key><n>` or `EMOTE<n>_CMD<m>` value.
 - A handler failure whose message is secret is written to the sink without the message and handed to the host error handler unchanged.
 
@@ -486,12 +490,13 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`BindOptions` adds `exec`** beside `get`, `set`, `reset` and `list`, honours `confirm` with an explicit word, and parses values per option kind before OptionsKit's schema and `validate` check them; it calls `Describe` once per run.
 - **Completion is opt-in per scope** (`EnableCompletion`), because it replaces a client global; the plan made it optional without naming the switch.
 - **Additions:** `scope:IsRegistered`, `scope:DisableCompletion`, `scope:GetAddonName`, `CommandKit.MAX_COMMANDS`, `CommandKit.MAX_DEPTH`, the `CommandKit.Context` prototype, and the limits (scope options, `SetLimits`, `GetLimits` and `CommandKit.UNBOUNDED`); argument tokens are converted for number and boolean schemas; textures are single tokens; `Print` writes no prefix.
+- **Closing at logout** through LifecycleKit API 1 or EventKit API 1, both optional dependencies found through `Registry:Find` (see [At logout](#at-logout)); the plan named neither.
 - **Localised help** is the addon's: usage and description strings are passed in already translated, and `Printf` goes through LocaleKit. CommandKit's own fixed words stay English.
 
 ## Embedded copies and upgrades
 
 Several addons may embed CommandKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: scopes, commands, the slash dispatchers already in the client's tables and the completion replacement stay, because every one of them calls through shared package state that the newer copy rewrites. Scopes and contexts gain the newer copy's methods through the shared `CommandKit.Scope` and `CommandKit.Context` prototypes. The `CommandKit.UNBOUNDED` sentinel and the package-wide limits live in the package state too, so a newer copy publishes the same sentinel and inherits every limit a consumer set, and a scope keeps the limits it was created with.
 
-Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
+Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. Revision 3 changes no layout: it takes over revision 2's state as it is. A command bound with `BindOptions` keeps the sub-command handlers of the revision that bound it, because they are compiled into its record; binding it again after the upgrade gives it the newer ones. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
 
 Nothing survives `/reload`: commands are registered again when the addon loads.
