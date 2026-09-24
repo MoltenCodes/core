@@ -370,6 +370,7 @@ From one metadata capture per flavour the tooling produces:
 | Markdown reference | `packages/apiKit/docs/reference/<flavour>/` | yes, provisionally; decided with the owner after the Retail capture (H4) shows its size |
 | Search index | `packages/apiKit/metadata/<flavour>/search.json` | yes |
 | Build-to-build change report | `packages/apiKit/docs/changes/<flavour>/<from>-<to>.md` | yes |
+| Build history | `packages/apiKit/metadata/<flavour>/history.json` | yes |
 
 Every generated file identifies itself as generated in its first lines, names
 the generator, the flavour, the source commit and the build, and is never
@@ -391,9 +392,14 @@ and reproducible (same input, same bytes):
 3. `diff` compares the new capture with the committed one and records
    additions, removals, signature changes, deprecations, enum and structure
    changes into the history and a human-readable change report.
-4. `generate` writes the runtime file, the LuaCATS definitions, the reference
-   and the search index, and formats the Lua outputs with the pinned StyLua.
-5. `validate` runs the checks in section 15; the repository gates then run.
+4. `generate` writes the runtime file, the LuaCATS definitions, the reference,
+   the search index, the change report and the history entry; it writes Lua
+   in the shape the pinned StyLua produces and confirms that with StyLua and
+   `luac -p` before writing anything.
+5. `validate` runs the checks in section 15 (the normaliser before writing
+   metadata, the generator before writing outputs); the repository gates then
+   run, including `generate --check`, which refuses outputs that no longer
+   match the metadata.
 6. Metadata, generated outputs and the change report are committed together,
    with the package changelog entry.
 

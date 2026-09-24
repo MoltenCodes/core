@@ -234,7 +234,12 @@ tooling/api/
 ├── model.py           # the metadata model and its JSON form
 ├── SCHEMA.md          # that JSON form, field by field
 ├── normalize.py       # turns a capture into a flavour's metadata directory (step 2)
-└── validate.py        # the checks a metadata directory must pass
+├── validate.py        # the checks a metadata directory must pass
+├── diff.py            # compares two captures of a flavour; change report and history (step 3)
+├── render_runtime.py  # the generated Lua bindings file the client loads
+├── render_types.py    # the generated LuaCATS definitions
+├── render_reference.py# the generated Markdown reference and the search index
+└── generate.py        # writes every output of a flavour from its metadata (steps 4 and 5)
 ```
 
 The pipeline, as the design document lists it (section 14):
@@ -245,6 +250,9 @@ python3 -m tooling.api.fetch --heads --flavour retail             # each branch'
 python3 -m tooling.api.fetch --flavour retail --out ~/wow-api     # step 1: capture, outside the repo
 python3 -m tooling.api.normalize --capture ~/wow-api/retail/<sha> --out packages/apiKit/metadata/retail
 python3 -m tooling.api.validate packages/apiKit/metadata/retail   # what normalize ran before writing
+python3 -m tooling.api.diff <previous metadata> packages/apiKit/metadata/retail   # step 3: what changed
+python3 -m tooling.api.generate --flavour retail --previous <previous metadata>    # steps 4 and 5
+python3 -m tooling.api.generate --all --check                     # CI: outputs match the metadata
 ```
 
 `fetch` records the branch, commit, date, client version and build of the
@@ -262,16 +270,35 @@ yields 391 namespaces with 6,338 functions, 1,782 events, 844 enumerations,
 752 structures, 20 callbacks, 60 constants tables and 57 restriction
 predicates, about 6 MB of JSON.
 
-Three files are reviewed data rather than code. `flavours.json` is the one
+`generate` reads one flavour's metadata and writes everything derived from
+it: the runtime bindings (`src/flavours/<Flavour>.lua`, one direct alias per
+function, bound only when the running client has the namespace), the LuaCATS
+definitions (`types/<flavour>/`), the Markdown reference
+(`docs/reference/<flavour>/`, refused when a link it wrote does not resolve),
+the search index (`metadata/<flavour>/search.json`) and, when `--previous`
+names the metadata of the build being replaced, the change report
+(`docs/changes/<flavour>/<old build>-<new build>.md`) and an entry in
+`metadata/<flavour>/history.json`. Generated Lua is checked with `luac -p`
+and the repository's StyLua configuration before anything is written, a
+directory of generated files is replaced as a whole, and `--check` compares
+without writing so CI can refuse a metadata change that was committed without
+its outputs. Against the Retail metadata the runtime file is about 9,800
+lines; a Lua 5.1 interpreter parses it in about 4 ms and the installer runs
+in under 1 ms.
+
+Four files are reviewed data rather than code. `flavours.json` is the one
 place that says which flavours exist and how each is sourced and detected.
 `naming.json` holds the mixed-case words the generic splitter cannot see
 (`PvP`, `BNet`), the short aliases (`addOnProfiler` → `profiler`) and the
 exception tables that resolve a collision by hand. `types.json` lists every
 type the tables reference without defining (`number`, `WOWGUID`,
 `ScriptRegion`, ...) with the LuaCATS type the generators write; a new client
-type is a one-line addition there, and the validator says which line.
-`python3 -m tooling.validation.validate_repository` reads the flavour table
-with the same loader and fails on a malformed entry.
+type is a one-line addition there, and the validator names the type and
+where it is used. `python3 -m tooling.api.lua_tables PATH... [--json]` parses
+tables on their own, for a look at a file the normaliser refuses.
+`SCHEMA.md` is documentation, but it is checked: the model's tests hold it to
+the code. `python3 -m tooling.validation.validate_repository` reads the
+flavour table with the same loader and fails on a malformed entry.
 
 The parser's test suite can be run against a directory of real tables by
 setting `MOLTENCODES_DOCUMENTATION_SAMPLES` to that directory; without it the

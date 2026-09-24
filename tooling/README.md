@@ -52,6 +52,9 @@ python3 -m tooling.api.fetch --heads --flavour retail
 python3 -m tooling.api.fetch --flavour retail --out ~/wow-api
 python3 -m tooling.api.normalize --capture ~/wow-api/retail/<sha> --out packages/apiKit/metadata/retail
 python3 -m tooling.api.validate packages/apiKit/metadata/retail
+python3 -m tooling.api.diff <previous metadata> packages/apiKit/metadata/retail
+python3 -m tooling.api.generate --flavour retail --previous <previous metadata>
+python3 -m tooling.api.generate --all --check
 ```
 
 Build a distributable bundle:

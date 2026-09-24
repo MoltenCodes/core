@@ -1099,11 +1099,18 @@ begins; H4 to H6 may overlap where they do not share files.
       enumerations, 752 structures, 20 callbacks, 60 constants tables, 57
       restriction predicates, no naming collision, every type resolved.
       567 tooling tests (2026-09-24).
-- [ ] **H2 — generators.** `tooling.api.generate` writes the runtime flavour
-      file, the LuaCATS definitions, the Markdown reference, the search index
-      and the change report from one metadata capture; StyLua formats the
-      Lua outputs; `luac -p` and the validator gate every output;
-      determinism test; `tooling.api.diff` and the history model.
+- [x] **H2 — generators.** `tooling.api.generate` writes, from one metadata
+      directory, the runtime flavour file (`render_runtime`: one direct alias
+      per function, bound only when the host has the namespace; Retail is
+      9,824 lines, parsed by Lua 5.1 in about 4 ms, installed in under 1 ms),
+      the LuaCATS definitions (`render_types`, seven files per flavour), the
+      Markdown reference and the search index (`render_reference`, 320 files
+      for Retail with every link resolving), and with `--previous` the change
+      report and the history entry (`diff`). Generated Lua is checked with
+      `luac -p` and StyLua before anything is written, a generated directory
+      is replaced as a whole, `--check` refuses stale outputs for CI, and the
+      whole run takes under a second for Retail. 752 tooling tests
+      (2026-09-24).
 - [ ] **H3 — the facade.** `packages/apiKit/src/ApiKit.lua` with the surface
       in point 4, its specs, manifest, README, `docs/API.md`, `docs/NAMING.md`,
       CHANGELOG; the `wow` publication rule; error levels at the caller.
