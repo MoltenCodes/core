@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "readinessKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMERKIT_API = 1
 local OPTIONAL_EVENTKIT_API = 1
@@ -110,7 +110,8 @@ local WAITER_METHODS = { "Cancel", "IsPending" }
 ---@field timeoutSeconds number|false? Seconds of polling before waiters are told `"timeout"`, or `false` for no timeout. Defaults to `30`.
 ---@field maxWaiters (integer|table)? The most callbacks queued at once: a positive integer or `ReadinessKit.UNBOUNDED`. Defaults to `64`.
 
----The consumer's probe: a truthy result means the data is usable.
+---The consumer's probe: a truthy result means the data is usable. A secret
+---result is a probe failure, because it cannot be tested for truth.
 ---@alias ReadinessKit.Probe fun(): any
 
 ---A waiter's callback: `true` when the gate became ready, otherwise `false`
@@ -201,9 +202,10 @@ if type(nativeGetTimePreciseSec) ~= "function" then
     nativeGetTimePreciseSec = nil
 end
 
--- Secret values (Retail 12.0.0 and later) raise when compared, so every
--- argument a comparison would touch is checked with the host probe first. A
--- host without `issecretvalue` has no secret values.
+-- Secret values (Retail 12.0.0 and later) raise when compared or tested as a
+-- boolean, so every argument a comparison would touch, and every probe answer,
+-- is checked with the host probe first. A host without `issecretvalue` has no
+-- secret values.
 -- issecretvalue is a World of Warcraft client API reachable only through the global table.
 -- selene: allow(global_usage)
 local nativeIsSecretValue = rawget(_G, "issecretvalue")
@@ -211,7 +213,8 @@ if type(nativeIsSecretValue) ~= "function" then
     nativeIsSecretValue = nil
 end
 
----Whether `value` is a secret value the host forbids comparing.
+---Whether `value` is a secret value the host forbids comparing or testing as
+---a boolean. `issecretvalue` itself answers a plain boolean.
 ---@param value any
 ---@return boolean
 local function isSecretValue(value)
@@ -654,31 +657,61 @@ local function closedDuringProbe(gate)
     return rawget(gate, "_status") == STATUS_CLOSED
 end
 
----Record a probe that raised. Only the first failure of a polling round
----reaches the host error handler; every failure is counted in
----`_probeErrorCount`, which `GetProbeErrorCount` exposes. Without the limit a
----probe that always raises would be reported on every poll, forever when
----`timeoutSeconds` is `false`.
+---Count one probe failure and decide whether it is the one to report. Only
+---the first failure of a polling round reaches the host error handler; every
+---failure is counted in `_probeErrorCount`, which `GetProbeErrorCount`
+---exposes. Without the limit a probe that always fails would be reported on
+---every poll, forever when `timeoutSeconds` is `false`.
 ---@param gate table
----@param message any
-local function recordProbeError(gate, message)
+---@return boolean report whether this failure is the first of its round
+local function countProbeFailure(gate)
     rawset(gate, "_probeErrorCount", rawget(gate, "_probeErrorCount") + 1)
     if rawget(gate, "_probeErrorReported") then
-        return
+        return false
     end
     rawset(gate, "_probeErrorReported", true)
-    reportError(message)
+    return true
 end
 
----Run the consumer's probe. A probe that raises is recorded (see
----`recordProbeError`) and counts as "not ready". A negative answer is
----timestamped for the negative cache.
+---Record a probe that raised (see `countProbeFailure`).
+---@param gate table
+---@param message any the error value, handed on unchanged
+local function recordProbeError(gate, message)
+    if countProbeFailure(gate) then
+        reportError(message)
+    end
+end
+
+---Record a probe that answered a secret value. The client raises on a boolean
+---test of a secret (measured on Retail 12.1.0 b69933: `if result then` with
+---`result = secretwrap(true)` raised "attempt to perform boolean test on local
+---'result' (a secret boolean value ...)"), so the answer cannot be read and
+---counts as a probe failure. The message is fixed text built from the gate
+---name, which `Gate` has already refused to accept as a secret, and only when
+---the failure is the one reported, so an ignored failure allocates nothing.
+---@param gate table
+local function recordSecretAnswer(gate)
+    if countProbeFailure(gate) then
+        reportError(
+            'ReadinessKit gate "'
+                .. rawget(gate, "_name")
+                .. '" probe answered a secret value; a probe must answer a plain true or false'
+        )
+    end
+end
+
+---Run the consumer's probe. A probe that raises, or answers a secret value, is
+---recorded as a probe failure and counts as "not ready". The answer is checked
+---with `issecretvalue` before it is tested for truth, because a boolean test
+---of a secret raises. A negative answer is timestamped for the negative cache.
 ---@param gate table
 ---@return boolean ready
 local function runProbe(gate)
     local ok, result = pcall(rawget(gate, "_probe"))
     if not ok then
         recordProbeError(gate, result)
+    elseif isSecretValue(result) then
+        recordSecretAnswer(gate)
     elseif result then
         return true
     end
@@ -879,6 +912,12 @@ end
 ---@param failure any
 ---@return string
 local function withoutPosition(failure)
+    -- A failure carrying a host reason could be a secret string, and the
+    -- `or` below is a boolean test, which raises on a secret. A fixed
+    -- placeholder keeps the re-raised message readable and plain.
+    if isSecretValue(failure) then
+        return "(secret value)"
+    end
     local text = tostring(failure)
     local stripped = text:match("^[^\n]-:%d+: (.*)$")
     return stripped or text

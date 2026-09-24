@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- Documentation and comments only; the executed code is unchanged (`luac -s -l` listings identical), so the implementation revision stays 2.
+- `docs/API.md` ("Missing keys") no longer promises that a secret key is returned unchanged. Measured on Retail 12.1.0 b69933, the client refuses a secret used as a table key at the index itself, before the read table's `__index` runs: `L[secretKey]` raises `attempted to index a table that cannot be indexed with secret keys` at the caller's line, and nothing is stored, recorded or reported. The secret-values section of `Format` no longer gives a read table as the source of a secret template.
+- `docs/API.md` records that the client's own `string.format` accepts positional specifiers (`%2$s %1$s`, `%3$.2f %1$s %2$05d`) and refuses `%100s` with `invalid format (width or precision too long)`, measured on Retail 12.1.0 b69933. `Format` keeps parsing indexes itself, as documented.
+- The comments in `readMissing` and `Format` and `docs/INTERNALS.md` say that the secret-key branch of `readMissing` is not reached on Retail 12.1; it stays for a host that lets such a read through. Two spec descriptions in `SecretValues_spec.lua` say the same.
+
 ## 0.1.2 — 2026-09-24
 
 - Implementation revision 2 applies the repository nil rule: the absence of a caller's argument or option field (`options`, `options.isDefault`, `options.missing`, `options.maxMissingKeys`, `SetLocaleOverride`'s `locale`) and a failed locale-code match on a caller's or the host's value are tested with `type(value) == "nil"`, never by comparing the value with `nil`. The Registry lookup in the shared namespace and the results of `Registry:Bootstrap` are tested the same way.

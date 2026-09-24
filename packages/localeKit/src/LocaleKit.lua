@@ -543,8 +543,11 @@ end
 local function readMissing(strings, key, reports)
     -- A secret (Retail 12.x) raises when used as a table key or concatenated
     -- into the report, so it is handed back untouched: not stored, recorded
-    -- or reported. The probe is looked up at call time; without it nothing
-    -- is secret.
+    -- or reported. Retail 12.1.0 b69933 never gets here with one: the client
+    -- refuses a secret key at the index, before `__index` runs, so
+    -- `L[secretKey]` raises at the caller. The check stays for a host that
+    -- lets the read through. The probe is looked up at call time; without it
+    -- nothing is secret.
     -- issecretvalue is a World of Warcraft client API reachable only through the global table.
     -- selene: allow(global_usage)
     local isSecretValue = rawget(_G, "issecretvalue")
@@ -895,8 +898,9 @@ local function packageFormat(_, template, ...)
     -- selene: allow(global_usage)
     local isSecretValue = rawget(_G, "issecretvalue")
     if type(isSecretValue) == "function" then
-        -- A read table hands a secret key back as itself, so `Format(L[name])`
-        -- can pass a secret template; `string.gsub` must never see one.
+        -- A secret template (a host string, say) must never reach
+        -- `string.gsub`. A read table cannot supply one: the client refuses
+        -- a secret key at the index, before `__index` runs.
         if isSecretValue(template) then
             error("LocaleKit:Format template must not be a secret value", 2)
         end

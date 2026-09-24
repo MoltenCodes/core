@@ -121,7 +121,7 @@ Raises when the addon registered nothing yet (`LocaleKit:GetLocale found no loca
 | `"silent"` | The same without the report. |
 | `"raw"` | Returns `nil`. The table has no metatable and records nothing. |
 
-A **secret key** (Retail 12.x; a unit name read in combat, say) cannot be stored as a table key or put into a report, so it is returned unchanged and neither stored, recorded nor reported. `issecretvalue` is looked up at every such read; without it nothing is secret. Check `issecretvalue` before indexing the table with runtime data if you need the translation.
+A **secret key** (Retail 12.x; a unit name read in combat, say) never reaches LocaleKit. The client refuses a secret used as a table key at the index itself, before the table's `__index` runs, even on a table that has one: measured on Retail 12.1.0 b69933, `L[secretKey]` on a read table raised `attempted to index a table that cannot be indexed with secret keys` at the caller's line. So `L[secretKey]` raises the client's error at your line, and nothing is stored, recorded or reported. Check `issecretvalue` before indexing the table with runtime data, and do not index it with a secret. (`readMissing` still hands back a key `issecretvalue` reports as secret without storing or reporting it, for a host that lets the read reach `__index`; Retail 12.1 does not.)
 
 Because the key is stored on the first read, each key is reported once per session and costs a plain table read afterwards. A key that is not a string reads as `nil` and is not recorded. When a translation or default file defines a key after it was read as missing, the new text replaces the stored key and the key leaves `MissingKeys`.
 
@@ -159,6 +159,8 @@ LocaleKit:Format("%.2f%%", 12.5)                             -- "12.50%"
 
 Flags, width and precision (`%-5s`, `%03d`, `%.2f`) behave as in `string.format`. `%N$` before them (`%2$s`, `%1$.2f`) names argument `N`; an argument may be used any number of times and in any order. Specifiers without an index take the arguments in order, counting only specifiers without an index, so `"%s %2$s %1$s"` with `"a", "b"` gives `"a b a"`. Unused arguments are ignored.
 
+The client's own `string.format` supports positional specifiers too: measured on Retail 12.1.0 b69933, it accepted `%2$s %1$s` and `%3$.2f %1$s %2$05d`, and it refused `%100s` with `invalid format (width or precision too long)`. `Format` does not rely on that. It parses the index itself and hands `string.format` only a specifier without an index, with the chosen argument, so a template behaves the same on every client and on a stock Lua 5.1, and a shape the client refuses is reported under LocaleKit's own message below.
+
 Raised at the caller's line:
 
 - `LocaleKit:Format template must be a string`;
@@ -173,7 +175,7 @@ Raised at the caller's line:
 
 ### Secret values
 
-On Retail 12.x the client hands tainted code secret values that raise when compared or used as table keys, and formatting one produces a secret result. `Format` asks `issecretvalue` about the template and every argument before formatting and refuses a secret one at the caller, so a secret never becomes part of a translated message by accident. The template check matters because a read table hands a secret key back as itself: `LocaleKit:Format(L[unitName], ...)` with a secret `unitName` raises at your line instead of running `string.gsub` over the secret. `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
+On Retail 12.x the client hands tainted code secret values that raise when compared, tested as a boolean or used as table keys, and formatting one produces a secret result. `Format` asks `issecretvalue` about the template and every argument before formatting and refuses a secret one at the caller, so a secret never becomes part of a translated message by accident and `string.gsub` never runs over a secret template (a secret string from the host passed as the template, say). A read table cannot produce a secret template: the client already refuses `L[secretKey]` at the index (see [Missing keys](#missing-keys)). `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
 ## `LocaleKit:SetLocaleOverride(locale?)`
 

@@ -23,6 +23,15 @@ local function probe()
     return false
 end
 
+---The fixed report a gate whose probe answered a secret value makes.
+---@param name string
+---@return string
+local function secretAnswerReport(name)
+    return 'ReadinessKit gate "'
+        .. name
+        .. '" probe answered a secret value; a probe must answer a plain true or false'
+end
+
 ---Load the module chain on the `mainline` host, whose `issecretvalue` reports
 ---the values `NewSecretValue` returns.
 ---@return table ReadinessKit
@@ -112,4 +121,121 @@ describe("ReadinessKit and secret values", function()
         assert.are.equal(gate, ReadinessKit:Get("spells"))
         assert.is_false(gate:IsReady())
     end)
+
+    it(
+        "counts a secret answer at definition as a probe failure and keeps the gate pending",
+        function()
+            local secret = TestEnv.NewSecretValue()
+            local gate = ReadinessKit:Gate("spells", function()
+                return secret
+            end)
+            assert.are.equal(gate, ReadinessKit:Get("spells"))
+            assert.is_false(gate:IsReady())
+            assert.are.equal(1, gate:GetProbeErrorCount())
+            assert.are.same({ secretAnswerReport("spells") }, TestEnv.ReportedErrors())
+            assert.are.equal(1, TestEnv.ArmedTimerCount())
+        end
+    )
+
+    it(
+        "treats a secret answer from a poll like a raising probe: counted, reported once per round",
+        function()
+            local answer = false
+            local gate = ReadinessKit:Gate("spells", function()
+                return answer
+            end, { timeoutSeconds = 1 })
+            answer = TestEnv.NewSecretValue()
+            TestEnv.Poll(500)
+            assert.is_false(gate:IsReady())
+            assert.are.equal(1, gate:GetProbeErrorCount())
+            TestEnv.Poll(500)
+            assert.are.equal(2, gate:GetProbeErrorCount())
+            assert.are.same({ secretAnswerReport("spells") }, TestEnv.ReportedErrors())
+
+            -- The timed-out gate starts a new round on Invalidate, which reports again.
+            gate:Invalidate()
+            TestEnv.Poll(500)
+            assert.are.equal(2, #TestEnv.ReportedErrors())
+
+            -- A plain answer afterwards still makes the gate ready.
+            answer = true
+            TestEnv.Poll(500)
+            assert.is_true(gate:IsReady())
+        end
+    )
+
+    it(
+        "returns false from Probe for a secret answer and caches it like a negative answer",
+        function()
+            local calls = 0
+            local secret = TestEnv.NewSecretValue()
+            local gate = ReadinessKit:Gate("spells", function()
+                calls = calls + 1
+                return secret
+            end)
+            TestEnv.AdvanceMs(500)
+            assert.is_false(gate:Probe())
+            assert.is_false(gate:Probe())
+            assert.are.equal(2, calls)
+            assert.are.equal(2, gate:GetProbeErrorCount())
+            assert.are.equal(1, #TestEnv.ReportedErrors())
+        end
+    )
+
+    it("does not raise when a re-probe event gets a secret answer", function()
+        local answer = false
+        local gate = ReadinessKit:Gate("items", function()
+            return answer
+        end, { intervalSeconds = 60 })
+        gate:ReprobeOn("GET_ITEM_INFO_RECEIVED")
+        answer = TestEnv.NewSecretValue()
+        TestEnv.Emit("GET_ITEM_INFO_RECEIVED")
+        assert.is_false(gate:IsReady())
+        assert.are.equal(1, gate:GetProbeErrorCount())
+        assert.are.same({ secretAnswerReport("items") }, TestEnv.ReportedErrors())
+
+        answer = true
+        TestEnv.Emit("GET_ITEM_INFO_RECEIVED")
+        assert.is_true(gate:IsReady())
+    end)
+
+    it(
+        "upgrades a gate of the previous revision in place and treats its secret answer as a failure",
+        function()
+            local current = ReadinessKit.REVISION
+            ReadinessKit = nil
+            TestEnv.Reset()
+            TestEnv.SetWowProfile("mainline")
+            TestEnv.InstallWowApi()
+            require("Registry")
+            require("SignalKit")
+            require("EventKit")
+            require("TimerKit")
+            local previous = TestEnv.LoadRevision(current - 1)
+            local answer = false
+            local gate = previous:Gate("talents", function()
+                return answer
+            end)
+            local results = {}
+            local waiter = gate:Await(function(isReady)
+                results[#results + 1] = isReady
+            end)
+
+            package.loaded["ReadinessKit"] = nil
+            local upgraded = require("ReadinessKit")
+            assert.are.equal(previous, upgraded)
+            assert.are.equal(current, upgraded.REVISION)
+            assert.are.equal(gate, upgraded:Get("talents"))
+
+            answer = TestEnv.NewSecretValue()
+            TestEnv.Poll(500)
+            assert.is_true(waiter:IsPending())
+            assert.are.equal(1, gate:GetProbeErrorCount())
+            assert.are.same({ secretAnswerReport("talents") }, TestEnv.ReportedErrors())
+
+            answer = true
+            TestEnv.Poll(500)
+            assert.are.same({ true }, results)
+        end
+    )
 end)

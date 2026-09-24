@@ -15,7 +15,7 @@ The ReadinessKit suite covers:
 - allocation guards (`collectgarbage("count")` with the collector stopped) on the poll tick while not ready, `IsReady` and a cached `Probe`;
 - duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry or TimerKit, an in-place upgrade from revision 1 that keeps gates, waiters, the poll timer, a re-probe subscription and a `WhenAll` group, and one from the previous revision that keeps the facade, the state, a gate and its waiter;
 - `error` levels: every argument failure reports the caller's own line;
-- secret values on the `mainline` host: secret names, event names and option values refused at the caller's line before any comparison, ordinary arguments still accepted;
+- secret values on the `mainline` host: secret names, event names and option values refused at the caller's line before any comparison, ordinary arguments still accepted; a probe answering a secret on every path that runs a probe (definition, poll, `Probe`, re-probe event) counted and reported once per round as a probe failure while the gate stays pending, and a gate made by the previous revision that answers a secret after an in-place upgrade;
 - manifest/runtime API and revision consistency.
 
 The required closure is Registry and TimerKit; EventKit is listed under `optionalDependencies`, so the runner puts it and SignalKit on `LUA_PATH` as well. The module chain in `support/ReadinessKitTestEnv.lua` loads Registry, SignalKit, EventKit, TimerKit and ReadinessKit, as an addon that uses `ReprobeOn` would; `NewPackageWithoutEventKit` loads the three-file minimum footprint (Registry, TimerKit, ReadinessKit), so the absent case is a real absence and `Registry:Find` reports `absent`.
@@ -37,5 +37,5 @@ The allocation guard calls the native ticker's callback directly rather than thr
 | `ErrorLevels_spec.lua` | argument and refusal errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, load order, upgrades |
 | `Limits_spec.lua` | `maxWaiters = ReadinessKit.UNBOUNDED`, the sentinel across a reload, numeric limits still refused |
-| `SecretValues_spec.lua` | secret arguments and options refused at the caller's line |
+| `SecretValues_spec.lua` | secret arguments and options refused at the caller's line; secret probe answers treated as probe failures |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement |

@@ -50,7 +50,7 @@ A proxy is an empty table per call. Nothing is ever stored in it, so `__newindex
 
 `GetLocale` sets `reportMetatable` or `silentMetatable` on `strings` when it fixes the mode (`"raw"` sets none). Their `__index` functions, `readMissingReported` and `readMissingSilently`, both call `readMissing`, which `rawset`s the key as its own value, adds it to `missing`, and reports it in `"report"` mode. The `rawset` is what makes the report happen once and later reads plain table reads. A write that defines a missing key removes it from `missing`.
 
-A key `issecretvalue` reports as secret is returned before any of this, because storing it or concatenating it into the report would raise.
+A key `issecretvalue` reports as secret is returned before any of this, because storing it or concatenating it into the report would raise. On Retail 12.1.0 b69933 the branch is not reached: the client refuses a secret key at the index, before `__index` runs, so `L[secretKey]` raises at the caller. It stays for a host that lets such a read through.
 
 Past the record's `maxMissingKeys` (default `MAX_MISSING_KEYS`, 1024; never for the `unbounded` sentinel) `readMissing` returns the key without storing it, so `__index` runs on every read of such a key; that costs a call but no allocation, and it bounds the table's growth.
 

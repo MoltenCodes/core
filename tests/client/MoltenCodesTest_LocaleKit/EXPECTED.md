@@ -51,7 +51,7 @@ MoltenCodes Test: PASS localeKit.allocation: repeating one indexed Format 10000 
 MoltenCodes Test: PASS localeKit.secrets: Format refuses a genuine secret argument at LocaleKitSuite.lua's calling line
 MoltenCodes Test: PASS localeKit.secrets: Format refuses a genuine secret template at LocaleKitSuite.lua's calling line before string.gsub sees it
 MoltenCodes Test: PASS localeKit.secrets: GetLocale refuses a genuine secret maxMissingKeys at LocaleKitSuite.lua's calling line and fixes neither the limit nor the mode
-MoltenCodes Test: PASS localeKit.secrets: a read table indexed with a genuine secret key hands it back still secret and stores, records and reports nothing
+MoltenCodes Test: PASS localeKit.secrets: a read table indexed with a genuine secret key raises the client's refusal at LocaleKitSuite.lua's calling line, before __index runs, and stores, records and reports nothing
 MoltenCodes Test: SKIP localeKit.session: nothing LocaleKit holds survives /reload, and translation files register again -- a /reload ends the run; the Busted upgrade and bootstrap specs cover a fresh load
 MoltenCodes Test: SKIP localeKit.session: without the client's geterrorhandler a missing-key report is printed -- the client always has geterrorhandler, and replacing that global would taint it for Blizzard code
 MoltenCodes Test: SKIP localeKit.session: a newer LocaleKit embedded by another addon upgrades read tables, modes, missing keys and the override in place -- needs a second LocaleKit copy loaded by another addon; the Busted upgrade specs cover it
@@ -93,33 +93,30 @@ the client's own `string.format` to format four fully indexed templates
 accepts, `LocaleKit:Format` must give the same text. LocaleKit never hands an
 indexed specifier to `string.format` (it rewrites `%2$s` to `%s` and picks the
 argument itself), so it does not depend on the answer; the test records it.
-A client whose `string.format` refuses all four prints this line instead, and
+Retail 12.1.0 b69933 accepts positional specifiers (`%2$s %1$s` and
+`%3$.2f %1$s %2$05d` were measured), so on Retail 12.1 the test passes. A
+client whose `string.format` refuses all four prints this line instead, and
 the totals read `28 passed, 0 failed, 4 skipped`:
 
 ```text
 MoltenCodes Test: SKIP localeKit.format: Format gives the text the client's own string.format gives for fully indexed templates, where the client accepts them -- the client's string.format refuses indexed specifiers, so there is nothing to compare; LocaleKit:Format does not need them
 ```
 
-That skip is not a failure of LocaleKit; send the logs either way, because
-they answer whether the Retail string library supports indexed specifiers.
+That skip is not a failure of LocaleKit, but it is not expected on Retail
+12.1; send the logs either way.
 
-### The secret-key test may fail, and why
+### The secret-key test
 
-`a read table indexed with a genuine secret key ...` checks the promise of
-`docs/API.md` ("Missing keys"): a secret key read from a read table is handed
-back unchanged and is neither stored, recorded nor reported.
-`docs/EMBEDDING.md` records that Retail 12.1.0 raises when a secret is used as
-a table key *to read* (`plainTable[secret]`). If the client raises before
-LocaleKit's `__index` runs, the documented answer cannot happen, and the test
-fails with this line (the client's own message follows the colon):
-
-```text
-MoltenCodes Test: FAIL localeKit.secrets: a read table indexed with a genuine secret key hands it back still secret and stores, records and reports nothing -- the client raised on the read table index itself, so the documented answer (the secret key back) cannot happen: ...
-```
-
-That failure is a finding about the documentation, not about the test: send
-the whole line and the log. The totals then read
-`28 passed, 1 failed, 3 skipped, 0 timed out (32 tests)`.
+`a read table indexed with a genuine secret key ...` pins a measured fact of
+Retail 12.1.0 b69933: the client refuses a secret used as a table key to read
+at the index itself, before the table's `__index` metamethod runs, even on a
+table that has one. `strings[secretKey]` on a read table therefore raises the
+client's error, `attempted to index a table that cannot be indexed with
+secret keys`, at the line of the index in this file, and LocaleKit never sees
+the key: nothing is stored, recorded in `MissingKeys` or reported.
+`docs/API.md` ("Missing keys") documents this. Should a later client let the
+read reach `__index`, the test fails at `readSucceeded`; send the whole line
+and the log, because the documentation would then need to change.
 
 ### On a client without secret values
 
@@ -174,13 +171,13 @@ tests can skip this way. Disable that addon and run again.
 | `Format refuses a genuine secret argument ...` | A secret made by `secretwrap` is refused at this file's calling line with a message that contains no secret, and the next `Format` works. |
 | `Format refuses a genuine secret template ...` | A secret template is refused at the calling line before `string.gsub` runs over it. |
 | `GetLocale refuses a genuine secret maxMissingKeys ...` | The refusal comes before any comparison (no client error about a secret), and the refused call fixed neither its mode nor a limit: the next call chooses `silent`, and the limit is the default 1024. |
-| `a read table indexed with a genuine secret key ...` | The documented answer to a secret key on the real client (see above). |
+| `a read table indexed with a genuine secret key ...` | The client refuses the secret key at the index, naming this file at the indexing line with `attempted to index a table that cannot be indexed with secret keys`; the collector receives no report, `MissingKeys` stays empty and the defined key still reads (see above). |
 | the three `localeKit.session` skips | Registered skips for what a run cannot observe. |
 
 ## What counts as unexpected
 
-- Any `FAIL` or `TIMEOUT` line other than the secret-key failure described
-  above, a `SKIP` line other than the ones described above, or a totals line
+- Any `FAIL` or `TIMEOUT` line, a `SKIP` line other than the ones described
+  above, or a totals line
   other than `29 passed, 0 failed, 3 skipped, 0 timed out (32 tests)` (or one
   of the variants above).
 - No login line, or `Expected.lua is missing`: the harness or the installer

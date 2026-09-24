@@ -32,7 +32,8 @@
 --   * that the documented allocation-free calls allocate nothing on the
 --     client's own collector;
 --   * argument errors and secret refusals pointing at this file as the client
---     names it, and what the client does with a probe that answers a secret.
+--     names it, and a probe that answers a secret counted and reported as a
+--     probe failure instead of raising.
 --
 -- Nothing here needs combat, a group or an instance. The only client state a
 -- test changes is the `chatBubbles` CVar, put back by the After hook after
@@ -912,7 +913,12 @@ hostData:Test(
         end))
 
         local probe, record = recordingProbe(function()
-            return type(getItemInfo(itemID)) ~= "nil"
+            -- For an item the client has not cached, GetItemInfo returns no
+            -- values at all, and `type()` of an empty call raises "bad
+            -- argument #1 to 'type' (value expected)" (measured on Retail
+            -- 12.1.0 b69933). A local receives the empty return as nil.
+            local name = getItemInfo(itemID)
+            return type(name) ~= "nil"
         end)
         local definedAt = preciseNow()
         gate = defineGate(
@@ -1054,7 +1060,10 @@ hostData:Test(
         end
         ---@cast getSpellInfo function
         local probe, record = recordingProbe(function()
-            return type(getSpellInfo(AUTO_ATTACK_SPELL_ID)) ~= "nil"
+            -- Read into a local first: `type()` of a call that returns no
+            -- values raises instead of answering "nil".
+            local spellInfo = getSpellInfo(AUTO_ATTACK_SPELL_ID)
+            return type(spellInfo) ~= "nil"
         end)
         local gate = defineGate("autoAttack", probe, { intervalSeconds = POLL_INTERVAL_SECONDS })
         ctx:Expect(gate:IsReady()):ToBe(true)
@@ -1949,12 +1958,15 @@ secretTest("ReprobeOn refuses a secret event name at the calling line", function
 end)
 
 secretTest(
-    "a probe that answers a secret true or false: what Gate and the polls do with it is logged (docs/API.md does not say), and every such gate closes and frees its name",
+    "a probe that answers a secret true or false is a probe failure: Gate returns without raising, the gate stays pending, the handler gets one fixed report naming the gate, and GetProbeErrorCount counts every answer",
     function(ctx)
-        local reported, _, restoreHandler = collectReportedErrors()
+        local reported, observed, restoreHandler = collectReportedErrors()
         for _, plain in ipairs({ true, false }) do
             local secretAnswer = makeSecret(ctx, plain)
             local name = nextGateName("secretAnswer")
+            local expectedReport = 'ReadinessKit gate "'
+                .. name
+                .. '" probe answered a secret value; a probe must answer a plain true or false'
             local succeeded, problem = pcall(
                 ReadinessKit.Gate,
                 ReadinessKit,
@@ -1965,40 +1977,52 @@ secretTest(
                 { intervalSeconds = POLL_INTERVAL_SECONDS, timeoutSeconds = SHORT_TIMEOUT_SECONDS }
             )
             local gate = ReadinessKit:Get(name)
-            local reportsBefore = #reported
             if type(gate) ~= "nil" then
                 trackGate(gate)
-                -- Two polls, had the gate started polling.
+                -- Two polls, inside the first polling round (the timeout is 0.3 s).
                 waitSeconds(ctx, 2 * POLL_INTERVAL_SECONDS + TIMING_MARGIN_SECONDS)
             end
-            local state = "not registered"
-            local probeErrors = "n/a"
-            if type(gate) ~= "nil" then
-                state = "registered and not ready"
-                if gate:IsReady() then
-                    state = "registered and ready"
+
+            local own = 0
+            for _, message in ipairs(reported) do
+                if
+                    type(message) == "string"
+                    and not isSecret(message)
+                    and message == expectedReport
+                then
+                    own = own + 1
                 end
-                probeErrors = tostring(gate:GetProbeErrorCount())
             end
-            local gateOutcome = "returned"
-            if not succeeded then
-                gateOutcome = "raised " .. tostring(problem)
-            end
+            local probeErrors = type(gate) ~= "nil" and gate:GetProbeErrorCount() or 0
             ctx:Log(
-                ("secretwrap(%s) answer: Gate %s; the gate is %s; reports during two intervals: %d; probe errors counted: %s"):format(
+                ("secretwrap(%s) answer: Gate %s; registered %s; ready %s; reports naming the gate: %d; probe errors counted: %d"):format(
                     tostring(plain),
-                    gateOutcome,
-                    state,
-                    #reported - reportsBefore,
+                    succeeded and "returned" or ("raised " .. describe(problem)),
+                    tostring(type(gate) ~= "nil"),
+                    tostring(type(gate) ~= "nil" and gate:IsReady()),
+                    own,
                     probeErrors
                 )
             )
+
+            ctx:Expect(succeeded):ToBe(true)
+            ctx:Expect(type(gate)):ToBe("table")
             if type(gate) ~= "nil" then
-                gate:Close()
+                ctx:Expect(gate:IsReady()):ToBe(false)
+                ctx:Expect(gate:IsClosed()):ToBe(false)
+                -- The definition's answer and at least one poll's.
+                ctx:Expect(probeErrors >= 2):ToBe(true)
+                ctx:Expect(gate:Close()):ToBe(true)
+            end
+            if observed then
+                ctx:Expect(own):ToBe(1)
             end
             ctx:Expect(ReadinessKit:Get(name)):ToBeNil()
         end
         restoreHandler()
+        if not observed then
+            ctx:Fail(HANDLER_KEPT_MESSAGE)
+        end
     end
 )
 

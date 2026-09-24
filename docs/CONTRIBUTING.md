@@ -109,6 +109,17 @@ runtime Lua, check it against this list:
       in arithmetic, measured with `#`, indexed, called or used as a table key
       without `issecretvalue` first (see
       [Secret Values](https://warcraft.wiki.gg/wiki/Secret_Values)).
+- [ ] No value the Kit did not create (a probe answer, a callback or host
+      return) is used as a boolean: never the condition of `if`, `while` or
+      `until`, never an operand of `and`, `or` or `not`, until
+      `issecretvalue` has said it is not secret. A boolean test of a secret
+      raises (measured on Retail 12.1.0 b69933: `if result then` with
+      `result = secretwrap(true)` raised `attempt to perform boolean test on
+      local 'result' (a secret boolean value, while execution tainted by
+      'MoltenCodes')`; see
+      [`EMBEDDING.md`](EMBEDDING.md#secret-values-retail-12x)). A secret
+      answer where a truth value is expected is treated as a failure of the
+      code that produced it, never tested.
 - [ ] Absence of a value the Kit did not create (caller arguments and their
       fields, host returns, callback, probe and factory results, values read
       from foreign libraries or saved variables) is tested with

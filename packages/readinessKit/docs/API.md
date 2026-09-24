@@ -53,7 +53,7 @@ Gate handles:
 | `ReprobeOn(eventName)` | Re-run the probe whenever the host event fires; needs EventKit. |
 | `Close()` | Stop polling, release subscriptions, free the name, tell waiters `"closed"`. |
 | `IsClosed()` | Whether the gate is closed. |
-| `GetProbeErrorCount()` | How many times the probe has raised since the gate was defined. |
+| `GetProbeErrorCount()` | How many times the probe has failed (raised, or answered a secret value) since the gate was defined. |
 
 Waiter handles, returned by `Await` and `WhenAll`:
 
@@ -79,7 +79,7 @@ local talents = ReadinessKit:Gate("MyAddon.talents", function()
 end, { intervalSeconds = 1, timeoutSeconds = 20 })
 ```
 
-`name` is a non-empty string, `probe` a function whose truthy result means "the data is usable". Options:
+`name` is a non-empty string, `probe` a function whose truthy result means "the data is usable". A probe answers a plain value; a secret answer is a probe failure (see [Probes that answer a secret value](#probes-that-answer-a-secret-value)). Options:
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -158,6 +158,8 @@ When the host refuses the registration, the failure is raised at the caller's li
 
 A gate closed from inside a listener of the same event is not probed by a delivery EventKit still owes it.
 
+A refusal whose reason is a secret value is re-raised with the fixed text `(secret value)` in place of the reason, because stripping the position from a secret would test it as a boolean.
+
 ## `gate:Close()`
 
 Marks the gate closed, cancels its poll timer, removes it from the shared name table (a later `Gate` with that name defines a new gate), calls every queued waiter with `false, "closed"`, and closes its EventKit scope. Returns `false` when it was already closed.
@@ -186,6 +188,16 @@ A gate listed twice counts twice. The group is bounded by the gates' own caps: w
 A probe that raises counts as "not ready": the gate keeps polling, the failure restarts the negative-cache window, and `Probe()` returns `false`. The error never reaches `Gate`, `Probe` or a TimerKit tick.
 
 Only the **first** failure of each polling round is handed to the host error handler (`geterrorhandler()`, or `print` without one); every failure is counted, and `gate:GetProbeErrorCount()` returns the total since the gate was defined. A new round (after `Invalidate`, or when `Probe` or a re-probe event restarts a timed-out gate) reports its first failure again. So a probe that always raises is reported once, not twice a second, even with `timeoutSeconds = false`.
+
+## Probes that answer a secret value
+
+On Retail 12.0.0 and later a host API may return a secret value, and the client raises on any boolean test of one: measured on Retail 12.1.0 b69933, `if result then` with `result = secretwrap(true)` raised `attempt to perform boolean test on local 'result' (a secret boolean value, while execution tainted by 'MoltenCodes')`. ReadinessKit therefore never tests a secret answer for truth. It checks the answer with `issecretvalue` (read once at load) before anything else touches it, and a secret answer, `true` or `false` underneath, is a **probe failure**:
+
+- it counts as "not ready": the gate stays pending and keeps polling, the failure restarts the negative-cache window, and `Probe()` returns `false`;
+- nothing raises out of `Gate`, `Probe`, a TimerKit tick or a re-probe event;
+- it is counted by `gate:GetProbeErrorCount()` and reported under the same once-per-round rule as a probe that raises, with the fixed message `ReadinessKit gate "<name>" probe answered a secret value; a probe must answer a plain true or false`.
+
+A probe over a host API that may answer a secret checks it itself (`issecretvalue`) and answers a plain `true` or `false`. On a host without `issecretvalue` nothing is secret and the check costs one upvalue test.
 
 ## A probe that closes its own gate
 
@@ -217,7 +229,7 @@ per name for the session, so it grows only with the names the consumer defines.
 
 Argument failures report the line that called the public method, never a line inside ReadinessKit. Messages name the method (`ReadinessKit:Gate`, `ReadinessKit.Gate:Await`, `ReadinessKit.Waiter:Cancel`, `ReadinessKit:WhenAll`). Calling a method on something that is not a gate raises `ReadinessKit.Gate:IsReady must be called on a ReadinessKit gate`.
 
-A secret value (Retail 12.0.0 and later) cannot be compared, so it is refused before any check touches it, at the caller's line:
+A secret value (Retail 12.0.0 and later) cannot be compared or tested as a boolean, so it is refused before any check touches it, at the caller's line:
 
 | Argument | Message |
 |---|---|

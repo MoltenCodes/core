@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5 — 2026-09-24
+
+- A probe that answers a secret value is a probe failure. The client raises on any boolean test of a secret (measured on Retail 12.1.0 b69933: `if result then` with `result = secretwrap(true)` raised "attempt to perform boolean test on local 'result' (a secret boolean value ...)"), and before this release that test ran outside the probe's protected call, so a secret answer made `Gate` raise and left the gate registered. The answer is now checked with `issecretvalue` (read once at load) before it is tested for truth; a secret answer counts as "not ready", the gate stays pending, nothing raises out of `Gate`, `Probe`, a poll or a re-probe event, `GetProbeErrorCount` counts it, and the first of each polling round is reported through the host error handler as `ReadinessKit gate "<name>" probe answered a secret value; a probe must answer a plain true or false`. `docs/API.md` gains "Probes that answer a secret value".
+- `gate:ReprobeOn` re-raises a refused host registration whose reason is a secret value with the fixed text `(secret value)` in place of the reason, instead of testing the secret while stripping its position.
+- Implementation revision 4, because the executed implementation changed. A new spec upgrades a revision-3 gate in place and has the upgraded gate treat a secret answer as a failure; `SecretValues_spec.lua` covers a secret answer at definition, from a poll, from `Probe` and from a re-probe event.
+
 ## 0.1.4 — 2026-09-24
 
 - Nil rule (decision of 2026-09-24): absence of a value that comes from outside the Kit (an option, the Registry lookups, the EventKit facade `Registry:Find` returns) is tested with `type(value) == "nil"`, never by comparing it with `nil`, because comparing a secret value raises inside the Kit instead of at the caller.

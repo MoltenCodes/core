@@ -24,7 +24,8 @@
 --   * that reading the read table and repeating a `Format` allocate nothing on
 --     the client's own collector;
 --   * the refusal of genuine secret values made by `secretwrap`, where
---     docs/API.md promises one, and the documented answer to a secret key.
+--     docs/API.md promises one, and the client's own refusal of a secret key
+--     at the read table's index, before LocaleKit's `__index` runs.
 --
 -- UTF-8 text in the client's font strings is out of scope: LocaleKit stores
 -- and returns bytes, and docs/API.md promises nothing about rendering.
@@ -1008,32 +1009,32 @@ secretTest(
     end
 )
 
+--- The client's refusal of a secret key, measured on Retail 12.1.0 b69933. It
+--- is raised at the index itself, before the read table's `__index` runs.
+local SECRET_KEY_REFUSAL = "attempted to index a table that cannot be indexed with secret keys"
+
 secretTest(
-    "a read table indexed with a genuine secret key hands it back still secret and stores, records and reports nothing",
+    "a read table indexed with a genuine secret key raises the client's refusal at LocaleKitSuite.lua's calling line, before __index runs, and stores, records and reports nothing",
     function(ctx)
         local probeName = probeWithDefaults("SecretKey", { "Defined" })
         local strings = LocaleKit:GetLocale(probeName)
         local secretKey = makeSecret(ctx, "Some Unit Name")
 
+        local startLine = 0
         local readSucceeded, readProblem = true, nil
-        local answer = nil
         local reported, observed = collectReports(ctx, function()
             readSucceeded, readProblem = pcall(function()
-                answer = strings[secretKey]
+                startLine = currentLine()
+                return strings[secretKey]
             end)
         end)
         requireObservedHandler(ctx, observed)
-        if not readSucceeded then
-            ctx:Log("client message: " .. tostring(readProblem))
-            ctx:Fail(
-                "the client raised on the read table index itself, so the documented answer (the secret key back) cannot happen: "
-                    .. tostring(readProblem)
-            )
-            return
-        end
+        ctx:Log("client message: " .. tostring(readProblem))
 
-        ctx:Expect(isSecretValue(answer)):ToBe(true)
-        ctx:Expect(type(answer)):ToBe("string")
+        ctx:Expect(readSucceeded):ToBe(false)
+        ctx:Expect(expectThisFile(ctx, readProblem)):ToBe(startLine + 1)
+        local refusalAt = string.find(tostring(readProblem), SECRET_KEY_REFUSAL, 1, true)
+        ctx:Expect(type(refusalAt)):ToBe("number")
         ctx:Expect(#reported):ToBe(0)
         ctx:Expect(LocaleKit:MissingKeys(probeName)):ToEqual({})
         ctx:Expect(strings["Defined"]):ToBe("Defined")

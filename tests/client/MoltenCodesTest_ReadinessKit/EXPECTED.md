@@ -58,7 +58,7 @@ MoltenCodes Test: PASS readinessKit.errors: Await, Probe, Invalidate, ReprobeOn 
 MoltenCodes Test: PASS readinessKit.secrets: Gate and Get refuse a secret name at the calling line, before comparing it
 MoltenCodes Test: PASS readinessKit.secrets: Gate refuses a secret intervalSeconds, timeoutSeconds and maxWaiters at the calling line, and defines no gate
 MoltenCodes Test: PASS readinessKit.secrets: ReprobeOn refuses a secret event name at the calling line
-MoltenCodes Test: PASS readinessKit.secrets: a probe that answers a secret true or false: what Gate and the polls do with it is logged (docs/API.md does not say), and every such gate closes and frees its name
+MoltenCodes Test: PASS readinessKit.secrets: a probe that answers a secret true or false is a probe failure: Gate returns without raising, the gate stays pending, the handler gets one fixed report naming the gate, and GetProbeErrorCount counts every answer
 MoltenCodes Test: SKIP readinessKit.session: without GetTimePreciseSec a timeout is counted in polls and Probe never answers from the cache -- not observable here: every Retail client has GetTimePreciseSec; packages/readinessKit/tests/Timeout_spec.lua and NegativeCache_spec.lua prove the fallback
 MoltenCodes Test: SKIP readinessKit.session: gates live in memory only and none survives /reload -- not observable in a run: /reload ends the session before a result could be printed; docs/API.md, Embedded copies and upgrades
 MoltenCodes Test: readinessKit: 29 passed, 0 failed, 3 skipped, 0 timed out (32 tests)
@@ -96,7 +96,7 @@ prints these four lines instead, and the totals line reads
 MoltenCodes Test: SKIP readinessKit.secrets: Gate and Get refuse a secret name at the calling line, before comparing it -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP readinessKit.secrets: Gate refuses a secret intervalSeconds, timeoutSeconds and maxWaiters at the calling line, and defines no gate -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP readinessKit.secrets: ReprobeOn refuses a secret event name at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
-MoltenCodes Test: SKIP readinessKit.secrets: a probe that answers a secret true or false: what Gate and the polls do with it is logged (docs/API.md does not say), and every such gate closes and frees its name -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+MoltenCodes Test: SKIP readinessKit.secrets: a probe that answers a secret true or false is a probe failure: Gate returns without raising, the gate stays pending, the handler gets one fixed report naming the gate, and GetProbeErrorCount counts every answer -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
 ### Skips decided while the test runs
@@ -130,8 +130,8 @@ No window opens. Two tests raise `mctReadinessKit deliberate probe failure`
 and `mctReadinessKit deliberate callback failure` on purpose; while each
 waits for it, the client's error handler is swapped for the test's own
 collector, so no error window opens and BugSack records nothing. The secret
-probe test swaps the handler for the same reason, in case the client refuses
-to test a secret answer from a poll.
+probe test swaps the handler too, because ReadinessKit reports a secret probe
+answer through it; the report must reach only the test's collector.
 
 ## What a run leaves behind
 
@@ -159,9 +159,9 @@ results.
 | Test | Proves in the real client |
 |---|---|
 | `Registry:Get('readinessKit', 1) is the ReadinessKit facade ...` | The facade the client loaded is API 1 with `Gate`, `Get`, `WhenAll` and the `UNBOUNDED` table; a gate carries all eight gate methods and a waiter both waiter methods of docs/API.md; `Get` finds the gate by its name and answers `nil` for a name nobody defined. |
-| `the installed ReadinessKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's (3), not an older or newer embedded copy. |
+| `the installed ReadinessKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's (4), not an older or newer embedded copy. |
 | `the client offers both optional host facilities ...` | `GetTimePreciseSec` exists and `Registry:Find("eventKit", 1)` returns the same EventKit the bundle registered, so ReadinessKit's clock and `ReprobeOn` both have their host. The log gives `Find`'s answer. |
-| `an item gate over C_Item.GetItemInfo ...` | For the first candidate item `C_Item.IsItemDataCachedByID` reports as not cached, a gate over `C_Item.GetItemInfo(item) ~= nil` is pending at definition; with `ReprobeOn("GET_ITEM_INFO_RECEIVED")` and `C_Item.RequestLoadItemDataByID`, it becomes ready when the server's answer arrives, well before its first poll (the interval is 5 s, the wait at most 4 s), and its waiter is called with `true`. The log names the item, whether it was cached at the start, how long the server took, how many GET_ITEM_INFO_RECEIVED events named it with which `success`, and how often the probe ran. When every candidate is already cached, it proves instead that the gate is ready at definition and its probe ran once. |
+| `an item gate over C_Item.GetItemInfo ...` | For the first candidate item `C_Item.IsItemDataCachedByID` reports as not cached, a gate whose probe reads `C_Item.GetItemInfo(item)` into a local and answers whether it is not `nil` is pending at definition (for an uncached item the call returns no values at all, and `type()` of that empty return raises, which is why the probe uses a local); with `ReprobeOn("GET_ITEM_INFO_RECEIVED")` and `C_Item.RequestLoadItemDataByID`, it becomes ready when the server's answer arrives, well before its first poll (the interval is 5 s, the wait at most 4 s), and its waiter is called with `true`. The log names the item, whether it was cached at the start, how long the server took, how many GET_ITEM_INFO_RECEIVED events named it with which `success`, and how often the probe ran. When every candidate is already cached, it proves instead that the gate is ready at definition and its probe ran once. |
 | `a spell gate over C_Spell.IsSpellDataCached ...` | The same with spell data: a gate over `C_Spell.IsSpellDataCached` for the first candidate spell not loaded this session becomes ready when SPELL_DATA_LOAD_RESULT re-probes it after `C_Spell.RequestLoadSpellData`, before any poll. The log says whether the event arrived inside `RequestLoadSpellData` (the client documents it as synchronous) or on a later frame. |
 | `a gate over C_Spell.GetSpellInfo for Auto Attack ...` | Data the client always has makes a gate ready at definition: `Await` calls back at once with `true`, the waiter is not pending, `Probe` answers `true` without probing, and 0.35 s later (three and a half intervals) the probe has still run exactly once: no poll timer runs for a ready gate. |
 | `a gate whose probe turns true on a real 0.3-second TimerKit one-shot ...` | A pending gate polling every 0.1 s notices the probe's answer change on the next poll: the waiter is called between 0 and one interval plus one frame plus 20 ms after the one-shot fired. The log gives that lateness in milliseconds and the probe runs. |
@@ -186,7 +186,7 @@ results.
 | `Gate and Get refuse a secret name ...` | A genuine secret name is refused with `name must not be a secret value` at the calling line, before ReadinessKit compares it (which would raise on the client). |
 | `Gate refuses a secret intervalSeconds, timeoutSeconds and maxWaiters ...` | Each secret option is refused at the calling line with its own message, and no gate is defined. |
 | `ReprobeOn refuses a secret event name ...` | Refused with `ReadinessKit.Gate:ReprobeOn eventName must not be a secret value` at the calling line. |
-| `a probe that answers a secret true or false ...` | An observation: docs/API.md does not say what a probe that answers a secret counts as. ReadinessKit tests the answer for truth (`if result then`), outside the probe's protected call. The log says, for `secretwrap(true)` and `secretwrap(false)`, whether `Gate` returned or raised (and with what), whether the gate is registered and ready, how many reports reached the handler during two intervals, and the probe error count. The test passes whatever the client does, as long as every such gate then closes and frees its name. |
+| `a probe that answers a secret true or false is a probe failure ...` | For `secretwrap(true)` and `secretwrap(false)`: `Gate` returns without raising (the client raises on a boolean test of a secret, so ReadinessKit checks the answer with `issecretvalue` first), the gate is registered, pending and not ready; during two polls of its first round the swapped handler receives exactly one report, `ReadinessKit gate "<name>" probe answered a secret value; a probe must answer a plain true or false`, and `GetProbeErrorCount` is at least 2 (the definition and a poll); `Close` then frees the name. The log gives the counts for each answer. |
 
 ## What counts as unexpected
 
@@ -229,12 +229,11 @@ results.
    It holds the full report, each test's logs (the item and spell chosen and
    whether they were cached, the server's answer time, the poll lateness and
    intervals, the timeouts, the negative-cache spin, the client's error
-   messages with their paths, the memory delta, and what the client did with a
-   secret probe answer) and the client facts. Lua shortens a long file path
+   messages with their paths, the memory delta, and the secret-answer report
+   counts) and the client facts. Lua shortens a long file path
    from the left, so a logged message may start with `...`; the tests compare
    only the `ReadinessKitSuite.lua:<line>` part. Send it back whatever the
-   result: the item timing and the secret-answer observation are facts the run
-   exists to collect.
+   result: the item timing is a fact the run exists to collect.
 3. The text of any Lua error, with `/console scriptErrors 1` turned on.
 4. The list of other enabled addons, and the frame rate the client showed
    (`Ctrl+R`), when a test failed.

@@ -786,11 +786,15 @@ secret made by `secretwrap(42)`, the in-game suites logged:
 | `secret == nil`, `type(secret) == "nil"` | `false`, no error |
 | `policy ~= "automatic"` with a secret string `policy` (an earlier run, inside ModuleKit) | raises `attempt to compare local 'policy' (a secret string value, while execution tainted by 'MoltenCodes')` |
 | `plainTable[secret]` | raises `attempted to index a table that cannot be indexed with secret keys` |
+| `readTable[secret]` on a table whose metatable has `__index` (a LocaleKit read table) | raises the same at the indexing line, before `__index` runs |
+| `if result then` with `result = secretwrap(true)` (inside ReadinessKit) | raises `attempt to perform boolean test on local 'result' (a secret boolean value, while execution tainted by 'MoltenCodes')` |
 | `select("#", secret)`; a secret stored as a table value and returned | works; the value comes back still secret |
 
 So a comparison raises when both sides have the same type, and answers without
 raising when one side is `nil` or of another type; a secret used as a key
-raises; storing and passing one is fine. The Kits still test the absence of a
+raises, before any `__index` metamethod can see it; a boolean test of a secret
+raises, so a secret must not be the condition of an `if`, `while` or `until`
+nor an operand of `and`, `or` or `not`; storing and passing one is fine. The Kits still test the absence of a
 foreign value with `type(value) == "nil"` rather than `value == nil` (see the
 checklist in [`CONTRIBUTING.md`](CONTRIBUTING.md#taint-and-secret-values)): the rule is uniform, cheap
 and never compares anything, so it does not depend on the comparison with
@@ -813,7 +817,8 @@ and no Kit inspects or unwraps an event's payload. Your handler may store the
 value, forward it, and build a string from it — knowing that the string is
 secret too, so it can no more be compared with another string or used as a
 key than the value itself. It may not compare the value with one of its own
-type, key a cache by it, do arithmetic on it or index it. Filter on something that is never secret first — the event name, a
+type, test it as a boolean (`if value`, `value and ...`, `not value`), key a
+cache by it, do arithmetic on it or index it. Filter on something that is never secret first — the event name, a
 frame you own — and check `isSecret(value)` before any such operation on the
 value itself.
 
