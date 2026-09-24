@@ -1,0 +1,14 @@
+{
+  "words": [
+    "BNet",
+    "CVar",
+    "PvE",
+    "PvP",
+    "WoW"
+  ],
+  "namespaceAliases": {
+    "addOnProfiler": "profiler"
+  },
+  "namespaceExceptions": {},
+  "functionExceptions": {}
+}

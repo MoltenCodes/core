@@ -39,6 +39,7 @@ REGEN
 Skurri
 spellbook
 Wago
+WOWGUID
 WOWI
 
 # Lua 5.1 standard library and language terms.

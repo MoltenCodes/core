@@ -9,9 +9,15 @@ tooling/
 ├── lint.py                         # discovers and lints runtime and test Lua
 ├── spell.py                        # runs the pinned cspell over the documentation
 ├── spell-words.txt                 # the project dictionary cspell reads
-├── api/
+├── api/                            # apiKit metadata pipeline; see "API metadata tooling"
 │   ├── flavours.json              # the apiKit flavours: namespaces, mirror branches, detection facts
-│   └── flavours.py                # reads and prints that table
+│   ├── fetch.py                   # downloads one flavour's documentation tables at a pinned commit
+│   ├── lua_tables.py              # parses the tables
+│   ├── naming.py / naming.json    # wrapper naming rules and reviewed naming data
+│   ├── model.py / SCHEMA.md       # the metadata model and its JSON form
+│   ├── types.json                 # host types with their LuaCATS spelling
+│   ├── normalize.py               # capture → metadata directory
+│   └── validate.py                # checks a metadata directory
 ├── ci/
 │   └── check_commits.py           # checks commit subjects and pull request titles
 ├── package/
@@ -204,28 +210,72 @@ To update the numbers after a patch:
 
 The update is one commit. [`RELEASES.md`](RELEASES.md) makes it a release step.
 
-## API metadata tooling: the flavour table
+## API metadata tooling
 
 `tooling/api/` is the development-time side of `apiKit`, the flavour-aware
 wrapper over the World of Warcraft API designed in
 [`API_KIT_DESIGN.md`](API_KIT_DESIGN.md) and delivered as package H of the
-[roadmap](ROADMAP.md#package-h--apikit-the-wow-api-wrapper). Its modules
-arrive with that plan; the first is the flavour table,
-[`tooling/api/flavours.json`](../tooling/api/flavours.json), the one place that
-says which client flavours the wrapper exposes and, for each: its id (the name
-of its directories under the package), its `wow.<…>.api` namespace, the
-generated runtime file under the package's `src/flavours/`, the branches of
-the community `wow-ui-source` mirror its documentation tables are fetched
-from, and the facts (`WOW_PROJECT_ID`, `IsTestBuild()`, `IsBetaBuild()`) the
-runtime facade reads to recognise it.
+[roadmap](ROADMAP.md#package-h--apikit-the-wow-api-wrapper). Its input is the
+client's own machine-readable API documentation, the Lua tables under
+`Blizzard_APIDocumentationGenerated`, as the community `wow-ui-source`
+mirror publishes them per flavour branch; its output is the metadata that
+every generator reads. Nothing here is a runtime dependency of any Kit, and
+nothing downloaded is ever written inside the repository.
 
-```bash
-python3 -m tooling.api.flavours       # print the table
+```text
+tooling/api/
+├── flavours.json      # the five flavours: namespaces, runtime files, mirror branches, detection facts
+├── flavours.py        # reads and prints that table
+├── fetch.py           # downloads one flavour's tables at a pinned mirror commit (step 1)
+├── lua_tables.py      # parses the tables, which are Lua table constructors
+├── naming.json        # reviewed naming data: words, aliases, exceptions
+├── naming.py          # the rules that turn a Blizzard name into a wrapper name
+├── types.json         # host types the tables reference but never define, with their LuaCATS spelling
+├── model.py           # the metadata model and its JSON form
+├── SCHEMA.md          # that JSON form, field by field
+├── normalize.py       # turns a capture into a flavour's metadata directory (step 2)
+└── validate.py        # the checks a metadata directory must pass
 ```
 
-`python3 -m tooling.validation.validate_repository` reads the table with the
-same loader and fails on a malformed entry, so a typo surfaces in the gate
-rather than inside a fetch or a generation.
+The pipeline, as the design document lists it (section 14):
+
+```bash
+python3 -m tooling.api.flavours                                   # the flavour table
+python3 -m tooling.api.fetch --heads --flavour retail             # each branch's head and build
+python3 -m tooling.api.fetch --flavour retail --out ~/wow-api     # step 1: capture, outside the repo
+python3 -m tooling.api.normalize --capture ~/wow-api/retail/<sha> --out packages/apiKit/metadata/retail
+python3 -m tooling.api.validate packages/apiKit/metadata/retail   # what normalize ran before writing
+```
+
+`fetch` records the branch, commit, date, client version and build of the
+capture and never downloads a pinned commit twice; when a flavour names two
+mirror branches (`ptr`, `ptr2`) it takes the one whose head carries the newer
+build unless `--branch` names one. `normalize` parses every table, names every
+entry by the rules in `naming.py`, merges the files that describe one
+namespace, keeps every marker the tables carry (a `true` boolean as a flag,
+anything else as an attribute) and writes the files `SCHEMA.md` describes, but
+only after `validate` has accepted the result: a wrapper name two entries
+would share, a type nothing defines or an enumeration that disagrees with its
+own count is a refusal with the fix named, never a suffix or a guess. Against
+the Retail tables of build 69933 (612 files) the run takes about a second and
+yields 391 namespaces with 6,338 functions, 1,782 events, 844 enumerations,
+752 structures, 20 callbacks, 60 constants tables and 57 restriction
+predicates, about 6 MB of JSON.
+
+Three files are reviewed data rather than code. `flavours.json` is the one
+place that says which flavours exist and how each is sourced and detected.
+`naming.json` holds the mixed-case words the generic splitter cannot see
+(`PvP`, `BNet`), the short aliases (`addOnProfiler` → `profiler`) and the
+exception tables that resolve a collision by hand. `types.json` lists every
+type the tables reference without defining (`number`, `WOWGUID`,
+`ScriptRegion`, ...) with the LuaCATS type the generators write; a new client
+type is a one-line addition there, and the validator says which line.
+`python3 -m tooling.validation.validate_repository` reads the flavour table
+with the same loader and fails on a malformed entry.
+
+The parser's test suite can be run against a directory of real tables by
+setting `MOLTENCODES_DOCUMENTATION_SAMPLES` to that directory; without it the
+corpus test is skipped and the suite runs on invented fixtures alone.
 
 The builder, the standalone-addon `.toc` and the validator support the layout
 `apiKit` needs: a package's `src/` holds one top-level facade and may hold

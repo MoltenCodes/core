@@ -41,10 +41,17 @@ Print the supported `## Interface` line from `validation/supported_clients.json`
 python3 -m tooling.validation.interface_numbers
 ```
 
-Print the `apiKit` flavour table from `api/flavours.json`:
+Run the `apiKit` metadata pipeline (see `docs/TOOLING.md`, "API metadata
+tooling"): print the flavour table, list a flavour's mirror branches, capture
+one flavour's API documentation tables outside the repository, normalise a
+capture into metadata, validate a metadata directory:
 
 ```bash
 python3 -m tooling.api.flavours
+python3 -m tooling.api.fetch --heads --flavour retail
+python3 -m tooling.api.fetch --flavour retail --out ~/wow-api
+python3 -m tooling.api.normalize --capture ~/wow-api/retail/<sha> --out packages/apiKit/metadata/retail
+python3 -m tooling.api.validate packages/apiKit/metadata/retail
 ```
 
 Build a distributable bundle:

@@ -198,7 +198,11 @@ exception is data, not code.
    `system.getTime`.
 3. **Initialisms** are lowercased as one unit at the start and kept as a unit
    elsewhere: `C_UIWidgetManager` → `uiWidgetManager`, `GetNPCName` →
-   `getNPCName`. The initialism list is data in the naming rules file.
+   `getNPCName`. A run of capitals is recognised by the splitter itself; only
+   mixed-case words it cannot see (`PvP`, `BNet`, `CVar`) are data in the
+   naming rules file. An underscore separates words, and in an underscored
+   name every all-capitals word is written as a name: `LFG_ROLEConstants` →
+   `lfgRoleConstants`.
 4. **Aliases.** A short, hand-chosen alias may point at a generated namespace
    (`profiler` → `addOnProfiler`). Aliases live in one reviewed table, are
    recorded in the metadata, appear in the LuaCATS output as the same table,
@@ -378,8 +382,12 @@ and reproducible (same input, same bytes):
 
 1. `fetch` obtains one flavour's documentation tables at a pinned mirror
    commit into a scratch directory.
-2. `normalize` parses the Lua literal tables and writes the MoltenCodes
-   metadata, applying the naming rules and the alias table.
+2. `normalize` parses the Lua tables and writes the MoltenCodes metadata,
+   applying the naming rules and the alias table. The tables are Lua table
+   constructors whose values are literals, with two exceptions the parser
+   keeps as text: a constant may be written as a reference to another table
+   (`Enum.CalendarGetEventType.Get`) or as a sum or difference of such
+   references, and the metadata carries those unevaluated.
 3. `diff` compares the new capture with the committed one and records
    additions, removals, signature changes, deprecations, enum and structure
    changes into the history and a human-readable change report.
@@ -435,9 +443,10 @@ packages/apiKit/
 │   ├── changes/<flavour>/     # generated change reports
 │   └── reference/<flavour>/   # generated Markdown reference
 ├── metadata/
-│   ├── SCHEMA.md              # the metadata model, field by field
 │   └── <flavour>/             # generated: namespaces, events, enums,
-│                              #   structures, history, provenance, search
+│                              #   structures, callbacks, constants,
+│                              #   restrictions, provenance (history and
+│                              #   search follow with the generators)
 ├── src/
 │   ├── ApiKit.lua             # handwritten facade
 │   └── flavours/
@@ -448,16 +457,21 @@ packages/apiKit/
 │       └── Beta.lua
 ├── types/<flavour>/           # generated LuaCATS definitions (development)
 └── tests/                     # Busted specs
-tooling/api/                   # fetch, normalize, diff, generate, validate
-tooling/api/naming.json        # initialisms, exceptions, aliases
+tooling/api/                   # fetch, lua_tables, naming, model, normalize,
+                               #   validate; diff and generate follow
+tooling/api/SCHEMA.md          # the metadata model, field by field
+tooling/api/naming.json        # mixed-case words, aliases, exceptions
+tooling/api/types.json         # host types with their LuaCATS spelling
 ```
 
 Differences from the brief's proposed layout: the generator lives with the
-other Python tooling under `tooling/`, not inside the package; generated
-runtime files sit under `src/` so the builder ships them; the brief's
-`generated/` directory is split into `src/flavours/`, `types/`, `docs/` by
-what each output is for. Flavour directory names use the flavour ids of the
-namespace model (`retail`, `classic-era`, `classic-mop`, `ptr`, `beta`).
+other Python tooling under `tooling/`, not inside the package; the metadata
+schema is documented beside the code that writes and reads it, with the
+package README pointing there; generated runtime files sit under `src/` so
+the builder ships them; the brief's `generated/` directory is split into
+`src/flavours/`, `types/`, `docs/` by what each output is for. Flavour
+directory names use the flavour ids of the namespace model (`retail`,
+`classic-era`, `classic-mop`, `ptr`, `beta`).
 
 The repository's builder, TOC generator and validator currently assume one
 runtime file per package; package H starts by teaching them to list a

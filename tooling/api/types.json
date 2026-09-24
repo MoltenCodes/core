@@ -1,0 +1,681 @@
+{
+  "verified": "2026-09-24",
+  "types": {
+    "AbbreviateConfig": {
+      "kind": "class",
+      "lua": "AbbreviateConfig"
+    },
+    "AbbreviatedNumberFormatter": {
+      "kind": "class",
+      "lua": "AbbreviatedNumberFormatter"
+    },
+    "AccountStoreCategoryType": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "AccountStoreItemFlag": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "AccountStoreItemMode": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "AccountStoreItemStatus": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "AccountStoreState": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "AccountStoreTransactionResult": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "AnimationDataEnum": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "ArtifactTiers": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "AuraData": {
+      "kind": "class",
+      "lua": "AuraData"
+    },
+    "AuraFilters": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "AzeriteEmpoweredItemLocation": {
+      "kind": "class",
+      "lua": "AzeriteEmpoweredItemLocation"
+    },
+    "AzeriteItemLocation": {
+      "kind": "class",
+      "lua": "AzeriteItemLocation"
+    },
+    "BigInteger": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "BigUInteger": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "BlendMode": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "CScriptObject": {
+      "kind": "class",
+      "lua": "CScriptObject"
+    },
+    "CachedRewardType": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "CalendarEventID": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "ChatBubbleFrame": {
+      "kind": "class",
+      "lua": "ChatBubbleFrame"
+    },
+    "ClickButton": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "ClubId": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "ClubInvitationId": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "ClubMemberOpaqueId": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "ClubStreamId": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "ConnectionIptype": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "ConnectionProtocol": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "CooldownFrame": {
+      "kind": "class",
+      "lua": "CooldownFrame"
+    },
+    "CurveType": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "DiscordID": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "DrawLayer": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "DurationMillisecondsPrimitive": {
+      "kind": "alias",
+      "lua": "number"
+    },
+    "DurationSeconds": {
+      "kind": "alias",
+      "lua": "number"
+    },
+    "DurationSecondsDouble": {
+      "kind": "alias",
+      "lua": "number"
+    },
+    "DurationSecondsPrimitive": {
+      "kind": "alias",
+      "lua": "number"
+    },
+    "DurationTextBinding": {
+      "kind": "class",
+      "lua": "DurationTextBinding"
+    },
+    "EmptiableItemLocation": {
+      "kind": "class",
+      "lua": "EmptiableItemLocation"
+    },
+    "EncounterTimelineEventID": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "FileAsset": {
+      "kind": "class",
+      "lua": "FileAsset"
+    },
+    "FilterMode": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "FontAlphabet": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "FontAsset": {
+      "kind": "class",
+      "lua": "FontAsset"
+    },
+    "FramePoint": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "FrameScriptObject": {
+      "kind": "class",
+      "lua": "FrameScriptObject"
+    },
+    "FrameStrata": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "FrameTime": {
+      "kind": "alias",
+      "lua": "number"
+    },
+    "GameMode": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "GameRule": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "GarrisonFollower": {
+      "kind": "class",
+      "lua": "GarrisonFollower"
+    },
+    "HTMLTextType": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "HouseSettingFlags": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "HousingCatalogSearcher": {
+      "kind": "class",
+      "lua": "HousingCatalogSearcher"
+    },
+    "HousingFixturePointFrame": {
+      "kind": "class",
+      "lua": "HousingFixturePointFrame"
+    },
+    "HousingLayoutPinFrame": {
+      "kind": "class",
+      "lua": "HousingLayoutPinFrame"
+    },
+    "IDOrLink": {
+      "kind": "alias",
+      "lua": "number|string"
+    },
+    "InsertMode": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "InvalidPlotScreenshotReason": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "InventorySlots": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "ItemCreationContext": {
+      "kind": "class",
+      "lua": "ItemCreationContext"
+    },
+    "ItemInfo": {
+      "kind": "class",
+      "lua": "ItemInfo"
+    },
+    "ItemLocation": {
+      "kind": "class",
+      "lua": "ItemLocation"
+    },
+    "ItemSoundType": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "ItemTransmogInfo": {
+      "kind": "class",
+      "lua": "ItemTransmogInfo"
+    },
+    "JustifyHorizontal": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "JustifyVertical": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "KStringDiscordUserName": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "LoopType": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "LuaColorCurveObject": {
+      "kind": "class",
+      "lua": "LuaColorCurveObject"
+    },
+    "LuaCurveEvaluatedResult": {
+      "kind": "class",
+      "lua": "LuaCurveEvaluatedResult"
+    },
+    "LuaCurveObject": {
+      "kind": "class",
+      "lua": "LuaCurveObject"
+    },
+    "LuaCurveObjectBase": {
+      "kind": "class",
+      "lua": "LuaCurveObjectBase"
+    },
+    "LuaDurationClock": {
+      "kind": "class",
+      "lua": "LuaDurationClock"
+    },
+    "LuaDurationManualClock": {
+      "kind": "class",
+      "lua": "LuaDurationManualClock"
+    },
+    "LuaDurationObject": {
+      "kind": "class",
+      "lua": "LuaDurationObject"
+    },
+    "LuaFunctionReference": {
+      "kind": "alias",
+      "lua": "function"
+    },
+    "LuaInventorySlot": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "LuaValueReference": {
+      "kind": "alias",
+      "lua": "any"
+    },
+    "LuaValueVariant": {
+      "kind": "alias",
+      "lua": "any"
+    },
+    "ModelAsset": {
+      "kind": "class",
+      "lua": "ModelAsset"
+    },
+    "ModelSceneFrame": {
+      "kind": "class",
+      "lua": "ModelSceneFrame"
+    },
+    "ModelSceneFrameActor": {
+      "kind": "class",
+      "lua": "ModelSceneFrameActor"
+    },
+    "MouseButton": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "NamePlateFrame": {
+      "kind": "class",
+      "lua": "NamePlateFrame"
+    },
+    "NeighborhoodOwnerType": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "NeighborhoodType": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "NotificationDbId": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "NumericFormatter": {
+      "kind": "class",
+      "lua": "NumericFormatter"
+    },
+    "NumericRuleFormatter": {
+      "kind": "class",
+      "lua": "NumericRuleFormatter"
+    },
+    "Orientation": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "PartyPlaylistEntry": {
+      "kind": "class",
+      "lua": "PartyPlaylistEntry"
+    },
+    "PlayerLocation": {
+      "kind": "class",
+      "lua": "PlayerLocation"
+    },
+    "PurchaseHouseDisabledReason": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "QuestObjectiveType": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "RecruitAcceptanceID": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "ReportInfo": {
+      "kind": "class",
+      "lua": "ReportInfo"
+    },
+    "ResidentType": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "ScriptRegion": {
+      "kind": "class",
+      "lua": "ScriptRegion"
+    },
+    "ScriptTypeName": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "SecondsFormatter": {
+      "kind": "class",
+      "lua": "SecondsFormatter"
+    },
+    "SendChatMessageType": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "SimpleAnim": {
+      "kind": "class",
+      "lua": "SimpleAnim"
+    },
+    "SimpleAnimGroup": {
+      "kind": "class",
+      "lua": "SimpleAnimGroup"
+    },
+    "SimpleButtonStateToken": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "SimpleCheckbox": {
+      "kind": "class",
+      "lua": "SimpleCheckbox"
+    },
+    "SimpleControlPoint": {
+      "kind": "class",
+      "lua": "SimpleControlPoint"
+    },
+    "SimpleFont": {
+      "kind": "class",
+      "lua": "SimpleFont"
+    },
+    "SimpleFontString": {
+      "kind": "class",
+      "lua": "SimpleFontString"
+    },
+    "SimpleFrame": {
+      "kind": "class",
+      "lua": "SimpleFrame"
+    },
+    "SimpleLine": {
+      "kind": "class",
+      "lua": "SimpleLine"
+    },
+    "SimpleMaskTexture": {
+      "kind": "class",
+      "lua": "SimpleMaskTexture"
+    },
+    "SimplePathAnim": {
+      "kind": "class",
+      "lua": "SimplePathAnim"
+    },
+    "SimpleRegion": {
+      "kind": "class",
+      "lua": "SimpleRegion"
+    },
+    "SimpleTexture": {
+      "kind": "class",
+      "lua": "SimpleTexture"
+    },
+    "SimpleVectorGraphics": {
+      "kind": "class",
+      "lua": "SimpleVectorGraphics"
+    },
+    "SimpleWindow": {
+      "kind": "class",
+      "lua": "SimpleWindow"
+    },
+    "SingleColorValue": {
+      "kind": "alias",
+      "lua": "number"
+    },
+    "SmoothingType": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "SoundHandle": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "SpellIdentifier": {
+      "kind": "alias",
+      "lua": "number|string"
+    },
+    "StoreError": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "TBFFlags": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "TextureAsset": {
+      "kind": "class",
+      "lua": "TextureAsset"
+    },
+    "TextureAssetDisk": {
+      "kind": "class",
+      "lua": "TextureAssetDisk"
+    },
+    "Tooltip": {
+      "kind": "class",
+      "lua": "Tooltip"
+    },
+    "TooltipComparisonItem": {
+      "kind": "class",
+      "lua": "TooltipComparisonItem"
+    },
+    "TooltipData": {
+      "kind": "class",
+      "lua": "TooltipData"
+    },
+    "TransmogLocation": {
+      "kind": "class",
+      "lua": "TransmogLocation"
+    },
+    "UISoundSubType": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "UiMapPoint": {
+      "kind": "class",
+      "lua": "UiMapPoint"
+    },
+    "UnitHealPredictionCalculator": {
+      "kind": "class",
+      "lua": "UnitHealPredictionCalculator"
+    },
+    "UnitToken": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "UnitTokenNamePlate": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "UnitTokenPvPRestrictedForAddOns": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "UnitTokenRestrictedForAddOns": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "UnitTokenVariant": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "Userdata": {
+      "kind": "class",
+      "lua": "Userdata"
+    },
+    "Vocalerrorsounds": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "WOWGUID": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "WOWMONEY": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "WeeklyRewardChestThresholdType": {
+      "kind": "opaque",
+      "lua": "any"
+    },
+    "WeeklyRewardItemDBID": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "bool": {
+      "kind": "primitive",
+      "lua": "boolean"
+    },
+    "colorRGB": {
+      "kind": "class",
+      "lua": "colorRGB"
+    },
+    "colorRGBA": {
+      "kind": "class",
+      "lua": "colorRGBA"
+    },
+    "cstring": {
+      "kind": "primitive",
+      "lua": "string"
+    },
+    "fileID": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "kstringAuroraName": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "kstringClubMessage": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "kstringLfgListApplicant": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "kstringLfgListChat": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "kstringLfgListSearch": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "luaIndex": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "mouseButton": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "normalizedValue": {
+      "kind": "alias",
+      "lua": "number"
+    },
+    "number": {
+      "kind": "primitive",
+      "lua": "number"
+    },
+    "size": {
+      "kind": "alias",
+      "lua": "number"
+    },
+    "string": {
+      "kind": "primitive",
+      "lua": "string"
+    },
+    "stringView": {
+      "kind": "primitive",
+      "lua": "string"
+    },
+    "table": {
+      "kind": "primitive",
+      "lua": "table"
+    },
+    "textureAtlas": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "textureKit": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "time_t": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "uiAddon": {
+      "kind": "alias",
+      "lua": "number|string"
+    },
+    "uiFontHeight": {
+      "kind": "alias",
+      "lua": "integer"
+    },
+    "uiRect": {
+      "kind": "class",
+      "lua": "uiRect"
+    },
+    "uiUnit": {
+      "kind": "alias",
+      "lua": "string"
+    },
+    "vector2": {
+      "kind": "class",
+      "lua": "vector2"
+    },
+    "vector3": {
+      "kind": "class",
+      "lua": "vector3"
+    }
+  }
+}

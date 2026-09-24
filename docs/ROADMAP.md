@@ -1082,13 +1082,23 @@ begins; H4 to H6 may overlap where they do not share files.
       `tooling/api/flavours.json` maps each apiKit flavour to its mirror
       branches and detection facts and is checked by the validator. Tooling
       tests for each (2026-09-24).
-- [ ] **H1 — metadata schema and normaliser.** `metadata/SCHEMA.md`;
+- [x] **H1 — metadata schema and normaliser.** `tooling/api/SCHEMA.md`
+      (the schema lives beside the code that writes and reads it);
       `tooling.api.fetch` (one flavour, one pinned mirror commit, scratch
-      directory outside the repository, provenance recorded);
-      `tooling.api.normalize` with a Lua-literal parser for the documentation
-      tables, the naming rules from `tooling/api/naming.json`, the alias
-      table and collision failure; `tooling.api.validate` for the checks in
-      the design document; tests over project-written fixtures.
+      directory outside the repository, provenance recorded, newest-build
+      branch choice, never fetches a pinned commit twice);
+      `tooling.api.lua_tables` (a parser for the documentation tables, which
+      turned out to carry a few constants written as references and sums;
+      those are kept as text); `tooling.api.naming` with the rules of design
+      section 6 and the reviewed data in `naming.json`; `tooling.api.model`
+      with the host type table `types.json` (169 client types the tables
+      reference but never define); `tooling.api.normalize` merging the files
+      that describe one namespace, keeping every marker, failing on a shared
+      wrapper name; `tooling.api.validate`. Against the Retail tables of
+      build 69933: 391 namespaces, 6,338 functions, 1,782 events, 844
+      enumerations, 752 structures, 20 callbacks, 60 constants tables, 57
+      restriction predicates, no naming collision, every type resolved.
+      567 tooling tests (2026-09-24).
 - [ ] **H2 — generators.** `tooling.api.generate` writes the runtime flavour
       file, the LuaCATS definitions, the Markdown reference, the search index
       and the change report from one metadata capture; StyLua formats the
