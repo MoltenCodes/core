@@ -18,7 +18,7 @@ from tooling.tests.test_api_model import sample_metadata, sample_provenance
 
 
 #: A real metadata directory to self-diff, when one is available on this machine.
-CORPUS_ENV = "APIKIT_RETAIL_METADATA"
+CORPUS_ENV = "MOLTENCODES_API_METADATA"
 CORPUS_DIRECTORY = Path(os.environ.get(CORPUS_ENV, "")) if os.environ.get(CORPUS_ENV) else None
 
 

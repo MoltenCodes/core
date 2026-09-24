@@ -145,6 +145,7 @@ def _plan_directory(directory: Path, files: dict[str, str], replace_directory: b
 
 
 def _write_trees(result: GenerateResult) -> None:
+    planned = {tree.directory / relative for tree in result.trees for relative in tree.files}
     for tree in result.trees:
         if tree.replace_directory and tree.directory.is_dir():
             shutil.rmtree(tree.directory)
@@ -152,6 +153,12 @@ def _write_trees(result: GenerateResult) -> None:
             path = tree.directory / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
+    # Stale files outside the replaced directories (a flavour file nobody owns).
+    for path in result.removed:
+        if path.exists() and path not in planned and not any(
+            tree.replace_directory and tree.directory in path.parents for tree in result.trees
+        ):
+            path.unlink()
 
 
 def _history_entry(metadata: model.FlavourMetadata, comparison: diff.Diff | None, report: str | None) -> diff.HistoryEntry:
@@ -174,6 +181,7 @@ def plan_flavour(
     metadata_dir: Path | None = None,
     previous_dir: Path | None = None,
     host_types: model.HostTypes | None = None,
+    flavours_table: flavours.Flavours | None = None,
 ) -> GenerateResult:
     """Render every output of `flavour` and compare it with the package on disk.
 
@@ -223,6 +231,7 @@ def plan_flavour(
     _plan_directory(metadata_dir, {SEARCH_INDEX_FILE: search_index}, False, result)
 
     _plan_history(metadata, metadata_dir, previous_dir, package_dir, flavour, result)
+    _plan_stale_runtime_files(package_dir, flavours_table or flavours.load_flavours(), result)
     return result
 
 
@@ -238,32 +247,61 @@ def _plan_history(
 
     With a previous metadata directory the report and the entry describe the
     differences; without one, a history that does not know this commit yet
-    gains a first entry with no comparison. An entry for a commit the history
-    already ends with is never repeated, so re-running generation is idempotent.
+    gains an entry with no comparison. Re-running generation is idempotent: an
+    entry the history already ends with is kept, except that a later run with
+    `--previous` fills in the comparison a first run without it left empty,
+    which is the order a maintainer usually works in (generate, look, then
+    diff against the build being replaced).
     """
     history_path = metadata_dir / diff.HISTORY_FILE
     history = diff.read_history(history_path)
-    if history and history[-1].commit == metadata.provenance.commit:
+    last_is_this_commit = bool(history) and history[-1].commit == metadata.provenance.commit
+    if last_is_this_commit and (previous_dir is None or history[-1].report is not None):
         return
 
     comparison = None
     report_relative = None
     if previous_dir is not None:
-        try:
-            previous = model.read_metadata(previous_dir)
-        except model.MetadataError as failure:
-            raise GenerateError(str(failure)) from None
-        if previous.provenance.flavour != flavour.id:
-            raise GenerateError(f"{previous_dir}: previous metadata is for {previous.provenance.flavour!r}")
-        comparison = diff.diff_metadata(previous, metadata)
+        comparison = _compare_with_previous(metadata, previous_dir, flavour)
         report_name = diff.diff_file_name(comparison)
         changes_dir = package_dir / "docs" / "changes" / flavour.id
         report_relative = (Path("docs") / "changes" / flavour.id / report_name).as_posix()
         _plan_directory(changes_dir, {report_name: diff.render_change_report(comparison)}, False, result)
 
     entry = _history_entry(metadata, comparison, report_relative)
-    updated = diff.history_to_json([*history, entry])
+    kept = history[:-1] if last_is_this_commit else history
+    updated = diff.history_to_json([*kept, entry])
     _plan_directory(metadata_dir, {diff.HISTORY_FILE: model.dump_json(updated)}, False, result)
+
+
+def _compare_with_previous(
+    metadata: model.FlavourMetadata, previous_dir: Path, flavour: flavours.Flavour
+) -> diff.Diff:
+    """Read the metadata of the build being replaced and diff it against `metadata`."""
+    try:
+        previous = model.read_metadata(previous_dir)
+    except model.MetadataError as failure:
+        raise GenerateError(str(failure)) from None
+    if previous.provenance.flavour != flavour.id:
+        raise GenerateError(f"{previous_dir}: previous metadata is for {previous.provenance.flavour!r}")
+    return diff.diff_metadata(previous, metadata)
+
+
+def _plan_stale_runtime_files(package_dir: Path, table: flavours.Flavours, result: GenerateResult) -> None:
+    """A runtime file under `src/flavours/` that no flavour owns is stale and is removed.
+
+    The builder ships every Lua file under `src/`, so a file left behind by a
+    renamed or removed flavour would reach the addon; a single-flavour run must
+    still leave the other flavours' files alone, so the directory is not
+    replaced as a whole.
+    """
+    flavours_dir = package_dir / "src" / "flavours"
+    if not flavours_dir.is_dir():
+        return
+    owned = {(package_dir / "src" / flavour.runtime_file).resolve() for flavour in table.flavours}
+    for path in sorted(flavours_dir.glob("*.lua")):
+        if path.resolve() not in owned:
+            result.removed.append(path)
 
 
 def write_result(result: GenerateResult) -> None:
@@ -317,8 +355,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         host_types = model.load_host_types()
         selected = _selected_flavours(arguments, table, arguments.package_dir)
         if not selected:
-            print("error: no flavour has a metadata directory", file=sys.stderr)
-            return 1
+            # `--all` before any capture is committed: nothing to generate, and
+            # nothing to be out of date, so the CI gate passes with a note.
+            print("no flavour has a metadata directory yet; nothing to generate")
+            return 0
         results = [
             plan_flavour(
                 flavour,
@@ -326,6 +366,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 metadata_dir=arguments.metadata,
                 previous_dir=arguments.previous,
                 host_types=host_types,
+                flavours_table=table,
             )
             for flavour in selected
         ]

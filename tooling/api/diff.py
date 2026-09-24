@@ -265,10 +265,25 @@ def _documentation_only(details: list[str], old: Any, new: Any) -> tuple[str, ..
 
 
 def _without_source(entry: Any) -> Any:
-    """The entry with its source file blanked; a table moving between files is not a change."""
-    if hasattr(entry, "source"):
-        return _replace(entry, source="")
-    return entry
+    """The entry with its source file blanked and its flags sorted.
+
+    A table moving between files is not a change, and neither is the order of
+    its flags: `_flag_differences` compares them as sets, so the equality
+    fallback must not see an order the set comparison ignored. Parameters and
+    fields are normalised the same way, recursively.
+    """
+    if not dataclasses.is_dataclass(entry):
+        return entry
+    changes: dict[str, Any] = {}
+    for field in dataclasses.fields(entry):
+        value = getattr(entry, field.name)
+        if field.name == "source":
+            changes[field.name] = ""
+        elif field.name == "flags":
+            changes[field.name] = tuple(sorted(value))
+        elif isinstance(value, tuple) and value and dataclasses.is_dataclass(value[0]):
+            changes[field.name] = tuple(_without_source(item) for item in value)
+    return _replace(entry, **changes) if changes else entry
 
 
 def _replace(entry: Any, **changes: Any) -> Any:

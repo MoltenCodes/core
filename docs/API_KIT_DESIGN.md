@@ -255,6 +255,35 @@ is simply absent from the wrapper, which is the truth about that client.
 A wrapper function exists only where a direct alias cannot express the
 documented contract, and every such case is listed in the package docs.
 
+#### Contract with generated flavour files
+
+A generated flavour file resolves Registry API 2 and the `ApiKit` facade the
+way every Kit resolves a dependency, then makes one call:
+
+```lua
+ApiKit:RegisterFlavor("retail", function(api, host)
+    -- one direct alias per documented function, guarded by the host namespace
+end, { version = "12.1.0", build = 69933 })
+```
+
+- `flavor` is the flavour id from `tooling/api/flavours.json`; `install` is
+  the installer; the third argument carries the client version and build the
+  metadata was captured from, for `ApiKit:GetMetadataBuild`.
+- The facade runs the installer synchronously, at most once per flavour, and
+  only when `flavor` is the running client's flavour. It passes the flavour's
+  `api` table (`MoltenCodes.wow.retail.api`) and the host global table; the
+  installer owns everything it writes into `api`, including `api.events`,
+  `api.enums` and `api.constants`.
+- An installer for another flavour is dropped without being retained, so its
+  prototype is collected; a second installer for the running flavour (two
+  addons embedding the same file) is dropped too, the first file to load
+  winning.
+- Whatever the installer raises propagates to the generated file's load, so a
+  broken generated file is loud rather than half-installed.
+
+The facade's side of the contract is `packages/apiKit/docs/API.md`; the
+generated side is `tooling/api/render_runtime.py`.
+
 ### 7.3 Optional ergonomic helpers
 
 Helpers with real developer value may exist later, distinct from the mapping
@@ -285,8 +314,10 @@ Everything that can be computed at build time is computed at build time by
 the Python generator. What the client loads is a flat list of bindings for
 one flavour. Load cost (parse time and retained memory per flavour file) is
 measured and recorded in the package's performance review before the first
-release; the standalone `MoltenCodes` addon must not pay for flavours it is
-not running beyond parsing their guard line.
+release. A flavour file for a client that is not running it costs its parse
+and one registration call, after which the facade drops the installer so its
+prototype is collected; the Retail file parses in about 3 ms in Lua 5.1, and
+the standalone `MoltenCodes` addon carries every flavour file.
 
 `apiKit` holds no growing state, so constitution principle 4a (bounded by
 default) has nothing to bound here; the package documents that `SetLimits` is
@@ -368,7 +399,7 @@ From one metadata capture per flavour the tooling produces:
 | Runtime bindings | `packages/apiKit/src/flavours/<Flavour>.lua` | yes |
 | LuaCATS definitions | `packages/apiKit/types/<flavour>/*.lua` | yes |
 | Markdown reference | `packages/apiKit/docs/reference/<flavour>/` | yes, provisionally; decided with the owner after the Retail capture (H4) shows its size |
-| Search index | `packages/apiKit/metadata/<flavour>/search.json` | yes |
+| Search index | `packages/apiKit/metadata/<flavour>/search.json` (names its generator and commit) | yes |
 | Build-to-build change report | `packages/apiKit/docs/changes/<flavour>/<from>-<to>.md` | yes |
 | Build history | `packages/apiKit/metadata/<flavour>/history.json` | yes |
 

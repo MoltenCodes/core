@@ -1108,6 +1108,8 @@ def render_search_index(metadata: model.FlavourMetadata, flavour: flavours.Flavo
     entries.sort(key=lambda entry: (entry["kind"], entry["name"], entry["wrapper"], entry["path"]))
     return {
         "schema": SEARCH_INDEX_SCHEMA,
+        "generator": "tooling.api.generate",
+        "commit": metadata.provenance.commit,
         "flavour": flavour.id,
         "build": metadata.provenance.build,
         "entries": entries,

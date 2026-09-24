@@ -131,6 +131,48 @@ class WriteTests(GeneratorFixture):
         self.assertEqual("docs/changes/retail/69933-70000.md", history["entries"][1]["report"])
         self.assertEqual({"added": 0, "removed": 1, "changed": 0}, history["entries"][1]["counts"]["event"])
 
+    def test_a_later_run_with_previous_fills_in_the_first_entry(self):
+        """Generate first, diff later: the usual order must still produce the report."""
+        self.run_main("--flavour", "retail")
+        previous_dir = Path(self.tempdir.name) / "previous"
+        older = sample_metadata()
+        older = dataclasses.replace(
+            older, provenance=dataclasses.replace(older.provenance, commit="b" * 40, build=69000), enums=()
+        )
+        model.write_metadata(older, previous_dir)
+
+        status, output, errors = self.run_main("--flavour", "retail", "--previous", str(previous_dir))
+
+        self.assertEqual(0, status, errors)
+        history = json.loads((self.metadata_dir / "history.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, len(history["entries"]))
+        self.assertEqual("docs/changes/retail/69000-69933.md", history["entries"][0]["report"])
+        self.assertTrue((self.package_dir / "docs" / "changes" / "retail" / "69000-69933.md").is_file())
+
+        status, output, errors = self.run_main("--flavour", "retail", "--previous", str(previous_dir), "--check")
+        self.assertEqual(0, status, errors)
+
+    def test_a_flavour_file_nobody_owns_is_removed(self):
+        self.run_main("--flavour", "retail")
+        stale = self.package_dir / "src" / "flavours" / "Wrath.lua"
+        stale.write_text("-- stale\n", encoding="utf-8")
+
+        status, output, errors = self.run_main("--flavour", "retail")
+
+        self.assertEqual(0, status, errors)
+        self.assertFalse(stale.exists())
+        self.assertTrue((self.package_dir / "src" / "flavours" / "Retail.lua").is_file())
+
+    def test_all_without_any_metadata_is_nothing_to_do(self):
+        empty = Path(self.tempdir.name) / "empty"
+        empty.mkdir()
+        output, errors = io.StringIO(), io.StringIO()
+        with redirect_stdout(output), redirect_stderr(errors):
+            status = module.main(["--package-dir", str(empty), "--all", "--check"])
+
+        self.assertEqual(0, status, errors.getvalue())
+        self.assertIn("nothing to generate", output.getvalue())
+
     def test_history_is_not_repeated_for_the_same_commit(self):
         self.run_main("--flavour", "retail")
         self.run_main("--flavour", "retail")

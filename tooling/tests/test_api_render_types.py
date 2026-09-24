@@ -26,7 +26,7 @@ from tooling.validation.validate_manifests import ROOT
 
 #: Names a real normalised Retail metadata directory, when this machine has one.
 #: The same variable serves the diff tests, so one setting covers both.
-CORPUS_ENV = "APIKIT_RETAIL_METADATA"
+CORPUS_ENV = "MOLTENCODES_API_METADATA"
 CORPUS_DIRECTORY = Path(os.environ.get(CORPUS_ENV, "")) if os.environ.get(CORPUS_ENV) else None
 
 HOST_TYPES = model.parse_host_types(
@@ -204,19 +204,20 @@ class HeaderTests(unittest.TestCase):
         for text in files.values():
             lines = text.splitlines()
             self.assertEqual("---@meta", lines[0])
-            self.assertIn("tooling.api.generate", lines[1])
-            self.assertIn("retail metadata", lines[1])
-            self.assertIn("Example/wow-ui-source", lines[2])
-            self.assertIn("client 12.1.0 build 69933", lines[2])
-            self.assertEqual("-- Commit: " + "a" * 40, lines[3])
-            self.assertIn("Do not edit", lines[4])
+            self.assertEqual("---@diagnostic disable: missing-return", lines[1])
+            self.assertIn("tooling.api.generate", lines[2])
+            self.assertIn("retail metadata", lines[2])
+            self.assertIn("Example/wow-ui-source", lines[3])
+            self.assertIn("client 12.1.0 build 69933", lines[3])
+            self.assertEqual("-- Commit: " + "a" * 40, lines[4])
+            self.assertIn("Do not edit", lines[5])
 
     def test_missing_version_and_build_are_written_as_unknown(self):
         provenance = dataclasses.replace(extended_metadata().provenance, version=None, build=None)
 
         lines = module.header_lines(provenance)
 
-        self.assertIn("client unknown build unknown", lines[2])
+        self.assertIn("client unknown build unknown", lines[3])
 
 
 class ApiFileTests(unittest.TestCase):
@@ -226,7 +227,9 @@ class ApiFileTests(unittest.TestCase):
     def test_global_and_flavour_path_are_declared(self):
         self.assertIn("---@class wow\n---@field retail wow.retail\n", self.text)
         self.assertIn("---@class wow.retail\n---@field api wow.retail.api\n", self.text)
-        self.assertIn("---@type wow\nwow = {}\n", self.text)
+        self.assertIn("---@class wow\n---@field retail wow.retail\nwow = {}\n", self.text)
+        self.assertNotIn("---@type wow", self.text)
+        self.assertIn("---@diagnostic disable: missing-return", self.text.splitlines()[1])
 
     def test_nested_namespace_path_builds_one_class_per_segment(self):
         text = render(flavour=CLASSIC_ERA)["api.lua"]
@@ -489,7 +492,7 @@ class OutputShapeTests(unittest.TestCase):
 
 
 class RetailCorpusTests(unittest.TestCase):
-    """Structural checks on a real Retail capture, when `APIKIT_RETAIL_METADATA` names one."""
+    """Structural checks on a real Retail capture, when `MOLTENCODES_API_METADATA` names one."""
 
     def setUp(self):
         if CORPUS_DIRECTORY is None or not (CORPUS_DIRECTORY / model.PROVENANCE_FILE).is_file():

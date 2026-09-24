@@ -36,7 +36,9 @@ class HeaderAndDependencyTests(unittest.TestCase):
         text = render()
 
         self.assertIn('rawget(generations, 2)', text)
-        self.assertIn('local ApiKit = Registry:Get("apiKit", 1)', text)
+        self.assertIn('local getPackage = rawget(Registry, "Get")', text)
+        self.assertIn('local ApiKit = getPackage(Registry, "apiKit", 1)', text)
+        self.assertIn('or rawget(ApiKit, "API") ~= 1', text)
         self.assertIn("requires Registry API 2 to be loaded first", text)
         self.assertIn("requires ApiKit API 1 to be loaded first", text)
         self.assertIn('ApiKit:RegisterFlavor("retail", function(api, host)', text)
@@ -144,6 +146,7 @@ HARNESS = textwrap.dedent(
     """\
     local installers = {}
     local ApiKit = {
+        API = 1,
         RegisterFlavor = function(_, flavour, install)
             installers[flavour] = install
         end,

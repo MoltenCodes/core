@@ -129,6 +129,23 @@ def _check_uniqueness(metadata: FlavourMetadata) -> list[str]:
     return problems
 
 
+def _check_parameter_lists(metadata: FlavourMetadata) -> list[str]:
+    """No argument, return, payload or field list names one parameter twice.
+
+    The generators and the diff key parameters by name inside a list, so a
+    duplicate would be silently collapsed downstream.
+    """
+    problems: list[str] = []
+    seen: dict[str, list[str]] = defaultdict(list)
+    for context, parameter in _parameters_with_context(metadata):
+        owner = context.rsplit(" ", 1)[0]
+        seen[owner].append(parameter.name)
+    for owner, names in seen.items():
+        for name in _duplicates(names):
+            problems.append(f"{owner}: parameter {name!r} is listed twice")
+    return problems
+
+
 def _check_enums(metadata: FlavourMetadata) -> list[str]:
     problems: list[str] = []
     for enum in metadata.enums:
@@ -219,6 +236,7 @@ def validate_metadata(
     problems.extend(_check_provenance(metadata, known_flavours))
     problems.extend(_check_wrapper_names(metadata))
     problems.extend(_check_uniqueness(metadata))
+    problems.extend(_check_parameter_lists(metadata))
     problems.extend(_check_enums(metadata))
     problems.extend(_check_type_references(metadata, host_types))
     return problems

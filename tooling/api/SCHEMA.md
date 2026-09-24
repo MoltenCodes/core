@@ -200,6 +200,29 @@ give a reference or arithmetic (`Enum.CalendarGetEventType.Get`,
 | `flags`, `attributes` | optional | as for Function |
 | `source` | string | |
 
+## Files the generator owns
+
+Two more files live in a flavour's metadata directory, written by
+`python3 -m tooling.api.generate` and left alone by the normaliser.
+
+`search.json` is the search index of the reference: `{"schema": 1,
+"generator": "tooling.api.generate", "commit": <sha>, "flavour": <id>,
+"build": <build or null>, "entries": [...]}`, each entry `{kind, name,
+wrapper, path, summary}` where `kind` is one of `namespace`, `function`,
+`method`, `object`, `event`, `enum`, `structure`, `callback`, `constants`,
+`restriction`; `name` the raw name (`C_AddOnProfiler.MeasureCall`,
+`ADDON_LOADED`, `Enum.PhaseReason`); `wrapper` the wrapper name or `""`;
+`path` the reference file and anchor; `summary` the first documentation
+paragraph cut at a word boundary within 160 characters. Sorted by `kind`,
+`name`, `wrapper`, `path`.
+
+`history.json` is the build history: `{"schema": 1, "entries": [...]}`, one
+entry per captured commit in capture order, `{build, version, commit,
+committedAt, capturedOn, counts, report}` where `counts` is
+`{kind: {added, removed, changed}}` against the previous entry (absent for
+the first capture) and `report` the repository-relative path of the change
+report (absent when there was nothing to compare against).
+
 ## Host types
 
 `tooling/api/types.json` is the hand-maintained table of the types the

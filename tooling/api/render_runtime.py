@@ -26,7 +26,10 @@ installer:
 
 The facade runs the installer only when the running client is that flavour
 (design section 5.2); on any other client the file costs its parse and the
-registration call, nothing else. Inside the installer:
+registration call, after which the facade drops the installer so its
+prototype can be collected. The contract between this file and the facade is
+design section 7.2, "Contract with generated flavour files". Inside the
+installer:
 
 - a `C_*` namespace is bound only when the host has it, and each function is
   copied by name: a function the tables document but the running build lacks
@@ -85,6 +88,13 @@ def _field_access(table: str, name: str) -> str:
     return f'{table}["{escaped}"]'
 
 
+def _table_key(name: str) -> str:
+    """`name` as a table-constructor key: bare when it is a plain identifier, else bracketed."""
+    if LUA_IDENTIFIER_RE.fullmatch(name) and name not in LUA_KEYWORDS:
+        return name
+    return f"[{_lua_string(name)}]"
+
+
 def _assignment(indent: str, left: str, right: str) -> list[str]:
     """`left = right` on one line, or wrapped after `=` the way StyLua wraps a long one.
 
@@ -131,6 +141,10 @@ def _dependency_block(flavour: flavours.Flavour) -> list[str]:
         f"MoltenCodes ApiKit ({flavour.display_name} bindings) requires Registry API "
         f"{REQUIRED_REGISTRY_API} to be loaded first"
     )
+    registry_invalid = _lua_string(
+        f"MoltenCodes ApiKit ({flavour.display_name} bindings) requires a valid Registry API "
+        f"{REQUIRED_REGISTRY_API} facade"
+    )
     return [
         "-- selene: allow(global_usage)",
         'local namespace = rawget(_G, "MoltenCodes")',
@@ -143,8 +157,16 @@ def _dependency_block(flavour: flavours.Flavour) -> list[str]:
         f"    error({registry_missing}, 2)",
         "end",
         "",
-        f'local ApiKit = Registry:Get("apiKit", {REQUIRED_API_KIT_API})',
-        'if type(ApiKit) ~= "table" or type(rawget(ApiKit, "RegisterFlavor")) ~= "function" then',
+        'local getPackage = rawget(Registry, "Get")',
+        'if type(getPackage) ~= "function" then',
+        f"    error({registry_invalid}, 2)",
+        "end",
+        f'local ApiKit = getPackage(Registry, "apiKit", {REQUIRED_API_KIT_API})',
+        "if",
+        '    type(ApiKit) ~= "table"',
+        f'    or rawget(ApiKit, "API") ~= {REQUIRED_API_KIT_API}',
+        '    or type(rawget(ApiKit, "RegisterFlavor")) ~= "function"',
+        "then",
         f"    error({facade_missing}, 2)",
         "end",
         "",
@@ -218,8 +240,7 @@ def _events_block(events: Iterable[model.Event]) -> list[str]:
         return ["    api.events = {}"]
     lines = ["    api.events = {"]
     for event in sorted(events, key=lambda item: item.wrapper):
-        key = event.wrapper if LUA_IDENTIFIER_RE.fullmatch(event.wrapper) else f"[{_lua_string(event.wrapper)}]"
-        lines.append(f"        {key} = {_lua_string(event.literal_name)},")
+        lines.append(f"        {_table_key(event.wrapper)} = {_lua_string(event.literal_name)},")
     lines.append("    }")
     return lines
 
@@ -229,9 +250,9 @@ def _host_table_block(
 ) -> list[str]:
     """Alias entries of a host table (`Enum`, `Constants`) into `api.<label>`.
 
-    The host table itself may be missing on an old client; each entry is then
-    `nil`, which is what a table lookup on a missing table would have refused
-    to say.
+    The host table itself may be missing on an old client; reading from an
+    empty table instead makes each alias `nil` rather than the whole block
+    raising.
     """
     lines = [
         "    do",

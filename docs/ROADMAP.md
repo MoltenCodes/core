@@ -1041,9 +1041,10 @@ way packages A to G were handled. Code starts only after the owner's go.
    bindings are direct aliases, never forwarding functions; no closures,
    temporary tables, string work, reflection or retained tooling metadata at
    runtime. Load cost is one pass over the running flavour's bindings; a
-   file for another flavour returns after its guard. Parse time and retained
-   memory per flavour file are measured and recorded before the first release
-   (the brief's performance review).
+   file for another flavour costs its parse and one registration call, and
+   the facade drops its installer. Parse time and retained memory per
+   flavour file are measured and recorded before the first release (the
+   brief's performance review).
 7. Tests: Python tests for the Lua-literal parser, normalisation, every naming
    rule, initialism and exception, aliases, flavour partitioning, version
    comparison and history, each generator, the validator, and byte-identical
