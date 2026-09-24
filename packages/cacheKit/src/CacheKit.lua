@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "cacheKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local OPTIONAL_EVENTKIT_API = 1
 
@@ -276,7 +276,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -311,6 +311,14 @@ end
 local nativeIsSecretValue = rawget(_G, "issecretvalue")
 if type(nativeIsSecretValue) ~= "function" then
     nativeIsSecretValue = nil
+end
+
+---Whether the host reports `value` secret. Asked before a caller's limit value
+---meets `CacheKit.UNBOUNDED` or a number; without the probe nothing is secret.
+---@param value any
+---@return boolean
+local function isSecretValue(value)
+    return nativeIsSecretValue ~= nil and nativeIsSecretValue(value) == true
 end
 
 -- Validation -----------------------------------------------------------------
@@ -433,7 +441,7 @@ local CacheKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if CacheKit == nil then
+if type(CacheKit) == "nil" then
     -- An equal or newer compatible revision already owns the shared package table.
     return selected
 end
@@ -444,7 +452,7 @@ local LazyTree = rawget(CacheKit, "LazyTree")
 local Queue = rawget(CacheKit, "Queue")
 local state = rawget(CacheKit, "_state")
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if Cache ~= nil or Snapshot ~= nil or LazyTree ~= nil or Queue ~= nil or state ~= nil then
         error("MoltenCodes CacheKit package state is corrupted or incomplete", 2)
     end
@@ -622,7 +630,10 @@ end
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateCapacity(value, methodName, level)
-    if value == UNBOUNDED then
+    -- The secret check runs first; a secret is refused like any other
+    -- invalid capacity, below, without being compared.
+    local secret = isSecretValue(value)
+    if not secret and value == UNBOUNDED then
         error(
             methodName
                 .. " capacity cannot be CacheKit.UNBOUNDED: "
@@ -631,7 +642,7 @@ local function validateCapacity(value, methodName, level)
         )
     end
     local maxCapacity = rawget(sharedLimits, "maxQueueCapacity")
-    if not isIntegerUpTo(value, maxCapacity) then
+    if secret or not isIntegerUpTo(value, maxCapacity) then
         error(
             methodName
                 .. " capacity must be an integer from 1 to "
@@ -652,7 +663,8 @@ local function validateLimitEntry(key, value, level)
     if ceiling == nil then
         error("CacheKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
     end
-    if value == UNBOUNDED then
+    local secret = isSecretValue(value)
+    if not secret and value == UNBOUNDED then
         error(
             "CacheKit:SetLimits limits."
                 .. key
@@ -661,7 +673,7 @@ local function validateLimitEntry(key, value, level)
             level
         )
     end
-    if not isIntegerUpTo(value, ceiling) then
+    if secret or not isIntegerUpTo(value, ceiling) then
         error(
             "CacheKit:SetLimits limits." .. key .. " must be an integer from 1 to " .. ceiling,
             level
@@ -678,7 +690,7 @@ local function validateLimitUpdate(limits, level)
         error("CacheKit:SetLimits limits must be a table", level)
     end
     local key = next(limits)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         validateLimitEntry(key, rawget(limits, key), level + 1)
         key = next(limits, key)
     end
@@ -698,7 +710,7 @@ end
 ---@param label string what the key belongs to, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateKey(key, label, level)
-    if key == nil then
+    if type(key) == "nil" then
         error(label .. " key must not be nil", level)
     end
     if key ~= key then
@@ -748,14 +760,17 @@ end
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateMaxEntries(value, methodName, level)
-    if value == nil then
+    if type(value) == "nil" then
         error(methodName .. " maxEntries is required", level)
     end
-    if value == UNBOUNDED then
+    -- The secret check runs before the value meets the sentinel or a number.
+    local secret = isSecretValue(value)
+    if not secret and value == UNBOUNDED then
         return
     end
     if
-        type(value) ~= "number"
+        secret
+        or type(value) ~= "number"
         or value ~= value
         or value < 1
         or value == math.huge
@@ -782,7 +797,7 @@ end
 ---@param methodName string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateTtlSeconds(value, methodName, level)
-    if value == nil then
+    if type(value) == "nil" then
         error(methodName .. " ttlSeconds is required", level)
     end
     if type(value) ~= "number" or value ~= value or value <= 0 or value == math.huge then
@@ -1110,7 +1125,7 @@ local function resolveEventKit(methodName, level)
     end
 
     local EventKit, reason = findPackage(Registry, "eventKit", OPTIONAL_EVENTKIT_API)
-    if EventKit == nil then
+    if type(EventKit) == "nil" then
         error(
             methodName
                 .. " requires EventKit API 1, which is not loaded ("
@@ -1181,7 +1196,8 @@ local function cacheGet(self, key)
         return nil
     end
     local value = entry.value
-    if value == NEGATIVE then
+    -- `rawequal`: the stored value is the caller's, and may be a secret.
+    if rawequal(value, NEGATIVE) then
         return nil, "negative"
     end
     return value
@@ -1202,7 +1218,7 @@ local function cacheSet(self, key, value)
         error("CacheKit.Cache:Set cannot write to a closed cache", 2)
     end
 
-    if value == nil then
+    if type(value) == "nil" then
         local entry = rawget(self, "_entries")[key]
         if entry ~= nil then
             removeEntry(self, entry)
@@ -1267,7 +1283,8 @@ local function cachePeek(self, key)
         return nil
     end
     local value = entry.value
-    if value == NEGATIVE then
+    -- `rawequal`: the stored value is the caller's, and may be a secret.
+    if rawequal(value, NEGATIVE) then
         return nil, "negative"
     end
     return value
@@ -1469,7 +1486,7 @@ local function memoizedCall(cache, compute, key, cacheable)
         local remembered = entry.value
         -- A negative entry the owner put on the cache stands in for "compute
         -- would find nothing": the caller sees `nil` and `compute` is spared.
-        if remembered == NEGATIVE then
+        if rawequal(remembered, NEGATIVE) then
             return nil
         end
         return remembered
@@ -1482,10 +1499,10 @@ local function memoizedCall(cache, compute, key, cacheable)
     -- passes through and is computed again next time. `compute` and the
     -- predicate may close the cache they feed.
     local value = compute(key)
-    if value == nil then
+    if type(value) == "nil" then
         return nil
     end
-    if cacheable ~= nil and not cacheable(value, key) then
+    if type(cacheable) ~= "nil" and not cacheable(value, key) then
         return value
     end
     if rawget(cache, "_closed") ~= true then
@@ -1545,7 +1562,7 @@ local function snapshotFill(snapshot, key, value)
         end
     end
     validateKey(key, "CacheKit.Snapshot fill", 4)
-    if value == nil then
+    if type(value) == "nil" then
         error("CacheKit.Snapshot fill value must not be nil", 3)
     end
 
@@ -1743,7 +1760,7 @@ end
 local function snapshotGet(self, key)
     validateSnapshot(self, "CacheKit.Snapshot:Get", 3)
     local values = rawget(self, "_values")
-    if values == false or key == nil or key ~= key then
+    if values == false or type(key) == "nil" or key ~= key then
         return nil
     end
     return values[key]
@@ -2122,7 +2139,7 @@ local function lazyGet(self, ...)
     -- The tree is walked again after the resolver returns: it may have read,
     -- invalidated or closed parts of the tree, including this path's.
     local value = rawget(self, "_resolve")(...)
-    if value == nil or rawget(self, "_closed") == true then
+    if type(value) == "nil" or rawget(self, "_closed") == true then
         return value
     end
     expandNode(self, ensureNode(self, partCount, ...), value)
@@ -2290,7 +2307,7 @@ end
 ---@return any dropped the value forgotten, when one was
 local function queuePush(self, value)
     validateQueue(self, "CacheKit.Queue:Push", 3)
-    if value == nil then
+    if type(value) == "nil" then
         error("CacheKit.Queue:Push value must not be nil", 2)
     end
 
@@ -2440,18 +2457,18 @@ local function packageMemoize(_, fn, options)
     local maxEntries = DEFAULT_MEMOIZE_MAX_ENTRIES
     local ttlSeconds = false
     local cacheable = nil
-    if options ~= nil then
+    if type(options) ~= "nil" then
         validateOptionKeys(options, MEMOIZE_OPTION_KEYS, "CacheKit:Memoize", 3)
-        if rawget(options, "maxEntries") ~= nil then
+        if type(rawget(options, "maxEntries")) ~= "nil" then
             maxEntries = rawget(options, "maxEntries")
             validateMaxEntries(maxEntries, "CacheKit:Memoize", 3)
         end
-        if rawget(options, "ttlSeconds") ~= nil then
+        if type(rawget(options, "ttlSeconds")) ~= "nil" then
             ttlSeconds = rawget(options, "ttlSeconds")
             validateTtlSeconds(ttlSeconds, "CacheKit:Memoize", 3)
         end
         cacheable = rawget(options, "cacheable")
-        if cacheable ~= nil and type(cacheable) ~= "function" then
+        if type(cacheable) ~= "nil" and type(cacheable) ~= "function" then
             error("CacheKit:Memoize cacheable must be a function", 2)
         end
     end
@@ -2477,9 +2494,9 @@ local function packageNewSnapshot(_, read, options)
     end
 
     local maxEntries = DEFAULT_SNAPSHOT_MAX_ENTRIES
-    if options ~= nil then
+    if type(options) ~= "nil" then
         validateOptionKeys(options, SNAPSHOT_OPTION_KEYS, "CacheKit:NewSnapshot", 3)
-        if rawget(options, "maxEntries") ~= nil then
+        if type(rawget(options, "maxEntries")) ~= "nil" then
             maxEntries = rawget(options, "maxEntries")
             validateMaxEntries(maxEntries, "CacheKit:NewSnapshot", 3)
         end
@@ -2501,9 +2518,9 @@ local function packageLazy(_, resolve, options)
     end
 
     local maxEntries = DEFAULT_LAZY_MAX_ENTRIES
-    if options ~= nil then
+    if type(options) ~= "nil" then
         validateOptionKeys(options, LAZY_OPTION_KEYS, "CacheKit:Lazy", 3)
-        if rawget(options, "maxEntries") ~= nil then
+        if type(rawget(options, "maxEntries")) ~= "nil" then
             maxEntries = rawget(options, "maxEntries")
             validateMaxEntries(maxEntries, "CacheKit:Lazy", 3)
         end
@@ -2539,7 +2556,7 @@ local function packageSetLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, name, value)
         end
     end

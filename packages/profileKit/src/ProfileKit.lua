@@ -13,7 +13,7 @@
 -- --------
 --   Constants ............. identity, defaults, refusal reasons
 --   Public types .......... LuaCATS declarations for the published surface
---   Dependencies .......... Registry, the CPU clock
+--   Dependencies .......... Registry, the CPU clock, the secret probe
 --   Validation ............ public-surface and shared-state predicates
 --   Bootstrap ............. registration and inherited state
 --   Argument checks ....... errors reported at the caller's line
@@ -29,7 +29,7 @@
 
 local PACKAGE_NAME = "profileKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -111,7 +111,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -134,6 +134,16 @@ end
 local readClock = rawget(_G, "debugprofilestop")
 if type(readClock) ~= "function" then
     readClock = nil
+end
+
+-- `issecretvalue` (Retail 12.0 and later, and the current Classic clients) is
+-- asked only by `SetLimits`, before a caller's limit value is compared with
+-- anything: a secret raises when compared. Without it nothing is secret.
+-- issecretvalue is a World of Warcraft client API reachable only through the global table.
+-- selene: allow(global_usage)
+local nativeIsSecretValue = rawget(_G, "issecretvalue")
+if type(nativeIsSecretValue) ~= "function" then
+    nativeIsSecretValue = nil
 end
 
 local getmetatable = getmetatable
@@ -226,14 +236,14 @@ local ProfileKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if ProfileKit == nil then
+if type(ProfileKit) == "nil" then
     -- Equal or newer compatible revision already owns the shared package table.
     return selected
 end
 
 local state = rawget(ProfileKit, "_state")
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if state ~= nil then
         error("MoltenCodes ProfileKit package state is corrupted or incomplete", 2)
     end
@@ -308,7 +318,9 @@ end
 ---@param label string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-    if receiver ~= ProfileKit then
+    -- The type test runs first so a caller's non-table receiver, a secret
+    -- included, is never compared with the facade.
+    if type(receiver) ~= "table" or receiver ~= ProfileKit then
         error(label .. " must be called on the ProfileKit facade; use " .. label .. "(...)", level)
     end
 end
@@ -322,7 +334,7 @@ local function validateLimitUpdate(limits, level)
         error("ProfileKit:SetLimits limits must be a table", level)
     end
     local key = next(limits)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         if type(key) ~= "string" or LIMIT_NAME_SET[key] ~= true then
             error(
                 "ProfileKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
@@ -330,7 +342,10 @@ local function validateLimitUpdate(limits, level)
             )
         end
         local value = rawget(limits, key)
-        if value ~= UNBOUNDED and not isPositiveInteger(value) then
+        -- The secret check comes first: comparing a secret with the sentinel,
+        -- or with a number, would raise inside ProfileKit.
+        local secret = nativeIsSecretValue ~= nil and nativeIsSecretValue(value) == true
+        if secret or (value ~= UNBOUNDED and not isPositiveInteger(value)) then
             error(
                 "ProfileKit:SetLimits limits."
                     .. key
@@ -643,7 +658,7 @@ local function setLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, name, value)
         end
     end

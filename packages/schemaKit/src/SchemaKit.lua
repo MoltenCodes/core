@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "schemaKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -344,7 +344,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -443,7 +443,7 @@ local SchemaKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if SchemaKit == nil then
+if type(SchemaKit) == "nil" then
     -- An equal or newer compatible revision already owns the shared package table.
     return selected
 end
@@ -451,7 +451,7 @@ end
 local Schema = rawget(SchemaKit, "Schema")
 local state = rawget(SchemaKit, "_state")
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if Schema ~= nil or state ~= nil then
         error("MoltenCodes SchemaKit package state is corrupted or incomplete", 2)
     end
@@ -589,7 +589,7 @@ end
 local function formatSegment(key, isFirst)
     local keyType = type(key)
     if keyType == "string" then
-        if #key <= pathKeyLimit and find(key, "^[%a_][%w_]*$") ~= nil then
+        if #key <= pathKeyLimit and type(find(key, "^[%a_][%w_]*$")) ~= "nil" then
             if isFirst then
                 return key
             end
@@ -767,7 +767,7 @@ local function checkString(record, node, value)
     end
 
     local pattern = node.pattern
-    if pattern ~= false and find(value, pattern) == nil then
+    if pattern ~= false and type(find(value, pattern)) == "nil" then
         return fail(record, RULE_PATTERN, node.expectedPattern --[[@as string]], FOUND_NON_MATCHING)
     end
     return true
@@ -900,7 +900,7 @@ local function checkArray(record, node, value, depth, isSecret)
     local elementNode = node.of --[[@as SchemaKit.CompiledNode]]
     for index = 1, count do
         local element = rawget(value, index)
-        if element == nil then
+        if type(element) == "nil" then
             return fail(record, RULE_SEQUENCE, EXPECTED_SEQUENCE, FOUND_SEQUENCE)
         end
         if not checkNode(record, elementNode, element, depth + 1, isSecret) then
@@ -986,13 +986,13 @@ checkNode = function(record, node, value, depth, isSecret)
 
     local kind = node.kind
     if kind == KIND_OPTIONAL then
-        if value == nil then
+        if type(value) == "nil" then
             return true
         end
         -- Builders never nest an optional directly inside another.
         node = node.inner --[[@as SchemaKit.CompiledNode]]
         kind = node.kind
-    elseif value == nil then
+    elseif type(value) == "nil" then
         return fail(record, RULE_REQUIRED, node.expected, FOUND_NIL)
     end
 
@@ -1152,7 +1152,7 @@ local function copyArray(record, node, value, depth, isSecret)
     local elementNode = node.of --[[@as SchemaKit.CompiledNode]]
     for index = 1, count do
         local element = rawget(value, index)
-        if element == nil then
+        if type(element) == "nil" then
             return value
         end
         result[index] = copyNode(record, elementNode, element, depth + 1, isSecret)
@@ -1220,7 +1220,7 @@ copyNode = function(record, node, value, depth, isSecret)
 
     local kind = node.kind
     if kind == KIND_OPTIONAL then
-        if value == nil then
+        if type(value) == "nil" then
             if not node.hasDefault then
                 return nil
             end
@@ -1390,7 +1390,7 @@ end
 ---@param label string e.g. "SchemaKit.string min"
 ---@param level integer
 local function validateCount(value, label, level)
-    if value ~= nil and not isNonNegativeInteger(value) then
+    if type(value) ~= "nil" and not isNonNegativeInteger(value) then
         error(label .. " must be a non-negative integer", level)
     end
 end
@@ -1423,7 +1423,7 @@ local function sequenceLength(list)
         count = count + 1
     end
     for index = 1, count do
-        if rawget(list, index) == nil then
+        if type(rawget(list, index)) == "nil" then
             return nil
         end
     end
@@ -1579,10 +1579,10 @@ end
 local function isValidPattern(pattern)
     -- The matcher stops at the first NUL byte, so nothing after it matters.
     local nulIndex = find(pattern, "\0", 1, true)
-    if nulIndex ~= nil then
+    if type(nulIndex) ~= "nil" then
         pattern = sub(pattern, 1, nulIndex - 1)
     end
-    if find(pattern, PATTERN_SPECIALS) == nil then
+    if type(find(pattern, PATTERN_SPECIALS)) == "nil" then
         return true
     end
 
@@ -1636,7 +1636,7 @@ local function isValidPattern(pattern)
                 return false
             end
             index = classEnd
-        elseif character == "%" and find(following, "^%d$") ~= nil then
+        elseif character == "%" and type(find(following, "^%d$")) ~= "nil" then
             local captureIndex = byte(following) - 48
             if closedCaptures[captureIndex] ~= true then
                 return false
@@ -1666,7 +1666,7 @@ end
 local function buildString(spec)
     refuseColonCall(spec, "SchemaKit.string", 3)
     local node = newCompiledNode(KIND_STRING, "string")
-    if spec == nil then
+    if type(spec) == "nil" then
         return publishNode(node)
     end
     validateSpecKeys(spec, STRING_SPEC_KEYS, "SchemaKit.string", 3)
@@ -1674,20 +1674,20 @@ local function buildString(spec)
     local min, max = rawget(spec, "min"), rawget(spec, "max")
     validateCount(min, "SchemaKit.string min", 3)
     validateCount(max, "SchemaKit.string max", 3)
-    if min ~= nil and max ~= nil and min > max then
+    if type(min) ~= "nil" and type(max) ~= "nil" and min > max then
         error("SchemaKit.string min must not be greater than max", 2)
     end
-    if min ~= nil then
+    if type(min) ~= "nil" then
         node.min = min
         node.expectedMin = "string of at least " .. min .. " characters"
     end
-    if max ~= nil then
+    if type(max) ~= "nil" then
         node.max = max
         node.expectedMax = "string of at most " .. max .. " characters"
     end
 
     local pattern = rawget(spec, "pattern")
-    if pattern ~= nil then
+    if type(pattern) ~= "nil" then
         if type(pattern) ~= "string" or pattern == "" then
             error("SchemaKit.string pattern must be a non-empty string", 2)
         end
@@ -1699,7 +1699,7 @@ local function buildString(spec)
     end
 
     local oneOf = rawget(spec, "oneOf")
-    if oneOf ~= nil then
+    if type(oneOf) ~= "nil" then
         local length = validateList(oneOf, "SchemaKit.string oneOf", 3)
         for index = 1, length do
             if type(oneOf[index]) ~= "string" then
@@ -1720,13 +1720,13 @@ end
 local function buildNumber(spec)
     refuseColonCall(spec, "SchemaKit.number", 3)
     local node = newCompiledNode(KIND_NUMBER, "number")
-    if spec == nil then
+    if type(spec) == "nil" then
         return publishNode(node)
     end
     validateSpecKeys(spec, NUMBER_SPEC_KEYS, "SchemaKit.number", 3)
 
     local integer = rawget(spec, "integer")
-    if integer ~= nil and type(integer) ~= "boolean" then
+    if type(integer) ~= "nil" and type(integer) ~= "boolean" then
         error("SchemaKit.number integer must be a boolean", 2)
     end
     node.integer = integer == true
@@ -1734,20 +1734,20 @@ local function buildNumber(spec)
     node.expected = noun
 
     local min, max = rawget(spec, "min"), rawget(spec, "max")
-    if min ~= nil and (type(min) ~= "number" or min ~= min) then
+    if type(min) ~= "nil" and (type(min) ~= "number" or min ~= min) then
         error("SchemaKit.number min must be a number", 2)
     end
-    if max ~= nil and (type(max) ~= "number" or max ~= max) then
+    if type(max) ~= "nil" and (type(max) ~= "number" or max ~= max) then
         error("SchemaKit.number max must be a number", 2)
     end
-    if min ~= nil and max ~= nil and min > max then
+    if type(min) ~= "nil" and type(max) ~= "nil" and min > max then
         error("SchemaKit.number min must not be greater than max", 2)
     end
-    if min ~= nil then
+    if type(min) ~= "nil" then
         node.min = min
         node.expectedMin = noun .. " >= " .. formatNumber(min)
     end
-    if max ~= nil then
+    if type(max) ~= "nil" then
         node.max = max
         node.expectedMax = noun .. " <= " .. formatNumber(max)
     end
@@ -1794,7 +1794,7 @@ local function buildTable(spec)
         error("SchemaKit.table fields must be a table of schema nodes by name", 2)
     end
     local open = rawget(spec, "open")
-    if open ~= nil and type(open) ~= "boolean" then
+    if type(open) ~= "nil" and type(open) ~= "boolean" then
         error("SchemaKit.table open must be a boolean", 2)
     end
 
@@ -1870,7 +1870,7 @@ local function buildMap(spec)
     end
     local values = resolveChild(rawget(spec, "values"), "SchemaKit.map values", 3)
     local max = rawget(spec, "max")
-    if max == nil then
+    if type(max) == "nil" then
         error("SchemaKit.map max is required", 2)
     end
     if not isNonNegativeInteger(max) or max < 1 then
@@ -1899,7 +1899,7 @@ local function buildOptional(schema, default)
 
     local node = newCompiledNode(KIND_OPTIONAL, inner.expected)
     node.inner = inner
-    if default ~= nil then
+    if type(default) ~= "nil" then
         if not plainDepthWithin(default, 1) then
             error("SchemaKit.optional default nests deeper than " .. maxDepth .. " tables", 2)
         end
@@ -2010,12 +2010,12 @@ end
 ---@return any value
 local function schemaAssert(self, value, argumentName, level)
     local record = recordOf(self, "SchemaKit.Schema:Assert", 3)
-    if argumentName == nil then
+    if type(argumentName) == "nil" then
         argumentName = "value"
     elseif type(argumentName) ~= "string" or argumentName == "" then
         error("SchemaKit.Schema:Assert argumentName must be a non-empty string", 2)
     end
-    if level == nil then
+    if type(level) == "nil" then
         level = 1
     elseif not isNonNegativeInteger(level) or level < 1 then
         error("SchemaKit.Schema:Assert level must be a positive integer", 2)
@@ -2082,7 +2082,7 @@ local function packageSeal(facade, node, options)
     end
     local root = resolveChild(node, "SchemaKit:Seal node", 3)
     local freshFailures = false
-    if options ~= nil then
+    if type(options) ~= "nil" then
         if type(options) ~= "table" then
             error("SchemaKit:Seal options must be a table", 2)
         end
@@ -2091,7 +2091,7 @@ local function packageSeal(facade, node, options)
             error('SchemaKit:Seal options contains unknown field "' .. firstUnknown .. '"', 2)
         end
         local fresh = rawget(options, "freshFailures")
-        if fresh ~= nil and type(fresh) ~= "boolean" then
+        if type(fresh) ~= "nil" and type(fresh) ~= "boolean" then
             error("SchemaKit:Seal freshFailures must be a boolean", 2)
         end
         freshFailures = fresh == true
@@ -2110,6 +2110,7 @@ local function validateLimitUpdate(limits, level)
     if type(limits) ~= "table" then
         error("SchemaKit:SetLimits limits must be a table", level)
     end
+    local isSecret = currentSecretProbe()
     for key, value in next, limits do
         if type(key) ~= "string" or rawget(sharedLimits, key) == nil then
             error(
@@ -2118,7 +2119,10 @@ local function validateLimitUpdate(limits, level)
             )
         end
         local ceiling = LIMIT_CEILINGS[key]
-        if value == UNBOUNDED then
+        -- The secret check runs before the value meets the sentinel or a
+        -- number; a secret is refused like any other invalid value.
+        local secret = isSecret ~= nil and isSecret(value) == true
+        if not secret and value == UNBOUNDED then
             if ceiling ~= nil then
                 error(
                     "SchemaKit:SetLimits limits."
@@ -2128,7 +2132,7 @@ local function validateLimitUpdate(limits, level)
                     level
                 )
             end
-        elseif not isNonNegativeInteger(value) or value < 1 then
+        elseif secret or not isNonNegativeInteger(value) or value < 1 then
             if ceiling ~= nil then
                 error(
                     "SchemaKit:SetLimits limits."

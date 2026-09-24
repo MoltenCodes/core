@@ -74,6 +74,26 @@ describe("SchemaKit bootstrap", function()
         )
     end)
 
+    it("upgrades a revision 1 package in place to the working file", function()
+        local previousRevision = 1
+        TestEnv.Reset()
+        require("Registry")
+        local previous = TestEnv.LoadRevision(previousRevision)
+        previous:SetLimits({ maxDepth = 20 })
+        local schema = previous:Seal(previous.table({ fields = { x = previous.number() } }))
+        local _, failure = schema:Check({ x = "a" })
+        local state = previous._state
+
+        local current = require("SchemaKit")
+        assert.are.equal(previous, current)
+        assert.are.equal(previousRevision + 1, current.REVISION)
+        assert.are.equal(state, current._state)
+        assert.are.equal(20, current:GetLimits().maxDepth)
+        assert.is_true(schema:Check({ x = 1 }))
+        local _, again = schema:Check({ x = "a" })
+        assert.are.equal(failure, again)
+    end)
+
     it("requires Registry", function()
         TestEnv.Reset()
         local ok, value = pcall(require, "SchemaKit")

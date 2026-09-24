@@ -49,9 +49,10 @@ describe("LocaleKit bootstrap", function()
         LocaleKit:SetLocaleOverride("frFR")
         TestEnv.TakeReportedErrors()
 
-        local upgraded = TestEnv.LoadRevision(2)
+        local nextRevision = LocaleKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
         assert.are.equal(LocaleKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(nextRevision, upgraded.REVISION)
 
         -- The read tables are the same objects with the same contents.
         assert.are.equal(L, upgraded:GetLocale("MyAddon"))
@@ -95,8 +96,9 @@ describe("LocaleKit bootstrap", function()
         local open = LocaleKit:GetLocale("Open", { missing = "silent", maxMissingKeys = sentinel })
         local tight = LocaleKit:GetLocale("Tight", { missing = "silent", maxMissingKeys = 2 })
 
-        local upgraded = TestEnv.LoadRevision(2)
-        assert.are.equal(2, upgraded.REVISION)
+        local nextRevision = LocaleKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
         for index = 1, 1100 do
             local _ = open["key" .. index]
@@ -104,6 +106,31 @@ describe("LocaleKit bootstrap", function()
         end
         assert.are.equal(1100, #upgraded:MissingKeys("Open"))
         assert.are.equal(2, #upgraded:MissingKeys("Tight"))
+    end)
+
+    it("upgrades a revision 1 package in place to the working file", function()
+        local previousRevision = 1
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        TestEnv.SetClientLocale("deDE")
+        require("Registry")
+        local previous = TestEnv.LoadRevision(previousRevision)
+        local default = previous:NewLocale("MyAddon", "enUS", { isDefault = true })
+        default["Hello"] = true
+        previous:NewLocale("MyAddon", "deDE")["Hello"] = "Hallo"
+        local L = previous:GetLocale("MyAddon", { missing = "silent", maxMissingKeys = 3 })
+        local _ = L.Seen
+        local state = previous._state
+
+        local current = require("LocaleKit")
+        assert.are.equal(previous, current)
+        assert.are.equal(previousRevision + 1, current.REVISION)
+        assert.are.equal(state, current._state)
+        assert.are.equal(L, current:GetLocale("MyAddon", { maxMissingKeys = 3 }))
+        assert.are.equal("Hallo", L.Hello)
+        assert.are.same({ "Seen" }, current:MissingKeys("MyAddon"))
+        default["Goodbye"] = true
+        assert.are.equal("Goodbye", L.Goodbye)
     end)
 
     it("requires Registry", function()

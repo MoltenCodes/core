@@ -73,4 +73,4 @@ The error-level spec pins every one of these.
 
 ## Upgrades
 
-The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to 2 and checks that read tables, modes, missing keys, older proxies and the override survive.
+The upgrade specs load the same source a second time with `IMPLEMENTATION_REVISION` raised to the shipped revision plus one and check that read tables, modes, missing keys, older proxies and the override survive. A further spec loads the source as revision 1 and then the working file through `require`, the upgrade a client meets when an addon ships the previous release.

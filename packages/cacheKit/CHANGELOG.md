@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 — 2026-09-24
+
+- Implementation revision 4 applies the repository nil rule: the absence of a caller's key, value, option table, option field or limit, and of what a memoised function or a lazy tree's resolver returned, is tested with `type(value) == "nil"`, never by comparing the value with `nil`. The Registry lookup, the results of `Registry:Bootstrap` and the EventKit that `Registry:Find` returns are tested the same way.
+- `maxEntries` (`NewLru`, `NewTtl`, `Memoize`, `NewSnapshot`, `Lazy`), `NewQueue`'s `capacity` and `SetLimits` values are asked about with `issecretvalue` before they are compared with `CacheKit.UNBOUNDED` or a number; a secret is refused at the caller's line with the message any other invalid value gets.
+- A stored value is compared with the negative-entry marker by raw identity, which never compares a secret, in `Get`, `Peek` and memoised calls, so a secret value a caller stored (or a memoised function returned) is handed back without being compared. Keys still must not be secret, as before.
+- Specs: secret limit values refused at the caller, a secret value stored, read back and memoised, and an in-place upgrade from revision 3 to the working file.
+
 ## 0.2.1 — 2026-09-24
 
 - Fixed: a lazy tree expanding a node that existed only as structure could lose it. When the tree was full and the node's only expanded descendant was the least recently read node, eviction dropped that descendant and the pruning after it detached the node being expanded, which was then kept as expanded and linked in the recency list but no longer reachable from the root: the value was unreachable, the node sat on the free list while linked, and a later eviction raised inside CacheKit (`attempt to index local 'parent'`). `expandNode` now expands the node first and evicts afterwards, so pruning stops at it; the eviction order is unchanged.

@@ -6,7 +6,7 @@ local TestEnv = require("HookKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("HookKit allocation", function()
+describe("HookKit allocation #allocation", function()
     local HookKit
     before_each(function()
         HookKit = TestEnv.NewPackage()

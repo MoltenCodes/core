@@ -61,4 +61,5 @@ Minimum footprint: embed 2 files: `registry/Registry.lua`, `profileKit/ProfileKi
 Direct runtime dependencies: Registry API 2.
 Every file above is required; omitting one makes this package raise at
 load. `debugprofilestop` is optional: without it the package loads and stays
-disabled.
+disabled. `issecretvalue` is optional too: `SetLimits` uses it to refuse a
+secret limit value, and without it nothing is treated as secret.

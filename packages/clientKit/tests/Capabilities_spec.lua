@@ -191,7 +191,7 @@ describe("ClientKit:Has", function()
         assert.is_true(ClientKit:Has("C_Item"))
     end)
 
-    it("allocates nothing after bootstrap", function()
+    it("allocates nothing after bootstrap #allocation", function()
         local ClientKit = Env.NewPackageFor("mainline")
         local frame = Env.NewFrame({ forbidden = false, accessible = true })
         local allocated = allocatedKilobytes(function()

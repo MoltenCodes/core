@@ -114,7 +114,7 @@ Every cache, snapshot, lazy tree and queue is bounded by default. Per-object bou
 | `maxQueueCapacity` — largest `capacity` `NewQueue` accepts | `1024` | `CacheKit:SetLimits({ maxQueueCapacity = n })`, `n` from 1 to 65536 | no: same reason | 65536: keeps one `NewQueue` call from allocating without bound |
 | free list of an unbounded cache or lazy tree | `1024` blank tables | not configurable | no | keeps an unbounded cache or tree from retaining its peak size after a `Clear` |
 
-`maxEntries` must be an integer of at least `1` or `CacheKit.UNBOUNDED`; anything else is refused at the caller's line with `maxEntries must be a positive integer or CacheKit.UNBOUNDED`. `capacity` must be an integer from 1 to `maxQueueCapacity` and is refused with `CacheKit:NewQueue capacity must be an integer from 1 to 1024 (CacheKit:SetLimits maxQueueCapacity)`; `CacheKit.UNBOUNDED` is refused with its reason, `capacity cannot be CacheKit.UNBOUNDED: the ring is allocated when the queue is created`. Option tables refuse unknown fields.
+`maxEntries` must be an integer of at least `1` or `CacheKit.UNBOUNDED`; anything else is refused at the caller's line with `maxEntries must be a positive integer or CacheKit.UNBOUNDED`. `capacity` must be an integer from 1 to `maxQueueCapacity` and is refused with `CacheKit:NewQueue capacity must be an integer from 1 to 1024 (CacheKit:SetLimits maxQueueCapacity)`; `CacheKit.UNBOUNDED` is refused with its reason, `capacity cannot be CacheKit.UNBOUNDED: the ring is allocated when the queue is created`. A secret `maxEntries` or `capacity` (Retail 12.x) is refused with the same messages as any other invalid value, before it is compared with anything. Option tables refuse unknown fields.
 
 ```lua
 local byGuid = CacheKit:NewLru({ maxEntries = CacheKit.UNBOUNDED })
@@ -130,7 +130,7 @@ An unbounded cache never evicts, so it grows with every distinct key you store a
 
 ### `CacheKit:SetLimits(limits)`
 
-Changes any subset of the package-wide limits; today that is `maxQueueCapacity`. The whole table is validated first, so one invalid entry changes nothing: an unrecognised name raises `CacheKit:SetLimits limits.<name> is not a recognised limit`, a value outside 1 to the ceiling raises `limits.maxQueueCapacity must be an integer from 1 to 65536`, and `CacheKit.UNBOUNDED` raises `limits.maxQueueCapacity cannot be CacheKit.UNBOUNDED: the ring is allocated when the queue is created`; a non-table raises `limits must be a table`. All at the caller's line. An empty table is accepted and changes nothing.
+Changes any subset of the package-wide limits; today that is `maxQueueCapacity`. The whole table is validated first, so one invalid entry changes nothing: an unrecognised name raises `CacheKit:SetLimits limits.<name> is not a recognised limit`, a value outside 1 to the ceiling raises `limits.maxQueueCapacity must be an integer from 1 to 65536`, and `CacheKit.UNBOUNDED` raises `limits.maxQueueCapacity cannot be CacheKit.UNBOUNDED: the ring is allocated when the queue is created`; a non-table raises `limits must be a table`. A secret value is refused with the out-of-range message before it is compared with anything. All at the caller's line. An empty table is accepted and changes nothing.
 
 **The limits are shared by every consumer in the session**: every embedded copy publishes one facade and one state, so a limit one addon raises is raised for all of them, and a newer revision loaded later inherits the value set rather than resetting it. Lowering `maxQueueCapacity` never shrinks an existing queue; further `NewQueue` calls asking for more than the new value are refused until it allows them again.
 
@@ -441,7 +441,7 @@ local isSecret = issecretvalue or function()
 end
 ```
 
-`fill` checks for you when the client has `issecretvalue`: it refuses a secret key or value at the reader's line (`CacheKit.Snapshot fill key must not be a secret value`) before any comparison, and that refusal fails the refresh like any other. Cache methods (`Get`, `Set`, `PutNegative`, `Peek`, `Delete`), memoised functions, lazy tree paths, queue values and `snapshot:Get` do not probe, to keep their hot paths free of an extra call; a secret key or path part reaching them raises the client's own error (a queue only stores its values and never compares them, so a secret value survives `Push` and `Pop` unchanged).
+`fill` checks for you when the client has `issecretvalue`: it refuses a secret key or value at the reader's line (`CacheKit.Snapshot fill key must not be a secret value`) before any comparison, and that refusal fails the refresh like any other. Cache methods (`Get`, `Set`, `PutNegative`, `Peek`, `Delete`), memoised functions, lazy tree paths, queue values and `snapshot:Get` do not probe, to keep their hot paths free of an extra call; a secret key or path part reaching them raises the client's own error (a queue only stores its values and never compares them, so a secret value survives `Push` and `Pop` unchanged). Cache values are handled the same way: a secret value, as opposed to a secret key, survives `Set`, `Get`, `Peek` and a memoised call unchanged, because the negative-entry check is a raw identity test. A secret `maxEntries`, `capacity` or `SetLimits` value is refused at the caller's line.
 
 ## Error behaviour
 

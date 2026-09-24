@@ -36,7 +36,7 @@
 
 local PACKAGE_NAME = "localeKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -121,7 +121,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -202,14 +202,14 @@ local LocaleKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if LocaleKit == nil then
+if type(LocaleKit) == "nil" then
     -- An equal or newer compatible revision already owns the shared package table.
     return selected
 end
 
 local state = rawget(LocaleKit, "_state")
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if state ~= nil then
         error("MoltenCodes LocaleKit package state is corrupted or incomplete", 2)
     end
@@ -273,7 +273,7 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateLocaleCode(value, label, level)
-    if type(value) ~= "string" or value:match(LOCALE_CODE_PATTERN) == nil then
+    if type(value) ~= "string" or type(value:match(LOCALE_CODE_PATTERN)) == "nil" then
         error(label .. ' must be a client locale code such as "deDE"', level)
     end
 end
@@ -324,13 +324,14 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateLimit(value, label, level)
-    if rawequal(value, UNBOUNDED) then
-        return
-    end
+    -- The secret check runs before the value meets the sentinel or a number.
     -- issecretvalue is a World of Warcraft client API reachable only through the global table.
     -- selene: allow(global_usage)
     local isSecretValue = rawget(_G, "issecretvalue")
     local secret = type(isSecretValue) == "function" and isSecretValue(value) == true
+    if not secret and rawequal(value, UNBOUNDED) then
+        return
+    end
     if secret or not isPositiveInteger(value) then
         error(label .. " must be a positive integer or LocaleKit.UNBOUNDED", level)
     end
@@ -372,7 +373,7 @@ local function resolveClientLocale()
         return FALLBACK_LOCALE
     end
     local locale = getLocale()
-    if type(locale) ~= "string" or locale:match(LOCALE_CODE_PATTERN) == nil then
+    if type(locale) ~= "string" or type(locale:match(LOCALE_CODE_PATTERN)) == "nil" then
         return FALLBACK_LOCALE
     end
     return foldLocale(locale)
@@ -661,7 +662,7 @@ local function replaceSpecifier(digits, dollar, flags, conversion)
     local specifier
     if dollar == "$" then
         index = tonumber(digits)
-        if index == nil or index < 1 then
+        if type(index) == "nil" or index < 1 then
             failFormat("template argument indexes start at 1")
         end
         specifier = "%" .. flags .. conversion
@@ -720,10 +721,10 @@ local function packageNewLocale(_, addonName, locale, options)
     validateNonEmptyString(addonName, "LocaleKit:NewLocale addonName", 3)
     validateLocaleCode(locale, "LocaleKit:NewLocale locale", 3)
     local isDefault = false
-    if options ~= nil then
+    if type(options) ~= "nil" then
         validateOptionKeys(options, NEW_LOCALE_OPTION_KEYS, "LocaleKit:NewLocale", 3)
         local flag = rawget(options, "isDefault")
-        if flag ~= nil and type(flag) ~= "boolean" then
+        if type(flag) ~= "nil" and type(flag) ~= "boolean" then
             error("LocaleKit:NewLocale isDefault must be a boolean", 2)
         end
         isDefault = flag == true
@@ -785,14 +786,14 @@ local function packageGetLocale(_, addonName, options)
     validateNonEmptyString(addonName, "LocaleKit:GetLocale addonName", 3)
     local requested = nil
     local maxMissingKeys = nil
-    if options ~= nil then
+    if type(options) ~= "nil" then
         validateOptionKeys(options, GET_LOCALE_OPTION_KEYS, "LocaleKit:GetLocale", 3)
         requested = rawget(options, "missing")
-        if requested ~= nil and MISSING_MODES[requested] ~= true then
+        if type(requested) ~= "nil" and MISSING_MODES[requested] ~= true then
             error('LocaleKit:GetLocale missing must be "report", "silent" or "raw"', 2)
         end
         maxMissingKeys = rawget(options, "maxMissingKeys")
-        if maxMissingKeys ~= nil then
+        if type(maxMissingKeys) ~= "nil" then
             validateLimit(maxMissingKeys, "LocaleKit:GetLocale options.maxMissingKeys", 3)
         end
     end
@@ -817,7 +818,7 @@ local function packageGetLocale(_, addonName, options)
         elseif mode == "silent" then
             setmetatable(record.strings, SILENT_METATABLE)
         end
-    elseif requested ~= nil and requested ~= mode then
+    elseif type(requested) ~= "nil" and requested ~= mode then
         error(
             "LocaleKit:GetLocale "
                 .. addonName
@@ -830,7 +831,7 @@ local function packageGetLocale(_, addonName, options)
         )
     end
 
-    if maxMissingKeys ~= nil then
+    if type(maxMissingKeys) ~= "nil" then
         if firstCall then
             record.maxMissingKeys = maxMissingKeys
         elseif not rawequal(maxMissingKeys, record.maxMissingKeys) then
@@ -925,7 +926,7 @@ end
 ---@param _ LocaleKit
 ---@param locale string? a client locale code, or `nil` to clear
 local function packageSetLocaleOverride(_, locale)
-    if locale == nil then
+    if type(locale) == "nil" then
         rawset(state, "localeOverride", false)
         return
     end

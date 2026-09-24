@@ -49,6 +49,65 @@ describe("CacheKit snapshots and secret values", function()
         assert.are.equal(0, valued:GetCount())
     end)
 
+    it("refuses a secret limit value at the caller before comparing it", function()
+        -- A number stands in for a secret number: without the probe asked
+        -- first, it would pass as a valid limit.
+        local CacheKit = loadWithSecret(37)
+        local source = debug.getinfo(1, "S").short_src
+        local cases = {
+            {
+                call = function()
+                    CacheKit:NewLru({ maxEntries = 37 })
+                end,
+                message = "CacheKit:NewLru maxEntries must be a positive integer or CacheKit.UNBOUNDED",
+            },
+            {
+                call = function()
+                    CacheKit:Memoize(tostring, { maxEntries = 37 })
+                end,
+                message = "CacheKit:Memoize maxEntries must be a positive integer or CacheKit.UNBOUNDED",
+            },
+            {
+                call = function()
+                    CacheKit:NewQueue(37, "reject")
+                end,
+                message = "CacheKit:NewQueue capacity must be an integer from 1 to 1024 (CacheKit:SetLimits maxQueueCapacity)",
+            },
+            {
+                call = function()
+                    CacheKit:SetLimits({ maxQueueCapacity = 37 })
+                end,
+                message = "CacheKit:SetLimits limits.maxQueueCapacity must be an integer from 1 to 65536",
+            },
+        }
+        for index = 1, #cases do
+            local ok, value = pcall(cases[index].call)
+            assert.is_false(ok)
+            -- The position is the closure's line in this file: the caller's.
+            assert.are.equal(source .. ":", value:sub(1, #source + 1))
+            assert.is_truthy(value:find(cases[index].message, 1, true))
+        end
+        assert.are.equal(1024, CacheKit:GetLimits().maxQueueCapacity)
+    end)
+
+    it("stores and returns a secret value without comparing it", function()
+        local secret = {}
+        local CacheKit = loadWithSecret(secret)
+        local cache = CacheKit:NewLru({ maxEntries = 4 })
+        cache:Set("unit", secret)
+        assert.are.equal(secret, cache:Get("unit"))
+        assert.are.equal(secret, cache:Peek("unit"))
+
+        local calls = 0
+        local memoized = CacheKit:Memoize(function()
+            calls = calls + 1
+            return secret
+        end, { maxEntries = 4 })
+        assert.are.equal(secret, memoized("unit"))
+        assert.are.equal(secret, memoized("unit"))
+        assert.are.equal(1, calls)
+    end)
+
     it("accepts ordinary values when the probe exists", function()
         local CacheKit = loadWithSecret({})
         local snapshot = CacheKit:NewSnapshot(function(fill)

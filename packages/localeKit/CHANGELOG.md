@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 — 2026-09-24
+
+- Implementation revision 2 applies the repository nil rule: the absence of a caller's argument or option field (`options`, `options.isDefault`, `options.missing`, `options.maxMissingKeys`, `SetLocaleOverride`'s `locale`) and a failed locale-code match on a caller's or the host's value are tested with `type(value) == "nil"`, never by comparing the value with `nil`. The Registry lookup in the shared namespace and the results of `Registry:Bootstrap` are tested the same way.
+- `GetLocale` asks `issecretvalue` about `options.maxMissingKeys` before comparing it with `LocaleKit.UNBOUNDED`; a secret is still refused with the same message at the caller.
+- The upgrade specs load the shipped revision plus one instead of a fixed revision 2, and a new spec upgrades a revision 1 package in place to the working file. The suite has 98 specs.
+
 ## 0.1.1 — 2026-09-24
 
 - Documentation only; the executed code is unchanged, so the implementation revision stays 1.

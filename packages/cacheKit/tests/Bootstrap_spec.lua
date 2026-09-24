@@ -204,8 +204,8 @@ describe("CacheKit bootstrap", function()
         require("Registry")
         require("SignalKit")
         require("EventKit")
-        -- Revision 3 changed no state or object layout, so a copy labelled
-        -- revision 2 leaves exactly the state revision 2 wrote.
+        -- Revisions 3 and 4 changed no state or object layout, so a copy
+        -- labelled revision 2 leaves exactly the state revision 2 wrote.
         local previous = TestEnv.LoadRevision(2)
         assert.are.equal(2, previous.REVISION)
         local state = rawget(previous, "_state")
@@ -223,12 +223,12 @@ describe("CacheKit bootstrap", function()
 
         local upgraded = TestEnv.ReloadPackage()
         assert.are.equal(previous, upgraded)
-        assert.are.equal(3, upgraded.REVISION)
+        assert.are.equal(4, upgraded.REVISION)
         assert.are.equal(state, rawget(upgraded, "_state"))
-        assert.are.equal(3, rawget(state, "runtimeRevision"))
+        assert.are.equal(4, rawget(state, "runtimeRevision"))
         assert.are.equal(2048, upgraded:GetLimits().maxQueueCapacity)
 
-        -- The tree revision 2 built runs revision 3's expansion: "a" is kept
+        -- The tree revision 2 built runs the repaired expansion: "a" is kept
         -- although eviction takes "a/b", its only expanded descendant.
         assert.are.equal("a", tree:Get("a"))
         assert.are.equal("a", tree:Peek("a"))
@@ -236,6 +236,30 @@ describe("CacheKit bootstrap", function()
         assert.are.equal(2, calls)
         assert.are.equal("negative", select(2, ttl:Get("gone")))
         assert.are.equal("kept", queue:Pop())
+    end)
+
+    it("upgrades a revision 3 package in place to the working file", function()
+        local previousRevision = 3
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        local previous = TestEnv.LoadRevision(previousRevision)
+        local state = rawget(previous, "_state")
+        local cache = previous:NewLru({ maxEntries = 2 })
+        cache:Set("kept", 1)
+        local ttl = previous:NewTtl({ maxEntries = 2, ttlSeconds = 60 })
+        ttl:PutNegative("gone", 5)
+        previous:SetLimits({ maxQueueCapacity = 2048 })
+
+        local upgraded = TestEnv.ReloadPackage()
+        assert.are.equal(previous, upgraded)
+        assert.are.equal(previousRevision + 1, upgraded.REVISION)
+        assert.are.equal(state, rawget(upgraded, "_state"))
+        assert.are.equal(2048, upgraded:GetLimits().maxQueueCapacity)
+        assert.are.equal(1, cache:Get("kept"))
+        assert.are.equal("negative", select(2, ttl:Get("gone")))
     end)
 
     it("rejects a same-revision state whose limits are invalid", function()

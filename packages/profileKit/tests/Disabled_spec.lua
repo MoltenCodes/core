@@ -61,7 +61,7 @@ describe("ProfileKit disabled path", function()
         assert.are.equal(0, #ProfileKit:Report())
     end)
 
-    it("allocates nothing on Begin, End and Measure", function()
+    it("allocates nothing on Begin, End and Measure #allocation", function()
         local ProfileKit = Env.NewPackage()
         local section = ProfileKit:Section("allocation")
 
@@ -75,7 +75,7 @@ describe("ProfileKit disabled path", function()
         assert.are.equal(0, allocated)
     end)
 
-    it("allocates nothing on enabled Begin, End and Measure either", function()
+    it("allocates nothing on enabled Begin, End and Measure either #allocation", function()
         local ProfileKit = Env.NewPackage()
         ProfileKit:Enable()
         local section = ProfileKit:Section("allocation")

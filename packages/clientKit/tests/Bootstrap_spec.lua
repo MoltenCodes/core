@@ -18,7 +18,7 @@ describe("ClientKit bootstrap", function()
         local ClientKit, Registry = Env.NewPackageFor("mainline")
         assert.are.equal(ClientKit, Registry:Get("clientKit", 1))
         assert.are.equal(1, ClientKit.API)
-        assert.are.equal(3, ClientKit.REVISION)
+        assert.are.equal(4, ClientKit.REVISION)
     end)
 
     it("reuses the shared facade and state on a duplicate load", function()
@@ -112,10 +112,11 @@ describe("ClientKit bootstrap", function()
         end)
         Env.SetAddOnMetadata("MyAddon", "Title-deDE", "Mein Addon")
 
-        local upgraded = Env.LoadSourceAtRevision(3)
+        -- The working file loads over the revision 1 layout.
+        local upgraded = Env.ReloadPackage()
 
         assert.are.equal(ClientKit, upgraded)
-        assert.are.equal(3, ClientKit.REVISION)
+        assert.are.equal(4, ClientKit.REVISION)
         assert.are.equal(state, ClientKit._state)
         assert.are.equal(host, ClientKit._state.host)
         assert.is_table(state.manifests)
@@ -132,15 +133,36 @@ describe("ClientKit bootstrap", function()
         Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")
         local manifest = ClientKit:GetManifest("MyAddon")
 
-        -- Revision 3 changed no state field, so the real file loads over the
-        -- revision 2 layout as a plain in-place upgrade.
+        -- Revisions 3 and 4 changed no state field, so the real file loads
+        -- over the revision 2 layout as a plain in-place upgrade.
         local upgraded = Env.ReloadPackage()
 
         assert.are.equal(ClientKit, upgraded)
-        assert.are.equal(3, ClientKit.REVISION)
+        assert.are.equal(4, ClientKit.REVISION)
         assert.are.equal(state, ClientKit._state)
         assert.are.equal(manifest, ClientKit:GetManifest("MyAddon"))
         assert.are.equal("My Addon", manifest:Get("Title"))
+        assert.are.equal(1, Env.MetadataReads("MyAddon", "Title"))
+    end)
+
+    it("upgrades a revision 3 package in place to the working file", function()
+        local previousRevision = 3
+        Env.NewHostFor("mainline", { locale = "deDE" })
+        local ClientKit = Env.LoadSourceAtRevision(previousRevision)
+        local state = ClientKit._state
+        local capabilities = state.capabilities
+        Env.RegisterAddOn("MyAddon")
+        Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")
+        local manifest = ClientKit:GetManifest("MyAddon")
+
+        local upgraded = Env.ReloadPackage()
+
+        assert.are.equal(ClientKit, upgraded)
+        assert.are.equal(previousRevision + 1, upgraded.REVISION)
+        assert.are.equal(state, upgraded._state)
+        assert.are.equal(capabilities, upgraded._state.capabilities)
+        assert.are.equal("deDE", state.locale)
+        assert.are.equal(manifest, upgraded:GetManifest("MyAddon"))
         assert.are.equal(1, Env.MetadataReads("MyAddon", "Title"))
     end)
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2 — 2026-09-24
+
+- Implementation revision 3 applies the repository nil rule: the absence of a caller's option table or option field (`options`, `options.forceSecure`, `options.maxHooks`) and of a caller object's raw field (the `__index` holder search and `_hadRaw`) is tested with `type(value) == "nil"`, never by comparing the value with `nil`. The Registry lookup, the results of `Registry:Bootstrap` and the optional ClientKit, LifecycleKit and EventKit that `Registry:Find` returns are tested the same way.
+- `CreateScope` and `ForAddon` ask whether `options.maxHooks` is secret before comparing it with `HookKit.UNBOUNDED`; a secret is still refused with the same message at the caller. Before, the sentinel comparison came first.
+- Specs: the secret probe asked before the sentinel comparison, an in-place upgrade from revision 2 to the working file, and the revision 1 logout-layout upgrade now loads the working file instead of a fixed revision 2.
+
 ## 0.2.1 — 2026-09-24
 
 - Documentation only; the executed code is unchanged, so the implementation revision stays 2.

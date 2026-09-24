@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "clientKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -221,7 +221,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -326,14 +326,14 @@ local ClientKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if ClientKit == nil then
+if type(ClientKit) == "nil" then
     -- Equal or newer compatible revision already owns the shared package table.
     return selected
 end
 
 local state = rawget(ClientKit, "_state")
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if state ~= nil then
         error("MoltenCodes ClientKit package state is corrupted or incomplete", 2)
     end
@@ -526,7 +526,7 @@ end
 local function probeLocale()
     local getLocale = rawget(host, "getLocale")
     local locale = getLocale and getLocale() or nil
-    if type(locale) ~= "string" or locale:match(LOCALE_CODE_PATTERN) == nil then
+    if type(locale) ~= "string" or type(locale:match(LOCALE_CODE_PATTERN)) == "nil" then
         rawset(state, "locale", false)
     else
         rawset(state, "locale", locale)

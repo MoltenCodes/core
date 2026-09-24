@@ -266,7 +266,8 @@ describe("HookKit logout close", function()
             rawset(rawget(HookKit, "_state"), "logoutWatch", nil)
 
             local LifecycleKit = TestEnv.LoadLifecycleKit(false)
-            local upgraded = TestEnv.LoadRevision(2)
+            -- The working file loads over the revision 1 layout.
+            local upgraded = require("HookKit")
             assert.are.equal(HookKit, upgraded)
             assert.are.equal(2, rawget(scope, "_schema"))
             assert.are.equal("onShutdown", rawget(scope, "_logoutCloser"))

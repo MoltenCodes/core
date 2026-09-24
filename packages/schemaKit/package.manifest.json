@@ -2,10 +2,10 @@
   "name": "schemaKit",
   "displayName": "SchemaKit",
   "description": "Sealed value schemas with structured, secret-safe failures for World of Warcraft addons: one validation core for arguments, saved variables, options and received messages.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
   "api": 1,
-  "revision": 1,
+  "revision": 2,
   "dependencies": {
     "registry": {
       "api": 2

@@ -6,7 +6,7 @@ local TestEnv = require("SchemaKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("SchemaKit allocation", function()
+describe("SchemaKit allocation #allocation", function()
     local S
     before_each(function()
         S = TestEnv.NewPackage()

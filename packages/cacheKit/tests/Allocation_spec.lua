@@ -6,7 +6,7 @@ local TestEnv = require("CacheKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("CacheKit allocation", function()
+describe("CacheKit allocation #allocation", function()
     local CacheKit
     before_each(function()
         CacheKit = TestEnv.NewPackage()

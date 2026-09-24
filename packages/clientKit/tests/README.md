@@ -43,7 +43,9 @@ The suite covers:
   downgraded, an in-place upgrade that re-reads the host into the same state
   tables (a copy of the source loaded with a higher revision), an upgrade
   over a revision 1 layout that adds the locale and the manifest tables, an
-  upgrade over a revision 2 layout that keeps the manifest cache, a cached
+  upgrade over a revision 2 layout that keeps the manifest cache, an upgrade
+  from a revision 3 package to the working file that keeps state, capabilities
+  and cached manifests, a cached
   manifest keeping its identity and its rewritten `Get` across an upgrade,
   load-order failures, and corrupted-state refusal on a reload and on an
   upgrade, including a `manifests` or `manifestPrototype` that is not a table;

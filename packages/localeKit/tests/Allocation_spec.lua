@@ -6,7 +6,7 @@ local TestEnv = require("LocaleKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("LocaleKit allocation", function()
+describe("LocaleKit allocation #allocation", function()
     local LocaleKit
     before_each(function()
         LocaleKit = TestEnv.NewPackage("deDE")

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 — 2026-09-24
+
+- Implementation revision 2 applies the repository nil rule: the absence of a value that came from outside SchemaKit (a checked or applied value, an array element, a builder's spec and its fields, `Assert`'s `argumentName` and `level`, `Seal`'s options) and the result of matching a caller's string or pattern are tested with `type(value) == "nil"`, never by comparing the value with `nil`. The Registry lookup in the shared namespace and the results of `Registry:Bootstrap` are tested the same way.
+- `SetLimits` asks `issecretvalue` about each value before comparing it with `SchemaKit.UNBOUNDED` or a number, and refuses a secret at the caller's line with the message an invalid value of that limit gets. Before, the value was compared with the sentinel first, which raises inside SchemaKit on a secret.
+- Specs: a secret limit value refused at the caller, plain limits still accepted with the probe installed, and an in-place upgrade from revision 1 to the working file.
+
 ## 0.1.1 — 2026-09-24
 
 - Documentation and specs only; implementation revision 1 is unchanged.

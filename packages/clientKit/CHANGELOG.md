@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 — 2026-09-24
+
+- Implementation revision 4 applies the repository nil rule: the locale probe tests the result of matching `GetLocale()`'s answer against the locale-code shape with `type(match) == "nil"`, and the Registry lookup in the shared namespace and the results of `Registry:Bootstrap` are tested the same way, never by comparing them with `nil`. Every other `nil` comparison left in the source is on a value ClientKit created itself (its state tables, its memo, the normalised result of its own metadata read).
+- Specs: the upgrade specs over the revision 1 and revision 2 layouts load the working file instead of a fixed revision 3, and a new spec upgrades a revision 3 package in place to the working file.
+
 ## 0.2.1 — 2026-09-24
 
 - `GetManifest` trusts `GetAddOnInfo` on a host that has it: once it answers `"MISSING"` the name is `nil, "unknown"` without asking for `## Title`, so an unknown name costs one host call instead of up to three metadata reads. The `## Title` probe remains the way a host without `GetAddOnInfo` recognises an addon.

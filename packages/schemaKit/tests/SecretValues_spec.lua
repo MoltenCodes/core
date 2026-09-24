@@ -70,6 +70,40 @@ describe("SchemaKit and secret values", function()
         assert.are.equal("secret", failure.rule)
     end)
 
+    it("refuses a secret limit value at the caller before comparing it", function()
+        -- A number stands in for a secret number: without the probe asked
+        -- first, it would pass as a valid limit.
+        TestEnv.InstallSecretProbe({ [48] = true })
+        local source = debug.getinfo(1, "S").short_src
+        local cases = {
+            {
+                limits = { defaultArrayMax = 48 },
+                message = "SchemaKit:SetLimits limits.defaultArrayMax must be a positive integer or SchemaKit.UNBOUNDED",
+            },
+            {
+                limits = { maxDepth = 48 },
+                message = "SchemaKit:SetLimits limits.maxDepth must be an integer from 1 to 64",
+            },
+        }
+        for index = 1, #cases do
+            local line
+            local ok, value = pcall(function()
+                line = debug.getinfo(1, "l").currentline + 1
+                S:SetLimits(cases[index].limits)
+            end)
+            assert.is_false(ok)
+            assert.are.equal(source .. ":" .. line .. ": " .. cases[index].message, value)
+        end
+        assert.are.equal(16, S:GetLimits().maxDepth)
+        assert.are.equal(1024, S:GetLimits().defaultArrayMax)
+    end)
+
+    it("still accepts a plain limit and UNBOUNDED while the probe exists", function()
+        S:SetLimits({ maxDepth = 20, defaultArrayMax = S.UNBOUNDED })
+        assert.are.equal(20, S:GetLimits().maxDepth)
+        assert.are.equal(S.UNBOUNDED, S:GetLimits().defaultArrayMax)
+    end)
+
     it("accepts ordinary values while the probe exists", function()
         local schema = S:Seal(S.table({ fields = { name = S.string() } }))
         assert.is_true(schema:Check({ name = "Thrall" }))

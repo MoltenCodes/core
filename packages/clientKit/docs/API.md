@@ -427,9 +427,9 @@ copy rewrote. An older copy loading after a newer one yields to it.
 
 Revision 2 added the locale, the manifest cache and the manifest prototype to
 the state without a schema change; an upgrade over revision 1 creates them
-empty and binds the four host functions the manifests use. Revision 3 changed
-no state field, so an upgrade over revision 2 keeps every cached manifest as
-it is. An inherited `manifests` or `manifestPrototype` that is present but not
+empty and binds the four host functions the manifests use. Revisions 3 and 4
+changed no state field, so an upgrade over revision 2 or 3 keeps every cached
+manifest as it is. An inherited `manifests` or `manifestPrototype` that is present but not
 a table is refused as corrupted state rather than indexed.
 
 `_state` is private; its layout is not part of the contract.

@@ -391,7 +391,7 @@ describe("ClientKit:GetManifest", function()
         assert.are.equal(2, count)
     end)
 
-    it("allocates nothing for a cached manifest or a remembered field", function()
+    it("allocates nothing for a cached manifest or a remembered field #allocation", function()
         local ClientKit = Env.NewPackageFor("mainline")
         installMyAddon()
         local manifest = ClientKit:GetManifest("MyAddon")

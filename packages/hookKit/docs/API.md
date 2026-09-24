@@ -2,7 +2,7 @@
 
 HookKit API generation **1** hooks global functions, object methods and frame scripts reversibly, under three named semantics, and refuses the hooks that break the client's secure code.
 
-Implementation revision: **2**.
+Implementation revision: **3**.
 
 ## The taint model: read this first
 
@@ -240,7 +240,7 @@ print(hooks:GetMaxHooks()) -- 1024
 ```
 
 - **A hook beyond the limit is refused with `nil, "full"`**, never installed silently and never dropped; the target is left untouched.
-- **`maxHooks` is a positive integer or `HookKit.UNBOUNDED`.** Zero, a negative, fractional, infinite or NaN number, any other type, a secret value and an unknown option field raise at the caller's line: `HookKit:CreateScope options.maxHooks must be a positive integer or HookKit.UNBOUNDED`. Nothing changes when the options are refused.
+- **`maxHooks` is a positive integer or `HookKit.UNBOUNDED`.** Zero, a negative, fractional, infinite or NaN number, any other type, a secret value and an unknown option field raise at the caller's line: `HookKit:CreateScope options.maxHooks must be a positive integer or HookKit.UNBOUNDED`. The secret check runs first, before the value is compared with `HookKit.UNBOUNDED` or a number. Nothing changes when the options are refused.
 - **The limit is per scope and fixed when the scope is created.** A manual scope's limit is fixed at `CreateScope`. An addon's canonical scope is shared by every file of the addon, so the first `ForAddon` call fixes its limit: `options.maxHooks`, or `HookKit.MAX_HOOKS` when that call names none. A later call naming a different limit raises at the caller (`HookKit:ForAddon options.maxHooks differs from the limit this addon's scope was created with`) and changes nothing; a later call naming the same limit, or none, returns the scope. State the limit in the file that loads first and omit it elsewhere. This is the rule every Kit follows for limit options on a shared object (CommandKit's `ForAddon`, LocaleKit's `GetLocale`; SignalKit buses differ only in that a call stating no limit does not fix the default).
 - **Why open it deliberately.** The limit is a guard against hooking in a loop by mistake, and every secure post-hook stays in the host's call chain for the session even after `Unhook`. Raising it costs only the owner's own memory and the counting described under [Cost](#cost).
 - **`HookKit.UNBOUNDED` is one table shared by every embedded copy.** It lives in the package state, so a scope opened with it stays unbounded across an in-place upgrade.

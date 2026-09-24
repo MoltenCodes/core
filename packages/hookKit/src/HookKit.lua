@@ -55,7 +55,7 @@
 
 local PACKAGE_NAME = "hookKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local OPTIONAL_CLIENTKIT_API = 1
 local STATE_SCHEMA = 1
@@ -240,7 +240,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -346,7 +346,7 @@ local HookKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if HookKit == nil then
+if type(HookKit) == "nil" then
     -- An equal or newer compatible revision already owns the shared package table.
     return selected
 end
@@ -354,7 +354,7 @@ end
 local Scope = rawget(HookKit, "Scope")
 local state = rawget(HookKit, "_state")
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if Scope ~= nil or state ~= nil then
         error("MoltenCodes HookKit package state is corrupted or incomplete", 2)
     end
@@ -470,7 +470,7 @@ end
 ---@return boolean
 local function isSecret(value)
     local ClientKit = findOptional("clientKit", OPTIONAL_CLIENTKIT_API)
-    if ClientKit ~= nil then
+    if type(ClientKit) ~= "nil" then
         local clientIsSecret = rawget(ClientKit, "IsSecret")
         if type(clientIsSecret) == "function" then
             return clientIsSecret(ClientKit, value) == true
@@ -575,13 +575,13 @@ end
 ---@param level integer stack level the failures are reported at
 ---@return boolean forceSecure
 local function readHookOptions(options, methodName, level)
-    if options == nil then
+    if type(options) == "nil" then
         return false
     end
     validateOptionKeys(options, HOOK_OPTION_KEYS, methodName, level + 1)
 
     local forceSecure = rawget(options, "forceSecure")
-    if forceSecure ~= nil and type(forceSecure) ~= "boolean" then
+    if type(forceSecure) ~= "nil" and type(forceSecure) ~= "boolean" then
         error(methodName .. " options.forceSecure must be a boolean", level)
     end
     return forceSecure == true
@@ -606,17 +606,22 @@ end
 ---@param level integer stack level the failures are reported at
 ---@return integer|table|nil maxHooks
 local function readScopeOptions(options, methodName, level)
-    if options == nil then
+    if type(options) == "nil" then
         return nil
     end
     validateOptionKeys(options, SCOPE_OPTION_KEYS, methodName, level + 1)
 
     local maxHooks = rawget(options, "maxHooks")
-    if maxHooks == nil or rawequal(maxHooks, UNBOUNDED) then
+    if type(maxHooks) == "nil" then
+        return nil
+    end
+    -- The secret check comes first: comparing a secret with the sentinel, or
+    -- arithmetic on it, raises.
+    local secret = isSecret(maxHooks)
+    if not secret and rawequal(maxHooks, UNBOUNDED) then
         return maxHooks
     end
-    -- The secret check comes first: arithmetic on a secret raises.
-    if isSecret(maxHooks) or not isPositiveInteger(maxHooks) then
+    if secret or not isPositiveInteger(maxHooks) then
         error(
             methodName .. " options.maxHooks must be a positive integer or HookKit.UNBOUNDED",
             level
@@ -637,7 +642,7 @@ end
 local function findHolder(object, method)
     local current = object
     for _ = 0, MAX_INDEX_DEPTH do
-        if rawget(current, method) ~= nil then
+        if type(rawget(current, method)) ~= "nil" then
             return current
         end
         local metatable = getmetatable(current)
@@ -1091,7 +1096,7 @@ local function installFieldHook(scope, kind, methodName, target, second, third, 
 
     local record = newRecord(scope, kind, handler)
     record._original = object[method]
-    record._hadRaw = rawget(object, method) ~= nil
+    record._hadRaw = type(rawget(object, method)) ~= "nil"
     local installed
     if kind == KIND_HOOK then
         installed = newPreHookClosure(record)
@@ -1424,7 +1429,7 @@ function LogoutClose.arrange(addonName, scope)
     end
 
     local LifecycleKit = findOptional("lifecycleKit", LOGOUT.lifecycleKitApi)
-    if LifecycleKit ~= nil then
+    if type(LifecycleKit) ~= "nil" then
         if LogoutClose.lifecycleClosesHookScopes(LifecycleKit) then
             LifecycleKit:ForAddon(addonName)
             rawset(scope, "_logoutCloser", LOGOUT.byLifecycle)
@@ -1440,7 +1445,7 @@ function LogoutClose.arrange(addonName, scope)
         return
     end
     local EventKit = findOptional("eventKit", LOGOUT.eventKitApi)
-    if EventKit ~= nil then
+    if type(EventKit) ~= "nil" then
         LogoutClose.ensureWatch(EventKit)
         rawset(scope, "_logoutCloser", LOGOUT.byEvent)
     end
@@ -1823,7 +1828,7 @@ local function forAddon(self, addonName, options)
     if scope == nil then
         scope = newScope(addonName, maxHooks or MAX_HOOKS)
         rawset(addonScopes, addonName, scope)
-    elseif maxHooks ~= nil and not rawequal(maxHooks, rawget(scope, "_maxHooks")) then
+    elseif type(maxHooks) ~= "nil" and not rawequal(maxHooks, rawget(scope, "_maxHooks")) then
         error(
             "HookKit:ForAddon options.maxHooks differs from the limit this addon's scope was created with",
             2
@@ -1887,7 +1892,7 @@ if not validatePublicSurface(HookKit) or not validateCurrentState(HookKit) then
     error("MoltenCodes HookKit package state is corrupted or incomplete", 2)
 end
 
-if previousRevision ~= nil then
+if type(previousRevision) ~= "nil" then
     LogoutClose.arrangeInherited()
 end
 

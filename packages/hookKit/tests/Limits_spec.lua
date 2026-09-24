@@ -173,6 +173,26 @@ describe("HookKit limits", function()
         assert.are.equal(5, scope:GetMaxHooks())
     end)
 
+    it("asks the secret probe before comparing maxHooks with UNBOUNDED", function()
+        local askedAboutSentinel = false
+        local sentinel = nil
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        TestEnv.InstallHookApi()
+        TestEnv.SetGlobal("issecretvalue", function(value)
+            if sentinel ~= nil and rawequal(value, sentinel) then
+                askedAboutSentinel = true
+            end
+            return false
+        end)
+        require("Registry")
+        HookKit = require("HookKit")
+        sentinel = HookKit.UNBOUNDED
+        local scope = HookKit:CreateScope({ maxHooks = sentinel })
+        assert.are.equal(sentinel, scope:GetMaxHooks())
+        assert.is_true(askedAboutSentinel)
+    end)
+
     it("refuses a secret maxHooks at the caller", function()
         local secret = TestEnv.NewSecretValue()
         TestEnv.Reset()

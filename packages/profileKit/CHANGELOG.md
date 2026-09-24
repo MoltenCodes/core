@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2 — 2026-09-24
+
+- Implementation revision 2 applies the repository nil rule: the absence of a value that came from a caller is tested with `type(value) == "nil"`, never by comparing it with `nil`, so a secret value (Retail 12.x) is never compared inside ProfileKit. The Registry lookup in the shared namespace and the results of `Registry:Bootstrap` are tested the same way.
+- `SetLimits` asks `issecretvalue` (bound once at load; absent means nothing is secret) about each limit value before comparing it with `UNBOUNDED` or a number, and refuses a secret with the existing `ProfileKit:SetLimits limits.maxSections must be a positive integer or ProfileKit.UNBOUNDED` at the caller's line. A secret there used to raise inside ProfileKit.
+- The facade check of `SetLimits` and `GetLimits` tests the receiver's type before comparing it with the facade.
+- `Measure` and `Section` are unchanged: section names come from the addon's own code, and the disabled `Measure` keeps its cost of two type checks and a tail call.
+- Specs: a secret `maxSections` refused at the caller, a secret receiver refused, and an in-place upgrade from revision 1 to the working file.
+
 ## 0.1.1 — 2026-09-24
 
 - Documentation and specs only; implementation revision 1 is unchanged.

@@ -124,6 +124,35 @@ describe("HookKit bootstrap", function()
         end
     )
 
+    it("upgrades a revision 2 package in place to the working file", function()
+        local previousRevision = 2
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        TestEnv.InstallHookApi()
+        require("Registry")
+        local previous = TestEnv.LoadRevision(previousRevision)
+        local state = previous._state
+        local scope = previous:ForAddon("MyAddon", { maxHooks = 7 })
+        local calls = 0
+        local target = {
+            Run = function()
+                return "run"
+            end,
+        }
+        scope:Hook(target, "Run", function()
+            calls = calls + 1
+        end)
+
+        local current = require("HookKit")
+        assert.are.equal(previous, current)
+        assert.are.equal(previousRevision + 1, current.REVISION)
+        assert.are.equal(state, current._state)
+        assert.are.equal(scope, current:ForAddon("MyAddon", { maxHooks = 7 }))
+        assert.are.equal("run", target.Run())
+        assert.are.equal(1, calls)
+        assert.is_true(current:CloseAddonScopes("MyAddon"))
+    end)
+
     it("keeps the UNBOUNDED sentinel and every scope's limit across an upgrade", function()
         local HookKit = TestEnv.NewPackage()
         local sentinel = HookKit.UNBOUNDED

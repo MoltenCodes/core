@@ -2,7 +2,7 @@
 
 LocaleKit API generation **1** provides translations per addon and locale: write proxies for translation files, one read table per addon with a chosen missing-key behaviour, a report of the keys read but never defined, and a formatter with indexed specifiers.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -199,7 +199,7 @@ local everything = LocaleKit:GetLocale("MyAddon", { maxMissingKeys = LocaleKit.U
 
 - **Reaching the limit is observable.** In `"report"` mode the first key past it is reported once (`LocaleKit: MyAddon has more than 1024 missing translations; further ones are neither recorded nor reported (raise options.maxMissingKeys to record more)`), and every further key still reads as itself; it is neither stored nor added to `MissingKeys`. `"silent"` mode reports nothing, by definition, and `"raw"` records nothing at all, so the limit does not apply to it.
 - **The first call fixes the limit, like the mode.** The first `GetLocale` for an addon fixes `maxMissingKeys`: the value it names, or 1024 when it names none. A later call naming a different limit raises at the caller (`LocaleKit:GetLocale MyAddon already uses options.maxMissingKeys 1024, not 2`) and changes nothing; a later call naming the same limit, or none, returns the table. Name it in the file that loads first. This is the rule every Kit follows for limit options on a shared object (HookKit's and CommandKit's `ForAddon`; SignalKit buses differ only in that a call stating no limit does not fix the default).
-- **Invalid values raise at the caller and change nothing:** zero, a negative, fractional, infinite or NaN number, any other type and a secret value (`LocaleKit:GetLocale options.maxMissingKeys must be a positive integer or LocaleKit.UNBOUNDED`). A call refused for its mode does not change the limit either.
+- **Invalid values raise at the caller and change nothing:** zero, a negative, fractional, infinite or NaN number, any other type and a secret value (`LocaleKit:GetLocale options.maxMissingKeys must be a positive integer or LocaleKit.UNBOUNDED`). The secret check runs first, before the value is compared with `LocaleKit.UNBOUNDED` or a number. A call refused for its mode does not change the limit either.
 - **Why open it deliberately.** `UNBOUNDED` is right for an addon whose read table is only ever indexed with literal keys, where the set is finite anyway; an addon that indexes it with runtime data (unit or item names) should keep a bound, because every distinct name read would otherwise stay in the table until `/reload`.
 - **`LocaleKit.UNBOUNDED` is one table shared by every embedded copy.** It lives in the package state, so an addon opened with it stays unbounded across an in-place upgrade.
 

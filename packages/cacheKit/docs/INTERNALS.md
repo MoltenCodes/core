@@ -17,7 +17,7 @@ A cache is one table with a fixed set of private fields, all created by `newCach
 | `_statsView` | The table `GetStats` returns, `false` until the first call. |
 | `_eventScope`, `_clearOnEvents`, `_clearCallback` | Clear-on-event state, `false` until the first `ClearOn`. |
 | `_closed` | Whether `Close` ran. |
-| `_schema` | The cache layout version, `1`. Revisions 2 and 3 changed nothing in the cache layout. |
+| `_schema` | The cache layout version, `1`. Revisions 2, 3 and 4 changed nothing in the cache layout. |
 
 ## The recency list
 
@@ -49,7 +49,7 @@ The list and free-list helpers (`linkNewest`, `unlink`, `touch`, `pushFree`, `po
 
 ## Negative entries
 
-A negative entry is an ordinary entry whose `value` is `state.negative`, a private table created once per package state. `Get`, `Peek` and `memoizedCall` compare the value against it by identity: one comparison on the hit path, no extra entry field, and revision 1 entries keep their five-field layout. The marker lives in the state rather than in a file-local table so that an entry written by one revision reads as negative in the next.
+A negative entry is an ordinary entry whose `value` is `state.negative`, a private table created once per package state. `Get`, `Peek` and `memoizedCall` compare the value against it by raw identity (a raw-equality call, never `==`), because the stored value is the caller's and may be a secret: one call on the hit path, no extra entry field, and revision 1 entries keep their five-field layout. The marker lives in the state rather than in a file-local table so that an entry written by one revision reads as negative in the next.
 
 `PutNegative` stores through the same `store` as `Set`, which now takes the expiry as an argument: `Set` passes the cache's own (`expiryForNow`), `PutNegative` passes `expiryAfter(ttlSeconds)`. That is the whole of "its own age limit": nothing else in expiry or eviction knows the entry is negative. It is refused on a cache whose `_ttlSeconds` is `false`, because nothing on that cache would ever expire it.
 
@@ -123,11 +123,11 @@ Caches, snapshots, lazy trees and queues use the metatables stored in `state.cac
 
 ### State schema 2
 
-Revision 3 writes the same schema 2 as revision 2 and changes no object layout: it only corrects the order of expansion and eviction in `expandNode`, so an upgrade over revision 2 replaces the prototype methods and keeps the state and every object as they are.
+Revision 3 writes the same schema 2 as revision 2 and changes no object layout: it only corrects the order of expansion and eviction in `expandNode`, so an upgrade over revision 2 replaces the prototype methods and keeps the state and every object as they are. Revision 4 likewise changes no state or object layout: it asks `issecretvalue` before a limit value meets `UNBOUNDED`, and compares a stored value with the negative marker by raw identity instead of `==`.
 
 Revision 1 wrote state schema 1: `dispatch`, `runtimeRevision`, `cacheMetatable`, `snapshotMetatable`, `unbounded`. Revision 2 writes schema 2, which adds `lazyMetatable`, `queueMetatable`, `negative` and `limits` (`{ maxQueueCapacity = 1024 }`, the table `SetLimits` writes and `validateCapacity` reads). Bootstrap holds an inherited state to `validateStateShared` (the schema 1 fields), then, when its schema is `1`, adds the four tables and sets the schema to `2`, and only then requires `validateStateBase` (the full schema 2 shape, including every limit within its ceiling). The `LazyTree` and `Queue` prototypes are created when the inherited facade has none (`inheritPrototype`). Nothing in a cache or snapshot changed, so no object is upgraded lazily.
 
-The bootstrap specs load the same source with `IMPLEMENTATION_REVISION` set to 1, strip the state and facade back to the revision 1 shape, reload the real revision and check the upgrade; they load the source labelled revision 2 and check that the real revision keeps its state, limits, lazy trees, queues and negative entries; and they load the next revision over the current one and check that caches, memoised functions, subscriptions, snapshots, lazy trees, queues and negative entries all survive.
+The bootstrap specs load the same source with `IMPLEMENTATION_REVISION` set to 1, strip the state and facade back to the revision 1 shape, reload the real revision and check the upgrade; they load the source labelled revision 2, and labelled revision 3, and check that the real revision keeps its state, limits, lazy trees, queues and negative entries; and they load the next revision over the current one and check that caches, memoised functions, subscriptions, snapshots, lazy trees, queues and negative entries all survive.
 
 ## Error levels
 

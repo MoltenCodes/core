@@ -42,6 +42,10 @@ returns `false, "unavailable"` and ProfileKit stays disabled. There is no
 wall-clock fallback: a section measured in wall time would silently mean
 something else.
 
+`issecretvalue` is also bound once at load and is optional. Only `SetLimits`
+asks it, about each limit value before comparing it; without it nothing is
+treated as secret.
+
 The clock is one process-wide timer that any addon may zero with
 `debugprofilestart()`. An `End` whose reading is smaller than its `Begin`
 reading measured nothing, so the sample is **dropped**: `count`, `total`, `max`
@@ -175,7 +179,9 @@ the caller's line, **before changing anything**, when `limits` is not a table,
 names an unknown limit (`ProfileKit:SetLimits limits.<name> is not a recognised
 limit`) or gives a value that is neither a positive integer nor
 `ProfileKit.UNBOUNDED` (`ProfileKit:SetLimits limits.maxSections must be a
-positive integer or ProfileKit.UNBOUNDED`). `GetLimits` returns a new table on
+positive integer or ProfileKit.UNBOUNDED`). A secret value (Retail 12.x) is
+refused with that same message before it is compared with anything, when the
+client has `issecretvalue`. `GetLimits` returns a new table on
 every call, with `ProfileKit.UNBOUNDED` itself for a lifted limit.
 
 **The limits are shared by every consumer in the session**: every embedded copy
@@ -209,7 +215,7 @@ Argument errors are raised at the caller's line:
 - `ProfileKit.Section:End must be called on a ProfileKit section` (enabled only)
 - `ProfileKit:SetLimits limits must be a table`
 - `ProfileKit:SetLimits limits.<name> is not a recognised limit`
-- `ProfileKit:SetLimits limits.maxSections must be a positive integer or ProfileKit.UNBOUNDED`
+- `ProfileKit:SetLimits limits.maxSections must be a positive integer or ProfileKit.UNBOUNDED` (also for a secret value)
 - `ProfileKit:SetLimits must be called on the ProfileKit facade; use ProfileKit:SetLimits(...)` (and the same for `GetLimits`)
 
 ## Cost
