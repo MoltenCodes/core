@@ -4,7 +4,7 @@ local TestEnv = require("WidgetKitTestEnv")
 -- noise, far below one table per iteration.
 local BUDGET = 1
 
-describe("WidgetKit allocation guards", function()
+describe("WidgetKit allocation guards #allocation", function()
     local WidgetKit
     before_each(function()
         WidgetKit = TestEnv.NewPackage()

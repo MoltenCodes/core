@@ -63,7 +63,7 @@ describe("WidgetKit anchors", function()
         assert.are.equal("TOP", Anchor.FromRect(between, PARENT).point)
     end)
 
-    it("fills a given anchor table in place", function()
+    it("fills a given anchor table in place #allocation", function()
         local into = { relativeTo = "Stale", scale = 3 }
         local anchor = Anchor.FromRect(square(10, 10), PARENT, into)
         assert.are.equal(into, anchor)
@@ -189,5 +189,62 @@ describe("WidgetKit anchors", function()
         assert.are.equal("forbidden", reason)
         assert.are.equal("CENTER", (frame:GetPoint(1)))
         assert.are.equal(1, frame:GetScale())
+    end)
+
+    it("refuses malformed anchors, relative frames and into tables at the caller", function()
+        local uiParent = TestEnv.GetGlobal("UIParent")
+        local frame = TestEnv.GetGlobal("CreateFrame")("Frame", nil, uiParent)
+        frame:SetPoint("CENTER")
+        TestEnv.expectErrorContaining(
+            "WidgetKit.Anchor.Apply anchor must be an anchor table",
+            function()
+                Anchor.Apply(frame, "TOP")
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "WidgetKit.Anchor.Apply anchor.relativeTo must be a frame, a frame name or nil",
+            function()
+                Anchor.Apply(frame, { point = "TOP", relativeTo = 5 })
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "WidgetKit.Anchor.Apply anchor.scale must be above 0",
+            function()
+                Anchor.Apply(frame, { point = "TOP", scale = 0 })
+            end
+        )
+        -- Every refusal left the frame where it was.
+        assert.are.equal("CENTER", (frame:GetPoint(1)))
+        assert.are.equal(1, frame:GetScale())
+
+        TestEnv.expectErrorContaining("WidgetKit.Anchor.Normalize frame must be a frame", function()
+            Anchor.Normalize({}, "TOP")
+        end)
+        TestEnv.expectErrorContaining(
+            "WidgetKit.Anchor.Normalize relativeTo must be a frame, a frame name or nil",
+            function()
+                Anchor.Normalize(frame, "TOP", true)
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "WidgetKit.Anchor.FromRect into must be a table or nil",
+            function()
+                Anchor.FromRect(square(0, 0), PARENT, "anchor")
+            end
+        )
+    end)
+
+    it("refuses a secret relative frame before it is compared", function()
+        TestEnv.InstallSecretProbe()
+        local secret = TestEnv.NewSecret()
+        local frame = TestEnv.GetGlobal("CreateFrame")("Frame", nil, TestEnv.GetGlobal("UIParent"))
+        frame:SetPoint("CENTER")
+        TestEnv.expectErrorContaining(
+            "WidgetKit.Anchor.Apply anchor.relativeTo must not be a secret value",
+            function()
+                Anchor.Apply(frame, { point = "TOP", relativeTo = secret })
+            end
+        )
+        assert.are.equal("CENTER", (frame:GetPoint(1)))
     end)
 end)

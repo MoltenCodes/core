@@ -387,6 +387,30 @@ describe("WidgetKit options renderer", function()
             WidgetKit:Release(box)
         end
     end)
+
+    it("refuses malformed allowSecret and media options at the caller", function()
+        local other = WidgetKit:Create("Frame")
+        TestEnv.expectErrorContaining(
+            "WidgetKit:RenderOptions options.allowSecret must be a boolean",
+            function()
+                WidgetKit:RenderOptions(tree, other, { allowSecret = "yes" })
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "WidgetKit:RenderOptions options.media must be a table",
+            function()
+                WidgetKit:RenderOptions(tree, other, { media = "font" })
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "WidgetKit:RenderOptions options.media must map option paths to media types",
+            function()
+                WidgetKit:RenderOptions(tree, other, { media = { "font" } })
+            end
+        )
+        -- Nothing was drawn into the container by a refused call.
+        assert.are.equal(0, other:GetNumChildren())
+    end)
 end)
 
 describe("WidgetKit options renderer without OptionsKit", function()

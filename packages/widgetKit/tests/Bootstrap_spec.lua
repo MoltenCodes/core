@@ -138,6 +138,37 @@ describe("WidgetKit bootstrap", function()
         assert.is_false(upgraded:IsWidget(label))
     end)
 
+    it("upgrades a revision 2 copy in place with its widgets, types and limits", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        TestEnv.InstallScreen()
+        for _, name in ipairs({ "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit" }) do
+            require(name)
+        end
+        local old = TestEnv.LoadRevision(2)
+        local group = old:Create("Group") ---@cast group -nil
+        local label = old:Create("Label") ---@cast label -nil
+        group:AddChild(label)
+        label:SetUserData("kept", true)
+        old:SetLimits({ maxDropdownEntries = old.UNBOUNDED })
+
+        local upgraded = require("WidgetKit")
+        assert.are.equal(old, upgraded)
+        assert.is_true(upgraded.REVISION > 2)
+        assert.is_true(upgraded:IsWidget(label))
+        assert.are.equal(label, group:GetChildren()[1])
+        assert.is_true(label:GetUserData("kept"))
+        assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxDropdownEntries)
+        -- The widgets revision 2 built run the current methods at once: a
+        -- secret user-data value is stored without being compared with `nil`.
+        TestEnv.InstallSecretProbe()
+        local secret = TestEnv.NewSecret()
+        label:SetUserData("secret", secret)
+        assert.are.equal(secret, label:GetUserData("secret"))
+        upgraded:Release(group)
+        assert.is_false(upgraded:IsWidget(label))
+    end)
+
     it("discards pooled base widgets when a newer copy raises their version", function()
         local WidgetKit = TestEnv.NewPackage()
         local pooled = WidgetKit:Create("Label")

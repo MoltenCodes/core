@@ -485,6 +485,31 @@ describe("WidgetKit secret values", function()
         end)
     end)
 
+    it("refuses a secret key in a Dropdown order before indexing the values with it", function()
+        local secret = TestEnv.NewSecret()
+        local dropdown = WidgetKit:Create("Dropdown") ---@cast dropdown -nil
+        dropdown:SetList({ a = "A" })
+        local ok, failure = pcall(function()
+            dropdown:SetList({ a = "A" }, { "a", secret })
+        end)
+        assert.is_false(ok)
+        assert.is_truthy(
+            tostring(failure):find(
+                "WidgetKit Dropdown:SetList key must not be a secret value",
+                1,
+                true
+            )
+        )
+        assert.is_truthy(tostring(failure):find("Widgets_spec.lua", 1, true))
+    end)
+
+    it("stores a secret user-data value without comparing it", function()
+        local secret = TestEnv.NewSecret()
+        local label = WidgetKit:Create("Label") ---@cast label -nil
+        label:SetUserData("value", secret)
+        assert.are.equal(secret, label:GetUserData("value"))
+    end)
+
     it("refuses a secret count before comparing it", function()
         local secret = TestEnv.NewSecret()
         local edit = WidgetKit:Create("EditBox")
@@ -550,5 +575,281 @@ describe("WidgetKit secret values", function()
             { maxCreatedCeiling = 4096, maxDropdownEntries = 1024 },
             WidgetKit:GetLimits()
         )
+    end)
+end)
+
+describe("WidgetKit base widget setters", function()
+    local WidgetKit
+    before_each(function()
+        WidgetKit = TestEnv.NewPackage()
+        TestEnv.TakeReportedErrors()
+    end)
+    after_each(TestEnv.Reset)
+
+    it("Frame, ScrollFrame and Spacer: the base SetDisabled only checks its argument", function()
+        for _, typeName in ipairs({ "Frame", "ScrollFrame", "Spacer" }) do
+            local widget = WidgetKit:Create(typeName)
+            widget:SetDisabled(true)
+            widget:SetDisabled(nil)
+            assert.is_true(widget:IsShown(), typeName)
+            TestEnv.expectErrorContaining(
+                "WidgetKit.Widget:SetDisabled disabled must be a boolean",
+                function()
+                    widget:SetDisabled("yes")
+                end
+            )
+        end
+    end)
+
+    it("Frame: SetMovable takes booleans only", function()
+        local window = WidgetKit:Create("Frame")
+        assert.is_true(window.frame:IsMovable())
+        window:SetMovable(false)
+        assert.is_false(window.frame:IsMovable())
+        TestEnv.expectErrorContaining(
+            "WidgetKit Frame:SetMovable movable must be a boolean",
+            function()
+                window:SetMovable(1)
+            end
+        )
+        assert.is_false(window.frame:IsMovable())
+    end)
+
+    it(
+        "Label: SetJustifyH takes the three justifications, SetFontObject a font or its name",
+        function()
+            local label = WidgetKit:Create("Label")
+            for _, justify in ipairs({ "LEFT", "CENTER", "RIGHT" }) do
+                label:SetJustifyH(justify)
+                assert.are.equal(justify, label.text.justifyH)
+            end
+            TestEnv.expectErrorContaining(
+                'WidgetKit Label:SetJustifyH justify must be "LEFT", "CENTER" or "RIGHT"',
+                function()
+                    label:SetJustifyH("MIDDLE")
+                end
+            )
+            assert.are.equal("RIGHT", label.text.justifyH)
+            TestEnv.expectErrorContaining(
+                "WidgetKit Label:SetFontObject fontObject must be a font object or its name",
+                function()
+                    label:SetFontObject(12)
+                end
+            )
+        end
+    )
+
+    it(
+        "Button: key capture adds ALT and CTRL, and turning it off stops listening silently",
+        function()
+            local button = WidgetKit:Create("Button")
+            local fired = recorder(button, { "OnKeyCaptured", "OnKeyCaptureCancelled" })
+            button:SetKeyCapture(true)
+            button.frame:Click()
+            TestEnv.SetGlobal("IsAltKeyDown", function()
+                return true
+            end)
+            TestEnv.SetGlobal("IsControlKeyDown", function()
+                return true
+            end)
+            TestEnv.RunScript(button.frame, "OnKeyDown", "K")
+            TestEnv.SetGlobal("IsAltKeyDown", nil)
+            TestEnv.SetGlobal("IsControlKeyDown", nil)
+            assert.are.same({ { "OnKeyCaptured", "ALT-CTRL-K" } }, fired)
+
+            button.frame:Click()
+            assert.is_true(button:IsCapturing())
+            button:SetKeyCapture(false)
+            assert.is_false(button:IsCapturing())
+            assert.is_false(button.frame:IsKeyboardEnabled())
+            assert.are.equal(1, #fired)
+            TestEnv.expectErrorContaining(
+                "WidgetKit Button:SetKeyCapture enabled must be a boolean",
+                function()
+                    button:SetKeyCapture("on")
+                end
+            )
+        end
+    )
+
+    it("CheckBox: turning the third state off turns a third-state value into false", function()
+        local box = WidgetKit:Create("CheckBox")
+        box:SetTriState(true)
+        box:SetValue(nil)
+        assert.is_nil(box:GetValue())
+        box:SetTriState(false)
+        assert.is_false(box:GetValue())
+        assert.is_false(box.indeterminate:IsShown())
+        TestEnv.expectErrorContaining(
+            "WidgetKit CheckBox:SetTriState enabled must be a boolean",
+            function()
+                box:SetTriState(nil)
+            end
+        )
+    end)
+
+    it("Slider: refuses a negative step and a non-boolean percent flag", function()
+        local slider = WidgetKit:Create("Slider")
+        slider:SetSliderValues(0, 10, 1)
+        TestEnv.expectErrorContaining(
+            "WidgetKit Slider:SetSliderValues step must not be negative",
+            function()
+                slider:SetSliderValues(0, 10, -1)
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "WidgetKit Slider:SetIsPercent isPercent must be a boolean",
+            function()
+                slider:SetIsPercent("yes")
+            end
+        )
+        -- A refused call changes nothing.
+        slider:SetValue(3.4)
+        assert.are.equal(3, slider:GetValue())
+        assert.are.equal("3", slider.valueBox:GetText())
+    end)
+
+    it("EditBox: SetMaxLetters takes 0 for no limit or a positive integer", function()
+        local edit = WidgetKit:Create("EditBox")
+        edit:SetMaxLetters(12)
+        assert.are.same({ 12, 12 }, { edit.singleBox.maxLetters, edit.multiBox.maxLetters })
+        edit:SetMaxLetters(0)
+        assert.are.same({ 0, 0 }, { edit.singleBox.maxLetters, edit.multiBox.maxLetters })
+        TestEnv.expectErrorContaining("WidgetKit EditBox:SetMaxLetters letters", function()
+            edit:SetMaxLetters(-3)
+        end)
+        TestEnv.expectErrorContaining("WidgetKit EditBox:SetMaxLetters letters", function()
+            edit:SetMaxLetters(2.5)
+        end)
+        assert.are.equal(0, edit.singleBox.maxLetters)
+        TestEnv.expectErrorContaining(
+            "WidgetKit EditBox:SetMultiLine multiLine must be a boolean",
+            function()
+                edit:SetMultiLine(1)
+            end
+        )
+        assert.is_false(edit:IsMultiLine())
+    end)
+
+    it("Dropdown: SetList refuses bad values, order and keys and keeps its entries", function()
+        local dropdown = WidgetKit:Create("Dropdown")
+        dropdown:SetList({ a = "Alpha" })
+        TestEnv.expectErrorContaining(
+            "WidgetKit Dropdown:SetList values must be a table",
+            function()
+                dropdown:SetList("Alpha")
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "WidgetKit Dropdown:SetList order must be an array or nil",
+            function()
+                dropdown:SetList({ b = "Bravo" }, "b")
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "WidgetKit Dropdown:SetList keys must be strings or numbers",
+            function()
+                dropdown:SetList({ [true] = "Yes" })
+            end
+        )
+        assert.are.equal(1, dropdown:GetNumEntries())
+        assert.is_true(dropdown:PickIndex(1))
+        assert.are.equal("a", dropdown:GetValue())
+    end)
+
+    it("ColorPicker: SetHasAlpha takes booleans only", function()
+        local picker = WidgetKit:Create("ColorPicker")
+        TestEnv.expectErrorContaining(
+            "WidgetKit ColorPicker:SetHasAlpha hasAlpha must be a boolean",
+            function()
+                picker:SetHasAlpha(0)
+            end
+        )
+    end)
+
+    it("refuses Fire, GetType, IsReleasing and Release on anything that is not a widget", function()
+        local widget = WidgetKit:Create("Spacer")
+        local notWidget = {}
+        TestEnv.expectErrorContaining(
+            "WidgetKit.Widget:Fire must be called on a WidgetKit widget",
+            function()
+                widget.Fire(notWidget, "OnClick")
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "WidgetKit.Widget:GetType must be called on a WidgetKit widget",
+            function()
+                widget.GetType(notWidget)
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "WidgetKit.Widget:IsReleasing must be called on a WidgetKit widget",
+            function()
+                widget.IsReleasing(notWidget)
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "WidgetKit.Widget:Release must be called on a WidgetKit widget",
+            function()
+                widget.Release(notWidget)
+            end
+        )
+    end)
+
+    it("refuses re-release, new children and moving children out mid-release", function()
+        local group = WidgetKit:Create("Group")
+        local holder = WidgetKit:Create("Group")
+        local child = WidgetKit:Create("Spacer")
+        local outsider = WidgetKit:Create("Spacer")
+        group:AddChild(child)
+        local failures = {}
+        local function record(callback)
+            local ok, failure = pcall(callback)
+            failures[#failures + 1] = ok and "no error" or tostring(failure)
+        end
+        group:SetCallback("OnRelease", function()
+            record(function()
+                group:Release()
+            end)
+            record(function()
+                group:AddChild(outsider)
+            end)
+            record(function()
+                group:AddChildren(outsider)
+            end)
+            record(function()
+                holder:AddChild(group)
+            end)
+            record(function()
+                holder:AddChild(child)
+            end)
+        end)
+        assert.is_true(group:Release())
+        local expected = {
+            "WidgetKit.Widget:Release widget is already being released",
+            "WidgetKit.Container:AddChild cannot add to a container that is being released",
+            "WidgetKit.Container:AddChildren cannot add to a container that is being released",
+            "WidgetKit.Container:AddChild child is being released",
+            "WidgetKit.Container:AddChild child is being released",
+        }
+        assert.are.equal(#expected, #failures)
+        for index = 1, #expected do
+            assert.is_truthy(failures[index]:find(expected[index], 1, true), failures[index])
+        end
+        assert.are.equal(0, holder:GetNumChildren())
+        assert.are.same({}, TestEnv.TakeReportedErrors())
+    end)
+
+    it("refuses a beforeWidget that is the child itself", function()
+        local group = WidgetKit:Create("Group")
+        local first = WidgetKit:Create("Spacer")
+        group:AddChild(first)
+        TestEnv.expectErrorContaining(
+            "WidgetKit.Container:AddChild beforeWidget must not be the child itself",
+            function()
+                group:AddChild(first, first)
+            end
+        )
+        assert.are.same({ first }, group:GetChildren())
     end)
 end)

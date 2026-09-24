@@ -56,7 +56,7 @@
 
 local PACKAGE_NAME = "widgetKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -559,7 +559,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -1141,7 +1141,7 @@ end
 ---@param disabled any
 local function readDisabledBase(widget, disabled)
     activeRecord(widget, "WidgetKit.Widget:SetDisabled", 4)
-    if disabled ~= nil and type(disabled) ~= "boolean" then
+    if type(disabled) ~= "nil" and type(disabled) ~= "boolean" then
         error("WidgetKit.Widget:SetDisabled disabled must be a boolean", 3)
     end
 end
@@ -1171,13 +1171,13 @@ end
 function WidgetBase:SetCallback(name, callback)
     local record = activeRecord(self, "WidgetKit.Widget:SetCallback", 3)
     validateName(name, "WidgetKit.Widget:SetCallback name", 3)
-    if callback ~= nil and type(callback) ~= "function" then
+    if type(callback) ~= "nil" and type(callback) ~= "function" then
         error("WidgetKit.Widget:SetCallback callback must be a function or nil", 2)
     end
 
     local callbacks = record.callbacks
     if callbacks == nil then
-        if callback == nil then
+        if type(callback) == "nil" then
             return
         end
         callbacks = {}
@@ -1185,7 +1185,7 @@ function WidgetBase:SetCallback(name, callback)
     end
 
     local existing = callbacks[name]
-    if callback == nil then
+    if type(callback) == "nil" then
         if existing ~= nil then
             callbacks[name] = nil
             record.callbackCount = record.callbackCount - 1
@@ -1237,12 +1237,12 @@ function WidgetBase:SetUserData(key, value)
     local record = activeRecord(self, "WidgetKit.Widget:SetUserData", 3)
     -- Before the nil test, which would raise on a secret.
     refuseSecret(key, "WidgetKit.Widget:SetUserData key", 3)
-    if key == nil then
+    if type(key) == "nil" then
         error("WidgetKit.Widget:SetUserData key must not be nil", 2)
     end
     local userData = record.userData
     if userData == nil then
-        if value == nil then
+        if type(value) == "nil" then
             return
         end
         userData = {}
@@ -1257,7 +1257,7 @@ function WidgetBase:GetUserData(key)
     local record = activeRecord(self, "WidgetKit.Widget:GetUserData", 3)
     -- Before the nil test, which would raise on a secret.
     refuseSecret(key, "WidgetKit.Widget:GetUserData key", 3)
-    if key == nil then
+    if type(key) == "nil" then
         return nil
     end
     local userData = record.userData
@@ -1375,7 +1375,7 @@ function WidgetBase:SetParent(parent)
     local target = parent
     if type(parent) == "table" and records[parent] ~= nil then
         target = rawget(parent, "content") or parent.frame
-    elseif parent ~= nil and type(parent) ~= "table" then
+    elseif type(parent) ~= "nil" and type(parent) ~= "table" then
         error("WidgetKit.Widget:SetParent parent must be a frame, a widget or nil", 2)
     end
     self.frame:SetParent(target)
@@ -1478,7 +1478,9 @@ local function validateChild(container, child, methodName, level)
     if childRecord == nil or not childRecord.active then
         error(methodName .. " child must be an active WidgetKit widget", level)
     end
-    if childRecord.releasing then
+    -- A child below a container that is being released is itself mid-release
+    -- (`IsReleasing` answers true), so it is refused like the container.
+    if isReleasingRecord(childRecord) then
         error(methodName .. " child is being released", level)
     end
     if isSelfOrAncestor(child, container) then
@@ -1501,7 +1503,7 @@ local function insertChild(container, record, child, childRecord, beforeWidget)
 
     local children = record.children
     local position = #children + 1
-    if beforeWidget ~= nil then
+    if type(beforeWidget) ~= "nil" then
         for index = 1, #children do
             if children[index] == beforeWidget then
                 position = index
@@ -1528,7 +1530,7 @@ function ContainerBase:AddChild(child, beforeWidget)
         error("WidgetKit.Container:AddChild cannot add to a container that is being released", 2)
     end
     local childRecord = validateChild(self, child, "WidgetKit.Container:AddChild", 3)
-    if beforeWidget ~= nil then
+    if type(beforeWidget) ~= "nil" then
         local beforeRecord = type(beforeWidget) == "table" and records[beforeWidget] or nil
         if beforeRecord == nil or beforeRecord.parent ~= self then
             error("WidgetKit.Container:AddChild beforeWidget must be a child of this container", 2)
@@ -1665,10 +1667,10 @@ end
 ---@param height number?
 function ContainerBase:LayoutFinished(width, height)
     local record = activeContainerRecord(self, "WidgetKit.Container:LayoutFinished", 3)
-    if width ~= nil then
+    if type(width) ~= "nil" then
         validateNumber(width, "WidgetKit.Container:LayoutFinished width", 3)
     end
-    if height ~= nil then
+    if type(height) ~= "nil" then
         validateNumber(height, "WidgetKit.Container:LayoutFinished height", 3)
     end
 
@@ -1761,10 +1763,10 @@ end
 ---@param width number?
 ---@param height number?
 local function notifySized(child, width, height)
-    if width ~= nil then
+    if type(width) ~= "nil" then
         callHook(child, "OnWidthSet", width)
     end
-    if height ~= nil then
+    if type(height) ~= "nil" then
         callHook(child, "OnHeightSet", height)
     end
 end
@@ -1918,20 +1920,24 @@ local function buildWidget(typeRecord)
     local problem = nil
     if type(widget) ~= "table" then
         problem = "must return a table"
-    elseif getmetatable(widget) ~= nil then
+    elseif type(getmetatable(widget)) ~= "nil" then
         problem = "must return a table without a metatable"
     elseif records[widget] ~= nil then
         problem = "must return a new table on every call"
     elseif type(rawget(widget, "frame")) ~= "table" then
         problem = "must return a table whose frame field is a frame"
-    elseif rawget(widget, "content") ~= nil and type(rawget(widget, "content")) ~= "table" then
+    elseif
+        type(rawget(widget, "content")) ~= "nil" and type(rawget(widget, "content")) ~= "table"
+    then
         problem = "must return a content field that is a frame, or none"
     elseif
-        rawget(widget, "OnAcquire") ~= nil and type(rawget(widget, "OnAcquire")) ~= "function"
+        type(rawget(widget, "OnAcquire")) ~= "nil"
+        and type(rawget(widget, "OnAcquire")) ~= "function"
     then
         problem = "must return an OnAcquire field that is a function, or none"
     elseif
-        rawget(widget, "OnRelease") ~= nil and type(rawget(widget, "OnRelease")) ~= "function"
+        type(rawget(widget, "OnRelease")) ~= "nil"
+        and type(rawget(widget, "OnRelease")) ~= "function"
     then
         problem = "must return an OnRelease field that is a function, or none"
     end
@@ -1941,7 +1947,7 @@ local function buildWidget(typeRecord)
         error(message, 0)
     end
 
-    local isContainer = rawget(widget, "content") ~= nil
+    local isContainer = type(rawget(widget, "content")) ~= "nil"
     setmetatable(widget, isContainer and CONTAINER_METATABLE or WIDGET_METATABLE)
     records[widget] = {
         typeRecord = typeRecord,
@@ -2084,7 +2090,7 @@ local function registerType(self, name, constructor, version, options)
     local ceiling = rawget(rawget(state, "limits"), "maxCreatedCeiling")
     local maxCreated = DEFAULT_MAX_CREATED
     local maxCallbacks = MAX_CALLBACKS
-    if options ~= nil then
+    if type(options) ~= "nil" then
         validateOptionKeys(options, TYPE_OPTION_KEYS, "WidgetKit:RegisterType options", 3)
         if type(options.maxCreated) ~= "nil" then
             -- Before the sentinel comparison, which would raise on a secret.
@@ -2229,7 +2235,7 @@ local function create(self, name)
     borrowed[record.version] = (borrowed[record.version] or 0) + 1
 
     local onAcquire = rawget(widget, "OnAcquire")
-    if onAcquire ~= nil then
+    if type(onAcquire) ~= "nil" then
         local acquired, failure = pcall(onAcquire, widget)
         if not acquired then
             releaseWidget(widget, record)
@@ -2414,7 +2420,7 @@ local function setLimits(self, limits)
         error("WidgetKit:SetLimits limits must be a table", 2)
     end
     local key = next(limits)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         if key ~= "maxCreatedCeiling" and key ~= "maxDropdownEntries" then
             -- A key that is not a string, number or boolean is named by its
             -- type, so no `__tostring` of the caller's runs here.
@@ -2544,7 +2550,7 @@ local function anchorFromRect(rect, parentRect, into)
     local left, bottom, width, height = readRect(rect, "WidgetKit.Anchor.FromRect rect", 3)
     local parentLeft, parentBottom, parentWidth, parentHeight =
         readRect(parentRect, "WidgetKit.Anchor.FromRect parentRect", 3)
-    if into ~= nil and type(into) ~= "table" then
+    if type(into) ~= "nil" and type(into) ~= "table" then
         error("WidgetKit.Anchor.FromRect into must be a table or nil", 2)
     end
 
@@ -2620,7 +2626,7 @@ local function anchorNormalize(frame, point, first, second, third, fourth)
     validatePoint(point, "WidgetKit.Anchor.Normalize point", 3)
 
     local relativeTo, relativePoint, x, y
-    if first == nil then
+    if type(first) == "nil" then
         -- `(point)`, or the full form with the parent written as `nil`.
         if type(second) == "string" then
             relativeTo, relativePoint, x, y = nil, second, third or 0, fourth or 0
@@ -2638,10 +2644,14 @@ local function anchorNormalize(frame, point, first, second, third, fourth)
     validatePoint(relativePoint, "WidgetKit.Anchor.Normalize relativePoint", 3)
     validateNumber(x, "WidgetKit.Anchor.Normalize x", 3)
     validateNumber(y, "WidgetKit.Anchor.Normalize y", 3)
-    if relativeTo ~= nil and type(relativeTo) ~= "table" and type(relativeTo) ~= "string" then
+    if
+        type(relativeTo) ~= "nil"
+        and type(relativeTo) ~= "table"
+        and type(relativeTo) ~= "string"
+    then
         error("WidgetKit.Anchor.Normalize relativeTo must be a frame, a frame name or nil", 2)
     end
-    if relativeTo == nil and type(frame.GetParent) == "function" then
+    if type(relativeTo) == "nil" and type(frame.GetParent) == "function" then
         relativeTo = frame:GetParent()
     end
 
@@ -2672,7 +2682,7 @@ local function readAnchor(anchor, label, level)
     local point = anchor.point
     validatePoint(point, label .. ".point", level + 1)
     local relativePoint = anchor.relativePoint
-    if relativePoint == nil then
+    if type(relativePoint) == "nil" then
         relativePoint = point
     end
     validatePoint(relativePoint, label .. ".relativePoint", level + 1)
@@ -2683,11 +2693,15 @@ local function readAnchor(anchor, label, level)
     if isSecret(relativeTo) then
         error(label .. ".relativeTo must not be a secret value", level)
     end
-    if relativeTo ~= nil and type(relativeTo) ~= "string" and type(relativeTo) ~= "table" then
+    if
+        type(relativeTo) ~= "nil"
+        and type(relativeTo) ~= "string"
+        and type(relativeTo) ~= "table"
+    then
         error(label .. ".relativeTo must be a frame, a frame name or nil", level)
     end
     local scale = anchor.scale
-    if scale ~= nil then
+    if type(scale) ~= "nil" then
         validateNumber(scale, label .. ".scale", level + 1)
         if scale <= 0 then
             error(label .. ".scale must be above 0", level)
@@ -2716,7 +2730,7 @@ local function anchorApply(frame, anchor)
         end
         relativeTo = resolved
     end
-    if scale ~= nil and type(frame.SetScale) == "function" then
+    if type(scale) ~= "nil" and type(frame.SetScale) == "function" then
         frame:SetScale(scale)
     end
     frame:ClearAllPoints()
@@ -2730,7 +2744,7 @@ end
 local function anchorRead(frame)
     validateAnchorFrame(frame, "WidgetKit.Anchor.Read frame", 3)
     local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
-    if point == nil then
+    if type(point) == "nil" then
         return nil
     end
     return anchorNormalize(frame, point, relativeTo, relativePoint, x or 0, y or 0)
@@ -2744,7 +2758,7 @@ end
 ---@return number? left, number bottom, number width, number height
 local function screenRect(frame)
     local left, bottom, width, height = frame:GetRect()
-    if left == nil then
+    if type(left) == "nil" then
         return nil, 0, 0, 0
     end
     local scale = 1
@@ -2759,7 +2773,7 @@ end
 ---@param binding table
 local function saveBinding(binding)
     local anchor = binding._anchor
-    if anchor.point == nil then
+    if type(anchor.point) == "nil" then
         return
     end
     local relativeTo = anchor.relativeTo
@@ -2803,20 +2817,20 @@ local function newBinding(frame, storageTable, options, methodName, level)
     end
 
     local key, delay, restore = "anchor", DEFAULT_SAVE_DELAY, true
-    if options ~= nil then
+    if type(options) ~= "nil" then
         validateOptionKeys(options, BINDING_OPTION_KEYS, methodName .. " options", level + 1)
-        if options.key ~= nil then
+        if type(options.key) ~= "nil" then
             validateName(options.key, methodName .. " options.key", level + 1)
             key = options.key
         end
-        if options.delay ~= nil then
+        if type(options.delay) ~= "nil" then
             validateNumber(options.delay, methodName .. " options.delay", level + 1)
             if options.delay < 0 then
                 error(methodName .. " options.delay must not be negative", level)
             end
             delay = options.delay
         end
-        if options.restore ~= nil then
+        if type(options.restore) ~= "nil" then
             if type(options.restore) ~= "boolean" then
                 error(methodName .. " options.restore must be a boolean", level)
             end
@@ -2875,18 +2889,18 @@ function BindingPrototype:Capture()
         return nil, "forbidden"
     end
     local left, bottom, width, height = screenRect(frame)
-    if left == nil then
+    if type(left) == "nil" then
         return nil, "notPositioned"
     end
     local parent = type(frame.GetParent) == "function" and frame:GetParent() or nil
-    if parent == nil then
+    if type(parent) == "nil" then
         parent = restingParent()
     end
     if type(parent) ~= "table" or type(parent.GetRect) ~= "function" then
         return nil, "notPositioned"
     end
     local parentLeft, parentBottom, parentWidth, parentHeight = screenRect(parent)
-    if parentLeft == nil then
+    if type(parentLeft) == "nil" then
         return nil, "notPositioned"
     end
 
@@ -3028,7 +3042,7 @@ local DISABLED_RED, DISABLED_GREEN, DISABLED_BLUE = 0.5, 0.5, 0.5
 ---@return boolean secret
 local function checkText(text, options, methodName, level)
     local allowSecret = false
-    if options ~= nil then
+    if type(options) ~= "nil" then
         validateOptionKeys(options, TEXT_OPTION_KEYS, methodName .. " options", level + 1)
         allowSecret = options.allowSecret == true
     end
@@ -3041,7 +3055,7 @@ local function checkText(text, options, methodName, level)
         end
         return text, true
     end
-    if text == nil then
+    if type(text) == "nil" then
         return "", false
     end
     local kind = type(text)
@@ -3078,7 +3092,7 @@ end
 ---@return boolean disabled
 local function readDisabled(widget, disabled, methodName, level)
     activeRecord(widget, methodName, level + 1)
-    if disabled ~= nil and type(disabled) ~= "boolean" then
+    if type(disabled) ~= "nil" and type(disabled) ~= "boolean" then
         error(methodName .. " disabled must be a boolean", level)
     end
     return disabled == true
@@ -3327,7 +3341,7 @@ do
     ---@param widget table
     local function groupPlaceContent(widget)
         local title = widget.titleText:GetText()
-        local hasTitle = title ~= nil and (isSecret(title) or title ~= "")
+        local hasTitle = type(title) ~= "nil" and (isSecret(title) or title ~= "")
         local top = hasTitle and (GROUP_TITLE_HEIGHT + GROUP_INSET) or GROUP_INSET
         widget._topInset = top
         local content = widget.content
@@ -3843,10 +3857,10 @@ do
     local function checkBoxSetValue(self, value)
         activeRecord(self, "WidgetKit CheckBox:SetValue", 3)
         refuseSecret(value, "WidgetKit CheckBox:SetValue value", 3)
-        if value ~= nil and type(value) ~= "boolean" then
+        if type(value) ~= "nil" and type(value) ~= "boolean" then
             error("WidgetKit CheckBox:SetValue value must be a boolean or nil", 2)
         end
-        if value == nil and not self._triState then
+        if type(value) == "nil" and not self._triState then
             value = false
         end
         self._value = value
@@ -4636,11 +4650,13 @@ do --
 
         -- The staged position of each displayed entry, when sorting reorders them.
         local displayOrder = nil
-        if order ~= nil then
+        if type(order) ~= "nil" then
             for index = 1, #order do
                 local key = order[index]
+                -- Before the key indexes `values`: a secret used as a key raises.
+                refuseSecret(key, "WidgetKit Dropdown:SetList key", 3)
                 local label = values[key]
-                if label ~= nil then
+                if type(label) ~= "nil" then
                     add(key, label)
                 end
             end
@@ -5548,7 +5564,7 @@ do --
         end
 
         if kind == "toggle" then
-            if value == nil and record.triState then
+            if type(value) == "nil" and record.triState then
                 widget:SetValue(nil)
             else
                 widget:SetValue(value == true)
@@ -5717,7 +5733,7 @@ do --
             return
         end
         local confirm = record.confirm
-        if confirm ~= nil and confirm ~= false and not record.armed then
+        if type(confirm) ~= "nil" and confirm ~= false and not record.armed then
             record.armed = true
             local question = type(confirm) == "string" and confirm or rendering._confirmText
             showMessage(rendering, record, question)
@@ -5758,7 +5774,7 @@ do --
         local keys = {}
         if type(sorting) == "table" then
             for index = 1, #sorting do
-                if values[sorting[index]] ~= nil then
+                if type(values[sorting[index]]) ~= "nil" then
                     keys[#keys + 1] = sorting[index]
                 end
             end
@@ -6053,17 +6069,17 @@ do --
         end
 
         local allowSecret, media, confirmText = false, nil, DEFAULT_CONFIRM_TEXT
-        if options ~= nil then
+        if type(options) ~= "nil" then
             validateOptionKeys(options, RENDER_OPTION_KEYS, "WidgetKit:RenderOptions options", 3)
-            if options.allowSecret ~= nil and type(options.allowSecret) ~= "boolean" then
+            if type(options.allowSecret) ~= "nil" and type(options.allowSecret) ~= "boolean" then
                 error("WidgetKit:RenderOptions options.allowSecret must be a boolean", 2)
             end
             allowSecret = options.allowSecret == true
-            if options.confirmText ~= nil then
+            if type(options.confirmText) ~= "nil" then
                 validateName(options.confirmText, "WidgetKit:RenderOptions options.confirmText", 3)
                 confirmText = options.confirmText
             end
-            if options.media ~= nil then
+            if type(options.media) ~= "nil" then
                 if type(options.media) ~= "table" then
                     error("WidgetKit:RenderOptions options.media must be a table", 2)
                 end

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.2 — 2026-09-24
+
+- Fixed: absence of a value that did not originate in WidgetKit is tested with `type(value) == "nil"` rather than compared with `nil`, so no comparison runs on a caller's or the host's value before its secret check. This covers optional arguments (`SetCallback` callback, `SetUserData` value, `SetParent` parent, `AddChild` beforeWidget, `LayoutFinished` width and height, `Anchor.FromRect` into, the `Anchor.Normalize` forms, `CheckBox:SetValue`, `Dropdown:SetList` order and the labels it reads, the `disabled` of every `SetDisabled`), option tables and their fields (`RegisterType`, `BindPosition`, text setters, `RenderOptions` with `allowSecret`, `confirmText` and `media`), anchor fields read from saved variables, the fields of a constructor's widget and its metatable, `SetLimits` keys, host results (`GetPoint`, `GetRect`, `GetParent`, a Group title's `GetText`) and the option values and `confirm` field the renderer reads. `SetUserData(key, secret)` in particular compared the value with `nil` and raised on the client; a secret value is now stored as it is.
+- Fixed: `Dropdown:SetList` indexed `values` with each key of `order` before the secret check the API promises for keys, so a secret key there raised inside WidgetKit on the client. It is now refused at the caller: `WidgetKit Dropdown:SetList key must not be a secret value`.
+- Not changed: the boolean setters (`SetFullWidth`, `SetFullHeight`, `SetResizable`, `SetMovable`, `SetKeyCapture`, `SetTriState`, `SetIsPercent`, `SetMultiLine`, `SetHasAlpha`), `SetDisabled` and the `RenderOptions` `allowSecret` option refuse no secret boolean; where they tested for absence, that test now uses `type`, and whether they should refuse a secret boolean is left open.
+- Implementation revision 3. No state changed: an in-place upgrade from revision 1 or 2 keeps the prototypes, types, pools, live widgets, bindings, renderings and limits, and replaces the methods only; every base widget stays at version 1.
+- Specs: a revision 2 copy is upgraded in place with the current file; a secret key in a `Dropdown:SetList` order is refused at the caller; a secret user-data value is stored; the base `SetDisabled`, `SetMovable`, `SetJustifyH`, `SetMaxLetters`, key capture with ALT and CTRL, leaving tri-state, the argument refusals of the widget setters, `Dropdown:SetList`, `Anchor.Apply`, `Anchor.Normalize`, `Anchor.FromRect` and the `RenderOptions` options, a secret `relativeTo`, calls on a non-widget, and release and `AddChild` refusals while a release runs. 172 specs.
+- `WidgetKit` API generation 1 is unchanged.
+- `AddChild` refuses a child below a container that is being released, as the
+  API reference states; it used to check the child's own flag only.
+
 ## 0.1.1 — 2026-09-24
 
 - Fixed: `WidgetKit:CreateMediaPicker` acquired a `Dropdown` before it knew the list fitted, so a MediaKit type holding more names than `maxDropdownEntries` raised from inside WidgetKit and left that `Dropdown` borrowed for the session. The length is now checked first and refused at the caller: `WidgetKit:CreateMediaPicker MediaKit lists more <type> names than a Dropdown holds (<n>; WidgetKit:SetLimits maxDropdownEntries)`.

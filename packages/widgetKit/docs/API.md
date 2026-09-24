@@ -2,7 +2,7 @@
 
 WidgetKit API generation **1** provides pooled, versioned widgets on frames WidgetKit creates itself, containers with explicit layouts, a normalised anchor value type with position persistence, and a renderer for OptionsKit trees.
 
-Implementation revision: **2**.
+Implementation revision: **3**.
 
 ## Loading
 
@@ -61,7 +61,7 @@ Package facade:
 | `MAX_CREATED`, `MAX_CHILDREN`, `MAX_CALLBACKS` | `256`, `256`, `16`: the defaults. See [Limits](#limits). |
 | `SetLimits(limits)` / `GetLimits()` | Change or read the package-wide limits `maxCreatedCeiling` and `maxDropdownEntries`; `GetLimits` returns a fresh table. |
 | `UNBOUNDED` | Sentinel `maxCallbacks`, `SetMaxChildren` and the `maxDropdownEntries` limit accept to lift a bound. |
-| `API`, `REVISION` | `1`, `2`. |
+| `API`, `REVISION` | `1`, `3`. |
 
 Widget base (`WidgetKit.Widget`), on every widget:
 
@@ -352,7 +352,7 @@ local slider = WidgetKit:Create("Slider") --[[@as WidgetKit.Slider]]
 
 ## Secret values
 
-A font string can display a secret value, but whether one should appear is the caller's decision (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every text setter refuses a secret at your line — `WidgetKit Label:SetText text must not be a secret value unless options.allowSecret is true` — unless you pass `{ allowSecret = true }`. A secret text is never measured (a `Label` showing one is one line high). Values a widget would compare (`CheckBox:SetValue`, `Dropdown:SetValue`, `Dropdown:SetList`, `Label:SetJustifyH`, numbers and optional numbers such as an `alpha` or a relative width, counts and indices such as `SetMaxLetters` and `PickIndex`, limits and caps, names, user-data keys) are refused when secret, before they are compared with anything, `nil` included. Released widgets clear their texts. The renderer never inspects a secret value: an `input` shows it only with `allowSecret`, every other kind is disabled.
+A font string can display a secret value, but whether one should appear is the caller's decision (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every text setter refuses a secret at your line — `WidgetKit Label:SetText text must not be a secret value unless options.allowSecret is true` — unless you pass `{ allowSecret = true }`. A secret text is never measured (a `Label` showing one is one line high). Values a widget would compare (`CheckBox:SetValue`, `Dropdown:SetValue`, `Dropdown:SetList`, `Label:SetJustifyH`, numbers and optional numbers such as an `alpha` or a relative width, counts and indices such as `SetMaxLetters` and `PickIndex`, limits and caps, names, user-data keys, and the keys of a `Dropdown:SetList` `order`, which are refused before they index `values`: `WidgetKit Dropdown:SetList key must not be a secret value`) are refused when secret, before they are compared with anything, `nil` included. Absence of an optional argument, option field, constructor field or host result is tested with `type`, never by comparing with `nil`, so a value WidgetKit only stores, such as a user-data value, may be secret. Released widgets clear their texts. The renderer never inspects a secret value: an `input` shows it only with `allowSecret`, every other kind is disabled.
 
 ## Error behaviour
 
@@ -446,7 +446,7 @@ To change `MyAddonProgress` later, register the new constructor with version `2`
 
 ## Embedded copies and upgrades
 
-Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revision 2 keeps the revision 1 state as it is and replaces the methods only; every base widget stays at version 1.
+Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revisions 2 and 3 keep the revision 1 state as it is and replace the methods only; every base widget stays at version 1.
 
 Nothing survives `/reload`: widgets are created again when the addon loads.
 
