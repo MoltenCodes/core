@@ -54,6 +54,8 @@ Current package entry points:
 - [`CodecKit`](../packages/codecKit/README.md) — serialise, compress and channel-encode values into addon-channel or printable strings; decoding never raises.
 - [`InteropKit`](../packages/interopKit/README.md) — the LibStub bridge.
 - [`MediaKit`](../packages/mediaKit/README.md) — typed media registry with font scripts, per-consumer defaults and LibSharedMedia mirroring.
+- [`BrokerKit`](../packages/brokerKit/README.md) — LibDataBroker-compatible data objects with per-attribute change signals and a two-way LibDataBroker-1.1 bridge.
+- [`LogKit`](../packages/logKit/README.md) — levelled, structured logging with lazy secret-safe formatting, a bounded journal and pluggable sinks.
 - [`CommKit`](../packages/commKit/README.md) — addon messaging with bounded reassembly, refusing queues, a session bandwidth budget and sync sets.
 - [`WidgetKit`](../packages/widgetKit/README.md) — pooled, versioned widgets, explicit layouts, anchors and an options renderer.
 - [`ApiKit`](../packages/apiKit/README.md) — the flavour-aware, typed wrapper over the World of Warcraft API, generated from the client's own documentation tables: `local api = wow.retail.api`.

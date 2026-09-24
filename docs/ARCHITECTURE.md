@@ -25,6 +25,8 @@ packages/
 ├── codecKit/
 ├── interopKit/
 ├── mediaKit/
+├── brokerKit/
+├── logKit/
 ├── testKit/
 ├── commKit/
 ├── widgetKit/
@@ -37,7 +39,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -98,6 +100,8 @@ registry
 │               └──→ testKit   (also lifecycleKit; development only, never bundled)
 └──→ signalKit
        ├──→ mediaKit
+       ├──→ brokerKit
+       ├──→ logKit
        ↓
      eventKit
        ↓
@@ -240,6 +244,10 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 `interopKit` depends only on Registry API 2. It exposes Kit facades to LibStub under `MoltenCodes-<Facade>-<api>` with the revision as minor, refuses majors other libraries hold, and records LibStub libraries it adopts in its own state (`InteropKit:Find`), because Registry's line budget leaves no room for foreign entries. LibStub is found at call time through `rawget(_G, "LibStub")` and adds no edge to the load order.
 
 `mediaKit` depends on Registry API 2 and SignalKit API 1. It keeps one registry of seven fixed media types; entries are a path or a FileDataID, fonts carry a script mask checked against `GetLocale`, `List` returns a cached sorted array rebuilt only after a registration, defaults are per consumer over the client's built-in media, and LibSharedMedia-3.0 is reached through `rawget(_G, "LibStub")` at call time for read-only adoption and explicit mirroring without echo.
+
+`brokerKit` depends on Registry API 2 and SignalKit API 1. It keeps one registry of named data objects in the LibDataBroker-1.1 idiom: each object is an empty proxy whose reads fall through to an attribute table and whose writes run one validated path that fires per-attribute and any-attribute SignalKit signals; the fifteen LibDataBroker attributes are typed, custom ones hold anything, `Iterate` walks a cached sorted array rebuilt only after an object was added, and LibDataBroker-1.1 is reached through `rawget(_G, "LibStub")` at call time for explicit exposure and read-only adoption without echo. It sits beside `mediaKit` in the layer above SignalKit and adds no other load-order edge.
+
+`logKit` depends on Registry API 2 and SignalKit API 1. It gives every addon one logger whose disabled calls cost a receiver check and one comparison and never read their arguments; enabled messages are formatted once with secret arguments replaced by a placeholder, cut to `maxMessageLength`, recorded in a preallocated ring built on `SignalKit:NewJournal` and handed to sinks through one reused record table. Levels resolve addon override, then global, then the default, cached per logger. CommandKit (`/log`) and SettingsKit (persisted levels) are found at call time through `Registry:Find`, adding no load-order edge; it sits beside MediaKit as a SignalKit consumer with no user-interface dependency, and its sink contract is what a later viewer window or ProfileKit report can share.
 
 `testKit` depends on Registry API 2, LifecycleKit API 1 and SchedulerKit API 1 and is development-only, never bundled (`"distribution": "development"` in its manifest, ignored by `.pkgmeta`). Suites wait for a LifecycleKit phase; tests run one at a time in a SchedulerKit job, one coroutine per step; EventKit and TimerKit are found through `Registry:Find`, adding no load-order edge.
 

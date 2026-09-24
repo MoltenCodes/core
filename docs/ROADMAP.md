@@ -1285,7 +1285,7 @@ under their Kit, new Kits carry nine points.
    fake LibDataBroker, limits, upgrade, manifest, error levels.
 8. Docs: README, API.md (the LibDataBroker mapping field by field), CHANGELOG;
    EMBEDDING footprint and host-requirements rows.
-9. Status: planned 2026-09-24.
+9. Status: implemented 2026-09-24, 0.1.0, revision 1, 126 specs.
 
 #### Package K — logKit
 
@@ -1316,7 +1316,8 @@ under their Kit, new Kits carry nine points.
    disabled), override precedence, journal ring order, sinks and their
    removal, secret-safe formatting, limits, upgrade, manifest, error levels.
 8. Docs: README, API.md, CHANGELOG; EMBEDDING rows.
-9. Status: planned 2026-09-24.
+9. Status: implemented 2026-09-24, 0.1.0, revision 1, 144 specs; deviations
+   recorded in `packages/logKit/docs/API.md`.
 
 #### Package L — compatKit
 
@@ -1418,6 +1419,6 @@ duplicating those specifications.
 ---
 
 Last roadmap baseline update: 2026-09-24 (phases 0 through 4 and packages F,
-G and H complete: 25 packages, every gate green; phase 5 planned: package I
-capabilities, then brokerKit, logKit, compatKit, the user-interface phase last;
-the standing obligations continue).
+G and H complete; phase 5 packages I, J and K complete: 27 packages, every gate
+green; compatKit next, the user-interface phase last; the standing obligations
+continue).

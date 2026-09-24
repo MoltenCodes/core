@@ -159,6 +159,8 @@ registry
 │               └──→ testKit   (also lifecycleKit; development only, never bundled)
 └──→ signalKit
        ├──→ mediaKit
+       ├──→ brokerKit
+       ├──→ logKit
        ↓
      eventKit
        ↓
@@ -182,6 +184,7 @@ clientKit/ClientKit.lua
 poolKit/PoolKit.lua
 codecKit/CodecKit.lua
 signalKit/SignalKit.lua
+brokerKit/BrokerKit.lua
 eventKit/EventKit.lua
 timerKit/TimerKit.lua
 schedulerKit/SchedulerKit.lua
@@ -192,6 +195,7 @@ hookKit/HookKit.lua
 interopKit/InteropKit.lua
 lifecycleKit/LifecycleKit.lua
 localeKit/LocaleKit.lua
+logKit/LogKit.lua
 mediaKit/MediaKit.lua
 moduleKit/ModuleKit.lua
 optionsKit/OptionsKit.lua
@@ -240,7 +244,7 @@ optional and found at call time, so embedding one Kit costs this many files:
 | 3 | `apiKit` | nothing; the third file is the flavour file of the client you support (one more per further flavour) |
 | 3 | `codecKit` | `poolKit` |
 | 3 | `commandKit` | `schemaKit` |
-| 3 | `eventKit`, `mediaKit` | `signalKit` |
+| 3 | `brokerKit`, `eventKit`, `logKit`, `mediaKit` | `signalKit` |
 | 3 | `readinessKit`, `schedulerKit` | `timerKit` |
 | 4 | `lifecycleKit` | `signalKit`, `eventKit` |
 | 4 | `optionsKit`, `settingsKit` | `schemaKit`, `signalKit` |
@@ -273,7 +277,7 @@ into `Interface/AddOns/ExampleAddon/`, drop the framework files into
 ## IconTexture: Interface\Icons\INV_Misc_Gear_01
 ## X-Category: Development Tools
 ## X-License: MIT
-## X-Embeds: MoltenCodes-Registry, MoltenCodes-CacheKit, MoltenCodes-ClientKit, MoltenCodes-PoolKit, MoltenCodes-CodecKit, MoltenCodes-SignalKit, MoltenCodes-EventKit, MoltenCodes-LifecycleKit, MoltenCodes-TimerKit, MoltenCodes-SchedulerKit, MoltenCodes-CommKit, MoltenCodes-SchemaKit, MoltenCodes-CommandKit, MoltenCodes-HookKit, MoltenCodes-InteropKit, MoltenCodes-LocaleKit, MoltenCodes-MediaKit, MoltenCodes-ModuleKit, MoltenCodes-OptionsKit, MoltenCodes-ProfileKit, MoltenCodes-ReadinessKit, MoltenCodes-SettingsKit, MoltenCodes-WidgetKit
+## X-Embeds: MoltenCodes-Registry, MoltenCodes-CacheKit, MoltenCodes-ClientKit, MoltenCodes-PoolKit, MoltenCodes-CodecKit, MoltenCodes-SignalKit, MoltenCodes-EventKit, MoltenCodes-LifecycleKit, MoltenCodes-TimerKit, MoltenCodes-SchedulerKit, MoltenCodes-CommKit, MoltenCodes-SchemaKit, MoltenCodes-CommandKit, MoltenCodes-HookKit, MoltenCodes-InteropKit, MoltenCodes-LocaleKit, MoltenCodes-MediaKit, MoltenCodes-BrokerKit, MoltenCodes-LogKit, MoltenCodes-ModuleKit, MoltenCodes-OptionsKit, MoltenCodes-ProfileKit, MoltenCodes-ReadinessKit, MoltenCodes-SettingsKit, MoltenCodes-WidgetKit
 
 # Embedded framework packages. This file must come first: every package below
 # resolves its dependencies at load time and raises if one is missing.
@@ -626,6 +630,8 @@ actually touch, which is deliberately small:
 | `commandKit` | SchemaKit's surface; `SlashCmdList` (`Register` and `BindOptions` raise at the caller) | `SLASH_<key><n>`, `SecureCmdList`, `ChatTypeInfo`, `EMOTE<n>_CMD<m>` and `MAXEMOTEINDEX` (the taken check finds nothing), `DEFAULT_CHAT_FRAME` (`print`), `ChatEdit_CustomTabPressed` (`EnableCompletion` returns `false`), `ChatEdit_GetActiveWindow`, `geterrorhandler` (`print`), ClientKit API 1 / `issecretvalue`, OptionsKit API 1 (`BindOptions` raises), LocaleKit API 1 (`Printf` uses `string.format`); LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes an addon scope at logout (with neither, call `CommandKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
 | `codecKit` | PoolKit's surface | SchedulerKit API 1 through `Registry:Find` (`EncodeAsync` and `DecodeAsync` raise at the caller), `issecretvalue` (looked up at every call; absent: nothing is treated as secret) |
 | `interopKit` | nothing but Lua 5.1 | `LibStub` (every call returns `"absent"`), `issecretvalue` (nothing treated as secret) |
+| `brokerKit` | SignalKit's surface | `issecretvalue` (nothing is secret), `LibStub` and LibDataBroker-1.1 (`ExposeToLibDataBroker` and `AdoptFromLibDataBroker` return `false, "absent"`) |
+| `logKit` | SignalKit's surface (`NewJournal`, `GetLimits`; `maxJournalArguments` at least 4) | `GetTimePreciseSec` (record `time` is `false`), `issecretvalue` (nothing secret), `geterrorhandler` (failing sinks, format errors and refused journal firings fall back to `print`, also when the handler raises), `DEFAULT_CHAT_FRAME` (`ChatSink` prints), `SlashCmdList` (`RegisterCommand` returns `false, "unavailable"`), CommandKit API 1 through `Registry:Find` (`RegisterCommand` returns `false, "absent"`), SettingsKit API 1 through `Registry:Find` (`BindLevels` raises at the caller) |
 | `mediaKit` | SignalKit's surface | `GetLocale` (the client writes Latin), `issecretvalue` (nothing is secret), `LibStub` and LibSharedMedia-3.0 (`AdoptLibSharedMedia` and `MirrorToLibSharedMedia` return `false, "absent"`) |
 | `testKit` (development only) | LifecycleKit's and SchedulerKit's surfaces | `issecretvalue` (nothing treated as secret), `issecurevariable` (`ToBeSecure` fails), `GetTimePreciseSec` (`durationMs` 0), `geterrorhandler` (`print`), EventKit and TimerKit API 1 through `Registry:Find` |
 | `commKit` | SignalKit's, EventKit's, TimerKit's, SchedulerKit's and PoolKit's surfaces; `GetTimePreciseSec`; `C_ChatInfo.SendAddonMessage` (legacy global fallback; else `Send` refuses `"unavailable"`) | `C_ChatInfo.RegisterAddonMessagePrefix` and `IsAddonMessagePrefixRegistered` (legacy globals, then nothing registered), `C_ChatInfo.SendAddonMessageLogged` (logged sends refused), the events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE`, `PLAYER_ENTERING_WORLD`, `GetFramerate` (no low-frame-rate mode), `UnitInParty` and `UnitInRaid` (no roster eviction; streams still expire), `Enum` (12.x values assumed), `securecallfunction` (`pcall`), `issecretvalue`, `geterrorhandler` (`print`), CodecKit API 1 (`SyncSet` raises), HookKit API 1 (outside traffic uncharged), SchemaKit API 1 (`schema` raises); LifecycleKit API 1 through `Registry:Find` (otherwise CommKit's own `PLAYER_LOGOUT` watcher closes its addon scopes) |
@@ -681,9 +687,10 @@ the same table Registry hands out, the one that stays valid across revision
 upgrades. Store that table, never individual methods off it. The exact contract
 is in [`interopKit/docs/API.md`](../packages/interopKit/docs/API.md).
 
-Two Kits read LibStub libraries themselves, at call time and only when asked:
-`MediaKit` adopts and mirrors LibSharedMedia-3.0, and `InteropKit` is the
-bridge above. Every other Kit ignores LibStub.
+Three Kits read LibStub libraries themselves, at call time and only when asked:
+`MediaKit` adopts and mirrors LibSharedMedia-3.0, `BrokerKit` exposes into and
+adopts from LibDataBroker-1.1, and `InteropKit` is the bridge above. Every other
+Kit ignores LibStub.
 
 ## Taint
 
