@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from tooling.api import flavours
+from tooling.package.build import top_level_lua_files
 from tooling.validation.interface_numbers import (
     SupportedClients,
     load_supported_clients,
@@ -120,25 +121,16 @@ MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 
 #: Package documentation directories whose Markdown is generated from data
 #: rather than written: the API reference and the build-to-build change reports
-#: of `apiKit`. Their generator validates what it writes, so the link check
-#: (and, through `cspell.json`, the spell check) leaves them alone. The tuple is
-#: the path under `packages/<name>/`.
-GENERATED_DOCUMENT_DIRECTORIES = (
+#: of `apiKit` (`docs/API_KIT_DESIGN.md`, section 13). The generator that will
+#: write them (roadmap step H2) validates its own output, so the link check
+#: (and, through `cspell.json`, the spell check) leaves them alone. Each entry
+#: is the two path segments under `packages/<name>/`.
+GENERATED_DOCUMENT_DIRECTORIES = {
     ("docs", "reference"),
     ("docs", "changes"),
-)
+}
 
-
-def is_generated_documentation(path: Path) -> bool:
-    """Whether `path` lies in a package's generated documentation directory."""
-    try:
-        relative = path.resolve().relative_to(ROOT.resolve())
-    except ValueError:
-        return False
-    parts = relative.parts
-    if len(parts) < 4 or parts[0] != "packages":
-        return False
-    return any(parts[2 : 2 + len(marker)] == marker for marker in GENERATED_DOCUMENT_DIRECTORIES)
+#: Directories whose contents are never source documentation.
 IGNORED_DIRECTORY_NAMES = {
     ".git",
     ".luarocks",
@@ -326,6 +318,23 @@ def validate_language_server_configs(manifests: dict[str, dict[str, object]]) ->
     return errors
 
 
+def is_generated_documentation(path: Path) -> bool:
+    """Whether `path` lies in a package's generated documentation directory.
+
+    A path outside the repository is never generated documentation.
+    """
+    try:
+        relative = path.resolve().relative_to(ROOT.resolve())
+    except ValueError:
+        return False
+    parts = relative.parts
+    inside_a_package = len(parts) >= 4 and parts[0] == "packages"
+    if not inside_a_package:
+        return False
+    documentation_directory = (parts[2], parts[3])
+    return documentation_directory in GENERATED_DOCUMENT_DIRECTORIES
+
+
 def read_display_name(package_dir: Path) -> str | None:
     """Return the manifest's `displayName`, or `None` when it cannot be read.
 
@@ -351,7 +360,7 @@ def validate_facade_file(package_dir: Path) -> list[str]:
     leave that order ambiguous.
     """
     source_dir = package_dir / "src"
-    top_level = sorted(path for path in source_dir.glob("*.lua") if path.is_file())
+    top_level = top_level_lua_files(source_dir)
     if not top_level:
         return [error(source_dir, "no top-level Lua facade was found")]
     if len(top_level) > 1:

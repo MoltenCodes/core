@@ -140,7 +140,7 @@ naming rule (lowerCamelCase ids ending in `Kit`, PascalCase facades) makes it
 | Retail | `wow.retail.api` | `live` |
 | Classic Era (Hardcore, Season of Discovery) | `wow.classic.era.api` | `classic_era` |
 | Mists of Pandaria Classic | `wow.classic.mop.api` | `classic` |
-| Public Test Realm | `wow.ptr.api` | `ptr` |
+| Public Test Realm | `wow.ptr.api` | `ptr`, `ptr2` (whichever carries the newer build) |
 | Beta | `wow.beta.api` | `beta` |
 
 Preferred usage is a file-local alias:
@@ -321,7 +321,11 @@ tables shipped under `Blizzard_APIDocumentationGenerated` in the interface
 code, as published per flavour branch by the community `wow-ui-source`
 mirror. The pipeline fetches one flavour at one pinned mirror commit and
 records that commit, the build it corresponds to and the capture date as
-provenance in the metadata.
+provenance in the metadata. The mirror keeps two test-realm branches (`ptr`
+and `ptr2`) that alternate as Blizzard opens and closes test realms; the
+`ptr` flavour names both, and a fetch takes the one whose head carries the
+newer build unless the maintainer names a branch. The table of flavours,
+branches and detection facts is `tooling/api/flavours.json`.
 
 Two rules from the project constraints apply:
 

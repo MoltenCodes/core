@@ -457,6 +457,20 @@ class BundleTocTests(TemporaryRepositoryTests):
 
         self.assertEqual(["Registry.lua", "extra/AAA.lua"], module.runtime_files("registry"))
 
+    def test_a_nested_file_named_like_the_facade_is_still_listed(self):
+        """Only position decides what the facade is, never the file name."""
+        self.write_package(
+            "apiKit", facade="ApiKit", further_runtime_files=("flavours/ApiKit.lua",)
+        )
+
+        self.assertEqual(["ApiKit.lua", "flavours/ApiKit.lua"], module.runtime_files("apiKit"))
+
+    def test_a_subdirectory_called_src_is_a_subdirectory(self):
+        self.write_package("registry", facade="Registry", further_runtime_files=("src/Inner.lua",))
+
+        self.assertEqual("Registry.lua", module.facade_file_name("registry"))
+        self.assertEqual(["Registry.lua", "src/Inner.lua"], module.runtime_files("registry"))
+
     def test_two_top_level_lua_files_are_refused(self):
         self.write_minimal_repository()
         (self.packages / "registry" / "src" / "Second.lua").write_text("", encoding="utf-8")

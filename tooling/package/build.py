@@ -144,6 +144,21 @@ def source_files(package_name: str) -> list[Path]:
     return files
 
 
+def source_directory(package_name: str) -> Path:
+    """Return the package's ``src/`` directory."""
+    return ROOT / "packages" / package_name / "src"
+
+
+def top_level_lua_files(source_dir: Path) -> list[Path]:
+    """Return the ``.lua`` files directly inside ``source_dir``, sorted.
+
+    "Directly inside" is decided by the parent directory, never by its name, so
+    a subdirectory that happens to be called ``src`` is still a subdirectory.
+    Repository validation applies the same rule.
+    """
+    return sorted(path for path in source_dir.glob("*.lua") if path.is_file())
+
+
 def facade_file_name(package_name: str) -> str:
     """Return the package's Lua facade file name, the first file the client loads.
 
@@ -152,11 +167,7 @@ def facade_file_name(package_name: str) -> str:
     ``runtime_files``); two top-level Lua files would leave the load order
     ambiguous, so that is an error here as it is in repository validation.
     """
-    top_level = [
-        path
-        for path in source_files(package_name)
-        if path.suffix == ".lua" and path.parent.name == "src"
-    ]
+    top_level = top_level_lua_files(source_directory(package_name))
     if not top_level:
         raise BuildError(f"packages/{package_name}/src: no top-level Lua facade was found")
     if len(top_level) > 1:
@@ -180,14 +191,14 @@ def runtime_files(package_name: str) -> list[str]:
     each other, so a sorted order is both deterministic and correct. Paths are
     POSIX-style (``flavours/Retail.lua``) whatever the builder's platform.
     """
-    source_dir = ROOT / "packages" / package_name / "src"
+    source_dir = source_directory(package_name)
     facade = facade_file_name(package_name)
-    others = sorted(
+    nested = sorted(
         path.relative_to(source_dir).as_posix()
         for path in source_files(package_name)
-        if path.suffix == ".lua" and path.name != facade
+        if path.suffix == ".lua" and path.parent != source_dir
     )
-    return [facade, *others]
+    return [facade, *nested]
 
 
 def load_valid_manifests() -> dict[str, dict[str, Any]]:

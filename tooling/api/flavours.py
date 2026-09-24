@@ -5,8 +5,8 @@ client flavours `apiKit` exposes (`docs/API_KIT_DESIGN.md`, section 5). Each
 entry records the flavour's id and namespace, the runtime file its generated
 bindings live in, the mirror branches its documentation tables are fetched
 from, and the facts the runtime facade reads to recognise that flavour. The
-fetch, the generators and the facade's specs all read this table, so a flavour
-is added or renamed in one place.
+fetch, the generators and the facade's specs (roadmap steps H1 to H4) read this
+table, so a flavour is added or renamed in one place.
 
     python3 -m tooling.api.flavours            # print the table
 
@@ -14,8 +14,9 @@ The mirror is the community `wow-ui-source` repository, which publishes the
 client's interface code per flavour branch; only its
 `Blizzard_APIDocumentationGenerated` tables are read, and only into a scratch
 directory (design document, section 12). A flavour may name several branches
-when the mirror keeps more than one test realm; the fetch takes the branch
-whose latest build is newest unless told otherwise.
+when the mirror keeps more than one test realm (`ptr` and `ptr2`); the fetch
+(`tooling.api.fetch`) takes the branch whose head carries the newest build
+unless told which branch to use.
 
 Detection facts are the values a client of that flavour reports for the probes
 named at the top of the table: `WOW_PROJECT_ID` (1 Retail and its test
@@ -38,12 +39,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
+from tooling.validation.validate_manifests import ROOT
+
 
 #: Location of the table relative to the repository root.
 FLAVOURS_PATH = Path("tooling") / "api" / "flavours.json"
 
-#: Default absolute location of the table, next to this module.
-DEFAULT_FLAVOURS_FILE = Path(__file__).resolve().parent / "flavours.json"
+#: Default absolute location of the table, derived from the relative one so the
+#: command line and the repository validator can never read different files.
+DEFAULT_FLAVOURS_FILE = ROOT / FLAVOURS_PATH
+
+#: `verified` must be a calendar date written as YYYY-MM-DD. `date.fromisoformat`
+#: alone is not enough: Python 3.11 and later also accept `20260924` and week
+#: dates, and the tooling runs on 3.10 and 3.13 alike.
+ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 #: The keys the table itself carries, and nothing else.
 TABLE_KEYS = {"verified", "mirror", "probes", "flavours"}
@@ -103,11 +112,6 @@ class Flavour:
     branches: tuple[str, ...]
     detection: Detection
 
-    @property
-    def directory(self) -> str:
-        """The per-flavour directory name under `metadata/`, `types/` and `docs/`."""
-        return self.id
-
 
 @dataclass(frozen=True)
 class Mirror:
@@ -147,7 +151,7 @@ class Flavours:
         raise KeyError(f"unknown flavour {flavour_id!r}; known flavours: {', '.join(self.ids())}")
 
     def markdown_rows(self) -> list[str]:
-        """Rows of the table printed by the command line and quoted in documentation."""
+        """Rows of the Markdown table the command line prints."""
         return [
             f"| `{flavour.id}` | {flavour.display_name} | `{flavour.namespace}` | "
             f"`{flavour.runtime_file}` | {', '.join(f'`{branch}`' for branch in flavour.branches)} |"
@@ -216,6 +220,7 @@ def _reject_duplicates(flavours: Sequence[Flavour]) -> None:
     """Every id, namespace and runtime file names one flavour; detection facts too."""
     for label, values in (
         ("id", [flavour.id for flavour in flavours]),
+        ("displayName", [flavour.display_name for flavour in flavours]),
         ("namespace", [flavour.namespace for flavour in flavours]),
         ("runtimeFile", [flavour.runtime_file for flavour in flavours]),
         ("detection", [flavour.detection for flavour in flavours]),
@@ -232,10 +237,13 @@ def parse_flavours(data: Any) -> Flavours:
     """
     fields = _require_keys("table", data, TABLE_KEYS)
 
+    verified = fields["verified"]
+    if not isinstance(verified, str) or not ISO_DATE_RE.fullmatch(verified):
+        raise FlavoursError("verified must be an ISO date (YYYY-MM-DD)")
     try:
-        datetime.date.fromisoformat(fields["verified"])
-    except (TypeError, ValueError):
-        raise FlavoursError("verified must be an ISO date (YYYY-MM-DD)") from None
+        datetime.date.fromisoformat(verified)
+    except ValueError:
+        raise FlavoursError("verified must be a real calendar date (YYYY-MM-DD)") from None
 
     mirror_fields = _require_keys("mirror", fields["mirror"], MIRROR_KEYS)
     mirror = Mirror(
@@ -258,7 +266,7 @@ def parse_flavours(data: Any) -> Flavours:
     flavours = tuple(_parse_flavour(index, entry) for index, entry in enumerate(entries))
     _reject_duplicates(flavours)
 
-    return Flavours(verified=fields["verified"], mirror=mirror, probes=probes, flavours=flavours)
+    return Flavours(verified=verified, mirror=mirror, probes=probes, flavours=flavours)
 
 
 def load_flavours(path: Path = DEFAULT_FLAVOURS_FILE) -> Flavours:

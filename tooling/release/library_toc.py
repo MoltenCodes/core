@@ -8,9 +8,10 @@ The framework installs two ways: its Kits are embedded in an addon, or the
 framework is installed once as the addon "MoltenCodes" and addons depend on it.
 This command prints that addon's `.toc`: the supported `## Interface` numbers
 from `tooling/validation/supported_clients.json`, the title, notes, version
-placeholder and site fields, then one `<packageId>\\<Facade>.lua` line per
-release package in the builder's load order. Development packages are never
-listed.
+placeholder and site fields, then the runtime files of every release package in
+the builder's load order: a package's facade `<packageId>\\<Facade>.lua` and,
+after it, any further runtime files from subdirectories of its `src/`.
+Development packages are never listed.
 
 `--package <id>` prints the `.toc` of a single-Kit release instead: the addon
 `MoltenCodes-<Facade>`, loading that Kit and its required dependencies in load
@@ -19,7 +20,8 @@ order, so a single-Kit bundle installs as an addon too.
 The text is exactly what `python3 -m tooling.package.build` writes into the
 bundle root, because both come from `tooling.package.build.bundle_toc`. There is
 no separate layout for the packager: after `.pkgmeta`'s `move-folders`, the
-packager's zip is `MoltenCodes/<packageId>/<Facade>.lua`, the builder's layout.
+packager's zip is `MoltenCodes/<packageId>/<Facade>.lua` plus any subdirectories
+of the package's `src/`, the builder's layout.
 The release workflow writes the file into its checkout just before the packager
 runs; it is never committed.
 """

@@ -263,6 +263,30 @@ class RepositoryValidatorTests(unittest.TestCase):
         self.assertEqual(1, len(errors), errors)
         self.assertIn("flavours.json", errors[0])
 
+    def test_malformed_api_flavour_table_is_reported(self):
+        path = self.root / module.flavours.FLAVOURS_PATH
+        path.parent.mkdir(parents=True)
+        path.write_text('{"verified": "2026-09-24"}', encoding="utf-8")
+
+        errors = module.validate_api_flavours()
+
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("exactly the keys", errors[0])
+
+    def test_a_path_outside_the_repository_is_not_generated_documentation(self):
+        with tempfile.TemporaryDirectory() as elsewhere:
+            outside = Path(elsewhere) / "packages" / "apiKit" / "docs" / "reference" / "a.md"
+
+            self.assertFalse(module.is_generated_documentation(outside))
+
+    def test_facade_check_is_skipped_when_the_manifest_is_unreadable(self):
+        """The manifest checks report a broken manifest; the facade rule stays quiet."""
+        package = self.create_package("registry")
+        (package / "package.manifest.json").write_text("{ not json", encoding="utf-8")
+        (package / "src" / "Registry.lua").rename(package / "src" / "Other.lua")
+
+        self.assertEqual([], module.validate_facade_file(package))
+
     def test_api_package_requires_api_documentation(self):
         package = self.create_package("registry")
         (package / "docs" / "API.md").unlink()
@@ -301,9 +325,6 @@ class RepositoryValidatorTests(unittest.TestCase):
 
         self.assertEqual([], module.validate_markdown_links())
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class RepositoryApiFlavourTests(unittest.TestCase):
@@ -677,3 +698,6 @@ move-folders:
             [], module.validate_development_packages_ignored({"registry": {"dependencies": {}}})
         )
 
+
+if __name__ == "__main__":
+    unittest.main()

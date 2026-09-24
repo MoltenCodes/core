@@ -62,7 +62,6 @@ class FlavourParsingTests(unittest.TestCase):
         self.assertEqual("IsBetaBuild", table.probes.beta_build)
         self.assertEqual(("ptr", "ptr2"), table.by_id("ptr").branches)
         self.assertEqual(2, table.by_id("classic-era").detection.project_id)
-        self.assertEqual("classic-era", table.by_id("classic-era").directory)
 
     def test_unknown_id_names_the_known_ones(self):
         table = module.parse_flavours(self.table())
@@ -86,10 +85,24 @@ class FlavourParsingTests(unittest.TestCase):
             module.parse_flavours(table)
 
     def test_verified_must_be_an_iso_date(self):
-        table = self.table()
-        table["verified"] = "yesterday"
+        for value in ("yesterday", "20260924", "2026-W38-4", 20260924):
+            table = self.table()
+            table["verified"] = value
+            with self.assertRaisesRegex(module.FlavoursError, "ISO date"):
+                module.parse_flavours(table)
 
-        with self.assertRaisesRegex(module.FlavoursError, "ISO date"):
+    def test_verified_must_be_a_real_calendar_date(self):
+        table = self.table()
+        table["verified"] = "2026-13-45"
+
+        with self.assertRaisesRegex(module.FlavoursError, "real calendar date"):
+            module.parse_flavours(table)
+
+    def test_duplicate_display_name_is_rejected(self):
+        table = self.table()
+        table["flavours"][1]["displayName"] = "Retail"
+
+        with self.assertRaisesRegex(module.FlavoursError, "same displayName twice"):
             module.parse_flavours(table)
 
     def test_flavour_id_must_be_lowercase_hyphenated(self):

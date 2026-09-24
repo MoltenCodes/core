@@ -1097,6 +1097,11 @@ begins; H4 to H6 may overlap where they do not share files.
 - [ ] **H3 — the facade.** `packages/apiKit/src/ApiKit.lua` with the surface
       in point 4, its specs, manifest, README, `docs/API.md`, `docs/NAMING.md`,
       CHANGELOG; the `wow` publication rule; error levels at the caller.
+      `.pkgmeta` gains `ignore` lines for `packages/*/metadata` and
+      `packages/*/types` (development data the packager must not ship), and
+      the validator's `embeds.xml` reading derives the package id from the
+      directory after `MoltenCodes\`, not from the file name, so an embedded
+      `apiKit\flavours\Retail.lua` line is understood.
 - [ ] **H4 — Retail.** First capture at a pinned mirror commit and build;
       metadata, runtime file, types, reference and search index committed
       together; the sampled generated-output spec; the naming exception table

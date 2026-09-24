@@ -233,8 +233,8 @@ further runtime files in subdirectories, which load after the facade
 ([`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md#minimum-package-layout)). Two
 package documentation directories are generated from data rather than written,
 `packages/<name>/docs/reference/` and `packages/<name>/docs/changes/`; the
-spell check and the Markdown link check leave them alone, and the generator
-validates what it writes.
+spell check and the Markdown link check leave them alone, because the
+generator that writes them (roadmap step H2) validates its own output.
 
 ## Spell check
 
