@@ -17,6 +17,11 @@
 -- LifecycleKit's `OnShutdown`, or, without LifecycleKit, from EventKit's own
 -- `PLAYER_LOGOUT` connection, after that dispatch completes.
 --
+-- `COMBAT_LOG_EVENT_UNFILTERED` carries no payload; the client hands the event
+-- out through `CombatLogGetCurrentEventInfo()`. `ConnectCombatLog` reads it
+-- once per event and routes it by sub-event, so the hottest event in the
+-- client costs one read and one lookup however many addons listen.
+--
 -- Contents
 -- --------
 --   Constants ............. package identity, host limits, staging sizes
@@ -30,6 +35,8 @@
 --   Unit-group Frames ..... bounded, reused unit-filter Frames
 --   Channels .............. per-event host registration and fan-out
 --   Listener isolation .... allocation-free protected dispatch
+--   Combat log routing .... one CombatLogGetCurrentEventInfo read per event,
+--                           fanned out by sub-event
 --   Scope ownership ....... intrusive scope links and bulk teardown
 --   Connections ........... connection lifecycle and handle methods
 --   Dispatch .............. OnEvent to channel fan-out
@@ -44,10 +51,10 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 11
+local IMPLEMENTATION_REVISION = 12
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
-local STATE_SCHEMA = 7
+local STATE_SCHEMA = 8
 
 -- Coalesce and Derive find SchedulerKit through `Registry:Find` when they are
 -- called. EventKit never depends on SchedulerKit: SchedulerKit depends on
@@ -68,6 +75,12 @@ local LOGOUT_ROUTE_LIFECYCLE = "lifecycleKit"
 local LOGOUT_ROUTE_SHUTDOWN_SUBSCRIPTION = "onShutdown"
 local LOGOUT_ROUTE_EVENT = "playerLogout"
 local LOGOUT_ROUTE_NONE = "none"
+
+-- The combat-log event and the sub-event name `ConnectCombatLog` accepts for
+-- "every sub-event". `*` cannot be a client sub-event name, which are upper-case
+-- words joined by underscores, so the wildcard never shadows a real one.
+local COMBAT_LOG_EVENT = "COMBAT_LOG_EVENT_UNFILTERED"
+local ANY_COMBAT_LOG_SUB_EVENT = "*"
 
 -- One Coalesce or Derive call listens to at most this many distinct events.
 -- Per call, not per session: the handle holds one connection per event until
@@ -158,6 +171,7 @@ local function validatePublicSurface(implementation)
         or type(rawget(implementation, "Once")) ~= "function"
         or type(rawget(implementation, "ConnectUnit")) ~= "function"
         or type(rawget(implementation, "OnceUnit")) ~= "function"
+        or type(rawget(implementation, "ConnectCombatLog")) ~= "function"
         or type(rawget(implementation, "CreateScope")) ~= "function"
         or type(rawget(implementation, "ForAddon")) ~= "function"
         or type(rawget(implementation, "CloseAddonScopes")) ~= "function"
@@ -179,6 +193,7 @@ local function validatePublicSurface(implementation)
         and type(rawget(scope, "Once")) == "function"
         and type(rawget(scope, "ConnectUnit")) == "function"
         and type(rawget(scope, "OnceUnit")) == "function"
+        and type(rawget(scope, "ConnectCombatLog")) == "function"
         and type(rawget(scope, "DisconnectAll")) == "function"
         and type(rawget(scope, "Close")) == "function"
         and type(rawget(scope, "IsClosed")) == "function"
@@ -219,6 +234,8 @@ local function validateCurrentState(implementation)
         and type(rawget(currentState, "dispatchRegular")) == "function"
         and type(rawget(currentState, "dispatchUnit")) == "function"
         and type(rawget(currentState, "isolate")) == "function"
+        and type(rawget(currentState, "combatLog")) == "table"
+        and type(rawget(currentState, "dispatchCombatLog")) == "function"
         and type(rawget(currentState, "dispatchDepth")) == "number"
         and type(rawget(currentState, "pendingScopes")) == "table"
         and type(rawget(currentState, "pendingScopeCount")) == "number"
@@ -259,9 +276,18 @@ end
 
 ---A listener invoked with the event name followed by the client's payload.
 ---
----`COMBAT_LOG_EVENT_UNFILTERED` carries no payload; that listener reads the
----event through `CombatLogGetCurrentEventInfo()` instead.
+---`COMBAT_LOG_EVENT_UNFILTERED` carries no payload: a `Connect` listener for it
+---receives the event name alone and reads the event through
+---`CombatLogGetCurrentEventInfo()` itself. `ConnectCombatLog` does that read
+---once for every listener and hands them an `EventKit.CombatLogListener` call.
 ---@alias EventKit.Listener fun(eventName: string, ...: any)
+
+---A combat-log listener. It receives every return of
+---`CombatLogGetCurrentEventInfo()` unchanged: the eleven base values, then the
+---sub-event's own suffix (`spellId, spellName, spellSchool, amount, ...` for a
+---spell sub-event), whose count varies by sub-event. There is no event name in
+---front; the sub-event is the second value.
+---@alias EventKit.CombatLogListener fun(timestamp: number, subEvent: string, hideCaster: boolean, sourceGUID: string, sourceName: string?, sourceFlags: integer, sourceRaidFlags: integer, destGUID: string, destName: string?, destFlags: integer, destRaidFlags: integer, ...: any)
 
 ---A connection handle returned by an EventKit subscription.
 ---@class EventKit.Connection
@@ -275,6 +301,7 @@ end
 ---@field Once fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener): EventKit.Connection
 ---@field ConnectUnit fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
 ---@field OnceUnit fun(self: EventKit.Scope, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
+---@field ConnectCombatLog fun(self: EventKit.Scope, subEvent: string, callback: EventKit.CombatLogListener): EventKit.Connection
 ---@field DisconnectAll fun(self: EventKit.Scope): integer
 ---@field Close fun(self: EventKit.Scope): boolean
 ---@field IsClosed fun(self: EventKit.Scope): boolean
@@ -328,6 +355,22 @@ end
 ---@field channels table<string, EventKit.Channel>
 ---@field frame WowFrame? `nil` once the group has released its Frame.
 
+---One combat-log sub-event's fan-out: the listeners that asked for it.
+---@class EventKit.CombatLogRoute
+---@field subEvent string The sub-event routed here, or `"*"` for the wildcard route.
+---@field signal SignalKit.Signal Listener fan-out for this sub-event.
+---@field count integer Live connections on this route; it leaves the router at zero.
+
+---The combat-log router: the package's one share of the
+---`COMBAT_LOG_EVENT_UNFILTERED` registration and the routes behind it.
+---@class EventKit.CombatLogRouter
+---@field channel EventKit.Channel|false The event's channel while at least one combat-log listener exists.
+---@field inner SignalKit.Connection|false The router's connection on that channel's signal.
+---@field readEventInfo function|false `CombatLogGetCurrentEventInfo`, resolved each time the router attaches.
+---@field routes table<string, EventKit.CombatLogRoute> Routes by sub-event name.
+---@field anyRoute EventKit.CombatLogRoute|false The wildcard route, delivered after the sub-event's own.
+---@field listenerCount integer Live combat-log connections; the router attaches at the first and detaches after the last.
+
 ---The shared limits. `SetLimits` accepts any subset; `GetLimits` returns a copy.
 ---@class EventKit.Limits
 ---@field maxUnitFrames integer Unit-filter Frames EventKit may ever create in the session; default 64, at most 512, never `EventKit.UNBOUNDED`.
@@ -345,6 +388,7 @@ end
 ---@field Once fun(self: EventKit, eventName: string, callback: EventKit.Listener): EventKit.Connection
 ---@field ConnectUnit fun(self: EventKit, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
 ---@field OnceUnit fun(self: EventKit, eventName: string, callback: EventKit.Listener, unit1: string, unit2: string?): EventKit.Connection
+---@field ConnectCombatLog fun(self: EventKit, subEvent: string, callback: EventKit.CombatLogListener): EventKit.Connection
 ---@field CreateScope fun(self: EventKit): EventKit.Scope
 ---@field ForAddon fun(self: EventKit, addonName: string): EventKit.Scope
 ---@field CloseAddonScopes fun(self: EventKit, addonName: string): boolean
@@ -372,6 +416,17 @@ if previousRevision == nil then
         dispatchRegular = nil,
         dispatchUnit = nil,
         isolate = nil,
+        -- The combat-log router (see "Combat log routing") and the dispatch
+        -- its channel listener resolves through, installed at commit.
+        combatLog = {
+            channel = false,
+            inner = false,
+            readEventInfo = false,
+            routes = {},
+            anyRoute = false,
+            listenerCount = 0,
+        },
+        dispatchCombatLog = nil,
         addonScopes = {},
         scopeMetatable = {},
         -- How many dispatches are on the stack, and the scopes closed during
@@ -472,6 +527,22 @@ else
         if rawget(state, "logoutConnection") == nil then
             rawset(state, "logoutConnection", false)
         end
+        rawset(state, "schema", 7)
+        schema = 7
+    end
+
+    if schema == 7 then
+        -- Revision 11 had no combat-log routing. A `Connect` listener it made
+        -- for the combat-log event keeps its channel; the router shares that
+        -- channel when the first `ConnectCombatLog` arrives.
+        rawset(state, "combatLog", {
+            channel = false,
+            inner = false,
+            readEventInfo = false,
+            routes = {},
+            anyRoute = false,
+            listenerCount = 0,
+        })
         rawset(state, "schema", STATE_SCHEMA)
         schema = STATE_SCHEMA
     end
@@ -557,6 +628,17 @@ end
 local function validateEventName(eventName, label, level)
     if type(eventName) ~= "string" or eventName == "" then
         error(label .. " eventName must be a non-empty string", level)
+    end
+end
+
+---Sub-event names are the client's (`SPELL_DAMAGE`), plus the `*` wildcard.
+---The running client stays authoritative on which exist, as for event names.
+---@param subEvent any
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateSubEvent(subEvent, label, level)
+    if type(subEvent) ~= "string" or subEvent == "" then
+        error(label .. " subEvent must be a non-empty string", level)
     end
 end
 
@@ -1022,6 +1104,176 @@ if type(secureCallFunction) == "function" then
     isolate = secureCallFunction
 end
 
+---Build the one wrapper closure a connection (or the combat-log router) hands
+---SignalKit: one per connection, never per event. The isolation function is
+---read from shared state so a compatible newer revision can replace it for
+---connections that already exist.
+---@param callback function
+---@return fun(...: any): any
+local function newIsolatedListener(callback)
+    return function(...)
+        return rawget(state, "isolate")(callback, ...)
+    end
+end
+
+-- Combat log routing ----------------------------------------------------------
+--
+-- `COMBAT_LOG_EVENT_UNFILTERED` is the highest-frequency event in the client
+-- and carries no payload: every listener would otherwise call
+-- `CombatLogGetCurrentEventInfo()` itself and test the sub-event it wants. The
+-- router is one listener on that event's ordinary channel, so it shares the
+-- host registration with plain `Connect` listeners and holds it only while a
+-- combat-log listener exists. Per event it reads the client once, looks up the
+-- sub-event's route and fires it with the returns unchanged, then the wildcard
+-- route. A sub-event nobody listens for costs the read and one lookup.
+--
+-- The router's listener runs through the same isolation as any listener, so a
+-- client read that raises is reported and the plain `Connect` listeners behind
+-- the router on the channel still receive the event. Each route listener is
+-- then isolated individually, exactly as a `Connect` listener is. The extra
+-- isolated call stages no arguments and allocates nothing per event.
+
+---The one listener the router connects to the combat-log channel. It resolves
+---the dispatcher through shared state so a newer revision replaces it while
+---the connection an older copy made stays in place.
+local function onCombatLogEvent()
+    return rawget(state, "dispatchCombatLog")()
+end
+
+---Fan one combat-log event out by its sub-event, then to the wildcard route.
+---@param combatLog EventKit.CombatLogRouter
+---@param ... any every return of `CombatLogGetCurrentEventInfo()`
+local function routeCombatLogEvent(combatLog, ...)
+    -- The sub-event is the second return. A multiple assignment reads it
+    -- without copying the rest of the payload, which `select` would.
+    local _, subEvent = ...
+    local route = rawget(rawget(combatLog, "routes"), subEvent)
+    -- Both routes are read before either fires: a wildcard listener connected
+    -- by a sub-event listener must not receive the event being dispatched,
+    -- as a listener connected during a `Connect` dispatch does not. A wildcard
+    -- route dropped during the first fire is harmless, because SignalKit has
+    -- marked its connections disconnected.
+    local anyRoute = rawget(combatLog, "anyRoute")
+    if route ~= nil then
+        rawget(route, "signal"):Fire(...)
+    end
+    if anyRoute ~= false then
+        rawget(anyRoute, "signal"):Fire(...)
+    end
+end
+
+---Read the client's current combat-log event once and route it.
+local function dispatchCombatLog()
+    local combatLog = rawget(state, "combatLog")
+    return routeCombatLogEvent(combatLog, rawget(combatLog, "readEventInfo")())
+end
+
+---Take the router's share of the combat-log registration.
+---
+---Called for the first combat-log listener. The client API is resolved here
+---rather than at load so a copy loaded before the API existed still works,
+---and it is checked before anything is registered so a refusal leaves nothing
+---behind. The registration itself is refused at the caller, like `Connect`.
+---@param combatLog EventKit.CombatLogRouter
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level a refused registration is reported at
+local function attachCombatLogRouter(combatLog, label, level)
+    -- CombatLogGetCurrentEventInfo is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local readEventInfo = rawget(_G, "CombatLogGetCurrentEventInfo")
+    if type(readEventInfo) ~= "function" then
+        error("EventKit: requires the World of Warcraft CombatLogGetCurrentEventInfo API", 0)
+    end
+
+    local channel = createRegularChannel(COMBAT_LOG_EVENT, label, level + 1)
+    local inner = rawget(channel, "signal"):Connect(newIsolatedListener(onCombatLogEvent))
+    rawset(channel, "count", rawget(channel, "count") + 1)
+
+    rawset(combatLog, "channel", channel)
+    rawset(combatLog, "inner", inner)
+    rawset(combatLog, "readEventInfo", readEventInfo)
+end
+
+---Give the router's share of the registration back; the channel unregisters
+---the event only when no plain `Connect` listener holds it.
+---@param combatLog EventKit.CombatLogRouter
+local function detachCombatLogRouter(combatLog)
+    local channel = rawget(combatLog, "channel")
+    local inner = rawget(combatLog, "inner")
+    rawset(combatLog, "channel", false)
+    rawset(combatLog, "inner", false)
+    rawset(combatLog, "readEventInfo", false)
+
+    inner:Disconnect()
+    releaseChannel(channel)
+end
+
+---Return the route for `subEvent`, attaching the router and creating the route
+---on demand.
+---@param subEvent string a client sub-event name, or `"*"`
+---@param label string qualified public method name, used in the argument error
+---@param level integer stack level a refused registration is reported at
+---@return EventKit.CombatLogRoute
+local function acquireCombatLogRoute(subEvent, label, level)
+    local combatLog = rawget(state, "combatLog")
+    if rawget(combatLog, "channel") == false then
+        attachCombatLogRouter(combatLog, label, level + 1)
+    end
+
+    local routes = rawget(combatLog, "routes")
+    local isWildcard = subEvent == ANY_COMBAT_LOG_SUB_EVENT
+    local route
+    if isWildcard then
+        route = rawget(combatLog, "anyRoute")
+        if route == false then
+            route = nil
+        end
+    else
+        route = rawget(routes, subEvent)
+    end
+    if route ~= nil then
+        return route
+    end
+
+    route = {
+        subEvent = subEvent,
+        signal = SignalKit:New(),
+        count = 0,
+    }
+    if isWildcard then
+        rawset(combatLog, "anyRoute", route)
+    else
+        rawset(routes, subEvent, route)
+    end
+    return route
+end
+
+---Drop one connection from `route`, dropping the route with its last listener
+---and detaching the router with the last listener of any route.
+---@param route EventKit.CombatLogRoute
+local function releaseCombatLogRoute(route)
+    local combatLog = rawget(state, "combatLog")
+    local count = rawget(route, "count") - 1
+    rawset(route, "count", count)
+    local listenerCount = rawget(combatLog, "listenerCount") - 1
+    rawset(combatLog, "listenerCount", listenerCount)
+
+    -- As in `releaseChannel`, any non-positive count is "empty", so a
+    -- bookkeeping slip cannot pin a route or the registration for the session.
+    if count <= 0 then
+        local subEvent = rawget(route, "subEvent")
+        if subEvent == ANY_COMBAT_LOG_SUB_EVENT then
+            rawset(combatLog, "anyRoute", false)
+        else
+            rawset(rawget(combatLog, "routes"), subEvent, nil)
+        end
+    end
+
+    if listenerCount <= 0 and rawget(combatLog, "channel") ~= false then
+        detachCombatLogRouter(combatLog)
+    end
+end
+
 -- Scope ownership -----------------------------------------------------------
 --
 -- A scope keeps its live connections on an intrusive doubly linked list: the
@@ -1086,10 +1338,12 @@ local function disconnectEventConnection(connection)
 
     local inner = rawget(connection, "_inner")
     local channel = rawget(connection, "_channel")
+    local route = rawget(connection, "_route")
 
     rawset(connection, "_connected", false)
     rawset(connection, "_inner", nil)
     rawset(connection, "_channel", nil)
+    rawset(connection, "_route", nil)
 
     -- Leave the scope before touching SignalKit or the host, both of which can
     -- raise. Bulk teardown relies on every attempted connection leaving the
@@ -1097,7 +1351,14 @@ local function disconnectEventConnection(connection)
     unlinkFromScope(connection)
 
     inner:Disconnect()
-    releaseChannel(channel)
+    -- A combat-log connection shares the host registration through its route
+    -- instead of holding a channel. Connections made before revision 12 carry
+    -- no `_route` field at all, which reads the same as `false`.
+    if route ~= nil and route ~= false then
+        releaseCombatLogRoute(route)
+    else
+        releaseChannel(channel)
+    end
     return true
 end
 
@@ -1112,6 +1373,7 @@ local function connectToChannel(channel, callback, once, scope)
         _connected = true,
         _inner = nil,
         _channel = channel,
+        _route = false,
         _scope = false,
         _scopePrevious = false,
         _scopeNext = false,
@@ -1120,22 +1382,47 @@ local function connectToChannel(channel, callback, once, scope)
     local signal = rawget(channel, "signal")
     local inner
 
-    -- One wrapper closure per connection, never per event. The isolation
-    -- function is read from shared state so a compatible newer revision can
-    -- replace it for connections that already exist.
+    -- A one-shot disconnects itself before the isolated call, so it needs its
+    -- own wrapper; every other connection shares the plain one.
     if once then
         inner = signal:Connect(function(...)
             disconnectEventConnection(connection)
             return rawget(state, "isolate")(callback, ...)
         end)
     else
-        inner = signal:Connect(function(...)
-            return rawget(state, "isolate")(callback, ...)
-        end)
+        inner = signal:Connect(newIsolatedListener(callback))
     end
 
     rawset(connection, "_inner", inner)
     rawset(channel, "count", rawget(channel, "count") + 1)
+    if scope ~= false then
+        linkToScope(scope, connection)
+    end
+    return connection
+end
+
+---Attach `callback` to a combat-log route as an ordinary connection handle.
+---@param route EventKit.CombatLogRoute
+---@param callback EventKit.CombatLogListener
+---@param scope EventKit.Scope|false owning scope, or `false` for none
+---@return EventKit.Connection
+local function connectToRoute(route, callback, scope)
+    local connection = setmetatable({
+        _connected = true,
+        _inner = nil,
+        _channel = false,
+        _route = route,
+        _scope = false,
+        _scopePrevious = false,
+        _scopeNext = false,
+    }, CONNECTION_METATABLE)
+
+    local inner = rawget(route, "signal"):Connect(newIsolatedListener(callback))
+    rawset(connection, "_inner", inner)
+    rawset(route, "count", rawget(route, "count") + 1)
+
+    local combatLog = rawget(state, "combatLog")
+    rawset(combatLog, "listenerCount", rawget(combatLog, "listenerCount") + 1)
     if scope ~= false then
         linkToScope(scope, connection)
     end
@@ -1259,6 +1546,21 @@ local function subscribeUnit(scope, label, level, eventName, callback, once, ...
     local units, key = normalizeUnits(label, level + 1, ...)
     local channel = createUnitChannel(eventName, units, key, label, level + 1)
     local connection = connectToChannel(channel, callback, once, scope)
+    return connection
+end
+
+---Validate and attach one combat-log subscription.
+---@param scope EventKit.Scope|false owning scope, or `false` for none
+---@param label string qualified public method name, used in the argument errors
+---@param level integer stack level the failures are reported at
+---@param subEvent any
+---@param callback any
+---@return EventKit.Connection
+local function subscribeCombatLog(scope, label, level, subEvent, callback)
+    validateSubEvent(subEvent, label, level + 1)
+    validateCallback(callback, label, level + 1)
+    local route = acquireCombatLogRoute(subEvent, label, level + 1)
+    local connection = connectToRoute(route, callback, scope)
     return connection
 end
 
@@ -2228,6 +2530,19 @@ local function onceUnitEvent(_, eventName, callback, ...)
     return connection
 end
 
+---Subscribe to one combat-log sub-event, or to every one with `"*"`. The
+---callback receives every return of `CombatLogGetCurrentEventInfo()`, read
+---once per event for all combat-log listeners. See docs/API.md,
+---"EventKit:ConnectCombatLog".
+---@param _ EventKit
+---@param subEvent string a client sub-event name such as `"SPELL_DAMAGE"`, or `"*"`
+---@param callback EventKit.CombatLogListener
+---@return EventKit.Connection connection
+local function connectCombatLog(_, subEvent, callback)
+    local connection = subscribeCombatLog(false, "EventKit:ConnectCombatLog", 3, subEvent, callback)
+    return connection
+end
+
 ---Coalesce `events` into at most one `callback(set)` per interval. Requires
 ---SchedulerKit; see docs/API.md, "Coalescing events".
 ---@param _ EventKit
@@ -2470,6 +2785,19 @@ local function scopeOnceUnit(self, eventName, callback, ...)
     return connection
 end
 
+---Subscribe to a combat-log sub-event inside this scope.
+---@param self EventKit.Scope
+---@param subEvent string a client sub-event name such as `"SPELL_DAMAGE"`, or `"*"`
+---@param callback EventKit.CombatLogListener
+---@return EventKit.Connection connection
+local function scopeConnectCombatLog(self, subEvent, callback)
+    validateScope(self, "EventKit.Scope:ConnectCombatLog", 3)
+    ensureScopeOpen(self, "EventKit.Scope:ConnectCombatLog", 3)
+    local connection =
+        subscribeCombatLog(self, "EventKit.Scope:ConnectCombatLog", 3, subEvent, callback)
+    return connection
+end
+
 ---Coalesce `events` inside this scope.
 ---@param self EventKit.Scope
 ---@param events string|string[]
@@ -2558,6 +2886,7 @@ rawset(Scope, "Connect", scopeConnect)
 rawset(Scope, "Once", scopeOnce)
 rawset(Scope, "ConnectUnit", scopeConnectUnit)
 rawset(Scope, "OnceUnit", scopeOnceUnit)
+rawset(Scope, "ConnectCombatLog", scopeConnectCombatLog)
 rawset(Scope, "DisconnectAll", scopeDisconnectAll)
 rawset(Scope, "Close", scopeClose)
 rawset(Scope, "IsClosed", scopeIsClosed)
@@ -2586,6 +2915,7 @@ rawset(EventKit, "Connect", connectEvent)
 rawset(EventKit, "Once", onceEvent)
 rawset(EventKit, "ConnectUnit", connectUnitEvent)
 rawset(EventKit, "OnceUnit", onceUnitEvent)
+rawset(EventKit, "ConnectCombatLog", connectCombatLog)
 rawset(EventKit, "CreateScope", createScope)
 rawset(EventKit, "ForAddon", forAddon)
 rawset(EventKit, "CloseAddonScopes", closeAddonScopes)
@@ -2598,6 +2928,7 @@ rawset(EventKit, "GetLimits", getLimits)
 rawset(state, "dispatchRegular", dispatchRegular)
 rawset(state, "dispatchUnit", dispatchUnit)
 rawset(state, "isolate", isolate)
+rawset(state, "dispatchCombatLog", dispatchCombatLog)
 rawset(state, "closeOnLogout", closeOnLogout)
 rawset(state, "closeOnShutdown", closeOnShutdown)
 

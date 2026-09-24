@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **11**.
+Implementation revision: **12**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -72,6 +72,84 @@ registration errors are propagated.
 
 Unit-filtered one-shot subscription with the same disconnect-before-callback guarantee as `Once`, and the same two-token limit as `ConnectUnit`.
 
+## `EventKit:ConnectCombatLog(subEvent, callback)`
+
+Subscribes to one **combat-log sub-event** and returns an ordinary connection.
+`COMBAT_LOG_EVENT_UNFILTERED` carries no payload: the client hands the event
+out through `CombatLogGetCurrentEventInfo()`, which is only valid inside the
+handler. EventKit makes that call **once per event**, for every combat-log
+listener together, and calls each listener of the event's sub-event with
+**every return, unchanged**:
+
+```lua
+EventKit:ConnectCombatLog("SPELL_DAMAGE", function(timestamp, subEvent, hideCaster,
+        sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
+        destGUID, destName, destFlags, destRaidFlags,
+        spellId, spellName, spellSchool, amount, overkill, school, resisted,
+        blocked, absorbed, critical, glancing, crushing, isOffHand)
+    -- ...
+end)
+```
+
+- `subEvent` is the client's sub-event name, the second return of
+  `CombatLogGetCurrentEventInfo()` (`"SPELL_DAMAGE"`, `"SWING_DAMAGE"`,
+  `"UNIT_DIED"`, ...), or **`"*"`** for every sub-event. It must be a
+  non-empty string; the running client stays authoritative on which names
+  exist, as it does for event names.
+- The listener receives **no event name** in front: the first value is the
+  timestamp and the second the sub-event. The first eleven values are the same
+  for every sub-event; what follows is the sub-event's own suffix, whose count
+  varies (a swing has none of the spell values, a periodic damage has an
+  extra one). Values are forwarded with their count intact, `nil` holes
+  included, so `select("#", ...)` in the listener tells the truth.
+- Listeners of one sub-event run in connection order; the wildcard listeners
+  run **after** the sub-event's own, in their own connection order. A
+  sub-event with no listener costs one lookup and nothing else.
+- Listeners are isolated exactly as `Connect` listeners are: one that raises is
+  reported through the host error handler and the rest still run. Scope
+  ownership, `Disconnect`, `IsConnected`, mutation during a dispatch and the
+  deferred scope close all behave as for `Connect`.
+
+### One registration, shared with `Connect`
+
+EventKit registers `COMBAT_LOG_EVENT_UNFILTERED` with the host only while at
+least one combat-log listener exists, and unregisters it when the last one
+disconnects. The registration is the event's ordinary channel: a plain
+`EventKit:Connect("COMBAT_LOG_EVENT_UNFILTERED", ...)` shares it and keeps
+working unchanged, receiving the event name alone, and the event stays
+registered as long as either kind of listener remains. The delivery order
+between plain listeners and combat-log listeners of the same event is not
+defined.
+
+`ConnectCombatLog` resolves `CombatLogGetCurrentEventInfo` when the first
+combat-log listener connects. Without it (no supported client lacks it) the
+call raises `EventKit: requires the World of Warcraft
+CombatLogGetCurrentEventInfo API` and registers nothing. A registration the
+host refuses raises `EventKit:ConnectCombatLog could not register event
+COMBAT_LOG_EVENT_UNFILTERED` at the caller's line and also leaves nothing
+behind.
+
+### Cost
+
+Per event: one isolated call for the router itself, in which it makes one
+`CombatLogGetCurrentEventInfo()` call, one table lookup for the sub-event and
+one field read for the wildcard, and then one isolated call per listener of
+the routes that matched, with the values staged the same way as any event
+payload (see *Listener isolation*). The router runs inside the same isolation
+as a listener, so a client read that raised would be reported through the host
+error handler and plain `Connect` listeners of the event would still run.
+Nothing is allocated per event; a spec guards that with
+`collectgarbage("count")` deltas across sub-event and wildcard listeners
+together. The last combat-log listener disconnecting and reconnecting inside
+its own callback works, at the price of unregistering and re-registering the
+host event within that one dispatch. Per sub-event in use, EventKit keeps one route (a
+SignalKit signal and a count) that leaves with the sub-event's last listener,
+so routes are bounded by the live subscriptions, like event channels, and need
+no limit of their own.
+
+There is no one-shot form: a combat-log sub-event is a stream, and a listener
+that wants a single occurrence disconnects itself.
+
 ## Owner scopes
 
 A scope groups connections so their owner can tear them all down in one call.
@@ -103,6 +181,7 @@ scope:Close()         -- terminal; later connections are refused
 | `Once(eventName, callback)` | `EventKit:Once`, owned by this scope. |
 | `ConnectUnit(eventName, callback, unit1 [, unit2])` | `EventKit:ConnectUnit`, owned by this scope. |
 | `OnceUnit(eventName, callback, unit1 [, unit2])` | `EventKit:OnceUnit`, owned by this scope. |
+| `ConnectCombatLog(subEvent, callback)` | `EventKit:ConnectCombatLog`, owned by this scope. |
 | `DisconnectAll()` | Disconnect every live connection; return how many; keep the scope usable. |
 | `Close()` | Terminally close after best-effort disconnection; `false` if already closed. |
 | `IsClosed()` | Whether the scope is closed. |
@@ -124,7 +203,8 @@ re-raised unchanged afterwards. This is the contract
 `TimerKit.Scope:CancelAll()` already documents.
 
 `Close()` marks the scope closed before the sweep begins. From then on
-`Connect`, `Once`, `ConnectUnit` and `OnceUnit` raise at the caller's line:
+`Connect`, `Once`, `ConnectUnit`, `OnceUnit` and `ConnectCombatLog` raise at
+the caller's line:
 
 ```text
 MyAddon/Main.lua:42: EventKit.Scope:Connect cannot connect in a closed scope
@@ -463,7 +543,9 @@ Two bounds stay fixed, because they are not retention a consumer can own:
 Scopes have no connection cap: a scope's connections are its owner's own
 registrations and are released with it. The logout routing holds at most one
 LifecycleKit subscription per addon scope, released when the scope closes, and
-one `PLAYER_LOGOUT` connection for the package.
+one `PLAYER_LOGOUT` connection for the package. Combat-log routes are released
+with their sub-event's last listener, as event channels are, so they carry no
+limit either (see [`ConnectCombatLog`](#eventkitconnectcombatlogsubevent-callback)).
 
 ## Dispatch semantics
 
@@ -527,8 +609,10 @@ listener invocations), best of three runs, against revision 1 with no isolation:
 
 Both revisions allocate nothing measurable per event; a spec guards that with
 `collectgarbage("count")` deltas. The hottest real event,
-`COMBAT_LOG_EVENT_UNFILTERED`, carries no payload at all and therefore takes the
-cheapest inline path.
+`COMBAT_LOG_EVENT_UNFILTERED`, carries no payload at all, so a plain `Connect`
+listener for it takes the cheapest inline path; a `ConnectCombatLog` listener
+receives the full `CombatLogGetCurrentEventInfo()` return list, which the
+buffered path forwards without allocating.
 
 Errors are reported once per failing listener per dispatch, so a listener that
 fails on every event will spam the host error handler exactly as a non-isolated
@@ -537,6 +621,18 @@ one would.
 ## Embedded copies and upgrades
 
 Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
+
+Revision 12 moved `_state` from schema 7 to schema 8, adding the combat-log
+router (`combatLog`: the router's share of the `COMBAT_LOG_EVENT_UNFILTERED`
+channel, the routes by sub-event, the wildcard route and the listener count)
+and the dispatcher its channel listener resolves through (`dispatchCombatLog`).
+A revision-12 copy loading over revision 11 or older adds both in place with
+no listener; a plain `Connect` listener the older copy made for the combat-log
+event keeps its channel, which the router shares from the first
+`ConnectCombatLog` on. Connections made before revision 12 carry no `_route`
+field, which the newer disconnect reads as "a channel". A newer copy loading
+over revision 12 keeps the router, its routes and its listeners, and the
+channel listener the older copy connected follows the newer dispatcher.
 
 Revision 11 moved `_state` from schema 6 to schema 7, adding the package's
 `PLAYER_LOGOUT` connection (`logoutConnection`) and the two handlers the
@@ -585,25 +681,39 @@ A breaking public contract change requires a new EventKit API generation.
 
 ## World of Warcraft specifics
 
-### `COMBAT_LOG_EVENT_UNFILTERED` carries no payload
+### The combat log: no payload, two ways to listen
 
-Since Legion the combat-log event delivers **no arguments**. Handlers read the
-event out of the client instead:
+Since Legion `COMBAT_LOG_EVENT_UNFILTERED` delivers **no arguments**. The
+client hands the event out through `CombatLogGetCurrentEventInfo()`, which is
+only valid inside the handler. EventKit offers two ways to listen, sharing one
+host registration:
+
+| | `Connect("COMBAT_LOG_EVENT_UNFILTERED", callback)` | `ConnectCombatLog(subEvent, callback)` |
+|---|---|---|
+| The callback receives | `"COMBAT_LOG_EVENT_UNFILTERED"` and nothing else. | Every return of `CombatLogGetCurrentEventInfo()`, unchanged. |
+| Who reads the client | The callback, itself, on every event. | EventKit, once per event for all combat-log listeners. |
+| Which events reach it | Every one. | Its sub-event's, or every one with `"*"`. |
+| Use it when | You need the raw event, or must read the client yourself. | Almost always. |
 
 ```lua
+-- Raw: read the client yourself, filter yourself.
 EventKit:Connect("COMBAT_LOG_EVENT_UNFILTERED", function()
     local timestamp, subEvent, hideCaster, sourceGUID = CombatLogGetCurrentEventInfo()
+    if subEvent == "SPELL_DAMAGE" then
+        -- ...
+    end
+end)
+
+-- Routed: EventKit reads the client once and delivers by sub-event.
+EventKit:ConnectCombatLog("SPELL_DAMAGE", function(timestamp, subEvent, hideCaster, sourceGUID)
     -- ...
 end)
 ```
 
-EventKit forwards the event name and whatever the client passed, so the callback
-receives exactly `"COMBAT_LOG_EVENT_UNFILTERED"` and nothing else. Do not expect
-payload parameters, and keep the handler short: this is the highest-frequency
-event in the client.
-
-`COMBAT_LOG_EVENT_UNFILTERED` is a normal event, not a unit event.
-`CombatLogGetCurrentEventInfo()` is only valid inside the handler.
+Either way, keep the handler short: this is the highest-frequency event in the
+client. `COMBAT_LOG_EVENT_UNFILTERED` is a normal event, not a unit event. The
+routed form is specified under
+[`EventKit:ConnectCombatLog`](#eventkitconnectcombatlogsubevent-callback).
 
 ### Taint
 

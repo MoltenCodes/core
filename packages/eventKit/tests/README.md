@@ -22,14 +22,26 @@ It also covers:
 - the shared `maxUnitFrames` limit: its default, `SetLimits` raising and
   lowering it without eviction, the refusal of `EventKit.UNBOUNDED` and of
   invalid values at the caller's line, atomic updates, and `GetLimits` copies;
+- `ConnectCombatLog`: routing by sub-event, forwarding of every
+  `CombatLogGetCurrentEventInfo()` return with its count intact (holes,
+  trailing `nil`, payloads wider than the inline slots), one client read per
+  event, the `"*"` wildcard and its order after the sub-event's own listeners,
+  no allocation per event, host registration held only while a combat-log
+  listener exists and shared with a plain `Connect` on the same event, a
+  refused registration and a missing client API leaving nothing behind,
+  a plain listener detaching or attaching the router mid-fire, the last
+  listener reconnecting inside its own callback, a wildcard listener
+  connected or dropped during a dispatch, a raising client read reported
+  while plain listeners still run, isolation on both paths, scopes with the
+  deferred close, and caller-line errors;
 - who closes an addon scope at logout: a LifecycleKit that lists EventKit in
   `CLOSES_ADDON_SCOPES`, an older LifecycleKit through `OnShutdown`, or
   EventKit's own `PLAYER_LOGOUT` one-shot, with scoped logout listeners still
   delivered, a refused registration retried, and routes given to or carried
   from an older copy;
-- in-place upgrade from implementation revisions 1, 4, 5, 6, 8, 9 and 10, set limits
-  and the sentinel carried to a newer revision, and the refusal to downgrade a
-  newer copy.
+- in-place upgrade from implementation revisions 1, 4, 5, 6, 8, 9, 10 and 11,
+  set limits and the sentinel carried to a newer revision, and the refusal to
+  downgrade a newer copy.
 
 ## Spec files
 
@@ -43,6 +55,7 @@ It also covers:
 | `Once_spec.lua` | One-shot subscriptions. |
 | `UnitEvents_spec.lua` | Unit filters, the two-token limit, unit-group release and the Frame cap. |
 | `Errors_spec.lua` | Argument, receiver and host-environment errors and their levels; refused registrations; listener isolation. |
+| `CombatLog_spec.lua` | `ConnectCombatLog`: routing, forwarding, the single client read, the wildcard, allocation, host registration beside a plain `Connect`, isolation, scopes, errors. |
 | `LogoutCoverage_spec.lua` | The logout routes, subscription release, scoped `PLAYER_LOGOUT` listeners around the close, re-examination, routes across an upgrade. |
 | `Scope_spec.lua` | Manual and addon scopes, deferred close, `CloseAddonScopes`. |
 | `Coalesce_spec.lua` | `Coalesce`, with and without SchedulerKit. |
@@ -59,6 +72,14 @@ TimerKit and SchedulerKit (LifecycleKit is optional for both and not loaded). Th
 suite; the release load order ignores optional dependencies.
 
 `EventKitTestEnv.lua` supplies a narrow fake WoW Frame boundary. Production APIs are not added solely for tests.
+
+It also replaces the shared fixture's `CombatLogGetCurrentEventInfo` with one
+that returns exactly the values a spec set, `nil` holes and trailing `nil`s
+included, and counts its reads: `SetCombatLogEventInfo(...)`,
+`CombatLogEventInfoReads()` and `EmitCombatLogEvent(...)`, which sets the
+values and emits the payload-free `COMBAT_LOG_EVENT_UNFILTERED`. EventKit
+resolves the API when its first combat-log listener connects, so the fake is
+installed with the other host globals, before the package loads.
 
 The stub enforces the host's two unit-filter slots so the suite can see a package
 bug that passes a third token, and installs a `geterrorhandler` hook so isolated

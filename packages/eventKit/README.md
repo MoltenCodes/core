@@ -5,14 +5,14 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.6.0`
+- Version: `0.8.0`
 - API generation: `1`
-- Implementation revision: `10`
+- Implementation revision: `12`
 - Runtime dependencies: Registry API 2, SignalKit API 1
 - Optional partner: SchedulerKit API 1, found at call time by `Coalesce` and `Derive`
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW
-session. That shapes three of its guarantees:
+session. That shapes four of its guarantees:
 
 - **Listeners are isolated.** One addon's erroring handler is reported through
   the host error handler and never stops delivery to the others.
@@ -24,6 +24,10 @@ session. That shapes three of its guarantees:
 - **`ConnectUnit` accepts at most two unit tokens**, because
   `Frame:RegisterUnitEvent` has two filter slots. A third is an error rather
   than something the client silently drops.
+- **The combat log is read once per event.** `ConnectCombatLog(subEvent,
+  callback)` calls `CombatLogGetCurrentEventInfo()` once for every combat-log
+  listener in the session and routes by sub-event, so the client's hottest
+  event costs one read and one lookup however many addons listen.
 
 ## Example
 
@@ -45,6 +49,18 @@ Unit-filtered events use the same connection lifecycle:
 local health = EventKit:ConnectUnit("UNIT_HEALTH", function(eventName, unit)
     print(eventName, "for", unit)
 end, "player")
+```
+
+So do combat-log sub-events. `COMBAT_LOG_EVENT_UNFILTERED` carries no payload;
+EventKit reads `CombatLogGetCurrentEventInfo()` once per event and hands every
+return to the listeners of that sub-event (or of `"*"`, every sub-event):
+
+```lua
+local damage = EventKit:ConnectCombatLog("SPELL_DAMAGE", function(timestamp, subEvent,
+        hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags,
+        destGUID, destName, destFlags, destRaidFlags, spellId, spellName, spellSchool, amount)
+    print(spellName, "hit", destName, "for", amount)
+end)
 ```
 
 Owner scopes tear down everything an owner subscribed to in one call. They
@@ -85,8 +101,9 @@ Without SchedulerKit, `Coalesce` is refused and `Derive` recomputes on every
 event. See [Coalescing events](docs/API.md#coalescing-events).
 
 See [`docs/API.md`](docs/API.md) for the full public contract and edge-case
-semantics, including the combat-log event's empty payload, the taint
-consequences of a shared bus, and the measured cost of listener isolation.
+semantics, including the two ways to listen to the payload-free combat-log
+event, the taint consequences of a shared bus, and the measured cost of
+listener isolation.
 
 ## Embedding
 

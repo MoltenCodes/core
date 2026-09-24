@@ -15,6 +15,11 @@
 --- `Registry:Find`, whether it closes the scope at logout. The manifest
 --- declares it under `optionalDependencies`, so it is on `LUA_PATH` as well;
 --- `LoadLifecycleKit` loads it on top of the chain and `Reset` unloads it.
+---
+--- The combat-log fake here replaces the shared fixture's: `ConnectCombatLog`
+--- forwards every return of `CombatLogGetCurrentEventInfo()` with its count
+--- intact, so the fake has to return exactly the values a spec set, holes and
+--- trailing `nil`s included, and count how often it was read.
 local FrameworkTestEnv = require("FrameworkTestEnv")
 
 local EventKitTestEnv = FrameworkTestEnv.New({
@@ -22,11 +27,70 @@ local EventKitTestEnv = FrameworkTestEnv.New({
 })
 
 local resetFixture = EventKitTestEnv.Reset
+local installWowApi = EventKitTestEnv.InstallWowApi
 
----Reset the shared fixture and unload LifecycleKit.
+-- Lua 5.1 publishes unpack as a global; newer interpreters move it onto table.
+-- selene: allow(global_usage)
+local unpackValues = rawget(table, "unpack") or rawget(_G, "unpack")
+
+-- The values the fake returns, their exact count, and how often it was read.
+local combatLogValues = {}
+local combatLogValueCount = 0
+local combatLogReads = 0
+
+---Install a `CombatLogGetCurrentEventInfo` that returns exactly the values set
+---through `SetCombatLogEventInfo` and counts its calls.
+---
+---EventKit resolves the API when its first combat-log listener connects, so
+---the fake is installed with the other host globals, before the package loads.
+function EventKitTestEnv.InstallCombatLogEventInfo()
+    combatLogValues = {}
+    combatLogValueCount = 0
+    combatLogReads = 0
+    -- The fixture stands in for the World of Warcraft client, whose API only exists in the global table.
+    -- selene: allow(global_usage)
+    rawset(_G, "CombatLogGetCurrentEventInfo", function()
+        combatLogReads = combatLogReads + 1
+        return unpackValues(combatLogValues, 1, combatLogValueCount)
+    end)
+end
+
+---Install the shared host stubs, then this package's combat-log fake on top.
+function EventKitTestEnv.InstallWowApi()
+    installWowApi()
+    EventKitTestEnv.InstallCombatLogEventInfo()
+end
+
+---Reset the shared fixture, unload LifecycleKit and forget the combat-log fake.
 function EventKitTestEnv.Reset()
     resetFixture()
     package.loaded["LifecycleKit"] = nil
+    combatLogValues = {}
+    combatLogValueCount = 0
+    combatLogReads = 0
+end
+
+---Set what `CombatLogGetCurrentEventInfo()` returns next: exactly these
+---values, `nil` holes and trailing `nil`s preserved.
+---@param ... any `timestamp, subEvent, hideCaster, sourceGUID, ...`
+function EventKitTestEnv.SetCombatLogEventInfo(...)
+    combatLogValueCount = select("#", ...)
+    combatLogValues = { ... }
+end
+
+---How many times `CombatLogGetCurrentEventInfo()` was called since the fake
+---was installed or the environment reset.
+---@return integer reads
+function EventKitTestEnv.CombatLogEventInfoReads()
+    return combatLogReads
+end
+
+---Deliver one combat-log event the way the client does: set what the API
+---returns, then emit the payload-free `COMBAT_LOG_EVENT_UNFILTERED`.
+---@param ... any `timestamp, subEvent, hideCaster, sourceGUID, ...`
+function EventKitTestEnv.EmitCombatLogEvent(...)
+    EventKitTestEnv.SetCombatLogEventInfo(...)
+    EventKitTestEnv.Emit("COMBAT_LOG_EVENT_UNFILTERED")
 end
 
 ---Load LifecycleKit after the chain `NewPackage` loaded.

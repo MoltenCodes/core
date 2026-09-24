@@ -7,16 +7,17 @@ local function expectErrorContaining(expected, callback)
 end
 
 local function installFutureEventsFacade(Registry)
-    local EventKit = Registry:Register("eventKit", 1, 12)
+    local EventKit = Registry:Register("eventKit", 1, 13)
     local function stub() end
     EventKit.API = 1
-    EventKit.REVISION = 12
+    EventKit.REVISION = 13
     EventKit.Connection = { Disconnect = stub, IsConnected = stub }
     EventKit.Scope = {
         Connect = stub,
         Once = stub,
         ConnectUnit = stub,
         OnceUnit = stub,
+        ConnectCombatLog = stub,
         DisconnectAll = stub,
         Close = stub,
         IsClosed = stub,
@@ -29,6 +30,7 @@ local function installFutureEventsFacade(Registry)
     EventKit.Once = stub
     EventKit.ConnectUnit = stub
     EventKit.OnceUnit = stub
+    EventKit.ConnectCombatLog = stub
     EventKit.CreateScope = stub
     EventKit.Coalesce = stub
     EventKit.Derive = stub
@@ -51,6 +53,18 @@ local function emulateSchemaFiveCopy(legacy)
     rawset(legacy, "UNBOUNDED", nil)
     rawset(legacy, "SetLimits", nil)
     rawset(legacy, "GetLimits", nil)
+end
+
+---Strip what revision 12 added, so a copy loaded at revision 11 leaves the
+---schema-7 state and facade revision 11 left behind.
+---@param legacy table
+local function emulateSchemaSevenCopy(legacy)
+    local legacyState = rawget(legacy, "_state")
+    rawset(legacyState, "schema", 7)
+    rawset(legacyState, "combatLog", nil)
+    rawset(legacyState, "dispatchCombatLog", nil)
+    rawset(legacy, "ConnectCombatLog", nil)
+    rawset(rawget(legacy, "Scope"), "ConnectCombatLog", nil)
 end
 
 describe("EventKit package bootstrap", function()
@@ -84,13 +98,13 @@ describe("EventKit package bootstrap", function()
         end)
     end)
 
-    it("registers EventKit API 1 revision 11", function()
+    it("registers EventKit API 1 revision 12", function()
         local EventKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("eventKit", 1)
         assert.are.equal(EventKit, selected)
-        assert.are.equal(11, revision)
+        assert.are.equal(12, revision)
         assert.are.equal(1, EventKit.API)
-        assert.are.equal(11, EventKit.REVISION)
+        assert.are.equal(12, EventKit.REVISION)
     end)
 
     it("reuses the package facade across duplicate embedding", function()
@@ -163,9 +177,9 @@ describe("EventKit package bootstrap", function()
         local state = EventKit._state
 
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(11, EventKit.REVISION)
+        assert.are.equal(12, EventKit.REVISION)
         assert.are.equal(legacyConnectionMethods, EventKit.Connection)
-        assert.are.equal(7, state.schema)
+        assert.are.equal(8, state.schema)
         assert.are.equal(legacyGroup, state.unitGroups["6:player"])
         assert.are.equal("6:player", legacyGroup.key)
         assert.are.equal(1, state.unitFrameCount)
@@ -210,9 +224,9 @@ describe("EventKit package bootstrap", function()
         local state = EventKit._state
 
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(11, EventKit.REVISION)
+        assert.are.equal(12, EventKit.REVISION)
         assert.are.equal(legacyConnectionMethods, EventKit.Connection)
-        assert.are.equal(7, state.schema)
+        assert.are.equal(8, state.schema)
         assert.are.equal("table", type(state.addonScopes))
         assert.are.equal("table", type(EventKit.Scope))
 
@@ -261,9 +275,9 @@ describe("EventKit package bootstrap", function()
         local EventKit = require("EventKit")
         local state = EventKit._state
 
-        assert.are.equal(11, EventKit.REVISION)
+        assert.are.equal(12, EventKit.REVISION)
         assert.are.equal(legacyScopePrototype, EventKit.Scope)
-        assert.are.equal(7, state.schema)
+        assert.are.equal(8, state.schema)
         assert.are.equal(0, state.dispatchDepth)
         assert.are.equal(0, state.pendingScopeCount)
 
@@ -323,8 +337,8 @@ describe("EventKit package bootstrap", function()
 
         local EventKit = require("EventKit")
         local state = EventKit._state
-        assert.are.equal(11, EventKit.REVISION)
-        assert.are.equal(7, state.schema)
+        assert.are.equal(12, EventKit.REVISION)
+        assert.are.equal(8, state.schema)
         assert.is_function(state.composites.onEvent)
         assert.is_table(state.compositeMetatables.coalesce)
         assert.is_table(state.compositeMetatables.derive)
@@ -360,8 +374,8 @@ describe("EventKit package bootstrap", function()
         local EventKit = require("EventKit")
         local _, revision = Registry:Get("eventKit", 1)
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(11, revision)
-        assert.are.equal(7, EventKit._state.schema)
+        assert.are.equal(12, revision)
+        assert.are.equal(8, EventKit._state.schema)
 
         -- Closing a handle revision 8 created now disconnects its listeners.
         EventKit:CloseAddonScopes("MyAddon")
@@ -384,8 +398,8 @@ describe("EventKit package bootstrap", function()
         local _, revision = Registry:Get("eventKit", 1)
         local state = EventKit._state
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(11, revision)
-        assert.are.equal(7, state.schema)
+        assert.are.equal(12, revision)
+        assert.are.equal(8, state.schema)
         assert.are.equal("table", type(EventKit.UNBOUNDED))
         assert.are.equal(state.unbounded, EventKit.UNBOUNDED)
         assert.are.same({ maxUnitFrames = 64 }, EventKit:GetLimits())
@@ -394,15 +408,74 @@ describe("EventKit package bootstrap", function()
         assert.is_true(connection:IsConnected())
     end)
 
+    it("upgrades revision-11 package state in place, adding combat-log routing", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        local Registry = require("Registry")
+        require("SignalKit")
+
+        -- Revision 11 left schema-7 state behind: no combat-log router. A
+        -- plain listener it connected to the combat-log event keeps its
+        -- channel, which the router then shares.
+        local legacy = TestEnv.LoadSourceAtRevision(11)
+        local plainCalls = 0
+        local plain = legacy:Connect("COMBAT_LOG_EVENT_UNFILTERED", function()
+            plainCalls = plainCalls + 1
+        end)
+        local scope = legacy:ForAddon("MyAddon")
+        emulateSchemaSevenCopy(legacy)
+        assert.is_nil(legacy.ConnectCombatLog)
+
+        local EventKit = require("EventKit")
+        local _, revision = Registry:Get("eventKit", 1)
+        local state = EventKit._state
+        assert.are.equal(legacy, EventKit)
+        assert.are.equal(12, revision)
+        assert.are.equal(8, state.schema)
+        assert.is_table(state.combatLog)
+        assert.is_function(state.dispatchCombatLog)
+        assert.is_function(EventKit.ConnectCombatLog)
+        assert.is_function(EventKit.Scope.ConnectCombatLog)
+
+        -- The scope revision 11 created can route the combat log, and the
+        -- router shares the registration the older copy already holds.
+        local routedCalls = 0
+        scope:ConnectCombatLog("SPELL_DAMAGE", function(_, subEvent)
+            routedCalls = routedCalls + 1
+            assert.are.equal("SPELL_DAMAGE", subEvent)
+        end)
+        -- The Frame also holds the PLAYER_LOGOUT one-shot `ForAddon` connected;
+        -- the combat-log event itself was registered exactly once.
+        local frame = TestEnv.Frames()[1]
+        local combatLogRegistrations = 0
+        for index = 1, #frame.registerEventCalls do
+            if frame.registerEventCalls[index] == "COMBAT_LOG_EVENT_UNFILTERED" then
+                combatLogRegistrations = combatLogRegistrations + 1
+            end
+        end
+        assert.are.equal(1, combatLogRegistrations)
+
+        TestEnv.EmitCombatLogEvent(1, "SPELL_DAMAGE")
+        assert.are.equal(1, plainCalls)
+        assert.are.equal(1, routedCalls)
+
+        -- The older copy's connection releases through the newer code and
+        -- leaves the registration to the router.
+        assert.is_true(plain:Disconnect())
+        assert.are.equal(0, #frame.unregisterEventCalls)
+        EventKit:CloseAddonScopes("MyAddon")
+        assert.are.same({ "COMBAT_LOG_EVENT_UNFILTERED" }, frame.unregisterEventCalls)
+    end)
+
     it("carries set limits and the sentinel to a newer revision", function()
         local EventKit, Registry = TestEnv.NewPackage()
         local sentinel = EventKit.UNBOUNDED
         EventKit:SetLimits({ maxUnitFrames = 200 })
 
-        local newer = TestEnv.LoadSourceAtRevision(12)
+        local newer = TestEnv.LoadSourceAtRevision(13)
         local _, revision = Registry:Get("eventKit", 1)
         assert.are.equal(EventKit, newer)
-        assert.are.equal(12, revision)
+        assert.are.equal(13, revision)
         assert.are.equal(sentinel, newer.UNBOUNDED)
         assert.are.equal(200, newer:GetLimits().maxUnitFrames)
     end)
@@ -471,6 +544,6 @@ describe("EventKit package bootstrap", function()
         local selected, revision = Registry:Get("eventKit", 1)
         assert.are.equal(future, loaded)
         assert.are.equal(future, selected)
-        assert.are.equal(12, revision)
+        assert.are.equal(13, revision)
     end)
 end)
