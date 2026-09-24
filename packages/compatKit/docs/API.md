@@ -278,10 +278,13 @@ secret string built inside a shim stays a secret string.
 | Limit | Default | How to open | UNBOUNDED allowed? |
 |---|---|---|---|
 | `maxShims` | 64 | `CompatKit:SetLimits({ maxShims = n })` | Yes |
-
-`maxShims` bounds the shims plus the skips waiting for a shim of their name (a skip for a name that never arrives is retained for the session). The other two are what their names say.
 | `maxProviders` | 32 per kind | `CompatKit:SetLimits({ maxProviders = n })` | Yes |
 | `maxProviderKinds` | 32 | `CompatKit:SetLimits({ maxProviderKinds = n })` | Yes |
+
+`maxShims` bounds the shims plus the skips waiting for a shim of their name (a
+skip for a name that never arrives is retained for the session).
+`maxProviders` bounds the providers of one kind, and `maxProviderKinds` the
+kinds `Providers` creates.
 
 ```lua
 CompatKit:SetLimits({ maxShims = 200 })

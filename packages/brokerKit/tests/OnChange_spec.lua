@@ -24,6 +24,16 @@ describe("BrokerKit.Object:OnChange", function()
         }, seen)
     end)
 
+    it("takes a nil attribute as the any-attribute form", function()
+        local seen = {}
+        object:OnChange(nil, function(_, attribute)
+            seen[#seen + 1] = attribute
+        end)
+        object.text = "Busy"
+        object.value = 2
+        assert.are.same({ "text", "value" }, seen)
+    end)
+
     it("fires a per-attribute subscription for that attribute only", function()
         local texts = {}
         object:OnChange("text", function(_, attribute, value)

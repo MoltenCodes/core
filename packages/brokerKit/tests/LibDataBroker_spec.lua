@@ -218,7 +218,7 @@ describe("BrokerKit and LibDataBroker", function()
             assert.are.equal("data source", empty.type)
         end)
 
-        it("skips reserved, secret and non-string foreign attribute names", function()
+        it("skips reserved and non-string foreign attribute names", function()
             local library = TestEnv.InstallLibDataBroker({
                 objects = {
                     Odd = { type = "data source", name = "Not Mine", Set = 1, [1] = "one" },

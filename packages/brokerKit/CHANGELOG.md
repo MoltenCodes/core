@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 — 2026-09-24
+
+- Documentation and tests only; implementation revision 1 is unchanged. `docs/API.md` states the lookups a field read costs (two, `name` three, the methods four), and `docs/INTERNALS.md` gives the real reason adoption collects attribute names before writing them (ordering).
+- New specs: `object:OnChange(nil, callback)` as the any-attribute form, and adopted objects counted against `maxObjects` when `New` is refused. The LibDataBroker test stub no longer carries `GetNameByDataObject`, which nothing called. 127 specs.
+
 ## 0.1.0 — 2026-09-24
 
 - Added BrokerKit API generation 1, implementation revision 1.

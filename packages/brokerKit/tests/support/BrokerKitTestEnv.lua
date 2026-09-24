@@ -9,7 +9,7 @@
 ---   LibDataBroker-1.1    registered in that LibStub on request, with the
 ---                        library's own semantics (see `InstallLibDataBroker`):
 ---                        `NewDataObject`, `DataObjectIterator`,
----                        `GetDataObjectByName`, `GetNameByDataObject`, `pairs`,
+---                        `GetDataObjectByName`, `pairs`,
 ---                        proxies whose `__newindex` compares and fires the four
 ---                        `LibDataBroker_AttributeChanged*` events, and a
 ---                        CallbackHandler-shaped `RegisterCallback`;
@@ -25,7 +25,7 @@ local BrokerKitTestEnv = FrameworkTestEnv.New({
 })
 
 --- The LibStub major the stub registers, the one BrokerKit looks up.
-BrokerKitTestEnv.LIBDATABROKER_MAJOR = "LibDataBroker-1.1"
+local LIBDATABROKER_MAJOR = "LibDataBroker-1.1"
 
 --- The host globals this environment installs and removes.
 local OWNED_GLOBALS = { "LibStub" }
@@ -116,9 +116,8 @@ end
 ---  for a secret value; this stub raises a named error instead, so a secret
 ---  BrokerKit let through is reported rather than hidden.
 ---* `DataObjectIterator()` is `pairs` over name to proxy; `GetDataObjectByName`
----  and `GetNameByDataObject` map one way each; `pairs(dataobj)` iterates the
----  attribute storage and raises for an object never written to, as the real
----  library does.
+---  maps a name to its proxy; `pairs(dataobj)` iterates the attribute storage
+---  and raises for an object never written to, as the real library does.
 ---* `RegisterCallback(owner, event, method)` has CallbackHandler-1.0's shape:
 ---  one registration per owner and event, refused for the library itself, and
 ---  `method(event, ...)` on `Fire`.
@@ -131,7 +130,7 @@ end
 function BrokerKitTestEnv.InstallLibDataBroker(options)
     options = options or {}
     local libStub = getGlobal("LibStub") or BrokerKitTestEnv.InstallLibStub()
-    local library = libStub:NewLibrary(BrokerKitTestEnv.LIBDATABROKER_MAJOR, 4)
+    local library = libStub:NewLibrary(LIBDATABROKER_MAJOR, 4)
 
     local attributeStorage = {}
     local nameStorage = {}
@@ -225,10 +224,6 @@ function BrokerKitTestEnv.InstallLibDataBroker(options)
 
     function library.GetDataObjectByName(_, name)
         return proxyStorage[name]
-    end
-
-    function library.GetNameByDataObject(_, dataObject)
-        return nameStorage[dataObject]
     end
 
     function library.pairs(_, dataObjectOrName)

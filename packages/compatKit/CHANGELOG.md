@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 — 2026-09-24
+
+- Documentation and tests only; implementation revision 1 is unchanged. `docs/API.md`: the limits table is whole again (a paragraph had been inserted between its rows) and says what each limit bounds. The README's first example names the resolved provider `output` rather than `print_`.
+- The test environment no longer claims to own `IsTestBuild` and `IsBetaBuild`, which nothing in the suite installs, and keeps the source path private; `tests/README.md` is rewrapped.
+
 ## 0.1.0 — 2026-09-24
 
 - Added CompatKit API generation 1, implementation revision 1: shims, provider registries and the catalogue of taint-hostile subsystems.

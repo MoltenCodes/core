@@ -31,13 +31,13 @@ local CompatKitTestEnv = FrameworkTestEnv.New({
 
 --- Path of the runtime source, relative to the repository root the runner
 --- starts Busted from.
-CompatKitTestEnv.SOURCE_PATH = "packages/compatKit/src/CompatKit.lua"
+local SOURCE_PATH = "packages/compatKit/src/CompatKit.lua"
 
 --- Modules this environment loads beside the chain and forgets on `Reset`.
 local OPTIONAL_MODULES = { "ClientKit", "ApiKit", "flavours.Retail", "flavours.ClassicEra" }
 
---- Globals this environment's optional Kits publish and the fixture does not own.
-local OWNED_GLOBALS = { "wow", "IsTestBuild", "IsBetaBuild" }
+--- The global ApiKit publishes, which the fixture does not own.
+local OWNED_GLOBALS = { "wow" }
 
 local sharedReset = CompatKitTestEnv.Reset
 
@@ -139,7 +139,7 @@ end
 ---@param revision integer
 ---@return table CompatKit
 function CompatKitTestEnv.LoadSourceAtRevision(revision)
-    local patched, replacements = CompatKitTestEnv.ReadFile(CompatKitTestEnv.SOURCE_PATH):gsub(
+    local patched, replacements = CompatKitTestEnv.ReadFile(SOURCE_PATH):gsub(
         "local IMPLEMENTATION_REVISION = %d+",
         "local IMPLEMENTATION_REVISION = " .. revision,
         1
@@ -147,7 +147,7 @@ function CompatKitTestEnv.LoadSourceAtRevision(revision)
     if replacements ~= 1 then
         error("CompatKitTestEnv found no IMPLEMENTATION_REVISION in the source", 2)
     end
-    local chunk, message = loadstring(patched, "@" .. CompatKitTestEnv.SOURCE_PATH)
+    local chunk, message = loadstring(patched, "@" .. SOURCE_PATH)
     if chunk == nil then
         error(message, 2)
     end

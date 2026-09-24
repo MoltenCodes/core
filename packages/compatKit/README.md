@@ -31,7 +31,7 @@ end, 10)
 
 -- Later, at PLAYER_LOGIN: run every pending shim, then route output.
 local applied, skipped, failed = CompatKit:Apply()
-local print_, providerName = outputs:Resolve()
+local output, providerName = outputs:Resolve()
 ```
 
 What it offers:

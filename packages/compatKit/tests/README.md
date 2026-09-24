@@ -5,9 +5,9 @@ adds what is CompatKit's own: a profile-first loader (`NewPackageFor(profile)`)
 so ClientKit reads a client flavour at its load, `LoadClientKit` and
 `LoadApiKit(flavourModule)` for the two optional dependencies (on `LUA_PATH`
 because the manifest names them under `optionalDependencies`; the Retail and
-Classic Era flavour files install only on the `mainline` and `classic` profiles), an
-`issecretvalue` stub, the allocation meter, a file reader and the source loader
-the upgrade specs use. `Reset` also forgets the optional Kits' modules and the
+Classic Era flavour files install only on the `mainline` and `classic`
+profiles), an `issecretvalue` stub, the allocation meter, a file reader and the
+source loader the upgrade specs use. `Reset` also forgets the optional Kits' modules and the
 `wow` global ApiKit publishes.
 
 The suite covers:
@@ -54,8 +54,8 @@ The suite covers:
   order, a raising probe listed dead and reported once;
 - the catalogue: at least the nine required rows with every field, flavours
   only for rows naming a documented replacement API, drawn from
-  `tooling/api/flavours.json` and sorted, distinct
-  subsystems, read-only down to the flavour lists, and a row-for-row mirror of
+  `tooling/api/flavours.json` and sorted, distinct subsystems, read-only down
+  to the flavour lists, and a row-for-row mirror of
   the table in `docs/EMBEDDING.md` (the metadata check is
   `tooling/tests/test_compat_catalogue.py`);
 - allocation guards (`collectgarbage("count")` with the collector stopped) on a
@@ -64,17 +64,17 @@ The suite covers:
   and a repeated `Providers` lookup;
 - secret values: a secret shim name, version, options table, description,
   flavours, covers, flavour, cover or option key, a secret provider kind, name,
-  implementation, probe, priority or preferred name, a secret name in the context helpers, and a secret limit
-  value or key, all refused at the caller through an `issecretvalue` stub looked
-  up at call time;
+  implementation, probe, priority or preferred name, a secret name in the
+  context helpers, and a secret limit value or key, all refused at the caller
+  through an `issecretvalue` stub looked up at call time;
 - the limits: defaults and fresh `GetLimits` tables, `"full"` for shims and
-  providers (per kind), skips waiting for their shim counted against `maxShims`
-  and their slot taken over by the shim, the kinds bound raising, `UNBOUNDED` for all three,
-  lowering without removing, invalid, unknown, secret and non-facade calls
-  refused without changing anything;
+  providers (per kind), skips waiting for their shim counted against
+  `maxShims` and their slot taken over by the shim, the kinds bound raising,
+  `UNBOUNDED` for all three, lowering without removing, invalid, unknown,
+  secret and non-facade calls refused without changing anything;
 - `error` levels: every argument (including each malformed API name shape),
-  receiver and read-only-view failure reports the caller's own line, re-entry the line inside the shim, and a context helper
-  failure the shim's line;
+  receiver and read-only-view failure reports the caller's own line, re-entry
+  the line inside the shim, and a context helper failure the shim's line;
 - duplicate embedded loading, Registry publication, yielding to a newer
   revision, an in-place upgrade that keeps shims, skips, providers, limits and
   the `UNBOUNDED` sentinel and rewrites the registry methods, an older copy

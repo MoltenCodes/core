@@ -270,7 +270,7 @@ A duplicate name and a limit reached are errors, not results, because both are t
 
 | Operation | Cost |
 |---|---|
-| `object.attr` (read) | One or two table lookups (`name` and the methods: three). No function call, no allocation. |
+| `object.attr` (read) | Two table lookups: the empty proxy, then the attributes (`name` three, the methods four). No function call, no allocation. |
 | `object.attr = v`, `object:Set` to the same value | The checks, one secret probe per side, one comparison. No fire, no allocation. |
 | `object.attr = v`, `object:Set` to a new value | The above, one store, one LibDataBroker write when exposed, one signal fire per list that has a listener (the attribute's, the any list). No allocation. |
 | `object:Get` | The name checks and one table read. No allocation. |
