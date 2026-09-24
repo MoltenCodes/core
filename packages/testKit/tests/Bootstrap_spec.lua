@@ -118,6 +118,45 @@ describe("TestKit bootstrap", function()
         assert.is_truthy(upgraded:Suite("Fresh", nil))
     end)
 
+    it("upgrades revision 4 in place and reads WaitUntil answers by type", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        require("LifecycleKit")
+        require("TimerKit")
+        require("SchedulerKit")
+        local old = TestEnv.LoadRevision(4)
+        local suite = old:Suite("Carried", { addonName = "MyAddon" })
+        old:SetLimits({ maxTests = old.UNBOUNDED, maxEqualDepth = 32 })
+
+        local upgraded = require("TestKit")
+        assert.are.equal(old, upgraded)
+        assert.is_true(upgraded.REVISION > 4)
+        assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxTests)
+        assert.are.equal(32, upgraded:GetLimits().maxEqualDepth)
+
+        -- The carried suite's contexts run the upgraded `WaitUntil`, which
+        -- refuses to test a secret boolean answer.
+        TestEnv.SetGlobal("issecretvalue", function(value)
+            return value == true
+        end)
+        suite:Test("waits on a secret", function(ctx)
+            ctx:WaitUntil(function()
+                return true
+            end, 1)
+        end)
+        TestEnv.LoadAddon("MyAddon")
+        TestEnv.Login()
+        local report = TestEnv.RunToEnd(upgraded, "Carried")
+        local result = TestEnv.FindResult(report, "Carried", "waits on a secret")
+        assert.are.equal("failed", result.status)
+        assert.is_truthy(
+            result.message:find("WaitUntil predicate returned a secret boolean", 1, true)
+        )
+    end)
+
     it("upgrades in place and keeps suites, results, a waiting test and a queued suite", function()
         local TestKit = TestEnv.NewReadyPackage("MyAddon")
         local reports = {}

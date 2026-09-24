@@ -98,6 +98,74 @@ describe("SchemaKit and secret values", function()
         assert.are.equal(1024, S:GetLimits().defaultArrayMax)
     end)
 
+    it("rejects a value whose custom check answers with a secret", function()
+        -- The table stand-in is truthy in plain Lua: without the probe asked
+        -- about the answer first, the value would be accepted.
+        local schema = S:Seal(S.custom(function()
+            return secret
+        end, "an approved value"))
+        local ok, failure = schema:Check(42)
+        assert.is_false(ok)
+        assert.are.same(
+            { rule = "custom", expected = "an approved value", found = "number", path = "" },
+            {
+                rule = failure.rule,
+                expected = failure.expected,
+                found = failure.found,
+                path = failure.path,
+            }
+        )
+        local applied = schema:Apply(42)
+        assert.is_false(applied)
+    end)
+
+    it("still accepts a value whose custom check answers with a plain true", function()
+        local schema = S:Seal(S.custom(function()
+            return true
+        end, "anything"))
+        assert.is_true(schema:Check(42))
+    end)
+
+    it("refuses a secret boolean flag at the caller's line", function()
+        -- `true` stands in for a secret boolean: its type is boolean, so only
+        -- the probe tells it apart from a plain flag.
+        TestEnv.InstallSecretProbe({ [true] = true })
+        local source = debug.getinfo(1, "S").short_src
+        local cases = {
+            {
+                call = function()
+                    local _ = S.number({ integer = true })
+                end,
+                message = "SchemaKit.number integer must be a boolean",
+            },
+            {
+                call = function()
+                    local _ = S.table({ fields = {}, open = true })
+                end,
+                message = "SchemaKit.table open must be a boolean",
+            },
+            {
+                call = function()
+                    local _ = S:Seal(S.any(), { freshFailures = true })
+                end,
+                message = "SchemaKit:Seal freshFailures must be a boolean",
+            },
+        }
+        for index = 1, #cases do
+            local line = debug.getinfo(cases[index].call, "S").linedefined + 1
+            local ok, value = pcall(cases[index].call)
+            assert.is_false(ok)
+            assert.are.equal(source .. ":" .. line .. ": " .. cases[index].message, value)
+        end
+    end)
+
+    it("still accepts plain boolean flags while the probe exists", function()
+        assert.is_false(S:Seal(S.number({ integer = true })):Check(1.5))
+        assert.is_false(S:Seal(S.table({ fields = {}, open = false })):Check({ extra = 1 }))
+        assert.is_true(S:Seal(S.table({ fields = {}, open = true })):Check({ extra = 1 }))
+        assert.is_true(S:Seal(S.any(), { freshFailures = true }):Check(1))
+    end)
+
     it("still accepts a plain limit and UNBOUNDED while the probe exists", function()
         S:SetLimits({ maxDepth = 20, defaultArrayMax = S.UNBOUNDED })
         assert.are.equal(20, S:GetLimits().maxDepth)

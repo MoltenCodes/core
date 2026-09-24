@@ -47,7 +47,7 @@
 
 local PACKAGE_NAME = "testKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLEKIT_API = 1
 local REQUIRED_SCHEDULERKIT_API = 1
@@ -1291,6 +1291,30 @@ local function contextWaitFor(self, eventName, timeoutSeconds)
     return false, REASON_TIMEOUT
 end
 
+-- The failure a `WaitUntil` predicate answering with a secret boolean raises.
+-- The text is fixed: nothing of the answer can be read, so nothing is quoted.
+local SECRET_PREDICATE_MESSAGE =
+    "TestKit.Context:WaitUntil predicate returned a secret boolean, which cannot be tested"
+
+---Read a `WaitUntil` predicate's answer without testing a secret as a boolean.
+---
+---The answer is decided from its type first, because a boolean test on a
+---secret raises inside TestKit on the Retail client. A secret boolean has no
+---readable answer and gives `nil`; a secret of any other type is truthy, as
+---`ToBeTruthy` treats it, because its type is not secret.
+---@param answer any the predicate's first return value
+---@return boolean|nil satisfied `nil` when the answer is a secret boolean
+local function readPredicateAnswer(answer)
+    local kind = type(answer)
+    if kind ~= "boolean" then
+        return kind ~= "nil"
+    end
+    if isSecret(answer) then
+        return nil
+    end
+    return answer
+end
+
 ---Poll `predicate` once per frame until it returns a truthy value or
 ---`timeoutSeconds` pass. Returns `true`, or `false, "timeout"`. A predicate
 ---that is already true returns at once without suspending the test.
@@ -1305,7 +1329,10 @@ local function contextWaitUntil(self, predicate, timeoutSeconds)
     validateTimeout(timeoutSeconds, "TestKit.Context:WaitUntil timeoutSeconds", 3)
     validateRunningStep(record, "TestKit.Context:WaitUntil", 3)
 
-    if predicate() then
+    local satisfied = readPredicateAnswer(predicate())
+    if satisfied == nil then
+        error(SECRET_PREDICATE_MESSAGE, 2)
+    elseif satisfied then
         return true
     end
 
@@ -1314,9 +1341,13 @@ local function contextWaitUntil(self, predicate, timeoutSeconds)
     local timer = timerScope:After(timeoutSeconds, newWaitTimeoutCallback(waiter))
     while true do
         coroutine.yield(YIELD_TOKENS.nextFrame)
-        if predicate() then
+        satisfied = readPredicateAnswer(predicate())
+        if satisfied ~= false then
             if timer:IsPending() then
                 timer:Cancel()
+            end
+            if satisfied == nil then
+                error(SECRET_PREDICATE_MESSAGE, 2)
             end
             return true
         end

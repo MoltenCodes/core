@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4 — 2026-09-24
+
+- Secret values: a boolean test on a secret raises on Retail 12.1.0 b69933 (measured 2026-09-24), as a comparison with a value of its own type does. `BindOptions` no longer tests for truth, or compares with `true`, the `confirm` and `tristate` flags an OptionsKit description passes through as the addon wrote them. A secret `confirm` asks for confirmation (as `true` does, without printing a question); a secret `tristate` reads as absent, so `set <path> default` answers `expected on, off or toggle`. One file-level helper, `readTreeFlag`, reads both. `docs/API.md` says so under "Secret values".
+- Implementation revision 5. No layout changes: revision 5 takes over revision 4's state as it is; a command bound before the upgrade keeps the `BindOptions` handlers of the revision that bound it.
+- 150 specs: a secret `confirm` and a secret `tristate` on a bound tree (each against the same flag not secret), and the upgrade from revision 4.
+
 ## 0.2.3 — 2026-09-24
 
 - Secret values: the source comment on the facade check no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

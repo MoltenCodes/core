@@ -38,7 +38,7 @@
 
 local PACKAGE_NAME = "mediaKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNALKIT_API = 1
 local STATE_SCHEMA = 1
@@ -702,6 +702,11 @@ local function readAnyScript(options, methodName, level)
     end
     validateOptionKeys(options, LOOKUP_OPTION_KEYS, methodName, level + 1)
     local flag = rawget(options, "anyScript")
+    -- A secret boolean passes the type check and raises when compared, so it
+    -- is refused first, at the caller, like every other secret argument.
+    if isSecret(flag) then
+        error(methodName .. " anyScript must not be a secret value", level)
+    end
     if type(flag) ~= "nil" and type(flag) ~= "boolean" then
         error(methodName .. " anyScript must be a boolean", level)
     end
@@ -911,7 +916,9 @@ local function libSharedMediaLocaleMask(library, scriptMask)
         local localeBit = LIBSHAREDMEDIA_LOCALE_BITS[index]
         if coversScript(scriptMask, localeBit.script) then
             local value = rawget(library, localeBit.field)
-            if type(value) ~= "number" then
+            -- A field of a foreign library: a secret number would raise in
+            -- the addition, so it is treated like a missing one.
+            if type(value) ~= "number" or isSecret(value) then
                 value = localeBit.value
             end
             mask = mask + value
@@ -942,7 +949,13 @@ local function mirrorEntry(mediaType, name, data, scriptMask)
     if mediaType == "font" then
         langmask = libSharedMediaLocaleMask(library, scriptMask)
     end
-    return library:Register(mediaType, name, data, langmask) == true
+    local registered = library:Register(mediaType, name, data, langmask)
+    -- LibSharedMedia's answer is a foreign value: a secret one is never
+    -- compared, and counts as "not mirrored".
+    if isSecret(registered) then
+        return false
+    end
+    return registered == true
 end
 
 ---Adopt one LibSharedMedia entry read-only. Invalid names and data, secrets,

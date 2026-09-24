@@ -169,6 +169,46 @@ describe("WidgetKit bootstrap", function()
         assert.is_false(upgraded:IsWidget(label))
     end)
 
+    it("upgrades a revision 3 copy in place with its widgets, types and limits", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        TestEnv.InstallScreen()
+        for _, name in ipairs({ "Registry", "SignalKit", "PoolKit", "SchemaKit", "OptionsKit" }) do
+            require(name)
+        end
+        local old = TestEnv.LoadRevision(3)
+        local group = old:Create("Group") ---@cast group -nil
+        local slider = old:Create("Slider") ---@cast slider -nil
+        group:AddChild(slider)
+        slider:SetUserData("kept", true)
+        old:SetLimits({ maxDropdownEntries = old.UNBOUNDED })
+
+        local upgraded = require("WidgetKit")
+        assert.are.equal(old, upgraded)
+        assert.is_true(upgraded.REVISION > 3)
+        assert.is_true(upgraded:IsWidget(slider))
+        assert.are.equal(slider, group:GetChildren()[1])
+        assert.is_true(slider:GetUserData("kept"))
+        assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxDropdownEntries)
+        assert.are.equal(1, upgraded:GetTypeVersion("Slider"))
+        -- The widgets revision 3 built run the current methods at once: a
+        -- secret flag is refused instead of being tested as a boolean.
+        TestEnv.InstallSecretProbe()
+        local secret = TestEnv.NewSecret()
+        local ok, failure = pcall(slider.SetIsPercent, slider, secret)
+        assert.is_false(ok)
+        assert.is_truthy(
+            tostring(failure):find("SetIsPercent isPercent must not be a secret value", 1, true)
+        )
+        ok, failure = pcall(slider.SetDisabled, slider, secret)
+        assert.is_false(ok)
+        assert.is_truthy(
+            tostring(failure):find("SetDisabled disabled must not be a secret value", 1, true)
+        )
+        upgraded:Release(group)
+        assert.is_false(upgraded:IsWidget(slider))
+    end)
+
     it("discards pooled base widgets when a newer copy raises their version", function()
         local WidgetKit = TestEnv.NewPackage()
         local pooled = WidgetKit:Create("Label")

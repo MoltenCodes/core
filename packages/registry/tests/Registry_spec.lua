@@ -2,7 +2,7 @@ local TestEnv = require("RegistryTestEnv")
 
 --- The implementation revision `src/Registry.lua` carries; `Manifest_spec.lua`
 --- pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 12
+local CURRENT_REVISION = 13
 
 describe("Registry bootstrap", function()
     before_each(TestEnv.Reset)

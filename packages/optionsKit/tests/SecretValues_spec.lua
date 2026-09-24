@@ -203,4 +203,117 @@ describe("OptionsKit and secret values", function()
         assert.are.same({ false, "refused by validate" }, { guarded:Validate("label", "x") })
         assert.are.equal(0, written)
     end)
+    it("refuses a secret flag or field of a tree at the caller before testing it", function()
+        -- `true` stands in for a secret boolean: without the probe asked
+        -- first, it would pass as a boolean and be tested for truth.
+        secret = true
+        for _, field in ipairs({ "disabled", "hidden", "tristate" }) do
+            assertReportedAtCaller(
+                "OptionsKit:Define tree.args.enabled." .. field .. " must not be a secret value",
+                function(mark)
+                    mark()
+                    OptionsKit:Define("Flagged", {
+                        type = "group",
+                        args = {
+                            enabled = {
+                                type = "toggle",
+                                name = "Enabled",
+                                get = function() end,
+                                set = function() end,
+                                [field] = true,
+                            },
+                        },
+                    })
+                end
+            )
+        end
+        assertReportedAtCaller(
+            "OptionsKit:Define tree.args.color.hasAlpha must not be a secret value",
+            function(mark)
+                mark()
+                OptionsKit:Define("Flagged", {
+                    type = "group",
+                    args = {
+                        color = {
+                            type = "color",
+                            name = "Colour",
+                            get = function() end,
+                            set = function() end,
+                            hasAlpha = true,
+                        },
+                    },
+                })
+            end
+        )
+        assert.is_nil(OptionsKit:Get("Flagged"))
+    end)
+
+    it("refuses a secret option type at the caller before using it as a key", function()
+        secret = "toggle"
+        assertReportedAtCaller(
+            "OptionsKit:Define tree.args.enabled.type must not be a secret value",
+            function(mark)
+                mark()
+                OptionsKit:Define("Typed", {
+                    type = "group",
+                    args = {
+                        enabled = {
+                            type = "toggle",
+                            name = "Enabled",
+                            get = function() end,
+                            set = function() end,
+                        },
+                    },
+                })
+            end
+        )
+    end)
+
+    it("counts a secret disabled or hidden answer as no", function()
+        local answer = TestEnv.NewSecretValue()
+        secret = answer
+        local calls = 0
+        local predicate = function()
+            calls = calls + 1
+            return answer
+        end
+        local guarded = OptionsKit:Define("Predicated", {
+            type = "group",
+            args = {
+                label = {
+                    type = "input",
+                    name = "Label",
+                    get = function() end,
+                    set = function() end,
+                    disabled = predicate,
+                    hidden = predicate,
+                },
+            },
+        })
+        assert.is_false(guarded:IsDisabled("label"))
+        assert.is_false(guarded:IsHidden("label"))
+        local node = guarded:Describe().children[1]
+        assert.is_false(node.disabled)
+        assert.is_false(node.hidden)
+        assert.are.equal(4, calls)
+    end)
+
+    it("Describe passes a secret desc a desc function returns through", function()
+        secret = "hidden text"
+        local described = OptionsKit:Define("Described", {
+            type = "group",
+            args = {
+                label = {
+                    type = "input",
+                    name = "Label",
+                    desc = function()
+                        return secret
+                    end,
+                    get = function() end,
+                    set = function() end,
+                },
+            },
+        })
+        assert.are.equal(secret, described:Describe().children[1].desc)
+    end)
 end)

@@ -161,6 +161,36 @@ describe("MediaKit bootstrap", function()
         assert.are.equal("Blizzard", defaults:Get("statusbar"))
     end)
 
+    it("upgrades revision 3 in place and refuses a secret anyScript at once", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        TestEnv.SetClientLocale(TestEnv.DEFAULT_CLIENT_LOCALE)
+        require("Registry")
+        require("SignalKit")
+        local old = TestEnv.LoadRevision(3)
+        old:Register("statusbar", "Pack Bar", "Interface\\Pack\\Bar")
+        local defaults = old:Defaults("MyAddon")
+        defaults:Set("statusbar", "Pack Bar")
+        old:SetLimits({ maxEntriesPerType = 2048 })
+        local list = old:List("statusbar")
+
+        local upgraded = require("MediaKit")
+        assert.are.equal(old, upgraded)
+        assert.is_true(upgraded.REVISION > 3)
+        assert.are.equal(list, upgraded:List("statusbar"))
+        assert.are.equal(defaults, upgraded:Defaults("MyAddon"))
+        assert.are.equal("Pack Bar", defaults:Get("statusbar"))
+        assert.are.equal(2048, upgraded:GetLimits().maxEntriesPerType)
+        -- The secret check on the anyScript flag runs for the carried state.
+        TestEnv.InstallSecretProbe(true)
+        TestEnv.expectErrorContaining(
+            "MediaKit:Fetch anyScript must not be a secret value",
+            function()
+                upgraded:Fetch("statusbar", "Pack Bar", { anyScript = true })
+            end
+        )
+    end)
+
     it("refuses shared state whose limits hold an invalid value", function()
         local MediaKit = TestEnv.NewPackage()
         rawset(MediaKit._state.limits, "maxEntriesPerType", MediaKit.UNBOUNDED)

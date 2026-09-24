@@ -81,6 +81,65 @@ describe("TestKit and secret values", function()
         )
     end)
 
+    it(
+        "fails WaitUntil at the caller's line when the predicate answers a secret boolean",
+        function()
+            secrets[true] = true
+            local callLine = nil
+            local returned = false
+            local result = run(function(ctx)
+                callLine = debug.getinfo(1, "l").currentline + 1
+                ctx:WaitUntil(function()
+                    return true
+                end, 1)
+                returned = true
+            end)
+            assert.are.equal("failed", result.status)
+            assert.is_false(returned)
+            assert.is_truthy(
+                result.message:find(
+                    "SecretValues_spec.lua:"
+                        .. callLine
+                        .. ": TestKit.Context:WaitUntil predicate returned a secret boolean,"
+                        .. " which cannot be tested",
+                    1,
+                    true
+                )
+            )
+        end
+    )
+
+    it("fails WaitUntil when a later poll answers a secret boolean, before the timeout", function()
+        local polls = 0
+        local result = run(function(ctx)
+            ctx:WaitUntil(function()
+                polls = polls + 1
+                if polls < 3 then
+                    return false
+                end
+                -- From the third poll on, `true` is the stand-in for a secret boolean.
+                secrets[true] = true
+                return true
+            end, 5)
+        end)
+        assert.are.equal(3, polls)
+        assert.are.equal("failed", result.status)
+        assert.is_truthy(
+            result.message:find("WaitUntil predicate returned a secret boolean", 1, true)
+        )
+    end)
+
+    it("treats a secret WaitUntil answer of another type as truthy", function()
+        local outcome = nil
+        local result = run(function(ctx)
+            outcome = { ctx:WaitUntil(function()
+                return secret
+            end, 1) }
+        end)
+        assert.are.equal("passed", result.status)
+        assert.are.same({ true }, outcome)
+    end)
+
     it("treats a secret of another type as truthy, and a secret is never nil", function()
         local result = run(function(ctx)
             ctx:Expect(secret):ToBeTruthy()

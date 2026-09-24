@@ -2,7 +2,7 @@ local TestEnv = require("EventKitTestEnv")
 
 ---The implementation revision `src/EventKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 15
+local CURRENT_REVISION = 16
 
 local function expectErrorContaining(expected, callback)
     local ok, message = pcall(callback)
@@ -531,16 +531,16 @@ describe("EventKit package bootstrap", function()
     end)
 
     it(
-        "upgrades the previous revision in place, adding IsCombatLogAvailable and name checks",
+        "upgrades revision-14 package state in place, adding IsCombatLogAvailable and name checks",
         function()
             TestEnv.Reset()
             TestEnv.InstallWowApi()
             local Registry = require("Registry")
             require("SignalKit")
 
-            -- The previous revision published no IsCombatLogAvailable and checked
-            -- no event name; its copy loaded on a client without C_EventUtils.
-            local legacy = TestEnv.LoadSourceAtRevision(CURRENT_REVISION - 1)
+            -- Revision 14 published no IsCombatLogAvailable and checked no
+            -- event name; its copy loaded on a client without C_EventUtils.
+            local legacy = TestEnv.LoadSourceAtRevision(14)
             rawset(legacy, "IsCombatLogAvailable", nil)
             local calls = 0
             local connection = legacy:Connect("CUSTOM_EVENT", function()
@@ -570,6 +570,69 @@ describe("EventKit package bootstrap", function()
 
             assert.is_true(connection:Disconnect())
             assert.are.same({ "CUSTOM_EVENT" }, TestEnv.Frames()[1].unregisterEventCalls)
+        end
+    )
+
+    it(
+        "upgrades revision-15 package state in place, handing its routes and derived values the secret checks",
+        function()
+            TestEnv.Reset()
+            TestEnv.InstallWowApi()
+            local Registry = require("Registry")
+            require("SignalKit")
+
+            -- Revision 15 tested a secret `equals` answer as a boolean and used a
+            -- secret sub-event as a route key. Both run through functions kept in
+            -- shared state, so the emulated copy leaves markers there that the
+            -- newer copy must replace.
+            local legacy = TestEnv.LoadSourceAtRevision(15)
+            local legacyState = legacy._state
+            local function legacyDispatch() end
+            local function legacyOnEvent() end
+            rawset(legacyState, "dispatchCombatLog", legacyDispatch)
+            rawset(rawget(legacyState, "composites"), "onEvent", legacyOnEvent)
+
+            local routed, wildcard = 0, 0
+            legacy:ConnectCombatLog("SPELL_DAMAGE", function()
+                routed = routed + 1
+            end)
+            legacy:ConnectCombatLog("*", function()
+                wildcard = wildcard + 1
+            end)
+            local secret = {}
+            local derived = legacy:Derive("CUSTOM_EVENT", function()
+                return 1
+            end, {
+                equals = function()
+                    return secret
+                end,
+            })
+            local changes = 0
+            derived:OnChange(function()
+                changes = changes + 1
+            end)
+
+            local EventKit = require("EventKit")
+            local _, revision = Registry:Get("eventKit", 1)
+            assert.are.equal(legacy, EventKit)
+            assert.are.equal(CURRENT_REVISION, revision)
+            assert.are.equal(legacyState, EventKit._state)
+            assert.are_not.equal(legacyDispatch, legacyState.dispatchCombatLog)
+            assert.are_not.equal(legacyOnEvent, legacyState.composites.onEvent)
+
+            -- The package reads this host global at call time; the fixture's
+            -- Reset clears it again.
+            -- selene: allow(global_usage)
+            rawset(_G, "issecretvalue", function(value)
+                return rawequal(value, secret) or rawequal(value, "SPELL_DAMAGE")
+            end)
+            TestEnv.EmitCombatLogEvent(1, "SPELL_DAMAGE")
+            assert.are.equal(0, routed)
+            assert.are.equal(1, wildcard)
+
+            TestEnv.Emit("CUSTOM_EVENT")
+            assert.are.equal(1, changes)
+            TestEnv.Reset()
         end
     )
 

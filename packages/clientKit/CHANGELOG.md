@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3 — 2026-09-24
+
+- A value that may be secret is no longer tested as a boolean, which raises inside the Kit on Retail 12.1.0 (build 69933). `manifest:Get` read its receiver's `name` with `view.name or nil`, a boolean test on a caller value; it now reads the field without testing it and asks `issecretvalue` before lowering it or using it as a key, so a receiver whose `name` is secret is refused at the caller with `ClientKit.Manifest:Get must be called on a manifest`. Every other boolean test was audited and left: each is on a value ClientKit created, a type-checked host function, or a host return the client does not document as possibly secret. `docs/API.md` lists them under "Errors".
+- Implementation revision 5, because the executed implementation changed. No state changed: an in-place upgrade from revision 4 keeps every cached manifest, whose `Get` resolves through the rewritten prototype. `Bootstrap_spec.lua` covers that upgrade; `ErrorLevels_spec.lua` covers the refusal.
+
 ## 0.2.2 — 2026-09-24
 
 - Implementation revision 4 applies the repository nil rule: the locale probe tests the result of matching `GetLocale()`'s answer against the locale-code shape with `type(match) == "nil"`, and the Registry lookup in the shared namespace and the results of `Registry:Bootstrap` are tested the same way, never by comparing them with `nil`. Every other `nil` comparison left in the source is on a value ClientKit created itself (its state tables, its memo, the normalised result of its own metadata read).

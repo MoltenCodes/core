@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.3 — 2026-09-24
+
+- A secret value is never tested as a boolean inside EventKit (measured on Retail 12.1.0 b69933: `if x`, `x and y`, `x or y` and `not x` on a secret raise inside the Kit). A `Derive` `equals` function that answers with a secret value now counts as a change, as a secret value on either side already did, instead of raising while its answer was tested.
+- A combat-log event whose sub-event (the second return of the client's reader, documented as possibly secret) is secret reaches the wildcard (`"*"`) listeners only, with every return unchanged, instead of raising while the sub-event was used as a route key. No allocation is added to the combat-log dispatch.
+- Implementation revision 16. No state changed: the dispatcher and the composite event handler are resolved through shared state, so an in-place upgrade from revision 15 hands the routes and derived values that copy created the new checks. `docs/API.md` documents both under "Secret values", `ConnectCombatLog` and `Derive`.
+- Specs: `SecretValues_spec.lua` covers a secret `equals` answer and a secret sub-event; `Bootstrap_spec.lua` upgrades revision 15 in place. `EventKit` API generation 1 is unchanged.
+
 ## 0.9.2 — 2026-09-24
 
 - Secret values: API.md (*Secret values*) and the source comment above `isSecret` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

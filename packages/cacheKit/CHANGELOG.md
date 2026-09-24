@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.5 — 2026-09-24
+
+- A `Memoize` `cacheable` predicate that answers with a secret value (Retail 12.x) no longer raises inside CacheKit. Testing a secret for truth raises (`attempt to perform boolean test on ... a secret boolean value`, measured on Retail 12.1.0 b69933), so the answer is asked about with `issecretvalue` first and a secret answer counts as `false`: the result is returned to the caller without being remembered. `docs/API.md` documents it under `cacheable` and *Secret values*.
+- Implementation revision 5. No state or object layout changed: an upgrade over revision 4 replaces the methods and keeps every cache, snapshot, lazy tree and queue, and memoised functions an older copy created run the new check at once.
+- Audit of the other truth tests on values CacheKit did not create: the memoised function's result and the lazy tree resolver's result are only asked `type(value) == "nil"`; pcall results and the Registry and EventKit lookups are Kit-created or type-checked; no option is a boolean flag. Nothing else changed.
+- Specs: a secret `cacheable` answer leaves the result unremembered, and an in-place upgrade from revision 4; the older upgrade specs compare with the working revision instead of a fixed number.
+
 ## 0.2.4 — 2026-09-24
 
 - Secret values: API.md *Secret values* states that a secret used as a key raises the client's own error, `attempted to index a table that cannot be indexed with secret keys`, and that the negative-entry check compares a stored value by identity with CacheKit's own marker table, which the client allows for a secret number or string because the two differ in type; INTERNALS.md (*Negative entries*, snapshot `fill`), the README and the source comments on the probe and the negative-entry check follow no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

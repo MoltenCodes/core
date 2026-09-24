@@ -177,6 +177,55 @@ describe("SettingsKit bootstrap", function()
         )
     end)
 
+    it("upgrades revision 3 in place and refuses secret scope names and keys at once", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        local S = require("SchemaKit")
+        local previous = TestEnv.LoadRevision(3)
+        TestEnv.SetPlayer()
+        assert.are.equal(3, previous.REVISION)
+        local state = rawget(previous, "_state")
+        local db = previous:Open("MyAddonDB", schemaFor(S))
+        local profile = db.profile
+        local changes = 0
+        db:OnChange("profile", function()
+            changes = changes + 1
+        end)
+        -- Revision 3 indexed the prototype with any key; its `__index` stays
+        -- on the shared metatable until the newer copy replaces it.
+        local metatable = getmetatable(db)
+        local function legacyIndex() end
+        rawset(metatable, "__index", legacyIndex)
+
+        local upgraded = TestEnv.ReloadPackage()
+        assert.are.equal(previous, upgraded)
+        assert.are.equal(4, upgraded.REVISION)
+        assert.are.equal(state, rawget(upgraded, "_state"))
+        assert.are.equal(db, upgraded:Open("MyAddonDB"))
+        assert.are.equal(profile, db.profile)
+        assert.are_not.equal(legacyIndex, rawget(metatable, "__index"))
+        profile.scale = 2
+        assert.are.equal(1, changes)
+
+        TestEnv.InstallSecretProbe()
+        local secret = TestEnv.NewSecret()
+        TestEnv.expectErrorContaining(
+            "SettingsKit.Database:OnChange scope must not be a secret value",
+            function()
+                db:OnChange(secret, function() end)
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "SettingsKit databases cannot be read with a secret key",
+            function()
+                return db[secret]
+            end
+        )
+    end)
+
     it("loads without EventKit", function()
         local SettingsKit, Registry = TestEnv.NewPackageWithoutEventKit()
         assert.are.equal(SettingsKit, Registry:Get("settingsKit", 1))

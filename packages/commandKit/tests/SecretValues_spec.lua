@@ -330,4 +330,78 @@ describe("CommandKit and secret values", function()
         assert.is_false(TestEnv.PressTab(editBox))
         assert.are.equal("/pick ", editBox.text)
     end)
+
+    describe("a boolean flag of a bound tree that is secret", function()
+        local Kit, OptionsKit, capture, executed, secretFlags
+
+        ---Bind `args` as `/opts`. The stand-in for a secret boolean is a plain
+        ---boolean `issecretvalue` reports once `secretFlags` holds it: a secret
+        ---keeps its type, so only the probe tells it apart. The flag turns
+        ---secret after `Define`, which is OptionsKit's concern, not this one.
+        ---@param args table
+        local function bind(args)
+            TestEnv.Reset()
+            local loadedKit, _, _, _, loadedOptionsKit = TestEnv.NewPackage()
+            Kit, OptionsKit = loadedKit, loadedOptionsKit
+            secretFlags = {}
+            TestEnv.SetGlobal("issecretvalue", function(value)
+                return type(value) == "boolean" and secretFlags[value] == true
+            end)
+            executed = 0
+            local tree = OptionsKit:Define("MyAddon", { type = "group", args = args })
+            local bound = Kit:CreateScope()
+            capture = Kit:CaptureSink()
+            bound:SetSink(capture)
+            bound:BindOptions(tree, "opts")
+        end
+
+        local function count()
+            executed = executed + 1
+        end
+
+        it("asks for confirmation before running a button whose confirm is secret", function()
+            bind({
+                wipe = { type = "execute", name = "Wipe", confirm = false, func = count },
+            })
+            secretFlags[false] = true
+            TestEnv.RunSlash("/opts exec wipe")
+            assert.are.same({ "Type /opts exec wipe confirm to run it." }, capture:Messages())
+            assert.are.equal(0, executed)
+            TestEnv.RunSlash("/opts exec wipe confirm")
+            assert.are.equal(1, executed)
+
+            -- The same flag, not secret, runs the button at once.
+            secretFlags[false] = nil
+            capture:Clear()
+            TestEnv.RunSlash("/opts exec wipe")
+            assert.are.same({}, capture:Messages())
+            assert.are.equal(2, executed)
+            assert.are.same({}, TestEnv.ReportedErrors())
+        end)
+
+        it("does not offer default on a toggle whose tristate is secret", function()
+            bind({
+                flag = {
+                    type = "toggle",
+                    name = "Flag",
+                    tristate = true,
+                    get = function()
+                        return nil
+                    end,
+                    set = count,
+                },
+            })
+            secretFlags[true] = true
+            TestEnv.RunSlash("/opts set flag default")
+            assert.are.same({ "/opts set: expected on, off or toggle" }, capture:Messages())
+            assert.are.equal(0, executed)
+
+            -- The same flag, not secret, accepts `default`.
+            secretFlags[true] = nil
+            capture:Clear()
+            TestEnv.RunSlash("/opts set flag default")
+            assert.are.equal(1, executed)
+            assert.are.same({}, TestEnv.ReportedErrors())
+        end)
+    end)
 end)

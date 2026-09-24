@@ -1,7 +1,7 @@
 # Registry API
 
 Registry API generation: **2**  
-Implementation revision: **12**
+Implementation revision: **13**
 
 Registry is a zero-dependency runtime resolver for independently embedded framework packages.
 
@@ -623,7 +623,11 @@ Registry:Bootstrap request.resume must return a revision
 ```
 
 A `validateState` hook that returns a secret counts as "not complete", so the
-same-revision copy is refused or handed to `resume` as incomplete. A migration
+same-revision copy is refused or handed to `resume` as incomplete. A
+`validatePublicSurface` hook that returns a secret counts as "surface not
+valid" (revision 13 and later): a secret cannot be tested as a boolean, so
+Registry never truth-tests the answer and refuses the copy with
+`<label> package state is corrupted or incomplete`, exactly as for `false`. A migration
 step may return a secret: it becomes the migrated state without being compared.
 
 **Load-time failures** — incompatible or corrupted bootstrap state, a corrupted

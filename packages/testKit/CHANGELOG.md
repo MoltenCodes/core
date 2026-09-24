@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.7 — 2026-09-24
+
+- Fixed: `ctx:WaitUntil` tested its predicate's answer as a boolean, and on the Retail client a boolean test on a secret raises inside TestKit (measured on 12.1.0 b69933, 2026-09-24: "attempt to perform boolean test on ... a secret boolean value"). The answer is now read by its type first. A secret boolean answer fails the test at the line that called `WaitUntil` with `TestKit.Context:WaitUntil predicate returned a secret boolean, which cannot be tested`, and the timeout timer is cancelled; a secret of any other type is truthy, as `ToBeTruthy` already treats it. `docs/API.md` documents it under `ctx:WaitUntil`.
+- Audit of the other boolean tests on values TestKit did not create: `ToBeTruthy` already refused a secret boolean, `ToBe`, `ToEqual` and `ToRaise` check for secrets before comparing, `Suite` options and `SetLimits` values are refused when secret, and `ToBeSecure` tests only what `issecurevariable` answers, which the client does not document as possibly secret. `OnFinished` callback results, hook and test step results are not read.
+- Implementation revision 5. No state changed: an in-place upgrade from revision 4 keeps the suites and the limits and replaces the methods only. A test suspended inside `WaitUntil` across an upgrade finishes that wait with the code it started it with.
+- Specs: `SecretValues_spec.lua` covers a secret boolean answer on the first poll and on a later one, and a secret answer of another type; `Bootstrap_spec.lua` upgrades a revision 4 copy with the current file. 113 specs.
+- `TestKit` API generation 1 is unchanged.
+
 ## 0.1.6 — 2026-09-24
 
 - Secret values: INTERNALS.md (*Secret values*) and the source comments on `Suite` options and `SetLimits` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

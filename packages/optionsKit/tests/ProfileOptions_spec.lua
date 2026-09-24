@@ -133,6 +133,7 @@ describe("OptionsKit ProfileOptions", function()
         setGlobal(SAVED_VARIABLE, nil)
         setGlobal("UnitName", nil)
         setGlobal("GetRealmName", nil)
+        setGlobal("issecretvalue", nil)
         TestEnv.Reset()
     end)
 
@@ -758,6 +759,24 @@ describe("OptionsKit ProfileOptions", function()
                 OptionsKit:ProfileOptions(db, { localize = {} })
             end
         )
+    end)
+
+    it("refuses a secret option at the caller before testing it", function()
+        local OptionsKit, db = openDatabase()
+        local secret = "Raid profiles"
+        setGlobal("issecretvalue", function(value)
+            return rawequal(value, secret)
+        end)
+        for _, field in ipairs({ "name", "description" }) do
+            assertReportedAtCaller(
+                "OptionsKit:ProfileOptions options." .. field .. " must not be a secret value",
+                function(mark)
+                    mark()
+                    OptionsKit:ProfileOptions(db, { [field] = secret })
+                end
+            )
+        end
+        setGlobal("issecretvalue", nil)
     end)
 
     it("refuses anything but a SettingsKit database at the caller", function()

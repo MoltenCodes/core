@@ -59,7 +59,7 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 15
+local IMPLEMENTATION_REVISION = 16
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local STATE_SCHEMA = 8
@@ -1229,7 +1229,13 @@ local function routeCombatLogEvent(combatLog, ...)
     -- The sub-event is the second return. A multiple assignment reads it
     -- without copying the rest of the payload, which `select` would.
     local _, subEvent = ...
-    local route = rawget(rawget(combatLog, "routes"), subEvent)
+    -- The combat-log reader is documented to return secret values. A secret
+    -- sub-event cannot index the route table (that raises), so it reaches
+    -- the wildcard route only, which receives every event unchanged.
+    local route = nil
+    if not isSecret(subEvent) then
+        route = rawget(rawget(combatLog, "routes"), subEvent)
+    end
     -- Both routes are read before either fires: a wildcard listener connected
     -- by a sub-event listener must not receive the event being dispatched,
     -- as a listener connected during a `Connect` dispatch does not. A wildcard
@@ -2286,6 +2292,11 @@ local function recomputeDerived(handle)
         local equalsOk, same = pcall(equals, previous, value)
         if not equalsOk then
             reportListenerError(same)
+            changed = true
+        elseif isSecret(same) then
+            -- A secret answer cannot be tested as a boolean, so it is not
+            -- "equal": the value counts as changed, as when either side is
+            -- secret below.
             changed = true
         else
             changed = not same

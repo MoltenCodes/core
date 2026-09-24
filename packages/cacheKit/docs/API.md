@@ -2,7 +2,7 @@
 
 CacheKit API generation **1** provides bounded caches: least-recently-used caches bounded by count, the same caches with an age limit and negative entries, memoisation of a one-key function, snapshots that report what changed between two reads, a namespace tree expanded on demand, a ring queue with an explicit overflow policy, and clearing a cache when a host event fires.
 
-Implementation revision: **4**.
+Implementation revision: **5**.
 
 ## Loading
 
@@ -273,7 +273,7 @@ end, {
 })
 ```
 
-It is called with two arguments, `fn`'s **first** result (the one that would be stored; the memoised function returns no other) and the key, and only when that result is not `nil`, since `nil` is never remembered anyway. When it returns `false` or `nil`, the result is returned to the caller **without being remembered**, so the next call for that key runs `fn` again; when it returns anything else, the result is remembered as usual. It must be a function (`CacheKit:Memoize cacheable must be a function`); an error it raises propagates unchanged and remembers nothing; it may close the cache, in which case the result is returned without being remembered. A pass-through allocates nothing.
+It is called with two arguments, `fn`'s **first** result (the one that would be stored; the memoised function returns no other) and the key, and only when that result is not `nil`, since `nil` is never remembered anyway. When it returns `false` or `nil`, the result is returned to the caller **without being remembered**, so the next call for that key runs `fn` again; when it returns anything else, the result is remembered as usual. On Retail 12.x a secret answer (a secret boolean, say, from a client API the predicate consulted) counts as "no": CacheKit asks `issecretvalue` before testing the answer, because testing a secret for truth raises, and returns the result without remembering it, as for `false` or `nil`. It must be a function (`CacheKit:Memoize cacheable must be a function`); an error it raises propagates unchanged and remembers nothing; it may close the cache, in which case the result is returned without being remembered. A pass-through allocates nothing.
 
 ## `CacheKit:NewSnapshot(read, options?)`
 
@@ -441,7 +441,7 @@ local isSecret = issecretvalue or function()
 end
 ```
 
-`fill` checks for you when the client has `issecretvalue`: it refuses a secret key or value at the reader's line (`CacheKit.Snapshot fill key must not be a secret value`) before any comparison, and that refusal fails the refresh like any other. Cache methods (`Get`, `Set`, `PutNegative`, `Peek`, `Delete`), memoised functions, lazy tree paths, queue values and `snapshot:Get` do not probe, to keep their hot paths free of an extra call; a secret key or path part reaching them raises the client's own error, `attempted to index a table that cannot be indexed with secret keys` (measured on Retail 12.1.0 b69933; a queue only stores its values and never compares them, so a secret value survives `Push` and `Pop` unchanged). Cache values are handled the same way: a secret value, as opposed to a secret key, survives `Set`, `Get`, `Peek` and a memoised call unchanged and still secret. The negative-entry check compares the stored value by identity with CacheKit's own marker table, and the client allows that for a secret number or string, because the two differ in type; it would not allow comparing a secret with a number or string. A secret `maxEntries`, `capacity` or `SetLimits` value is refused at the caller's line.
+`fill` checks for you when the client has `issecretvalue`: it refuses a secret key or value at the reader's line (`CacheKit.Snapshot fill key must not be a secret value`) before any comparison, and that refusal fails the refresh like any other. Cache methods (`Get`, `Set`, `PutNegative`, `Peek`, `Delete`), memoised functions, lazy tree paths, queue values and `snapshot:Get` do not probe, to keep their hot paths free of an extra call; a secret key or path part reaching them raises the client's own error, `attempted to index a table that cannot be indexed with secret keys` (measured on Retail 12.1.0 b69933; a queue only stores its values and never compares them, so a secret value survives `Push` and `Pop` unchanged). Cache values are handled the same way: a secret value, as opposed to a secret key, survives `Set`, `Get`, `Peek` and a memoised call unchanged and still secret. The negative-entry check compares the stored value by identity with CacheKit's own marker table, and the client allows that for a secret number or string, because the two differ in type; it would not allow comparing a secret with a number or string. A secret `maxEntries`, `capacity` or `SetLimits` value is refused at the caller's line. A secret answer from a `Memoize` `cacheable` predicate is never tested for truth, which would raise (measured on Retail 12.1.0 b69933): it is treated as `false`, so the result is returned and not remembered.
 
 ## Error behaviour
 
@@ -468,6 +468,6 @@ The layout behind these numbers is in [`INTERNALS.md`](INTERNALS.md).
 
 ## Embedded copies and upgrades
 
-Several addons may embed CacheKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: caches, snapshots, lazy trees and queues created by an older copy keep their contents, statistics and subscriptions, and memoised functions, fill functions and clear-on-event callbacks an older copy created run the newer implementation. Revision 2 upgrades revision 1 state by adding the lazy tree and queue metatables, the negative-entry marker and the default package-wide limits; revision 1 caches gain `PutNegative` without being touched. Revision 3 keeps the revision 2 state as it is and replaces the methods only.
+Several addons may embed CacheKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: caches, snapshots, lazy trees and queues created by an older copy keep their contents, statistics and subscriptions, and memoised functions, fill functions and clear-on-event callbacks an older copy created run the newer implementation. Revision 2 upgrades revision 1 state by adding the lazy tree and queue metatables, the negative-entry marker and the default package-wide limits; revision 1 caches gain `PutNegative` without being touched. Revision 3 keeps the revision 2 state as it is and replaces the methods only. Revisions 4 and 5 do the same; memoised functions an older copy created use revision 5's secret-aware `cacheable` check at once, because they reach the implementation through the shared dispatch table.
 
 Nothing survives `/reload`: CacheKit caches live in memory only.

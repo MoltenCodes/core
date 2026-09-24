@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "cacheKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local OPTIONAL_EVENTKIT_API = 1
 
@@ -1502,8 +1502,15 @@ local function memoizedCall(cache, compute, key, cacheable)
     if type(value) == "nil" then
         return nil
     end
-    if type(cacheable) ~= "nil" and not cacheable(value, key) then
-        return value
+    if type(cacheable) ~= "nil" then
+        -- The predicate is consumer code and may answer with a secret boolean
+        -- (Retail 12.x), which raises when tested for truth. A secret answer
+        -- is not a "yes": the result is returned without being remembered,
+        -- exactly as for `false` or `nil`.
+        local verdict = cacheable(value, key)
+        if isSecretValue(verdict) or not verdict then
+            return value
+        end
     end
     if rawget(cache, "_closed") ~= true then
         store(cache, key, value, expiryForNow(cache))

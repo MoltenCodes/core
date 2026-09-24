@@ -346,6 +346,33 @@ describe("SettingsKit and secret values", function()
             message
         )
     end)
+
+    it("refuses a secret scope name at the caller's line before it indexes a scope", function()
+        local secret = TestEnv.NewSecret()
+        local message = raisedAtWriter(function(mark)
+            mark()
+            db:OnChange(secret, function() end)
+        end)
+        assert.are.equal("SettingsKit.Database:OnChange scope must not be a secret value", message)
+
+        message = raisedAtWriter(function(mark)
+            mark()
+            db:Validate(secret, "name", 1)
+        end)
+        assert.are.equal("SettingsKit.Database:Validate scope must not be a secret value", message)
+    end)
+
+    it("refuses to read the database with a secret key at the reading line", function()
+        local secret = TestEnv.NewSecret()
+        local message = raisedAtWriter(function(mark)
+            mark()
+            return db[secret]
+        end)
+        assert.are.equal("SettingsKit databases cannot be read with a secret key", message)
+        -- Methods and scopes still read as before.
+        assert.are.equal("function", type(db.OnChange))
+        assert.are.equal("table", type(db.profile))
+    end)
 end)
 
 describe("SettingsKit path rendering of unusual keys", function()

@@ -43,7 +43,7 @@
 
 local PACKAGE_NAME = "optionsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -649,9 +649,16 @@ end
 local function checkKnownFields(spec, kind, label, level)
     local kindFields = KIND_FIELDS[kind]
     local isValueKind = VALUE_KINDS[kind] == true
-    for field in pairs(spec) do
+    for field, value in pairs(spec) do
         if type(field) ~= "string" then
             error(label .. " contains a field that is not a string", level)
+        end
+        -- Refused here, before any field is read: the checks and the record
+        -- below test flags such as `disabled`, `tristate` and `hasAlpha` for
+        -- truth, and compare numbers and strings, which raises inside
+        -- OptionsKit for a secret (Retail 12.x) instead of at the caller.
+        if isSecret(value) then
+            error(label .. "." .. field .. " must not be a secret value", level)
         end
         if
             not (COMMON_FIELDS[field] or kindFields[field] or (isValueKind and VALUE_FIELDS[field]))
@@ -1127,6 +1134,9 @@ buildOption = function(context, spec, parent, key, label, level)
         error(label .. " must be an option table", level)
     end
     local kind = spec.type
+    if isSecret(kind) then
+        error(label .. ".type must not be a secret value", level)
+    end
     if type(kind) ~= "string" or KIND_FIELDS[kind] == nil then
         error(label .. '.type must be an option type such as "group" or "toggle"', level)
     end
@@ -1408,8 +1418,14 @@ local function effectiveFlag(record, field)
         if flag == true then
             return true
         end
-        if flag and flag(rawget(record, "_info")) then
-            return true
+        -- A predicate's answer is consumer code's and may be secret (Retail
+        -- 12.x); testing a secret for truth raises, so a secret answer counts
+        -- as "no", the answer that keeps the option usable.
+        if flag then
+            local answer = flag(rawget(record, "_info"))
+            if not isSecret(answer) and answer then
+                return true
+            end
         end
         record = rawget(record, "_parent")
     end
@@ -1673,7 +1689,9 @@ local function describeRecord(tree, record, level)
             )
         end
     end
-    if desc then
+    -- A type test, not a truth test: a `desc` function may return a secret
+    -- string, which is passed through like a getter's secret value.
+    if type(desc) == "string" then
         node.desc = desc
     end
     for field, value in pairs(rawget(record, "_hints")) do
@@ -1761,6 +1779,9 @@ local PROFILE_DATABASE_METHODS = {
 
 -- The complete set of fields `ProfileOptions` options accept.
 local PROFILE_OPTION_KEYS = { name = true, order = true, description = true, localize = true }
+-- The same fields in a fixed order, so the secret refusal names the same field
+-- whatever the hash order of the options table.
+local PROFILE_OPTION_FIELDS = { "name", "order", "description", "localize" }
 
 -- Every user-visible string of the profile group, by the key the `localize`
 -- hook receives, in English. `%s` stands for the current profile's name in
@@ -1857,6 +1878,17 @@ local function readProfileOptions(options, link, level)
             'OptionsKit:ProfileOptions options contains unknown field "' .. firstUnknown .. '"',
             level
         )
+    end
+    -- Refused before the checks below compare them or test them for truth,
+    -- which raises inside OptionsKit for a secret (Retail 12.x).
+    for index = 1, #PROFILE_OPTION_FIELDS do
+        local field = PROFILE_OPTION_FIELDS[index]
+        if isSecret(rawget(options, field)) then
+            error(
+                "OptionsKit:ProfileOptions options." .. field .. " must not be a secret value",
+                level
+            )
+        end
     end
     checkOptionalString(
         rawget(options, "name"),

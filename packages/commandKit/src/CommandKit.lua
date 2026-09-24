@@ -53,7 +53,7 @@
 
 local PACKAGE_NAME = "commandKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local OPTIONAL_OPTIONSKIT_API = 1
@@ -2213,6 +2213,24 @@ local function formatValue(node, value)
     return tostring(value)
 end
 
+---Read a boolean flag of the addon's tree that `Describe` passes through as
+---the addon wrote it (`tristate`, `confirm`). OptionsKit checks only its type,
+---so the flag may be a secret boolean, which cannot be tested for truth or
+---compared with `true` inside CommandKit. A secret flag answers `whenSecret`,
+---chosen per flag as the safe reading; anything but a boolean answers `false`.
+---@param value any
+---@param whenSecret boolean
+---@return boolean
+local function readTreeFlag(value, whenSecret)
+    if type(value) ~= "boolean" then
+        return false
+    end
+    if isSecret(value) then
+        return whenSecret
+    end
+    return value
+end
+
 ---Find a `select` or `multiselect` key from what the user typed: the key
 ---itself (as text or as a number), else a label, ignoring case.
 ---@param node table
@@ -2320,7 +2338,8 @@ local function parseValue(node, ...)
             end
             return not node.value
         end
-        if node.tristate and lowerWord == "default" then
+        -- A secret `tristate` reads as absent: `default` is not offered.
+        if readTreeFlag(node.tristate, false) and lowerWord == "default" then
             return nil
         end
         local value = BOOLEAN_WORDS[lowerWord]
@@ -2541,7 +2560,9 @@ local function newOptionHandlers(tree)
             return
         end
         local confirm = node.confirm
-        local asks = type(confirm) == "string" or confirm == true
+        -- A secret boolean `confirm` asks: running a button the addon may
+        -- have marked for confirmation is the surprise to avoid.
+        local asks = type(confirm) == "string" or readTreeFlag(confirm, true)
         if asks and confirmation ~= "confirm" then
             if type(confirm) == "string" and not isSecret(confirm) then
                 contextPrint(context, confirm)

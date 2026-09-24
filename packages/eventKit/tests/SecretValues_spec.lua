@@ -138,4 +138,57 @@ describe("EventKit secret values", function()
         assert.are.equal(1, changes)
         assert.are.equal(secret, derived:Get())
     end)
+
+    it("counts a secret equals answer as a change without testing it", function()
+        local secret = {}
+        local current = 1
+        local derived = EventKit:Derive("CUSTOM_EVENT", function()
+            return current
+        end, {
+            -- A plain table would read as "equal"; the probe makes it secret.
+            equals = function()
+                return secret
+            end,
+        })
+        local seen = {}
+        derived:OnChange(function(value, previous)
+            seen[#seen + 1] = { value, previous }
+        end)
+        installSecretProbe(secret)
+
+        current = 2
+        Scheduled.Emit("CUSTOM_EVENT")
+        fireLatest()
+
+        assert.are.same({ { 2, 1 } }, seen)
+        assert.are.equal(2, derived:Get())
+    end)
+end)
+
+describe("EventKit secret combat-log sub-events", function()
+    local EventKit
+    before_each(function()
+        EventKit = TestEnv.NewPackage()
+    end)
+    after_each(TestEnv.Reset)
+
+    it("routes a secret sub-event to the wildcard listeners only, unchanged", function()
+        local routed = 0
+        EventKit:ConnectCombatLog("SPELL_DAMAGE", function()
+            routed = routed + 1
+        end)
+        local wildcard = {}
+        EventKit:ConnectCombatLog("*", function(...)
+            wildcard[#wildcard + 1] = { ... }
+        end)
+        -- The stand-in is a string the route table holds, so only the probe
+        -- keeps it from being looked up.
+        installSecretProbe("SPELL_DAMAGE")
+
+        TestEnv.EmitCombatLogEvent(1.5, "SPELL_DAMAGE", false, "Player-1")
+
+        assert.are.equal(0, routed)
+        assert.are.same({ { 1.5, "SPELL_DAMAGE", false, "Player-1" } }, wildcard)
+        assert.are.equal(1, TestEnv.CombatLogEventInfoReads())
+    end)
 end)

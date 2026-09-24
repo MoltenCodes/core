@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4 — 2026-09-24
+
+- A secret `options.forceSecure` of `Hook`, `RawHook`, `HookScript` or `RawHookScript` is refused at the caller's line with `<method> options.forceSecure must not be a secret value`, before HookKit compares or tests it. A secret boolean passes the type check, and on Retail 12.1.0 (build 69933) testing a secret boolean raises in tainted code, so before this the call raised inside HookKit. Documented under "Refusals" in `docs/API.md`.
+- Implementation revision 4, because the executed implementation changed. No state changed. Specs: the four methods refuse a secret `forceSecure` at the caller, with ClientKit and with `issecretvalue` alone, and a plain `forceSecure` is still accepted; the upgrade spec now runs from revision 2 and from the previous revision to the working file.
+
 ## 0.2.3 — 2026-09-24
 
 - Secret values: the source comments on `maxHooks` validation and the facade check no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

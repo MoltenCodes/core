@@ -209,7 +209,7 @@ local anchor = { point = "TOPLEFT", relativeTo = "UIParent", relativePoint = "TO
 | `Anchor.FromRect(rect, parentRect, into?)` | Pure: for rectangles `{ left, bottom, width, height }`, elect the nearest point and return the anchor (without `relativeTo` and `scale`) that keeps the rect where it is. With `into`, fills that table and allocates nothing. |
 | `Anchor.Normalize(frame, point, ...)` | Turn any `SetPoint` argument form into an anchor. `nil` as the relative frame is resolved to the parent. |
 | `Anchor.Apply(frame, anchor)` | `ClearAllPoints`, `SetScale` when the anchor has a scale, `SetPoint`. `true`; or, leaving the frame alone, `false, "forbidden"` for a frame `IsForbidden` or `CanBeAccessedInContext` refuses and `false, "unknownRelative"` when `relativeTo` names no frame. An anchor it cannot read raises at the caller. |
-| `Anchor.Read(frame)` | The frame's first anchor, normalised, or `nil`. |
+| `Anchor.Read(frame)` | The frame's first anchor, normalised, or `nil`; also `nil` when the client answers `GetPoint` with secret values (the frame's anchoring is secret). |
 | `Anchor.POINTS` | The nine points in election order. |
 
 **Election.** For each of the nine points, `FromRect` measures the squared distance between that point of the rect and the same point of the parent, and keeps the smallest. A frame near a corner is anchored to that corner, one near an edge's middle to that edge, one near the middle to `CENTER`, so the offset stays small and the frame keeps its place when the screen size changes. Equally near points go to the first in `POINTS`: `CENTER`, `TOP`, `BOTTOM`, `LEFT`, `RIGHT`, `TOPLEFT`, `TOPRIGHT`, `BOTTOMLEFT`, `BOTTOMRIGHT`.
@@ -229,7 +229,7 @@ binding:OnMoved(function(binding, anchor) end)
 
 | Binding method | Purpose |
 |---|---|
-| `Capture()` | Read the frame's rect in screen coordinates, elect the nearest point of its parent, re-anchor the frame there, save (debounced), fire `OnMoved`. Returns the anchor, or `nil` and `"notPositioned"`, `"released"` or `"forbidden"` (a frame `IsForbidden` or `CanBeAccessedInContext` refuses, which `Restore` leaves alone too). |
+| `Capture()` | Read the frame's rect in screen coordinates, elect the nearest point of its parent, re-anchor the frame there, save (debounced), fire `OnMoved`. Returns the anchor, or `nil` and `"notPositioned"` (also when the client answers `GetRect` with secret values), `"released"` or `"forbidden"` (a frame `IsForbidden` or `CanBeAccessedInContext` refuses, which `Restore` leaves alone too). |
 | `Restore()` | Apply the saved anchor; `false` when none is saved. An anchor it cannot read is reported and the frame keeps its place. |
 | `Flush()` | Save a debounced anchor now; `false` when nothing was pending, without SchedulerKit, or once released. |
 | `OnMoved(callback)` | Connect `callback(binding, anchor)`; returns a SignalKit connection. Raises on a released binding. |
@@ -354,6 +354,25 @@ local slider = WidgetKit:Create("Slider") --[[@as WidgetKit.Slider]]
 
 A font string can display a secret value, but whether one should appear is the caller's decision (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every text setter refuses a secret at your line — `WidgetKit Label:SetText text must not be a secret value unless options.allowSecret is true` — unless you pass `{ allowSecret = true }`. A secret text is never measured (a `Label` showing one is one line high). Values a widget would compare (`CheckBox:SetValue`, `Dropdown:SetValue`, `Dropdown:SetList`, `Label:SetJustifyH`, numbers and optional numbers such as an `alpha` or a relative width, counts and indices such as `SetMaxLetters` and `PickIndex`, limits and caps, names, user-data keys, and the keys of a `Dropdown:SetList` `order`, which are refused before they index `values`: `WidgetKit Dropdown:SetList key must not be a secret value`) are refused when secret, before they are compared with anything, `nil` included. Absence of an optional argument, option field, constructor field or host result is tested with `type`, never by comparing with `nil`, so a value WidgetKit only stores, such as a user-data value, may be secret. Released widgets clear their texts. The renderer never inspects a secret value: an `input` shows it only with `allowSecret`, every other kind is disabled.
 
+**Secret booleans.** A secret value is never tested as a boolean (`if`, `and`, `or`, `not`) or compared inside WidgetKit, because either raises there (measured on Retail 12.1.0 b69933). What that means for each place a foreign value decides a branch:
+
+| Where | A secret value |
+|---|---|
+| `SetDisabled(disabled)` of every widget, `SetFullWidth`, `SetFullHeight`, `Frame:SetResizable`, `Frame:SetMovable`, `Button:SetKeyCapture`, `CheckBox:SetTriState`, `Slider:SetIsPercent`, `EditBox:SetMultiLine`, `ColorPicker:SetHasAlpha` | Refused at your line: `WidgetKit Slider:SetIsPercent isPercent must not be a secret value`. |
+| `options.allowSecret` of a text setter and of `RenderOptions`, `options.restore` of `BindPosition` | Refused at your line: `WidgetKit Label:SetText options.allowSecret must not be a secret value`. |
+| `x`, `y` of `Anchor.Normalize`, and `x`, `y` of an anchor `Anchor.Apply` or `Restore` reads | Refused (`... x must not be a secret value`) instead of being defaulted with `or 0`; `Restore` reports it and leaves the frame in place. |
+| `GetPoint` answers (`Anchor.Read`), `GetRect` answers (`Binding:Capture`) | `Anchor.Read` returns `nil`; `Capture` returns `nil, "notPositioned"`. |
+| The width or height a layout function returns | Ignored, like any non-number. |
+| `tree:IsDisabled(path)` | The option is disabled: the user is not offered what the tree will not say is enabled. |
+| `tree:IsHidden(path)`, a node's `hidden` | Counts as not hidden: the option stays in view (and disabled when its state is secret too). |
+| A node's `tristate`, `isPercent`, `multiline`, `hasAlpha` | Counts as not set. |
+| A node's `confirm` | Counts as `true`: the option asks the default question before it runs. |
+| A node's `fontSize` | The default (`medium`) font. |
+| A node's `step` | Passed to `Slider:SetSliderValues`, which refuses it; building fails as for any invalid node. |
+| The answer of `tree:Validate` or `tree:Set` | A refusal. A secret message is shown as `<secret value>`. |
+
+Callback and hook return values are never read, so they need no rule.
+
 ## Error behaviour
 
 Every argument failure and refusal reports the line that called WidgetKit and names the method: `WidgetKit:Create name must be a non-empty string`, `WidgetKit.Container:AddChild beforeWidget must be a child of this container`, `WidgetKit Slider:SetSliderValues minimum must not be greater than maximum`. Calling a method on the wrong receiver raises `... must be called on a WidgetKit widget` (or container, binding, rendering, facade). Errors raised by a constructor and by a layout function propagate unchanged. Callback and hook errors are reported through the host error handler.
@@ -446,7 +465,7 @@ To change `MyAddonProgress` later, register the new constructor with version `2`
 
 ## Embedded copies and upgrades
 
-Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revisions 2 and 3 keep the revision 1 state as it is and replace the methods only; every base widget stays at version 1.
+Several addons may embed WidgetKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: the widget and container prototypes, the type registry, the pools, every live widget's record, and the binding and rendering prototypes are kept, and gain the newer copy's methods. Pools call through a shared dispatch table, so a newer copy's build and retire steps run for pools an older copy created. Built-in layouts are resolved by name on every pass, so they are replaced for existing containers too. Base widget types are registered again with this copy's versions: an equal version keeps the older constructor, a higher one retires the older widgets. Revisions 2, 3 and 4 keep the revision 1 state as it is and replace the methods only; every base widget stays at version 1.
 
 Nothing survives `/reload`: widgets are created again when the addon loads.
 

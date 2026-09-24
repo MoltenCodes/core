@@ -46,7 +46,7 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -519,6 +519,17 @@ end
 local function validateDatabase(db, methodName, level)
     if type(db) ~= "table" or getmetatable(db) ~= DATABASE_METATABLE then
         error(methodName .. " must be called on a SettingsKit database", level)
+    end
+end
+
+---Refuse a secret scope name before it indexes the scope table, which would
+---raise inside SettingsKit instead of at the caller.
+---@param value any
+---@param methodName string qualified public method name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function validateScopeName(value, methodName, level)
+    if isSecret(value) then
+        error(methodName .. " scope must not be a secret value", level)
     end
 end
 
@@ -2295,6 +2306,7 @@ end
 local function databaseOnChange(self, scopeName, callback)
     validateDatabase(self, "SettingsKit.Database:OnChange", 3)
     local db = self --[[@as table]]
+    validateScopeName(scopeName, "SettingsKit.Database:OnChange", 3)
     local scope = type(scopeName) == "string" and rawget(db._scopes, scopeName) or nil
     if scope == nil or not scope.available then
         error("SettingsKit.Database:OnChange scope must name a declared, available scope", 2)
@@ -2449,6 +2461,7 @@ end
 local function databaseValidate(self, scopeName, path, value)
     validateDatabase(self, "SettingsKit.Database:Validate", 3)
     local db = self --[[@as table]]
+    validateScopeName(scopeName, "SettingsKit.Database:Validate", 3)
     local scope = type(scopeName) == "string" and rawget(db._scopes, scopeName) or nil
     if scope == nil or not scope.available then
         error("SettingsKit.Database:Validate scope must name a declared, available scope", 2)
@@ -2526,6 +2539,12 @@ end
 ---@param key any
 ---@return any
 local function databaseIndex(db, key)
+    -- A secret key would raise inside SettingsKit while it indexes the
+    -- prototype; refuse it at the reading line instead.
+    if isSecret(key) then
+        -- databaseIndex <- the reading line
+        error("SettingsKit databases cannot be read with a secret key", 2)
+    end
     local method = rawget(Database, key)
     if method ~= nil then
         return method

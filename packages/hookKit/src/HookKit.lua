@@ -55,7 +55,7 @@
 
 local PACKAGE_NAME = "hookKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local OPTIONAL_CLIENTKIT_API = 1
 local STATE_SCHEMA = 1
@@ -583,6 +583,11 @@ local function readHookOptions(options, methodName, level)
     local forceSecure = rawget(options, "forceSecure")
     if type(forceSecure) ~= "nil" and type(forceSecure) ~= "boolean" then
         error(methodName .. " options.forceSecure must be a boolean", level)
+    end
+    -- A secret boolean passes the type check, and comparing or testing it
+    -- would raise inside HookKit instead of at the caller's line.
+    if isSecret(forceSecure) then
+        error(methodName .. " options.forceSecure must not be a secret value", level)
     end
     return forceSecure == true
 end

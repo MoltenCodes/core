@@ -386,6 +386,18 @@ says it is not secret; a secret is described as `<secret value>`. A secret
 `ClientKit.Manifest:Get field must not be a secret value`) before it is
 compared or used as a table key.
 
+A value that may be secret is never tested as a boolean either (`if x`,
+`x and y`, `x or y`, `not x`), because on Retail 12.1.0 that raises inside
+the Kit. `manifest:Get` reads its receiver's `name` without testing it and
+asks `IsSecret` before lowering it or using it as a key; a receiver whose
+`name` is secret belongs to no manifest and is refused with
+`ClientKit.Manifest:Get must be called on a manifest`. Every other value
+ClientKit tests is its own, a type-checked host function, or a host return
+the client does not document as possibly secret (`IsForbidden`,
+`CanBeAccessedInContext`, `C_EventUtils.IsEventValid`, `IsAddOnLoaded`,
+`GetLocale`, `GetBuildInfo`, and the legacy `GetSpellInfo` of clients that
+have no secret values).
+
 Bootstrap failures raise at the line that loaded the file:
 
 | Message | Cause |
@@ -427,9 +439,9 @@ copy rewrote. An older copy loading after a newer one yields to it.
 
 Revision 2 added the locale, the manifest cache and the manifest prototype to
 the state without a schema change; an upgrade over revision 1 creates them
-empty and binds the four host functions the manifests use. Revisions 3 and 4
-changed no state field, so an upgrade over revision 2 or 3 keeps every cached
-manifest as it is. An inherited `manifests` or `manifestPrototype` that is present but not
+empty and binds the four host functions the manifests use. Revisions 3, 4
+and 5 changed no state field, so an upgrade over revision 2, 3 or 4 keeps every
+cached manifest as it is. An inherited `manifests` or `manifestPrototype` that is present but not
 a table is refused as corrupted state rather than indexed.
 
 `_state` is private; its layout is not part of the contract.

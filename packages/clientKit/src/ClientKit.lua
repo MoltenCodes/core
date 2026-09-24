@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "clientKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 4
+local IMPLEMENTATION_REVISION = 5
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -1100,8 +1100,18 @@ end
 ---@param field string `.toc` field name, for example `"X-Website"` or `"RequiredDeps"`
 ---@return string?
 local function manifestGet(view, field)
-    local name = type(view) == "table" and view.name or nil
-    local record = type(name) == "string" and rawget(manifests, string.lower(name)) or nil
+    -- The receiver is the caller's value, so its `name` is read without a
+    -- boolean test and asked of `issecretvalue` before it is lowered or used
+    -- as a key: testing, lowering or keying a secret raises inside ClientKit.
+    -- A secret name belongs to no manifest, so it takes the receiver refusal.
+    local name
+    if type(view) == "table" then
+        name = view.name
+    end
+    local record
+    if type(name) == "string" and not packageIsSecret(ClientKit, name) then
+        record = rawget(manifests, string.lower(name))
+    end
     if record == nil or not rawequal(rawget(record, "view"), view) then
         error("ClientKit.Manifest:Get must be called on a manifest", 2)
     end

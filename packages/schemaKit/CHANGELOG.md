@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- A secret answer from a `SchemaKit.custom` check (Retail 12.x) rejects the value with rule `custom`, like a falsy answer, instead of raising inside SchemaKit when the answer was tested as a boolean. Measured on Retail 12.1.0 (build 69933): a boolean test of a secret raises in tainted code.
+- A secret `integer` flag of `SchemaKit.number`, `open` flag of `SchemaKit.table` and `freshFailures` option of `Seal` is refused at the caller's line with the message an invalid value of that flag gets, instead of raising inside SchemaKit when the flag was compared or tested. `docs/API.md` documents both under "Secret values".
+- Implementation revision 3, because the executed implementation changed. No state changed. Specs: a secret custom answer, the three secret flags, and an in-place upgrade from revision 2 to the working file; the revision-1 upgrade spec compares with the working revision instead of a fixed number.
+
 ## 0.1.2 — 2026-09-24
 
 - Implementation revision 2 applies the repository nil rule: the absence of a value that came from outside SchemaKit (a checked or applied value, an array element, a builder's spec and its fields, `Assert`'s `argumentName` and `level`, `Seal`'s options) and the result of matching a caller's string or pattern are tested with `type(value) == "nil"`, never by comparing the value with `nil`. The Registry lookup in the shared namespace and the results of `Registry:Bootstrap` are tested the same way.

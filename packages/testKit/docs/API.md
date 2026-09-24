@@ -2,7 +2,7 @@
 
 TestKit API generation **1** runs test suites inside the World of Warcraft client: suites registered against LifecycleKit phases, tests run one at a time inside a SchedulerKit job, save-and-restore mocking, asynchronous waits, secret-safe expectations and structured results.
 
-Implementation revision: **4**.
+Implementation revision: **5**.
 
 TestKit is **development-only**. It belongs in a development addon and never in a release bundle; see the README's "Embedding" section.
 
@@ -175,6 +175,8 @@ While the test waits, the runner job **ends**: no job is queued and no `OnUpdate
 
 Calls `predicate()` at once; when it is truthy, returns `true` without suspending. Otherwise the test is resumed once per rendered frame (through `SchedulerKit` `NextFrame`) and `predicate()` asked again, until it is truthy (`true`) or `timeoutSeconds` pass on TimerKit (`false, "timeout"`). A predicate that raises fails the test.
 
+The answer is read by its type before it is tested, because a boolean test on a secret raises on the Retail client. A predicate that answers with a secret boolean fails the test at the line that called `WaitUntil`, with `TestKit.Context:WaitUntil predicate returned a secret boolean, which cannot be tested`, and cancels the timeout: waiting on for an answer TestKit can never read would only turn it into a timeout. A secret of any other type is truthy, as `ToBeTruthy` treats it, because its type is not secret.
+
 ### `ctx:Expect(actual)`, `ctx:Fail(message?)`, `ctx:Log(message)`
 
 `Expect` returns a matcher; see below. `Fail` raises `message` at the test's line (default `"failed"`); a string is cut to 256 bytes and anything else is described safely. `Log` keeps `message` the same way, up to `maxLogLines` (64) lines per test, and returns `false` without keeping it after that.
@@ -300,7 +302,7 @@ returns a fresh table. Lowering a limit removes nothing already registered;
 further registrations answer `nil, "full"` (or `false` from `Log`). `Reset`
 keeps the limits. The limits and the sentinel live in shared state, so every
 embedded copy sees the same values; revision-1 state is seeded with the
-defaults above, and revisions 3 and 4 keep the revision 2 state as it is.
+defaults above, and revisions 3, 4 and 5 keep the revision 2 state as it is.
 
 ## Error behaviour
 

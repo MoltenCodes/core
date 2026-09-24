@@ -2,7 +2,7 @@
 
 SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles, change signals, versioned migrations and compaction.
 
-Implementation revision: **3**.
+Implementation revision: **4**.
 
 ## Loading
 
@@ -364,6 +364,10 @@ Where a value can come from outside SettingsKit (an argument, an option, a saved
 - `SettingsKit:Open options.migrations must not have a secret key`
 - `SettingsKit:SetLimits limits must not have a secret key`
 - `SettingsKit:SetLimits limits.<name> must not be a secret value`
+- `SettingsKit.Database:OnChange scope must not be a secret value` and `SettingsKit.Database:Validate scope must not be a secret value`, asked before the scope name indexes the database's scopes (revision 4 and later)
+- `SettingsKit databases cannot be read with a secret key`, raised at the reading line by `db[key]` before the key indexes the method table (revision 4 and later)
+
+SettingsKit never tests a value it did not create as a boolean (`if x`, `x and y`, `x or y`, `not x`), which raises on a secret as well: the host identity returns are type-tested and asked about secrecy before they are used, and the only answers it tests (SchemaKit's `Check`, `pcall`) are its dependencies' own booleans.
 
 A secret stored `version` in the saved table is refused as `SettingsKit:Open MyAddonDB.version must be a non-negative integer`, and a secret profile choice in `profileKeys` is ignored (never compared) by `DeleteProfile`, as `Open` already ignored it.
 

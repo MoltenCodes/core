@@ -108,5 +108,69 @@ describe("HookKit and secret values", function()
                 end
             )
         end)
+
+        it("refuses a secret forceSecure at the caller's line " .. label, function()
+            -- `true` stands in for a secret boolean: its type is boolean, so
+            -- only the probe tells it apart from a plain flag.
+            local HookKit = loadWithSecret(true, withClientKit)
+            local scope = HookKit:CreateScope()
+            local target = {
+                Pre = function() end,
+                Raw = function() end,
+            }
+            local frame = TestEnv.NewFrame()
+            local options = { forceSecure = true }
+            local function noop() end
+            local source = debug.getinfo(1, "S").short_src
+            local cases = {
+                {
+                    "HookKit.Scope:Hook",
+                    function()
+                        local _ = scope:Hook(target, "Pre", noop, options)
+                    end,
+                },
+                {
+                    "HookKit.Scope:RawHook",
+                    function()
+                        local _ = scope:RawHook(target, "Raw", noop, options)
+                    end,
+                },
+                {
+                    "HookKit.Scope:HookScript",
+                    function()
+                        local _ = scope:HookScript(frame, "OnShow", noop, options)
+                    end,
+                },
+                {
+                    "HookKit.Scope:RawHookScript",
+                    function()
+                        local _ = scope:RawHookScript(frame, "OnHide", noop, options)
+                    end,
+                },
+            }
+            for index = 1, #cases do
+                local methodName, action = cases[index][1], cases[index][2]
+                local line = debug.getinfo(action, "S").linedefined + 1
+                local ok, value = pcall(action)
+                assert.is_false(ok)
+                assert.are.equal(
+                    source
+                        .. ":"
+                        .. line
+                        .. ": "
+                        .. methodName
+                        .. " options.forceSecure must not be a secret value",
+                    value
+                )
+            end
+            assert.are.equal(0, scope:GetActiveCount())
+        end)
+
+        it("still accepts a plain forceSecure while the probe exists " .. label, function()
+            local HookKit = loadWithSecret("SecretMethod", withClientKit)
+            local scope = HookKit:CreateScope()
+            local target = { Pre = function() end }
+            assert.is_true(scope:Hook(target, "Pre", function() end, { forceSecure = true }))
+        end)
     end
 end)

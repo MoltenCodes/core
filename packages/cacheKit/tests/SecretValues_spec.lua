@@ -108,6 +108,26 @@ describe("CacheKit snapshots and secret values", function()
         assert.are.equal(1, calls)
     end)
 
+    it("treats a secret cacheable answer as no and remembers nothing", function()
+        -- `true` stands in for a secret boolean: without the probe asked
+        -- first, it would read as "remember this result".
+        local CacheKit = loadWithSecret(true)
+        local calls = 0
+        local memoized, cache = CacheKit:Memoize(function(key)
+            calls = calls + 1
+            return key * 2
+        end, {
+            cacheable = function()
+                return true
+            end,
+        })
+
+        assert.are.equal(4, memoized(2))
+        assert.are.equal(4, memoized(2))
+        assert.are.equal(2, calls)
+        assert.are.equal(0, cache:GetCount())
+    end)
+
     it("accepts ordinary values when the probe exists", function()
         local CacheKit = loadWithSecret({})
         local snapshot = CacheKit:NewSnapshot(function(fill)

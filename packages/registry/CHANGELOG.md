@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.7 — 2026-09-24
+
+- A secret answer from `validatePublicSurface` is refused as "package state is corrupted or incomplete" at the package file's `Registry:Bootstrap` call, as `false` is, instead of raising inside Registry. Retail 12.1.0 b69933 (2026-09-24) raises on a boolean test of a secret (`if x`, `not x`, `x and y`, `x or y`), and Registry tested the answer with `not`. Both call sites (a newer copy already installed, and a same-revision copy) go through one file-level helper, `passes`, that asks `issecretvalue` first. `docs/API.md` documents it under "Secret values".
+- Audit of every other boolean test in `Registry.lua` on a value Registry did not create: the `validateState` verdict was already secret-safe (`not isSecret(verdict) and verdict == true`), `sealFacade` is refused when secret before it is tested, `resume`'s answer goes through `isNonNegativeInteger`, and migration and retire results are never tested. The `issecretvalue` answer itself is compared with `true`, not tested.
+- Implementation revision 13, because the executed implementation changed. No state changed; an in-place upgrade from revision 12 replaces the methods on the shared facade. New specs in `SecretValues_spec.lua`: a secret surface verdict is refused for a newer and for a same-revision copy, and after an in-place upgrade from the previous revision.
+- `Registry.lua` stays at its 1000-line budget: five comments are shorter, and the `Bootstrap` local holding `request.validatePublicSurface` is named `validateSurface`.
+
 ## 0.6.6 — 2026-09-24
 
 - Secret values: API.md (*Secret values*) and the source comment on `isSecret` no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

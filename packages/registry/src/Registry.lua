@@ -37,7 +37,7 @@ local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 12
+local IMPLEMENTATION_REVISION = 13
 
 -- Lua 5.1 numbers are doubles, which represent consecutive integers exactly only
 -- up to 2^53. Past that boundary distinct values start comparing equal, so a
@@ -68,6 +68,15 @@ local function isSecret(value)
     -- selene: allow(global_usage)
     local isSecretValue = rawget(_G, "issecretvalue")
     return type(isSecretValue) == "function" and isSecretValue(value) == true
+end
+
+---Whether `hook(value)` answers truthy; a secret answer cannot be tested, so it never does.
+---@param hook function
+---@param value any
+---@return boolean
+local function passes(hook, value)
+    local verdict = hook(value)
+    return not isSecret(verdict) and verdict and true or false
 end
 
 ---Whether `value` is a number that represents an exact integer in range.
@@ -132,10 +141,9 @@ end
 
 -- Bootstrap state ---------------------------------------------------------
 --
--- Everything below runs at file scope, where the "caller" is whichever addon TOC
--- happens to be loading this file. A stack level would therefore point at an
--- arbitrary consumer line, so load-time failures use level 0 and carry an
--- explicit `Registry:` prefix instead.
+-- This runs at file scope, where a stack level would name whichever addon TOC
+-- is loading the file, so load-time failures use level 0 and carry an explicit
+-- `Registry:` prefix instead.
 
 -- Independently embedded Registry copies find each other only through this global key.
 -- selene: allow(global_usage)
@@ -225,13 +233,10 @@ end
 
 ---The entry for `(packageName, api)`, or `nil`.
 ---
----`level` is handed to the accessors unchanged, so it counts from them: the
----accessor, this function, then every Registry frame up to the public method,
----then its caller. A public method that calls this directly (`Get`, `GetInfo`,
----`OnRetire`, `Bootstrap`) passes 4, which names its caller's line; `adopt`,
----one frame deeper inside `Bootstrap`, passes 5. Corruption is therefore
----always raised at the line that called Registry, a package file's
----`Registry:Bootstrap(...)` included.
+---`level` counts from the accessors: the accessor, this function, every Registry
+---frame up to the public method, then its caller. A public method calling this
+---directly passes 4 and `adopt`, one frame deeper in `Bootstrap`, passes 5, so
+---corruption is always raised at the line that called Registry.
 ---@param packageName string
 ---@param api integer
 ---@param level integer error level, counted from the accessors
@@ -265,9 +270,8 @@ end
 
 ---Everything `Registry:Bootstrap` needs in order to reconcile one embedded copy.
 ---
----`package`, `api` and `revision` are the package's own identity. `label` is the
----human-readable prefix Registry puts in front of the failures it raises on the
----package's behalf, so an addon author sees which package refused to load.
+---`package`, `api` and `revision` are the package's identity; `label` prefixes the
+---failures Registry raises on its behalf, so an author sees which package refused.
 ---@class Registry.BootstrapRequest
 ---@field ["package"] string Package identifier, as in `Registry:Register`.
 ---@field api integer API generation this copy implements.
@@ -337,9 +341,8 @@ local function registerEntry(packageName, api, revision, level)
     -- it must never be handed the newer copy's table.
     rawset(entry, "retire", nil)
 
-    -- The implementation table is intentionally never replaced. Packages
-    -- upgrade this shared table in place so consumers holding older
-    -- references immediately observe the newer revision.
+    -- The implementation table is never replaced: packages upgrade it in place,
+    -- so consumers holding older references observe the newer revision at once.
     return rawget(entry, "implementation"), currentRevision
 end
 
@@ -726,7 +729,7 @@ local function bootstrap(_, request)
     local api = rawget(request, "api")
     local revision = rawget(request, "revision")
     local label = rawget(request, "label")
-    local validatePublicSurface = rawget(request, "validatePublicSurface")
+    local validateSurface = rawget(request, "validatePublicSurface")
     local validateState = rawget(request, "validateState")
     local resume = rawget(request, "resume")
     local retire = rawget(request, "retire")
@@ -739,7 +742,7 @@ local function bootstrap(_, request)
     if type(label) ~= "string" or isSecret(label) or label == "" then
         error("Registry:Bootstrap request.label must be a non-empty string", 2)
     end
-    if type(validatePublicSurface) ~= "function" then
+    if type(validateSurface) ~= "function" then
         error("Registry:Bootstrap request.validatePublicSurface must be a function", 2)
     end
     validateOptionalField(validateState, "validateState", "function")
@@ -825,7 +828,7 @@ local function bootstrap(_, request)
             -- A newer compatible embedded revision owns its own private
             -- state schema. Older copies validate the stable API surface
             -- and must not reinterpret state they do not understand.
-            if facadeRevision ~= existingRevision or not validatePublicSurface(existing) then
+            if facadeRevision ~= existingRevision or not passes(validateSurface, existing) then
                 refuse("package state is corrupted or incomplete")
             end
             return nil, nil, existing
@@ -835,7 +838,7 @@ local function bootstrap(_, request)
         -- public surface. It is about to be upgraded in place, and the
         -- caller validates whatever it inherits before it reuses it.
         if existingRevision == revision then
-            if not validatePublicSurface(existing) then
+            if not passes(validateSurface, existing) then
                 refuse("package state is corrupted or incomplete")
             end
 
@@ -889,10 +892,8 @@ end
 
 -- Commit ------------------------------------------------------------------
 
--- Every compatible embedded Registry copy shares this facade. A newer
--- implementation revision replaces methods on the same table, so references
--- acquired from older compatible copies continue to point at the upgraded
--- Registry facade.
+-- Compatible copies share this facade. A newer revision replaces its methods in
+-- place, so references taken from older copies reach the upgraded Registry.
 if stateRevision < IMPLEMENTATION_REVISION then
     rawset(Registry, "Register", register)
     rawset(Registry, "Get", get)
@@ -907,9 +908,8 @@ if stateRevision < IMPLEMENTATION_REVISION then
     stateRevision = IMPLEMENTATION_REVISION
 end
 
--- A compatible future implementation revision must preserve this public
--- surface. Validate it after bootstrap so corrupted or incompatible state fails
--- deterministically instead of producing delayed nil-call errors elsewhere.
+-- A compatible future revision must preserve this surface. Validating it here
+-- makes corrupted or incompatible state fail now, not as a later nil call.
 if
     rawget(Registry, "API") ~= API_GENERATION
     or not isPositiveInteger(rawget(Registry, "REVISION"))

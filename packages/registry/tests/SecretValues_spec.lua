@@ -136,4 +136,75 @@ describe("Registry secret values", function()
         assert.are.equal(1, previousRevision)
         assert.are.equal(secret, state)
     end)
+
+    describe("a secret validatePublicSurface answer", function()
+        -- A truthy stand-in: without the probe it would accept the surface.
+        local verdict = {}
+
+        ---A request whose surface check answers the secret stand-in.
+        ---@param revision integer
+        ---@return table
+        local function secretSurfaceRequest(revision)
+            return newRequest(revision, {
+                validatePublicSurface = function()
+                    return verdict
+                end,
+            })
+        end
+
+        it("refuses an older copy when a newer copy is installed", function()
+            local Registry = TestEnv.NewRegistry()
+            local newer = Registry:Bootstrap(newRequest(2))
+            newer.API = 1
+            newer.REVISION = 2
+            newer.Run = function() end
+            installSecretProbe(verdict)
+
+            expectErrorContaining(
+                "MoltenCodes DemoKit package state is corrupted or incomplete",
+                function()
+                    Registry:Bootstrap(secretSurfaceRequest(1))
+                end
+            )
+        end)
+
+        it("refuses a same-revision copy", function()
+            local Registry = TestEnv.NewRegistry()
+            installRevisionOne(Registry)
+            installSecretProbe(verdict)
+
+            expectErrorContaining(
+                "MoltenCodes DemoKit package state is corrupted or incomplete",
+                function()
+                    Registry:Bootstrap(secretSurfaceRequest(1))
+                end
+            )
+        end)
+
+        it("is still refused after an in-place upgrade from the previous revision", function()
+            local Registry = TestEnv.NewRegistry()
+            installRevisionOne(Registry)
+
+            -- Make the installed Registry look like the previous revision.
+            local currentRevision = Registry.REVISION
+            local previousBootstrap = function() end
+            rawset(TestEnv.GetState(), "registryRevision", currentRevision - 1)
+            rawset(Registry, "REVISION", currentRevision - 1)
+            rawset(Registry, "Bootstrap", previousBootstrap)
+
+            local upgraded = TestEnv.Reload()
+            assert.are.equal(Registry, upgraded)
+            assert.are.equal(currentRevision, upgraded.REVISION)
+            assert.are_not.equal(previousBootstrap, upgraded.Bootstrap)
+            assert.are.equal(1, select(2, upgraded:Find("demoKit", 1)))
+
+            installSecretProbe(verdict)
+            expectErrorContaining(
+                "MoltenCodes DemoKit package state is corrupted or incomplete",
+                function()
+                    upgraded:Bootstrap(secretSurfaceRequest(1))
+                end
+            )
+        end)
+    end)
 end)

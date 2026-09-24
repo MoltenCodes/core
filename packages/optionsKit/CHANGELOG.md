@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.4 — 2026-09-24
+
+- Secret values and truth tests (Retail 12.1.0 b69933: testing a secret for truth raises `attempt to perform boolean test on ... a secret boolean value`). OptionsKit no longer tests a value that may be secret for truth:
+  - `Define` refuses a secret field of any option table at the caller's line before reading it (`OptionsKit:Define tree.args.general.disabled must not be a secret value`), including a secret `type`; the flags `disabled`, `hidden`, `tristate`, `inline`, `multiline`, `isPercent`, `hasAlpha` and `confirm` passed the boolean type check and were then tested inside OptionsKit.
+  - `ProfileOptions` refuses a secret `name`, `order`, `description` or `localize` option at the caller's line (`OptionsKit:ProfileOptions options.name must not be a secret value`).
+  - A secret answer from a `disabled` or `hidden` predicate counts as `false` in `IsDisabled`, `IsHidden` and `Describe`.
+  - `Describe` passes a secret string a `desc` function returns through as the description instead of testing it.
+- Left unchanged, with the reason: `validate` and the database's `Validate` answers were already probed before being compared with `true`; `UnitName`/`GetRealmName` results are probed before they are compared; a `values` function's result, a `desc` function's result and a `localize` answer are only type-tested; the `Walk` visitor's, `set`'s and `func`'s results are not read; profile names come from SettingsKit's saved variables.
+- Implementation revision 5. No layout changed: a revision 4 state is taken over in place, and its trees' predicates are answered by the new implementation at once.
+- Specs: the secret refusals and answers above, and an in-place upgrade from revision 4.
+
 ## 0.2.3 — 2026-09-24
 
 - Secret values: the source comment on the limit-option secret refusal no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

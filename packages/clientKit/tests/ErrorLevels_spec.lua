@@ -210,6 +210,22 @@ describe("ClientKit error levels", function()
         )
     end)
 
+    it("refuses a receiver with a secret name as not a manifest, at the caller", function()
+        ClientKit = Env.NewPackageFor("mainline", { secretStrings = { "Hidden" } })
+        Env.RegisterAddOn("Hidden")
+        Env.SetAddOnMetadata("Hidden", "Version", "1.0")
+        local manifest = ClientKit:GetManifest("hidden")
+
+        -- The receiver's name is asked of `issecretvalue` before it is tested,
+        -- lowered or used as a key, so the refusal is the receiver one.
+        local line
+        local ok, value = pcall(function()
+            line = currentLine() + 1
+            manifest.Get({ name = "Hidden" }, "Version")
+        end)
+        assertReportedAt(line, "ClientKit.Manifest:Get must be called on a manifest", ok, value)
+    end)
+
     it("points a write to a manifest at the line that wrote", function()
         Env.RegisterAddOn("MyAddon")
         Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")

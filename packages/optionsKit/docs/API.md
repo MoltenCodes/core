@@ -2,7 +2,7 @@
 
 OptionsKit API generation **1** provides a typed, validated, introspectable options tree with no renderer: what an addon exposes as configurable, how each option is read and written, and what a dialog or a command line needs to present it.
 
-Implementation revision: **4**.
+Implementation revision: **5**.
 
 ## Loading
 
@@ -258,7 +258,7 @@ options:Execute("frame.resetPosition")     -- runs func; asking `confirm` is the
 | `disabled` | boolean or `fun(info): boolean` | Shown but not editable. A disabled group disables everything below it. |
 | `hidden` | boolean or `fun(info): boolean` | Not shown. A hidden group hides everything below it. |
 
-`disabled` and `hidden` are renderer concerns: `Get`, `Set` and `Execute` work on hidden and disabled options exactly as on any other, so an addon can still change a value its UI hides. A renderer, or CommandKit, asks `IsDisabled` / `IsHidden` before offering an option.
+A predicate's answer is tested for truth only after `issecretvalue` says it is not a secret: a secret answer (Retail 12.x) counts as `false`, so the option stays enabled and shown rather than an error being raised inside OptionsKit. `disabled` and `hidden` are renderer concerns: `Get`, `Set` and `Execute` work on hidden and disabled options exactly as on any other, so an addon can still change a value its UI hides. A renderer, or CommandKit, asks `IsDisabled` / `IsHidden` before offering an option.
 
 ### Fields every value option accepts
 
@@ -493,7 +493,7 @@ Unknown fields and wrong types are refused at your line: `OptionsKit:ProfileOpti
 
 ### Errors
 
-`ProfileOptions` raises at your line when `Registry:Find("settingsKit", 1)` finds nothing (`OptionsKit:ProfileOptions needs SettingsKit API 1 to be loaded`) and when `db` is not a table offering the profile methods of a SettingsKit database (`OptionsKit:ProfileOptions db must be a SettingsKit database`); SettingsKit publishes no predicate for its databases, so the check is structural, as for `options.db`.
+A secret option is refused first (`OptionsKit:ProfileOptions options.name must not be a secret value`). `ProfileOptions` raises at your line when `Registry:Find("settingsKit", 1)` finds nothing (`OptionsKit:ProfileOptions needs SettingsKit API 1 to be loaded`) and when `db` is not a table offering the profile methods of a SettingsKit database (`OptionsKit:ProfileOptions db must be a SettingsKit database`); SettingsKit publishes no predicate for its databases, so the check is structural, as for `options.db`.
 
 ## Limits
 
@@ -520,7 +520,7 @@ Opening `maxDynamicEntries` past `1024` is honoured by OptionsKit, but a rendere
 
 ## Secret values
 
-On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). `Set` refuses a secret value at your line before anything compares it, and `Validate` reports it as `false, "secret value"`. A secret path or addon name is refused before it is used as a table key. `Get` and `Describe` return what a getter returns, secret or not, without inspecting it: `Describe` asks `issecretvalue` before it copies a table value, and passes a secret, at the top or nested inside the table, through without being copied. A secret nested in a table value (a `color` field) is refused by the schema with SchemaKit's `secret` rule. A secret `maxOptions`, `maxDepth` or `maxDynamicEntries` is refused at your line before it is compared with `OptionsKit.UNBOUNDED`, and a secret returned by `validate` or by the database's `Validate` counts as a refusal without being compared with `true`. Whether a field of your tree, your options or a value read from the database is absent is asked with `type`, never by comparing it with `nil`, so an absent-or-present test never touches a secret.
+On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). `Set` refuses a secret value at your line before anything compares it, and `Validate` reports it as `false, "secret value"`. A secret path or addon name is refused before it is used as a table key. `Get` and `Describe` return what a getter returns, secret or not, without inspecting it: `Describe` asks `issecretvalue` before it copies a table value, and passes a secret, at the top or nested inside the table, through without being copied. A secret nested in a table value (a `color` field) is refused by the schema with SchemaKit's `secret` rule. A secret `maxOptions`, `maxDepth` or `maxDynamicEntries` is refused at your line before it is compared with `OptionsKit.UNBOUNDED`, and a secret returned by `validate` or by the database's `Validate` counts as a refusal without being compared with `true`. Every field of an option table, and the `name`, `order`, `description` and `localize` options of `ProfileOptions`, is asked about before OptionsKit tests or compares it: a secret one, a secret `true` for `disabled`, `tristate` or `hasAlpha` included, is refused at your line (`OptionsKit:Define tree.args.general.disabled must not be a secret value`, `OptionsKit:ProfileOptions options.name must not be a secret value`), because testing a secret for truth raises (measured on Retail 12.1.0 b69933). A secret answer from a `disabled` or `hidden` predicate counts as `false`, and a secret string from a `desc` function is passed through `Describe` as the description, like a getter's secret value. Whether a field of your tree, your options or a value read from the database is absent is asked with `type`, never by comparing it with `nil`, so an absent-or-present test never touches a secret.
 
 ## Error behaviour
 
@@ -550,6 +550,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 ## Embedded copies and upgrades
 
-Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 and 4 changed no layout. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads.
+Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 5 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads.
 
 Nothing survives `/reload`: trees are defined again when the addon loads.

@@ -175,6 +175,42 @@ describe("OptionsKit bootstrap", function()
         assert.are.equal(1, changes)
     end)
 
+    it("upgrades a revision 4 state in place and answers its predicates secret-aware", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("SchemaKit")
+        local OptionsKit = TestEnv.LoadRevision(4)
+        local state = rawget(OptionsKit, "_state")
+        local store = { enabled = false }
+        local spec = toggleTree(store)
+        local answer = {}
+        spec.args.enabled.disabled = function()
+            return answer
+        end
+        local tree = OptionsKit:Define("Addon", spec)
+
+        -- The shipped file, at its own revision, loads over revision 4.
+        local upgraded = require("OptionsKit")
+        assert.are.equal(OptionsKit, upgraded)
+        assert.is_true(upgraded.REVISION > 4)
+        assert.are.equal(state, rawget(upgraded, "_state"))
+        assert.are.equal(tree, upgraded:Get("Addon"))
+        assert.is_true(tree:IsDisabled("enabled"))
+        -- The predicate revision 4 recorded now answers through the shipped
+        -- implementation, which counts a secret answer as "no".
+        -- selene: allow(global_usage)
+        rawset(_G, "issecretvalue", function(value)
+            return rawequal(value, answer)
+        end)
+        assert.is_false(tree:IsDisabled("enabled"))
+        -- selene: allow(global_usage)
+        rawset(_G, "issecretvalue", nil)
+        assert.is_true(tree:Set("enabled", true))
+        assert.is_true(store.enabled)
+    end)
+
     it("requires Registry", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()

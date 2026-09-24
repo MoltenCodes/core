@@ -199,12 +199,13 @@ describe("CacheKit bootstrap", function()
     end)
 
     it("upgrades revision-2 state in place and repairs lazy tree expansion", function()
+        local workingRevision = TestEnv.NewPackage().REVISION
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         require("Registry")
         require("SignalKit")
         require("EventKit")
-        -- Revisions 3 and 4 changed no state or object layout, so a copy
+        -- Revisions 3 to 5 changed no state or object layout, so a copy
         -- labelled revision 2 leaves exactly the state revision 2 wrote.
         local previous = TestEnv.LoadRevision(2)
         assert.are.equal(2, previous.REVISION)
@@ -223,9 +224,9 @@ describe("CacheKit bootstrap", function()
 
         local upgraded = TestEnv.ReloadPackage()
         assert.are.equal(previous, upgraded)
-        assert.are.equal(4, upgraded.REVISION)
+        assert.are.equal(workingRevision, upgraded.REVISION)
         assert.are.equal(state, rawget(upgraded, "_state"))
-        assert.are.equal(4, rawget(state, "runtimeRevision"))
+        assert.are.equal(workingRevision, rawget(state, "runtimeRevision"))
         assert.are.equal(2048, upgraded:GetLimits().maxQueueCapacity)
 
         -- The tree revision 2 built runs the repaired expansion: "a" is kept
@@ -240,6 +241,7 @@ describe("CacheKit bootstrap", function()
 
     it("upgrades a revision 3 package in place to the working file", function()
         local previousRevision = 3
+        local workingRevision = TestEnv.NewPackage().REVISION
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         require("Registry")
@@ -255,11 +257,50 @@ describe("CacheKit bootstrap", function()
 
         local upgraded = TestEnv.ReloadPackage()
         assert.are.equal(previous, upgraded)
-        assert.are.equal(previousRevision + 1, upgraded.REVISION)
+        assert.are.equal(workingRevision, upgraded.REVISION)
         assert.are.equal(state, rawget(upgraded, "_state"))
         assert.are.equal(2048, upgraded:GetLimits().maxQueueCapacity)
         assert.are.equal(1, cache:Get("kept"))
         assert.are.equal("negative", select(2, ttl:Get("gone")))
+    end)
+
+    it("upgrades a revision 4 package in place and keeps its memoised functions", function()
+        local previousRevision = 4
+        local workingRevision = TestEnv.NewPackage().REVISION
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        local previous = TestEnv.LoadRevision(previousRevision)
+        assert.are.equal(previousRevision, previous.REVISION)
+        local state = rawget(previous, "_state")
+        local cache = previous:NewLru({ maxEntries = 2 })
+        cache:Set("kept", 1)
+        local calls = 0
+        local memoized, memo = previous:Memoize(function(key)
+            calls = calls + 1
+            return key .. "!"
+        end, {
+            cacheable = function(_, key)
+                return key ~= "skip"
+            end,
+        })
+        memoized("a")
+
+        local upgraded = TestEnv.ReloadPackage()
+        assert.are.equal(previous, upgraded)
+        assert.are.equal(workingRevision, upgraded.REVISION)
+        assert.are.equal(state, rawget(upgraded, "_state"))
+        assert.are.equal(workingRevision, rawget(state, "runtimeRevision"))
+        assert.are.equal(1, cache:Get("kept"))
+        -- The memoised function revision 4 built keeps its entry and its
+        -- predicate, and now answers through the working implementation.
+        assert.are.equal("a!", memoized("a"))
+        assert.are.equal("skip!", memoized("skip"))
+        assert.are.equal("skip!", memoized("skip"))
+        assert.are.equal(3, calls)
+        assert.are.equal(1, memo:GetCount())
     end)
 
     it("rejects a same-revision state whose limits are invalid", function()

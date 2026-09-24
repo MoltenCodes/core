@@ -148,7 +148,7 @@ Any value except `nil`. It does not look inside tables.
 
 ### `SchemaKit.custom(check, description)`
 
-`check(value)` returns a truthy value to accept. `description` is what a failure reports as `expected`. `check` is never called with `nil` or a secret. An error raised by `check` propagates out of `Check`, `Assert` or `Apply` unchanged.
+`check(value)` returns a truthy value to accept. `description` is what a failure reports as `expected`. `check` is never called with `nil` or a secret. A secret answer (Retail 12.x) rejects the value like a falsy one: the failure has rule `custom` and found the value's type, because testing a secret answer would raise inside SchemaKit. An error raised by `check` propagates out of `Check`, `Assert` or `Apply` unchanged.
 
 ## `schema:Check(value)`
 
@@ -256,7 +256,9 @@ An array built without `max` while `defaultArrayMax` is `SchemaKit.UNBOUNDED` ac
 
 ## Secret values
 
-On Retail 12.x the client hands tainted code **secret values**, which raise when compared, tested, indexed or used as a table key (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every node asks `issecretvalue(value)` first, before any comparison, type test or index, and a secret fails with rule `secret` and found `secret value`. The failure and the `Assert` message never contain it. `Apply` keeps a secret where it found it and the check of the copy reports it. Custom checks are never called with a secret.
+On Retail 12.x the client hands tainted code **secret values**, which raise when compared, tested, indexed or used as a table key (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). Every node asks `issecretvalue(value)` first, before any comparison, type test or index, and a secret fails with rule `secret` and found `secret value`. The failure and the `Assert` message never contain it. `Apply` keeps a secret where it found it and the check of the copy reports it. Custom checks are never called with a secret, and a secret answer from one rejects the value with rule `custom` (see [`SchemaKit.custom`](#schemakitcustomcheck-description)).
+
+The boolean flags `SchemaKit.number{ integer }`, `SchemaKit.table{ open }` and `Seal`'s `freshFailures` are asked about with `issecretvalue` before they are tested. A secret flag is refused at the caller's line with the message an invalid value of that flag gets (`SchemaKit.number integer must be a boolean`, `SchemaKit.table open must be a boolean`, `SchemaKit:Seal freshFailures must be a boolean`), the style `SetLimits` uses for a secret limit.
 
 ## Cookbook
 

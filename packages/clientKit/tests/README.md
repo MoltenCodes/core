@@ -38,14 +38,16 @@ The suite covers:
   refused, writes refused at the writer's line, a cache holding one record per
   listed addon, and zero allocation for a cached manifest;
 - `error` levels: every argument failure, secret refusal (`Has`,
-  `GetManifest`, `Get`) and manifest write reports the caller's own line;
+  `GetManifest`, `Get`), receiver with a secret `name` refused by `Get`, and
+  manifest write reports the caller's own line;
 - Registry publication, duplicate loads, a newer revision not being
   downgraded, an in-place upgrade that re-reads the host into the same state
   tables (a copy of the source loaded with a higher revision), an upgrade
   over a revision 1 layout that adds the locale and the manifest tables, an
   upgrade over a revision 2 layout that keeps the manifest cache, an upgrade
-  from a revision 3 package to the working file that keeps state, capabilities
-  and cached manifests, a cached
+  from a revision 3 package and from the previous revision to the working file
+  that keeps state, capabilities and cached manifests (whose `Get` then refuses
+  a receiver with a secret `name`), a cached
   manifest keeping its identity and its rewritten `Get` across an upgrade,
   load-order failures, and corrupted-state refusal on a reload and on an
   upgrade, including a `manifests` or `manifestPrototype` that is not a table;

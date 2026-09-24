@@ -165,7 +165,7 @@ Every refusal raises at the caller's line and installs nothing.
 
 **Double hooks** are refused rather than silently replaced: an implicit unhook-then-hook would reorder the chain behind the caller's back. Two *different* scopes may hook the same target; their closures chain.
 
-Argument errors name the parameter: `HookKit.Scope:Hook method must be a non-empty string`, `... handler must be a function`, `... options contains unknown field "<name>"`, `... options.forceSecure must be a boolean`, `HookKit.Scope:HookScript frame must have a GetScript method`. A method, script, global or addon name that is a secret value is refused with `... must not be a secret value`, before HookKit compares it or uses it as a key.
+Argument errors name the parameter: `HookKit.Scope:Hook method must be a non-empty string`, `... handler must be a function`, `... options contains unknown field "<name>"`, `... options.forceSecure must be a boolean`, `HookKit.Scope:HookScript frame must have a GetScript method`. A method, script, global or addon name that is a secret value is refused with `... must not be a secret value`, before HookKit compares it or uses it as a key. A secret `options.forceSecure` (Retail 12.x; a secret boolean passes the type check) is refused the same way, with `... options.forceSecure must not be a secret value`, before HookKit compares or tests it; testing a secret boolean raises in tainted code (measured on Retail 12.1.0 b69933).
 
 ## Unhook: restore or go inert
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- Fixed: a secret `options.anyScript` on `Fetch`, `Has` or `List` is refused at the caller's line (`MediaKit:Fetch anyScript must not be a secret value`) before it is compared. A secret boolean passes the type check, and on Retail 12.1.0 (build 69933) any comparison or boolean test of a secret raises inside the Kit.
+- Fixed: values read from LibSharedMedia are no longer compared or added when secret. A secret answer from its `Register` counts as "not mirrored" (it is left out of the count `MirrorToLibSharedMedia` returns), and a secret `LOCALE_BIT_*` field is replaced by its long-standing default value when building a font's `langmask`.
+- Implementation revision 4. No state changed: an in-place upgrade from revision 3 keeps the entries, lists, signals and connections, defaults objects, the limits and the LibSharedMedia links, and replaces the methods only.
+- Specs: `SecretValues_spec.lua` covers the three sites; `Bootstrap_spec.lua` upgrades a revision 3 copy in place. 123 specs.
+- `MediaKit` API generation 1 is unchanged.
+
 ## 0.1.2 — 2026-09-24
 
 - Fixed: absence of a value that did not originate in MediaKit is tested with `type(value) == "nil"` rather than compared with `nil`, so no comparison runs on a caller's value before its secret check. This covers the optional `name` of `Defaults:Set` (a secret name is now refused as a secret instead of first being compared with `nil`), the `options` of `Register`, `Fetch`, `Has` and `List` with their `scripts` and `anyScript` fields, the values `SetLimits` copies, and the entry MediaKit looks up in LibSharedMedia's hash table before mirroring.

@@ -95,6 +95,66 @@ describe("MediaKit and secret values", function()
         assert.are.equal("Blizzard", defaults:Get("statusbar"))
     end)
 
+    it("refuses a secret anyScript flag at the caller before testing it", function()
+        -- The probe answers true for `true` itself, standing in for a secret
+        -- boolean, which passes the type check and raises when tested.
+        TestEnv.InstallSecretProbe(true)
+        local calls = {
+            Fetch = function()
+                -- Not a tail call, so the error keeps this line.
+                local _ = MediaKit:Fetch("statusbar", "Solid", { anyScript = true })
+            end,
+            Has = function()
+                -- Not a tail call, so the error keeps this line.
+                local _ = MediaKit:Has("statusbar", "Solid", { anyScript = true })
+            end,
+            List = function()
+                -- Not a tail call, so the error keeps this line.
+                local _ = MediaKit:List("font", { anyScript = true })
+            end,
+        }
+        for methodName, call in pairs(calls) do
+            local ok, message = pcall(call)
+            assert.is_false(ok)
+            assert.is_truthy(
+                tostring(message):find(
+                    "MediaKit:" .. methodName .. " anyScript must not be a secret value",
+                    1,
+                    true
+                )
+            )
+            assert.is_truthy(tostring(message):find("SecretValues_spec.lua", 1, true))
+        end
+    end)
+
+    it("counts a secret answer of LibSharedMedia's Register as not mirrored", function()
+        local library = TestEnv.InstallLibSharedMedia()
+        local secretAnswer = {}
+        local register = library.Register
+        library.Register = function(...)
+            register(...)
+            return secretAnswer
+        end
+        TestEnv.InstallSecretProbe(secretAnswer)
+        MediaKit:Register("statusbar", "Pack Bar", "Interface\\Pack\\Bar")
+
+        local found, mirrored = MediaKit:MirrorToLibSharedMedia()
+        assert.is_true(found)
+        assert.are.equal(0, mirrored)
+        assert.are.equal("Interface\\Pack\\Bar", library:Fetch("statusbar", "Pack Bar"))
+    end)
+
+    it("replaces a secret LibSharedMedia locale bit with its default", function()
+        local library = TestEnv.InstallLibSharedMedia()
+        local secretBit = 4096
+        library.LOCALE_BIT_western = secretBit
+        TestEnv.InstallSecretProbe(secretBit)
+        MediaKit:Register("font", "Pack Font", "Interface\\Pack\\Font.ttf")
+
+        MediaKit:MirrorToLibSharedMedia()
+        assert.are.equal(128, library.langmasks.font["Pack Font"])
+    end)
+
     it("looks the probe up at call time", function()
         assert.is_true(MediaKit:Register("statusbar", "Late", "Interface\\Late"))
         TestEnv.InstallSecretProbe("Late")

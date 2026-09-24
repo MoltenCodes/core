@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **15**.
+Implementation revision: **16**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -118,6 +118,10 @@ end)
   reported through the host error handler and the rest still run. Scope
   ownership, `Disconnect`, `IsConnected`, mutation during a dispatch and the
   deferred scope close all behave as for `Connect`.
+- The client documents the reader's returns as possibly
+  [secret](#secret-values). A secret sub-event cannot be looked up, so that
+  event reaches the wildcard (`"*"`) listeners only, with every return
+  unchanged (revision 16 and later).
 
 ### One registration, shared with `Connect`
 
@@ -465,6 +469,9 @@ is kept; so is an `equals` that raises, which then counts as a change. With the
 default `==`, a `compute` that returns NaN counts as a change on every
 recompute, because NaN is never equal to itself; so does a
 [secret](#secret-values) value on either side, which cannot be compared.
+An `equals` that answers with a secret value counts as a change too: the
+answer cannot be tested as a boolean, so it is never read as "equal"
+(revision 16 and later).
 
 ### Ownership
 
@@ -858,7 +865,8 @@ addon-created Frame is safe from any code.
 
 On a client with secret values, comparing a secret with a value of its own
 type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike), and so does using it
-as a table key; a comparison with `nil` or with a value of another type happens
+as a table key or testing it as a boolean (`if x`, `x and y`, `x or y`,
+`not x`); a comparison with `nil` or with a value of another type happens
 not to raise (measured on Retail 12.1.0 b69933, see
 [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)).
 EventKit still tests every value it did not create — arguments, option and
@@ -886,6 +894,10 @@ deals with a secret before it would compare one (revision 14 and later):
 - A `Coalesce` payload whose first argument is secret is keyed by its event
   name, and a `Derive` value that is secret on either side counts as a change.
   Payloads themselves are passed to listeners untouched.
+- A secret answer from a `Derive` `equals` function is never tested as a
+  boolean: it counts as a change (revision 16 and later).
+- A combat-log event whose sub-event is secret is not looked up by it: it
+  reaches the wildcard listeners only (revision 16 and later).
 
 ### Reserved fields
 

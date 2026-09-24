@@ -5,9 +5,9 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.9.2`
+- Version: `0.9.3`
 - API generation: `1`
-- Implementation revision: `15`
+- Implementation revision: `16`
 - Runtime dependencies: Registry API 2, SignalKit API 1
 - Optional partners: SchedulerKit API 1, found at call time by `Coalesce` and `Derive`;
   LifecycleKit API 1, found by the first `ForAddon` to close addon scopes at logout

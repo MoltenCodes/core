@@ -74,8 +74,12 @@ describe("SchemaKit bootstrap", function()
         )
     end)
 
-    it("upgrades a revision 1 package in place to the working file", function()
-        local previousRevision = 1
+    ---Load `previousRevision` in place, build a schema on it, then load the
+    ---working file over it and prove the schema, its failure table, the
+    ---limits and the state survived.
+    ---@param previousRevision integer
+    local function assertUpgradesFrom(previousRevision)
+        local workingRevision = TestEnv.NewPackage().REVISION
         TestEnv.Reset()
         require("Registry")
         local previous = TestEnv.LoadRevision(previousRevision)
@@ -86,12 +90,20 @@ describe("SchemaKit bootstrap", function()
 
         local current = require("SchemaKit")
         assert.are.equal(previous, current)
-        assert.are.equal(previousRevision + 1, current.REVISION)
+        assert.are.equal(workingRevision, current.REVISION)
         assert.are.equal(state, current._state)
         assert.are.equal(20, current:GetLimits().maxDepth)
         assert.is_true(schema:Check({ x = 1 }))
         local _, again = schema:Check({ x = "a" })
         assert.are.equal(failure, again)
+    end
+
+    it("upgrades a revision 1 package in place to the working file", function()
+        assertUpgradesFrom(1)
+    end)
+
+    it("upgrades the previous revision in place to the working file", function()
+        assertUpgradesFrom(TestEnv.NewPackage().REVISION - 1)
     end)
 
     it("requires Registry", function()

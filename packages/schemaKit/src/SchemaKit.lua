@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "schemaKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -369,6 +369,16 @@ local function currentSecretProbe()
         return probe
     end
     return nil
+end
+
+---Whether the host marks `value` secret; always `false` on a client without
+---secret values. Builders and `Seal` ask it about a boolean flag before
+---testing it, because testing a secret boolean raises inside SchemaKit.
+---@param value any
+---@return boolean
+local function isSecretValue(value)
+    local probe = currentSecretProbe()
+    return probe ~= nil and probe(value) == true
 end
 
 -- Validation -----------------------------------------------------------------
@@ -1017,7 +1027,13 @@ checkNode = function(record, node, value, depth, isSecret)
         return checkOneOf(record, node, value, depth, isSecret)
     elseif kind == KIND_CUSTOM then
         local check = node.check --[[@as function]]
-        if check(value) then
+        local accepted = check(value)
+        -- A secret answer cannot be tested without raising here, so it
+        -- rejects the value like a falsy answer does.
+        if isSecret ~= nil and isSecret(accepted) then
+            return fail(record, RULE_CUSTOM, node.expected, type(value))
+        end
+        if accepted then
             return true
         end
         return fail(record, RULE_CUSTOM, node.expected, type(value))
@@ -1726,7 +1742,7 @@ local function buildNumber(spec)
     validateSpecKeys(spec, NUMBER_SPEC_KEYS, "SchemaKit.number", 3)
 
     local integer = rawget(spec, "integer")
-    if type(integer) ~= "nil" and type(integer) ~= "boolean" then
+    if type(integer) ~= "nil" and (type(integer) ~= "boolean" or isSecretValue(integer)) then
         error("SchemaKit.number integer must be a boolean", 2)
     end
     node.integer = integer == true
@@ -1794,7 +1810,7 @@ local function buildTable(spec)
         error("SchemaKit.table fields must be a table of schema nodes by name", 2)
     end
     local open = rawget(spec, "open")
-    if type(open) ~= "nil" and type(open) ~= "boolean" then
+    if type(open) ~= "nil" and (type(open) ~= "boolean" or isSecretValue(open)) then
         error("SchemaKit.table open must be a boolean", 2)
     end
 
@@ -2091,7 +2107,7 @@ local function packageSeal(facade, node, options)
             error('SchemaKit:Seal options contains unknown field "' .. firstUnknown .. '"', 2)
         end
         local fresh = rawget(options, "freshFailures")
-        if type(fresh) ~= "nil" and type(fresh) ~= "boolean" then
+        if type(fresh) ~= "nil" and (type(fresh) ~= "boolean" or isSecretValue(fresh)) then
             error("SchemaKit:Seal freshFailures must be a boolean", 2)
         end
         freshFailures = fresh == true

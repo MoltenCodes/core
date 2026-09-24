@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 — 2026-09-24
+
+- Audit of 2026-09-24 against the Retail 12.1.0 b69933 finding that testing a secret as a boolean raises: SettingsKit tests no value it did not create as a boolean. The audit found two places where a secret caller value was used as a table key, which raises inside SettingsKit: a secret scope name passed to `db:OnChange` or `db:Validate` is now refused at the caller's line (`SettingsKit.Database:OnChange scope must not be a secret value`, likewise for `Validate`), and reading a database with a secret key (`db[key]`) raises `SettingsKit databases cannot be read with a secret key` at the reading line. Both are documented under "Error behaviour" in `docs/API.md`.
+- Implementation revision 4. No state changed: the database metatable's `__index` is rewritten in place, so an in-place upgrade from revision 3 gives its databases the new refusal at once.
+- Specs: `Writes_spec.lua` covers both refusals; `Bootstrap_spec.lua` upgrades revision 3 in place. `SettingsKit` API generation 1 is unchanged.
+
 ## 0.1.3 — 2026-09-24
 
 - Secret values: API.md (error behaviour), INTERNALS.md (absent values), the source comments on `maxScannedEntries`, value equality and `readMap`, and a spec comment no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

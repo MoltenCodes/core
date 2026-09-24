@@ -199,6 +199,38 @@ describe("CommandKit bootstrap", function()
         )
     end)
 
+    it("upgrades a revision 4 package in place and reads a secret confirm flag at once", function()
+        local current = upgradeFrom(4)
+        local OptionsKit = require("OptionsKit")
+        local executed = 0
+        local tree = OptionsKit:Define("Upgraded", {
+            type = "group",
+            args = {
+                wipe = {
+                    type = "execute",
+                    name = "Wipe",
+                    confirm = false,
+                    func = function()
+                        executed = executed + 1
+                    end,
+                },
+            },
+        })
+        local scope = current:CreateScope()
+        local capture = current:CaptureSink()
+        scope:SetSink(capture)
+        scope:BindOptions(tree, "upgraded")
+        -- A plain `false` stands in for a secret boolean: only the probe
+        -- tells a secret apart, since it keeps its type.
+        TestEnv.SetGlobal("issecretvalue", function(value)
+            return value == false
+        end)
+        TestEnv.RunSlash("/upgraded exec wipe")
+        assert.are.same({ "Type /upgraded exec wipe confirm to run it." }, capture:Messages())
+        assert.are.equal(0, executed)
+        assert.is_true(current:CloseAddonScopes("MyAddon"))
+    end)
+
     it("requires Registry", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()

@@ -56,7 +56,7 @@
 
 local PACKAGE_NAME = "widgetKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -1141,6 +1141,8 @@ end
 ---@param disabled any
 local function readDisabledBase(widget, disabled)
     activeRecord(widget, "WidgetKit.Widget:SetDisabled", 4)
+    -- `type` answers "boolean" for a secret boolean; testing it would raise.
+    refuseSecret(disabled, "WidgetKit.Widget:SetDisabled disabled", 4)
     if type(disabled) ~= "nil" and type(disabled) ~= "boolean" then
         error("WidgetKit.Widget:SetDisabled disabled must be a boolean", 3)
     end
@@ -1298,6 +1300,8 @@ end
 ---@param fullWidth boolean
 function WidgetBase:SetFullWidth(fullWidth)
     local record = activeRecord(self, "WidgetKit.Widget:SetFullWidth", 3)
+    -- Before `== true`: a secret boolean compared with a boolean raises.
+    refuseSecret(fullWidth, "WidgetKit.Widget:SetFullWidth fullWidth", 3)
     record.fullWidth = fullWidth == true
     if record.fullWidth then
         record.relativeWidth = nil
@@ -1312,6 +1316,7 @@ end
 ---@param fullHeight boolean
 function WidgetBase:SetFullHeight(fullHeight)
     local record = activeRecord(self, "WidgetKit.Widget:SetFullHeight", 3)
+    refuseSecret(fullHeight, "WidgetKit.Widget:SetFullHeight fullHeight", 3)
     record.fullHeight = fullHeight == true
 end
 
@@ -1740,10 +1745,12 @@ function performLayout(container, record)
     if not ok then
         error(width, 0)
     end
-    if type(width) ~= "number" or width ~= width then
+    -- A layout's size is the consumer's value: a secret one is ignored like a
+    -- non-number, before the NaN test would compare it and raise.
+    if type(width) ~= "number" or isSecret(width) or width ~= width then
         width = nil
     end
-    if type(height) ~= "number" or height ~= height then
+    if type(height) ~= "number" or isSecret(height) or height ~= height then
         height = nil
     end
     ContainerBase.LayoutFinished(container, width, height)
@@ -2629,16 +2636,28 @@ local function anchorNormalize(frame, point, first, second, third, fourth)
     if type(first) == "nil" then
         -- `(point)`, or the full form with the parent written as `nil`.
         if type(second) == "string" then
-            relativeTo, relativePoint, x, y = nil, second, third or 0, fourth or 0
+            relativeTo, relativePoint, x, y = nil, second, third, fourth
         else
             relativeTo, relativePoint, x, y = nil, point, 0, 0
         end
     elseif type(first) == "number" then
-        relativeTo, relativePoint, x, y = nil, point, first, second or 0
+        relativeTo, relativePoint, x, y = nil, point, first, second
     elseif type(second) == "number" then
-        relativeTo, relativePoint, x, y = first, point, second, third or 0
+        relativeTo, relativePoint, x, y = first, point, second, third
     else
-        relativeTo, relativePoint, x, y = first, second or point, third or 0, fourth or 0
+        relativeTo, relativePoint, x, y = first, second, third, fourth
+        if not isSecret(relativePoint) and not relativePoint then
+            relativePoint = point
+        end
+    end
+    -- A missing offset is 0, as for `SetPoint`. The secret check comes first:
+    -- `x or 0` would test a secret as a boolean and raise here; validation
+    -- below refuses it at the caller's line instead.
+    if not isSecret(x) and not x then
+        x = 0
+    end
+    if not isSecret(y) and not y then
+        y = 0
     end
 
     validatePoint(relativePoint, "WidgetKit.Anchor.Normalize relativePoint", 3)
@@ -2686,7 +2705,15 @@ local function readAnchor(anchor, label, level)
         relativePoint = point
     end
     validatePoint(relativePoint, label .. ".relativePoint", level + 1)
-    local x, y = anchor.x or 0, anchor.y or 0
+    -- Not `anchor.x or 0`: a secret offset is refused by validation, not
+    -- tested as a boolean.
+    local x, y = anchor.x, anchor.y
+    if not isSecret(x) and not x then
+        x = 0
+    end
+    if not isSecret(y) and not y then
+        y = 0
+    end
     validateNumber(x, label .. ".x", level + 1)
     validateNumber(y, label .. ".y", level + 1)
     local relativeTo = anchor.relativeTo
@@ -2738,12 +2765,23 @@ local function anchorApply(frame, anchor)
     return true
 end
 
----The frame's first anchor, normalised; `nil` when it has none.
+---The frame's first anchor, normalised; `nil` when it has none, or when the
+---client answers it with secret values (`GetPoint` is secret while the frame's
+---anchoring is secret), which can be neither inspected nor saved.
 ---@param frame WidgetKit.Frame
 ---@return WidgetKit.Anchor?
 local function anchorRead(frame)
     validateAnchorFrame(frame, "WidgetKit.Anchor.Read frame", 3)
     local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
+    if
+        isSecret(point)
+        or isSecret(relativeTo)
+        or isSecret(relativePoint)
+        or isSecret(x)
+        or isSecret(y)
+    then
+        return nil
+    end
     if type(point) == "nil" then
         return nil
     end
@@ -2758,7 +2796,15 @@ end
 ---@return number? left, number bottom, number width, number height
 local function screenRect(frame)
     local left, bottom, width, height = frame:GetRect()
-    if type(left) == "nil" then
+    -- `GetRect` is secret while the frame's anchoring is secret: such a rect
+    -- cannot be measured, so the frame counts as not positioned.
+    if
+        type(left) == "nil"
+        or isSecret(left)
+        or isSecret(bottom)
+        or isSecret(width)
+        or isSecret(height)
+    then
         return nil, 0, 0, 0
     end
     local scale = 1
@@ -2831,6 +2877,8 @@ local function newBinding(frame, storageTable, options, methodName, level)
             delay = options.delay
         end
         if type(options.restore) ~= "nil" then
+            -- `type` answers "boolean" for a secret; `if restore` would raise.
+            refuseSecret(options.restore, methodName .. " options.restore", level + 1)
             if type(options.restore) ~= "boolean" then
                 error(methodName .. " options.restore must be a boolean", level)
             end
@@ -3044,6 +3092,8 @@ local function checkText(text, options, methodName, level)
     local allowSecret = false
     if type(options) ~= "nil" then
         validateOptionKeys(options, TEXT_OPTION_KEYS, methodName .. " options", level + 1)
+        -- Before `== true`: a secret boolean compared with a boolean raises.
+        refuseSecret(options.allowSecret, methodName .. " options.allowSecret", level + 1)
         allowSecret = options.allowSecret == true
     end
     if isSecret(text) then
@@ -3092,6 +3142,8 @@ end
 ---@return boolean disabled
 local function readDisabled(widget, disabled, methodName, level)
     activeRecord(widget, methodName, level + 1)
+    -- `type` answers "boolean" for a secret boolean; `== true` would raise.
+    refuseSecret(disabled, methodName .. " disabled", level + 1)
     if type(disabled) ~= "nil" and type(disabled) ~= "boolean" then
         error(methodName .. " disabled must be a boolean", level)
     end
@@ -3165,6 +3217,7 @@ do
     ---@param resizable boolean
     local function windowSetResizable(self, resizable)
         activeRecord(self, "WidgetKit Frame:SetResizable", 3)
+        refuseSecret(resizable, "WidgetKit Frame:SetResizable resizable", 3)
         if type(resizable) ~= "boolean" then
             error("WidgetKit Frame:SetResizable resizable must be a boolean", 2)
         end
@@ -3175,6 +3228,7 @@ do
     ---@param movable boolean
     local function windowSetMovable(self, movable)
         activeRecord(self, "WidgetKit Frame:SetMovable", 3)
+        refuseSecret(movable, "WidgetKit Frame:SetMovable movable", 3)
         if type(movable) ~= "boolean" then
             error("WidgetKit Frame:SetMovable movable must be a boolean", 2)
         end
@@ -3737,6 +3791,7 @@ do
     ---@param enabled boolean
     local function buttonSetKeyCapture(self, enabled)
         activeRecord(self, "WidgetKit Button:SetKeyCapture", 3)
+        refuseSecret(enabled, "WidgetKit Button:SetKeyCapture enabled", 3)
         if type(enabled) ~= "boolean" then
             error("WidgetKit Button:SetKeyCapture enabled must be a boolean", 2)
         end
@@ -3876,6 +3931,7 @@ do
     ---@param enabled boolean
     local function checkBoxSetTriState(self, enabled)
         activeRecord(self, "WidgetKit CheckBox:SetTriState", 3)
+        refuseSecret(enabled, "WidgetKit CheckBox:SetTriState enabled", 3)
         if type(enabled) ~= "boolean" then
             error("WidgetKit CheckBox:SetTriState enabled must be a boolean", 2)
         end
@@ -4054,6 +4110,7 @@ do
     ---@param isPercent boolean
     local function sliderSetIsPercent(self, isPercent)
         activeRecord(self, "WidgetKit Slider:SetIsPercent", 3)
+        refuseSecret(isPercent, "WidgetKit Slider:SetIsPercent isPercent", 3)
         if type(isPercent) ~= "boolean" then
             error("WidgetKit Slider:SetIsPercent isPercent must be a boolean", 2)
         end
@@ -4247,6 +4304,7 @@ do
     ---@param lines integer? visible lines of a multi-line box; default 4
     local function editBoxSetMultiLine(self, multiLine, lines)
         activeRecord(self, "WidgetKit EditBox:SetMultiLine", 3)
+        refuseSecret(multiLine, "WidgetKit EditBox:SetMultiLine multiLine", 3)
         if type(multiLine) ~= "boolean" then
             error("WidgetKit EditBox:SetMultiLine multiLine must be a boolean", 2)
         end
@@ -4942,6 +5000,7 @@ do --
     ---@param hasAlpha boolean
     local function colorSetHasAlpha(self, hasAlpha)
         activeRecord(self, "WidgetKit ColorPicker:SetHasAlpha", 3)
+        refuseSecret(hasAlpha, "WidgetKit ColorPicker:SetHasAlpha hasAlpha", 3)
         if type(hasAlpha) ~= "boolean" then
             error("WidgetKit ColorPicker:SetHasAlpha hasAlpha must be a boolean", 2)
         end
@@ -5302,6 +5361,16 @@ do --
     -- What a widget shows instead of a secret value it was not allowed to show.
     local SECRET_PLACEHOLDER = "<secret value>"
 
+    ---Whether a flag read from the tree or its description is exactly `true`.
+    ---The tree is the consumer's (its `disabled` and `hidden` functions, its
+    ---renderer hints), so a flag may be secret; a secret one is never compared
+    ---and counts as not set.
+    ---@param value any
+    ---@return boolean
+    local function isTrueFlag(value)
+        return not isSecret(value) and value == true
+    end
+
     -- Font objects for `description` options by `fontSize`.
     local DESCRIPTION_FONTS = {
         small = "GameFontHighlightSmall",
@@ -5318,8 +5387,9 @@ do --
     -- The question an `execute` option with `confirm = true` asks.
     local DEFAULT_CONFIRM_TEXT = "Click again to confirm."
 
-    -- The colour of an inline refusal.
-    local MESSAGE_RED, MESSAGE_GREEN, MESSAGE_BLUE = 1, 0.3, 0.3
+    -- The colour of an inline refusal: red, green, blue. One table rather than
+    -- three locals, because the file is at Lua's 200-local limit.
+    local MESSAGE_COLOR = { 1, 0.3, 0.3 }
 
     ---@param rendering any
     ---@param methodName string qualified public method name, used in the argument error
@@ -5467,7 +5537,7 @@ do --
         end
         stamp(rendering, label)
         label:SetFullWidth(true)
-        label:SetColor(MESSAGE_RED, MESSAGE_GREEN, MESSAGE_BLUE)
+        label:SetColor(MESSAGE_COLOR[1], MESSAGE_COLOR[2], MESSAGE_COLOR[3])
         label:SetText(text)
 
         local siblings = parent:GetChildren()
@@ -5624,7 +5694,10 @@ do --
         if VALUE_KINDS[record.kind] then
             value = tree:Get(record.path)
         end
-        applyState(rendering, record, value, tree:IsDisabled(record.path) == true)
+        -- A secret `disabled` answer greys the option out: the user cannot be
+        -- offered what the tree will not say is enabled.
+        local disabled = tree:IsDisabled(record.path)
+        applyState(rendering, record, value, isSecret(disabled) or disabled == true)
     end
 
     ---Run a refresh that `OnChange` asked for while a write was in progress.
@@ -5654,21 +5727,29 @@ do --
             ok, message = false, ok
             reportError(message)
         end
-        if ok == true then
+        -- `isTrueFlag`: a secret answer from `Validate` or `Set` is a refusal,
+        -- never compared. The verdict is taken once and kept as a plain boolean.
+        local accepted = isTrueFlag(ok)
+        if accepted then
             local called, result, setMessage = pcall(tree.Set, tree, record.path, value)
             if not called then
-                ok, message = false, result
+                accepted, message = false, result
                 reportError(result)
-            elseif result ~= true then
-                ok, message = false, setMessage
+            elseif not isTrueFlag(result) then
+                accepted, message = false, setMessage
             end
         end
         rendering._busy = rendering._busy - 1
 
-        if ok == true then
+        if accepted then
             clearMessage(rendering, record)
         else
-            showMessage(rendering, record, message or "refused")
+            -- Not `message or "refused"`: a secret message is shown as the
+            -- placeholder by `showMessage`, never tested as a boolean.
+            if not isSecret(message) and not message then
+                message = "refused"
+            end
+            showMessage(rendering, record, message)
             refreshRecord(rendering, record)
         end
         runPendingRefresh(rendering)
@@ -5821,8 +5902,14 @@ do --
             end)
         elseif kind == "range" then
             widget:SetLabel(node.name)
-            widget:SetSliderValues(node.min, node.max, node.step or 0)
-            widget:SetIsPercent(node.isPercent == true)
+            -- Not `node.step or 0`: a secret step reaches `SetSliderValues`,
+            -- which refuses it, instead of raising in a boolean test here.
+            local step = node.step
+            if not isSecret(step) and not step then
+                step = 0
+            end
+            widget:SetSliderValues(node.min, node.max, step)
+            widget:SetIsPercent(isTrueFlag(node.isPercent))
             widget:SetCallback("OnValueChanged", function(_, _, value)
                 writeValue(rendering, record, value)
             end)
@@ -5870,13 +5957,13 @@ do --
             widget:ResumeLayout()
         elseif kind == "input" then
             widget:SetLabel(node.name)
-            widget:SetMultiLine(node.multiline == true)
+            widget:SetMultiLine(isTrueFlag(node.multiline))
             widget:SetCallback("OnEnterPressed", function(_, _, text)
                 writeValue(rendering, record, text)
             end)
         elseif kind == "color" then
             widget:SetLabel(node.name)
-            local hasAlpha = node.hasAlpha == true
+            local hasAlpha = isTrueFlag(node.hasAlpha)
             widget:SetHasAlpha(hasAlpha)
             widget:SetCallback("OnValueChanged", function(_, _, red, green, blue, alpha)
                 writeValue(rendering, record, {
@@ -5899,7 +5986,10 @@ do --
         elseif kind == "header" then
             widget:SetText(node.name)
         elseif kind == "description" then
-            widget:SetFontObject(DESCRIPTION_FONTS[node.fontSize] or DESCRIPTION_FONTS.medium)
+            -- A secret size cannot index the table; it gets the default font.
+            local fontSize = node.fontSize
+            local font = not isSecret(fontSize) and DESCRIPTION_FONTS[fontSize] or nil
+            widget:SetFontObject(font or DESCRIPTION_FONTS.medium)
             widget:SetText(node.name)
         end
         return true
@@ -5933,8 +6023,10 @@ do --
             name = node.name,
             widget = widget,
             parent = parent,
-            triState = node.tristate == true,
-            confirm = node.confirm,
+            triState = isTrueFlag(node.tristate),
+            -- A secret `confirm` cannot be read, so the option asks with the
+            -- default question rather than run on a single click.
+            confirm = isSecret(node.confirm) and true or node.confirm,
             armed = false,
             disabled = false,
             messageLabel = nil,
@@ -5966,7 +6058,7 @@ do --
         local visited = rendering._nodes
         for index = 1, #nodes do
             local node = nodes[index]
-            local hidden = node.hidden == true
+            local hidden = isTrueFlag(node.hidden)
             visited[#visited + 1] = { path = node.path, hidden = hidden }
             if not hidden and not renderNode(rendering, node, parent) then
                 return false
@@ -6071,6 +6163,7 @@ do --
         local allowSecret, media, confirmText = false, nil, DEFAULT_CONFIRM_TEXT
         if type(options) ~= "nil" then
             validateOptionKeys(options, RENDER_OPTION_KEYS, "WidgetKit:RenderOptions options", 3)
+            refuseSecret(options.allowSecret, "WidgetKit:RenderOptions options.allowSecret", 3)
             if type(options.allowSecret) ~= "nil" and type(options.allowSecret) ~= "boolean" then
                 error("WidgetKit:RenderOptions options.allowSecret must be a boolean", 2)
             end
@@ -6155,7 +6248,7 @@ do --
         local visited = self._nodes
         for index = 1, #visited do
             local entry = visited[index]
-            if (tree:IsHidden(entry.path) == true) ~= entry.hidden then
+            if isTrueFlag(tree:IsHidden(entry.path)) ~= entry.hidden then
                 return RenderingPrototype.Rebuild(self)
             end
         end

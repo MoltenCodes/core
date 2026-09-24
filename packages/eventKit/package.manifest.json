@@ -2,10 +2,10 @@
   "name": "eventKit",
   "displayName": "EventKit",
   "description": "A lazy World of Warcraft event bridge built on MoltenCodes SignalKit.",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "license": "MIT",
   "api": 1,
-  "revision": 15,
+  "revision": 16,
   "dependencies": {
     "registry": {
       "api": 2
