@@ -1206,7 +1206,7 @@ under their Kit, new Kits carry nine points.
 
 #### Package I — capabilities for existing Kits
 
-- [ ] **signalKit** (W10) — `SignalKit:New({ onFirst, onLast })` hooks that fire
+- [x] **signalKit** (W10, done 2026-09-24) — `SignalKit:New({ onFirst, onLast })` hooks that fire
       on the 0→1 and 1→0 subscriber transitions (a source can activate only
       while observed, CallbackHandler's `OnUsed`/`OnUnused`);
       `SignalKit:NewJournal(capacity)`, a signal that keeps its last firings in
@@ -1215,7 +1215,7 @@ under their Kit, new Kits carry nine points.
       `signal:GetGeneration()` incrementing on every fire for cheap
       "changed since I looked" checks. Hooks cost one comparison per connect
       and disconnect and must hold under re-entrant connect and disconnect.
-- [ ] **cacheKit** (W11) — `Memoize(fn, { cacheable })`: a predicate that
+- [x] **cacheKit** (W11, done 2026-09-24) — `Memoize(fn, { cacheable })`: a predicate that
       returns a result without storing it while it is incomplete;
       `cache:PutNegative(key, ttlSeconds)`: a negative entry with its own
       expiry on a TTL cache (a peer that answered "nothing" is not asked again
@@ -1224,26 +1224,31 @@ under their Kit, new Kits carry nine points.
       invalidation; `CacheKit:NewQueue(capacity, overflow)`: a bounded ring
       with an explicit `dropOldest`, `dropNewest` or `reject` policy, O(1)
       and allocation-free after construction.
-- [ ] **eventKit** (W12) — `EventKit:ConnectCombatLog(subEvent, callback)` and
+- [x] **eventKit** (W12) — `EventKit:ConnectCombatLog(subEvent, callback)` and
       the scope form: one `CombatLogGetCurrentEventInfo()` read per event,
       O(1) routing by sub-event, listeners receive the multiple returns
       unchanged, a sub-event with no listener costs one lookup; isolation as
-      for `Connect`.
-- [ ] **moduleKit** (W16) — an `implements` option on `Provide` and on module
+      for `Connect`. Also the `"*"` wildcard, one host registration held only
+      while a combat-log listener exists and shared with a plain `Connect`;
+      EventKit 0.8.0, revision 12 (2026-09-24).
+- [x] **moduleKit** (W16) — an `implements` option on `Provide` and on module
       definitions: a list of method names checked once at registration,
       failing at the caller's line with the missing name; a SchemaKit schema
-      accepted in its place when SchemaKit is loaded.
-- [ ] **optionsKit** (AceDBOptions parity) — `OptionsKit:ProfileOptions(db,
+      accepted in its place when SchemaKit is loaded. Done 2026-09-24
+      (ModuleKit 0.8.0, revision 15).
+- [x] **optionsKit** (AceDBOptions parity) — `OptionsKit:ProfileOptions(db,
       options?)`: a ready-made options group over a SettingsKit database
       (choose the active profile, create one by name, copy from another,
       reset the current one, delete one, with confirmations and the current
       profile's name in descriptions), built from existing option kinds so
-      every renderer shows it; refuses when SettingsKit is absent.
-- [ ] **clientKit** (W13, the part Registry's spent line budget leaves to it)
+      every renderer shows it; refuses when SettingsKit is absent
+      (2026-09-24).
+- [x] **clientKit** (W13, the part Registry's spent line budget leaves to it)
       — `ClientKit:GetManifest(addonName)`: a read-only snapshot of an addon's
       `.toc` fields with locale-suffixed fallback (`## Notes-deDE` before
       `## Notes`), read once per addon and cached. Registry's `Deprecate` and
       data-package kinds stay unbuilt until a consumer needs them.
+      Done 2026-09-24 (clientKit 0.2.0, revision 2).
 - [ ] Deferred to the user-interface phase: **timerKit** engine-driven
       pausable ticker (W15, needs an animation host), **frameKit** (W14,
       folded into widgetKit's anchors), Registry deprecation warnings (W13).
