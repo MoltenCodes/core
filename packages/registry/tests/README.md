@@ -35,6 +35,7 @@ Spec files:
 | `Find_spec.lua` | `Find` (absent, different generation, retired-unfinished, argument errors, no allocation, `Get` included) and `Packages` snapshots |
 | `Retirement_spec.lua` | retire hooks and `OnRetire`, per-revision migrations run exactly once, failed steps, the in-place upgrade from the previous Registry revision |
 | `Seal_spec.lua` | sealed facades: refused writes at the writer's line, `rawset` upgrades, removal, foreign metatables |
+| `SecretValues_spec.lua` | secret arguments, request fields and hook results refused or handed over without a comparison |
 | `RegistryTestEnv_spec.lua` | the test environment's own reset and isolation |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
 

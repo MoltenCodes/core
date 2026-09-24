@@ -205,7 +205,7 @@ describe("EventKit Coalesce", function()
         assert.are.equal(0, #Scheduled.Frames())
     end)
 
-    it("allocates nothing per event in steady state", function()
+    it("allocates nothing per event in steady state #allocation", function()
         local handle = EventKit:Coalesce("UNIT_HEALTH", 1, function() end)
         Scheduled.Emit("UNIT_HEALTH", "player")
         Scheduled.Emit("UNIT_HEALTH", "target")

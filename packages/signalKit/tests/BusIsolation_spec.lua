@@ -124,7 +124,7 @@ describe("SignalKit bus listener isolation", function()
     end)
 end)
 
-describe("SignalKit bus allocation behaviour", function()
+describe("SignalKit bus allocation behaviour #allocation", function()
     after_each(TestEnv.Reset)
 
     it("allocates nothing per steady-state Publish", function()

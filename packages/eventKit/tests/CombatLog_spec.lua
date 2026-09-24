@@ -271,7 +271,7 @@ describe("EventKit combat-log routing", function()
             end
         )
 
-        it("allocates nothing per event across sub-events and the wildcard", function()
+        it("allocates nothing per event across sub-events and the wildcard #allocation", function()
             local sink = 0
             for _ = 1, 4 do
                 EventKit:ConnectCombatLog(

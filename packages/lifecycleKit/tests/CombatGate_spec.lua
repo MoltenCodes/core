@@ -572,7 +572,7 @@ describe("LifecycleKit combat notices", function()
         assert.is_false(life:OnCombatStart(function() end):IsConnected())
     end)
 
-    it("allocates nothing per combat once subscribed", function()
+    it("allocates nothing per combat once subscribed #allocation", function()
         local life = loadedAddon("MyAddon")
         life:OnCombatStart(function() end)
         life:OnCombatEnd(function() end)

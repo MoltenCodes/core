@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **13**.
+Implementation revision: **14**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -371,7 +371,8 @@ end, { units = { "player", "target" } })
 | `lane` | A SchedulerKit lane every delivery goes through. |
 
 - Every value in the set is `true`. An event whose first argument is `nil`
-  (or NaN) is keyed by its event name, so `BAG_UPDATE_DELAYED` still counts.
+  (or NaN, or a [secret value](#secret-values)) is keyed by its event name, so
+  `BAG_UPDATE_DELAYED` still counts.
 - **The set is reused.** Without a lane it is emptied as soon as the callback
   returns; delivered through a lane it lives until the lane job reaches a
   terminal state, across retries, and is emptied then. Do not keep it; copy
@@ -420,7 +421,8 @@ print(freeSlots:Get())
 A `compute` that raises during a recompute is reported and the previous value
 is kept; so is an `equals` that raises, which then counts as a change. With the
 default `==`, a `compute` that returns NaN counts as a change on every
-recompute, because NaN is never equal to itself.
+recompute, because NaN is never equal to itself; so does a
+[secret](#secret-values) value on either side, which cannot be compared.
 
 ### Ownership
 
@@ -625,6 +627,10 @@ one would.
 
 Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
 
+Revision 14 keeps `_state` at schema 8 and adopts the state of revision 13
+as it is. It tests values it did not create for absence with `type` and
+handles [secret values](#secret-values) before any comparison.
+
 Revision 13 keeps `_state` at schema 8. A copy loading over revision 12
 adopts the state as it is; its router, routes and listeners keep delivering,
 and the next attach resolves the client API as described under
@@ -751,6 +757,35 @@ same Frame handler. Two consequences:
 
 Registration itself is not protected: `RegisterEvent`/`RegisterUnitEvent` on an
 addon-created Frame is safe from any code.
+
+### Secret values
+
+On a client with secret values, comparing a secret with anything, `nil`
+included, raises. EventKit therefore tests every value it did not create —
+arguments, option and limit fields, event payloads, `compute` results — for
+absence with `type(value) == "nil"`, and deals with a secret before it would
+compare one (revision 14 and later):
+
+- A secret argument or option value is refused at the caller's line:
+
+  ```text
+  <Method> eventName must not be a secret value
+  <Method> subEvent must not be a secret value
+  <Method> unit token must not be a secret value
+  <Method> events entry must not be a secret value
+  <Method> intervalSeconds must not be a secret value
+  <Method> byEvent must not be a secret value
+  <Method> delaySeconds must not be a secret value
+  EventKit:ForAddon addonName must not be a secret value
+  EventKit:CloseAddonScopes addonName must not be a secret value
+  EventKit:SetLimits limits.<name> must not be a secret value
+  ```
+
+- A facade method called with a dot and a secret first argument is refused as
+  a call without the facade, by its type, before any comparison.
+- A `Coalesce` payload whose first argument is secret is keyed by its event
+  name, and a `Derive` value that is secret on either side counts as a change.
+  Payloads themselves are passed to listeners untouched.
 
 ### Reserved fields
 

@@ -1,5 +1,9 @@
 local TestEnv = require("EventKitTestEnv")
 
+---The implementation revision `src/EventKit.lua` carries; `Manifest_spec.lua`
+---pins the same number against `package.manifest.json`.
+local CURRENT_REVISION = 14
+
 local function expectErrorContaining(expected, callback)
     local ok, message = pcall(callback)
     assert.is_false(ok)
@@ -7,10 +11,10 @@ local function expectErrorContaining(expected, callback)
 end
 
 local function installFutureEventsFacade(Registry)
-    local EventKit = Registry:Register("eventKit", 1, 14)
+    local EventKit = Registry:Register("eventKit", 1, CURRENT_REVISION + 1)
     local function stub() end
     EventKit.API = 1
-    EventKit.REVISION = 14
+    EventKit.REVISION = CURRENT_REVISION + 1
     EventKit.Connection = { Disconnect = stub, IsConnected = stub }
     EventKit.Scope = {
         Connect = stub,
@@ -98,13 +102,13 @@ describe("EventKit package bootstrap", function()
         end)
     end)
 
-    it("registers EventKit API 1 revision 13", function()
+    it("registers EventKit API 1 at the current revision", function()
         local EventKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("eventKit", 1)
         assert.are.equal(EventKit, selected)
-        assert.are.equal(13, revision)
+        assert.are.equal(CURRENT_REVISION, revision)
         assert.are.equal(1, EventKit.API)
-        assert.are.equal(13, EventKit.REVISION)
+        assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
     end)
 
     it("reuses the package facade across duplicate embedding", function()
@@ -177,7 +181,7 @@ describe("EventKit package bootstrap", function()
         local state = EventKit._state
 
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(13, EventKit.REVISION)
+        assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
         assert.are.equal(legacyConnectionMethods, EventKit.Connection)
         assert.are.equal(8, state.schema)
         assert.are.equal(legacyGroup, state.unitGroups["6:player"])
@@ -224,7 +228,7 @@ describe("EventKit package bootstrap", function()
         local state = EventKit._state
 
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(13, EventKit.REVISION)
+        assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
         assert.are.equal(legacyConnectionMethods, EventKit.Connection)
         assert.are.equal(8, state.schema)
         assert.are.equal("table", type(state.addonScopes))
@@ -275,7 +279,7 @@ describe("EventKit package bootstrap", function()
         local EventKit = require("EventKit")
         local state = EventKit._state
 
-        assert.are.equal(13, EventKit.REVISION)
+        assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
         assert.are.equal(legacyScopePrototype, EventKit.Scope)
         assert.are.equal(8, state.schema)
         assert.are.equal(0, state.dispatchDepth)
@@ -337,7 +341,7 @@ describe("EventKit package bootstrap", function()
 
         local EventKit = require("EventKit")
         local state = EventKit._state
-        assert.are.equal(13, EventKit.REVISION)
+        assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
         assert.are.equal(8, state.schema)
         assert.is_function(state.composites.onEvent)
         assert.is_table(state.compositeMetatables.coalesce)
@@ -374,7 +378,7 @@ describe("EventKit package bootstrap", function()
         local EventKit = require("EventKit")
         local _, revision = Registry:Get("eventKit", 1)
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(13, revision)
+        assert.are.equal(CURRENT_REVISION, revision)
         assert.are.equal(8, EventKit._state.schema)
 
         -- Closing a handle revision 8 created now disconnects its listeners.
@@ -398,7 +402,7 @@ describe("EventKit package bootstrap", function()
         local _, revision = Registry:Get("eventKit", 1)
         local state = EventKit._state
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(13, revision)
+        assert.are.equal(CURRENT_REVISION, revision)
         assert.are.equal(8, state.schema)
         assert.are.equal("table", type(EventKit.UNBOUNDED))
         assert.are.equal(state.unbounded, EventKit.UNBOUNDED)
@@ -430,7 +434,7 @@ describe("EventKit package bootstrap", function()
         local _, revision = Registry:Get("eventKit", 1)
         local state = EventKit._state
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(13, revision)
+        assert.are.equal(CURRENT_REVISION, revision)
         assert.are.equal(8, state.schema)
         assert.is_table(state.combatLog)
         assert.is_function(state.dispatchCombatLog)
@@ -484,7 +488,7 @@ describe("EventKit package bootstrap", function()
         local EventKit = require("EventKit")
         local _, revision = Registry:Get("eventKit", 1)
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(13, revision)
+        assert.are.equal(CURRENT_REVISION, revision)
         assert.are.equal(8, EventKit._state.schema)
 
         TestEnv.EmitCombatLogEvent(1, "SPELL_DAMAGE")
@@ -498,15 +502,42 @@ describe("EventKit package bootstrap", function()
         assert.are.same({ "COMBAT_LOG_EVENT_UNFILTERED" }, TestEnv.Frames()[1].unregisterEventCalls)
     end)
 
+    it("upgrades the previous revision in place, keeping facade, state and listeners", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        local Registry = require("Registry")
+        require("SignalKit")
+
+        local legacy = TestEnv.LoadSourceAtRevision(CURRENT_REVISION - 1)
+        local legacyState = legacy._state
+        legacy:SetLimits({ maxUnitFrames = 100 })
+        local calls = 0
+        local connection = legacy:ForAddon("MyAddon"):Connect("CUSTOM_EVENT", function()
+            calls = calls + 1
+        end)
+
+        local EventKit = require("EventKit")
+        local _, revision = Registry:Get("eventKit", 1)
+        assert.are.equal(legacy, EventKit)
+        assert.are.equal(CURRENT_REVISION, revision)
+        assert.are.equal(legacyState, EventKit._state)
+        assert.are.equal(100, EventKit:GetLimits().maxUnitFrames)
+
+        TestEnv.Emit("CUSTOM_EVENT")
+        assert.are.equal(1, calls)
+        EventKit:CloseAddonScopes("MyAddon")
+        assert.is_false(connection:IsConnected())
+    end)
+
     it("carries set limits and the sentinel to a newer revision", function()
         local EventKit, Registry = TestEnv.NewPackage()
         local sentinel = EventKit.UNBOUNDED
         EventKit:SetLimits({ maxUnitFrames = 200 })
 
-        local newer = TestEnv.LoadSourceAtRevision(14)
+        local newer = TestEnv.LoadSourceAtRevision(CURRENT_REVISION + 1)
         local _, revision = Registry:Get("eventKit", 1)
         assert.are.equal(EventKit, newer)
-        assert.are.equal(14, revision)
+        assert.are.equal(CURRENT_REVISION + 1, revision)
         assert.are.equal(sentinel, newer.UNBOUNDED)
         assert.are.equal(200, newer:GetLimits().maxUnitFrames)
     end)
@@ -575,6 +606,6 @@ describe("EventKit package bootstrap", function()
         local selected, revision = Registry:Get("eventKit", 1)
         assert.are.equal(future, loaded)
         assert.are.equal(future, selected)
-        assert.are.equal(14, revision)
+        assert.are.equal(CURRENT_REVISION + 1, revision)
     end)
 end)

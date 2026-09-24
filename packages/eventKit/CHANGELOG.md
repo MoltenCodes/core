@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.2 — 2026-09-24
+
+- EventKit follows the repository-wide nil rule. On a client with secret values a comparison with a secret, `nil` included, raises inside EventKit instead of at the caller, so every value EventKit did not create — arguments, `Coalesce`, `Derive` and `SetLimits` fields, the `events` array, what `CreateFrame` and Registry return, event payloads and `compute` results — is tested for absence with `type(value) == "nil"`.
+- A secret event name, sub-event, unit token, `events` entry, `intervalSeconds`, `byEvent`, `delaySeconds`, `ForAddon` or `CloseAddonScopes` addon name, or `SetLimits` value is refused at the caller before it is compared, with `<label> must not be a secret value`. `CloseAddonScopes`, `SetLimits` and `GetLimits` called with a dot and a secret first argument are refused by its type before the facade comparison.
+- A `Coalesce` payload whose first argument is secret is keyed by its event name, as a `nil` one is, instead of being compared and used as a key. A `Derive` value that is secret on either side counts as a change instead of being compared with `==`.
+- `docs/API.md` gains "Secret values" under "World of Warcraft specifics", with every new message, and the `Coalesce` and `Derive` notes name the secret case.
+- Six specs: `SecretValues_spec.lua` (five) and an in-place upgrade from the previous revision in `Bootstrap_spec.lua`. The bootstrap specs name the current revision once and load `REVISION + 1` as the newer copy.
+- Implementation revision 14. `_state` schema 8 is unchanged, so a copy loading over revision 13 adopts its state, scopes, limits and listeners as they are. `EventKit` API generation 1 is unchanged.
+
 ## 0.8.1 — 2026-09-24
 
 - `ConnectCombatLog` reads `C_CombatLog.GetCurrentEventInfo` when the global `CombatLogGetCurrentEventInfo` is absent. The classic-era and classic-mop metadata document only the namespaced function, so a client that does not also publish the undocumented global would have refused the router. The global is still preferred when present, and the missing-API error is unchanged.

@@ -251,7 +251,7 @@ describe("EventKit logout routes across an upgrade", function()
         local EventKit = require("EventKit")
 
         assert.are.equal(legacy, EventKit)
-        assert.are.equal(13, EventKit.REVISION)
+        assert.are.equal(14, EventKit.REVISION)
         assert.are.equal(8, privateState(EventKit).schema)
         assert.are.equal("playerLogout", rawget(events, "_logoutRoute"))
         TestEnv.Logout()

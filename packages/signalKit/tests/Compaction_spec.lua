@@ -140,7 +140,7 @@ describe("SignalKit listener compaction", function()
     end)
 end)
 
-describe("SignalKit allocation behaviour", function()
+describe("SignalKit allocation behaviour #allocation", function()
     local SignalKit
     local signal
 

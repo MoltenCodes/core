@@ -238,6 +238,22 @@ Every public method validates its arguments and raises at the caller's own file 
 | `LifecycleKit:SetLimits` | `limits must be a table`, `limits.<name> is not a recognised limit`, `limits.<name> must be a positive integer or LifecycleKit.UNBOUNDED`, `must be called on the LifecycleKit facade` |
 | `LifecycleKit:GetLimits` | `must be called on the LifecycleKit facade` |
 
+On a client with secret values, comparing a secret with anything, `nil`
+included, raises. LifecycleKit therefore tests every value it did not create
+for absence with `type(value) == "nil"`, and refuses a secret at the caller
+before it would compare one (revision 14 and later):
+
+| Call | Message |
+|---|---|
+| `LifecycleKit:ForAddon` | `LifecycleKit:ForAddon addonName must not be a secret value` |
+| `Halt` | `LifecycleKit.Instance:Halt reason must not be a secret value` |
+| `DependsOn` | `LifecycleKit.Instance:DependsOn addonName must not be a secret value` |
+| `SetCombatQueueLimit` | `LifecycleKit.Instance:SetCombatQueueLimit limit must not be a secret value` |
+| `LifecycleKit:SetLimits` | `LifecycleKit:SetLimits limits.<name> must not be a secret value` |
+
+`SetLimits` and `GetLimits` called with a dot and a secret first argument are
+refused as calls without the facade, by its type, before any comparison.
+
 ## Limits
 
 LifecycleKit keeps two lists per addon, and both are bounded by default and opened on purpose (design constitution, principle 4a):
@@ -281,6 +297,6 @@ Host API read directly: `C_AddOns.IsAddOnLoaded` (falling back to the legacy `Is
 
 Compatible embedded copies share one LifecycleKit facade and state through Registry. Pending phase subscriptions created by the previous compatible implementation revision remain valid across an in-place upgrade; the upgrade releases per-instance state that the newer revision no longer owns.
 
-Revisions 8 to 13 keep schema 3. Upgrading from revision 7, 8, 9, 10, 11 or 12 replaces its shared host watchers, which would otherwise keep calling the older revision's handlers: revision 7's logout handler closes no HookKit scope and no bus, revision 8's no CommandKit scope, revision 9's no CommKit scope, and no revision before 12 closes a TimerKit or SchedulerKit scope. Revision 13 adds `CLOSES_ADDON_SCOPES` without a schema change: an upgrade seeds the capability set into the state (`addonScopeCapabilities`) and publishes it.
+Revisions 8 to 14 keep schema 3. Upgrading from revision 7, 8, 9, 10, 11, 12 or 13 replaces its shared host watchers, which would otherwise keep calling the older revision's handlers: revision 7's logout handler closes no HookKit scope and no bus, revision 8's no CommandKit scope, revision 9's no CommKit scope, and no revision before 12 closes a TimerKit or SchedulerKit scope. Revision 13 adds `CLOSES_ADDON_SCOPES` without a schema change: an upgrade seeds the capability set into the state (`addonScopeCapabilities`) and publishes it. Revision 14 refuses secret arguments before comparing them and changes no state.
 
 Revision 7 changed the package state from schema 2 to schema 3. Upgrading from an older revision adds the shared combat flag (seeded from `InCombatLockdown()`), the instance list (inherited instances in name order) and every instance's combat queue, dependency list and halted flag, and replaces the older revision's shared host watchers with its own, because a watcher keeps calling the handler of the revision that installed it. Pending deferred calls and notice subscriptions are carried across a same-revision reload unchanged. Bootstrap is idempotent for the current implementation revision: if a prior live upgrade accepted the Registry revision but host event registration failed before shared watchers were fully established, a later compatible copy retries the missing watcher setup instead of silently returning an incomplete runtime state. If a one-shot global phase passed while that watcher was absent, bootstrap also reconciles existing instances from the observable host/package state.

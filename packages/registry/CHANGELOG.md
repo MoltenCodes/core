@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.5 — 2026-09-24
+
+- Registry follows the repository-wide nil rule. On a client with secret values a comparison with a secret, `nil` included, raises inside Registry instead of at the caller, so every value Registry did not create — `Bootstrap` request fields, the results of `resume`, `validateState` and migration steps, and the public `MoltenCodes` namespace entries — is tested for absence with `type(value) == "nil"`.
+- A secret `packageName`, `api`, `revision`, `request.label` or optional request field, and a secret revision returned by `resume`, are refused at the caller before any comparison, with the message a value of the wrong type already gets. A secret `validateState` verdict counts as "not complete". A secret migration result is handed over without a comparison. `docs/API.md` lists the messages under "Error reporting".
+- `resume`'s return value is checked as a non-negative integer, the same test as before (a positive integer or `0`) without a separate comparison with `0`.
+- `Registry.lua` stays at its 1000-line budget: the `Bootstrap` comment names the return values on its `@return` lines instead of repeating them in a list, and two of its paragraphs are shorter.
+- Five specs in `SecretValues_spec.lua`. `Registry_spec.lua` names the current revision once instead of in eight places.
+- Implementation revision 12. The private state layout is unchanged from revision 11, and the in-place facade upgrade from the previous revision is covered by the existing upgrade specs. `Registry` API generation 2 is unchanged.
+
 ## 0.6.4 — 2026-09-24
 
 - `Registry.lua` is back inside its documented 1000-line budget (1012 lines before). The `api` and `revision` argument checks share one `validatePositiveInteger` helper, which `Bootstrap` now also uses for `request.revision`; `Bootstrap` reads the existing entry once instead of looking it up a second time before retiring the outgoing copy, and no longer re-checks that the implementation is a table after the entry accessor already did. Every error message and stack level is unchanged.

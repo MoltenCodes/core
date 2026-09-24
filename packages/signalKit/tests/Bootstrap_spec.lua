@@ -2,6 +2,10 @@ local TestEnv = require("SignalKitTestEnv")
 
 local expectErrorContaining = TestEnv.expectErrorContaining
 
+---The implementation revision `src/SignalKit.lua` carries; `Manifest_spec.lua`
+---pins the same number against `package.manifest.json`.
+local CURRENT_REVISION = 8
+
 ---The package-wide limits a fresh session starts with.
 local DEFAULT_LIMITS = { maxBuses = 64, maxJournalCapacity = 1024, maxJournalArguments = 8 }
 
@@ -37,14 +41,14 @@ describe("SignalKit package bootstrap", function()
         end)
     end)
 
-    it("registers itself as SignalKit API 1 revision 7", function()
+    it("registers itself as SignalKit API 1 the current revision", function()
         local SignalKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("signalKit", 1)
 
         assert.are.equal(SignalKit, selected)
-        assert.are.equal(7, revision)
+        assert.are.equal(CURRENT_REVISION, revision)
         assert.are.equal(1, SignalKit.API)
-        assert.are.equal(7, SignalKit.REVISION)
+        assert.are.equal(CURRENT_REVISION, SignalKit.REVISION)
     end)
 
     it("reuses the same package facade on duplicate embedding", function()
@@ -135,7 +139,7 @@ describe("SignalKit package bootstrap", function()
         bus:Publish("Topic", "delivered")
 
         assert.are.equal(SignalKit, upgraded)
-        assert.are.equal(7, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
         assert.are.equal(1, calls)
         assert.are.equal("delivered", received)
     end)
@@ -167,7 +171,7 @@ describe("SignalKit package bootstrap", function()
         local upgraded = TestEnv.ReloadPackage()
 
         assert.are.equal(SignalKit, upgraded)
-        assert.are.equal(7, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
         assert.are.equal(4, rawget(state, "schema"))
         assert.are.equal("table", type(upgraded.UNBOUNDED))
         assert.are.equal(rawget(state, "unbounded"), upgraded.UNBOUNDED)
@@ -189,7 +193,7 @@ describe("SignalKit package bootstrap", function()
         SignalKit:SetLimits({ maxBuses = 200 })
         local bus = SignalKit:Bus("Opened", { maxTopics = sentinel, maxListeners = 2 })
 
-        local upgraded = TestEnv.LoadRevision(8)
+        local upgraded = TestEnv.LoadRevision(SignalKit.REVISION + 1)
 
         assert.are.equal(SignalKit, upgraded)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
@@ -237,11 +241,11 @@ describe("SignalKit package bootstrap", function()
             received[#received + 1] = value
         end)
 
-        local upgraded = TestEnv.LoadRevision(8)
+        local upgraded = TestEnv.LoadRevision(SignalKit.REVISION + 1)
         bus:Publish("Topic", "after upgrade")
 
         assert.are.equal(SignalKit, upgraded)
-        assert.are.equal(8, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION + 1, upgraded.REVISION)
         assert.are.equal(bus, upgraded:Bus("Carried"))
         assert.are.same({ "Topic" }, bus:Topics())
         assert.are.same({ "after upgrade" }, received)
@@ -250,6 +254,33 @@ describe("SignalKit package bootstrap", function()
         end)
         assert.are.equal(1, scope:DisconnectAll())
         assert.is_false(connection:IsConnected())
+    end)
+
+    it("upgrades the previous revision in place, keeping facade, state and buses", function()
+        TestEnv.Reset()
+        require("Registry")
+        local SignalKit = TestEnv.LoadRevision(CURRENT_REVISION - 1)
+        local state = rawget(SignalKit, "_state")
+        SignalKit:SetLimits({ maxBuses = 100 })
+        local bus = SignalKit:Bus("Kept", { maxTopics = 3 })
+        bus:DeclareTopic("Topic", { arguments = 1 })
+        local received = {}
+        bus:Subscribe("Topic", function(value)
+            received[#received + 1] = value
+        end)
+        local journal = SignalKit:NewJournal(2)
+        journal:Fire("before")
+
+        local upgraded = TestEnv.ReloadPackage()
+        bus:Publish("Topic", "after upgrade")
+
+        assert.are.equal(SignalKit, upgraded)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
+        assert.are.equal(state, rawget(upgraded, "_state"))
+        assert.are.equal(100, upgraded:GetLimits().maxBuses)
+        assert.are.equal(bus, upgraded:Bus("Kept", { maxTopics = 3 }))
+        assert.are.same({ "after upgrade" }, received)
+        assert.are.equal(1, journal:GetGeneration())
     end)
 
     it("upgrades revision-6 state in place: journal prototype, limits, generation", function()
@@ -279,7 +310,7 @@ describe("SignalKit package bootstrap", function()
         local upgraded = TestEnv.ReloadPackage()
 
         assert.are.equal(SignalKit, upgraded)
-        assert.are.equal(7, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
         assert.are.equal(4, rawget(state, "schema"))
         assert.are.same(DEFAULT_LIMITS, upgraded:GetLimits())
         -- The older signal reports generation 0 until it fires, and connects
@@ -312,11 +343,11 @@ describe("SignalKit package bootstrap", function()
         end)
         journal:Fire("before")
 
-        local upgraded = TestEnv.LoadRevision(8)
+        local upgraded = TestEnv.LoadRevision(SignalKit.REVISION + 1)
         journal:Fire("after")
 
         assert.are.equal(SignalKit, upgraded)
-        assert.are.equal(8, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION + 1, upgraded.REVISION)
         assert.are.same(
             { maxBuses = 64, maxJournalCapacity = 4, maxJournalArguments = 3 },
             upgraded:GetLimits()

@@ -354,7 +354,7 @@ describe("SignalKit journals", function()
         end)
     end)
 
-    describe("allocation behaviour", function()
+    describe("allocation behaviour #allocation", function()
         it("allocates nothing per Fire after the ring is created", function()
             local journal = SignalKit:NewJournal(16)
             local sink = 0

@@ -47,7 +47,7 @@
 
 local PACKAGE_NAME = "signalKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 7
+local IMPLEMENTATION_REVISION = 8
 local REQUIRED_REGISTRY_API = 2
 
 -- Schema of the private `_state` table. Revisions 1 to 3 carried no state at
@@ -156,7 +156,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -307,7 +307,7 @@ local SignalKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if SignalKit == nil then
+if type(SignalKit) == "nil" then
     -- Equal or newer compatible revision already owns the shared package table.
     return selected
 end
@@ -543,7 +543,7 @@ local function upgradeSchemaThree(oldState)
     rawset(oldState, "schema", STATE_SCHEMA)
 end
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if Connection ~= nil or state ~= nil then
         error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
     end
@@ -817,7 +817,7 @@ end
 ---@return SignalKit.SignalHook|false onFirst
 ---@return SignalKit.SignalHook|false onLast
 local function readSignalOptions(options, label, level)
-    if options == nil then
+    if type(options) == "nil" then
         return false, false
     end
     if type(options) ~= "table" then
@@ -825,14 +825,14 @@ local function readSignalOptions(options, label, level)
     end
 
     local onFirst = rawget(options, "onFirst")
-    if onFirst == nil then
+    if type(onFirst) == "nil" then
         onFirst = false
     elseif type(onFirst) ~= "function" then
         error(label .. " options.onFirst must be a function or nil", level)
     end
 
     local onLast = rawget(options, "onLast")
-    if onLast == nil then
+    if type(onLast) == "nil" then
         onLast = false
     elseif type(onLast) ~= "function" then
         error(label .. " options.onLast must be a function or nil", level)
@@ -850,7 +850,10 @@ end
 local function isMisplacedOptionsTable(receiver)
     return type(receiver) == "table"
         and receiver ~= SignalKit
-        and (rawget(receiver, "onFirst") ~= nil or rawget(receiver, "onLast") ~= nil)
+        and (
+            type(rawget(receiver, "onFirst")) ~= "nil"
+            or type(rawget(receiver, "onLast")) ~= "nil"
+        )
 end
 
 ---Build a signal table with the shared listener layout.
@@ -878,7 +881,7 @@ end
 ---@param options SignalKit.SignalOptions?
 ---@return SignalKit.Signal signal
 local function newSignal(self, options)
-    if options == nil and isMisplacedOptionsTable(self) then
+    if type(options) == "nil" and isMisplacedOptionsTable(self) then
         error("SignalKit:New options must be passed with a colon call: SignalKit:New(options)", 2)
     end
     local onFirst, onLast = readSignalOptions(options, "SignalKit:New", 3)
@@ -1144,18 +1147,37 @@ end
 -- results in a local before returning them: a Lua tail call would remove the
 -- public frame the stack level is counted against.
 
+---Whether the client reports `value` as secret; always `false` elsewhere.
+---
+---On a client with secret values, comparing a secret with anything, `nil`
+---included, raises inside SignalKit instead of at the caller. Values SignalKit
+---did not create are therefore tested for absence with `type(value) == "nil"`,
+---and checked with this before any other comparison.
+---@param value any
+---@return boolean
+local function isSecret(value)
+    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local isSecretValue = rawget(_G, "issecretvalue")
+    return type(isSecretValue) == "function" and isSecretValue(value) == true
+end
+
+---Raise at `level` when `value` is secret, naming `label`.
+---@param value any
+---@param label string qualified public name of the argument
+---@param level integer stack level the failure is reported at
+local function refuseSecret(value, label, level)
+    if isSecret(value) then
+        error(label .. " must not be a secret value", level)
+    end
+end
+
 ---@param value any
 ---@param label string qualified public name of the argument
 ---@param level integer stack level the failure is reported at
 local function validateNonEmptyString(value, label, level)
-    -- A secret value raises on comparison, so it is refused before `== ""`
-    -- could raise inside SignalKit instead of at the caller.
-    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-    -- selene: allow(global_usage)
-    local isSecretValue = rawget(_G, "issecretvalue")
-    if type(isSecretValue) == "function" and isSecretValue(value) then
-        error(label .. " must not be a secret value", level)
-    end
+    -- Refused before `== ""` could raise inside SignalKit instead of at the caller.
+    refuseSecret(value, label, level + 1)
     if type(value) ~= "string" or value == "" then
         error(label .. " must be a non-empty string", level)
     end
@@ -1183,7 +1205,8 @@ end
 ---@param label string qualified public method name
 ---@param level integer stack level the failure is reported at
 local function validateFacade(self, label, level)
-    if self ~= SignalKit then
+    -- The type test comes first: a dot call can hand a secret in as `self`.
+    if type(self) ~= "table" or self ~= SignalKit then
         error(label .. " must be called on the SignalKit facade; use " .. label .. "(...)", level)
     end
 end
@@ -1206,7 +1229,7 @@ end
 ---@return integer|function|false arguments
 ---@return string|false description
 local function readTopicOptions(options, level)
-    if options == nil then
+    if type(options) == "nil" then
         return false, false
     end
     if type(options) ~= "table" then
@@ -1214,9 +1237,10 @@ local function readTopicOptions(options, level)
     end
 
     local arguments = rawget(options, "arguments")
-    if arguments == nil then
+    if type(arguments) == "nil" then
         arguments = false
     elseif type(arguments) == "number" then
+        refuseSecret(arguments, "SignalKit.Bus:DeclareTopic options.arguments", level + 1)
         -- `math.huge` passes the integer test and NaN fails every comparison,
         -- so both are named explicitly.
         if
@@ -1238,7 +1262,7 @@ local function readTopicOptions(options, level)
     end
 
     local description = rawget(options, "description")
-    if description == nil then
+    if type(description) == "nil" then
         description = false
     elseif type(description) ~= "string" then
         error("SignalKit.Bus:DeclareTopic options.description must be a string or nil", level)
@@ -1254,10 +1278,7 @@ end
 ---@param fallback string text used when `reason` is not a non-empty string
 ---@return string
 local function describeRefusal(reason, fallback)
-    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
-    -- selene: allow(global_usage)
-    local isSecretValue = rawget(_G, "issecretvalue")
-    if type(isSecretValue) == "function" and isSecretValue(reason) then
+    if isSecret(reason) then
         return "the validator gave a secret reason"
     end
     if type(reason) == "string" and reason ~= "" then
@@ -1314,7 +1335,7 @@ end
 ---@return integer
 local function readJournalCapacity(capacity, level)
     local maxCapacity = rawget(sharedLimits, "maxJournalCapacity")
-    if capacity == nil then
+    if type(capacity) == "nil" then
         if DEFAULT_JOURNAL_CAPACITY > maxCapacity then
             error(
                 "SignalKit:NewJournal default capacity "
@@ -1327,6 +1348,7 @@ local function readJournalCapacity(capacity, level)
         end
         return DEFAULT_JOURNAL_CAPACITY
     end
+    refuseSecret(capacity, "SignalKit:NewJournal capacity", level + 1)
     if capacity == UNBOUNDED then
         error(
             "SignalKit:NewJournal capacity cannot be SignalKit.UNBOUNDED: "
@@ -1682,7 +1704,8 @@ local function busPublish(self, topic, ...)
             local ran, accepted, reason = pcall(arguments, ...)
             if not ran then
                 refuseFailedValidator(self, topic, describeRefusal(accepted, "a non-string error"))
-            elseif accepted ~= true then
+            elseif isSecret(accepted) or accepted ~= true then
+                -- A secret verdict cannot be compared, so it is not an acceptance.
                 refuseArguments(
                     self,
                     topic,
@@ -2172,7 +2195,11 @@ end
 ---@param name string option name, for the message
 ---@param level integer stack level the failure is reported at
 local function validateBusLimit(value, name, level)
-    if value ~= nil and value ~= UNBOUNDED and not isIntegerUpTo(value, math.huge) then
+    if type(value) == "nil" then
+        return
+    end
+    refuseSecret(value, "SignalKit:Bus options." .. name, level + 1)
+    if value ~= UNBOUNDED and not isIntegerUpTo(value, math.huge) then
         error(
             "SignalKit:Bus options." .. name .. " must be a positive integer or SignalKit.UNBOUNDED",
             level
@@ -2187,14 +2214,15 @@ end
 ---@return integer|table|nil maxTopics `nil` when the caller did not state one.
 ---@return integer|table|nil maxListeners `nil` when the caller did not state one.
 local function readBusOptions(options, level)
-    if options == nil then
+    if type(options) == "nil" then
         return nil, nil, nil
     end
     if type(options) ~= "table" then
         error("SignalKit:Bus options must be a table or nil", level)
     end
     local openTopics = rawget(options, "openTopics")
-    if openTopics ~= nil and type(openTopics) ~= "boolean" then
+    refuseSecret(openTopics, "SignalKit:Bus options.openTopics", level + 1)
+    if type(openTopics) ~= "nil" and type(openTopics) ~= "boolean" then
         error("SignalKit:Bus options.openTopics must be a boolean or nil", level)
     end
     local maxTopics = rawget(options, "maxTopics")
@@ -2216,7 +2244,7 @@ end
 ---@param value integer|table|nil
 ---@return boolean
 local function conflictsWithStatedLimit(bus, limitName, value)
-    return value ~= nil
+    return type(value) ~= "nil"
         and rawget(bus, "_" .. limitName .. "Stated") == true
         and rawget(bus, "_" .. limitName) ~= value
 end
@@ -2226,7 +2254,7 @@ end
 ---@param limitName "maxTopics"|"maxListeners"
 ---@param value integer|table|nil
 local function applyStatedLimit(bus, limitName, value)
-    if value ~= nil then
+    if type(value) ~= "nil" then
         rawset(bus, "_" .. limitName, value)
         rawset(bus, "_" .. limitName .. "Stated", true)
     end
@@ -2245,7 +2273,7 @@ local function obtainBus(name, openTopics, maxTopics, maxListeners, label, level
     local buses = rawget(state, "buses")
     local bus = rawget(buses, name)
     if bus ~= nil then
-        if openTopics ~= nil and openTopics ~= rawget(bus, "_openTopics") then
+        if type(openTopics) ~= "nil" and openTopics ~= rawget(bus, "_openTopics") then
             error(
                 label .. ' bus "' .. name .. '" already exists with a different openTopics policy',
                 level
@@ -2279,9 +2307,9 @@ local function obtainBus(name, openTopics, maxTopics, maxListeners, label, level
         _topics = {},
         _topicCount = 0,
         _maxTopics = maxTopics or DEFAULT_MAX_TOPICS,
-        _maxTopicsStated = maxTopics ~= nil,
+        _maxTopicsStated = type(maxTopics) ~= "nil",
         _maxListeners = maxListeners or DEFAULT_MAX_LISTENERS,
-        _maxListenersStated = maxListeners ~= nil,
+        _maxListenersStated = type(maxListeners) ~= "nil",
         -- See "Logout close": `false` until `ForAddon` names this bus.
         _logoutCloser = false,
         _shutdownSubscription = false,
@@ -2363,6 +2391,7 @@ local function validateLimitEntry(key, value, level)
     if ceiling == nil then
         error("SignalKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit", level)
     end
+    refuseSecret(value, "SignalKit:SetLimits limits." .. key, level + 1)
     if value == UNBOUNDED then
         error(
             "SignalKit:SetLimits limits."
@@ -2393,7 +2422,7 @@ local function validateLimitUpdate(limits, level)
         error("SignalKit:SetLimits limits must be a table", level)
     end
     local key = next(limits)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         validateLimitEntry(key, rawget(limits, key), level + 1)
         key = next(limits, key)
     end
@@ -2411,7 +2440,7 @@ local function facadeSetLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, name, value)
         end
     end
@@ -2480,7 +2509,7 @@ if not validatePublicSurface(SignalKit) or not validateCurrentState(SignalKit) t
     error("MoltenCodes SignalKit package state is corrupted or incomplete", 2)
 end
 
-if previousRevision ~= nil then
+if type(previousRevision) ~= "nil" then
     LogoutClose.arrangeInherited()
 end
 

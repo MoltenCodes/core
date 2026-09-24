@@ -93,7 +93,8 @@ Spec files:
 | `BusScope_spec.lua` | bus scopes, `ForAddon`, `CloseAddonBus` |
 | `Limits_spec.lua` | bus limit options, `UNBOUNDED`, `SetLimits`/`GetLimits` for all three package-wide limits, refusal at the caller |
 | `LogoutClose_spec.lua` | who closes an addon's bus at logout, in each of the four cases, and across upgrades |
-| `Bootstrap_spec.lua` | Registry bootstrap, duplicate embedding, revision upgrades, limits, sentinel and journals carried |
+| `SecretValues_spec.lua` | secret capacities, bus options, limits, argument counts, validator verdicts and dot-call receivers refused at the caller before a comparison |
+| `Bootstrap_spec.lua` | Registry bootstrap, duplicate embedding, revision upgrades (the previous revision included), limits, sentinel and journals carried |
 | `Manifest_spec.lua` | runtime metadata against `package.manifest.json` |
 
 `SignalKitTestEnv.ExpectRefusalAtCaller(specFile, expected, callback)` is the

@@ -55,6 +55,7 @@ It also covers:
 | `Dispatch_spec.lua` | Payload forwarding, ordering, mutation and nesting during dispatch, per-event allocation. |
 | `Once_spec.lua` | One-shot subscriptions. |
 | `UnitEvents_spec.lua` | Unit filters, the two-token limit, unit-group release and the Frame cap. |
+| `SecretValues_spec.lua` | Secret names, unit tokens, options and limits refused at the caller before a comparison; secret `Coalesce` payloads keyed by event name; secret `Derive` values counted as a change. |
 | `Errors_spec.lua` | Argument, receiver and host-environment errors and their levels; refused registrations; listener isolation. |
 | `CombatLog_spec.lua` | `ConnectCombatLog`: routing, forwarding, the single client read, the wildcard, allocation, host registration beside a plain `Connect`, isolation, scopes, errors. |
 | `LogoutCoverage_spec.lua` | The logout routes, subscription release, scoped `PLAYER_LOGOUT` listeners around the close, re-examination, routes across an upgrade. |

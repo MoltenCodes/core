@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.2 — 2026-09-24
+
+- SignalKit follows the repository-wide nil rule. On a client with secret values a comparison with a secret, `nil` included, raises inside SignalKit instead of at the caller, so every value SignalKit did not create — method arguments, `New`, `NewJournal`, `Bus` and `DeclareTopic` option fields, `SetLimits` entries, validator verdicts and what Registry returns — is tested for absence with `type(value) == "nil"`.
+- A secret is refused at the caller before it is compared: `SignalKit:NewJournal capacity`, `SignalKit:Bus options.openTopics`, `options.maxTopics` and `options.maxListeners`, `SignalKit.Bus:DeclareTopic options.arguments` (a count) and `SignalKit:SetLimits limits.<name>`, each with `<label> must not be a secret value`. A validator whose verdict is secret has not accepted the arguments, and the publish is refused at the publisher's line. A facade method called with a dot and a secret first argument is refused as a call without the facade, by its type, before any comparison.
+- One `isSecret` helper replaces the two inline `issecretvalue` lookups.
+- `docs/API.md` lists the new messages under "Error messages" and states the rule there and under "Secret values".
+- Seven specs: `SecretValues_spec.lua` (six) and an in-place upgrade from the previous revision in `Bootstrap_spec.lua`. The bootstrap specs name the current revision once and load `REVISION + 1` as the newer copy.
+- Implementation revision 8. The state layout (schema 4) is unchanged; an upgrade over revision 7 keeps the facade, the state, buses, limits and journals. `SignalKit` API generation 1 is unchanged.
+
 ## 0.7.1 — 2026-09-24
 
 - `docs/API.md` gains an "Error messages" section listing every message SignalKit raises, each at the caller's line. The receiver rule now names `GetGeneration` and the journal's `Fire` and `History`; the hooks example activates its source with `ConnectUnit("UNIT_HEALTH", forward, "player")`, the unit-filtered registration a unit event wants; the compaction measurements compare tombstones against copying per disconnect rather than narrating revisions 1 and 2.

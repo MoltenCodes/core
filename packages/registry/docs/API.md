@@ -1,7 +1,7 @@
 # Registry API
 
 Registry API generation: **2**  
-Implementation revision: **11**
+Implementation revision: **12**
 
 Registry is a zero-dependency runtime resolver for independently embedded framework packages.
 
@@ -601,6 +601,26 @@ Registry: package state is corrupted
 
 A retire hook that raises is not an error at any call site: it is reported as
 `<label> retire hook failed: <error>` through the host error handler.
+
+**Secret values.** On a client with secret values, comparing a secret with
+anything, `nil` included, raises. Registry therefore tests every value it did
+not create for absence with `type(value) == "nil"`, and asks `issecretvalue`
+before it compares one. A secret is never a valid argument, and it is refused
+at the same line and with the same message as a value of the wrong type
+(revision 12 and later):
+
+```text
+Registry:<Method> packageName must be a non-empty string
+Registry:<Method> api must be a positive integer up to 2^53
+Registry:<Method> revision must be a positive integer up to 2^53
+Registry:Bootstrap request.label must be a non-empty string
+Registry:Bootstrap request.<field> must be a <function|table|boolean>
+Registry:Bootstrap request.resume must return a revision
+```
+
+A `validateState` hook that returns a secret counts as "not complete", so the
+same-revision copy is refused or handed to `resume` as incomplete. A migration
+step may return a secret: it becomes the migrated state without being compared.
 
 **Load-time failures** — incompatible or corrupted bootstrap state, a corrupted
 facade, a hostile owner of `MoltenCodes` or `MoltenCodes.Registries` — raise with

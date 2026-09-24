@@ -1,5 +1,9 @@
 local TestEnv = require("RegistryTestEnv")
 
+--- The implementation revision `src/Registry.lua` carries; `Manifest_spec.lua`
+--- pins the same number against `package.manifest.json`.
+local CURRENT_REVISION = 12
+
 describe("Registry bootstrap", function()
     before_each(TestEnv.Reset)
     after_each(TestEnv.Reset)
@@ -8,7 +12,7 @@ describe("Registry bootstrap", function()
         local Registry = require("Registry")
 
         assert.are.equal(2, Registry.API)
-        assert.are.equal(11, Registry.REVISION)
+        assert.are.equal(CURRENT_REVISION, Registry.REVISION)
     end)
 
     it("publishes the shared facade through the portable WoW global namespace", function()
@@ -82,7 +86,7 @@ describe("Registry bootstrap", function()
         assert.is_not_nil(state)
         assert.are.equal(1, state.schema)
         assert.are.equal(2, state.registryApi)
-        assert.are.equal(11, state.registryRevision)
+        assert.are.equal(CURRENT_REVISION, state.registryRevision)
         assert.are.equal(Registry, state.facade)
     end)
 
@@ -154,11 +158,11 @@ describe("Registry bootstrap", function()
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
-            registryRevision = 11,
+            registryRevision = CURRENT_REVISION,
             entries = {},
             facade = {
                 API = 2,
-                REVISION = 11,
+                REVISION = CURRENT_REVISION,
             },
         })
 
@@ -193,7 +197,7 @@ describe("Registry bootstrap", function()
         local Registry = require("Registry")
 
         assert.are.equal(oldFacade, Registry)
-        assert.are.equal(11, Registry.REVISION)
+        assert.are.equal(CURRENT_REVISION, Registry.REVISION)
         assert.are_not.equal(oldRegister, Registry.Register)
         assert.are.equal(Registry, TestEnv.GetNamespace().Registry)
     end)
@@ -205,7 +209,7 @@ describe("Registry bootstrap", function()
         local bootstrapPackage = function() end
         local futureFacade = {
             API = 2,
-            REVISION = 12,
+            REVISION = CURRENT_REVISION + 1,
             Register = register,
             Get = get,
             GetInfo = getInfo,
@@ -220,7 +224,7 @@ describe("Registry bootstrap", function()
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
-            registryRevision = 12,
+            registryRevision = CURRENT_REVISION + 1,
             entries = {},
             facade = futureFacade,
         })
@@ -229,7 +233,7 @@ describe("Registry bootstrap", function()
 
         assert.are.equal(futureFacade, Registry)
         assert.are.equal(register, Registry.Register)
-        assert.are.equal(12, Registry.REVISION)
+        assert.are.equal(CURRENT_REVISION + 1, Registry.REVISION)
         assert.are.equal(Registry, TestEnv.GetNamespace().Registry)
     end)
 
@@ -259,7 +263,7 @@ describe("Registry bootstrap", function()
         local facade = setmetatable({}, {
             __index = {
                 API = 2,
-                REVISION = 11,
+                REVISION = CURRENT_REVISION,
                 Register = function() end,
                 Get = function() end,
                 GetInfo = function() end,
@@ -271,7 +275,7 @@ describe("Registry bootstrap", function()
         rawset(_G, TestEnv.STATE_KEY, {
             schema = 1,
             registryApi = 2,
-            registryRevision = 11,
+            registryRevision = CURRENT_REVISION,
             entries = {},
             facade = facade,
         })
@@ -308,7 +312,7 @@ describe("Registry bootstrap", function()
         local Registry = require("Registry")
 
         assert.are.equal(oldFacade, Registry)
-        assert.are.equal(11, rawget(Registry, "REVISION"))
+        assert.are.equal(CURRENT_REVISION, rawget(Registry, "REVISION"))
         assert.are.equal(0, writes)
         assert.are.equal(Registry, TestEnv.GetNamespace().Registry)
     end)

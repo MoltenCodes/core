@@ -142,7 +142,7 @@ describe("EventKit dispatch", function()
         assert.are.equal(1, calls)
     end)
 
-    it("allocates nothing per event, isolation included", function()
+    it("allocates nothing per event, isolation included #allocation", function()
         local sink = 0
         for _ = 1, 8 do
             EventKit:Connect("CUSTOM_EVENT", function(_, first, second)
@@ -162,22 +162,25 @@ describe("EventKit dispatch", function()
         assert.is_true(allocated < 4)
     end)
 
-    it("allocates nothing per event for payloads wider than the inline slots", function()
-        local sink = 0
-        for _ = 1, 8 do
-            EventKit:Connect("WIDE_EVENT", function(...)
-                sink = sink + select("#", ...)
-            end)
-        end
-
-        local allocated = allocatedKilobytes(function()
-            for _ = 1, 20000 do
-                TestEnv.Emit("WIDE_EVENT", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+    it(
+        "allocates nothing per event for payloads wider than the inline slots #allocation",
+        function()
+            local sink = 0
+            for _ = 1, 8 do
+                EventKit:Connect("WIDE_EVENT", function(...)
+                    sink = sink + select("#", ...)
+                end)
             end
-        end)
 
-        assert.is_true(allocated < 4)
-    end)
+            local allocated = allocatedKilobytes(function()
+                for _ = 1, 20000 do
+                    TestEnv.Emit("WIDE_EVENT", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+                end
+            end)
+
+            assert.is_true(allocated < 4)
+        end
+    )
 
     it("supports nested dispatch with mutations visible to the nested call", function()
         local calls = {}

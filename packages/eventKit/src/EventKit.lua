@@ -51,7 +51,7 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 13
+local IMPLEMENTATION_REVISION = 14
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local STATE_SCHEMA = 8
@@ -125,7 +125,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -139,7 +139,7 @@ if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
 end
 
 local SignalKit, signalRevision = getPackage(Registry, "signalKit", REQUIRED_SIGNAL_API)
-if SignalKit == nil then
+if type(SignalKit) == "nil" then
     error("MoltenCodes EventKit requires SignalKit API 1 to be loaded first", 2)
 end
 
@@ -265,7 +265,7 @@ local EventKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if EventKit == nil then
+if type(EventKit) == "nil" then
     -- Equal or newer compatible revision already owns the shared package table.
     return selected
 end
@@ -401,7 +401,7 @@ local Connection = rawget(EventKit, "Connection")
 local Scope = rawget(EventKit, "Scope")
 local state = rawget(EventKit, "_state")
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if Connection ~= nil or Scope ~= nil or state ~= nil then
         error("MoltenCodes EventKit package state is corrupted or incomplete", 2)
     end
@@ -623,11 +623,38 @@ end
 -- position is the line that called the public method, never a line inside
 -- EventKit. `level` is always the value `error` needs *inside the function that
 -- receives it*, so every further hop towards `error` adds exactly one.
+--
+-- On a client with secret values, comparing a secret with anything, `nil`
+-- included, raises inside EventKit instead of at the caller. Values EventKit
+-- did not create are therefore tested for absence with `type(value) == "nil"`,
+-- and a secret is refused (or, for event payloads, not compared) before any
+-- other comparison.
+
+---Whether the client reports `value` as secret; always `false` elsewhere.
+---@param value any
+---@return boolean
+local function isSecret(value)
+    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local isSecretValue = rawget(_G, "issecretvalue")
+    return type(isSecretValue) == "function" and isSecretValue(value) == true
+end
+
+---Raise at `level` when `value` is secret, naming `label`.
+---@param value any
+---@param label string qualified argument name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function refuseSecret(value, label, level)
+    if isSecret(value) then
+        error(label .. " must not be a secret value", level)
+    end
+end
 
 ---@param eventName any
 ---@param label string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateEventName(eventName, label, level)
+    refuseSecret(eventName, label .. " eventName", level + 1)
     if type(eventName) ~= "string" or eventName == "" then
         error(label .. " eventName must be a non-empty string", level)
     end
@@ -639,6 +666,7 @@ end
 ---@param label string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateSubEvent(subEvent, label, level)
+    refuseSecret(subEvent, label .. " subEvent", level + 1)
     if type(subEvent) ~= "string" or subEvent == "" then
         error(label .. " subEvent must be a non-empty string", level)
     end
@@ -657,6 +685,7 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateNonEmptyString(value, label, level)
+    refuseSecret(value, label, level + 1)
     if type(value) ~= "string" or value == "" then
         error(label .. " must be a non-empty string", level)
     end
@@ -700,6 +729,7 @@ local function normalizeUnits(label, level, ...)
 
     for index = 1, count do
         local unit = select(index, ...)
+        refuseSecret(unit, label .. " unit token", level + 1)
         if type(unit) ~= "string" or unit == "" then
             error(label .. " unit tokens must be non-empty strings", level)
         end
@@ -768,7 +798,7 @@ local function createEventFrame(onEvent)
     end
 
     local frame = createFrame("Frame")
-    if frame == nil then
+    if type(frame) == "nil" then
         error("EventKit: CreateFrame returned no Frame", 0)
     end
 
@@ -1955,13 +1985,14 @@ local function readEventList(events, label, level)
         validateEventName(events, label, level + 1)
         return { events }
     end
-    if type(events) ~= "table" or events[1] == nil then
+    if type(events) ~= "table" or type(events[1]) == "nil" then
         error(label .. " events must be an event name or a non-empty array of them", level)
     end
 
     local list, seen = {}, {}
     for index = 1, #events do
         local eventName = events[index]
+        refuseSecret(eventName, label .. " events entry", level + 1)
         if type(eventName) ~= "string" or eventName == "" then
             error(label .. " events must contain only non-empty strings", level)
         end
@@ -1982,7 +2013,7 @@ end
 ---@param label string qualified public method name, used in the argument errors
 ---@param level integer stack level the failures are reported at
 local function validateOptionTable(options, allowed, label, level)
-    if options == nil then
+    if type(options) == "nil" then
         return
     end
     if type(options) ~= "table" then
@@ -2006,6 +2037,7 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateDelay(value, label, level)
+    refuseSecret(value, label, level + 1)
     if type(value) ~= "number" or value ~= value or value == math.huge or value < 0 then
         error(label .. " must be a finite number greater than or equal to zero", level)
     end
@@ -2018,7 +2050,7 @@ end
 ---@return string[]|nil units
 ---@return string|nil key
 local function readUnits(units, label, level)
-    if units == nil then
+    if type(units) == "nil" then
         return nil, nil
     end
     if type(units) ~= "table" then
@@ -2150,7 +2182,9 @@ end
 ---@param first any the event's first payload argument
 local function recordCoalescedEvent(handle, eventName, first)
     local key = first
-    if rawget(handle, "_byEvent") == true or key == nil or key ~= key then
+    -- A secret payload cannot be compared or used as a key, so it coalesces
+    -- under the event name, like a missing one.
+    if rawget(handle, "_byEvent") == true or type(key) == "nil" or isSecret(key) or key ~= key then
         key = eventName
     end
     rawget(handle, "_timing")(key)
@@ -2180,7 +2214,8 @@ local function recomputeDerived(handle)
             changed = not same
         end
     else
-        changed = previous ~= value
+        -- A secret on either side cannot be compared, so it counts as a change.
+        changed = isSecret(previous) or isSecret(value) or previous ~= value
     end
     if not changed then
         return
@@ -2241,9 +2276,10 @@ local function createCoalesceHandle(scope, label, level, events, interval, callb
     )
 
     local byEvent, units, key, timingOptions = false, nil, nil, nil
-    if options ~= nil then
+    if type(options) ~= "nil" then
         local byEventOption = rawget(options, "byEvent")
-        if byEventOption ~= nil and type(byEventOption) ~= "boolean" then
+        refuseSecret(byEventOption, label .. " byEvent", level + 1)
+        if type(byEventOption) ~= "nil" and type(byEventOption) ~= "boolean" then
             error(label .. " byEvent must be a boolean", level)
         end
         byEvent = byEventOption == true
@@ -2301,12 +2337,12 @@ local function createDeriveHandle(scope, label, level, events, compute, options)
     )
 
     local delay, equals, units, key = 0, false, nil, nil
-    if options ~= nil then
-        if rawget(options, "delaySeconds") ~= nil then
+    if type(options) ~= "nil" then
+        if type(rawget(options, "delaySeconds")) ~= "nil" then
             delay = rawget(options, "delaySeconds")
             validateDelay(delay, label .. " delaySeconds", level + 1)
         end
-        if rawget(options, "equals") ~= nil then
+        if type(rawget(options, "equals")) ~= "nil" then
             equals = rawget(options, "equals")
             if type(equals) ~= "function" then
                 error(label .. " equals must be a function", level)
@@ -2631,7 +2667,8 @@ end
 ---@param addonName string addon folder name
 ---@return boolean closed `false` when the addon has no scope or it was already closed.
 local function closeAddonScopes(self, addonName)
-    if self ~= EventKit then
+    -- The type test comes first: a dot call can hand a secret in as `self`.
+    if type(self) ~= "table" or self ~= EventKit then
         error(
             "EventKit:CloseAddonScopes must be called on the EventKit facade; "
                 .. "use EventKit:CloseAddonScopes(addonName)",
@@ -2668,7 +2705,7 @@ local function validateLimitUpdate(limits, level)
         error("EventKit:SetLimits limits must be a table", level)
     end
     local key = next(limits)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         if type(key) ~= "string" or LIMIT_CEILINGS[key] == nil then
             error(
                 "EventKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
@@ -2676,6 +2713,7 @@ local function validateLimitUpdate(limits, level)
             )
         end
         local value = rawget(limits, key)
+        refuseSecret(value, "EventKit:SetLimits limits." .. key, level + 1)
         if value == UNBOUNDED then
             error(
                 "EventKit:SetLimits limits."
@@ -2711,7 +2749,7 @@ end
 ---@param self EventKit
 ---@param limits EventKit.Limits
 local function setLimits(self, limits)
-    if self ~= EventKit then
+    if type(self) ~= "table" or self ~= EventKit then
         error(
             "EventKit:SetLimits must be called on the EventKit facade; "
                 .. "use EventKit:SetLimits(limits)",
@@ -2722,7 +2760,7 @@ local function setLimits(self, limits)
     local key = next(LIMIT_CEILINGS)
     while key ~= nil do
         local value = rawget(limits, key)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, key, value)
         end
         key = next(LIMIT_CEILINGS, key)
@@ -2733,7 +2771,7 @@ end
 ---@param self EventKit
 ---@return EventKit.Limits
 local function getLimits(self)
-    if self ~= EventKit then
+    if type(self) ~= "table" or self ~= EventKit then
         error(
             "EventKit:GetLimits must be called on the EventKit facade; "
                 .. "use EventKit:GetLimits()",
@@ -2983,7 +3021,7 @@ local function routeInheritedAddonScopes()
     end
 end
 
-if previousRevision ~= nil and previousRevision < IMPLEMENTATION_REVISION then
+if type(previousRevision) ~= "nil" and previousRevision < IMPLEMENTATION_REVISION then
     routeInheritedAddonScopes()
 end
 

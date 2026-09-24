@@ -1,5 +1,8 @@
 local TestEnv = require("LifecycleKitTestEnv")
 
+---The implementation revision `src/LifecycleKit.lua` carries.
+local CURRENT_REVISION = 14
+
 -- Shutdown closes what the addon owns through the other Kits' addon scopes:
 -- its TimerKit scope, its SchedulerKit scope, its EventKit scope, its HookKit
 -- scope, its CommandKit scope, its CommKit scope and its SignalKit bus, in that
@@ -562,9 +565,10 @@ describe("LifecycleKit upgrade from an older schema-3 revision", function()
     -- calls its own handler, and revisions 7 to 11 miss scopes later
     -- revisions close: none closes a TimerKit or SchedulerKit scope. The
     -- upgrade must replace that watcher, or logout would keep running the
-    -- older code. Revision 12 closes the same scopes as 13; its watcher is
-    -- replaced all the same, so the running handler is always the newest.
-    for oldRevision = 7, 12 do
+    -- older code. Revisions 12 and later close the same scopes as the current
+    -- one; their watchers are replaced all the same, so the running handler is
+    -- always the newest.
+    for oldRevision = 7, CURRENT_REVISION - 1 do
         it(
             "replaces revision " .. oldRevision .. "'s host watchers so logout closes what it owns",
             function()
@@ -633,7 +637,7 @@ describe("LifecycleKit upgrade from an older schema-3 revision", function()
                 local subscription = SignalKit:ForAddon("CarriedOver"):Subscribe("Anything", noop)
 
                 assert.are.equal(old, upgraded)
-                assert.are.equal(13, upgraded.REVISION)
+                assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
                 assert.is_true(upgraded.CLOSES_ADDON_SCOPES.timerKit)
                 assert.is_false(oldLogoutWatcher:IsConnected())
 

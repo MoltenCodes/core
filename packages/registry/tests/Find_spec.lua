@@ -62,7 +62,7 @@ describe("Registry:Find", function()
         assert.are.equal("retired", reason)
     end)
 
-    it("allocates nothing, hit or miss, and neither does Get", function()
+    it("allocates nothing, hit or miss, and neither does Get #allocation", function()
         Registry:Register("demoKit", 1, 3)
         Registry:Find("demoKit", 1)
         Registry:Find("missingKit", 1)

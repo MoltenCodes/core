@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2 — 2026-09-24
+
+- LifecycleKit follows the repository-wide nil rule. On a client with secret values a comparison with a secret, `nil` included, raises inside LifecycleKit instead of at the caller, so every value LifecycleKit did not create — `SetLimits` entries and what Registry returns for SignalKit, EventKit and LifecycleKit itself — is tested for absence with `type(value) == "nil"`.
+- A secret is refused at the caller before it is compared: `LifecycleKit:ForAddon addonName`, `LifecycleKit.Instance:Halt reason`, `LifecycleKit.Instance:DependsOn addonName`, `LifecycleKit.Instance:SetCombatQueueLimit limit` and `LifecycleKit:SetLimits limits.<name>`, each with `<label> must not be a secret value`. `SetLimits` and `GetLimits` called with a dot and a secret first argument are refused by its type before the facade comparison.
+- `docs/API.md` lists the new messages under "Argument errors".
+- Specs: `SecretValues_spec.lua` (four), an in-place upgrade from the previous revision in `Bootstrap_spec.lua` through the new `LifecycleKitTestEnv.LoadSourceAtRevision`, and the host-watcher replacement in `OwnedScopes_spec.lua` now also covers revision 13. The bootstrap specs name the current revision once and register `REVISION + 1` as the newer copy.
+- Implementation revision 14. The state layout (schema 3) is unchanged; an upgrade over revision 13 keeps the facade, the state, instances, subscriptions and limits. `LifecycleKit` API generation 1 is unchanged.
+
 ## 0.6.1 — 2026-09-24
 
 - Documentation: `docs/API.md` no longer says CommKit depends on LifecycleKit and closes its own addon scope from an `OnShutdown` subscription; CommKit 0.2.0 does neither and leaves the closing to this shutdown step, as every Kit named in `CLOSES_ADDON_SCOPES` does. The "Addon-scope capability" and "Dependencies" sections now name all seven readers of the field with the version each started reading it (SignalKit 0.6.0, HookKit, CommandKit and CommKit 0.2.0 were missing), and the EventKit paragraph states in current form that `CloseAddonScopes` answers `false` for an addon without a scope, and that the scope's `ConnectCombatLog` listeners (EventKit 0.8.0) close with it.

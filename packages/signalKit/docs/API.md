@@ -2,7 +2,7 @@
 
 Package: `signalKit`  
 API generation: `1`  
-Implementation revision: `7`
+Implementation revision: `8`
 
 SignalKit provides deterministic callback dispatch with explicit connection lifetimes, and named message buses built on the same signals. A signal can tell its owner when it becomes observed ([hooks](#hooks-onfirst-and-onlast)), counts its firings ([`GetGeneration`](#signalgetgeneration)) and, as a [journal](#journals), keeps its last firings for explicit pull.
 
@@ -551,7 +551,9 @@ never matters. The declaration governs publishing only.
 validator does. On clients that mark values secret, comparing a secret value
 raises, so a validator that compares its arguments must test each with
 `issecretvalue` first and refuse or skip a secret one. A refusal reason that is
-itself secret is never placed in the error message.
+itself secret is never placed in the error message. A validator that answers
+with a secret instead of `true` has not accepted the arguments: the verdict
+cannot be compared, so the publish is refused (revision 8 and later).
 
 A validator that raises does not propagate from its own line: the validator
 may belong to another addon than the publisher. Its failure becomes a refusal
@@ -738,6 +740,13 @@ Every error below is raised at the caller's line, never inside SignalKit.
 `<...>` marks a value filled in from the call; a published or fired argument
 value never appears in a message.
 
+On a client with secret values, comparing a secret with anything, `nil`
+included, raises. SignalKit therefore tests every value it did not create —
+arguments, option and limit fields, validator verdicts — for absence with
+`type(value) == "nil"`, and refuses a secret at the caller before it would
+compare one. Published and fired arguments are never compared, so a secret
+passes through them untouched.
+
 | Raised by | Message |
 |---|---|
 | a signal method without a signal | `SignalKit:<Method> must be called on a signal instance; use signal:<Method>(...)` (`Connect`, `Once`, `Fire`, `DisconnectAll`, `GetGeneration`) |
@@ -750,6 +759,7 @@ value never appears in a message.
 | a journal method without a journal | `SignalKit.Journal:Fire must be called on a journal; use journal:Fire(...)`; `SignalKit.Journal:History must be called on a journal; use journal:History()` |
 | `journal:Fire` | `SignalKit.Journal:Fire records at most <maxJournalArguments> arguments per firing; received <count>` |
 | a name or topic argument | `<Method> <argument> must be a non-empty string`; `<Method> <argument> must not be a secret value` |
+| a secret where SignalKit compares a value (revision 8) | `SignalKit:NewJournal capacity must not be a secret value`; `SignalKit:Bus options.<openTopics, maxTopics or maxListeners> must not be a secret value`; `SignalKit.Bus:DeclareTopic options.arguments must not be a secret value`; `SignalKit:SetLimits limits.<name> must not be a secret value` |
 | `Bus` | `SignalKit:Bus options must be a table or nil`; `SignalKit:Bus options.openTopics must be a boolean or nil`; `SignalKit:Bus options.<maxTopics or maxListeners> must be a positive integer or SignalKit.UNBOUNDED`; `SignalKit:Bus bus "<name>" already exists with a different <openTopics policy, maxTopics or maxListeners>` |
 | a bus method without a bus | `SignalKit.Bus:<Method> must be called on a SignalKit bus with a colon call` |
 | `DeclareTopic` | `SignalKit.Bus:DeclareTopic options must be a table or nil`; `SignalKit.Bus:DeclareTopic options.arguments count must be a finite non-negative integer`; `SignalKit.Bus:DeclareTopic options.arguments must be a count, a validator function or nil`; `SignalKit.Bus:DeclareTopic options.description must be a string or nil`; `SignalKit.Bus:DeclareTopic cannot declare on the closed bus "<bus>"`; `SignalKit.Bus:DeclareTopic topic "<topic>" is already declared on bus "<bus>" with a different arguments policy` |
@@ -812,5 +822,9 @@ generation and gain the newer `Fire` and `History` when the prototype is
 refilled. The public-surface predicate now requires `NewJournal` and
 `GetGeneration`, and the state predicate the journal tables and all three
 limits.
+
+Revision 8 keeps state schema 4. It refuses secret values at the caller
+before comparing them and tests outside values for absence with `type`; an
+upgrade over revision 7 changes no state.
 
 As with every Registry-managed package, a revision is selected before package initialization completes. Package initialization is therefore written so that all fallible dependency validation occurs before registration and the post-registration commit path performs only local deterministic mutations.

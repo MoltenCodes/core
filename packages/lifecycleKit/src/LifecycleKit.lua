@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "lifecycleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 13
+local IMPLEMENTATION_REVISION = 14
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local REQUIRED_EVENT_KIT_API = 1
@@ -190,7 +190,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -204,7 +204,7 @@ if type(bootstrapPackage) ~= "function" or type(getPackage) ~= "function" then
 end
 
 local SignalKit, signalRevision = getPackage(Registry, "signalKit", REQUIRED_SIGNAL_API)
-if SignalKit == nil then
+if type(SignalKit) == "nil" then
     error("MoltenCodes LifecycleKit requires SignalKit API 1 to be loaded first", 2)
 end
 local SignalKitConnection = type(SignalKit) == "table" and rawget(SignalKit, "Connection") or nil
@@ -225,7 +225,7 @@ then
 end
 
 local EventKit, eventKitRevision = getPackage(Registry, "eventKit", REQUIRED_EVENT_KIT_API)
-if EventKit == nil then
+if type(EventKit) == "nil" then
     error("MoltenCodes LifecycleKit requires EventKit API 1 to be loaded first", 2)
 end
 local EventKitConnection = type(EventKit) == "table" and rawget(EventKit, "Connection") or nil
@@ -330,6 +330,31 @@ local function validatePublicSurface(implementation)
         and type(rawget(DeferredCall, "IsPending")) == "function"
 end
 
+---Whether the client reports `value` as secret; always `false` elsewhere.
+---
+---On a client with secret values, comparing a secret with anything, `nil`
+---included, raises inside LifecycleKit instead of at the caller. Values
+---LifecycleKit did not create are therefore tested for absence with
+---`type(value) == "nil"`, and a secret is refused before any other comparison.
+---@param value any
+---@return boolean
+local function isSecret(value)
+    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local isSecretValue = rawget(_G, "issecretvalue")
+    return type(isSecretValue) == "function" and isSecretValue(value) == true
+end
+
+---Raise at `level` when `value` is secret, naming `label`.
+---@param value any
+---@param label string qualified argument name, used in the argument error
+---@param level integer stack level the failure is reported at
+local function refuseSecret(value, label, level)
+    if isSecret(value) then
+        error(label .. " must not be a secret value", level)
+    end
+end
+
 ---Whether `value` is a positive integer or the `UNBOUNDED` sentinel `sentinel`.
 ---@param value any
 ---@param sentinel table
@@ -413,7 +438,7 @@ local LifecycleKit, previousRevision, selected = bootstrapPackage(Registry, {
     end,
 })
 
-if LifecycleKit == nil then
+if type(LifecycleKit) == "nil" then
     -- A newer compatible embedded revision already owns the package.
     return selected
 end
@@ -434,7 +459,8 @@ local state = rawget(LifecycleKit, "_state")
 
 -- Whether this copy upgrades state an older revision created. Revision 6 and
 -- earlier wrote schema 2, which `migrateState` below brings to schema 3.
-local upgradesOlderRevision = previousRevision ~= nil and previousRevision < IMPLEMENTATION_REVISION
+local upgradesOlderRevision = type(previousRevision) ~= "nil"
+    and previousRevision < IMPLEMENTATION_REVISION
 
 ---Report whether the host says combat lockdown is active.
 ---
@@ -448,7 +474,7 @@ local function isHostInCombatLockdown()
     return type(probe) == "function" and probe() == true
 end
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if Instance ~= nil or Subscription ~= nil or DeferredCall ~= nil or state ~= nil then
         error("MoltenCodes LifecycleKit package state is corrupted or incomplete", 2)
     end
@@ -1894,6 +1920,7 @@ end
 ---@param reason string why the addon cannot work, for dependents and diagnostics
 ---@return boolean halted `true` for the call that halted; `false` when already halted or shut down
 local function halt(self, reason)
+    refuseSecret(reason, "LifecycleKit.Instance:Halt reason", 3)
     if type(reason) ~= "string" or reason == "" then
         error("LifecycleKit.Instance:Halt reason must be a non-empty string", 2)
     end
@@ -1925,6 +1952,7 @@ end
 ---@return boolean|nil recorded `true` when newly recorded, `false` when already recorded, `nil` when refused
 ---@return string|nil reason `"full"`, `"halted"` or `"shutdown"` when refused
 local function dependsOn(self, addonName)
+    refuseSecret(addonName, "LifecycleKit.Instance:DependsOn addonName", 3)
     if type(addonName) ~= "string" or addonName == "" then
         error("LifecycleKit.Instance:DependsOn addonName must be a non-empty string", 2)
     end
@@ -2094,6 +2122,7 @@ end
 ---@param self LifecycleKit.Instance
 ---@param limit integer|table a positive integer or `LifecycleKit.UNBOUNDED`
 local function setCombatQueueLimit(self, limit)
+    refuseSecret(limit, "LifecycleKit.Instance:SetCombatQueueLimit limit", 3)
     if not isLimitValue(limit, UNBOUNDED) then
         error(
             "LifecycleKit.Instance:SetCombatQueueLimit limit must be a positive integer"
@@ -2153,6 +2182,7 @@ end
 ---@param addonName string addon folder name, exactly as installed
 ---@return LifecycleKit.Instance instance
 local function forAddon(_, addonName)
+    refuseSecret(addonName, "LifecycleKit:ForAddon addonName", 3)
     if type(addonName) ~= "string" or addonName == "" then
         error("LifecycleKit:ForAddon addonName must be a non-empty string", 2)
     end
@@ -2190,13 +2220,14 @@ local function validateLimitUpdate(limits, level)
         error("LifecycleKit:SetLimits limits must be a table", level)
     end
     local key = next(limits)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         if key ~= "maxDependencies" and key ~= "defaultCombatQueueLimit" then
             error(
                 "LifecycleKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
                 level
             )
         end
+        refuseSecret(rawget(limits, key), "LifecycleKit:SetLimits limits." .. key, level + 1)
         if not isLimitValue(rawget(limits, key), UNBOUNDED) then
             error(
                 "LifecycleKit:SetLimits limits."
@@ -2221,7 +2252,8 @@ end
 ---@param self LifecycleKit
 ---@param limits table any subset of `LifecycleKit.Limits`
 local function setLimits(self, limits)
-    if self ~= LifecycleKit then
+    -- The type test comes first: a dot call can hand a secret in as `self`.
+    if type(self) ~= "table" or self ~= LifecycleKit then
         error(
             "LifecycleKit:SetLimits must be called on the LifecycleKit facade; "
                 .. "use LifecycleKit:SetLimits(limits)",
@@ -2232,7 +2264,7 @@ local function setLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, name, value)
         end
     end
@@ -2242,7 +2274,7 @@ end
 ---@param self LifecycleKit
 ---@return LifecycleKit.Limits
 local function getLimits(self)
-    if self ~= LifecycleKit then
+    if type(self) ~= "table" or self ~= LifecycleKit then
         error(
             "LifecycleKit:GetLimits must be called on the LifecycleKit facade; "
                 .. "use LifecycleKit:GetLimits()",
@@ -2317,7 +2349,7 @@ end
 -- prior revisions: a missing watcher may have allowed PLAYER_LOGIN,
 -- PLAYER_LOGOUT or a combat change to pass before a later embedded copy
 -- repaired the bootstrap.
-if previousRevision ~= nil and next(rawget(state, "addons")) ~= nil then
+if type(previousRevision) ~= "nil" and next(rawget(state, "addons")) ~= nil then
     ensureGlobalWatchers()
 
     local firstError

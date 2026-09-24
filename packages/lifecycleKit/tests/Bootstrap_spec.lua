@@ -2,6 +2,10 @@ local TestEnv = require("LifecycleKitTestEnv")
 
 local expectErrorContaining = TestEnv.expectErrorContaining
 
+---The implementation revision `src/LifecycleKit.lua` carries; `Manifest_spec.lua`
+---pins the same number against `package.manifest.json`.
+local CURRENT_REVISION = 14
+
 -- Lua 5.1 leaves a sentinel in `package.loaded` when a `require` raises, so a
 -- second `require` of the same module reports "loop or previous error loading
 -- module" instead of re-running the chunk. Clearing the sentinel is what lets a
@@ -87,13 +91,13 @@ describe("LifecycleKit package bootstrap", function()
         end)
     end)
 
-    it("registers LifecycleKit API 1 revision 13", function()
+    it("registers LifecycleKit API 1 at the current revision", function()
         local LifecycleKit, Registry = TestEnv.NewPackage()
         local selected, revision = Registry:Get("lifecycleKit", 1)
         assert.are.equal(LifecycleKit, selected)
-        assert.are.equal(13, revision)
+        assert.are.equal(CURRENT_REVISION, revision)
         assert.are.equal(1, LifecycleKit.API)
-        assert.are.equal(13, LifecycleKit.REVISION)
+        assert.are.equal(CURRENT_REVISION, LifecycleKit.REVISION)
     end)
 
     it("reuses facade and addon instances across duplicate embedding", function()
@@ -125,9 +129,9 @@ describe("LifecycleKit package bootstrap", function()
         require("SignalKit")
         require("EventKit")
 
-        local future = Registry:Register("lifecycleKit", 1, 14)
+        local future = Registry:Register("lifecycleKit", 1, CURRENT_REVISION + 1)
         future.API = 1
-        future.REVISION = 14
+        future.REVISION = CURRENT_REVISION + 1
         future.Instance = newInstancePrototype()
         future.Subscription = { Disconnect = function() end, IsConnected = function() end }
         future.DeferredCall = { Cancel = function() end, IsPending = function() end }
@@ -142,7 +146,7 @@ describe("LifecycleKit package bootstrap", function()
         local selected, revision = Registry:Get("lifecycleKit", 1)
         assert.are.equal(future, loaded)
         assert.are.equal(future, selected)
-        assert.are.equal(14, revision)
+        assert.are.equal(CURRENT_REVISION + 1, revision)
     end)
 
     it("refuses a newer revision that lacks CLOSES_ADDON_SCOPES", function()
@@ -155,9 +159,9 @@ describe("LifecycleKit package bootstrap", function()
         -- The capability field is part of the public surface from revision
         -- 13 on: the scope-owning Kits read it to decide who closes their
         -- addon scopes at logout.
-        local future = Registry:Register("lifecycleKit", 1, 14)
+        local future = Registry:Register("lifecycleKit", 1, CURRENT_REVISION + 1)
         future.API = 1
-        future.REVISION = 14
+        future.REVISION = CURRENT_REVISION + 1
         future.Instance = newInstancePrototype()
         future.Subscription = { Disconnect = function() end, IsConnected = function() end }
         future.DeferredCall = { Cancel = function() end, IsPending = function() end }
@@ -182,9 +186,9 @@ describe("LifecycleKit package bootstrap", function()
         -- A revision 14 that publishes only the revision 6 surface is not a
         -- compatible successor: consumers of revision 7 and later would call
         -- methods it does not have.
-        local future = Registry:Register("lifecycleKit", 1, 14)
+        local future = Registry:Register("lifecycleKit", 1, CURRENT_REVISION + 1)
         future.API = 1
-        future.REVISION = 14
+        future.REVISION = CURRENT_REVISION + 1
         future.Instance = newRevision6InstancePrototype()
         future.Subscription = { Disconnect = function() end, IsConnected = function() end }
         future.ForAddon = function() end
@@ -252,6 +256,33 @@ describe("LifecycleKit package bootstrap", function()
         end)
     end)
 
+    it("upgrades the previous revision in place, keeping facade, state and instances", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+
+        local legacy = TestEnv.LoadSourceAtRevision(CURRENT_REVISION - 1)
+        local legacyState = legacy._state
+        legacy:SetLimits({ maxDependencies = 5 })
+        local instance = legacy:ForAddon("MyAddon")
+        local shutdowns = 0
+        instance:OnShutdown(function()
+            shutdowns = shutdowns + 1
+        end)
+
+        local upgraded = require("LifecycleKit")
+
+        assert.are.equal(legacy, upgraded)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
+        assert.are.equal(legacyState, upgraded._state)
+        assert.are.equal(instance, upgraded:ForAddon("MyAddon"))
+        assert.are.equal(5, upgraded:GetLimits().maxDependencies)
+        TestEnv.Logout()
+        assert.are.equal(1, shutdowns)
+    end)
+
     it("releases the retired revision-3 capture slot during an in-place upgrade", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()
@@ -292,7 +323,7 @@ describe("LifecycleKit package bootstrap", function()
         local upgraded = require("LifecycleKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(13, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
         assert.are.equal(instance, upgraded:ForAddon("CarriedOver"))
         assert.is_nil(rawget(instance, "_phaseErrors"))
 
@@ -369,7 +400,7 @@ describe("LifecycleKit package bootstrap", function()
         local upgraded = require("LifecycleKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(13, upgraded.REVISION)
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
         assert.are.equal(3, upgraded._state.schema)
         assert.are.same({ instance }, upgraded._state.instances)
         assert.is_true(upgraded:IsInCombat())

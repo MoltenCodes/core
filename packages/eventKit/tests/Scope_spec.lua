@@ -302,7 +302,7 @@ describe("EventKit scopes", function()
         end
     end)
 
-    it("allocates nothing per event for scoped listeners", function()
+    it("allocates nothing per event for scoped listeners #allocation", function()
         local scope = EventKit:CreateScope()
         local sink = 0
         for _ = 1, 8 do

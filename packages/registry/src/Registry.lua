@@ -37,7 +37,7 @@ local PUBLIC_ALIAS_KEY = "Registry"
 
 local STATE_SCHEMA = 1
 local API_GENERATION = 2
-local IMPLEMENTATION_REVISION = 11
+local IMPLEMENTATION_REVISION = 12
 
 -- Lua 5.1 numbers are doubles, which represent consecutive integers exactly only
 -- up to 2^53. Past that boundary distinct values start comparing equal, so a
@@ -58,6 +58,18 @@ local STATUS_RETIRED = "retired"
 
 -- Validation ---------------------------------------------------------------
 
+---Whether the client reports `value` as secret; always `false` elsewhere.
+---Comparing a secret (with `nil` too) raises inside Registry, so outside values
+---are tested with `type` and `isSecret` first; a secret is never a valid argument.
+---@param value any
+---@return boolean
+local function isSecret(value)
+    -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+    -- selene: allow(global_usage)
+    local isSecretValue = rawget(_G, "issecretvalue")
+    return type(isSecretValue) == "function" and isSecretValue(value) == true
+end
+
 ---Whether `value` is a number that represents an exact integer in range.
 ---
 ---`nan` fails the `% 1` comparison and both infinities fail the bound, so no
@@ -66,6 +78,7 @@ local STATUS_RETIRED = "retired"
 ---@return boolean
 local function isBoundedInteger(value)
     return type(value) == "number"
+        and not isSecret(value)
         and value % 1 == 0
         and value <= MAXIMUM_INTEGER
         and value >= -MAXIMUM_INTEGER
@@ -88,7 +101,7 @@ end
 ---@param packageName any
 ---@param methodName string
 local function validatePackageName(packageName, methodName)
-    if type(packageName) ~= "string" or packageName == "" then
+    if type(packageName) ~= "string" or isSecret(packageName) or packageName == "" then
         error("Registry:" .. methodName .. " packageName must be a non-empty string", 3)
     end
 
@@ -605,7 +618,7 @@ local function runMigrations(
         rawset(entry, "pendingState", migratedState)
     end
 
-    if migrations ~= nil then
+    if type(migrations) ~= "nil" then
         local steps, problem = selectMigrationSteps(migrations, fromRevision, revision)
         if steps == nil then
             return false, problem
@@ -617,7 +630,7 @@ local function runMigrations(
             if not ok then
                 return false, "migration to revision " .. step .. " failed: " .. tostring(result)
             end
-            if result ~= nil then
+            if type(result) ~= "nil" then
                 migratedState = result
             end
             rawset(entry, "migratedThrough", step)
@@ -684,43 +697,26 @@ end
 ---@param fieldName string
 ---@param expectedType string
 local function validateOptionalField(field, fieldName, expectedType)
-    if field ~= nil and type(field) ~= expectedType then
+    if type(field) ~= "nil" and (type(field) ~= expectedType or isSecret(field)) then
         error("Registry:Bootstrap request." .. fieldName .. " must be a " .. expectedType, 3)
     end
 end
 
 ---Perform the reconciliation every embedded package repeats verbatim.
 ---
----A package bootstrap always answers the same three questions in the same
----order: does a copy of this `(package, api)` pair already exist, is it
----newer than this one, and did the copy that registered this same revision
----actually finish. Getting that order wrong is how an older embedded copy
----reinterprets private state it does not own, so the order lives here once
----rather than in every package.
----
----The return values are what the caller needs to finish:
----
----* `implementation` is the shared package table to initialize. When it is
----  `nil` the caller is done and must `return selected` unchanged.
----* `previousRevision` is `nil` for a first registration and otherwise the
----  revision whose state this copy inherits, exactly as `Registry:Register`
----  reports it.
----* `selected` is the copy Registry has selected, which is what the caller
----  returns when `implementation` is `nil`.
----* `state` is what the outgoing copy handed over, after every migration step
----  has transformed it; `nil` when nothing was handed over.
+---Does a copy of `(package, api)` exist, is it newer, and did a same-revision
+---copy finish? Asked out of order, an older copy reinterprets private state it
+---does not own, so the order lives here once rather than in every package.
 ---
 ---`validateState`, `resume`, `retire`, `migrations` and `sealFacade` are
 ---optional; `docs/API.md` documents each and the decision table.
 ---
----Registry never calls this helper for itself: it is the file that
----publishes the facade the helper lives on, so its own bootstrap has to run
----before any facade method exists.
+---Registry never calls this itself: its own bootstrap runs before the facade exists.
 ---@param request Registry.BootstrapRequest
----@return table|nil implementation
----@return integer|nil previousRevision
----@return table|nil selected
----@return any state
+---@return table|nil implementation the table to initialize; `nil`: return `selected` unchanged
+---@return integer|nil previousRevision the inherited revision, as `Register` reports it
+---@return table|nil selected the copy Registry selected
+---@return any state the hand-over after every migration step; `nil` when none
 local function bootstrap(_, request)
     if type(request) ~= "table" then
         error("Registry:Bootstrap request must be a table", 2)
@@ -740,7 +736,7 @@ local function bootstrap(_, request)
     validatePackageName(packageName, "Bootstrap")
     validatePositiveInteger(api, "Bootstrap", "api")
     validatePositiveInteger(revision, "Bootstrap", "revision")
-    if type(label) ~= "string" or label == "" then
+    if type(label) ~= "string" or isSecret(label) or label == "" then
         error("Registry:Bootstrap request.label must be a non-empty string", 2)
     end
     if type(validatePublicSurface) ~= "function" then
@@ -775,7 +771,7 @@ local function bootstrap(_, request)
             -- validated, so a malformed one fails on every load, not only
             -- on the first upgrade.
             if
-                migrations ~= nil
+                type(migrations) ~= "nil"
                 and selectMigrationSteps(migrations, revision, revision) == nil
             then
                 error(label .. " request.migrations must map positive revisions to functions", 3)
@@ -797,7 +793,7 @@ local function bootstrap(_, request)
             migratedState = result
         end
 
-        if retire ~= nil then
+        if type(retire) ~= "nil" then
             rawset(entry, "retire", retire)
         end
         if not applySeal(entry, implementation, sealFacade == true, label) then
@@ -843,13 +839,17 @@ local function bootstrap(_, request)
                 refuse("package state is corrupted or incomplete")
             end
 
+            -- A secret verdict cannot be compared, so it counts as "not complete".
             local complete = facadeRevision == existingRevision
-                and (validateState == nil or validateState(existing) == true)
+            if complete and type(validateState) ~= "nil" then
+                local verdict = validateState(existing)
+                complete = not isSecret(verdict) and verdict == true
+            end
 
-            if resume ~= nil then
+            if type(resume) ~= "nil" then
                 local inherited = resume(existing, complete)
-                if inherited ~= nil then
-                    if not isPositiveInteger(inherited) and inherited ~= 0 then
+                if type(inherited) ~= "nil" then
+                    if not isNonNegativeInteger(inherited) then
                         error("Registry:Bootstrap request.resume must return a revision", 2)
                     end
                     return existing, inherited, existing, adopt(existing, inherited, nil)
@@ -930,7 +930,7 @@ end
 -- The public MoltenCodes namespace is the documented global entry point for consumers.
 -- selene: allow(global_usage)
 local namespace = rawget(_G, PUBLIC_NAMESPACE_KEY)
-if namespace == nil then
+if type(namespace) == "nil" then
     namespace = {}
     -- The first copy to load creates that documented public namespace.
     -- selene: allow(global_usage)
@@ -943,7 +943,7 @@ end
 -- generation reads `MoltenCodes.Registries[<generation>]` and is therefore never
 -- handed a different contract, whichever generation owns the alias.
 local generations = rawget(namespace, PUBLIC_GENERATIONS_KEY)
-if generations == nil then
+if type(generations) == "nil" then
     generations = {}
     rawset(namespace, PUBLIC_GENERATIONS_KEY, generations)
 elseif type(generations) ~= "table" then
@@ -951,7 +951,7 @@ elseif type(generations) ~= "table" then
 end
 
 local publishedGeneration = rawget(generations, API_GENERATION)
-if publishedGeneration ~= nil and publishedGeneration ~= Registry then
+if type(publishedGeneration) ~= "nil" and publishedGeneration ~= Registry then
     error("Registry: MoltenCodes.Registries[" .. API_GENERATION .. "] is not this facade", 0)
 end
 rawset(generations, API_GENERATION, Registry)
@@ -960,7 +960,7 @@ rawset(generations, API_GENERATION, Registry)
 -- Claiming or yielding it is deliberately silent: a generation mismatch is a
 -- migration state, not a corruption, and must never abort either addon's load.
 local aliased = rawget(namespace, PUBLIC_ALIAS_KEY)
-if aliased == nil or aliased == Registry then
+if type(aliased) == "nil" or aliased == Registry then
     rawset(namespace, PUBLIC_ALIAS_KEY, Registry)
 else
     local aliasedApi = nil
@@ -987,7 +987,7 @@ else
         -- Park the displaced generation under its own key. Generations older
         -- than this one predate `MoltenCodes.Registries` and would otherwise
         -- become unreachable the moment this copy claims the alias.
-        if rawget(generations, aliasedApi) == nil then
+        if type(rawget(generations, aliasedApi)) == "nil" then
             rawset(generations, aliasedApi, aliased)
         end
         rawset(namespace, PUBLIC_ALIAS_KEY, Registry)
