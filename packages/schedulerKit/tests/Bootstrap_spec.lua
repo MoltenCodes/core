@@ -1,32 +1,5 @@
 local TestEnv = require("SchedulerKitTestEnv")
 
----Load the SchedulerKit source as a copy carrying `revision`, the way an older
----embedded copy of the same file would have loaded first.
----@param revision integer
----@return table SchedulerKit
-local function loadSchedulerKitAsRevision(revision)
-    local path = nil
-    for template in package.path:gmatch("[^;]+") do
-        local candidate = template:gsub("%?", "SchedulerKit")
-        local file = io.open(candidate, "r")
-        if file ~= nil then
-            file:close()
-            path = candidate
-            break
-        end
-    end
-    assert(path ~= nil, "SchedulerKit.lua is not on package.path")
-    local file = assert(io.open(path, "r"))
-    local text = file:read("*a")
-    file:close()
-    local patched, replacements = text:gsub(
-        "local IMPLEMENTATION_REVISION = %d+",
-        "local IMPLEMENTATION_REVISION = " .. revision
-    )
-    assert(replacements == 1, "IMPLEMENTATION_REVISION not found")
-    return assert(loadstring(patched, "@" .. path))()
-end
-
 describe("SchedulerKit bootstrap", function()
     after_each(TestEnv.Reset)
 
@@ -71,7 +44,7 @@ describe("SchedulerKit bootstrap", function()
             return require("SchedulerKit")
         end)
         assert.is_true(ok)
-        assert.are.equal(12, SchedulerKit.REVISION)
+        assert.are.equal(13, SchedulerKit.REVISION)
 
         local scope = SchedulerKit:CreateScope()
         assert.is_false(scope:IsClosed())
@@ -172,7 +145,7 @@ describe("SchedulerKit bootstrap", function()
 
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(12, upgraded.REVISION)
+        assert.are.equal(13, upgraded.REVISION)
 
         -- Revision 4's lane bookkeeping is derived from the inherited queues
         -- rather than assumed empty, so work an older copy had already queued
@@ -245,7 +218,7 @@ describe("SchedulerKit bootstrap", function()
 
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(12, upgraded.REVISION)
+        assert.are.equal(13, upgraded.REVISION)
         local state = rawget(upgraded, "_state")
         assert.are.same({}, rawget(state, "lanes"))
         assert.are.equal(0, rawget(state, "laneCount"))
@@ -273,7 +246,7 @@ describe("SchedulerKit bootstrap", function()
         require("Registry")
         require("TimerKit")
 
-        local old = loadSchedulerKitAsRevision(7)
+        local old = TestEnv.LoadRevision(7)
         assert.are.equal(7, old.REVISION)
         local lane = old:Lane("upgraded", { retry = { attempts = 2, backoffSeconds = 1 } })
         -- Revision 7 lanes kept no admitted set.
@@ -282,7 +255,7 @@ describe("SchedulerKit bootstrap", function()
         package.loaded["SchedulerKit"] = nil
         local upgraded = require("SchedulerKit")
         assert.are.equal(old, upgraded)
-        assert.are.equal(12, upgraded.REVISION)
+        assert.are.equal(13, upgraded.REVISION)
         assert.are.equal(lane, upgraded:Lane("upgraded"))
 
         local job = lane:Submit(function()
@@ -304,7 +277,7 @@ describe("SchedulerKit bootstrap", function()
         -- its addon's shutdown. The copy below stands in for it: its addon
         -- scopes are given the subscription revision 9 would have stored, and
         -- the second one fails to disconnect, which must not stop the upgrade.
-        local old = loadSchedulerKitAsRevision(9)
+        local old = TestEnv.LoadRevision(9)
         local disconnects = 0
         local carried = old:ForAddon("Carried")
         local failing = old:ForAddon("Failing")
@@ -328,7 +301,7 @@ describe("SchedulerKit bootstrap", function()
         local upgraded = require("SchedulerKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(12, upgraded.REVISION)
+        assert.are.equal(13, upgraded.REVISION)
         assert.are.equal(1, disconnects)
         assert.is_nil(rawget(carried, "_shutdownSubscription"))
         assert.is_nil(rawget(failing, "_shutdownSubscription"))
@@ -354,7 +327,7 @@ describe("SchedulerKit bootstrap", function()
         require("Registry")
         require("TimerKit")
 
-        local old = loadSchedulerKitAsRevision(10)
+        local old = TestEnv.LoadRevision(10)
         rawset(old._state, "limits", nil)
         rawset(old._state, "unbounded", nil)
 
@@ -369,6 +342,53 @@ describe("SchedulerKit bootstrap", function()
             maxWatchersPerInterval = 128,
             maxDebounceArguments = 8,
         }, upgraded:GetLimits())
+    end)
+
+    it("upgrades a revision-12 copy with a job mid-yield and a repeating job", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("TimerKit")
+
+        local old = TestEnv.LoadRevision(12)
+        old:SetMaxResumesPerFrame(1)
+        local slices = 0
+        local yielding = old:Schedule(function(context)
+            for _ = 1, 3 do
+                slices = slices + 1
+                context:Yield()
+            end
+        end)
+        local repeats = 0
+        local repeating = old:Every(1, function()
+            repeats = repeats + 1
+        end)
+        TestEnv.Tick()
+        assert.are.equal(1, slices)
+
+        package.loaded["SchedulerKit"] = nil
+        local upgraded = require("SchedulerKit")
+        assert.are.equal(old, upgraded)
+        assert.are.equal(13, upgraded.REVISION)
+
+        -- The coroutine the older copy started resumes where it yielded.
+        TestEnv.Tick()
+        TestEnv.Tick()
+        TestEnv.Tick()
+        assert.are.equal(3, slices)
+        assert.are.equal("completed", yielding:GetState())
+
+        -- The repeating job armed before the upgrade wakes and re-arms under
+        -- the new revision.
+        local timers = TestEnv.NativeTimers()
+        TestEnv.FireNative(#timers)
+        TestEnv.Tick()
+        assert.are.equal(1, repeats)
+        assert.are.equal("delayed", repeating:GetState())
+        timers = TestEnv.NativeTimers()
+        TestEnv.FireNative(#timers)
+        TestEnv.Tick()
+        assert.are.equal(2, repeats)
     end)
 
     it("keeps live family handles working across a compatible reload", function()

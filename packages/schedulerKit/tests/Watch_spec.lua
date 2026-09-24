@@ -24,18 +24,6 @@ local function liveTickers()
     return count
 end
 
----Measure the allocation a workload causes, in kilobytes, with the collector
----stopped so that a collection cycle cannot hide or invent growth.
-local function allocatedKilobytes(workload)
-    collectgarbage()
-    collectgarbage("stop")
-    local before = collectgarbage("count")
-    workload()
-    local after = collectgarbage("count")
-    collectgarbage("restart")
-    return after - before
-end
-
 describe("SchedulerKit Watch", function()
     after_each(TestEnv.Reset)
 
@@ -160,6 +148,38 @@ describe("SchedulerKit Watch", function()
         assert.are.equal(1, liveTickers())
     end)
 
+    it("reports a result it cannot compare once and cancels only that watcher", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        -- Comparing two such tables raises, as comparing a secret value does.
+        local incomparable = {
+            __eq = function()
+                error("results cannot be compared")
+            end,
+        }
+        local healthy = 0
+        local broken = SchedulerKit:Watch(function()
+            return setmetatable({}, incomparable)
+        end, 1, function() end)
+        SchedulerKit:Watch(function()
+            healthy = healthy + 1
+            return healthy
+        end, 1, function() end)
+
+        TestEnv.FireNative(1)
+        assert.are.same({}, TestEnv.TakeReportedErrors())
+        TestEnv.FireNative(1)
+        TestEnv.FireNative(1)
+
+        local reported = TestEnv.TakeReportedErrors()
+        assert.are.equal(1, #reported)
+        assert.is_not_nil(
+            string.find(tostring(reported[1].value), "results cannot be compared", 1, true)
+        )
+        assert.is_false(broken:IsActive())
+        assert.are.equal(3, healthy)
+        assert.are.equal(1, liveTickers())
+    end)
+
     it("reports a raising callback and keeps watching", function()
         local SchedulerKit = TestEnv.NewPackage()
         local value = 1
@@ -258,7 +278,7 @@ describe("SchedulerKit Watch", function()
         -- Call the host ticker's callback directly: the fixture's `FireNative`
         -- asserts through luassert, which allocates on its own.
         local ticker = TestEnv.NativeTimers()[1]
-        local allocated = allocatedKilobytes(function()
+        local allocated = TestEnv.AllocatedKilobytes(function()
             for _ = 1, 2000 do
                 ticker.callback(ticker)
             end

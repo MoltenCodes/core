@@ -21,13 +21,17 @@ SchedulerKit facade
     ├── priorityCursor + idleGuard
     ├── addonScopes
     ├── defaultScope
-    ├── Job / Scope / Context metatables
-    ├── Frame driver + trampoline
+    ├── Job / Scope / Context metatables + yieldToken
+    ├── Frame driver + trampoline (frame, driverEnabled, driverTrampoline)
+    ├── frame pass (currentJob, frameDeadline, frameReading)
     ├── configuration
+    ├── activeCount
     ├── lanes[name] + laneCount
     ├── watchGroups[interval] + watchGroupCount
     ├── familyTimerScope
-    └── familyMetatables / familyPrototypes (debounce, coalesce, watch, lane)
+    ├── familyMetatables / familyPrototypes (debounce, coalesce, watch, lane)
+    ├── unbounded + limits
+    └── logoutConnection + logoutEventScope
 ```
 
 Existing Jobs, Scopes, Contexts, queues, and the installed Frame trampoline therefore survive a compatible revision upgrade.
@@ -40,7 +44,7 @@ The Frame trampoline and delayed TimerKit wakeups resolve operations through `_s
 
 Each priority owns an array-backed FIFO queue with `head`/`tail` indices.
 
-Dequeuing clears consumed array slots to release references immediately. When a queue becomes empty, only its indices are reset; the backing table is reused rather than allocating a new table on every drain.
+Dequeuing clears consumed array slots to release references immediately. When a queue becomes empty, only its indices are reset; the backing table is reused rather than allocating a new table on every drain. The reset happens as soon as the last entry is popped, before the job runs, so a job that yields slice after slice is pushed back into slot 1 each time instead of walking the indices upwards; `Allocation_spec.lua` guards that the resume path allocates nothing.
 
 ### Lane occupancy
 
@@ -192,10 +196,11 @@ Internal/native failures that occur in direct API operations may still be re-rai
 `installCoalescingFamily`, rather than at the top level of the chunk: Lua 5.1
 allows 200 locals per function and the main chunk is close to that.
 
-Headroom at revision 8, as `luac -l -l` counts it (declared locals, an upper
-bound on the active ones the limit applies to): the main chunk declares 177 of
-200 locals; the installer declares 107 locals and uses 41 of 60 upvalues. New
-top-level code belongs in the installer or in a function of its own. The
+Headroom at revision 13: the main chunk holds 191 top-level locals of the 200
+Lua 5.1 allows active at once (`luac -l -l` reports 210 declared, counting
+block-scoped ones, in 194 stack slots); the installer declares 109 locals and
+uses 40 of 60 upvalues. New top-level code belongs in the installer or in a
+function of its own. The
 installer commits its own methods; only four hooks forward-declared above the
 job machinery (`laneJobFinished`, `retryLaneJob`, `cancelFamilyMembers`,
 `closeFamilyMembers`) escape it.
@@ -286,7 +291,7 @@ Expected allocations include:
 
 - one Job table per logical job;
 - one Context table per logical job while the job is executable;
-- one coroutine per execution/iteration;
+- one coroutine per execution/iteration, with the closure that calls the callback with its Context (a Lua 5.1 coroutine body must be a Lua function, and a callback may be a C function);
 - TimerKit's timer object and one TimerKit ownership scope when a SchedulerKit scope first uses delayed/next-frame eligibility;
 - SchedulerKit Scope objects when explicitly created.
 
@@ -301,4 +306,6 @@ window, interval or lane interval; one job per lane submission; one group table
 and ticker per distinct watch interval. Recording calls, recording known keys
 and steady ticks allocate nothing.
 
-SchedulerKit deliberately does not pool Job objects in API generation 1 because stable user-visible handles and accidental handle reuse are a more serious correctness risk than the potential allocation saving. A future PoolKit may be used for private, non-escaping scheduler internals where identity reuse is safe.
+SchedulerKit deliberately does not pool Job objects in API generation 1 because stable user-visible handles and accidental handle reuse are a more serious correctness risk than the potential allocation saving. It does not use PoolKit for private internals either: that would add a dependency (design constitution, principle 4b) for internals that are already allocated once per job or handle.
+
+Protected calls on the steady paths take a named function and its arguments (`pcall(armScopeTimer, scope, delay)`, `pcall(resultsDiffer, value, previous)`) rather than a fresh closure, so re-arming a repeating job and comparing watch results allocate nothing of their own.

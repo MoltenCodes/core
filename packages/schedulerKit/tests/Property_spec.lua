@@ -12,7 +12,8 @@ describe("SchedulerKit state properties", function()
 
         local function random(limit)
             seed = (seed * 48271) % 2147483647
-            return (seed % limit) + 1
+            -- The low bits of an LCG cycle quickly, so results come from the high bits.
+            return (math.floor(seed / 65536) % limit) + 1
         end
 
         for _ = 1, 5000 do

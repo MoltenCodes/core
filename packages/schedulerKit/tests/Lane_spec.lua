@@ -25,18 +25,6 @@ local function expectErrorAtThisSpec(expected, callback)
     )
 end
 
----Measure the allocation a workload causes, in kilobytes, with the collector
----stopped so that a collection cycle cannot hide or invent growth.
-local function allocatedKilobytes(workload)
-    collectgarbage()
-    collectgarbage("stop")
-    local before = collectgarbage("count")
-    workload()
-    local after = collectgarbage("count")
-    collectgarbage("restart")
-    return after - before
-end
-
 ---A lane job that holds its slot until `gate[index]` is set.
 local function gatedJob(gate, index, started)
     return function(context)
@@ -570,13 +558,13 @@ describe("SchedulerKit lanes after the acceptance review", function()
         lane:Submit(callback)
         lane:Submit(callback)
 
-        local fullKilobytes = allocatedKilobytes(function()
+        local fullKilobytes = TestEnv.AllocatedKilobytes(function()
             for _ = 1, 200 do
                 lane:Submit(callback)
             end
         end)
         lane:Close()
-        local closedKilobytes = allocatedKilobytes(function()
+        local closedKilobytes = TestEnv.AllocatedKilobytes(function()
             for _ = 1, 200 do
                 lane:Submit(callback)
             end

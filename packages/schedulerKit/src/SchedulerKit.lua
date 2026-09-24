@@ -44,7 +44,7 @@
 
 local PACKAGE_NAME = "schedulerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 12
+local IMPLEMENTATION_REVISION = 13
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_TIMER_API = 1
 local STATE_SCHEMA = 1
@@ -1248,6 +1248,17 @@ local function queuePush(job)
     markLaneOccupied(priority)
 end
 
+---Restart a drained lane at the front and clear its occupancy flag, so the
+---indices of a lane that is never left empty for long (one job yielding slice
+---after slice) keep reusing slot 1 instead of climbing.
+---@param queue SchedulerKit.Queue
+---@param priority integer
+local function resetDrainedQueue(queue, priority)
+    rawset(queue, "head", 1)
+    rawset(queue, "tail", 0)
+    markLaneEmpty(priority)
+end
+
 ---Take the next live job from one lane, discarding stale entries.
 ---@param priority integer
 ---@return SchedulerKit.Job|nil
@@ -1261,7 +1272,6 @@ local function queuePop(priority)
         local job = items[head]
         items[head] = nil
         head = head + 1
-        rawset(queue, "head", head)
 
         if
             type(job) == "table"
@@ -1269,15 +1279,16 @@ local function queuePop(priority)
             and rawget(job, "_state") == "pending"
         then
             rawset(job, "_queued", false)
+            if head > tail then
+                resetDrainedQueue(queue, priority)
+            else
+                rawset(queue, "head", head)
+            end
             return job
         end
     end
 
-    if head > tail then
-        rawset(queue, "head", 1)
-        rawset(queue, "tail", 0)
-        markLaneEmpty(priority)
-    end
+    resetDrainedQueue(queue, priority)
     return nil
 end
 
@@ -1304,11 +1315,7 @@ local function queueHasLive(priority)
         rawset(queue, "head", head)
     end
 
-    if head > tail then
-        rawset(queue, "head", 1)
-        rawset(queue, "tail", 0)
-        markLaneEmpty(priority)
-    end
+    resetDrainedQueue(queue, priority)
     return false
 end
 
@@ -1538,9 +1545,7 @@ local function cancelJob(job)
 
     local firstError = nil
     if delayTimer ~= false then
-        local ok, value = pcall(function()
-            return delayTimer:Cancel()
-        end)
+        local ok, value = pcall(delayTimer.Cancel, delayTimer)
         if not ok then
             firstError = { value = value }
         end
@@ -1661,6 +1666,15 @@ local function delayedWakeCallback(timerHandle)
     return wake(job, generation)
 end
 
+---Arm the TimerKit delay behind `job`'s scope. A named function rather than a
+---closure, so re-arming a repeating job does not allocate one per iteration.
+---@param scope SchedulerKit.Scope
+---@param delay number
+---@return TimerKit.Timer
+local function armScopeTimer(scope, delay)
+    return ensureTimerScope(scope):After(delay, delayedWakeCallback)
+end
+
 -- `armDelay` is reached both from a direct caller (`SchedulerKit:After`) and
 -- from the driver's repeat re-arm. It records the failure on the job and
 -- raises; whoever called it decides whether that raise reaches a caller or is
@@ -1677,9 +1691,7 @@ local function armDelay(job, delay)
     end
 
     rawset(job, "_state", "delayed")
-    local ok, timerOrError = pcall(function()
-        return ensureTimerScope(scope):After(delay, delayedWakeCallback)
-    end)
+    local ok, timerOrError = pcall(armScopeTimer, scope, delay)
 
     if not ok then
         markJobFailed(job, timerOrError, false)
@@ -3495,6 +3507,16 @@ local function installCoalescingFamily()
         return true
     end
 
+    ---Whether two predicate results differ. Its own function so the comparison
+    ---can be protected without a closure: comparing a secret value, or two
+    ---tables whose `__eq` raises, is an error.
+    ---@param value any
+    ---@param previous any
+    ---@return boolean differs
+    local function resultsDiffer(value, previous)
+        return value ~= previous
+    end
+
     ---Sample one watcher and call back on a change, or on every tick.
     ---@param watcher SchedulerKit.WatchHandle
     local function sampleWatcher(watcher)
@@ -3508,10 +3530,22 @@ local function installCoalescingFamily()
         end
 
         local previous = rawget(watcher, "_value")
-        local first = rawget(watcher, "_sampled") ~= true
+        local changed = rawget(watcher, "_sampled") ~= true or rawget(watcher, "_everyTick") == true
         rawset(watcher, "_sampled", true)
         rawset(watcher, "_value", value)
-        if first or value ~= previous or rawget(watcher, "_everyTick") == true then
+        if not changed then
+            local compared, differs = pcall(resultsDiffer, value, previous)
+            if not compared then
+                -- A result that cannot be compared would fail again on every
+                -- tick, and escaping here would skip the rest of the group's
+                -- tick; it is treated like a raising predicate.
+                reportError(differs)
+                cancelWatcher(watcher)
+                return
+            end
+            changed = differs
+        end
+        if changed then
             -- Reported with a traceback, like the predicate.
             callProtected(rawget(watcher, "_callback"), 2, value, previous)
         end
@@ -4318,9 +4352,7 @@ local function closeScope(scope)
 
     local timerScope = rawget(scope, "_timerScope")
     if timerScope ~= false then
-        local timerOk, timerError = pcall(function()
-            return timerScope:Close()
-        end)
+        local timerOk, timerError = pcall(timerScope.Close, timerScope)
         if not timerOk and firstError == nil then
             firstError = { value = timerError }
         end

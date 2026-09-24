@@ -50,6 +50,20 @@ function SchedulerKitTestEnv.LoadLifecycleKit()
     return require("LifecycleKit"), EventKit
 end
 
+---Measure the allocation a workload causes, in kilobytes, with the collector
+---stopped so that a collection cycle cannot hide or invent growth.
+---@param workload fun()
+---@return number kilobytes
+function SchedulerKitTestEnv.AllocatedKilobytes(workload)
+    collectgarbage()
+    collectgarbage("stop")
+    local before = collectgarbage("count")
+    workload()
+    local after = collectgarbage("count")
+    collectgarbage("restart")
+    return after - before
+end
+
 ---Run this package's own source as if it were implementation revision
 ---`revision`, to stand in for an older embedded copy in upgrade specs.
 ---

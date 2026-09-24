@@ -126,6 +126,39 @@ describe("SchedulerKit priorities", function()
         })
     end)
 
+    it("stops charging the guard once the last IDLE job has been served", function()
+        local SchedulerKit = TestEnv.NewPackage()
+        SchedulerKit:SetMaxResumesPerFrame(1000)
+        local order = {}
+        local secondScheduledAt = nil
+        SchedulerKit:Schedule(function(context)
+            while true do
+                order[#order + 1] = "H"
+                -- Long after the first IDLE job ran, a second one arrives.
+                if #order == 400 then
+                    secondScheduledAt = #order
+                    SchedulerKit:Schedule(function()
+                        order[#order + 1] = "second I"
+                    end, { priority = SchedulerKit.Priority.IDLE })
+                end
+                context:Yield()
+            end
+        end, { priority = SchedulerKit.Priority.HIGH })
+        SchedulerKit:Schedule(function()
+            order[#order + 1] = "I"
+        end, { priority = SchedulerKit.Priority.IDLE })
+
+        TestEnv.Tick()
+
+        -- The first IDLE job is promoted by the guard. The IDLE lane is empty
+        -- from then until the second job arrives, so that stretch earns the
+        -- second job no credit: it waits a full guard period of 256 resumes.
+        assert.are.equal("I", order[257])
+        assert.are.equal(400, secondScheduledAt)
+        assert.are.equal("H", order[400 + 256])
+        assert.are.equal("second I", order[400 + 257])
+    end)
+
     it("keeps the fairness cursor across frames", function()
         local SchedulerKit = TestEnv.NewPackage()
         SchedulerKit:SetMaxResumesPerFrame(1)

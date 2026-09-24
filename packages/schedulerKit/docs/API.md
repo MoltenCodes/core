@@ -245,7 +245,7 @@ Frame budget, runaway threshold, and resume ceiling are package-wide settings be
 
 ## Resume-count safety ceiling
 
-Time alone is not sufficient protection because extremely cheap callbacks may complete without the precise-time clock advancing measurably.
+Time alone is not sufficient protection because extremely cheap callbacks may complete without the budget clock advancing measurably.
 
 SchedulerKit therefore also caps the number of coroutine resumes per OnUpdate pass. The default is **1000**. The configured value must be a finite positive integer; `math.huge` is rejected because this setting is a hard safety ceiling.
 
@@ -323,6 +323,8 @@ Iterations never overlap. The interval starts again only after the previous coro
 If a repeating callback fails, the logical job becomes `failed` and stops repeating.
 
 If TimerKit cannot re-arm the next interval, that failure is captured on the job and does not escape the scheduler OnUpdate driver or starve unrelated work.
+
+Each iteration allocates one coroutine (with the closure that starts it) and one TimerKit timer; re-arming adds nothing of SchedulerKit's own. Resuming a job that is already running, slice after slice, allocates nothing: a priority queue that empties restarts at the front, so even a job that never leaves the ready queues keeps reusing the same slot.
 
 ## Cancellation
 
@@ -417,7 +419,7 @@ Who takes the second step is arranged by SchedulerKit itself whenever the framew
 
 Closing is terminal: the closed scope stays the canonical addon scope, so a later `ForAddon(addonName)` returns it and refuses new work. A job may close its own addon scope while it runs; it is cancelled with the rest and never resumed again. Manual scopes and the package-level convenience scope are never closed by `CloseAddonScopes`.
 
-Revision 9 and older required LifecycleKit and subscribed each addon scope to its addon's shutdown themselves. An embedded copy of this revision that upgrades one of them in place disconnects those subscriptions and then routes the carried scopes as described under [At logout](#at-logout); they stay open and canonical, and their work keeps running, until they are closed. Revisions 10 and 11 decided no route: their scopes are routed the same way when revision 12 upgrades them. A scope a revision 12 or later copy already routed keeps its route, its `OnShutdown` subscription and the package's `PLAYER_LOGOUT` connection, whose callbacks resolve the running revision's code when they fire. With a LifecycleKit older than 0.5.0 (which does not know `CloseAddonScopes`), case 2 closes the scope.
+Revision 9 and older required LifecycleKit and subscribed each addon scope to its addon's shutdown themselves. An embedded copy of this revision that upgrades one of them in place disconnects those subscriptions and then routes the carried scopes as described under [At logout](#at-logout); they stay open and canonical, and their work keeps running, until they are closed. Revisions 10 and 11 decided no route: their scopes are routed the same way when revision 12 or later upgrades them. A scope a revision 12 or later copy already routed keeps its route, its `OnShutdown` subscription and the package's `PLAYER_LOGOUT` connection, whose callbacks resolve the running revision's code when they fire. With a LifecycleKit older than 0.5.0 (which does not know `CloseAddonScopes`), case 2 closes the scope.
 
 ### At logout
 
@@ -631,8 +633,14 @@ the session, so they are `SetLimits` entries rather than per-watch options. See
 [Limits](#limits).
 
 A predicate that raises is reported once through the host error handler and
-its watch is **cancelled**: it would raise again on every tick. A callback that
-raises is reported and the watch keeps polling. Predicates run inside the
+its watch is **cancelled**: it would raise again on every tick. A result that
+cannot be compared with the previous one is treated the same way: comparing a
+secret value raises (see the taint rules in
+[`EMBEDDING.md`](../../../docs/EMBEDDING.md#rules-for-taint-safe-addon-code)),
+as does comparing two tables whose `__eq` raises. With `everyTick` no
+comparison is made, so such a watch keeps polling. Either failure affects only
+its own watch; the rest of the tick runs. A callback that raises is reported
+and the watch keeps polling. Predicates run inside the
 ticker's callback, so keep them cheap; put heavy work in a job.
 
 | Method | Purpose |
@@ -800,6 +808,10 @@ The facade, Job/Scope/Context prototypes, metatables, ready queues, scopes, acti
 The installed OnUpdate trampoline does not permanently close over one implementation revision. It resolves the current shared dispatch function on every scheduler frame. TimerKit delay callbacks use the same dispatch indirection.
 
 A future compatible SchedulerKit revision can therefore update execution behavior while preserving existing facade, Job, Scope, Context, queue, and addon-scope identity.
+
+Revision 13 changes behaviour only; package state is unchanged and a
+revision-12 copy's jobs, coroutines, timers and handles carry over as they
+are.
 
 Revision 12 adds the logout routing: `logoutConnection` and `logoutEventScope`
 in package state, `_logoutRoute` and `_logoutSubscription` on addon scopes, and

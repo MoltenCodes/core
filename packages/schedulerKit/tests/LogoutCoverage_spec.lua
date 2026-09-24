@@ -287,7 +287,7 @@ describe("SchedulerKit logout routes across an upgrade", function()
         local upgraded = require("SchedulerKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(12, upgraded.REVISION)
+        assert.are.equal(13, upgraded.REVISION)
         assert.are.equal("playerLogout", rawget(jobs, "_logoutRoute"))
         TestEnv.Logout()
         assert.is_true(jobs:IsClosed())

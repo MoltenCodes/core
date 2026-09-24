@@ -25,18 +25,6 @@ local function expectErrorAtThisSpec(expected, callback)
     )
 end
 
----Measure the allocation a workload causes, in kilobytes, with the collector
----stopped so that a collection cycle cannot hide or invent growth.
-local function allocatedKilobytes(workload)
-    collectgarbage()
-    collectgarbage("stop")
-    local before = collectgarbage("count")
-    workload()
-    local after = collectgarbage("count")
-    collectgarbage("restart")
-    return after - before
-end
-
 describe("SchedulerKit Debounce", function()
     after_each(TestEnv.Reset)
 
@@ -313,7 +301,7 @@ describe("SchedulerKit Debounce", function()
         local debounced = SchedulerKit:Debounce(function() end, 1)
         debounced("warm", 1, 2)
 
-        local allocated = allocatedKilobytes(function()
+        local allocated = TestEnv.AllocatedKilobytes(function()
             for index = 1, 20000 do
                 debounced("value", index, true)
             end
