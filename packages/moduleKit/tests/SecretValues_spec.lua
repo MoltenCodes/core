@@ -88,6 +88,125 @@ describe("ModuleKit and secret values", function()
         assert.are.same({ maxRequiredAddons = 16 }, ModuleKit:GetLimits())
     end)
 
+    it("refuses a secret dependency policy before comparing it and keeps the policy", function()
+        TestEnv.expectCallerError(
+            "ModuleKit.Addon:SetDependencyPolicy policy must not be a secret value",
+            function()
+                addon:SetDependencyPolicy(secret)
+            end
+        )
+        assert.are.equal("automatic", addon:GetDependencyPolicy())
+
+        addon:SetDependencyPolicy("strict")
+        TestEnv.expectCallerError(
+            "ModuleKit.Addon:SetDependencyPolicy policy must not be a secret value",
+            function()
+                addon:SetDependencyPolicy(secret)
+            end
+        )
+        assert.are.equal("strict", addon:GetDependencyPolicy())
+    end)
+
+    it("refuses a secret limit name before using it as a key", function()
+        TestEnv.expectCallerError(
+            "ModuleKit:SetLimits limit names must not be secret values",
+            function()
+                ModuleKit:SetLimits({ [secret] = 4 })
+            end
+        )
+        -- The whole table is validated first, so the valid entry beside the
+        -- secret name is not applied either.
+        TestEnv.expectCallerError(
+            "ModuleKit:SetLimits limit names must not be secret values",
+            function()
+                ModuleKit:SetLimits({ maxRequiredAddons = 4, [secret] = 4 })
+            end
+        )
+        assert.are.same({ maxRequiredAddons = 16 }, ModuleKit:GetLimits())
+    end)
+
+    it("refuses secret keys of definition, options and injection tables", function()
+        TestEnv.expectCallerError(
+            "ModuleKit module definition field names must not be secret values",
+            function()
+                addon:CreateModule("Keyed", { [secret] = true })
+            end
+        )
+        assert.is_false(addon:HasModule("Keyed"))
+        TestEnv.expectCallerError(
+            "ModuleKit module definition dependsOn must be a dense array",
+            function()
+                addon:CreateModule("Keyed", { dependsOn = { [secret] = "Core" } })
+            end
+        )
+        assert.is_false(addon:HasModule("Keyed"))
+        TestEnv.expectCallerError(
+            "ModuleKit.Addon:ProvideValue options field names must not be secret values",
+            function()
+                addon:ProvideValue("Checked", {}, { [secret] = true })
+            end
+        )
+        TestEnv.expectCallerError(
+            "ModuleKit.Addon:ProvideValue options.implements must be a dense array",
+            function()
+                addon:ProvideValue("Checked", {}, { implements = { [secret] = "Save" } })
+            end
+        )
+        assert.is_false(addon:HasModule("Checked"))
+        addon:ProvideValue("Checked", true)
+
+        local module = addon:CreateModule("UI")
+        TestEnv.expectCallerError(
+            "ModuleKit.Module:Inject map aliases must not be secret values",
+            function()
+                module:Inject({ [secret] = "Checked" })
+            end
+        )
+        TestEnv.expectCallerError(
+            "ModuleKit.Module:Inject map aliases must not be secret values",
+            function()
+                addon:CreateModule("Injected", { inject = { [secret] = "Checked" } })
+            end
+        )
+        assert.is_false(addon:HasModule("Injected"))
+    end)
+
+    it("refuses a secret requesting module and a module whose name is secret", function()
+        addon:ProvideModule("PerModule", function()
+            return {}
+        end)
+        TestEnv.expectCallerError(
+            "ModuleKit.Addon:Resolve requestingModule must not be a secret value",
+            function()
+                addon:Resolve("PerModule", secret)
+            end
+        )
+        TestEnv.expectCallerError(
+            "ModuleKit.Addon:Resolve requestingModule must be a module owned by this addon",
+            function()
+                addon:Resolve("PerModule", { _name = secret, _addon = addon })
+            end
+        )
+        local module = addon:CreateModule("UI")
+        assert.are.equal(addon:Resolve("PerModule", module), module:Resolve("PerModule"))
+    end)
+
+    it("treats a list whose metatable name is secret as a method list", function()
+        local list = setmetatable({ "Save" }, { __metatable = secret })
+        addon:ProvideValue("Store", { Save = function() end }, { implements = list })
+        TestEnv.expectCallerError(
+            'ModuleKit provider "Broken" must implement "Save": no such member',
+            function()
+                addon:ProvideValue("Broken", {}, { implements = list })
+            end
+        )
+    end)
+
+    it("reads a secret scope key as no field", function()
+        local module = addon:CreateModule("UI")
+        assert.is_nil(module.scope[secret])
+    end)
+
     it("accepts a secret provided value without comparing it", function()
         addon:ProvideValue("Token", secret)
         assert.are.equal(secret, addon:Resolve("Token"))

@@ -77,7 +77,9 @@ addon:SetDependencyPolicy("strict")
 local policy = addon:GetDependencyPolicy()
 ```
 
-The default is `automatic`.
+The default is `automatic`. Any other value is refused at the caller's line
+and the policy is kept; a secret value is refused before it is compared (see
+[Argument and state errors](#argument-and-state-errors)).
 
 `automatic` affects targeted hard-dependency operations:
 
@@ -305,7 +307,9 @@ dependency failed, or was not enabled under the `strict` policy, records that
 dependency in `blockedBy` and keeps `wanted = true`. So does a dependent that an
 `automatic`-policy `Disable()` of its dependency took down: a cascade is a block,
 not a change of intent, whether the dependency went away by failure or by an
-explicit call. When the dependency is
+explicit call. Each module taken down names its own direct dependency: when
+`Base:Disable()` takes down `Middle`, which depends on `Base`, and `Top`, which
+depends on `Middle`, `Middle` reports `Base` and `Top` reports `Middle`. When the dependency is
 later enabled — by its own `Enable()`, by `Activate()`, or by `EnableAll()` —
 every blocked module whose hard dependencies are now all enabled is enabled
 too, in graph order, so a whole chain recovers at once.
@@ -356,8 +360,9 @@ already declared costs nothing more. Naming the module's own addon raises.
 When a required addon halts, every module that names it is disabled, and so
 are its enabled hard dependents first, whatever the dependency policy (a
 halted addon cannot be waited for). The module keeps its intent and reports
-the addon's name in `blockedBy`; its dependents report the module's name, as a
-cascade always does. A module that does not name the addon is untouched, even
+the addon's name in `blockedBy`; each dependent reports its own direct
+dependency, as a cascade always does, so a dependent of the module reports the
+module and a dependent of that dependent reports the dependent. A module that does not name the addon is untouched, even
 when the addon declared that dependency itself. A module created after its
 required addon halted is blocked when it is created. A failing `OnDisable`
 leaves that one module enabled; the others are still taken down and the first
@@ -632,18 +637,31 @@ at the `CreateModule` line. Messages name the public method in full.
 | graph operations | `ModuleKit module "<name>" requires missing dependency "<dependency>"`, `ModuleKit dependency cycle detected: A -> B -> A` |
 | after shutdown | `<Method> cannot run after addon shutdown`, for example `ModuleKit.Addon:ProvideValue cannot run after addon shutdown` or `ModuleKit.Module:Enable cannot run after addon shutdown` |
 | reading `module.scope.<Field>` outside the enable window | `ModuleKit module "<name>" scope.<Field> is available only while the module is enabling or enabled` |
-| `SetLimits` | see [Limits](#limits) |
+| `SetLimits` | `ModuleKit:SetLimits limits must be a table`; `ModuleKit:SetLimits limits.<name> is not a recognised limit` (a name that is not a string is shown with `tostring`, for example `limits.1`); `ModuleKit:SetLimits limits.<name> must be a positive integer or ModuleKit.UNBOUNDED`; the LifecycleKit ceiling refusals under [Limits](#limits). Nothing changes on a refusal. |
+| `SetLimits`, `GetLimits` | `ModuleKit:SetLimits must be called on the ModuleKit facade; use ModuleKit:SetLimits(...)`, `ModuleKit:GetLimits must be called on the ModuleKit facade; use ModuleKit:GetLimits()` |
 
-A secret value (Retail 12.0.0 and later) cannot be compared, so every name,
-list entry and limit that ModuleKit compares is checked for one first and
-refused at the caller's line:
+A secret value (Retail 12.0.0 and later) cannot be compared, and a secret key
+cannot be used to index a table, so every name, list entry, policy, limit and
+table key that ModuleKit compares or uses as a key is checked for one first and
+refused at the caller's line, before anything changes:
 
 | Raised by | Message |
 |---|---|
 | every method that takes a name (`ForAddon`, `CreateModule`, `GetModule`, `HasModule`, `DependsOn`, `OptionalDependency`, `Before`, `After`, `Inject`, `Provide*`, `Resolve`) | `<the label of the non-empty-string message above> must not be a secret value`, for example `ModuleKit.Addon:CreateModule name must not be a secret value` or `ModuleKit.Module:Inject target must not be a secret value` |
 | `CreateModule` | `ModuleKit module definition requiresAddons entries must not be secret values` |
 | `CreateModule`, `Provide*` | `<label>.implements entries must not be secret values`, for example `ModuleKit.Addon:ProvideValue options.implements entries must not be secret values` |
-| `SetLimits` | `ModuleKit:SetLimits limits.<name> must not be a secret value` |
+| `SetDependencyPolicy` | `ModuleKit.Addon:SetDependencyPolicy policy must not be a secret value` (the policy is kept) |
+| `SetLimits` | `ModuleKit:SetLimits limits.<name> must not be a secret value` (a value); `ModuleKit:SetLimits limit names must not be secret values` (a key) |
+| `CreateModule` | `ModuleKit module definition field names must not be secret values` (a key of the definition table) |
+| `CreateModule` | `ModuleKit module definition <field> must be a dense array` (a secret key of a definition list, which cannot be an index) |
+| `Provide*` | `ModuleKit.Addon:<Method> options field names must not be secret values` (a key of the options table); `<label>.implements must be a dense array of method names or a SchemaKit schema` (a secret key of an `implements` list) |
+| `Inject` (and the definition's `inject`) | `ModuleKit.Module:Inject map aliases must not be secret values` (a key of the alias map) |
+| `Resolve` | `ModuleKit.Addon:Resolve requestingModule must not be a secret value`; a table whose `_name` is secret is not a module of the container and is refused as `requestingModule must be a module owned by this addon` |
+
+Two reads accept a secret without refusing it, because neither is an argument
+error: `module.scope[<secret>]` reads as `nil`, like any key that names no
+scope field, and an `implements` table whose `__metatable` is secret is read
+as a method list, since it cannot be a SchemaKit schema.
 
 A provided value, an injected value and a factory's result are never compared,
 so a secret one is accepted: absence is recognised by type, never by comparing
@@ -706,9 +724,11 @@ local limits = ModuleKit:GetLimits() -- a fresh table on every call
 maxRequiredAddons)`) and the module is not created.
 
 `SetLimits` accepts any subset of the limits and raises at the caller's line
-on an unknown name or an invalid value, before changing anything: a value must
-be a positive integer or `ModuleKit.UNBOUNDED`, the package's sentinel for
-"no limit". `GetLimits` returns a new table on every call, so it allocates;
+on an unknown name (`ModuleKit:SetLimits limits.<name> is not a recognised
+limit`), a secret name or value, or an invalid value, before changing
+anything: a value must be a positive integer or `ModuleKit.UNBOUNDED`, the
+package's sentinel for "no limit". [Argument and state
+errors](#argument-and-state-errors) lists every message. `GetLimits` returns a new table on every call, so it allocates;
 read it at setup, not per frame. **The limits are shared by every consumer in
 the session**: every embedded copy and every addon uses one set, so a library
 should rely on the default, and an addon that raises a limit raises it for

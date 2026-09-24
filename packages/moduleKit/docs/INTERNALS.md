@@ -96,8 +96,12 @@ Two per-module fields sit beside `_state`:
   it before recursing into a dependency that is not enabled and clears it once
   every dependency succeeded — so it survives exactly when a dependency raised.
   The `automatic` disable cascade also sets it on each dependent it takes down,
-  naming the module whose `Disable` caused the cascade, so a chain taken down by
-  one `Disable` comes back, in graph order, when that module is enabled again.
+  naming that dependent's direct dependency, the module whose recursive
+  `disableWithPolicy` call took it down, not the module the public `Disable`
+  was called on: in a chain `Top -> Middle -> Base`, `Base:Disable()` blocks
+  `Middle` by `Base` and `Top` by `Middle`. Recovery walks the graph in order,
+  so the whole chain still comes back, in graph order, when `Base` is enabled
+  again.
 
 `recoverBlockedDependents` runs after the public `Enable` and `Activate`. It
 first scans `_moduleOrder` for any `_enableBlockedBy` and returns without
@@ -159,7 +163,10 @@ Two notices drive the transitions, through shared dispatch like the phases:
 - `dependencyHalted` (`OnDependencyHalted`) runs `dependencyHaltedInternal`:
   newest module first, every module that requires the halted addon is taken
   down by `blockForHaltedAddon`, which disables enabled hard dependents first
-  (recursively, whatever the policy) and marks them blocked by the module.
+  (recursively, whatever the policy). The module is marked blocked by the
+  halted addon, and each dependent by its own direct dependency: a dependent
+  of the module names the module, and a dependent of that dependent names the
+  dependent, not the module that required the halted addon.
 
 Both subscriptions replay synchronously, and the replay hazard applies.
 `OnHalted` replays only for an addon that already halted: a new container has
@@ -248,11 +255,19 @@ included, raises. A value that did not originate in ModuleKit (an argument, a
 definition or option field, an `implements` entry or member, a factory's
 result, a hook field, a Registry or optional-Kit lookup, a LifecycleKit answer)
 is therefore tested for absence with `type(value) == "nil"`; ModuleKit's own
-state keeps plain `== nil`. A value ModuleKit does compare (a name, a list
-entry, a limit) is first passed to `isSecretValue`, which reads the
-`issecretvalue` captured at load and answers `false` on a host without it, and
-a secret is refused at the caller's line. `SetLimits` and `GetLimits` check the
-receiver's type before comparing it with the facade.
+state keeps plain `== nil`. A value ModuleKit does compare, format or use as a
+key (a name, a list entry, the dependency policy, a limit, a key of the
+caller's definition, options, alias-map, limits or `implements` table, the
+`requestingModule` of `Resolve`) is first passed to `isSecretValue`, which
+reads the `issecretvalue` captured at load and answers `false` on a host
+without it, and a secret is refused at the caller's line before the first
+comparison or key use. A secret key of a dense list is refused with the list's
+density message, since it cannot be an index. `Resolve` decides ownership of
+`requestingModule` by identity with the module the container keeps under its
+`_name`, so it never compares a field read from the caller's table. Two reads
+do not refuse: `scopeIndex` answers `nil` for a secret key, and `isSchemaLike`
+answers `false` when `getmetatable` returns a secret. `SetLimits` and
+`GetLimits` check the receiver's type before comparing it with the facade.
 
 ## Hooks run under `pcall`
 

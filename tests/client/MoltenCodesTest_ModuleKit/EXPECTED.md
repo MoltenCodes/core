@@ -62,7 +62,7 @@ MoltenCodes Test: PASS moduleKit.secrets: DependsOn with a secret module name is
 MoltenCodes Test: PASS moduleKit.secrets: ProvideValue with a secret implements entry is refused at the calling line and leaves the name free
 MoltenCodes Test: PASS moduleKit.secrets: ProvideValue accepts a secret value, which is never compared, and Resolve and injection hand back that secret
 MoltenCodes Test: PASS moduleKit.secrets: SetLimits with a secret maxRequiredAddons is refused at the calling line and changes nothing
-MoltenCodes Test: PASS moduleKit.secrets: SetDependencyPolicy with a secret policy is refused and keeps the policy (where the client raises it is logged)
+MoltenCodes Test: PASS moduleKit.secrets: SetDependencyPolicy with a secret policy is refused at the calling line and keeps the policy
 MoltenCodes Test: PASS moduleKit.allocation: GetModule, HasModule, GetState, IsEnabled and the Resolve of a cached singleton and module-scoped value allocate nothing over 10000 rounds (allocation guard)
 MoltenCodes Test: moduleKit: 36 passed, 0 failed, 3 skipped, 0 timed out (39 tests)
 ```
@@ -156,7 +156,7 @@ variable.
 | `ProvideSingleton with a SchemaKit implements schema ...` | A sealed schema accepts the factory's result once and caches it; a factory result without `Save` is refused at the `Resolve` line with `at Save, expected function, found nil`. |
 | `errors` tests | Each documented refusal names `ModuleKitSuite.lua` at the calling line with the documented message: a name that is not a string, a misspelled definition field (nothing created), an unknown policy (policy kept), reading `scope.Timers` of a disabled module (at the reading line), a missing module two `DependsOn` steps away (at the `Enable` line, however deep), `Before` an initialized module, and `SetLimits` with an unknown limit (`ModuleKit:SetLimits limits.maxModules is not a recognised limit`, limits unchanged). |
 | `secrets` tests | A genuine secret from `secretwrap` as the `ForAddon` name, the `CreateModule` name, the `DependsOn` name, an `implements` entry or the `maxRequiredAddons` limit is refused at the calling line before ModuleKit compares it, and changes nothing; a secret *value* is accepted by `ProvideValue` and handed back by `Resolve` and through injection still secret. |
-| `SetDependencyPolicy with a secret policy ...` | The docs list no secret refusal for the policy. The test records what the client does: the call must be refused and the policy stay `automatic`; the log holds the message and where it was raised (this file, or ModuleKit comparing the secret). |
+| `SetDependencyPolicy with a secret policy ...` | `ModuleKit.Addon:SetDependencyPolicy policy must not be a secret value` names `ModuleKitSuite.lua` at the calling line, as docs/API.md lists it, and the policy stays `automatic`. Before ModuleKit 0.8.3 the client raised `attempt to compare local 'policy' (a secret string value ...)` inside `ModuleKit.lua` instead. |
 | `GetModule, HasModule, GetState, IsEnabled and the Resolve ...` | Over 10000 rounds of those six calls, the Lua heap grows by at most 1 KB, as docs/API.md's "Cost" promises for name lookups and cached resolutions. The log holds the delta. |
 
 ## What counts as unexpected
@@ -187,8 +187,8 @@ variable.
 2. After `/reload` or a logout, the file
    `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
    It holds the full report, each test's logs (the client's messages with their
-   paths, the CVAR_UPDATE facts, the frame count, the allocation delta, what
-   `SetDependencyPolicy` did with a secret) and the client facts. Lua shortens
+   paths, the CVAR_UPDATE facts, the frame count, the allocation delta) and the client
+   facts. Lua shortens
    a long file path from the left, so a logged message may start with `...`;
    the tests compare only the `ModuleKitSuite.lua:<line>` part.
 3. The text of any Lua error, with `/console scriptErrors 1` turned on.

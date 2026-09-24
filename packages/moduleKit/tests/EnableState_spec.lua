@@ -262,6 +262,10 @@ describe("ModuleKit intent versus fact", function()
         end
         assert.is_number(definedAt)
 
+        -- The coverage run installs a line hook of its own on this thread;
+        -- it is put back afterwards, so the specs that follow are still
+        -- measured.
+        local previousHook, previousMask, previousCount = debug.gethook()
         local graphBuilds = 0
         debug.sethook(function()
             local info = debug.getinfo(2, "S")
@@ -270,7 +274,11 @@ describe("ModuleKit intent versus fact", function()
             end
         end, "c")
         local ok, failure = pcall(module.Enable, module)
-        debug.sethook(nil, "") -- removes the hook
+        if previousHook ~= nil then
+            debug.sethook(previousHook, previousMask, previousCount)
+        else
+            debug.sethook(nil, "") -- removes the hook
+        end
 
         assert.is_true(ok, tostring(failure))
         assert.are.equal(0, graphBuilds)

@@ -497,9 +497,9 @@ describe("ModuleKit upgrade from revision 15", function()
     end)
 end)
 
--- The nil rule changed how absent arguments are recognised and added secret
--- checks, but nothing in package state, on a container, on a module or on a
--- provider record, so what the previous revision created keeps working.
+-- Revisions 17 and 18 changed only how arguments are checked (the nil rule and
+-- the secret checks), nothing in package state, on a container, on a module or
+-- on a provider record, so what the previous revision created keeps working.
 describe("ModuleKit upgrade from the previous revision", function()
     after_each(TestEnv.Reset)
 
@@ -519,5 +519,19 @@ describe("ModuleKit upgrade from the previous revision", function()
         assert.are.equal(addon, upgraded:ForAddon("MyAddon"))
         assert.are.equal(module, addon:GetModule("UI"))
         assert.are.same({ scale = 1 }, addon:Resolve("Settings"))
+    end)
+
+    it("keeps the dependency policy and the limits the previous revision set", function()
+        TestEnv.LoadDependencies()
+        local previous = TestEnv.LoadRevision(CURRENT_REVISION - 1)
+        local addon = previous:ForAddon("MyAddon")
+        addon:SetDependencyPolicy("strict")
+        previous:SetLimits({ maxRequiredAddons = 6 })
+
+        local upgraded = require("ModuleKit")
+
+        assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
+        assert.are.equal("strict", addon:GetDependencyPolicy())
+        assert.are.equal(6, upgraded:GetLimits().maxRequiredAddons)
     end)
 end)

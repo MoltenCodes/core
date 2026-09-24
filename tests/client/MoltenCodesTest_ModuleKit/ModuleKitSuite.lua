@@ -1688,23 +1688,14 @@ secretTest(
 )
 
 secretTest(
-    "SetDependencyPolicy with a secret policy is refused and keeps the policy (where the client raises it is logged)",
+    "SetDependencyPolicy with a secret policy is refused at the calling line and keeps the policy",
     function(ctx)
-        -- docs/API.md of moduleKit lists no secret refusal for the policy; the
-        -- test records what this client does with one.
         local container = ownContainer()
         local secretPolicy = makeSecret(ctx, "strict")
-        -- Called from a Lua function, so a message raised at the caller's
-        -- level names this file, and one raised inside ModuleKit names that.
-        local succeeded, message = pcall(function()
+        expectErrorAtCallingLine(ctx, function(at)
+            at.line = currentLine()
             container:SetDependencyPolicy(secretPolicy)
-        end)
-        if succeeded then
-            policyToRestore = policyToRestore or "automatic"
-        end
-        ctx:Log("SetDependencyPolicy with a secret policy raised: " .. tostring(not succeeded))
-        ctx:Log("client message: " .. describeFact(message))
-        ctx:Expect(succeeded):ToBe(false)
+        end, "ModuleKit.Addon:SetDependencyPolicy policy must not be a secret value")
         ctx:Expect(container:GetDependencyPolicy()):ToBe("automatic")
     end
 )

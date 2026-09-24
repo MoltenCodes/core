@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 17
+local IMPLEMENTATION_REVISION = 18
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -140,9 +140,9 @@ local OWN_ADDON_HALTED = "halted"
 ---@field EnableAll fun(self: ModuleKit.Addon): ModuleKit.Addon
 ---@field DisableAll fun(self: ModuleKit.Addon): ModuleKit.Addon
 ---@field ProvideValue fun(self: ModuleKit.Addon, name: string, value: any, options: ModuleKit.ProvideOptions?): ModuleKit.Addon
----@field ProvideSingleton fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon): any, options: ModuleKit.ProvideOptions?): ModuleKit.Addon
----@field ProvideModule fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any, options: ModuleKit.ProvideOptions?): ModuleKit.Addon
----@field ProvideTransient fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any, options: ModuleKit.ProvideOptions?): ModuleKit.Addon
+---@field ProvideSingleton fun(self: ModuleKit.Addon, name: string, factory: (fun(addon: ModuleKit.Addon): any), options: ModuleKit.ProvideOptions?): ModuleKit.Addon
+---@field ProvideModule fun(self: ModuleKit.Addon, name: string, factory: (fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any), options: ModuleKit.ProvideOptions?): ModuleKit.Addon
+---@field ProvideTransient fun(self: ModuleKit.Addon, name: string, factory: (fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any), options: ModuleKit.ProvideOptions?): ModuleKit.Addon
 ---@field Resolve fun(self: ModuleKit.Addon, name: string, requestingModule: ModuleKit.Module|nil): any
 
 ---Per-module owner of framework registrations, released when the module is
@@ -1075,7 +1075,16 @@ local SCHEMA_METATABLE_NAMES = { ["SchemaKit.Schema"] = true, ["SchemaKit.Node"]
 ---@param value any
 ---@return boolean
 local function isSchemaLike(value)
-    return type(value) == "table" and SCHEMA_METATABLE_NAMES[getmetatable(value)] == true
+    if type(value) ~= "table" then
+        return false
+    end
+    -- `__metatable` is the caller's to set, so what `getmetatable` returns is
+    -- checked before it is used as a key.
+    local metatableName = getmetatable(value)
+    if isSecretValue(metatableName) then
+        return false
+    end
+    return SCHEMA_METATABLE_NAMES[metatableName] == true
 end
 
 ---Compile the list form of `implements`: a dense array of distinct non-empty
@@ -1087,7 +1096,9 @@ end
 local function compileImplementsNames(list, label, level)
     local count = 0
     for key in next, list do
-        if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
+        -- A secret key cannot be a dense-array index, and comparing it would
+        -- raise here, so it is refused as a density failure first.
+        if isSecretValue(key) or type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
             error(label .. " must be a dense array of method names or a SchemaKit schema", level)
         end
         count = count + 1
@@ -1268,6 +1279,9 @@ local function readProvideOptions(options, methodName, level)
     -- the message does not depend on `next` order when there are several.
     local unknown
     for key in next, options do
+        if isSecretValue(key) then
+            error(label .. " field names must not be secret values", level)
+        end
         if key ~= "implements" then
             unknown = unknown or {}
             unknown[#unknown + 1] = tostring(key)
@@ -1504,6 +1518,10 @@ end
 ---@param key any
 ---@return table|nil
 local function scopeIndex(scope, key)
+    -- A secret key names no field, and using it as a key would raise here.
+    if isSecretValue(key) then
+        return nil
+    end
     local packageName = SCOPE_PACKAGES[key]
     if packageName == nil then
         return nil
@@ -2633,6 +2651,9 @@ local function addInjections(module, aliasOrMap, target, level)
     if type(aliasOrMap) == "table" and type(target) == "nil" then
         local aliases = {}
         for alias in next, aliasOrMap do
+            if isSecretValue(alias) then
+                error("ModuleKit.Module:Inject map aliases must not be secret values", level)
+            end
             if type(alias) ~= "string" or alias == "" then
                 error("ModuleKit.Module:Inject map aliases must be non-empty strings", level)
             end
@@ -2743,12 +2764,17 @@ local function addonGetDependencyPolicy(self)
     return rawget(self, "_dependencyPolicy")
 end
 
----Change the container's dependency policy.
+---Change the container's dependency policy. A secret policy is refused before
+---it is compared with the two policy names, since comparing it would raise here
+---instead of at the caller.
 ---@param self ModuleKit.Addon
 ---@param policy ModuleKit.DependencyPolicy
 ---@return ModuleKit.DependencyPolicy previous
 local function addonSetDependencyPolicy(self, policy)
     ensureNotShutdown(self, "ModuleKit.Addon:SetDependencyPolicy", 3)
+    if isSecretValue(policy) then
+        error("ModuleKit.Addon:SetDependencyPolicy policy must not be a secret value", 2)
+    end
     if policy ~= "automatic" and policy ~= "strict" then
         error('ModuleKit.Addon:SetDependencyPolicy policy must be "automatic" or "strict"', 2)
     end
@@ -2837,7 +2863,9 @@ local function applyDefinitionList(module, definition, key, field, methodName)
     local count = 0
     local maximum = 0
     for index in next, values do
-        if type(index) ~= "number" or index < 1 or index % 1 ~= 0 then
+        -- A secret key cannot be a dense-array index, and comparing it would
+        -- raise here, so it is refused as a density failure first.
+        if isSecretValue(index) or type(index) ~= "number" or index < 1 or index % 1 ~= 0 then
             error("ModuleKit module definition " .. key .. " must be a dense array", 4)
         end
         count = count + 1
@@ -2894,6 +2922,9 @@ local function applyDefinition(module, definition)
 
     local unknown = {}
     for key in next, definition do
+        if isSecretValue(key) then
+            error("ModuleKit module definition field names must not be secret values", 3)
+        end
         if type(key) ~= "string" or DEFINITION_FIELDS[key] ~= true then
             unknown[#unknown + 1] = tostring(key)
         end
@@ -3223,13 +3254,20 @@ end
 ---@return any
 local function addonResolve(self, name, requestingModule)
     if type(requestingModule) ~= "nil" then
+        if isSecretValue(requestingModule) then
+            error("ModuleKit.Addon:Resolve requestingModule must not be a secret value", 2)
+        end
+        -- Ownership is decided by identity with the module this container
+        -- keeps under the name, so nothing read from the caller's table is
+        -- compared: a module listed in `_modules` always belongs to `self`.
+        -- A secret `_name` names no module and is refused as not owned.
         local modules = rawget(self, "_modules")
         local requesterName = type(requestingModule) == "table"
                 and rawget(requestingModule, "_name")
             or nil
         if
-            type(requesterName) ~= "string"
-            or rawget(requestingModule, "_addon") ~= self
+            isSecretValue(requesterName)
+            or type(requesterName) ~= "string"
             or rawget(modules, requesterName) ~= requestingModule
         then
             error(
@@ -3617,6 +3655,11 @@ local function validateLimitUpdate(limits, level)
     local ceiling = lifecycleDependencyCeiling()
     local key = next(limits)
     while type(key) ~= "nil" do
+        -- The name is refused before it indexes `KNOWN_LIMITS` or is
+        -- formatted into a message.
+        if isSecretValue(key) then
+            error("ModuleKit:SetLimits limit names must not be secret values", level)
+        end
         if type(key) ~= "string" or KNOWN_LIMITS[key] ~= true then
             error(
                 "ModuleKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",

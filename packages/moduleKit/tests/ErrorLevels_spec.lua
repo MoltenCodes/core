@@ -160,6 +160,25 @@ describe("ModuleKit error levels", function()
         end)
     end)
 
+    it("points SetLimits refusals at the caller", function()
+        expectCallerError("ModuleKit:SetLimits limits must be a table", function()
+            ModuleKit:SetLimits(16)
+        end)
+        expectCallerError(
+            "ModuleKit:SetLimits limits.maxModules is not a recognised limit",
+            function()
+                ModuleKit:SetLimits({ maxModules = 4 })
+            end
+        )
+        expectCallerError(
+            "ModuleKit:SetLimits limits.maxRequiredAddons must be a positive integer or ModuleKit.UNBOUNDED",
+            function()
+                ModuleKit:SetLimits({ maxRequiredAddons = 0 })
+            end
+        )
+        assert.are.equal(16, ModuleKit:GetLimits().maxRequiredAddons)
+    end)
+
     it("names the first unknown option in sorted order", function()
         expectCallerError(
             'ModuleKit.Addon:ProvideValue options contains unknown field "alpha"',
