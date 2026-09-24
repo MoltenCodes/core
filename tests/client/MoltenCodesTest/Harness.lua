@@ -117,6 +117,14 @@ if type(TestKit) == "nil" or type(LifecycleKit) == "nil" then
     error(ADDON_NAME .. " requires TestKit API 1 and LifecycleKit API 1; reinstall it", 0)
 end
 
+--- TestKit keeps at most 64 suites per session by default. Every package test
+--- addon registers several suites, so installing many of them passes that bound
+--- (eight addons already register 68). The harness is the one development tool
+--- that owns TestKit in this session, so it raises the bound for itself; the
+--- value stays finite so a runaway registration loop is still caught.
+local MAX_SUITES = 1024
+TestKit:SetLimits({ maxSuites = MAX_SUITES })
+
 ---@type SchedulerKit|nil
 local SchedulerKit = Registry:Get("schedulerKit", 1)
 

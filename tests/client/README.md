@@ -158,6 +158,13 @@ the loading screen. Runs therefore start only with `/mct run`; the only thing
 the harness does at login is print which suites are loaded and how to run them.
 There is no auto-run switch.
 
+### Why the harness raises TestKit's suite limit
+
+TestKit keeps at most 64 suites per session by default, and every package test
+addon registers several (eight addons register 68). At load the harness sets
+`maxSuites` to 1024, a finite value, so installing every test addon at once
+still works while a registration loop would still be caught.
+
 ### Why a run raises SchedulerKit's runaway threshold
 
 TestKit runs tests in one SchedulerKit job, and some test steps (an allocation
