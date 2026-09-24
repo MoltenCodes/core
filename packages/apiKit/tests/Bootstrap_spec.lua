@@ -52,6 +52,18 @@ describe("ApiKit bootstrap", function()
         assert.is_table(root.beta.api)
     end)
 
+    it("probes the flavour again on every bootstrap", function()
+        local ApiKit = TestEnv.NewPackageFor("tbc")
+        assert.are.equal("unsupported", ApiKit:GetFlavor())
+        TestEnv.SetClient({ projectId = 1, testBuild = false, betaBuild = false })
+        -- A same-revision reload is refused by Registry as complete, so the
+        -- re-probe is observed through the state a newer revision would inherit.
+        rawset(ApiKit._state, "flavor", "unsupported")
+        package.loaded["ApiKit"] = nil
+        require("ApiKit")
+        assert.are.equal("unsupported", ApiKit:GetFlavor())
+    end)
+
     it("keeps the namespace tables across a reload", function()
         local ApiKit = TestEnv.NewPackageFor("retail")
         -- selene: allow(global_usage)
@@ -69,18 +81,21 @@ describe("ApiKit bootstrap", function()
 
     it("lists the supported flavours read-only, in table order", function()
         local ApiKit = TestEnv.NewPackageFor("retail")
+        assert.are.equal(5, ApiKit.SUPPORTED_FLAVOR_COUNT)
         local listed = {}
-        for index = 1, 5 do
+        for index = 1, ApiKit.SUPPORTED_FLAVOR_COUNT do
             listed[index] = ApiKit.SUPPORTED_FLAVORS[index]
         end
         assert.are.same({ "retail", "classic-era", "classic-mop", "ptr", "beta" }, listed)
         assert.is_nil(ApiKit.SUPPORTED_FLAVORS[6])
+        -- Lua 5.1 does not see through the read-only view; the count is the way to walk it.
+        assert.are.equal(0, #ApiKit.SUPPORTED_FLAVORS)
         assert.has_error(function()
             ApiKit.SUPPORTED_FLAVORS[6] = "wrath"
         end, 'ApiKit.SUPPORTED_FLAVORS is read-only; index "6" cannot be written')
     end)
 
-    it("rejects corrupted inherited state", function()
+    it("refuses a same-revision copy whose state is incomplete", function()
         local ApiKit = TestEnv.NewPackageFor("retail")
         rawset(ApiKit, "_state", { schema = 1 })
         package.loaded["ApiKit"] = nil

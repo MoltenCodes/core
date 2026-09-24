@@ -55,14 +55,14 @@ returns `"taken"`; fall back to `MoltenCodes.wow` then.
 
 ## Editor support
 
-Point your `.luarc.json` at the flavour you write for:
+Point your `.luarc.json` at the flavour you write for. The definitions live in
+this repository under `packages/apiKit/types/<flavour>/`; they are development
+files, never shipped in a bundle or loaded by the client, so copy the flavour's
+directory next to your project (or reference a checkout) and list it:
 
 ```json
-{ "workspace": { "library": ["Libs/MoltenCodes/apiKit/types/retail"] } }
+{ "workspace": { "library": ["vendor/apiKit-types/retail"] } }
 ```
-
-The `types/<flavour>/` directories are development files and are never loaded
-by the client.
 
 ## Embedding
 

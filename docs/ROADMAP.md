@@ -1019,18 +1019,19 @@ way packages A to G were handled. Code starts only after the owner's go.
    under `tooling/api/` and the pinned StyLua for generated Lua.
 4. Surface: `ApiKit:GetFlavor()` → `"retail" | "classic-era" |
    "classic-mop" | "ptr" | "beta" | "unsupported"`; `ApiKit:GetGlobalStatus()`
-   → `"published" | "taken"`; `ApiKit:RegisterFlavor(flavour, install)` (the
-   entry point the generated flavour files call; the installer runs only when
-   `flavour` is the running one, otherwise it is dropped and nothing is
-   retained); `ApiKit:GetMetadataBuild(flavour)` → the build string the
-   committed metadata was captured from, so an addon can compare it with
-   `GetBuildInfo()`; the namespace root `MoltenCodes.wow` with `retail`,
+   → `"published" | "taken"`, read live; `ApiKit:RegisterFlavor(flavour,
+   install, info?)` (the entry point the generated flavour files call; the
+   installer runs once, only when `flavour` is the running one, otherwise
+   only the small `info` table is retained); `ApiKit:GetMetadataBuild(flavour)`
+   → the client version and build the registered metadata was captured from,
+   so an addon can compare them with `GetBuildInfo()`; the namespace root
+   `MoltenCodes.wow` with `retail`,
    `classic.era`, `classic.mop`, `ptr`, `beta` each holding an `api` table
    (populated for the running flavour, empty for the others); the `wow` global
    under the publication rule; per flavour `api.<namespace>.<function>`,
    `api.events.<name>` string constants and `api.enums.<name>` aliases.
-   `API`, `REVISION` and `SUPPORTED_FLAVORS` (a read-only proxy) on the
-   facade. No `SetLimits`: the package holds no growing state, and its docs
+   `API`, `REVISION`, `SUPPORTED_FLAVORS` (a read-only view, walked by index
+   up to `SUPPORTED_FLAVOR_COUNT`) on the facade. No `SetLimits`: the package holds no growing state, and its docs
    say so.
 5. Ownership: the facade is bootstrapped through Registry and upgraded in
    place; a flavour installer runs once per session, at file load, writing

@@ -274,14 +274,17 @@ def package_id_of_reference(reference: str) -> str:
     The package is the directory right after the framework directory in the
     embedded path (`Libs\\MoltenCodes\\apiKit\\flavours\\Retail.lua` → `apiKit`),
     which is what a further runtime file needs: its file name says nothing
-    about its package. A reference without a framework directory (a test
-    fixture written as a bare file name) falls back to the facade rule.
+    about its package. The framework directory is matched without regard to
+    case, as the client matches paths. A reference without a framework
+    directory followed by a package directory (a bare file name, or a file
+    directly under the framework directory) falls back to the facade rule.
     """
     parts = reference.replace("\\", "/").split("/")
-    if len(parts) >= 3 and parts[-3].lower() == toc.FRAMEWORK_ADDON_NAME.lower():
-        return parts[-2]
-    if len(parts) >= 2 and toc.FRAMEWORK_ADDON_NAME in parts:
-        return parts[parts.index(toc.FRAMEWORK_ADDON_NAME) + 1]
+    framework = toc.FRAMEWORK_ADDON_NAME.lower()
+    for index, part in enumerate(parts):
+        package_follows = index + 2 < len(parts)
+        if part.lower() == framework and package_follows:
+            return parts[index + 1]
     return package_id_for(parts[-1])
 
 

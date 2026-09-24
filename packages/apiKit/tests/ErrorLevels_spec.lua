@@ -78,6 +78,63 @@ describe("ApiKit error levels", function()
         )
     end)
 
+    it("points a non-table info at the caller", function()
+        local ApiKit = TestEnv.NewPackageFor("retail")
+        local line
+        local ok, value = pcall(function()
+            line = currentLine() + 1
+            ApiKit:RegisterFlavor("retail", function() end, "info")
+        end)
+        assertReportedAt(line, "ApiKit:RegisterFlavor info must be a table when given", ok, value)
+    end)
+
+    it("points a bad info version at the caller", function()
+        local ApiKit = TestEnv.NewPackageFor("retail")
+        local line
+        local ok, value = pcall(function()
+            line = currentLine() + 1
+            ApiKit:RegisterFlavor("retail", function() end, { version = 12 })
+        end)
+        assertReportedAt(
+            line,
+            "ApiKit:RegisterFlavor info.version must be a string when given",
+            ok,
+            value
+        )
+    end)
+
+    it("points every wrong receiver at the caller", function()
+        local ApiKit = TestEnv.NewPackageFor("retail")
+        local cases = {
+            {
+                "GetGlobalStatus",
+                function()
+                    ApiKit.GetGlobalStatus({})
+                end,
+            },
+            {
+                "RegisterFlavor",
+                function()
+                    ApiKit.RegisterFlavor({}, "retail", function() end)
+                end,
+            },
+            {
+                "GetMetadataBuild",
+                function()
+                    ApiKit.GetMetadataBuild({}, "retail")
+                end,
+            },
+        }
+        for _, case in ipairs(cases) do
+            local ok, value = pcall(case[2])
+            assert.is_false(ok)
+            assert.matches(
+                SOURCE .. ":%d+: ApiKit:" .. case[1] .. " must be called on the ApiKit facade",
+                value
+            )
+        end
+    end)
+
     it("points a wrong receiver at the caller", function()
         local ApiKit = TestEnv.NewPackageFor("retail")
         local line

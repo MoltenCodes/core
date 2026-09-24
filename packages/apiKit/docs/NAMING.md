@@ -21,7 +21,8 @@ author needs to predict a name from the Blizzard one.
    `uiWidgetManager`, `PvPScoreInfo` → `pvpScoreInfo`.
 3. **Namespaces.** A `C_` namespace drops the prefix: `C_AddOnProfiler` →
    `api.addOnProfiler`, `C_Timer` → `api.timer`. A namespace without the
-   prefix (`string`, `table`) keeps its name. Functions documented without a
+   prefix (`string`, `table`) goes through the same rules, which leave those
+   names as they are. Functions documented without a
    namespace (globals) are grouped by their documentation system:
    `UnitName` is in `api.unit`.
 4. **Global functions** drop their system's words when their name starts with
@@ -40,7 +41,7 @@ author needs to predict a name from the Blizzard one.
 8. **Collisions** (two Blizzard names mapping to one wrapper name, or a name
    that is a Lua keyword or one of `events`, `enums`, `constants`) fail
    generation. The fix is an entry in the exception tables of `naming.json`,
-   never a silent suffix. The Retail tables produce no collision today.
+   never a silent suffix. The committed captures produce no collision.
 
 ## Finding a name
 

@@ -16,15 +16,18 @@ local ApiKit = MoltenCodes.Registries[2]:Get("apiKit", 1)
 | Member | Returns | Purpose |
 |---|---|---|
 | `GetFlavor()` | `"retail" \| "classic-era" \| "classic-mop" \| "ptr" \| "beta" \| "unsupported"` | The running client's flavour, read once at load. |
-| `GetGlobalStatus()` | `"published" \| "taken"` | Whether the short `wow` global names `MoltenCodes.wow`. |
+| `GetGlobalStatus()` | `"published" \| "taken"` | Whether the short `wow` global names `MoltenCodes.wow`, read at the time of the call. |
 | `RegisterFlavor(flavor, install, info?)` | `boolean` | The entry point every generated flavour file calls; see below. |
 | `GetMetadataBuild(flavor)` | `string?, integer?` | The client version and build the registered metadata of `flavor` was captured from; nothing when no file registered. |
-| `SUPPORTED_FLAVORS` | `string[]` | Read-only list of the flavour ids, in table order. |
+| `SUPPORTED_FLAVORS` | `string[]` | Read-only view of the flavour ids, in table order; index from 1 to `SUPPORTED_FLAVOR_COUNT`. |
+| `SUPPORTED_FLAVOR_COUNT` | `integer` | How many ids the view holds. |
 
 `API` and `REVISION` are published on the facade as integers. The namespace
 root is `MoltenCodes.wow`, with one `api` table per flavour at
 `retail`, `classic.era`, `classic.mop`, `ptr` and `beta`; the same table is
-the `wow` global when that name was free at load.
+the `wow` global when that name was free at load. `SUPPORTED_FLAVORS` is a
+read-only view: on Lua 5.1 `#` and `ipairs` do not see through it, so walk it
+by index up to `SUPPORTED_FLAVOR_COUNT`.
 
 ## Flavour detection
 
@@ -39,10 +42,14 @@ The flavour is derived once, when the facade loads, from three host facts:
 | `beta` | `1` | true | true |
 
 A probe the client does not have counts as `false`; a beta client counts as a
-test build whatever `IsTestBuild()` says. A client matching no row (a Burning
-Crusade Classic client, a client without `WOW_PROJECT_ID`) is `"unsupported"`:
-its namespaces stay empty and every registration is dropped. The table is the
-one in `tooling/api/flavours.json`; a spec holds the two together.
+test build whatever `IsTestBuild()` says; a probe that raises stops the
+facade's load with that error, as ClientKit's unprotected host calls do. A
+client matching no row (a Burning Crusade Classic client, a client without
+`WOW_PROJECT_ID`) is `"unsupported"`: its namespaces stay empty and every
+registration is dropped. The probe runs on every bootstrap, an in-place
+upgrade included, so a newer revision that knows a further flavour recognises
+its client. The table is the one in `tooling/api/flavours.json`; a spec holds
+the two together.
 
 ## `RegisterFlavor(flavor, install, info?)`
 
@@ -63,11 +70,23 @@ and its `info` is what `GetMetadataBuild` reports. `info` is recorded for every
 flavour, installed or not, first registration winning.
 
 An error raised by the installer propagates to the generated file's load, so a
-broken generated file is loud rather than half-installed and silent; the
-flavour is then marked installed and not retried.
+broken generated file is loud rather than half-installed and silent. Before it
+propagates, the flavour's `api` table is emptied and the registration and its
+`info` are forgotten, so the next copy to load (another addon's working file)
+installs from a clean table. Unknown `info` fields are ignored, so a file from
+a newer generator still registers.
 
 Generated files call this method; an addon may call it to install a surface of
 its own for a flavour ApiKit ships no file for.
+
+## `MoltenCodes.wow`
+
+The namespace root is written into the framework's `MoltenCodes` table at the
+first registration. A value already there that is not ApiKit's root is
+corruption of the framework's own namespace, and the load stops with
+`MoltenCodes ApiKit found MoltenCodes.wow owned by something else`; the short
+`wow` global, which another addon may legitimately own, is never overwritten
+and never raises.
 
 ## The raw API stays
 
@@ -93,9 +112,11 @@ Argument and receiver failures are raised at the caller's line:
 
 Load-time failures: `MoltenCodes ApiKit requires Registry API 2 to be loaded
 first`, `MoltenCodes ApiKit requires a valid Registry API 2 facade`,
-`MoltenCodes ApiKit package state is corrupted or incomplete`. A generated
-flavour file raises `MoltenCodes ApiKit (<Flavour> bindings) requires ApiKit
-API 1 to be loaded first` when it loads before the facade.
+`MoltenCodes ApiKit package state is corrupted or incomplete`, `MoltenCodes
+ApiKit found MoltenCodes.wow owned by something else`. A generated flavour
+file raises `MoltenCodes ApiKit (<Flavour> bindings) requires Registry API 2
+to be loaded first`, `... requires a valid Registry API 2 facade` or `...
+requires ApiKit API 1 to be loaded first` when it loads out of order.
 
 ## Limits
 

@@ -98,7 +98,8 @@ end
 ---@class ApiKit
 ---@field API integer Public API generation.
 ---@field REVISION integer Compatible implementation revision.
----@field SUPPORTED_FLAVORS string[] Read-only list of the supported flavour ids, in table order.
+---@field SUPPORTED_FLAVORS string[] Read-only view of the supported flavour ids, in table order; index from 1 to `SUPPORTED_FLAVOR_COUNT` (`#` and `ipairs` do not see through the view on Lua 5.1).
+---@field SUPPORTED_FLAVOR_COUNT integer How many flavour ids `SUPPORTED_FLAVORS` holds.
 ---@field GetFlavor fun(self: ApiKit): ApiKit.Flavor
 ---@field GetGlobalStatus fun(self: ApiKit): ApiKit.GlobalStatus
 ---@field RegisterFlavor fun(self: ApiKit, flavor: string, install: ApiKit.Installer, info: ApiKit.FlavorInfo?): boolean
@@ -137,6 +138,7 @@ local function validatePublicSurface(implementation)
         and rawget(implementation, "API") == API_GENERATION
         and type(rawget(implementation, "REVISION")) == "number"
         and type(rawget(implementation, "SUPPORTED_FLAVORS")) == "table"
+        and type(rawget(implementation, "SUPPORTED_FLAVOR_COUNT")) == "number"
         and type(rawget(implementation, "GetFlavor")) == "function"
         and type(rawget(implementation, "GetGlobalStatus")) == "function"
         and type(rawget(implementation, "RegisterFlavor")) == "function"
@@ -149,13 +151,12 @@ end
 local function validateStateBase(currentState)
     return type(currentState) == "table"
         and rawget(currentState, "schema") == STATE_SCHEMA
-        and type(rawget(currentState, "flavor")) == "string"
         and type(rawget(currentState, "root")) == "table"
         and type(rawget(currentState, "apis")) == "table"
         and type(rawget(currentState, "installed")) == "table"
         and type(rawget(currentState, "info")) == "table"
-        and type(rawget(currentState, "globalStatus")) == "string"
         and type(rawget(currentState, "supportedFlavors")) == "table"
+        and type(rawget(currentState, "supportedFlavorsView")) == "table"
 end
 
 ---Whether `implementation` carries package state of this revision's schema.
@@ -275,22 +276,34 @@ end
 ---Publish `root` as the short global when nothing else owns that name.
 ---
 ---`wow` is generic enough that another addon may use it, and the framework
----never fights for a global: an existing value that is not this root is left
----alone and reported as `"taken"`, and `MoltenCodes.wow` remains the way in.
+---never fights for a global: an existing value is left alone, and
+---`MoltenCodes.wow` remains the way in. Whether the global names the root is
+---read live by `GetGlobalStatus`, so a later replacement is reported too.
 ---@param root table
----@return "published"|"taken"
 local function publishShortGlobal(root)
     -- selene: allow(global_usage)
-    local existing = rawget(_G, SHORT_GLOBAL_NAME)
-    if existing == nil then
+    if rawget(_G, SHORT_GLOBAL_NAME) == nil then
         -- selene: allow(global_usage)
         rawset(_G, SHORT_GLOBAL_NAME, root)
-        return "published"
     end
-    if existing == root then
-        return "published"
+end
+
+---Make `MoltenCodes.wow` the root, refusing to overwrite something else.
+---
+---The namespace table is the framework's own, so a foreign value under `wow`
+---there is corruption rather than a coexistence case: a consumer reading
+---`MoltenCodes.wow.retail.api` must never be handed another table.
+---@param root table
+local function publishNamespaceRoot(root)
+    if type(namespace) ~= "table" then
+        return
     end
-    return "taken"
+    local existing = rawget(namespace, SHORT_GLOBAL_NAME)
+    if existing == nil then
+        rawset(namespace, SHORT_GLOBAL_NAME, root)
+    elseif existing ~= root then
+        error("MoltenCodes ApiKit found MoltenCodes.wow owned by something else", 2)
+    end
 end
 
 local state = rawget(ApiKit, "_state")
@@ -306,14 +319,13 @@ if previousRevision == nil then
     end
     state = {
         schema = STATE_SCHEMA,
-        flavor = probeFlavor(),
+        flavor = UNSUPPORTED_FLAVOR,
         root = root,
         apis = apis,
         -- Per flavour id: `true` once its installer has run.
         installed = {},
         -- Per flavour id: the `info` its registration carried (`false` for none).
         info = {},
-        globalStatus = "taken",
         supportedFlavors = supportedFlavors,
         supportedFlavorsView = setmetatable({}, {
             __index = supportedFlavors,
@@ -322,13 +334,19 @@ if previousRevision == nil then
         }),
     }
     rawset(ApiKit, "_state", state)
-    rawset(state, "globalStatus", publishShortGlobal(root))
-    if type(namespace) == "table" then
-        rawset(namespace, SHORT_GLOBAL_NAME, root)
-    end
+    publishShortGlobal(root)
+    publishNamespaceRoot(root)
 elseif not validateStateBase(state) then
     error("MoltenCodes ApiKit package state is corrupted or incomplete", 2)
 end
+
+-- The flavour is probed on every bootstrap, first load and upgrade alike, as
+-- ClientKit does: a newer revision that knows a flavour this one does not can
+-- then recognise a client this one called unsupported. Installed flavours are
+-- keyed by id, so a re-probe never runs an installer twice. A revision that
+-- adds a flavour extends `FLAVORS` here and adds the new `api` table to `root`
+-- and `apis` in place when they lack it.
+rawset(state, "flavor", probeFlavor())
 
 -- Package public API ----------------------------------------------------------
 
@@ -388,12 +406,16 @@ local function packageGetFlavor(self)
     return rawget(state, "flavor")
 end
 
----Return whether the short `wow` global names `MoltenCodes.wow`.
+---Return whether the short `wow` global names `MoltenCodes.wow`, read live.
 ---@param self ApiKit
 ---@return ApiKit.GlobalStatus
 local function packageGetGlobalStatus(self)
     validateReceiver(self, "GetGlobalStatus")
-    return rawget(state, "globalStatus")
+    -- selene: allow(global_usage)
+    if rawget(_G, SHORT_GLOBAL_NAME) == rawget(state, "root") then
+        return "published"
+    end
+    return "taken"
 end
 
 ---Register a flavour's installer; the entry point every generated flavour
@@ -404,9 +426,12 @@ end
 ---the namespace, a second copy of the same flavour (two addons embedding it)
 ---is dropped, and a file for another flavour costs nothing beyond this call.
 ---Whatever the installer raises propagates to the generated file's load, so a
----broken generated file is loud rather than half-installed and silent. `info`
----is recorded for `GetMetadataBuild` whether or not the installer runs, the
----first registration of a flavour winning.
+---broken generated file is loud rather than half-installed and silent; the
+---flavour's table is emptied and its registration forgotten first, so a later
+---copy (another addon's working file) starts clean. `info` is recorded for
+---`GetMetadataBuild` whether or not the installer runs, the first registration
+---of a flavour winning; unknown `info` fields are ignored, so a file from a
+---newer generator still registers.
 ---@param self ApiKit
 ---@param flavor string
 ---@param install ApiKit.Installer
@@ -430,9 +455,18 @@ local function packageRegisterFlavor(self, flavor, install, info)
         return false
     end
     rawset(installedTable, row.id, true)
+    local api = rawget(rawget(state, "apis"), row.id)
     -- The host is the global table: every alias the installer makes is read from it.
     -- selene: allow(global_usage)
-    install(rawget(rawget(state, "apis"), row.id), _G)
+    local ok, failure = pcall(install, api, _G)
+    if not ok then
+        for key in pairs(api) do
+            rawset(api, key, nil)
+        end
+        rawset(installedTable, row.id, nil)
+        rawset(infoTable, row.id, nil)
+        error(failure, 0)
+    end
     return true
 end
 
@@ -457,6 +491,7 @@ end
 rawset(ApiKit, "API", API_GENERATION)
 rawset(ApiKit, "REVISION", IMPLEMENTATION_REVISION)
 rawset(ApiKit, "SUPPORTED_FLAVORS", rawget(state, "supportedFlavorsView"))
+rawset(ApiKit, "SUPPORTED_FLAVOR_COUNT", #rawget(state, "supportedFlavors"))
 rawset(ApiKit, "GetFlavor", packageGetFlavor)
 rawset(ApiKit, "GetGlobalStatus", packageGetGlobalStatus)
 rawset(ApiKit, "RegisterFlavor", packageRegisterFlavor)

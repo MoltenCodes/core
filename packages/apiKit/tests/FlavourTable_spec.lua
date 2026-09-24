@@ -34,10 +34,11 @@ describe("ApiKit flavour table", function()
     it("lists the same flavours in the same order as the tooling", function()
         local ApiKit = TestEnv.NewPackageFor("retail")
         local rows = readToolingTable()
-        assert.are.equal(5, #rows)
+        assert.are.equal(ApiKit.SUPPORTED_FLAVOR_COUNT, #rows)
         for index, row in ipairs(rows) do
             assert.are.equal(row.id, ApiKit.SUPPORTED_FLAVORS[index])
         end
+        assert.is_nil(ApiKit.SUPPORTED_FLAVORS[#rows + 1])
     end)
 
     it("publishes every namespace the tooling names", function()

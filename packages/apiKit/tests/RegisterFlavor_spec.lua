@@ -82,18 +82,35 @@ describe("ApiKit:RegisterFlavor", function()
         assert.is_nil(build)
     end)
 
-    it("lets an installer failure propagate and does not retry that flavour", function()
+    it(
+        "lets an installer failure propagate and leaves the flavour clean for the next copy",
+        function()
+            local ApiKit = TestEnv.NewPackageFor("retail")
+            assert.has_error(function()
+                ApiKit:RegisterFlavor("retail", function(api)
+                    api.half = true
+                    error("generated file is broken", 0)
+                end, { build = 1 })
+            end, "generated file is broken")
+
+            -- selene: allow(global_usage)
+            local api = rawget(_G, "MoltenCodes").wow.retail.api
+            assert.is_nil(api.half)
+            assert.is_nil(ApiKit:GetMetadataBuild("retail"))
+            assert.is_true(ApiKit:RegisterFlavor("retail", function(target)
+                target.whole = true
+            end, { build = 2 }))
+            assert.is_true(api.whole)
+            local _, build = ApiKit:GetMetadataBuild("retail")
+            assert.are.equal(2, build)
+        end
+    )
+
+    it("keeps the first registration's absence of info", function()
         local ApiKit = TestEnv.NewPackageFor("retail")
-        assert.has_error(function()
-            ApiKit:RegisterFlavor("retail", function()
-                error("generated file is broken", 0)
-            end)
-        end, "generated file is broken")
-        local ran = false
-        assert.is_false(ApiKit:RegisterFlavor("retail", function()
-            ran = true
-        end))
-        assert.is_false(ran)
+        ApiKit:RegisterFlavor("classic-era", function() end)
+        ApiKit:RegisterFlavor("classic-era", function() end, { build = 9 })
+        assert.is_nil(ApiKit:GetMetadataBuild("classic-era"))
     end)
 
     it("survives a reload with the installed flavour intact", function()

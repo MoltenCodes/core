@@ -170,6 +170,9 @@ class RepositoryValidatorTests(unittest.TestCase):
 
         self.assertEqual(["registry", "apiKit"], module.embedded_package_names(path))
         self.assertEqual("apiKit", module.package_id_of_reference("Libs\\MoltenCodes\\apiKit\\flavours\\Retail.lua"))
+        self.assertEqual("apiKit", module.package_id_of_reference("Libs\\moltencodes\\apiKit\\flavours\\Retail.lua"))
+        self.assertEqual("apiKit", module.package_id_of_reference("Libs\\Other\\MoltenCodes\\apiKit\\ApiKit.lua"))
+        self.assertEqual("registry", module.package_id_of_reference("Libs\\MoltenCodes\\Registry.lua"))
         self.assertEqual("timerKit", module.package_id_of_reference("TimerKit.lua"))
 
     def test_example_config_must_list_meta_and_the_embedded_packages(self):

@@ -32,6 +32,10 @@ Spec files:
 | `FlavourTable_spec.lua` | the facade's table against the tooling's flavour table |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
 
+Not yet covered: an in-place upgrade from an older revision (none exists), so
+the facade's own inherited-state validation is exercised only by a same-revision
+copy with incomplete state, which Registry refuses first.
+
 `tests/support/ApiKitTestEnv.lua` builds the two-module chain (Registry, ApiKit)
 on the shared fixture and installs the client identity a spec asks for
 (`SetClient`, `NewPackageFor`).
