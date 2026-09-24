@@ -38,6 +38,8 @@ tests/client/
 │   ├── LifecycleKitSuite.lua
 │   └── EXPECTED.md
 ├── MoltenCodesTest_ModuleKit/         # the test addon of the `moduleKit` package (.toc, suite, EXPECTED.md)
+├── MoltenCodesTest_PoolKit/           # the test addon of the `poolKit` package (.toc, suite, EXPECTED.md)
+├── MoltenCodesTest_SchedulerKit/      # the test addon of the `schedulerKit` package (.toc, suite, EXPECTED.md)
 └── MoltenCodesTest_TimerKit/          # the test addon of the `timerKit` package (.toc, suite, EXPECTED.md)
 ```
 

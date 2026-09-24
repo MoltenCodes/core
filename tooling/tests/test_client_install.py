@@ -194,6 +194,50 @@ class InstallTests(FakeClientTests):
         self.assertIn(str(module_kit_addon), output)
         self.assert_neighbour_untouched()
 
+    def test_installs_the_poolkit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "poolKit")
+
+        self.assertEqual(0, status, errors)
+        pool_kit_addon = self.addons / "MoltenCodesTest_PoolKit"
+        self.assertEqual(
+            ["MoltenCodesTest_PoolKit.toc", "PoolKitSuite.lua"],
+            sorted(path.name for path in pool_kit_addon.iterdir()),
+        )
+        toc = (pool_kit_addon / "MoltenCodesTest_PoolKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nPoolKitSuite.lua\n", toc)
+        self.assertTrue((self.addons / "MoltenCodes" / "poolKit" / "PoolKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_Registry").exists())
+        self.assertIn(str(pool_kit_addon), output)
+        self.assert_neighbour_untouched()
+
+    def test_installs_the_schedulerkit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "schedulerKit")
+
+        self.assertEqual(0, status, errors)
+        scheduler_kit_addon = self.addons / "MoltenCodesTest_SchedulerKit"
+        self.assertEqual(
+            ["MoltenCodesTest_SchedulerKit.toc", "SchedulerKitSuite.lua"],
+            sorted(path.name for path in scheduler_kit_addon.iterdir()),
+        )
+        toc = (scheduler_kit_addon / "MoltenCodesTest_SchedulerKit.toc").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nSchedulerKitSuite.lua\n", toc)
+        bundle = self.addons / "MoltenCodes"
+        self.assertTrue((bundle / "schedulerKit" / "SchedulerKit.lua").is_file())
+        # SchedulerKit's delays are TimerKit timers, and the ForAddon test logs
+        # the logout route LifecycleKit provides.
+        for kit in ("timerKit/TimerKit.lua", "lifecycleKit/LifecycleKit.lua"):
+            with self.subTest(kit=kit):
+                self.assertTrue((bundle / kit).is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_TimerKit").exists())
+        self.assertIn(str(scheduler_kit_addon), output)
+        self.assert_neighbour_untouched()
+
     def test_installs_several_test_addons_in_one_command(self):
         status, _, errors = self.run_command("--package", "registry", "--package", "signalKit")
 
@@ -212,6 +256,8 @@ class InstallTests(FakeClientTests):
         self.assertIn("lifecycleKit", available)
         self.assertIn("timerKit", available)
         self.assertIn("moduleKit", available)
+        self.assertIn("schedulerKit", available)
+        self.assertIn("poolKit", available)
         self.assertNotIn("widgetKit", available)
 
     def test_expected_lua_lists_every_bundled_package_and_testkit_at_their_manifest_revisions(self):
