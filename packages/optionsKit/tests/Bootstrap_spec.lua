@@ -148,6 +148,33 @@ describe("OptionsKit bootstrap", function()
         assert.are.equal("Raid", again:Get("profiles.current"))
     end)
 
+    it("upgrades a revision 3 state in place: same facade, state and trees", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("SchemaKit")
+        local OptionsKit = TestEnv.LoadRevision(3)
+        local state = rawget(OptionsKit, "_state")
+        local store = { enabled = false }
+        local tree = OptionsKit:Define("Addon", toggleTree(store))
+        local changes = 0
+        tree:OnChange(function()
+            changes = changes + 1
+        end)
+
+        -- The shipped file, at its own revision, loads over revision 3.
+        local upgraded = require("OptionsKit")
+        assert.are.equal(OptionsKit, upgraded)
+        assert.is_true(upgraded.REVISION > 3)
+        assert.are.equal(state, rawget(upgraded, "_state"))
+        assert.are.equal(tree, upgraded:Get("Addon"))
+        assert.are.equal(2, rawget(tree, "_schema"))
+        assert.is_true(tree:Set("enabled", true))
+        assert.is_true(store.enabled)
+        assert.are.equal(1, changes)
+    end)
+
     it("requires Registry", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()

@@ -293,6 +293,36 @@ describe("SettingsKit and secret values", function()
         end
     )
 
+    it("reads, iterates and compacts a secret saved value as it is stored", function()
+        local secret = TestEnv.NewSecret()
+        local saved = TestEnv.GetGlobal("MyAddonDB")
+        saved.profiles.Default.name = secret
+
+        assert.is_true(rawequal(secret, db.profile.name))
+        local seen = nil
+        for key, value in db:Pairs(db.profile) do
+            if key == "name" then
+                seen = value
+            end
+        end
+        assert.is_true(rawequal(secret, seen))
+        db:Compact()
+        assert.is_true(rawequal(secret, saved.profiles.Default.name))
+    end)
+
+    it("skips a secret stored profile choice when a profile is deleted", function()
+        local secret = TestEnv.NewSecret()
+        local saved = TestEnv.GetGlobal("MyAddonDB")
+        db:SetProfile("Spare")
+        db:SetProfile("Default")
+        saved.profileKeys["Other - Realm"] = secret
+        saved.profileKeys["Third - Realm"] = "Spare"
+
+        db:DeleteProfile("Spare")
+        assert.is_true(rawequal(secret, saved.profileKeys["Other - Realm"]))
+        assert.is_nil(saved.profileKeys["Third - Realm"])
+    end)
+
     it("refuses a secret key", function()
         local secret = TestEnv.NewSecret()
         local message = raisedAtWriter(function(mark)

@@ -137,6 +137,49 @@ describe("CommKit bootstrap", function()
         )
     end)
 
+    it("upgrades a revision 3 copy in place with a send in flight", function()
+        local older = TestEnv.Load({ commKitRevision = 3 })
+        assert.are.equal(3, older.REVISION)
+        local olderState = rawget(older, "_state")
+        local prototypes = { older.Scope, older.SendHandle, older.Connection, older.SyncSet }
+        older:SetLimits({ burst = 400, maxCps = 100 })
+        local scope = older:ForAddon("MyAddon")
+        local received = {}
+        scope:Register(PREFIX, function(_, text)
+            received[#received + 1] = text
+        end)
+        local text = TestEnv.Text(700)
+        local handle = scope:Send({ prefix = PREFIX, text = text, distribution = "PARTY" })
+        TestEnv.Advance(0)
+        assert.are.equal("sending", handle:GetState())
+        TestEnv.Loopback("Friend-Realm")
+
+        package.loaded["CommKit"] = nil
+        local CommKit = require("CommKit")
+        assert.are.equal(older, CommKit)
+        assert.is_true(CommKit.REVISION > 3)
+        assert.are.equal(olderState, rawget(CommKit, "_state"))
+        assert.are.same(
+            prototypes,
+            { CommKit.Scope, CommKit.SendHandle, CommKit.Connection, CommKit.SyncSet }
+        )
+        assert.are.equal(scope, CommKit:ForAddon("MyAddon"))
+        assert.are.equal(400, CommKit:GetLimits().burst)
+
+        -- The inherited driver now reads a secret send result as a throttle.
+        local secret = {}
+        -- selene: allow(global_usage)
+        rawset(_G, "issecretvalue", function(value)
+            return value == secret
+        end)
+        TestEnv.QueueSendResults(secret)
+        TestEnv.Advance(10)
+        assert.are.equal(1, CommKit:GetStatistics().throttled)
+        assert.are.equal("sent", handle:GetState())
+        TestEnv.Loopback("Friend-Realm")
+        assert.are.same({ text }, received)
+    end)
+
     it("requires Registry", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()

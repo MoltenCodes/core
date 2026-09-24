@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.2 — 2026-09-24
+
+- Nil checks on values CommandKit did not create (caller arguments, spec, option and limit fields, host globals such as `SlashCmdList` entries and the edit box handed to Tab, and the values an OptionsKit tree describes) test `type(value) == "nil"` instead of comparing with `nil`, so a secret among them is never compared inside CommandKit. Values CommandKit creates itself keep their plain comparisons.
+- A secret sub-command key is refused before `table.sort` compares the keys, with the message every other secret name gets (`... spec.subcommands key must not be a secret value`).
+- A secret limit given to `CreateScope`, `ForAddon` or `SetLimits` is refused at the caller, with the message a wrong type gets, before it is compared with `CommandKit.UNBOUNDED` or tested for truth. `false` as a scope option still reads as an absent one.
+- A receiver, context or `BindOptions` tree whose `__metatable` or `__index` is secret is tested by type before it is compared.
+- `set <path> toggle` over a secret `toggle` value or a secret `multiselect` entry prints `the current value is secret; use on or off` instead of testing the secret. Tab completion leaves a line to the client when the cursor position is secret, and the tab replacement is removed only while the global is still a function.
+- `docs/API.md` lists the new messages under "Secret values".
+- Implementation revision 4. No layout changes: revision 4 takes over revision 3's state as it is; a command bound before the upgrade keeps the `BindOptions` handlers of the revision that bound it.
+- 147 specs: a secret sub-command key, secret `__metatable` and `__index`, secret limits, toggling a secret value, a secret cursor position, and the upgrade from revision 3 (the revision 2 upgrade spec now shares its checks, including state and prototype identity).
+
 ## 0.2.1 — 2026-09-24
 
 - `BindOptions` follows OptionsKit 0.2.0: `list <path>` prints the text a `desc` function returned when `Describe` ran, and a secret one as `(secret value)` instead of failing inside its own `Print`. A `desc` function that raises or returns no string, another tree callback that raises, or a tree that was undefined is reported like any handler failure (`/cmd get failed: <message>` and the host error handler), as `docs/API.md` now says. A tree holding `OptionsKit:ProfileOptions` needs nothing specific.

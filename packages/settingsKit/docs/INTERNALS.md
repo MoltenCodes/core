@@ -135,6 +135,8 @@ Views are built recursively down to SchemaKit's `maxDepth` limit (16 by default)
 
 Both kinds ask `issecretvalue` about the key before comparing it or using it to index anything; a secret key raises at the reading line.
 
+A saved value, a key from the caller's path and a default from the caller's schema did not originate in SettingsKit, so their absence is tested with `type(value) == "nil"`: comparing a secret, even with `nil`, raises in the client. Only values SettingsKit built (its nodes, plans, caches and the results of its own lookups) are compared with `nil` directly.
+
 ### Iteration
 
 `db:Pairs(view)` returns the file-local `pairsNext`, the view and `nil`. `pairsNext` is stateless: phase one walks `node.defaults` (a record's field defaults or a keyed section's own default entries), phase two walks the resolved saved table and skips keys that have a default. The previous key tells the phases apart, because a key with a default always belongs to phase one. A phase-one read may store a plain-table default, which only adds a key phase two skips, so the saved table never changes while phase two walks it.
@@ -160,7 +162,7 @@ A probe key left behind by a custom check that raised mid-check is cleared by th
 
 ## Closures and upgrades
 
-SettingsKit hands out one closure per database: the `PLAYER_LOGOUT` listener, which calls through `state.dispatch`. The connection EventKit returns is not kept: a database lives for the session and is never disconnected. Views and databases get their behaviour from the two metatables in `_state` and the `Database` prototype, which a newer revision rewrites in place. Databases, nodes and plans carry layout numbers so a revision that changes a layout can upgrade them lazily. The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to 3 and checks that a database opened before the upgrade, its views, its `OnChange` and profile listeners and its logout compaction keep working.
+SettingsKit hands out one closure per database: the `PLAYER_LOGOUT` listener, which calls through `state.dispatch`. The connection EventKit returns is not kept: a database lives for the session and is never disconnected. Views and databases get their behaviour from the two metatables in `_state` and the `Database` prototype, which a newer revision rewrites in place. Databases, nodes and plans carry layout numbers so a revision that changes a layout can upgrade them lazily. The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised by one and checks that a database opened before the upgrade, its views, its `OnChange` and profile listeners and its logout compaction keep working.
 
 Revision 1 gave an entry view of a keyed section declared without a default `false` for its `defaults`, and handed that `false` down to the record views below it, so a saved entry read `nil` where the wildcard or a field default applied. Revision 2 builds every node's `defaults` through `viewDefaults`, and an upgrade over revision 1 walks `state.views` once and recomputes the `defaults` of every live node, parents first; a node revision 1 built correctly gets the same table back. A spec leaves two nodes in the revision 1 shape, reloads, and checks that they read their defaults.
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-09-24
+
+- Every absent value that comes from outside CodecKit is tested with `type`, never with `== nil`: the `options` argument of every method, option and limit keys, `SetLimits` values, the Registry alias read from the `MoltenCodes` namespace and the SchedulerKit facade `Registry:Find` returns. The receiver check tests `type` before comparing with the facade. A secret receiver or `options` argument is now refused at the caller with the ordinary message (`CodecKit:Encode must be called on the CodecKit facade; use CodecKit:Encode(...)`, `CodecKit:Encode options must be a table or nil`) instead of raising inside CodecKit on the comparison. Every value accepted before is still accepted.
+- Implementation revision 3. The state layout is unchanged: `Bootstrap_spec.lua` loads a revision 2 copy and upgrades it in place, keeping the state table, the limits and the pool.
+- `docs/API.md` states revision 3 and the refusal of a secret receiver or `options` argument.
+- 107 specs.
+
 ## 0.1.1 — 2026-09-24
 
 - A secret option value (`compress`, `channel`, `level`) or `SetLimits` value is now refused at the caller before anything compares it: `CodecKit:Encode options.level must not be a secret value`, `CodecKit:SetLimits limits.maxDepth must not be a secret value`. Revision 1 compared these values with `nil`, a set or the `UNBOUNDED` sentinel first, which raises a host error at a line inside CodecKit when the value is a secret. Absent options are now tested with `type`, never with `== nil`.

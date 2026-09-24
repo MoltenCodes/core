@@ -264,21 +264,24 @@ describe("OptionsKit with the real SettingsKit", function()
         assert.are.equal(1, db.profile.tint.r)
     end)
 
-    it("allocates nothing on Validate of a bound option once the path exists", function()
-        local OptionsKit, db = openFrameDatabase()
-        local tree = OptionsKit:Define("Addon", {
-            type = "group",
-            args = {
-                x = { type = "range", name = "X", min = 0, max = 3, bind = "profile.frame.x" },
-            },
-        }, { db = db })
-        tree:Set("x", 1)
-        tree:Validate("x", 2)
-        local allocated = TestEnv.AllocatedKilobytes(function()
-            for _ = 1, 2000 do
-                tree:Validate("x", 2)
-            end
-        end)
-        assert.is_true(allocated < 1, "Validate allocated " .. allocated .. " KiB")
-    end)
+    it(
+        "allocates nothing on Validate of a bound option once the path exists #allocation",
+        function()
+            local OptionsKit, db = openFrameDatabase()
+            local tree = OptionsKit:Define("Addon", {
+                type = "group",
+                args = {
+                    x = { type = "range", name = "X", min = 0, max = 3, bind = "profile.frame.x" },
+                },
+            }, { db = db })
+            tree:Set("x", 1)
+            tree:Validate("x", 2)
+            local allocated = TestEnv.AllocatedKilobytes(function()
+                for _ = 1, 2000 do
+                    tree:Validate("x", 2)
+                end
+            end)
+            assert.is_true(allocated < 1, "Validate allocated " .. allocated .. " KiB")
+        end
+    )
 end)

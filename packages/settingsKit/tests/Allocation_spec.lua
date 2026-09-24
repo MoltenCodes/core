@@ -6,7 +6,7 @@ local TestEnv = require("SettingsKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("SettingsKit allocation", function()
+describe("SettingsKit allocation #allocation", function()
     local db
     before_each(function()
         local SettingsKit, _, _, _, S = TestEnv.NewPackage()

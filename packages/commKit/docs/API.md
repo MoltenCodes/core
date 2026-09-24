@@ -2,7 +2,7 @@
 
 CommKit API generation **1** sends and receives addon messages of any length: prefix registration, a chunk protocol with bounded reassembly, three priority queues that refuse rather than grow, a bandwidth budget shared with everything else in the session, and a `SyncSet` of named fields versioned by content hash.
 
-Implementation revision: **3**. Wire protocol: control bytes `0x01`–`0x05`, specified in [Wire protocol](#wire-protocol).
+Implementation revision: **4**. Wire protocol: control bytes `0x01`–`0x05`, specified in [Wire protocol](#wire-protocol).
 
 ## Loading
 
@@ -475,6 +475,17 @@ In case (b) CommKit's `OnShutdown` subscription is made at the first `ForAddon`,
 
 Retail clients hand addon code **secret values** in restricted contexts; see [`EMBEDDING.md` → Secret values](../../../docs/EMBEDDING.md#secret-values-retail-12x). A secret prefix, text, distribution, target, priority, constraint, limit (a `SetLimits` value, `maxRegistrations` or `maxListeners`), addon name, sender, field or value passed to CommKit raises at the caller, before CommKit compares it with anything, `nil` and `CommKit.UNBOUNDED` included. A received message whose prefix, text, channel or sender is secret is dropped before any of them is used as a key, compared or measured, and counted in `secretsDropped`. Error messages never format a value CommKit did not create.
 
+A secret receiver of a facade method (`CommKit.GetQueueDepth(secret)`, say) is refused at the caller with the ordinary receiver error, `CommKit:<Method> must be called on the CommKit facade; use CommKit:<Method>(...)`, before it is compared with the facade. CommKit also asks `issecretvalue` about what the client and other packages hand back before it compares it with anything:
+
+| Value | Secret outcome |
+|-------|----------------|
+| `SendAddonMessage` or `SendAddonMessageLogged` result | Names nothing, so it is a throttle: the pipe is set aside and the chunk retried. |
+| `RegisterAddonMessagePrefix` result | `Register` and `SyncSet` return `nil, "unknownResult"`. |
+| `IsAddonMessagePrefixRegistered` answer | Not taken as registered; the prefix is registered, which the client accepts again. |
+| An entry of `Enum.SendAddonMessageResult` or `Enum.RegisterAddonMessagePrefixResult` | CommKit's own value for that entry is used instead. |
+| A SchemaKit schema's `Check` verdict | Not an acceptance: `Set` returns `nil, "schema"`, a delivery is counted in `syncRejected`. |
+| An entry of LifecycleKit's `CLOSES_ADDON_SCOPES` | Not a hand-over: case (b) or (c) of [At logout](#at-logout) applies. |
+
 ## Security: received data is untrusted
 
 A received message is whatever the sender chose to send, and a sender may be hostile. CommKit bounds what a sender can make it hold and refuses malformed chunks, but it does not authenticate senders or check what a message says. **Decode received text with CodecKit, validate the result with SchemaKit, and treat a failure like any other malformed message**; see [`codecKit/docs/API.md`](../../codecKit/docs/API.md#security-decoded-data-is-untrusted). A SyncSet checks the shape of every frame and each field against its schema when one is given; give one. A SyncSet also caches deliveries nobody requested: any sender can whisper a delivery and have its values stored under its own name, up to `maxSyncPeers` peers, so treat `GetRemote` and `OnChanged` values as claims of that sender, never as facts. Never run received text as code or a macro, and never use it as a frame name, a global name or a format string. The `sender` string is filled in by the server, but the addon behind it can send anything.
@@ -510,4 +521,4 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 The package state (`_state`) holds the queues, the bucket, the limits, the statistics, the reassembly streams, the prefix signals, the Kit-owned scopes and the pools, and all of it is kept across an in-place upgrade: a newer compatible revision replaces the functions on the shared prototypes and in the dispatch table, and every callback CommKit handed to EventKit, TimerKit, SchedulerKit and HookKit calls through that table, so queued sends, open streams, registrations and SyncSets keep working under the new code.
 
-Revision 3 inherits revision 2's state unchanged. Revision 2 and later upgrade the addon scopes revision 1 built in place and arrange their [logout close](#at-logout) while it loads, for every open one. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: the subscription calls the facade and the watcher calls through the `logout` trampoline, so both run the newest code, and nothing is subscribed twice. The wire protocol belongs to API generation 1, not to the revision.
+Revisions 3 and 4 inherit revision 2's state unchanged. Revision 2 and later upgrade the addon scopes revision 1 built in place and arrange their [logout close](#at-logout) while it loads, for every open one. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: the subscription calls the facade and the watcher calls through the `logout` trampoline, so both run the newest code, and nothing is subscribed twice. The wire protocol belongs to API generation 1, not to the revision.

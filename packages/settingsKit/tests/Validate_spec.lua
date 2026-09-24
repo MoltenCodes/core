@@ -152,7 +152,7 @@ describe("SettingsKit db:Validate", function()
         assert.are.same({}, saved().profiles.Other)
     end)
 
-    it("allocates nothing for a valid check with an array path", function()
+    it("allocates nothing for a valid check with an array path #allocation", function()
         local topLevel = { "scale" }
         local nested = { "frame", "x" }
         local entry = { "auras", 7, "shown" }

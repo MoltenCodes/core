@@ -1,5 +1,21 @@
 local TestEnv = require("OptionsKitTestEnv")
 
+local SOURCE = debug.getinfo(1, "S").short_src
+
+---Run `action` and assert it failed with `message` reported at the line of this
+---spec file that called into OptionsKit: `mark()` records the line after it.
+---@param message string
+---@param action fun(mark: fun())
+local function assertReportedAtCaller(message, action)
+    local expectedLine = nil
+    local function mark()
+        expectedLine = debug.getinfo(2, "l").currentline + 1
+    end
+    local ok, value = pcall(action, mark)
+    assert.is_false(ok)
+    assert.are.equal(SOURCE .. ":" .. tostring(expectedLine) .. ": " .. message, value)
+end
+
 describe("OptionsKit and secret values", function()
     local OptionsKit
     local secret
@@ -150,5 +166,41 @@ describe("OptionsKit and secret values", function()
         local described = withColour:Describe().children[1].value
         assert.is_false(rawequal(colour, described))
         assert.is_true(rawequal(secret, described.r))
+    end)
+
+    it("refuses a secret limit option at the caller before comparing it", function()
+        for _, name in ipairs({ "maxOptions", "maxDepth", "maxDynamicEntries" }) do
+            assertReportedAtCaller(
+                "OptionsKit:Define options." .. name .. " must not be a secret value",
+                function(mark)
+                    mark()
+                    OptionsKit:Define("Limited", { type = "group", args = {} }, { [name] = secret })
+                end
+            )
+        end
+        assert.is_nil(OptionsKit:Get("Limited"))
+    end)
+
+    it("counts a secret returned by validate as a refusal without comparing it", function()
+        local written = 0
+        local guarded = OptionsKit:Define("Guarded", {
+            type = "group",
+            args = {
+                label = {
+                    type = "input",
+                    name = "Label",
+                    get = function() end,
+                    set = function()
+                        written = written + 1
+                    end,
+                    validate = function()
+                        return secret
+                    end,
+                },
+            },
+        })
+        assert.are.same({ false, "refused by validate" }, { guarded:Set("label", "x") })
+        assert.are.same({ false, "refused by validate" }, { guarded:Validate("label", "x") })
+        assert.are.equal(0, written)
     end)
 end)

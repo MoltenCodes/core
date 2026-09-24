@@ -137,3 +137,5 @@ Revision 1 creates the state above; a later revision validates it with `validate
 Revision 2 does this for scope layout 2: it walks `addonScopes`, gives every layout-1 scope `_logoutCloser = "none"` and `_shutdownSubscription = false`, adds `logoutWatch` to the state, and after committing arranges the logout close of every open addon scope in addon-name order. A manual layout-1 scope is left as built; the logout code reads both fields with `rawget` and treats a missing one as "nothing to do". The logout functions are fields of one `LogoutClose` table and the logout constants one `LOGOUT` table, because the main chunk is close to Lua 5.1's limit of 200 locals.
 
 Revision 3 changes no layout and inherits revision 2's state unchanged. Its fixes reach every existing command through `dispatch` and the shared prototypes, except the sub-command handlers `BindOptions` compiled into a bound command's records, which stay those of the revision that bound it.
+
+Revision 4 changes no layout either and inherits revision 3's state unchanged; its nil checks on outside values reach existing commands the same way.

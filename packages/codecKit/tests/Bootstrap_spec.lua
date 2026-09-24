@@ -102,6 +102,37 @@ describe("CodecKit bootstrap", function()
         )
     end)
 
+    it("upgrades a revision 2 copy in place and still accepts absent options", function()
+        TestEnv.Reset()
+        require("Registry")
+        require("PoolKit")
+        local older = TestEnv.LoadRevision(2)
+        assert.are.equal(2, older.REVISION)
+        older:SetLimits({ maxStringLength = older.UNBOUNDED, maxDepth = 12 })
+        local state = older._state
+        local pool = state.pool
+        local _, frame = older:Encode({ "kept" }, { compress = "deflate" })
+
+        package.loaded["CodecKit"] = nil
+        local CodecKit = require("CodecKit")
+        assert.are.equal(older, CodecKit)
+        assert.is_true(CodecKit.REVISION > 2)
+        assert.are.equal(state, CodecKit._state)
+        assert.are.equal(CodecKit.REVISION, CodecKit._state.runtimeRevision)
+        assert.are.equal(pool, CodecKit._state.pool)
+        local limits = CodecKit:GetLimits()
+        assert.are.equal(CodecKit.UNBOUNDED, limits.maxStringLength)
+        assert.are.equal(12, limits.maxDepth)
+
+        local ok, decoded = CodecKit:Decode(frame, nil)
+        assert.is_true(ok)
+        assert.are.same({ "kept" }, decoded)
+        assert.is_true((CodecKit:Compress("bytes", nil)))
+        CodecKit:SetLimits({ maxDepth = 10, maxValues = nil })
+        assert.are.equal(10, CodecKit:GetLimits().maxDepth)
+        assert.are.equal(0, pool:GetActiveCount())
+    end)
+
     it("requires Registry", function()
         TestEnv.Reset()
         local ok, value = pcall(require, "CodecKit")

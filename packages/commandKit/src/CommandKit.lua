@@ -53,7 +53,7 @@
 
 local PACKAGE_NAME = "commandKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local OPTIONAL_OPTIONSKIT_API = 1
@@ -658,11 +658,26 @@ end
 -- CommandKit. `level` is always the value `error` needs *inside the function
 -- that receives it*, so every further hop towards `error` adds exactly one.
 
+---The metatable of a caller's table, or `nil` for anything else.
+---
+---`getmetatable` answers a table's `__metatable` field, which may hold
+---anything, a secret included, so callers test the result's type before they
+---compare it, and this function never tests its truth.
+---@param value any
+---@return any metatable
+local function readMetatable(value)
+    if type(value) ~= "table" then
+        return nil
+    end
+    return getmetatable(value)
+end
+
 ---@param scope any receiver the public method was called on
 ---@param methodName string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateScope(scope, methodName, level)
-    if type(scope) ~= "table" or getmetatable(scope) ~= SCOPE_METATABLE then
+    local metatable = readMetatable(scope)
+    if type(metatable) ~= "table" or metatable ~= SCOPE_METATABLE then
         error(methodName .. " must be called on a CommandKit scope", level)
     end
 end
@@ -733,7 +748,8 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateOptionalString(value, label, level)
-    if value ~= nil and type(value) ~= "string" then
+    local valueType = type(value)
+    if valueType ~= "nil" and valueType ~= "string" then
         error(label .. " must be a string", level)
     end
 end
@@ -1199,7 +1215,7 @@ local function usageWord(description)
     local word
     if kind == "number" then
         word = description.integer and "integer" or "number"
-        if description.min ~= nil and description.max ~= nil then
+        if type(description.min) ~= "nil" and type(description.max) ~= "nil" then
             word = word .. " " .. tostring(description.min) .. ".." .. tostring(description.max)
         end
     elseif kind == "boolean" then
@@ -1214,7 +1230,8 @@ local function usageWord(description)
         end
     elseif kind == "array" then
         word = usageWord(description.of):sub(2, -2) .. "..."
-        if description.min == nil or description.min == 0 then
+        local min = description.min
+        if type(min) == "nil" or (type(min) == "number" and not isSecret(min) and min == 0) then
             return "[" .. word .. "]"
         end
         return "<" .. word .. ">"
@@ -1236,7 +1253,7 @@ end
 local function compileArguments(arguments, label, level, maxPositions)
     local compiled =
         { mode = "none", schemas = {}, coercions = {}, defaulted = {}, count = 0, usage = "" }
-    if arguments == nil then
+    if type(arguments) == "nil" then
         return compiled
     end
     if isSchema(arguments) then
@@ -1251,7 +1268,7 @@ local function compileArguments(arguments, label, level, maxPositions)
         compiled.usage = usageWord(description)
         return compiled
     end
-    if type(arguments) ~= "table" or getmetatable(arguments) ~= nil then
+    if type(arguments) ~= "table" or type(getmetatable(arguments)) ~= "nil" then
         error(label .. " must be a SchemaKit.array schema or a list of schemas", level)
     end
     local count = 0
@@ -1264,7 +1281,7 @@ local function compileArguments(arguments, label, level, maxPositions)
         end
         count = count + 1
     end
-    if count == 0 or arguments[count] == nil then
+    if count == 0 or type(arguments[count]) == "nil" then
         error(label .. " must be a non-empty list of schemas without holes", level)
     end
     local words = {}
@@ -1273,7 +1290,7 @@ local function compileArguments(arguments, label, level, maxPositions)
         local description = schema:Describe()
         compiled.schemas[position] = schema
         compiled.coercions[position] = coercionOf(description)
-        compiled.defaulted[position] = description.default ~= nil
+        compiled.defaulted[position] = type(description.default) ~= "nil"
         words[position] = usageWord(description)
     end
     compiled.mode = "positions"
@@ -1365,6 +1382,11 @@ local function compileSubcommands(record, subcommands, label, depth, level, scop
         if type(key) ~= "string" then
             error(label .. " keys must be sub-command names", level)
         end
+        -- Refused before `table.sort` below compares the keys; the message is
+        -- the one `readCommandName` gives every other secret name.
+        if isSecret(key) then
+            error(label .. " key must not be a secret value", level)
+        end
         keys[#keys + 1] = key
         if #keys > maxSubcommands then
             error(label .. " declares more than " .. maxSubcommands .. " sub-commands", level)
@@ -1408,11 +1430,11 @@ compileSpec = function(spec, path, label, depth, level, scope)
     end
     refuseUnknownFields(spec, SPEC_FIELDS, label, level + 1)
     local handler = rawget(spec, "handler")
-    if handler ~= nil and type(handler) ~= "function" then
+    if type(handler) ~= "nil" and type(handler) ~= "function" then
         error(label .. ".handler must be a function", level)
     end
     local complete = rawget(spec, "complete")
-    if complete ~= nil and type(complete) ~= "function" then
+    if type(complete) ~= "nil" and type(complete) ~= "function" then
         error(label .. ".complete must be a function", level)
     end
     local usage = rawget(spec, "usage")
@@ -1446,11 +1468,11 @@ compileSpec = function(spec, path, label, depth, level, scope)
     }
 
     local subcommands = rawget(spec, "subcommands")
-    if subcommands ~= nil then
+    if type(subcommands) ~= "nil" then
         compileSubcommands(record, subcommands, label .. ".subcommands", depth, level + 1, scope)
     end
     local names = rawget(record, "_subcommandNames")
-    if handler == nil then
+    if type(handler) == "nil" then
         if #names == 0 then
             error(label .. " needs a handler or subcommands", level)
         end
@@ -1459,7 +1481,7 @@ compileSpec = function(spec, path, label, depth, level, scope)
         if arguments.mode ~= "none" then
             error(label .. ".arguments needs a handler to receive them", level)
         end
-        if usage == nil then
+        if type(usage) == "nil" then
             rawset(record, "_usage", "<" .. table.concat(names, "|") .. ">")
         end
     end
@@ -1655,7 +1677,7 @@ local function registerCommand(scope, name, spec, methodName, level)
     local key = keyByName[lowerName]
     if key == nil then
         key = deriveKey(scope, lowerName)
-        if rawget(slashList, key) ~= nil then
+        if type(rawget(slashList, key)) ~= "nil" then
             return nil, "taken"
         end
     end
@@ -1952,7 +1974,8 @@ end
 ---@param methodName string qualified public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateContext(context, methodName, level)
-    if type(context) ~= "table" or getmetatable(context) ~= CONTEXT_METATABLE then
+    local metatable = readMetatable(context)
+    if type(metatable) ~= "table" or metatable ~= CONTEXT_METATABLE then
         error(methodName .. " must be called on a CommandKit context", level)
     end
     if rawget(context, "_live") ~= true then
@@ -2138,7 +2161,7 @@ local function formatValue(node, value)
         return "(secret value)"
     end
     local kind = node.kind
-    if value == nil then
+    if type(value) == "nil" then
         if kind == "toggle" then
             return "default"
         end
@@ -2152,7 +2175,7 @@ local function formatValue(node, value)
         if isSecret(label) then
             return tostring(value)
         end
-        if label ~= nil and tostring(label) ~= tostring(value) then
+        if type(label) ~= "nil" and tostring(label) ~= tostring(value) then
             return tostring(value) .. " (" .. tostring(label) .. ")"
         end
         return tostring(value)
@@ -2179,7 +2202,7 @@ local function formatValue(node, value)
             return "(secret value)"
         end
         local text = string.format("%.2f %.2f %.2f", value.r or 0, value.g or 0, value.b or 0)
-        if value.a ~= nil then
+        if type(value.a) ~= "nil" then
             text = text .. string.format(" %.2f", value.a)
         end
         return text
@@ -2254,6 +2277,10 @@ local function parseColour(node, ...)
     return colour
 end
 
+-- What `set <path> toggle` answers when the current value (a `toggle`, or the
+-- chosen key of a `multiselect`) is secret: flipping it would test the secret.
+local SECRET_TOGGLE_PROBLEM = "the current value is secret; use on or off"
+
 ---Parse the words after `set <path>` into a value of the option's kind.
 ---@param node table
 ---@param ... string
@@ -2288,6 +2315,9 @@ local function parseValue(node, ...)
             return nil, "expected on, off or toggle"
         end
         if lowerWord == "toggle" then
+            if isSecret(node.value) then
+                return nil, SECRET_TOGGLE_PROBLEM
+            end
             return not node.value
         end
         if node.tristate and lowerWord == "default" then
@@ -2322,7 +2352,11 @@ local function parseValue(node, ...)
     local current = type(node.value) == "table" and node.value or {}
     local enabled
     if type(stateWord) == "string" and stateWord:lower() == "toggle" then
-        enabled = current[key] ~= true
+        local chosen = current[key]
+        if isSecret(chosen) then
+            return nil, SECRET_TOGGLE_PROBLEM
+        end
+        enabled = chosen ~= true
     elseif type(stateWord) == "string" then
         enabled = BOOLEAN_WORDS[stateWord:lower()]
     end
@@ -2443,7 +2477,7 @@ local function newOptionHandlers(tree)
             contextFail(context, '"' .. node.path .. '" is disabled')
             return
         end
-        if node.bind == nil then
+        if type(node.bind) == "nil" then
             contextFail(context, '"' .. node.path .. '" has no default to reset to')
             return
         end
@@ -2720,7 +2754,7 @@ end
 ---@param editBox any
 ---@return boolean handled
 local function tryComplete(editBox)
-    if editBox == nil then
+    if type(editBox) == "nil" then
         local getActiveWindow = readGlobal("ChatEdit_GetActiveWindow")
         if type(getActiveWindow) == "function" then
             editBox = getActiveWindow()
@@ -2739,7 +2773,9 @@ local function tryComplete(editBox)
     end
     if type(editBox.GetCursorPosition) == "function" then
         local cursor = editBox:GetCursorPosition()
-        if type(cursor) == "number" and cursor < #text then
+        -- A secret cursor cannot be compared; completing without knowing
+        -- where the cursor is could rewrite text after it, so leave it.
+        if type(cursor) == "number" and (isSecret(cursor) or cursor < #text) then
             return false
         end
     end
@@ -2821,7 +2857,8 @@ local function uninstallTabHandler()
     if not completion.installed then
         return
     end
-    if readGlobal("ChatEdit_CustomTabPressed") ~= completion.handler then
+    local current = readGlobal("ChatEdit_CustomTabPressed")
+    if type(current) ~= "function" or current ~= completion.handler then
         return
     end
     writeGlobal("ChatEdit_CustomTabPressed", completion.previous)
@@ -3078,7 +3115,7 @@ end
 ---@param sink CommandKit.Sink?
 local function scopeSetSink(self, sink)
     validateScope(self, "CommandKit.Scope:SetSink", 3)
-    if sink == nil then
+    if type(sink) == "nil" then
         rawset(self, "_sink", false)
         return
     end
@@ -3104,12 +3141,16 @@ local function scopeBindOptions(self, tree, commandName, options)
     if OptionsKit == nil then
         error(methodName .. " requires OptionsKit API 1", 2)
     end
-    local metatable = type(tree) == "table" and getmetatable(tree) or nil
-    if type(metatable) ~= "table" or rawget(metatable, "__index") ~= rawget(OptionsKit, "Tree") then
+    local metatable = readMetatable(tree)
+    local treeIndex = nil
+    if type(metatable) == "table" then
+        treeIndex = rawget(metatable, "__index")
+    end
+    if type(treeIndex) ~= "table" or treeIndex ~= rawget(OptionsKit, "Tree") then
         error(methodName .. " tree must be an OptionsKit tree", 2)
     end
     local description = nil
-    if options ~= nil then
+    if type(options) ~= "nil" then
         if type(options) ~= "table" then
             error(methodName .. " options must be a table", 2)
         end
@@ -3218,15 +3259,24 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return number
 local function readScopeLimit(options, field, label, level)
-    local value = options ~= nil and rawget(options, field) or nil
-    if value == nil then
+    local value = nil
+    if type(options) ~= "nil" then
+        value = rawget(options, field)
+    end
+    local refusal = label .. "." .. field .. " must be a positive integer or CommandKit.UNBOUNDED"
+    -- A secret is refused before anything compares it or tests its truth.
+    if isSecret(value) then
+        error(refusal, level)
+    end
+    -- `false` has always read as an absent field, and keeps doing so.
+    if type(value) == "nil" or value == false then
         return SCOPE_OPTION_FIELDS[field]
     end
-    if value == UNBOUNDED then
+    if type(value) == "table" and value == UNBOUNDED then
         return math.huge
     end
     if not isPositiveInteger(value) then
-        error(label .. "." .. field .. " must be a positive integer or CommandKit.UNBOUNDED", level)
+        error(refusal, level)
     end
     return value
 end
@@ -3238,10 +3288,11 @@ end
 ---@param level integer stack level the failures are reported at
 ---@return table limits field name to the resolved limit
 local function readScopeOptions(options, label, level)
-    if options ~= nil and (type(options) ~= "table" or getmetatable(options) ~= nil) then
+    local present = type(options) ~= "nil"
+    if present and (type(options) ~= "table" or type(getmetatable(options)) ~= "nil") then
         error(label .. " must be a table", level)
     end
-    if options ~= nil then
+    if present then
         for key in next, options do
             if type(key) ~= "string" or SCOPE_OPTION_FIELDS[key] == nil then
                 error(label .. "." .. tostring(key) .. " is not a recognised option", level)
@@ -3297,12 +3348,15 @@ end
 ---@param label string argument description, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function refuseConflictingOptions(scope, options, limits, label, level)
-    if options == nil then
+    if type(options) == "nil" then
         return
     end
     for index = 1, #SCOPE_OPTION_NAMES do
         local field = SCOPE_OPTION_NAMES[index]
-        if rawget(options, field) ~= nil and limits[field] ~= rawget(scope, "_" .. field) then
+        if
+            type(rawget(options, field)) ~= "nil"
+            and limits[field] ~= rawget(scope, "_" .. field)
+        then
             error(
                 label
                     .. "."
@@ -3419,7 +3473,7 @@ end
 ---@param limits any
 ---@param level integer stack level the failures are reported at
 local function validateLimitUpdate(limits, level)
-    if type(limits) ~= "table" or getmetatable(limits) ~= nil then
+    if type(limits) ~= "table" or type(getmetatable(limits)) ~= "nil" then
         error("CommandKit:SetLimits limits must be a table", level)
     end
     for key, value in next, limits do
@@ -3428,16 +3482,19 @@ local function validateLimitUpdate(limits, level)
             error(label .. " is not a recognised limit", level)
         end
         local ceiling = LIMIT_CEILINGS[key]
+        -- A secret is refused with the type message before any comparison;
+        -- after this, `value == UNBOUNDED` compares a plain value.
+        local secret = isSecret(value)
         if ceiling == nil then
-            if value ~= UNBOUNDED and not isPositiveInteger(value) then
+            if secret or (value ~= UNBOUNDED and not isPositiveInteger(value)) then
                 error(label .. " must be a positive integer or CommandKit.UNBOUNDED", level)
             end
-        elseif value == UNBOUNDED then
+        elseif not secret and value == UNBOUNDED then
             error(
                 label .. " cannot be CommandKit.UNBOUNDED: " .. LIMIT_UNBOUNDED_REFUSALS[key],
                 level
             )
-        elseif not isPositiveInteger(value) or value > ceiling then
+        elseif secret or not isPositiveInteger(value) or value > ceiling then
             error(label .. " must be an integer from 1 to " .. ceiling, level)
         end
     end
@@ -3453,7 +3510,7 @@ local function setLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, name, value)
         end
     end

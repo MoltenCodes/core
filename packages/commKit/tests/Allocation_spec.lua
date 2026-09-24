@@ -6,7 +6,7 @@ local TestEnv = require("CommKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("CommKit allocation", function()
+describe("CommKit allocation #allocation", function()
     local CommKit
     before_each(function()
         CommKit = TestEnv.NewPackage()

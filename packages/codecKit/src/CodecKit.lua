@@ -49,7 +49,7 @@
 
 local PACKAGE_NAME = "codecKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local OPTIONAL_SCHEDULERKIT_API = 1
@@ -277,7 +277,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -2989,7 +2989,9 @@ end
 ---@param label string qualified public method name
 ---@param level integer
 local function validateFacade(receiver, label, level)
-    if receiver ~= CodecKit then
+    -- `type` first: the receiver is the caller's value, and comparing a secret
+    -- with the facade would raise here instead of at the caller.
+    if type(receiver) ~= "table" or receiver ~= CodecKit then
         error(label .. " must be called on the CodecKit facade; use " .. label .. "(...)", level)
     end
 end
@@ -3031,7 +3033,7 @@ end
 ---@param level integer
 local function validateOptionKeys(options, known, label, level)
     local key = next(options)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         if type(key) ~= "string" or known[key] ~= true then
             error(label .. " options." .. tostring(key) .. " is not a recognised option", level)
         end
@@ -3077,7 +3079,7 @@ end
 ---@return string channel
 ---@return integer compressionLevel
 local function readEncodeOptions(options, label, level)
-    if options == nil then
+    if type(options) == "nil" then
         return "none", "none", DEFAULT_LEVEL
     end
     if type(options) ~= "table" then
@@ -3101,7 +3103,7 @@ end
 ---@param level integer
 ---@return string|nil
 local function readDecodeOptions(options, label, level)
-    if options == nil then
+    if type(options) == "nil" then
         return nil
     end
     if type(options) ~= "table" then
@@ -3134,7 +3136,7 @@ local function resolveSchedulerScope(label, level)
         error(label .. " requires Registry:Find (Registry API 2 revision 7 or newer)", level)
     end
     local SchedulerKit, reason = findPackage(Registry, "schedulerKit", OPTIONAL_SCHEDULERKIT_API)
-    if SchedulerKit == nil then
+    if type(SchedulerKit) == "nil" then
         error(
             label
                 .. " requires SchedulerKit API 1, which is not loaded ("
@@ -3176,7 +3178,7 @@ local function validateLimitUpdate(limits, level)
         error("CodecKit:SetLimits limits must be a table", level)
     end
     local key = next(limits)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         if type(key) ~= "string" or LIMIT_CEILINGS[key] == nil then
             error(
                 "CodecKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
@@ -3321,7 +3323,7 @@ local function compress(self, bytes, options)
     validateFacade(self, "CodecKit:Compress", 3)
     validateBytes(bytes, "CodecKit:Compress bytes", 3)
     local level = DEFAULT_LEVEL
-    if options ~= nil then
+    if type(options) ~= "nil" then
         if type(options) ~= "table" then
             error("CodecKit:Compress options must be a table or nil", 2)
         end
@@ -3426,7 +3428,7 @@ local function setLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, name, value)
         end
     end

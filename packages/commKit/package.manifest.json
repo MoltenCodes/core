@@ -2,10 +2,10 @@
   "name": "commKit",
   "displayName": "CommKit",
   "description": "Addon messaging of any length for World of Warcraft addons: prefixes, a chunk protocol with bounded reassembly, priority queues that refuse rather than grow, a bandwidth budget shared with the whole session, and content-hash sync sets.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "MIT",
   "api": 1,
-  "revision": 3,
+  "revision": 4,
   "dependencies": {
     "registry": {
       "api": 2

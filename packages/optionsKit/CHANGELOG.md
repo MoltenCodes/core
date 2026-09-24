@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2 — 2026-09-24
+
+- Absence of a value OptionsKit did not create is asked with `type(value) == "nil"` rather than compared with `nil`: the optional fields of a tree definition, the `Define` and `ProfileOptions` options, the Registry lookups at load, a `values` function's table and the tables read along a bind path. On a client with secret values such a comparison raised inside OptionsKit.
+- A secret `maxOptions`, `maxDepth` or `maxDynamicEntries` is refused at the caller's line (`OptionsKit:Define options.maxOptions must not be a secret value`) before it is compared with `OptionsKit.UNBOUNDED`. A secret never was a usable limit; the comparison used to raise inside OptionsKit instead.
+- A secret returned by `validate` or by the database's `Validate` counts as a refusal and is not compared with `true`.
+- Implementation revision 4. No layout changed: a revision 3 state is taken over in place.
+- 146 specs: a secret limit option refused at the caller, a secret `validate` result counted as a refusal, and the in-place upgrade of a revision 3 state.
+
 ## 0.2.1 — 2026-09-24
 
 - Fixed a switch through the profile group's `current` select made from a SettingsKit `OnProfileChanged` listener of another such switch: the inner `Set` cleared the outer one's suppression, so the tree's `OnChange` fired an extra time for the outer switch. The suppression is now restored to its previous value.

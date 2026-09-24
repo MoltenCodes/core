@@ -2,7 +2,7 @@
 
 SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles, change signals, versioned migrations and compaction.
 
-Implementation revision: **2**.
+Implementation revision: **3**.
 
 ## Loading
 
@@ -188,7 +188,7 @@ profile.anchor = "LEFT"          -- raises at this line:
 | `migrations` | none | `{ [n] = function(raw) }`, each key from 1 to `version`. Requires `version`. |
 | `maxScannedEntries` | `65536` | The most entries the scan of one written table visits (see [Limits](#limits)): a positive integer or `SettingsKit.UNBOUNDED`. |
 
-Unknown fields are refused.
+Unknown fields are refused, and so is a secret `version`, `maxScannedEntries` or `migrations` key, before it is compared: `SettingsKit:Open options.version must not be a secret value`, `SettingsKit:Open options.maxScannedEntries must not be a secret value`, `SettingsKit:Open options.migrations must not have a secret key`. A secret option name is reported as `SettingsKit:Open options contains unknown field "<secret>"`.
 
 Opening a name that is already open returns the same database. `schema` may then be omitted; passing a different schema table raises, and so does a saved variable replaced since the first `Open`. Options passed to a later `Open` are ignored.
 
@@ -349,13 +349,23 @@ SettingsKit:SetLimits({ maxProfileNameLength = 128 })
 local limits = SettingsKit:GetLimits() -- a fresh table: { maxProfileNameLength = 128, pathKeyLimit = 32 }
 ```
 
-`SetLimits` accepts any subset and raises at the caller, before changing anything, on an unknown name, on `SettingsKit.UNBOUNDED` (naming the reason) or on a value outside the range: `SettingsKit:SetLimits limits.pathKeyLimit must be an integer from 1 to 1024`. **The limits are shared by every consumer in the session**: every embedded copy and every addon's databases use one set. A library should rely on the defaults; an addon that raises a limit raises it for everybody. A changed `pathKeyLimit` applies to paths rendered afterwards; the paths of views built earlier keep their rendering.
+`SetLimits` accepts any subset and raises at the caller, before changing anything, on a secret key or value (`SettingsKit:SetLimits limits must not have a secret key`, `SettingsKit:SetLimits limits.pathKeyLimit must not be a secret value`, asked before the key indexes anything or the value is compared), on an unknown name, on `SettingsKit.UNBOUNDED` (naming the reason) or on a value outside the range: `SettingsKit:SetLimits limits.pathKeyLimit must be an integer from 1 to 1024`. **The limits are shared by every consumer in the session**: every embedded copy and every addon's databases use one set. A library should rely on the defaults; an addon that raises a limit raises it for everybody. A changed `pathKeyLimit` applies to paths rendered afterwards; the paths of views built earlier keep their rendering.
 
 `SettingsKit.UNBOUNDED` and the shared limits live in the package state, so every embedded copy publishes the same sentinel and an in-place upgrade keeps the limits a consumer set.
 
 ## Error behaviour
 
 Argument failures report the line that called SettingsKit, never a line inside it, and name the parameter without formatting the value: `SettingsKit:Open options.version must be a positive integer`, `SettingsKit.Database:DeleteProfile cannot delete the current profile`. Calling a method on something that is not a database raises `SettingsKit.Database:SetProfile must be called on a SettingsKit database`. View refusals report the writing (or reading) line and are prefixed with the saved-variable name, `SettingsKit (MyAddonDB) ...`. Writing a field of the database object itself raises `SettingsKit databases are read-only; write through db.<scope> instead`.
+
+Where a value can come from outside SettingsKit (an argument, an option, a saved-variable entry, a schema default), its absence is tested with `type(value) == "nil"`, never by comparing it with `nil`: on a client with secret values a comparison raises. A saved value, a secret included, is read back as it is stored. The secret refusals above, with their exact messages, are the only new errors this adds:
+
+- `SettingsKit:Open options.version must not be a secret value`
+- `SettingsKit:Open options.maxScannedEntries must not be a secret value`
+- `SettingsKit:Open options.migrations must not have a secret key`
+- `SettingsKit:SetLimits limits must not have a secret key`
+- `SettingsKit:SetLimits limits.<name> must not be a secret value`
+
+A secret stored `version` in the saved table is refused as `SettingsKit:Open MyAddonDB.version must be a non-negative integer`, and a secret profile choice in `profileKeys` is ignored (never compared) by `DeleteProfile`, as `Open` already ignored it.
 
 ## Performance
 

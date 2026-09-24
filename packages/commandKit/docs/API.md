@@ -2,7 +2,7 @@
 
 CommandKit API generation **1** provides slash commands for World of Warcraft addons: collision-safe registration owned by a scope, a hyperlink-aware argument parser, sub-commands with generated usage, schema-checked arguments, output sinks, optional tab completion, and a command line over an OptionsKit tree.
 
-Implementation revision: **3**.
+Implementation revision: **4**.
 
 ## Loading
 
@@ -409,6 +409,12 @@ On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDD
 - A bound option whose getter returns a secret prints as `(secret value)`, as does a `multiselect` or `color` value holding a secret, and a `desc` text that is secret; a secret `select` label is neither shown nor matched, and a secret `confirm` question is not printed.
 - A secret completion candidate is skipped, and the taken check skips a secret `SLASH_<key><n>` or `EMOTE<n>_CMD<m>` value.
 - A handler failure whose message is secret is written to the sink without the message and handed to the host error handler unchanged.
+- A secret sub-command key is refused before the keys are sorted: `CommandKit.Scope:Register spec.subcommands key must not be a secret value`.
+- A secret limit, as a scope option or in `SetLimits`, is refused before it is compared with `CommandKit.UNBOUNDED`, with the message a value of the wrong type gets: `CommandKit:CreateScope options.maxCommands must be a positive integer or CommandKit.UNBOUNDED`, `CommandKit:SetLimits limits.maxCaptured must be a positive integer or CommandKit.UNBOUNDED`, and for a limit with a ceiling `CommandKit:SetLimits limits.maxCompletions must be an integer from 1 to 256`.
+- A receiver or tree whose metatable is replaced by a secret `__metatable` (or whose `__index` is secret) is tested by type before it is compared, and refused with the usual `... must be called on a CommandKit scope` or `CommandKit.Scope:BindOptions tree must be an OptionsKit tree`.
+- `set <path> toggle` on a bound `toggle` whose value is secret, or on a `multiselect` key whose entry is secret, prints `/cmd set: the current value is secret; use on or off` and writes nothing; `on` and `off` still work.
+- Tab completion leaves a line to the client when the edit box reports a secret cursor position.
+- Absence of anything CommandKit did not create itself (arguments, spec and option fields, host globals, values an OptionsKit tree describes) is tested with `type(value) == "nil"`, never by comparing the value with `nil`.
 
 Text typed by the user never is secret, so dispatch does not probe it.
 
@@ -497,6 +503,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 Several addons may embed CommandKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: scopes, commands, the slash dispatchers already in the client's tables and the completion replacement stay, because every one of them calls through shared package state that the newer copy rewrites. Scopes and contexts gain the newer copy's methods through the shared `CommandKit.Scope` and `CommandKit.Context` prototypes. The `CommandKit.UNBOUNDED` sentinel and the package-wide limits live in the package state too, so a newer copy publishes the same sentinel and inherits every limit a consumer set, and a scope keeps the limits it was created with.
 
-Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. Revision 3 changes no layout: it takes over revision 2's state as it is. A command bound with `BindOptions` keeps the sub-command handlers of the revision that bound it, because they are compiled into its record; binding it again after the upgrade gives it the newer ones. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
+Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. Revisions 3 and 4 change no layout: each takes over the state of the one before as it is. A command bound with `BindOptions` keeps the sub-command handlers of the revision that bound it, because they are compiled into its record; binding it again after the upgrade gives it the newer ones. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: both call through the facade or the shared package state, so they run the newest code, and nothing is subscribed twice.
 
 Nothing survives `/reload`: commands are registered again when the addon loads.

@@ -43,7 +43,7 @@
 
 local PACKAGE_NAME = "optionsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -307,7 +307,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -438,7 +438,7 @@ local OptionsKit, previousRevision, selected = bootstrapPackage(Registry, {
     validateState = validateCurrentState,
 })
 
-if OptionsKit == nil then
+if type(OptionsKit) == "nil" then
     -- An equal or newer compatible revision already owns the shared package table.
     return selected
 end
@@ -446,7 +446,7 @@ end
 local Tree = rawget(OptionsKit, "Tree")
 local state = rawget(OptionsKit, "_state")
 
-if previousRevision == nil then
+if type(previousRevision) == "nil" then
     if Tree ~= nil or state ~= nil then
         error("MoltenCodes OptionsKit package state is corrupted or incomplete", 2)
     end
@@ -475,8 +475,8 @@ end
 
 -- Revision 1 had no profile groups and built tree layout 1. The group map is
 -- added, and every tree gains the (empty) list of profile links `Undefine`
--- detaches: a revision 1 tree cannot contain a profile group. Revision 3
--- changed no layout, so a revision 2 state needs nothing here.
+-- detaches: a revision 1 tree cannot contain a profile group. Revisions 3
+-- and 4 changed no layout, so a revision 2 or 3 state needs nothing here.
 if rawget(state, "profileGroups") == nil then
     rawset(state, "profileGroups", setmetatable({}, { __mode = "k" }))
 end
@@ -573,7 +573,8 @@ end
 ---@param label string
 ---@param level integer
 local function checkOptionalString(value, label, level)
-    if value ~= nil and type(value) ~= "string" then
+    local valueType = type(value)
+    if valueType ~= "nil" and valueType ~= "string" then
         error(label .. " must be a string", level)
     end
 end
@@ -583,7 +584,7 @@ end
 ---@param level integer
 local function checkOptionalStringOrFunction(value, label, level)
     local valueType = type(value)
-    if value ~= nil and valueType ~= "string" and valueType ~= "function" then
+    if valueType ~= "nil" and valueType ~= "string" and valueType ~= "function" then
         error(label .. " must be a string or a function", level)
     end
 end
@@ -592,7 +593,8 @@ end
 ---@param label string
 ---@param level integer
 local function checkOptionalBoolean(value, label, level)
-    if value ~= nil and type(value) ~= "boolean" then
+    local valueType = type(value)
+    if valueType ~= "nil" and valueType ~= "boolean" then
         error(label .. " must be a boolean", level)
     end
 end
@@ -601,7 +603,8 @@ end
 ---@param label string
 ---@param level integer
 local function checkOptionalFunction(value, label, level)
-    if value ~= nil and type(value) ~= "function" then
+    local valueType = type(value)
+    if valueType ~= "nil" and valueType ~= "function" then
         error(label .. " must be a function", level)
     end
 end
@@ -620,7 +623,7 @@ end
 ---@param label string
 ---@param level integer
 local function checkPositiveNumber(value, label, level)
-    if value ~= nil then
+    if type(value) ~= "nil" then
         checkNumber(value, label, level + 1)
         if value <= 0 then
             error(label .. " must be greater than 0", level)
@@ -633,7 +636,7 @@ end
 ---@param level integer
 local function checkPredicate(value, label, level)
     local valueType = type(value)
-    if value ~= nil and valueType ~= "boolean" and valueType ~= "function" then
+    if valueType ~= "nil" and valueType ~= "boolean" and valueType ~= "function" then
         error(label .. " must be a boolean or a function", level)
     end
 end
@@ -673,7 +676,7 @@ local function checkCommonFields(spec, isRoot, label, level)
         error(label .. ".name must be a string", level)
     end
     checkOptionalStringOrFunction(spec.desc, label .. ".desc", level + 1)
-    if spec.order ~= nil then
+    if type(spec.order) ~= "nil" then
         checkNumber(spec.order, label .. ".order", level + 1)
     end
     checkPredicate(spec.disabled, label .. ".disabled", level + 1)
@@ -694,19 +697,19 @@ local function checkRangeFields(spec, label, level)
     checkPositiveNumber(spec.bigStep, label .. ".bigStep", level + 1)
     local softMin = spec.softMin
     local softMax = spec.softMax
-    if softMin ~= nil then
+    if type(softMin) ~= "nil" then
         checkNumber(softMin, label .. ".softMin", level + 1)
         if softMin < spec.min or softMin > spec.max then
             error(label .. ".softMin must lie between min and max", level)
         end
     end
-    if softMax ~= nil then
+    if type(softMax) ~= "nil" then
         checkNumber(softMax, label .. ".softMax", level + 1)
         if softMax < spec.min or softMax > spec.max then
             error(label .. ".softMax must lie between min and max", level)
         end
     end
-    if softMin ~= nil and softMax ~= nil and softMin > softMax then
+    if type(softMin) ~= "nil" and type(softMax) ~= "nil" and softMin > softMax then
         error(label .. ".softMin must not be greater than softMax", level)
     end
     checkOptionalBoolean(spec.isPercent, label .. ".isPercent", level + 1)
@@ -751,7 +754,7 @@ end
 ---@param level integer
 ---@return (string|number)[]|false copy
 local function copySorting(sorting, values, label, level)
-    if sorting == nil then
+    if type(sorting) == "nil" then
         return false
     end
     if type(sorting) ~= "table" then
@@ -832,7 +835,7 @@ local function newDynamicKeyCheck(valuesFunction, info)
             return false
         end
         local values = valuesFunction(info)
-        return type(values) == "table" and values[value] ~= nil
+        return type(values) == "table" and type(values[value]) ~= "nil"
     end
 end
 
@@ -880,7 +883,7 @@ local function buildSchema(kind, spec, keys, valuesFunction, info, dynamicMax, l
             max = keys and #keys or dynamicMax,
         })
     elseif kind == KIND_INPUT then
-        if spec.pattern == nil then
+        if type(spec.pattern) == "nil" then
             node = SchemaKit.string()
         else
             -- SchemaKit validates the pattern and would report it at this
@@ -953,8 +956,8 @@ local function buildValueFields(context, record, spec, label, level)
     local kind = rawget(record, "_kind")
     local info = rawget(record, "_info")
 
-    if spec.bind ~= nil then
-        if spec.get ~= nil or spec.set ~= nil then
+    if type(spec.bind) ~= "nil" then
+        if type(spec.get) ~= "nil" or type(spec.set) ~= "nil" then
             error(label .. " must use either bind or get and set, not both", level)
         end
         local db = context.db
@@ -1176,12 +1179,13 @@ buildOption = function(context, spec, parent, key, label, level)
             error(label .. ".func must be a function", level)
         end
         local confirm = spec.confirm
-        if confirm ~= nil and type(confirm) ~= "boolean" and type(confirm) ~= "string" then
+        local confirmType = type(confirm)
+        if confirmType ~= "nil" and confirmType ~= "boolean" and confirmType ~= "string" then
             error(label .. ".confirm must be a boolean or a string", level)
         end
         rawset(record, "_func", spec.func)
     elseif kind == KIND_DESCRIPTION then
-        if spec.fontSize ~= nil and FONT_SIZES[spec.fontSize] ~= true then
+        if type(spec.fontSize) ~= "nil" and FONT_SIZES[spec.fontSize] ~= true then
             error(label .. '.fontSize must be "small", "medium" or "large"', level)
         end
     end
@@ -1253,7 +1257,7 @@ local function walkBound(tree, record, methodName, level)
     local count = rawget(record, "_bindCount")
     for index = 1, count - 1 do
         local nested = container[keys[index]]
-        if nested == nil then
+        if type(nested) == "nil" then
             return container, index
         end
         if type(nested) ~= "table" then
@@ -1291,7 +1295,7 @@ local function validateBound(tree, record, value, methodName, level)
         )
     end
     local accepted, message = db:Validate(scope, rawget(record, "_bindKeys"), value)
-    if accepted == true then
+    if not isSecret(accepted) and accepted == true then
         return true, nil
     end
     return false, withoutPosition(message)
@@ -1336,7 +1340,7 @@ local function writeBound(tree, record, value, methodName, level)
     local count = rawget(record, "_bindCount")
     local stored = value
     if index < count then
-        if value == nil then
+        if type(value) == "nil" then
             return
         end
         for position = count, index + 1, -1 do
@@ -1346,7 +1350,8 @@ local function writeBound(tree, record, value, methodName, level)
     local written, failure = pcall(assignField, container, keys[index], stored)
     if not written then
         local db = rawget(tree, "_db")
-        if db:Validate(rawget(record, "_bindScope"), keys, value) == true then
+        local accepted = db:Validate(rawget(record, "_bindScope"), keys, value)
+        if not isSecret(accepted) and accepted == true then
             error(failure, 0)
         end
         error(
@@ -1384,7 +1389,7 @@ local function runValidate(record, value)
         return true, nil
     end
     local accepted, message = validate(rawget(record, "_info"), value)
-    if accepted == true then
+    if not isSecret(accepted) and accepted == true then
         return true, nil
     end
     if type(message) ~= "string" then
@@ -1832,7 +1837,7 @@ end
 ---@param link table
 ---@param level integer
 local function readProfileOptions(options, link, level)
-    if options == nil then
+    if type(options) == "nil" then
         return
     end
     if type(options) ~= "table" then
@@ -1859,7 +1864,7 @@ local function readProfileOptions(options, link, level)
         level + 1
     )
     local order = rawget(options, "order")
-    if order ~= nil then
+    if type(order) ~= "nil" then
         checkNumber(order, "OptionsKit:ProfileOptions options.order", level + 1)
     end
     checkOptionalString(
@@ -2296,8 +2301,13 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return number capacity
 local function readCapacityOption(value, default, name, level)
-    if value == nil then
+    if type(value) == "nil" then
         return default
+    end
+    -- Refused before the comparison with `UNBOUNDED`: on a client with secret
+    -- values, comparing a secret raises inside OptionsKit, not at the caller.
+    if isSecret(value) then
+        error("OptionsKit:Define options." .. name .. " must not be a secret value", level)
     end
     if value == UNBOUNDED then
         return math.huge
@@ -2325,8 +2335,11 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return integer maxDepth
 local function readMaxDepthOption(value, level)
-    if value == nil then
+    if type(value) == "nil" then
         return MAX_DEPTH
+    end
+    if isSecret(value) then
+        error("OptionsKit:Define options.maxDepth must not be a secret value", level)
     end
     if value == UNBOUNDED then
         error(
@@ -2360,7 +2373,7 @@ local function readDefineOptions(options, context, level)
     context.maxOptions = MAX_OPTIONS
     context.maxDepth = MAX_DEPTH
     context.maxDynamicEntries = MAX_DYNAMIC_ENTRIES
-    if options == nil then
+    if type(options) == "nil" then
         return false
     end
     if type(options) ~= "table" then
@@ -2391,7 +2404,7 @@ local function readDefineOptions(options, context, level)
         level + 1
     )
     local db = options.db
-    if db == nil then
+    if type(db) == "nil" then
         return false
     end
     if findSettingsKit() == nil then

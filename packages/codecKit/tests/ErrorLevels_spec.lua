@@ -237,6 +237,31 @@ describe("CodecKit error levels", function()
         assert.are.equal(16, CodecKit:GetLimits().maxDepth)
     end)
 
+    it("refuses a secret receiver or options argument at the caller", function()
+        -- A secret may not even be compared with nil or with the facade, so
+        -- each argument is tested with `type` before anything compares it.
+        TestEnv.InstallSecretProbe({ ["hidden"] = true })
+        assertReportedAtCaller(
+            "CodecKit:Encode must be called on the CodecKit facade; use CodecKit:Encode(...)",
+            function(mark)
+                mark()
+                CodecKit.Encode("hidden")
+            end
+        )
+        assertReportedAtCaller("CodecKit:Encode options must be a table or nil", function(mark)
+            mark()
+            CodecKit:Encode(1, "hidden")
+        end)
+        assertReportedAtCaller("CodecKit:DecodeMany options must be a table or nil", function(mark)
+            mark()
+            CodecKit:DecodeMany("\1\1\1", "hidden")
+        end)
+        assertReportedAtCaller("CodecKit:Compress options must be a table or nil", function(mark)
+            mark()
+            CodecKit:Compress("bytes", "hidden")
+        end)
+    end)
+
     it("points limit errors at the caller", function()
         local cases = {
             { 5, "CodecKit:SetLimits limits must be a table" },

@@ -6,7 +6,7 @@ local TestEnv = require("CommandKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("CommandKit allocation", function()
+describe("CommandKit allocation #allocation", function()
     local CommandKit, SchemaKit
     before_each(function()
         local _

@@ -229,6 +229,46 @@ describe("SettingsKit limits", function()
         )
     end)
 
+    it("refuses a secret maxScannedEntries at the caller's line before comparing it", function()
+        TestEnv.InstallSecretProbe()
+        local secret = TestEnv.NewSecret()
+        local line
+        local ok, value = pcall(function()
+            line = currentLine() + 1
+            SettingsKit:Open("MyAddonDB", schema(), { maxScannedEntries = secret })
+        end)
+        assertReportedAt(
+            line,
+            "SettingsKit:Open options.maxScannedEntries must not be a secret value",
+            ok,
+            value
+        )
+        assert.is_nil(TestEnv.GetGlobal("MyAddonDB"))
+    end)
+
+    it("refuses a secret limit key or value at the caller's line and changes nothing", function()
+        TestEnv.InstallSecretProbe()
+        local cases = {
+            {
+                { [TestEnv.NewSecret()] = 100 },
+                "SettingsKit:SetLimits limits must not have a secret key",
+            },
+            {
+                { pathKeyLimit = TestEnv.NewSecret() },
+                "SettingsKit:SetLimits limits.pathKeyLimit must not be a secret value",
+            },
+        }
+        for index = 1, #cases do
+            local line
+            local ok, value = pcall(function()
+                line = currentLine() + 1
+                SettingsKit:SetLimits(cases[index][1])
+            end)
+            assertReportedAt(line, cases[index][2], ok, value)
+        end
+        assert.are.same({ maxProfileNameLength = 64, pathKeyLimit = 32 }, SettingsKit:GetLimits())
+    end)
+
     it("refuses invalid limits at the caller's line and changes nothing", function()
         local cases = {
             { 1, "SettingsKit:SetLimits limits must be a table" },
@@ -286,8 +326,9 @@ describe("SettingsKit limits", function()
             SettingsKit:SetLimits({ maxProfileNameLength = 256, pathKeyLimit = 48 })
             local db = SettingsKit:Open("MyAddonDB", schema(), { maxScannedEntries = sentinel })
 
-            local upgraded = TestEnv.LoadRevision(3)
-            assert.are.equal(3, upgraded.REVISION)
+            local nextRevision = SettingsKit.REVISION + 1
+            local upgraded = TestEnv.LoadRevision(nextRevision)
+            assert.are.equal(nextRevision, upgraded.REVISION)
             assert.are.equal(sentinel, upgraded.UNBOUNDED)
             assert.are.equal(sentinel, upgraded._state.unbounded)
             assert.are.same({ maxProfileNameLength = 256, pathKeyLimit = 48 }, upgraded:GetLimits())

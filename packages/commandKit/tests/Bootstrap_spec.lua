@@ -126,8 +126,13 @@ describe("CommandKit bootstrap", function()
         )
     end)
 
-    it("upgrades a revision 2 package in place", function()
-        local previousRevision = 2
+    ---Load `previousRevision` of the source, build an addon scope with a
+    ---command and completion on it, load the working file over it, and check
+    ---that the facade, the prototypes, the package state and the scope are
+    ---the same tables and keep working.
+    ---@param previousRevision integer
+    ---@return table current the upgraded facade
+    local function upgradeFrom(previousRevision)
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         TestEnv.InstallChatApi()
@@ -136,6 +141,9 @@ describe("CommandKit bootstrap", function()
         require("SchemaKit")
         require("OptionsKit")
         local previous = TestEnv.LoadRevision(previousRevision)
+        local previousState = rawget(previous, "_state")
+        local scopePrototype = previous.Scope
+        local contextPrototype = previous.Context
         local scope = previous:ForAddon("MyAddon")
         local words = {}
         scope:Register("kept", {
@@ -147,7 +155,10 @@ describe("CommandKit bootstrap", function()
 
         local current = require("CommandKit")
         assert.are.equal(previous, current)
-        assert.are.equal(previousRevision + 1, current.REVISION)
+        assert.is_true(current.REVISION > previousRevision)
+        assert.are.equal(previousState, rawget(current, "_state"))
+        assert.are.equal(scopePrototype, current.Scope)
+        assert.are.equal(contextPrototype, current.Context)
         assert.are.equal(scope, current:ForAddon("MyAddon"))
         TestEnv.RunSlash("/kept Word")
         assert.are.same({ "Word" }, words)
@@ -155,6 +166,30 @@ describe("CommandKit bootstrap", function()
             "CommandKit:Parse must be called on the CommandKit facade",
             function()
                 current.Parse("text")
+            end
+        )
+        return current
+    end
+
+    it("upgrades a revision 2 package in place", function()
+        local current = upgradeFrom(2)
+        assert.is_true(current:CloseAddonScopes("MyAddon"))
+        assert.are.equal(
+            TestEnv.OriginalTabPressed(),
+            TestEnv.GetGlobal("ChatEdit_CustomTabPressed")
+        )
+    end)
+
+    it("upgrades a revision 3 package in place and refuses a secret limit at once", function()
+        local current = upgradeFrom(3)
+        local secret = TestEnv.NewSecretValue()
+        TestEnv.SetGlobal("issecretvalue", function(value)
+            return rawequal(value, secret)
+        end)
+        TestEnv.expectErrorContaining(
+            "CommandKit:SetLimits limits.maxCaptured must be a positive integer or CommandKit.UNBOUNDED",
+            function()
+                current:SetLimits({ maxCaptured = secret })
             end
         )
         assert.is_true(current:CloseAddonScopes("MyAddon"))

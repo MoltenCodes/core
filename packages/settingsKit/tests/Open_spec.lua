@@ -182,6 +182,35 @@ describe("SettingsKit:Open", function()
         )
     end)
 
+    it("refuses secret options before comparing them", function()
+        TestEnv.InstallSecretProbe()
+        TestEnv.expectErrorContaining("options.version must not be a secret value", function()
+            SettingsKit:Open("MyAddonDB", schema(), { version = TestEnv.NewSecret() })
+        end)
+        TestEnv.expectErrorContaining("options.migrations must not have a secret key", function()
+            SettingsKit:Open(
+                "MyAddonDB",
+                schema(),
+                { version = 2, migrations = { [TestEnv.NewSecret()] = function() end } }
+            )
+        end)
+        TestEnv.expectErrorContaining('options contains unknown field "<secret>"', function()
+            SettingsKit:Open("MyAddonDB", schema(), { [TestEnv.NewSecret()] = 1 })
+        end)
+        assert.is_nil(TestEnv.GetGlobal("MyAddonDB"))
+    end)
+
+    it("still accepts omitted options and fields", function()
+        local db = SettingsKit:Open("MyAddonDB", schema(), {
+            defaultProfile = nil,
+            version = nil,
+            migrations = nil,
+            maxScannedEntries = nil,
+        })
+        assert.are.equal("Default", db:GetProfile())
+        assert.are.equal(db, SettingsKit:Open("MyAddonDB", nil, nil))
+    end)
+
     it("refuses a saved-variable name that is not an identifier", function()
         TestEnv.expectErrorContaining(
             "savedVariable must be the name of a saved variable",

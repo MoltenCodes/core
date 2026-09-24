@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2 — 2026-09-24
+
+- Fixed: values that do not originate in SettingsKit were compared with `nil`, which raises on a client with secret values. Arguments, option and limit fields, saved-variable entries (values and keys, including `next` on a saved table), migration functions and schema defaults are now tested with `type(value) == "nil"`, so a secret stored in a saved table is read back, iterated and compacted without a comparison.
+- Fixed: `Open` compared `options.maxScannedEntries` with `SettingsKit.UNBOUNDED` and `options.version` and the `migrations` keys with numbers before asking `issecretvalue`; each is now refused at the caller first (`SettingsKit:Open options.maxScannedEntries must not be a secret value`, `SettingsKit:Open options.version must not be a secret value`, `SettingsKit:Open options.migrations must not have a secret key`). A secret option name is reported as `"<secret>"` instead of indexing the known names with it.
+- Fixed: `SetLimits` indexed the known limits with the key and compared the value with `SettingsKit.UNBOUNDED` before asking `issecretvalue`; a secret key or value is now refused at the caller (`SettingsKit:SetLimits limits must not have a secret key`, `SettingsKit:SetLimits limits.<name> must not be a secret value`).
+- Fixed: `DeleteProfile` compared every stored profile choice with the deleted name; a secret choice is skipped, as `Open` already ignores it. A secret stored `version` is refused as a non-integer instead of being compared, and a reopening `Open` tests the schema argument's type before comparing it with the first schema.
+- Implementation revision 3. The state schema and every layout are unchanged; an upgrade over revision 2 keeps databases, views and listeners and applies the new checks at once.
+- API.md lists the new refusals under *Error behaviour*; INTERNALS.md states which values are tested with `type`.
+
 ## 0.1.1 — 2026-09-24
 
 - Fixed: a saved entry of a keyed section declared without a default of its own (`auras = S.optional(S.map{ ... })`) read `nil` for every field it did not store, instead of the wildcard default and the record's field defaults, and so did the records below it; `db:Pairs` skipped those defaults too. `Compact` compared the same entry with the wildcard, so it could remove a value that then read back as `nil`. An entry view now reads the section's own default entry, else the wildcard default, else the record's field defaults, whether or not the section has a default.

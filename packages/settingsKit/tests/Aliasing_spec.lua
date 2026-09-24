@@ -227,7 +227,7 @@ describe("SettingsKit db:Pairs", function()
         assert.are.same({ preset = 5, fireball = 3 }, collect(db, db.profile.counts))
     end)
 
-    it("iterates without allocating", function()
+    it("iterates without allocating #allocation", function()
         local db = SettingsKit:Open("MyAddonDB", {
             profile = S.table({
                 fields = { a = S.optional(S.number(), 1), b = S.optional(S.number(), 2) },

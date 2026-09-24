@@ -1,5 +1,22 @@
 local TestEnv = require("CommandKitTestEnv")
 
+local SOURCE = debug.getinfo(1, "S").short_src
+
+---Run `action` and assert it failed with `message` reported at the line of this
+---spec file that called into CommandKit. `action` receives a `mark` function;
+---calling `mark()` records the line after it, which must be the call.
+---@param message string
+---@param action fun(mark: fun())
+local function assertReportedAtCaller(message, action)
+    local expectedLine = nil
+    local function mark()
+        expectedLine = debug.getinfo(2, "l").currentline + 1
+    end
+    local ok, value = pcall(action, mark)
+    assert.is_false(ok)
+    assert.are.equal(SOURCE .. ":" .. tostring(expectedLine) .. ": " .. message, value)
+end
+
 describe("CommandKit and secret values", function()
     local CommandKit, secret, sink, scope
     before_each(function()
@@ -175,5 +192,142 @@ describe("CommandKit and secret values", function()
             "channels = (secret value)",
         }, capture:Messages())
         assert.are.same({}, TestEnv.ReportedErrors())
+    end)
+    it("refuses a secret sub-command key at the caller before sorting the keys", function()
+        TestEnv.SetGlobal("issecretvalue", function(value)
+            return value == "hidden"
+        end)
+        assertReportedAtCaller(
+            "CommandKit.Scope:Register spec.subcommands key must not be a secret value",
+            function(mark)
+                mark()
+                scope:Register("tree", {
+                    subcommands = {
+                        alpha = { handler = function() end },
+                        hidden = { handler = function() end },
+                    },
+                })
+            end
+        )
+        assert.is_false(scope:IsRegistered("tree"))
+    end)
+
+    it("refuses a receiver whose __metatable is secret without comparing it", function()
+        local impostor = setmetatable({}, { __metatable = secret })
+        assertReportedAtCaller(
+            "CommandKit.Scope:Register must be called on a CommandKit scope",
+            function(mark)
+                mark()
+                CommandKit.Scope.Register(impostor, "name", { handler = function() end })
+            end
+        )
+    end)
+
+    it("refuses a tree whose __index is secret without comparing it", function()
+        local impostor = setmetatable({}, { __index = secret })
+        assertReportedAtCaller(
+            "CommandKit.Scope:BindOptions tree must be an OptionsKit tree",
+            function(mark)
+                mark()
+                scope:BindOptions(impostor, "opts")
+            end
+        )
+    end)
+
+    it("refuses a secret limit at the caller before comparing it", function()
+        assertReportedAtCaller(
+            "CommandKit:CreateScope options.maxCommands must be a positive integer or CommandKit.UNBOUNDED",
+            function(mark)
+                mark()
+                CommandKit:CreateScope({ maxCommands = secret })
+            end
+        )
+        assertReportedAtCaller(
+            "CommandKit:ForAddon options.maxPositions must be a positive integer or CommandKit.UNBOUNDED",
+            function(mark)
+                mark()
+                CommandKit:ForAddon("MyAddon", { maxPositions = secret })
+            end
+        )
+        assertReportedAtCaller(
+            "CommandKit:SetLimits limits.maxCaptured must be a positive integer or CommandKit.UNBOUNDED",
+            function(mark)
+                mark()
+                CommandKit:SetLimits({ maxCaptured = secret })
+            end
+        )
+        assertReportedAtCaller(
+            "CommandKit:SetLimits limits.maxCompletions must be an integer from 1 to 256",
+            function(mark)
+                mark()
+                CommandKit:SetLimits({ maxCompletions = secret })
+            end
+        )
+        assert.are.same(
+            { maxCaptured = 256, maxCompletions = 32, maxEmotes = 1024 },
+            CommandKit:GetLimits()
+        )
+    end)
+
+    it("answers a toggle of a secret current value with a message", function()
+        TestEnv.Reset()
+        local Kit, _, _, _, OptionsKit = TestEnv.NewPackage()
+        TestEnv.SetGlobal("issecretvalue", function(value)
+            return rawequal(value, secret)
+        end)
+        local writes = 0
+        local function constant(value)
+            return function()
+                return value
+            end
+        end
+        local function count()
+            writes = writes + 1
+        end
+        local tree = OptionsKit:Define("MyAddon", {
+            type = "group",
+            args = {
+                flag = { type = "toggle", name = "Flag", get = constant(secret), set = count },
+                channels = {
+                    type = "multiselect",
+                    name = "Channels",
+                    values = { guild = "Guild" },
+                    get = constant({ guild = secret }),
+                    set = count,
+                },
+            },
+        })
+        local bound = Kit:CreateScope()
+        local capture = Kit:CaptureSink()
+        bound:SetSink(capture)
+        bound:BindOptions(tree, "opts")
+        TestEnv.RunSlash("/opts set flag toggle")
+        TestEnv.RunSlash("/opts set channels guild toggle")
+        assert.are.same({
+            "/opts set: the current value is secret; use on or off",
+            "/opts set: the current value is secret; use on or off",
+        }, capture:Messages())
+        assert.are.equal(0, writes)
+        assert.are.same({}, TestEnv.ReportedErrors())
+    end)
+
+    it("leaves Tab to the client when the cursor position is secret", function()
+        local secretCursor = 99
+        TestEnv.SetGlobal("issecretvalue", function(value)
+            return value == secretCursor
+        end)
+        scope:Register("pick", {
+            handler = function() end,
+            complete = function()
+                return { "shown" }
+            end,
+        })
+        scope:EnableCompletion()
+        local editBox = TestEnv.NewEditBox("/pick ")
+        function editBox:GetCursorPosition()
+            return secretCursor
+        end
+        assert.is_false(TestEnv.PressTab(editBox))
+        assert.are.equal("/pick ", editBox.text)
     end)
 end)

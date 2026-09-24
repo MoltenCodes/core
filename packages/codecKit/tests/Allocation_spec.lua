@@ -6,7 +6,7 @@ local TestEnv = require("CodecKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("CodecKit allocation", function()
+describe("CodecKit allocation #allocation", function()
     local CodecKit
     before_each(function()
         CodecKit = TestEnv.NewPackage()

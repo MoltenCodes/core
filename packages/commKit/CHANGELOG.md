@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 — 2026-09-24
+
+- Values CommKit did not create are no longer compared before `issecretvalue` is asked about them, so a secret raises nowhere inside CommKit. Absence of a caller's or a host's value is tested with `type` (options, the `maxRegistrations` repeat check, the `maxReassemblyBytesPerSender` bound, a send target, a `nil` passed to `SyncSet:Set`, the group-membership answer, delivered SyncSet fields). A facade method called with a secret receiver raises its ordinary receiver error at the caller.
+- Host and package returns are asked about first: a secret send result is a throttle (as a result the enum does not name already was), a secret `RegisterAddonMessagePrefix` result refuses the prefix as `"unknownResult"`, a secret `IsAddonMessagePrefixRegistered` answer is not taken as registered, a secret entry of the client's result enums gives way to CommKit's own value, a secret SchemaKit verdict is not an acceptance, and a secret entry of LifecycleKit's `CLOSES_ADDON_SCOPES` is not a hand-over. `docs/API.md` lists these under "Secret values". Every value accepted before is still accepted.
+- Implementation revision 4. The state layout and scope layout 2 are unchanged; a revision 4 copy inherits everything a revision 3 copy built. `Bootstrap_spec.lua` loads a revision 3 copy with a send in flight, upgrades it and checks the facade, state and prototype identity.
+- 195 specs; `SecretValues_spec.lua` covers each of the outcomes above.
+
 ## 0.2.1 — 2026-09-24
 
 - A secret value is now refused at the caller before CommKit compares it with anything, as `docs/API.md` promises, in the three places that compared first: `SetLimits` compared every value with `CommKit.UNBOUNDED` before asking `issecretvalue` (and asked only about numbers, so a secret string reported the wrong reason), `maxRegistrations` and `maxListeners` were compared with `nil` and with `CommKit.UNBOUNDED` first. On a client with secret values each comparison raised a host error inside CommKit instead of `CommKit:SetLimits limits.burst must not be a secret value` at the caller's line. Absent options are now tested with `type`.

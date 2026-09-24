@@ -69,7 +69,7 @@
 
 local PACKAGE_NAME = "commKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 
 -- The API generation of every package CommKit uses: required (Registry,
 -- SignalKit, EventKit, TimerKit, SchedulerKit, PoolKit) and optional
@@ -1177,16 +1177,19 @@ local function readEnumValue(enumName, key, fallback)
         return fallback
     end
     local value = rawget(values, key)
-    if value == nil then
+    -- An enum entry is a host value: a secret one cannot be compared with a
+    -- result, so the fallback stands in for it.
+    if type(value) == "nil" or isSecret(value) then
         return fallback
     end
     return value
 end
 
 ---Return the name `Enum[enumName]` gives `value`, or `nil`. Used on failure
----paths only: it walks the enum table.
+---paths only: it walks the enum table. `value` must not be a secret; a
+---secret entry of the host's enum is skipped, never compared.
 ---@param enumName string
----@param value any
+---@param value any a value known not to be secret
 ---@return string|nil
 local function readEnumName(enumName, value)
     local enums = readHostTable("Enum")
@@ -1195,7 +1198,7 @@ local function readEnumName(enumName, value)
         return nil
     end
     for key, candidate in pairs(values) do
-        if candidate == value and type(key) == "string" then
+        if type(key) == "string" and not isSecret(candidate) and candidate == value then
             return key
         end
     end
@@ -1214,7 +1217,9 @@ end
 ---@param label string qualified public method name, used in the argument error
 ---@param level integer
 local function validateFacade(receiver, label, level)
-    if receiver ~= CommKit then
+    -- The `type` test comes first: a receiver may be a secret, which cannot
+    -- be compared with the facade.
+    if type(receiver) ~= "table" or receiver ~= CommKit then
         error(label .. " must be called on the CommKit facade; use " .. label .. "(...)", level)
     end
 end
@@ -1547,7 +1552,7 @@ end
 ---@param logged boolean
 ---@return string
 local function pipeKey(distribution, target, logged)
-    local targetText = target ~= nil and tostring(target) or ""
+    local targetText = type(target) ~= "nil" and tostring(target) or ""
     if logged then
         return distribution .. "\t" .. targetText .. "\tlogged"
     end
@@ -1821,12 +1826,17 @@ end
 
 ---The client's send result as `"sent"`, `"throttled"` or `"failed"` and a
 ---reason. `AddonMessageThrottle`, `ChannelThrottle` and any value the enum
----does not name are throttles.
+---does not name are throttles; a secret result cannot be read, so it names
+---nothing and is a throttle too.
 ---@param result any
 ---@return string outcome
 ---@return string|nil reason
 local function classifySendResult(result)
-    if result == nil or result == true then
+    -- Asked first: every test below compares the result.
+    if isSecret(result) then
+        return "throttled", nil
+    end
+    if type(result) == "nil" or result == true then
         return SEND_STATE.sent, nil
     end
     if result == false then
@@ -2797,7 +2807,7 @@ do
         end
         if unitInRaid ~= nil then
             local answer = unitInRaid(name)
-            if isSecret(answer) or answer ~= nil then
+            if isSecret(answer) or type(answer) ~= "nil" then
                 return true
             end
         end
@@ -2894,9 +2904,14 @@ do
             return true, nil
         end
         local isRegistered = readChatFunction("IsAddonMessagePrefixRegistered")
-        if isRegistered ~= nil and isRegistered(prefix) == true then
-            rawset(clientPrefixes, prefix, true)
-            return true, nil
+        if isRegistered ~= nil then
+            -- A secret answer cannot be compared: the prefix is registered
+            -- below, which the client accepts again as a duplicate.
+            local answer = isRegistered(prefix)
+            if not isSecret(answer) and answer == true then
+                rawset(clientPrefixes, prefix, true)
+                return true, nil
+            end
         end
         local register = readChatFunction("RegisterAddonMessagePrefix")
         if register == nil then
@@ -2906,8 +2921,13 @@ do
         end
 
         local result = register(prefix)
+        -- A secret result cannot be compared or used as a key: it names no
+        -- outcome, like a result the enum does not know.
+        if isSecret(result) then
+            return nil, "unknownResult"
+        end
         if
-            result == nil
+            type(result) == "nil"
             or result == true
             or result == readEnumValue(
                 "RegisterAddonMessagePrefixResult",
@@ -3321,7 +3341,7 @@ do
             if mine ~= nil and mine ~= theirs then
                 values[field] = rawget(ownValues, field)
                 differs = true
-            elseif mine == nil and theirs ~= nil then
+            elseif mine == nil and type(theirs) ~= "nil" then
                 removed[#removed + 1] = field
                 differs = true
             end
@@ -3348,9 +3368,14 @@ do
     local function acceptDelivered(syncSet, codec, peer, sender, field, value)
         local schemas = rawget(syncSet, "_schemas")
         local schema = schemas ~= false and rawget(schemas, field) or nil
-        if schema ~= nil and schema:Check(value) ~= true then
-            count("syncRejected")
-            return
+        if schema ~= nil then
+            -- The verdict is SchemaKit's return: a secret one is asked about
+            -- before the comparison with `true`, and is not an acceptance.
+            local verdict = schema:Check(value)
+            if isSecret(verdict) or verdict ~= true then
+                count("syncRejected")
+                return
+            end
         end
         local hash = hashValue(codec, value)
         if hash == nil then
@@ -3391,7 +3416,7 @@ do
         local removedSet = {}
         for index = 1, #fieldList do
             local field = rawget(removed, index)
-            if field == nil then
+            if type(field) == "nil" then
                 break
             end
             if type(field) == "string" and rawget(fields, field) then
@@ -3407,7 +3432,7 @@ do
         for index = 1, #fieldList do
             local field = fieldList[index]
             local value = rawget(values, field)
-            if value ~= nil and not removedSet[field] then
+            if type(value) ~= "nil" and not removedSet[field] then
                 acceptDelivered(syncSet, codec, peer, sender, field, value)
             end
         end
@@ -3728,8 +3753,10 @@ local function closeScope(scope, reason)
     rawset(scope, "_closed", true)
     -- A scope closed before logout needs no shutdown callback, and one closing
     -- from inside that callback finds it already delivered.
+    -- The handle LifecycleKit returned, or `false`; `type` asks without
+    -- comparing a value another package made.
     local subscription = rawget(scope, "_shutdownSubscription")
-    if subscription ~= nil and subscription ~= false then
+    if type(subscription) == "table" then
         rawset(scope, "_shutdownSubscription", false)
         subscription:Disconnect()
     end
@@ -3775,7 +3802,11 @@ local LogoutClose = {}
 ---@return boolean
 function LogoutClose.lifecycleClosesCommScopes(LifecycleKit)
     local closes = rawget(LifecycleKit, "CLOSES_ADDON_SCOPES")
-    return type(closes) == "table" and closes[PACKAGE_NAME] == true
+    if type(closes) ~= "table" then
+        return false
+    end
+    local entry = closes[PACKAGE_NAME]
+    return not isSecret(entry) and entry == true
 end
 
 ---Make the package-level `PLAYER_LOGOUT` watcher exist, once per session, in
@@ -4013,7 +4044,7 @@ function SyncSetMethods.Set(self, field, value)
     end
     local values = rawget(self, "_values")
     local hashes = rawget(self, "_hashes")
-    if value == nil then
+    if type(value) == "nil" then
         local changed = rawget(hashes, field) ~= nil
         rawset(values, field, nil)
         rawset(hashes, field, nil)
@@ -4022,8 +4053,12 @@ function SyncSetMethods.Set(self, field, value)
 
     local schemas = rawget(self, "_schemas")
     local schema = schemas ~= false and rawget(schemas, field) or nil
-    if schema ~= nil and schema:Check(value) ~= true then
-        return nil, REASON.schema
+    if schema ~= nil then
+        -- As on receipt: a secret verdict is not an acceptance.
+        local verdict = schema:Check(value)
+        if isSecret(verdict) or verdict ~= true then
+            return nil, REASON.schema
+        end
     end
     local codec =
         requireFound("codecKit", "CodecKit", DEPENDENCY_API.codecKit, "CommKit.SyncSet:Set", 3)
@@ -4393,7 +4428,7 @@ end
 ---@param level integer
 ---@return integer|table maxRegistrations
 local function readScopeOptions(options, label, level)
-    if options == nil then
+    if type(options) == "nil" then
         return MAX_REGISTRATIONS
     end
     if type(options) ~= "table" then
@@ -4464,8 +4499,8 @@ function FacadeMethods.ForAddon(self, addonName, options)
     if scope ~= nil then
         local current = rawget(scope, "_maxRegistrations")
         if
-            options ~= nil
-            and rawget(options, "maxRegistrations") ~= nil
+            type(options) ~= "nil"
+            and type(rawget(options, "maxRegistrations")) ~= "nil"
             and maxRegistrations ~= current
         then
             error(
@@ -4600,7 +4635,7 @@ function FacadeMethods.SetLimits(self, newLimits)
     -- collected first: completing one runs a callback that may change the
     -- queue.
     local bound = rawget(newLimits, "maxReassemblyBytesPerSender")
-    if bound == nil then
+    if type(bound) == "nil" then
         return
     end
     local unstartable = {}

@@ -56,9 +56,10 @@ describe("SettingsKit bootstrap", function()
                 switched = switched + 1
             end)
 
-            local upgraded = TestEnv.LoadRevision(3)
+            local nextRevision = SettingsKit.REVISION + 1
+            local upgraded = TestEnv.LoadRevision(nextRevision)
             assert.are.equal(SettingsKit, upgraded)
-            assert.are.equal(3, upgraded.REVISION)
+            assert.are.equal(nextRevision, upgraded.REVISION)
             assert.are.equal(prototype, upgraded.Database)
             assert.are.equal(db, upgraded:Open("MyAddonDB"))
             assert.are.equal(profile, db.profile)
@@ -126,10 +127,54 @@ describe("SettingsKit bootstrap", function()
 
         local upgraded = TestEnv.ReloadPackage()
         assert.are.equal(previous, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.is_true(upgraded.REVISION > 1)
         assert.are.equal(entry, db.profile.auras[5])
         assert.are.equal(true, entry.shown)
         assert.are.equal(0.5, glow.alpha)
+    end)
+
+    it("upgrades revision 2 in place and applies the secret refusals at once", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        local S = require("SchemaKit")
+        local previous = TestEnv.LoadRevision(2)
+        TestEnv.SetPlayer()
+        assert.are.equal(2, previous.REVISION)
+        local state = rawget(previous, "_state")
+        local prototype = previous.Database
+        local unbounded = previous.UNBOUNDED
+        previous:SetLimits({ pathKeyLimit = 48 })
+        local db = previous:Open("MyAddonDB", schemaFor(S))
+        local profile = db.profile
+        local changes = 0
+        db:OnChange("profile", function()
+            changes = changes + 1
+        end)
+
+        local upgraded = TestEnv.ReloadPackage()
+        assert.are.equal(previous, upgraded)
+        assert.is_true(upgraded.REVISION > 2)
+        assert.are.equal(state, rawget(upgraded, "_state"))
+        assert.are.equal(upgraded.REVISION, state.runtimeRevision)
+        assert.are.equal(prototype, upgraded.Database)
+        assert.are.equal(unbounded, upgraded.UNBOUNDED)
+        assert.are.equal(48, upgraded:GetLimits().pathKeyLimit)
+        assert.are.equal(db, upgraded:Open("MyAddonDB"))
+        assert.are.equal(profile, db.profile)
+        profile.scale = 2
+        assert.are.equal(1, changes)
+        assert.are.equal(2, profile.scale)
+
+        TestEnv.InstallSecretProbe()
+        TestEnv.expectErrorContaining(
+            "SettingsKit:SetLimits limits.pathKeyLimit must not be a secret value",
+            function()
+                upgraded:SetLimits({ pathKeyLimit = TestEnv.NewSecret() })
+            end
+        )
     end)
 
     it("loads without EventKit", function()

@@ -2,7 +2,7 @@
 
 OptionsKit API generation **1** provides a typed, validated, introspectable options tree with no renderer: what an addon exposes as configurable, how each option is read and written, and what a dialog or a command line needs to present it.
 
-Implementation revision: **3**.
+Implementation revision: **4**.
 
 ## Loading
 
@@ -29,7 +29,7 @@ OptionsKit does not rely on `require()` at runtime.
 |---|---|---|
 | SettingsKit API 1, through `Registry:Find` | `Define` with `options.db`, which every `bind` needs; `ProfileOptions` | `Define` with `options.db` and `ProfileOptions` raise; options with `get`/`set` work as usual. |
 | `UnitName("player")`, `GetRealmName()` | `ProfileOptions`, for the per-character profile choice `"<name> - <realm>"` | The choice is left out; the group works otherwise. Read once per `ProfileOptions` call. |
-| `issecretvalue` | `Set`, `Validate`, `Describe`'s copy of a value, and every path and addon-name argument | Nothing is treated as secret, which is correct on clients without secret values. |
+| `issecretvalue` | `Set`, `Validate`, `Describe`'s copy of a value, every path and addon-name argument, the `Define` limit options, and the results of `validate` and `db:Validate` | Nothing is treated as secret, which is correct on clients without secret values. |
 
 `issecretvalue` is read from the global table at every call, as SchemaKit reads it, so a probe that appears later is used at once.
 
@@ -90,7 +90,7 @@ What it refuses:
 - any field its kind does not accept (a misspelling fails at once instead of being ignored);
 - a key in `args` that is not an identifier (`[%a_][%w_]*`), so a dotted path is never ambiguous;
 - more than `maxOptions` options below the root (groups count), and an option path longer than `maxDepth` keys — which also turns a cyclic tree into an error, whatever the limits;
-- a limit option out of range: `OptionsKit:Define options.maxDepth must be an integer from 1 to 32`, `OptionsKit:Define options.maxOptions must be a positive integer or OptionsKit.UNBOUNDED`;
+- a limit option out of range: `OptionsKit:Define options.maxDepth must be an integer from 1 to 32`, `OptionsKit:Define options.maxOptions must be a positive integer or OptionsKit.UNBOUNDED`; a secret limit option, refused before it is compared with `OptionsKit.UNBOUNDED`: `OptionsKit:Define options.maxOptions must not be a secret value` (likewise `maxDepth` and `maxDynamicEntries`);
 - a value option with neither `get` and `set` nor `bind`, or with both; a `bind` without `options.db`;
 - `options.db` when `Registry:Find("settingsKit", 1)` finds nothing, or when it is not a table with `OnChange` and `Validate` methods; a `bind` whose scope the database did not declare or cannot provide on this client (`OptionsKit:Define tree.args.x.bind scope "realm" is not an available scope of options.db`). The scope is read with `rawget`, so SettingsKit's own error for an undeclared scope never escapes from inside OptionsKit.
 
@@ -269,7 +269,7 @@ Value options are `toggle`, `range`, `select`, `multiselect`, `input`, `color` a
 | `get` | `fun(info): any` | Returns the current value. With `set`. |
 | `set` | `fun(info, value)` | Stores a value that passed the schema and `validate`. With `get`. |
 | `bind` | string | `"<scope>.<key>[.<key>...]"` into `options.db`, instead of `get` and `set`. `<scope>` is `global`, `char`, `realm`, `class`, `faction` or `profile`; every segment is an identifier. |
-| `validate` | `fun(info, value): boolean, string?` | Runs after the schema accepted the value. Anything but `true` refuses; the second result is the message (`"refused by validate"` when there is none). |
+| `validate` | `fun(info, value): boolean, string?` | Runs after the schema accepted the value. Anything but `true` refuses, a secret result included (it is never compared); the second result is the message (`"refused by validate"` when there is none). |
 
 ### Kinds and their schemas
 
@@ -520,7 +520,7 @@ Opening `maxDynamicEntries` past `1024` is honoured by OptionsKit, but a rendere
 
 ## Secret values
 
-On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). `Set` refuses a secret value at your line before anything compares it, and `Validate` reports it as `false, "secret value"`. A secret path or addon name is refused before it is used as a table key. `Get` and `Describe` return what a getter returns, secret or not, without inspecting it: `Describe` asks `issecretvalue` before it copies a table value, and passes a secret, at the top or nested inside the table, through without being copied. A secret nested in a table value (a `color` field) is refused by the schema with SchemaKit's `secret` rule.
+On Retail 12.x some client APIs hand addon code secret values (see [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x)). `Set` refuses a secret value at your line before anything compares it, and `Validate` reports it as `false, "secret value"`. A secret path or addon name is refused before it is used as a table key. `Get` and `Describe` return what a getter returns, secret or not, without inspecting it: `Describe` asks `issecretvalue` before it copies a table value, and passes a secret, at the top or nested inside the table, through without being copied. A secret nested in a table value (a `color` field) is refused by the schema with SchemaKit's `secret` rule. A secret `maxOptions`, `maxDepth` or `maxDynamicEntries` is refused at your line before it is compared with `OptionsKit.UNBOUNDED`, and a secret returned by `validate` or by the database's `Validate` counts as a refusal without being compared with `true`. Whether a field of your tree, your options or a value read from the database is absent is asked with `type`, never by comparing it with `nil`, so an absent-or-present test never touches a secret.
 
 ## Error behaviour
 
@@ -550,6 +550,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 ## Embedded copies and upgrades
 
-Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revision 3 changed no layout. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads.
+Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 and 4 changed no layout. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads.
 
 Nothing survives `/reload`: trees are defined again when the addon loads.

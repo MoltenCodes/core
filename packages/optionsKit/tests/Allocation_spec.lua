@@ -6,7 +6,7 @@ local TestEnv = require("OptionsKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("OptionsKit allocation", function()
+describe("OptionsKit allocation #allocation", function()
     local OptionsKit
     local tree
     local store
