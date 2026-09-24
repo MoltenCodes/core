@@ -31,7 +31,7 @@ Spec files:
 | `ErrorLevels_spec.lua` | every argument and receiver failure at the caller's line |
 | `FlavourTable_spec.lua` | the facade's table against the tooling's flavour table |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
-| `RetailBindings_spec.lua`, `ClassicEraBindings_spec.lua`, `ClassicMopBindings_spec.lua` | each committed flavour file against the real facade and the shared fixture: direct aliases, absent namespaces, another flavour's client, loading before the facade |
+| `RetailBindings_spec.lua`, `ClassicEraBindings_spec.lua`, `ClassicMopBindings_spec.lua`, `PtrBindings_spec.lua`, `BetaBindings_spec.lua` | each committed flavour file against the real facade and the shared fixture: direct aliases, absent namespaces, another flavour's client, loading before the facade |
 
 Not yet covered: an in-place upgrade from an older revision (none exists), so
 the facade's own inherited-state validation is exercised only by a same-revision

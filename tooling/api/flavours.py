@@ -24,8 +24,9 @@ builds, 2 Classic Era, 19 Mists of Pandaria Classic), `IsTestBuild()` (true on
 the PTR and on Beta) and `IsBetaBuild()` (true on Beta only). Every flavour
 states all three facts, so a client matches exactly one flavour or none; a
 client matching none (a Burning Crusade Classic client, for example) gets no
-surface. The probe names are verified against the captured metadata when the
-facade is written (roadmap step H3).
+surface. Both probes are documented functions of the Retail client (its
+`System` tables at build 69933 list `IsTestBuild` and `IsBetaBuild`), the
+only client whose project id needs them.
 """
 
 from __future__ import annotations

@@ -329,6 +329,10 @@
       "kind": "alias",
       "lua": "any"
     },
+    "Milliseconds": {
+      "kind": "alias",
+      "lua": "number"
+    },
     "ModelAsset": {
       "kind": "class",
       "lua": "ModelAsset"
@@ -420,6 +424,10 @@
     "ScriptTypeName": {
       "kind": "alias",
       "lua": "string"
+    },
+    "Seconds": {
+      "kind": "alias",
+      "lua": "number"
     },
     "SecondsFormatter": {
       "kind": "class",
@@ -549,6 +557,10 @@
       "kind": "class",
       "lua": "UiMapPoint"
     },
+    "UnitCastBarID": {
+      "kind": "alias",
+      "lua": "integer"
+    },
     "UnitHealPredictionCalculator": {
       "kind": "class",
       "lua": "UnitHealPredictionCalculator"
@@ -600,6 +612,10 @@
     "WeeklyRewardItemDBID": {
       "kind": "alias",
       "lua": "integer"
+    },
+    "any": {
+      "kind": "primitive",
+      "lua": "any"
     },
     "bool": {
       "kind": "primitive",

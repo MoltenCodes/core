@@ -1,0 +1,14 @@
+{
+  "branch": "ptr2",
+  "build": 69952,
+  "capturedOn": "2026-09-24",
+  "commit": "5c9363cc1b4e80b98963e3fcc87ab460fa911a94",
+  "committedAt": "2026-09-22T21:30:39Z",
+  "documentationPath": "Interface/AddOns/Blizzard_APIDocumentationGenerated",
+  "fileCount": 622,
+  "flavour": "ptr",
+  "repository": "Gethe/wow-ui-source",
+  "schema": 1,
+  "subject": "12.1.5 (69952)",
+  "version": "12.1.5"
+}

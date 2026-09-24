@@ -1154,9 +1154,16 @@ begins; H4 to H6 may overlap where they do not share files.
       visible by a tooling test over every committed pair (each adds
       bindings the other lacks; each file registers only itself). Package
       after three flavours: 20 MB committed (2026-09-24).
-- [ ] **H6 — PTR and Beta.** Same as H4 when the mirror branches carry the
-      documentation tables; until then the flavours exist as empty surfaces
-      and the README says so.
+- [x] **H6 — PTR and Beta.** Both mirror branches carry the tables. PTR at
+      `Gethe/wow-ui-source@5c9363cc` (`ptr2`, chosen over `ptr` for its newer
+      build: 12.1.5, build 69952, 622 tables: 397 namespaces, 6,437
+      functions; four host types new in 12.1.5 added to `types.json`) and
+      Beta at `@078d0cf7` (12.0.1, build 66220, the branch's last export of
+      2026-03-03: 374 namespaces, 5,942 functions), normalised, generated and
+      checked like the others, each with its Busted spec. The detection
+      probes `IsTestBuild` and `IsBetaBuild` were verified as documented
+      functions of the Retail client. Package after five flavours: 36 MB
+      committed, of which metadata 24 MB and types 8 MB (2026-09-24).
 - [ ] **H7 — documentation and review.** `docs/UPDATING.md`; EMBEDDING,
       ARCHITECTURE, `docs/README.md`, RELEASES (how a metadata refresh is
       versioned) updated; performance review written; acceptance review;

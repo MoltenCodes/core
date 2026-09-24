@@ -1,0 +1,279 @@
+{
+  "callbacks": [
+    {
+      "arguments": [
+        {
+          "name": "result",
+          "nilable": false,
+          "type": "CraftingOrderResult"
+        },
+        {
+          "name": "orderType",
+          "nilable": false,
+          "type": "CraftingOrderType"
+        },
+        {
+          "name": "displayBuckets",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "expectMoreRows",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "offset",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "isSorted",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "name": "CraftingOrderRequestCallback",
+      "source": "CraftingOrderUISharedDocumentation.lua"
+    },
+    {
+      "arguments": [
+        {
+          "name": "result",
+          "nilable": false,
+          "type": "CraftingOrderResult"
+        },
+        {
+          "name": "expectMoreRows",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "offset",
+          "nilable": false,
+          "type": "number"
+        },
+        {
+          "name": "isSorted",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "name": "CraftingOrderRequestMyOrdersCallback",
+      "source": "CraftingOrderUISharedDocumentation.lua"
+    },
+    {
+      "name": "EventCallbackType",
+      "source": "FrameScriptDocumentation.lua",
+      "system": "FrameScript"
+    },
+    {
+      "name": "FixturePointUpdatedCallback",
+      "source": "HousingFixturePointFrameAPIDocumentation.lua",
+      "system": "HousingFixturePointFrameAPI"
+    },
+    {
+      "name": "FrameEventCallbackType",
+      "source": "SimpleFrameAPIDocumentation.lua",
+      "system": "SimpleFrameAPI"
+    },
+    {
+      "arguments": [
+        {
+          "name": "success",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "texture",
+          "nilable": false,
+          "type": "fileID"
+        }
+      ],
+      "name": "GetTitleIconTextureCallback",
+      "source": "TextureUtilsDocumentation.lua",
+      "system": "TextureUtils"
+    },
+    {
+      "name": "HousingCatalogSearchResultsUpdatedCallback",
+      "source": "HousingCatalogSearcherAPIDocumentation.lua",
+      "system": "HousingCatalogSearcherAPI"
+    },
+    {
+      "arguments": [
+        {
+          "name": "keystate",
+          "nilable": false,
+          "type": "cstring"
+        }
+      ],
+      "name": "InputCommandCallback",
+      "source": "KeyBindingsDocumentation.lua",
+      "system": "KeyBindings"
+    },
+    {
+      "arguments": [
+        {
+          "name": "macroLine",
+          "nilable": false,
+          "type": "cstring"
+        }
+      ],
+      "name": "MacroExecuteLineCallback",
+      "source": "UIMacrosDocumentation.lua",
+      "system": "UIMacros"
+    },
+    {
+      "name": "PendingPingOffScreenCallback",
+      "source": "PingManagerSecureDocumentation.lua",
+      "system": "PingManagerSecure"
+    },
+    {
+      "name": "PinUpdatedCallback",
+      "source": "HousingLayoutUITypesDocumentation.lua"
+    },
+    {
+      "arguments": [
+        {
+          "name": "info",
+          "nilable": false,
+          "type": "PingCooldownInfo"
+        }
+      ],
+      "name": "PingCooldownStartedCallback",
+      "source": "PingManagerSecureDocumentation.lua",
+      "system": "PingManagerSecure"
+    },
+    {
+      "arguments": [
+        {
+          "name": "region",
+          "nilable": false,
+          "type": "ScriptRegion"
+        },
+        {
+          "name": "uiTextureKit",
+          "nilable": false,
+          "type": "textureKit"
+        },
+        {
+          "name": "isWorldPoint",
+          "nilable": false,
+          "type": "bool"
+        },
+        {
+          "name": "actionInfo",
+          "nilable": true,
+          "type": "PingActionUIInfo"
+        }
+      ],
+      "name": "PingPinFrameAddedCallback",
+      "source": "PingManagerSecureDocumentation.lua",
+      "system": "PingManagerSecure"
+    },
+    {
+      "arguments": [
+        {
+          "name": "region",
+          "nilable": false,
+          "type": "ScriptRegion"
+        }
+      ],
+      "name": "PingPinFrameRemovedCallback",
+      "source": "PingManagerSecureDocumentation.lua",
+      "system": "PingManagerSecure"
+    },
+    {
+      "arguments": [
+        {
+          "name": "region",
+          "nilable": false,
+          "type": "ScriptRegion"
+        },
+        {
+          "name": "state",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "name": "PingPinFrameScreenClampStateUpdatedCallback",
+      "source": "PingManagerSecureDocumentation.lua",
+      "system": "PingManagerSecure"
+    },
+    {
+      "arguments": [
+        {
+          "name": "region",
+          "nilable": false,
+          "type": "ScriptRegion"
+        }
+      ],
+      "name": "PingRadialWheelCreatedCallback",
+      "source": "PingManagerSecureDocumentation.lua",
+      "system": "PingManagerSecure"
+    },
+    {
+      "arguments": [
+        {
+          "name": "macroInfo",
+          "nilable": false,
+          "type": "PingMacroInfo"
+        }
+      ],
+      "name": "SendMacroPingCallback",
+      "source": "PingManagerSecureDocumentation.lua",
+      "system": "PingManagerSecure"
+    },
+    {
+      "arguments": [
+        {
+          "name": "cb",
+          "nilable": false,
+          "type": "TimerCallback"
+        }
+      ],
+      "name": "TickerCallback",
+      "source": "UITimerDocumentation.lua",
+      "system": "UITimer"
+    },
+    {
+      "arguments": [
+        {
+          "documentation": [
+            "The key whose scheduled time has arrived; secret if the timed signal map has secret values."
+          ],
+          "flags": [
+            "ConditionalSecret"
+          ],
+          "name": "key",
+          "nilable": false,
+          "type": "number"
+        }
+      ],
+      "documentation": [
+        "Invoked by a timed signal map when a scheduled time has arrived."
+      ],
+      "name": "TimedSignalMapCallback",
+      "source": "TimedSignalMapSharedDocumentation.lua"
+    },
+    {
+      "name": "TimerCallback",
+      "source": "UITimerDocumentation.lua",
+      "system": "UITimer"
+    },
+    {
+      "arguments": [
+        {
+          "name": "down",
+          "nilable": false,
+          "type": "bool"
+        }
+      ],
+      "name": "TogglePingListenerCallback",
+      "source": "PingManagerSecureDocumentation.lua",
+      "system": "PingManagerSecure"
+    }
+  ],
+  "flavour": "ptr",
+  "schema": 1
+}

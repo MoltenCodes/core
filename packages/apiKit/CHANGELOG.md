@@ -30,5 +30,12 @@
   bindings from `Gethe/wow-ui-source@cde55d0033e89b246381385b2f063cd6c6047ef8`
   (classic, client 5.5.4, build 69934, 533 tables): 337 namespaces, 4,590
   functions, 1,483 events, 740 enumerations. Two host types the Classic tables
-  reference joined `types.json` (`luaFunction`, `RoleShortageReward`). PTR and
-  Beta follow when the mirror carries their tables.
+  reference joined `types.json` (`luaFunction`, `RoleShortageReward`).
+- Public Test Realm bindings from `Gethe/wow-ui-source@5c9363cc1b4e80b98963e3fcc87ab460fa911a94`
+  (ptr2, client 12.1.5, build 69952, 622 tables): 397 namespaces, 6,437
+  functions, 1,783 events, 856 enumerations; four host types the 12.1.5 tables
+  introduce joined `types.json` (`Milliseconds`, `Seconds`, `UnitCastBarID`,
+  `any`). Beta bindings from `Gethe/wow-ui-source@078d0cf7512bfc9c83c576ae83d14ef6a173ea3b`
+  (beta, client 12.0.1, build 66220, the branch's last export of 2026-03-03,
+  575 tables): 374 namespaces, 5,942 functions, 1,728 events, 810
+  enumerations.

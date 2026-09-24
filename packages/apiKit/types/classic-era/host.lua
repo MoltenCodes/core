@@ -131,6 +131,8 @@
 
 ---@alias LuaValueVariant any
 
+---@alias Milliseconds number
+
 ---@class ModelAsset
 
 ---@class ModelSceneFrame
@@ -162,6 +164,8 @@
 ---@class ScriptRegion
 
 ---@alias ScriptTypeName string
+
+---@alias Seconds number
 
 ---@alias SendChatMessageType string
 
@@ -198,6 +202,8 @@
 ---@class TransmogLocationMixin
 
 ---@class UiMapPoint
+
+---@alias UnitCastBarID integer
 
 ---@alias UnitToken string
 

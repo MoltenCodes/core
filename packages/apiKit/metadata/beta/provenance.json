@@ -1,0 +1,14 @@
+{
+  "branch": "beta",
+  "build": 66220,
+  "capturedOn": "2026-09-24",
+  "commit": "078d0cf7512bfc9c83c576ae83d14ef6a173ea3b",
+  "committedAt": "2026-03-03T02:01:49Z",
+  "documentationPath": "Interface/AddOns/Blizzard_APIDocumentationGenerated",
+  "fileCount": 575,
+  "flavour": "beta",
+  "repository": "Gethe/wow-ui-source",
+  "schema": 1,
+  "subject": "12.0.1 (66220)",
+  "version": "12.0.1"
+}

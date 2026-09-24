@@ -42,8 +42,10 @@ The flavour is derived once, when the facade loads, from three host facts:
 | `ptr` | `1` | true | false |
 | `beta` | `1` | true | true |
 
-A probe the client does not have counts as `false`; a beta client counts as a
-test build whatever `IsTestBuild()` says; a probe that raises stops the
+Both probes are documented functions of the Retail client (`IsTestBuild` and
+`IsBetaBuild` in its `System` tables at build 69933), which is the only client
+whose project id needs them. A probe the client does not have counts as
+`false`; a beta client counts as a test build whatever `IsTestBuild()` says; a probe that raises stops the
 facade's load with that error, as ClientKit's unprotected host calls do. A
 client matching no row (a Burning Crusade Classic client, a client without
 `WOW_PROJECT_ID`) is `"unsupported"`: its namespaces stay empty and every
