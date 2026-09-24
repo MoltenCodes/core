@@ -21,7 +21,8 @@ The ModuleKit suite covers:
 - intent versus fact (`EnableState_spec.lua`): recovery after a dependency enables, explicit disable winning over recovery, the `ready` phase respecting an explicit disable, and both fields surviving an in-place upgrade;
 - dependency cycles reported at the caller's line from every entry method (`Cycle_spec.lua`);
 - halted addons (`Halted_spec.lua`): the addon's own halt, a required addon's halt, a halt raised from inside `OnEnable`, `requiresAddons` validation and LifecycleKit's dependency bound, and the halted state across an in-place upgrade;
-- package-wide limits (`Limits_spec.lua`): the `maxRequiredAddons` default, a lower and a higher limit, `ModuleKit.UNBOUNDED`, the coupling to LifecycleKit's reported `maxDependencies`, invalid values refused at the caller without changing anything, and the facade receiver check; the upgrade cases live in `Bootstrap_spec.lua`.
+- package-wide limits (`Limits_spec.lua`): the `maxRequiredAddons` default, a lower and a higher limit, `ModuleKit.UNBOUNDED`, the coupling to LifecycleKit's reported `maxDependencies`, invalid values refused at the caller without changing anything, and the facade receiver check; the upgrade cases live in `Bootstrap_spec.lua`;
+- `implements` contracts (`Implements_spec.lua`): the list form on a value, a singleton, a module-scoped and a transient provider and on a module definition, a missing member, a member that is not a function, a value that is not a table, every malformed list and options table refused at the caller's line, the once-per-value rule (a singleton's members are looked up once, a transient's on every resolution), a refused injected value recorded as the module's failure, the schema form against the real SchemaKit (sealed schema and unsealed node, path and root failures, an inherited method that a schema does not see, a module definition against an open table schema, an impostor table) and the refusal of the schema form when SchemaKit is not loaded (the chain is loaded without SchemaKit through `NewPackageWithoutHookKit`; the schema stand-in is an empty table whose protected metatable name is SchemaKit's); the upgrade cases live in `Bootstrap_spec.lua`.
 
 Spec files:
 
@@ -38,5 +39,6 @@ Spec files:
 | `Scope_spec.lua` | module scopes over fakes and the real EventKit, HookKit, SignalKit bus, CommandKit and CommKit |
 | `Halted_spec.lua` | the addon's own halt, a required addon's halt, halts raised inside `OnEnable`, `requiresAddons`, upgrades |
 | `Limits_spec.lua` | `SetLimits` / `GetLimits`, `maxRequiredAddons`, `ModuleKit.UNBOUNDED` and the LifecycleKit coupling |
-| `Bootstrap_spec.lua` | duplicate loading, Registry publication, dispatch repair, in-place upgrades, revision 14, limits and the sentinel carried across upgrades from revision 13 and to a newer revision |
+| `Implements_spec.lua` | the `implements` option on every provider kind and on module definitions, in its list and schema forms, with and without SchemaKit |
+| `Bootstrap_spec.lua` | duplicate loading, Registry publication, dispatch repair, in-place upgrades, revision 15, limits and the sentinel carried across upgrades from revision 13 and to a newer revision, a revision-14 provider resolving unchecked and a contract kept under a newer revision |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |

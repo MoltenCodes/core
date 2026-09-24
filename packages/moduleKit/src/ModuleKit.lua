@@ -10,7 +10,10 @@
 --   Bootstrap ............ Embedded revision reconciliation and shared state.
 --   Validation helpers ... Argument checks and definition-mutability rules.
 --   Graph ................ Edge construction, cycle reporting, topological order.
---   Dependency injection . Provider registration, scoped resolution, cycles.
+--   Optional packages .... Silent `Registry:Find` lookup shared by the sections
+--                          that use a Kit the addon may not embed.
+--   Dependency injection . Provider registration, `implements` contracts,
+--                          scoped resolution, cycles.
 --   Module scopes ........ Per-module addon-message, command, event, hook,
 --                          job, message and timer scopes released on disable,
 --                          resolved through `Registry:Find`.
@@ -32,7 +35,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 14
+local IMPLEMENTATION_REVISION = 15
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -77,9 +80,20 @@ local OWN_ADDON_HALTED = "halted"
 ---@field after string[]? modules this one must follow
 ---@field inject table<string, string>? alias-to-provider/module-name map
 ---@field requiresAddons string[]? other addons this module cannot work without, at most `maxRequiredAddons` (default 16; see `ModuleKit:SetLimits`)
+---@field implements ModuleKit.Implements? members the module must carry when `CreateModule` returns
 ---@field onInitialize fun(self: ModuleKit.Module, injections: table<string, any>)?
 ---@field onEnable fun(self: ModuleKit.Module)?
 ---@field onDisable fun(self: ModuleKit.Module)?
+
+---What a provided value, or a module, must carry: a dense array of distinct
+---method names, each looked up as `value[name]` and required to be a function,
+---or a SchemaKit node or sealed schema when SchemaKit API 1 is loaded.
+---@alias ModuleKit.Implements string[]|table
+
+---Options accepted by `ProvideValue`, `ProvideSingleton`, `ProvideModule` and
+---`ProvideTransient`. Unknown fields are rejected.
+---@class ModuleKit.ProvideOptions
+---@field implements ModuleKit.Implements? checked on every value the provider produces; see `docs/API.md`
 
 ---One module inside an addon container.
 ---
@@ -125,10 +139,10 @@ local OWN_ADDON_HALTED = "halted"
 ---@field InitializeAll fun(self: ModuleKit.Addon): ModuleKit.Addon
 ---@field EnableAll fun(self: ModuleKit.Addon): ModuleKit.Addon
 ---@field DisableAll fun(self: ModuleKit.Addon): ModuleKit.Addon
----@field ProvideValue fun(self: ModuleKit.Addon, name: string, value: any): ModuleKit.Addon
----@field ProvideSingleton fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon): any): ModuleKit.Addon
----@field ProvideModule fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any): ModuleKit.Addon
----@field ProvideTransient fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any): ModuleKit.Addon
+---@field ProvideValue fun(self: ModuleKit.Addon, name: string, value: any, options: ModuleKit.ProvideOptions?): ModuleKit.Addon
+---@field ProvideSingleton fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon): any, options: ModuleKit.ProvideOptions?): ModuleKit.Addon
+---@field ProvideModule fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any, options: ModuleKit.ProvideOptions?): ModuleKit.Addon
+---@field ProvideTransient fun(self: ModuleKit.Addon, name: string, factory: fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any, options: ModuleKit.ProvideOptions?): ModuleKit.Addon
 ---@field Resolve fun(self: ModuleKit.Addon, name: string, requestingModule: ModuleKit.Module|nil): any
 
 ---Per-module owner of framework registrations, released when the module is
@@ -960,6 +974,28 @@ local function buildEnabledHardOrder(addon)
     return result
 end
 
+-- Optional packages ---------------------------------------------------------
+
+---Silent optional-dependency lookup.
+---
+---Registry revision 7 added `Find`; an older Registry's `Get` also returns
+---`nil` for a missing package, so it is a correct fallback. The method is read
+---on every call because an embedded Registry upgrade replaces it in place.
+---@param packageName string
+---@param api integer
+---@return table|nil
+local function findOptionalPackage(packageName, api)
+    local find = rawget(Registry, "Find")
+    if type(find) ~= "function" then
+        find = rawget(Registry, "Get")
+    end
+    local implementation = find(Registry, packageName, api)
+    if type(implementation) ~= "table" then
+        return nil
+    end
+    return implementation
+end
+
 -- Dependency injection ------------------------------------------------------
 
 ---Whether a resolution-stack entry names the resolution being attempted.
@@ -988,6 +1024,228 @@ local function resolutionLabel(name, requestingModule)
     end
     return name
 end
+
+-- Implements contracts ------------------------------------------------------
+--
+-- A provider or a module definition may state what its value must carry, and
+-- ModuleKit checks it exactly once per value: at registration for a value
+-- provider and a module, and when the factory's result arrives for a lazy
+-- provider, before that result is cached. The contract is compiled at
+-- registration into a record kept on the provider, so a resolution pays one
+-- lookup per declared name and allocates nothing when the value conforms.
+-- Messages never format the checked value: they name the provider or module,
+-- the member, and a type name.
+
+---The package ID and API generation of SchemaKit, the one optional package the
+---schema form of `implements` needs. It is found at registration, never at
+---load, because nothing guarantees it has loaded before this file.
+local SCHEMA_KIT_PACKAGE = "schemaKit"
+local SCHEMA_KIT_API = 1
+
+---The names `getmetatable` returns for SchemaKit nodes and sealed schemas,
+---which set `__metatable` to them. They tell a schema from a method list even
+---when SchemaKit is not loaded, which is what the refusal for that case needs.
+local SCHEMA_METATABLE_NAMES = { ["SchemaKit.Schema"] = true, ["SchemaKit.Node"] = true }
+
+---Whether `value` presents itself as a SchemaKit node or sealed schema.
+---@param value any
+---@return boolean
+local function isSchemaLike(value)
+    return type(value) == "table" and SCHEMA_METATABLE_NAMES[getmetatable(value)] == true
+end
+
+---Compile the list form of `implements`: a dense array of distinct non-empty
+---strings, copied so a later edit of the caller's table changes nothing.
+---@param list table
+---@param label string argument description, used in the argument errors
+---@param level integer stack level the failure is reported at
+---@return string[] names
+local function compileImplementsNames(list, label, level)
+    local count = 0
+    for key in next, list do
+        if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
+            error(label .. " must be a dense array of method names or a SchemaKit schema", level)
+        end
+        count = count + 1
+    end
+    if count == 0 then
+        error(label .. " must name at least one method", level)
+    end
+
+    -- `count` positive-integer keys form a dense array only when every index
+    -- from 1 to `count` is present; a hole anywhere is a density failure, not a
+    -- bad entry.
+    local names = {}
+    local seen = {}
+    for index = 1, count do
+        local name = rawget(list, index)
+        if name == nil then
+            error(label .. " must be a dense array of method names or a SchemaKit schema", level)
+        end
+        if type(name) ~= "string" or name == "" then
+            error(label .. " entries must be non-empty strings", level)
+        end
+        if seen[name] == true then
+            error(label .. ' names "' .. name .. '" twice', level)
+        end
+        seen[name] = true
+        names[index] = name
+    end
+    return names
+end
+
+---Compile the schema form of `implements`: seal the node or schema through the
+---loaded SchemaKit, so the contract owns its failure record and cannot race
+---the consumer's own checks on the same schema.
+---@param candidate table a value `isSchemaLike` accepted
+---@param label string argument description, used in the argument errors
+---@param level integer stack level the failure is reported at
+---@return table schema a sealed SchemaKit schema
+local function compileImplementsSchema(candidate, label, level)
+    local SchemaKit = findOptionalPackage(SCHEMA_KIT_PACKAGE, SCHEMA_KIT_API)
+    if SchemaKit == nil then
+        error(
+            label
+                .. " is a SchemaKit schema, but SchemaKit API "
+                .. SCHEMA_KIT_API
+                .. " is not loaded",
+            level
+        )
+    end
+    local seal = rawget(SchemaKit, "Seal")
+    if type(seal) ~= "function" then
+        error(label .. " must be a SchemaKit node or sealed schema", level)
+    end
+    local ok, schema = pcall(seal, SchemaKit, candidate)
+    if not ok or type(schema) ~= "table" then
+        error(label .. " must be a SchemaKit node or sealed schema", level)
+    end
+    return schema
+end
+
+---Compile an `implements` declaration into a contract record, or `nil` when
+---none was declared.
+---@param candidate any the caller's `implements` value
+---@param label string argument description, used in the argument errors
+---@param level integer stack level the failure is reported at
+---@return table|nil contract `{ names = string[] }` or `{ schema = table }`
+local function compileImplements(candidate, label, level)
+    if candidate == nil then
+        return nil
+    end
+    if type(candidate) ~= "table" then
+        error(label .. " must be a dense array of method names or a SchemaKit schema", level)
+    end
+    if isSchemaLike(candidate) then
+        return { schema = compileImplementsSchema(candidate, label, level + 1) }
+    end
+    return { names = compileImplementsNames(candidate, label, level + 1) }
+end
+
+---Render a SchemaKit failure record for a message. SchemaKit never puts the
+---checked value in the record, so the rendering is secret-safe.
+---@param failure table `{ path, rule, expected, found }`
+---@return string
+local function describeSchemaFailure(failure)
+    local path = rawget(failure, "path")
+    local where = ""
+    if type(path) == "string" and path ~= "" then
+        where = "at " .. path .. ", "
+    end
+    return where
+        .. "expected "
+        .. tostring(rawget(failure, "expected"))
+        .. ", found "
+        .. tostring(rawget(failure, "found"))
+end
+
+---Check `value` against a compiled contract, raising at `level` on the first
+---member or schema rule it fails. Allocates nothing when the value conforms.
+---@param contract table|nil the record `compileImplements` returned
+---@param value any the provided value or the module table
+---@param subject string what is checked, for the message: `provider "Database"` or `module "Inventory"`
+---@param level integer stack level the failure is reported at
+local function checkImplements(contract, value, subject, level)
+    if contract == nil then
+        return
+    end
+
+    local schema = rawget(contract, "schema")
+    if schema ~= nil then
+        local ok, failure = schema:Check(value)
+        if not ok then
+            error(
+                "ModuleKit "
+                    .. subject
+                    .. " does not match its implements schema: "
+                    .. describeSchemaFailure(failure),
+                level
+            )
+        end
+        return
+    end
+
+    local names = rawget(contract, "names")
+    if type(value) ~= "table" then
+        error(
+            "ModuleKit "
+                .. subject
+                .. ' must implement "'
+                .. names[1]
+                .. '": the value is a '
+                .. type(value)
+                .. ", not a table",
+            level
+        )
+    end
+    for index = 1, #names do
+        local name = names[index]
+        local member = value[name]
+        if member == nil then
+            error(
+                "ModuleKit " .. subject .. ' must implement "' .. name .. '": no such member',
+                level
+            )
+        end
+        if type(member) ~= "function" then
+            error(
+                "ModuleKit "
+                    .. subject
+                    .. ' must implement "'
+                    .. name
+                    .. '": member "'
+                    .. name
+                    .. '" is a '
+                    .. type(member)
+                    .. ", not a function",
+                level
+            )
+        end
+    end
+end
+
+---Read the options table of a `Provide*` method and compile its `implements`.
+---@param options any the caller's options, `nil` when omitted
+---@param methodName string public method name, used in the argument errors
+---@param level integer stack level the failure is reported at
+---@return table|nil contract
+local function readProvideOptions(options, methodName, level)
+    if options == nil then
+        return nil
+    end
+    local label = "ModuleKit.Addon:" .. methodName .. " options"
+    if type(options) ~= "table" then
+        error(label .. " must be a table when provided", level)
+    end
+    for key in next, options do
+        if key ~= "implements" then
+            error(label .. ' contains unknown field "' .. tostring(key) .. '"', level)
+        end
+    end
+    return compileImplements(rawget(options, "implements"), label .. ".implements", level + 1)
+end
+
+-- Providers -----------------------------------------------------------------
 
 ---Whether `name` is already taken by a module or another provider.
 ---@param addon ModuleKit.Addon
@@ -1089,6 +1347,14 @@ local function resolveProvider(addon, name, requestingModule)
     if value == nil then
         error('ModuleKit provider "' .. name .. '" factory returned nil', 3)
     end
+    -- Checked before caching, so a refused value is produced again on the next
+    -- resolution rather than served from the cache. Level 4 counts this frame.
+    checkImplements(
+        rawget(provider, "implements"),
+        value,
+        'provider "' .. resolutionLabel(name, kind == "module" and requestingModule or nil) .. '"',
+        4
+    )
 
     if kind == "singleton" then
         rawset(provider, "value", value)
@@ -1150,26 +1416,6 @@ local SCOPE_PACKAGES = {
 -- commKit, commandKit, eventKit, hookKit, schedulerKit, signalKit and timerKit
 -- are all API generation 1.
 local SCOPE_PACKAGE_API = 1
-
----Silent optional-dependency lookup.
----
----Registry revision 7 added `Find`; an older Registry's `Get` also returns
----`nil` for a missing package, so it is a correct fallback. The method is read
----on every call because an embedded Registry upgrade replaces it in place.
----@param packageName string
----@param api integer
----@return table|nil
-local function findOptionalPackage(packageName, api)
-    local find = rawget(Registry, "Find")
-    if type(find) ~= "function" then
-        find = rawget(Registry, "Get")
-    end
-    local implementation = find(Registry, packageName, api)
-    if type(implementation) ~= "table" then
-        return nil
-    end
-    return implementation
-end
 
 ---Create an owner scope through the Kit's own `CreateScope()`.
 ---
@@ -2464,6 +2710,7 @@ local DEFINITION_FIELDS = {
     before = true,
     after = true,
     requiresAddons = true,
+    implements = true,
     inject = true,
     onInitialize = true,
     onEnable = true,
@@ -2685,6 +2932,18 @@ local function addonCreateModule(self, name, definition)
     rawset(module, "scope", scope)
 
     applyDefinition(module, definition)
+    -- The definition is atomic, so what the module carries when this returns
+    -- is what it will carry: ModuleKit's own methods and the hooks the
+    -- definition set. Checked before the module is published, so a refusal
+    -- leaves the container without it.
+    if definition ~= nil then
+        local contract = compileImplements(
+            rawget(definition, "implements"),
+            "ModuleKit module definition implements",
+            3
+        )
+        checkImplements(contract, module, 'module "' .. name .. '"', 3)
+    end
     validateLateModuleOrdering(self, module)
     declareRequiredAddons(self, module)
 
@@ -2788,17 +3047,27 @@ local function addonDisableAll(self)
     return disableAllInternal(self, false)
 end
 
----Register an addon-scoped constant. `nil` is rejected.
+---Register an addon-scoped constant. `nil` is rejected. The value exists
+---already, so `options.implements` is checked here, at the caller's line.
 ---@param self ModuleKit.Addon
 ---@param name string
 ---@param value any
+---@param options ModuleKit.ProvideOptions|nil
 ---@return ModuleKit.Addon self
-local function addonProvideValue(self, name, value)
+local function addonProvideValue(self, name, value, options)
     ensureNotShutdown(self, "ProvideValue")
     if value == nil then
         error("ModuleKit.Addon:ProvideValue value must not be nil", 3)
     end
-    return registerProvider(self, name, { kind = "value", value = value }, "ProvideValue")
+    validateProviderName(name, "ProvideValue")
+    local contract = readProvideOptions(options, "ProvideValue", 3)
+    checkImplements(contract, value, 'provider "' .. name .. '"', 3)
+    return registerProvider(
+        self,
+        name,
+        { kind = "value", value = value, implements = contract },
+        "ProvideValue"
+    )
 end
 
 ---@param factory any
@@ -2809,48 +3078,61 @@ local function validateFactory(factory, methodName)
     end
 end
 
----Register a factory resolved once per container.
+---Register a factory resolved once per container. `options.implements` is
+---checked against the factory's result when it first arrives.
 ---@param self ModuleKit.Addon
 ---@param name string
 ---@param factory fun(addon: ModuleKit.Addon): any
+---@param options ModuleKit.ProvideOptions|nil
 ---@return ModuleKit.Addon self
-local function addonProvideSingleton(self, name, factory)
+local function addonProvideSingleton(self, name, factory, options)
     ensureNotShutdown(self, "ProvideSingleton")
     validateFactory(factory, "ProvideSingleton")
+    local contract = readProvideOptions(options, "ProvideSingleton", 3)
     return registerProvider(self, name, {
         kind = "singleton",
         factory = factory,
         resolved = false,
         value = nil,
+        implements = contract,
     }, "ProvideSingleton")
 end
 
 ---Register a factory resolved once per requesting module.
+---`options.implements` is checked against each requesting module's value when
+---it first arrives.
 ---@param self ModuleKit.Addon
 ---@param name string
 ---@param factory fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any
+---@param options ModuleKit.ProvideOptions|nil
 ---@return ModuleKit.Addon self
-local function addonProvideModule(self, name, factory)
+local function addonProvideModule(self, name, factory, options)
     ensureNotShutdown(self, "ProvideModule")
     validateFactory(factory, "ProvideModule")
+    local contract = readProvideOptions(options, "ProvideModule", 3)
     return registerProvider(self, name, {
         kind = "module",
         factory = factory,
         cache = {},
+        implements = contract,
     }, "ProvideModule")
 end
 
----Register a factory resolved on every resolution.
+---Register a factory resolved on every resolution. Every value it produces is
+---new, so `options.implements` is checked on every resolution.
 ---@param self ModuleKit.Addon
 ---@param name string
 ---@param factory fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any
+---@param options ModuleKit.ProvideOptions|nil
 ---@return ModuleKit.Addon self
-local function addonProvideTransient(self, name, factory)
+local function addonProvideTransient(self, name, factory, options)
     ensureNotShutdown(self, "ProvideTransient")
     validateFactory(factory, "ProvideTransient")
+    local contract = readProvideOptions(options, "ProvideTransient", 3)
     return registerProvider(self, name, {
         kind = "transient",
         factory = factory,
+        implements = contract,
     }, "ProvideTransient")
 end
 

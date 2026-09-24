@@ -32,6 +32,8 @@ Whole-container `InitializeAll()` / `EnableAll()` operations always process the 
 
 Each module carries a `scope` whose `Timers`, `Events`, `Jobs`, `Hooks`, `Messages`, `Commands` and `Comm` fields are released automatically when the module is disabled, and records what it is meant to be (`wanted`) apart from what it is (`actual`), so a module blocked by a failed dependency comes back when that dependency is enabled. When the addon halts, or an addon a module lists in `requiresAddons` halts, the affected modules are taken down and stay blocked for the session. See [`docs/API.md`](docs/API.md).
 
+A provider or a module definition can state what its value must carry, and ModuleKit checks it once, at the caller's line for a value or a module and when the factory's result first arrives for a lazy provider: `addon:ProvideSingleton("Database", factory, { implements = { "Save", "Load" } })`. When SchemaKit is loaded, `implements` may be a SchemaKit schema instead (see [Implements](docs/API.md#implements)).
+
 `requiresAddons` is bounded per module (16 by default); `ModuleKit:SetLimits({ maxRequiredAddons = n })` or `ModuleKit.UNBOUNDED` opens it, within LifecycleKit's own per-addon limit (see [Limits](docs/API.md#limits)).
 
 Definition-table creation is validated strictly: unknown fields and sparse list fields are rejected rather than silently ignored. Late module creation is also guarded so a new module cannot retroactively introduce an ordering predecessor for a module that has already initialized.
@@ -59,4 +61,5 @@ Minimum footprint: embed 5 files: `registry/Registry.lua`, `signalKit/SignalKit.
 Direct runtime dependencies: LifecycleKit API 1, Registry API 2.
 Every file above is required; omitting one makes this package raise at
 load. TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are optional: `module.scope` uses
-each one the addon embeds.
+each one the addon embeds. SchemaKit is optional too: the schema form of
+`implements` uses it when the addon embeds it.

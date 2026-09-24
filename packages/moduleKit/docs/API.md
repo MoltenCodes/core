@@ -28,10 +28,10 @@ The addon container exposes:
 | `InitializeAll()` | Initialize the complete graph. |
 | `EnableAll()` | Initialize as needed and enable the complete graph, including modules that were explicitly disabled. |
 | `DisableAll()` | Disable enabled modules in reverse graph order without terminating the addon container. |
-| `ProvideValue(name, value)` | Register an addon-scoped constant. |
-| `ProvideSingleton(name, factory)` | Register a lazily cached addon-scoped factory. |
-| `ProvideModule(name, factory)` | Register a lazily cached per-requesting-module factory. |
-| `ProvideTransient(name, factory)` | Register a non-cached factory. |
+| `ProvideValue(name, value[, options])` | Register an addon-scoped constant. |
+| `ProvideSingleton(name, factory[, options])` | Register a lazily cached addon-scoped factory. |
+| `ProvideModule(name, factory[, options])` | Register a lazily cached per-requesting-module factory. |
+| `ProvideTransient(name, factory[, options])` | Register a non-cached factory. |
 | `Resolve(name[, requestingModule])` | Resolve an injectable value, optionally with module scope context. |
 
 Each module exposes:
@@ -129,6 +129,7 @@ local module = addon:CreateModule("Inventory", {
     optionalDependencies = { "Analytics" },
     after = { "Profiles" },
     requiresAddons = { "OtherAddon" },
+    implements = { "OnEnable", "OnDisable" },
     inject = {
         database = "DatabaseService",
     },
@@ -145,10 +146,20 @@ Definition tables accept only these fields:
 - `before`
 - `after`
 - `requiresAddons`
+- `implements`
 - `inject`
 - `onInitialize`
 - `onEnable`
 - `onDisable`
+
+`implements` states what the module must carry when `CreateModule` returns:
+a list of method names, or a SchemaKit schema; see
+[Implements](#implements). A definition table is atomic, so the members
+available at that moment are ModuleKit's own module methods and the hooks the
+definition sets: `implements = { "OnEnable", "OnDisable" }` refuses, at the
+`CreateModule` line, a definition that forgot a hook, and the module is not
+created. Members assigned to a module afterwards, in the mutable style, are not
+checked. It is available only in the definition table.
 
 `requiresAddons` names other addons, by folder name exactly as LifecycleKit matches it, that the module cannot work without; see [Halted addons](#halted-addons). It is available only in the definition table.
 
@@ -457,6 +468,97 @@ end)
 
 The factory runs on every resolution.
 
+### Implements
+
+Every `Provide*` method takes an optional third argument, an options table with
+one field, `implements`, that states what the provided value must carry:
+
+```lua
+addon:ProvideSingleton("Database", function()
+    return Database:New()
+end, { implements = { "Save", "Load" } })
+```
+
+**The list form** is a dense array of distinct, non-empty method names. Each is
+looked up as `value[name]`, so a method inherited through a metatable counts,
+and must be a function. An empty list, a name listed twice, an entry that is
+not a non-empty string, a sparse array, a keyed table or a non-table value is
+refused at the `Provide*` line, as is an options table with any other field.
+
+**When the check runs.** Exactly once per value ModuleKit hands out, and before
+that value is cached:
+
+| Provider | Checked |
+|---|---|
+| `ProvideValue` | at registration, since the value exists; a refused value is not registered and the name stays free |
+| `ProvideSingleton` | when the factory's result first arrives |
+| `ProvideModule` | when the result for each requesting module first arrives |
+| `ProvideTransient` | on every resolution, since every value is new |
+
+A cached value is never checked again: a singleton costs one lookup per name,
+once. A refused value is not cached, so the next resolution runs the factory
+again, exactly as after a factory that returned `nil`.
+
+**Where a failure is raised.** For `ProvideValue` and for a module definition,
+at the line that registered it. For a lazy provider, out of the operation that
+first produced the value: `addon:Resolve` or `module:Resolve` raise at their
+caller's line; through injection the failure is recorded as the module's
+(`HasLastError()`, the module stays in its previous state) and re-raised by the
+`Initialize`, `Enable`, `Activate` or whole-container call that resolved it,
+like any other provider error. The message names the provider, and for a
+module-scoped provider the requesting module, and the member:
+
+```text
+ModuleKit provider "Database" must implement "Load": no such member
+ModuleKit provider "Database" must implement "Save": member "Save" is a string, not a function
+ModuleKit provider "Database" must implement "Save": the value is a number, not a table
+ModuleKit provider "Logger[UI]" must implement "Log": no such member
+ModuleKit module "Inventory" must implement "OnEnable": no such member
+```
+
+ModuleKit does not record where a provider was registered (the client offers no
+source positions at run time), so find the `Provide*` call by the provider's
+name. The message never contains the value itself, only type names.
+
+**The schema form.** When SchemaKit API 1 is loaded, `implements` may instead be
+a SchemaKit node or sealed schema, and the value is validated with
+`schema:Check(value)` at the same moments:
+
+```lua
+local S = SchemaKit
+local function isFunction(value) return type(value) == "function" end
+
+addon:ProvideValue("Settings", settings, {
+    implements = S.table({
+        fields = {
+            Save = S.custom(isFunction, "function"),
+            scale = S.number({ min = 0.5, max = 2 }),
+        },
+        open = true,
+    }),
+})
+```
+
+The node is sealed at registration (`SchemaKit:Seal`), so the contract owns its
+failure record. A failure reads `ModuleKit provider "Settings" does not match
+its implements schema: at scale, expected number, found string` (`expected
+table, found number` for a failure at the root); SchemaKit's failure record
+never contains the checked value, so neither does the message. SchemaKit reads
+table fields with `rawget`, by its own contract, so a table schema sees a
+value's own fields only: a method inherited through a metatable satisfies the
+list form, not a schema. A module's table carries ModuleKit's private fields,
+so a table schema over a module must be `open`. SchemaKit is found through `Registry:Find("schemaKit", 1)` at
+registration, never at load; when it is not loaded and a schema is passed, the
+call is refused at its line: `options.implements is a SchemaKit schema, but
+SchemaKit API 1 is not loaded`. A table that only presents SchemaKit's
+metatable name is refused when SchemaKit cannot seal it.
+
+The list a caller passes is copied, so editing it afterwards changes nothing.
+A provider registered without options is never checked, whatever it produces.
+The options, and for `ProvideValue` the value, are validated before the name is
+claimed, so an `implements` failure is reported before a `name "..." is already
+in use` conflict on the same call.
+
 ### Injection
 
 ```lua
@@ -585,9 +687,11 @@ API 1, CommandKit API 1, CommKit API 1 and SignalKit API 1 when they are
 loaded, found through `Registry:Find`
 (Registry revision 7; an older Registry's `Get` is used as the equivalent
 fallback). None of them is a required dependency: without them the matching scope field
-reads as `nil`. TimerKit, SchedulerKit, HookKit, CommandKit and CommKit are
-declared under `optionalDependencies` in the manifest; EventKit and SignalKit
-are always present through LifecycleKit.
+reads as `nil`. The schema form of `implements` uses SchemaKit API 1 the same
+way, at registration, and refuses a schema when SchemaKit is not loaded; the
+list form needs nothing. TimerKit, SchedulerKit, HookKit, CommandKit, CommKit
+and SchemaKit are declared under `optionalDependencies` in the manifest;
+EventKit and SignalKit are always present through LifecycleKit.
 
 ## Internals
 
