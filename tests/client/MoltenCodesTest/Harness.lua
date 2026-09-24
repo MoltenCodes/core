@@ -109,6 +109,17 @@ if type(TestKit) == "nil" or type(LifecycleKit) == "nil" then
     error(ADDON_NAME .. " requires TestKit API 1 and LifecycleKit API 1; reinstall it", 0)
 end
 
+---@type SchedulerKit|nil
+local SchedulerKit = Registry:Get("schedulerKit", 1)
+
+--- SchedulerKit's runaway threshold while `/mct run` is in progress. Test steps
+--- such as allocation guards run a full garbage collection and thousands of
+--- calls in one slice; under the 8 ms default SchedulerKit would demote the
+--- TestKit runner and report each slice through the error handler, which is
+--- the documented contract but only noise during a test run. The previous
+--- value is restored when the run finishes.
+local RUN_RUNAWAY_THRESHOLD_MS = 500
+
 -- State -----------------------------------------------------------------------
 
 --- Package IDs in the order their first suite was registered.
@@ -126,8 +137,28 @@ local packageBySuiteName = {}
 --- The run `/mct run` started and has not seen finish, or `nil`. TestKit is
 --- shared by every development addon in the session, so a finished run that the
 --- harness did not start is ignored rather than recorded.
----@type { packageIds: string[], client: table }|nil
+---@type { packageIds: string[], client: table, previousRunawayThreshold: number|false }|nil
 local activeRun = nil
+
+---Raise SchedulerKit's runaway threshold for the run and return the value it
+---replaced, or `false` when SchedulerKit is not loaded.
+---@return number|false previous
+local function relaxRunawayThreshold()
+    if type(SchedulerKit) == "nil" then
+        return false
+    end
+    local previous = SchedulerKit:GetRunawayThreshold()
+    SchedulerKit:SetRunawayThreshold(RUN_RUNAWAY_THRESHOLD_MS)
+    return previous
+end
+
+---Put back the threshold `relaxRunawayThreshold` replaced.
+---@param previous number|false
+local function restoreRunawayThreshold(previous)
+    if previous ~= false and type(SchedulerKit) ~= "nil" then
+        SchedulerKit:SetRunawayThreshold(previous)
+    end
+end
 
 -- Chat output -------------------------------------------------------------------
 
@@ -359,6 +390,7 @@ local function recordFinishedRun(report)
         return
     end
     activeRun = nil
+    restoreRunawayThreshold(run.previousRunawayThreshold)
 
     local byPackage = reportsByPackage(report)
     local saved = savedResults()
@@ -405,7 +437,11 @@ local function startRun(selectedIds)
 
     -- Earlier results would otherwise be part of the next report.
     TestKit:Reset()
-    activeRun = { packageIds = selectedIds, client = collectClientFacts() }
+    activeRun = {
+        packageIds = selectedIds,
+        client = collectClientFacts(),
+        previousRunawayThreshold = relaxRunawayThreshold(),
+    }
 
     local suiteCount = 0
     for _, packageId in ipairs(selectedIds) do
@@ -418,6 +454,7 @@ local function startRun(selectedIds)
     end
 
     if suiteCount == 0 then
+        restoreRunawayThreshold(activeRun.previousRunawayThreshold)
         activeRun = nil
         say("nothing was queued for " .. joinNames(selectedIds) .. ".")
         return

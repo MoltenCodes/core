@@ -142,6 +142,17 @@ the loading screen. Runs therefore start only with `/mct run`; the only thing
 the harness does at login is print which suites are loaded and how to run them.
 There is no auto-run switch.
 
+### Why a run raises SchedulerKit's runaway threshold
+
+TestKit runs tests in one SchedulerKit job, and some test steps (an allocation
+guard runs a full garbage collection and thousands of calls) take tens of
+milliseconds in one slice. Under SchedulerKit's 8 ms default the job would be
+demoted and every such slice reported through the error handler, which is the
+documented contract but only noise in a test run. `/mct run` therefore sets the
+threshold to 500 ms and puts the previous value back when the run finishes. The
+threshold is package-wide, so other SchedulerKit jobs in the session share the
+relaxed value for the length of the run.
+
 ### Why the harness publishes a global
 
 A test addon must reach the harness to register its suites under a package ID,
