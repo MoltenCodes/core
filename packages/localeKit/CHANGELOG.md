@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 — 2026-09-24
+
+- Documentation only; the executed code is unchanged, so the implementation revision stays 1.
+- `docs/API.md` lists `GetLocale`'s `options.maxMissingKeys` check among the uses of `issecretvalue`.
+- `docs/INTERNALS.md` no longer claims `capReported` is cleared when `GetLocale` raises the limit: the first `GetLocale` fixes the limit before any key can be recorded as missing, so the flag is never cleared.
+- `tests/README.md` describes the limit rule as the specs pin it: the first call fixes it, a later different one is refused.
+- The suite has 96 specs; the 0.1.0 entry's count of 87 predates the last specs added to that release.
+
 ## 0.1.0 — 2026-09-23
 
 - Added LocaleKit API generation 1, implementation revision 1.

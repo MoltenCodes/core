@@ -29,7 +29,7 @@ LocaleKit reads three host functions, each at call time rather than at load, and
 |---|---|---|
 | `GetLocale` | `NewLocale`, to learn the client locale | The client locale is `enUS`. An answer that is not a locale code is treated the same way. |
 | `geterrorhandler` | the `"report"` missing-key mode | The report is passed to `print`. |
-| `issecretvalue` | `Format`, and a read of an undefined key in `"report"` or `"silent"` mode | Nothing is treated as secret. |
+| `issecretvalue` | `Format`, `GetLocale`'s `options.maxMissingKeys`, and a read of an undefined key in `"report"` or `"silent"` mode | Nothing is treated as secret. |
 
 ## Public surface
 

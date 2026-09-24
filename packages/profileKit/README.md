@@ -35,7 +35,7 @@ Three contracts are worth knowing before the first section:
   `debugprofilestop`. A client hitch that stalls the frame is not charged to a
   section. On a host without `debugprofilestop`, `Enable()` returns
   `false, "unavailable"` and ProfileKit stays disabled.
-- **Bounded.** At most `ProfileKit.DEFAULT_MAX_SECTIONS` (256) sections exist
+- **Bounded.** By default at most `ProfileKit.DEFAULT_MAX_SECTIONS` (256) sections exist
   per session. A further name gets `nil, "capped"` from `Section`, and `Measure`
   runs it unmeasured. Open it on purpose with
   `ProfileKit:SetLimits({ maxSections = n })` or `ProfileKit.UNBOUNDED`.

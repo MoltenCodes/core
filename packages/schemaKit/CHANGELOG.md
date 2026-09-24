@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 — 2026-09-24
+
+- Documentation and specs only; implementation revision 1 is unchanged.
+- API.md lists every argument error SchemaKit raises, per builder and method, instead of three examples.
+- API.md states the exact `SetLimits` value messages: the ceiling reason is appended only for an integer above the ceiling, and an invalid `defaultArrayMax` raises `must be a positive integer or SchemaKit.UNBOUNDED`.
+- README and API.md name the depth bound as the `maxDepth` limit, 16 by default, rather than a fixed 16.
+- Specs cover an empty `pattern` and a `oneOf` that is not an array or has holes; the upgrade specs load the shipped revision plus one instead of a fixed revision 2, so they keep testing an upgrade after the next revision bump.
+
 ## 0.1.0 — 2026-09-23
 
 - Added SchemaKit API generation 1, implementation revision 1.

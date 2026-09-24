@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 — 2026-09-24
+
+- Documentation only; the executed code is unchanged, so the implementation revision stays 2.
+- `docs/API.md` states implementation revision 2 (it still said 1), lists `Frame:IsForbidden`, `Frame:CanBeAccessedInContext` (absent on Classic clients) and `geterrorhandler` among the optional facilities, and says which host functions are read at load and which at call time.
+- `docs/INTERNALS.md` bounds the release sort by the scope's own `maxHooks` rather than `MAX_HOOKS`.
+- `tests/README.md` describes the limit rule as the specs pin it: the first `ForAddon` fixes it.
+- A spec pins the refusal of a frame whose `CanBeAccessedInContext` answers `false`; the fake frame gains an `accessible` option. 110 specs.
+
 ## 0.2.0 — 2026-09-23
 
 - HookKit addon scopes are now closed at logout whenever the framework can observe logout, whichever revisions are paired. `HookKit:ForAddon(addonName)` finds LifecycleKit and EventKit with `Registry:Find` and leaves the scope to a LifecycleKit whose `CLOSES_ADDON_SCOPES` names `hookKit` (making sure the addon has a LifecycleKit instance), subscribes once to an older LifecycleKit's `OnShutdown`, or, without LifecycleKit, connects one package-level `PLAYER_LOGOUT` watcher in HookKit's own EventKit scope. With neither, nothing is subscribed and the consumer calls `CloseAddonScopes` on `PLAYER_LOGOUT`, as before. The decision is taken again by later `ForAddon` calls until LifecycleKit has taken the scope over. See "At logout" in `docs/API.md`.

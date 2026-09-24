@@ -291,4 +291,19 @@ describe("HookKit script replacement next to secure script hooks", function()
         assert.is_true(scope:Unhook(frame, "OnShow"))
         assert.are.equal(installed, frame:GetScript("OnShow"))
     end)
+
+    it("refuses a frame that is not accessible in this context at the caller", function()
+        local hidden = TestEnv.NewFrame({ accessible = false })
+        local scope = HookKit:CreateScope()
+        TestEnv.expectErrorContaining(
+            "HookKit.Scope:HookScript frame is forbidden or not accessible in this context",
+            function()
+                scope:HookScript(hidden, "OnShow", function() end)
+            end
+        )
+        assert.is_nil(hidden:GetScript("OnShow"))
+
+        local frame = TestEnv.NewFrame({ accessible = true })
+        assert.is_true(scope:SecureHookScript(frame, "OnShow", function() end))
+    end)
 end)

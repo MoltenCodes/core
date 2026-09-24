@@ -2,7 +2,7 @@
   "name": "localeKit",
   "displayName": "LocaleKit",
   "description": "Per-addon translations that cost one table on any client, missing keys reported once, a coverage report and indexed format specifiers for World of Warcraft addons.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "api": 1,
   "revision": 1,

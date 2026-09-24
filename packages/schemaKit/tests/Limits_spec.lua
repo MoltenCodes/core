@@ -277,8 +277,9 @@ describe("SchemaKit limits", function()
         S:SetLimits({ maxDepth = 4, pathKeyLimit = 5, defaultArrayMax = sentinel })
         local schema = nestedSchema(10)
 
-        local upgraded = TestEnv.LoadRevision(2)
-        assert.are.equal(2, upgraded.REVISION)
+        local nextRevision = S.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
         assert.are.equal(sentinel, upgraded._state.unbounded)
         assert.are.same(

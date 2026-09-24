@@ -4,9 +4,10 @@ local SOURCE_PATH = "packages/profileKit/src/ProfileKit.lua"
 
 ---Run ProfileKit's own source as if it carried `revision`.
 ---
----ProfileKit starts at revision 1, so no older copy exists to upgrade from.
----Rewriting the revision constant of the real file produces the next embedded
+---Rewriting the revision constant of the real file produces a newer embedded
 ---copy a consumer could load, which is exactly what an in-place upgrade meets.
+---Specs pass the shipped revision plus one or two, so they keep upgrading when
+---the shipped revision moves.
 ---@param revision integer
 ---@return table ProfileKit
 local function loadSourceAsRevision(revision)
@@ -80,17 +81,18 @@ describe("ProfileKit bootstrap", function()
         section:End()
         local oldBegin = section.Begin
         section:Begin()
+        local nextRevision = ProfileKit.REVISION + 1
 
-        local upgraded = loadSourceAsRevision(2)
+        local upgraded = loadSourceAsRevision(nextRevision)
 
         assert.are.equal(ProfileKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.is_true(upgraded:IsEnabled())
         assert.are.equal(section, upgraded:Section("upgraded"))
         -- The old copy's section now resolves to the new copy's methods.
         assert.are_not.equal(oldBegin, section.Begin)
 
-        -- A measurement opened under revision 1 is closed by revision 2.
+        -- A measurement opened under the older copy is closed by the newer one.
         Env.AdvanceProfileMs(4)
         assert.are.equal(4, section:End())
         assert.are.same(
@@ -103,13 +105,14 @@ describe("ProfileKit bootstrap", function()
         local ProfileKit = Env.NewPackage()
         local unbounded = ProfileKit.UNBOUNDED
         ProfileKit:SetLimits({ maxSections = 3 })
+        local nextRevision = ProfileKit.REVISION + 1
 
-        local upgraded = loadSourceAsRevision(2)
+        local upgraded = loadSourceAsRevision(nextRevision)
         assert.are.equal(unbounded, upgraded.UNBOUNDED)
         assert.are.same({ maxSections = 3 }, upgraded:GetLimits())
 
         upgraded:SetLimits({ maxSections = unbounded })
-        local again = loadSourceAsRevision(3)
+        local again = loadSourceAsRevision(nextRevision + 1)
         assert.are.equal(unbounded, again.UNBOUNDED)
         assert.are.equal(unbounded, again:GetLimits().maxSections)
     end)
@@ -126,7 +129,7 @@ describe("ProfileKit bootstrap", function()
         local ProfileKit = Env.NewPackage()
         local section = ProfileKit:Section("quiet")
 
-        local upgraded = loadSourceAsRevision(2)
+        local upgraded = loadSourceAsRevision(ProfileKit.REVISION + 1)
         assert.is_false(upgraded:IsEnabled())
         assert.are.equal(0, select("#", section:Begin()))
     end)
@@ -138,7 +141,7 @@ describe("ProfileKit bootstrap", function()
         -- selene: allow(global_usage)
         rawset(_G, "debugprofilestop", nil)
 
-        local upgraded = loadSourceAsRevision(2)
+        local upgraded = loadSourceAsRevision(ProfileKit.REVISION + 1)
         assert.is_false(upgraded:IsEnabled())
         local enabled, reason = upgraded:Enable()
         assert.is_false(enabled)

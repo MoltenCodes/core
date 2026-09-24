@@ -272,6 +272,7 @@ end
 ---@field protected boolean? What `IsProtected` answers. Defaults to `false`.
 ---@field withoutIsProtected boolean? Build a frame that has no `IsProtected`.
 ---@field forbidden boolean? What `IsForbidden` answers; the frame has `IsForbidden` only when this is given.
+---@field accessible boolean? What `CanBeAccessedInContext` answers; the frame has `CanBeAccessedInContext` (Retail 12.1.0 and later) only when this is given.
 
 ---Build a fake frame. Its methods live in its metatable, as a real frame's do,
 ---so hooking one of them writes a raw field onto the frame.
@@ -318,6 +319,13 @@ function HookKitTestEnv.NewFrame(options)
             return frameForbidden[methods] == true
         end
         frameForbidden[methods] = options.forbidden
+    end
+
+    if options.accessible ~= nil then
+        local accessible = options.accessible == true
+        function methods.CanBeAccessedInContext()
+            return accessible
+        end
     end
 
     function methods.Show() end

@@ -96,7 +96,7 @@ A failing map key rewrites `expected` to `key <expected>`: the one string built 
 
 ## Closures and upgrades
 
-SchemaKit hands out no closures: nodes and schemas are proxies whose behaviour comes from the prototype and the metatables, all kept in `_state` and on the facade. A newer revision rewrites `Schema`'s methods and both metatables' `__newindex` in place, and reads the existing compiled nodes and records, which carry `layout` so a revision that changes a layout can upgrade them lazily. The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to 2 and checks that nodes, schemas and failure tables built before the upgrade keep working and compose with nodes built after it.
+SchemaKit hands out no closures: nodes and schemas are proxies whose behaviour comes from the prototype and the metatables, all kept in `_state` and on the facade. A newer revision rewrites `Schema`'s methods and both metatables' `__newindex` in place, and reads the existing compiled nodes and records, which carry `layout` so a revision that changes a layout can upgrade them lazily. The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to the shipped revision plus one and checks that nodes, schemas and failure tables built before the upgrade keep working and compose with nodes built after it.
 
 ## Error levels
 

@@ -44,13 +44,14 @@ describe("SchemaKit bootstrap", function()
         local schema = SchemaKit:Seal(SchemaKit.array({ of = point, max = 4 }))
         local _, failure = schema:Check({ { x = "a" } })
 
-        local upgraded = TestEnv.LoadRevision(2)
+        local nextRevision = SchemaKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
         assert.are.equal(SchemaKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(prototype, upgraded.Schema)
 
-        -- A schema sealed by revision 1 checks, applies and describes through
-        -- revision 2, and keeps its reused failure table.
+        -- A schema sealed by the older copy checks, applies and describes
+        -- through the newer one, and keeps its reused failure table.
         assert.is_true(schema:Check({ { x = 1 } }))
         local _, again = schema:Check({ { x = "a" } })
         assert.are.equal(failure, again)
@@ -60,7 +61,7 @@ describe("SchemaKit bootstrap", function()
         assert.are.same({ { x = 1, y = 0 } }, applied)
         assert.are.equal("array", schema:Describe().kind)
 
-        -- A node built by revision 1 composes with revision 2 builders.
+        -- A node built by the older copy composes with the newer builders.
         local line = upgraded:Seal(upgraded.table({ fields = { from = point, to = point } }))
         assert.is_true(line:Check({ from = { x = 1 }, to = { x = 2, y = 3 } }))
 

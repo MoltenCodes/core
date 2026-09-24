@@ -248,7 +248,7 @@ SchemaKit:SetLimits({ maxDepth = 24, defaultArrayMax = SchemaKit.UNBOUNDED })
 local limits = SchemaKit:GetLimits() -- a fresh table
 ```
 
-`SetLimits` accepts any subset and checks every entry before it changes anything, so a refused call changes no limit. It raises at the caller's line on a non-table, an unknown name (`SchemaKit:SetLimits limits.maxWidth is not a recognised limit`), a value that is not an integer from 1 to the ceiling (`... must be an integer from 1 to 64: <reason>`), `SchemaKit.UNBOUNDED` where the table says no (`SchemaKit:SetLimits limits.maxDepth cannot be SchemaKit.UNBOUNDED: <reason>`), and a dot call. `GetLimits` returns a new table on every call; `defaultArrayMax` reads back as `SchemaKit.UNBOUNDED` when it was set to it.
+`SetLimits` accepts any subset and checks every entry before it changes anything, so a refused call changes no limit. It raises at the caller's line on a non-table, an unknown name (`SchemaKit:SetLimits limits.maxWidth is not a recognised limit`), a value outside 1 to the ceiling (`SchemaKit:SetLimits limits.maxDepth must be an integer from 1 to 64`, with `: <reason>` appended when the value is an integer above the ceiling), a `defaultArrayMax` that is neither a positive integer nor the sentinel (`SchemaKit:SetLimits limits.defaultArrayMax must be a positive integer or SchemaKit.UNBOUNDED`), `SchemaKit.UNBOUNDED` where the table says no (`SchemaKit:SetLimits limits.maxDepth cannot be SchemaKit.UNBOUNDED: <reason>`), and a dot call. `GetLimits` returns a new table on every call; `defaultArrayMax` reads back as `SchemaKit.UNBOUNDED` when it was set to it.
 
 **The limits are shared by every consumer in the session**: every embedded copy and every addon uses one set. A library should rely on the defaults; an addon that changes a limit changes it for everybody. `maxDepth` and `pathKeyLimit` apply from the next check, to every schema. `maxPatternCaptures` and `defaultArrayMax` apply to nodes built after the change; a node keeps what it was built with. A pattern refused by a lowered `maxPatternCaptures` raises `SchemaKit.string pattern is not a valid Lua pattern`.
 
@@ -357,7 +357,26 @@ end
 
 ## Error behaviour
 
-Builder, `Seal` and method argument failures report the line that called them, never a line inside SchemaKit, and name the parameter without formatting the value (`SchemaKit.string min must be a non-negative integer`, `SchemaKit.table fields.anchor must be a SchemaKit schema node or sealed schema`). An unknown spec field is named: `SchemaKit.array spec contains unknown field "maximum"`. Calling a method on something that is not a sealed schema raises `SchemaKit.Schema:Check must be called on a sealed SchemaKit schema`.
+Builder, `Seal` and method argument failures report the line that called them, never a line inside SchemaKit, and name the parameter without formatting the value. The complete list, where `<builder>` is `string`, `number`, `table`, `array` or `map` and `<Method>` is `Check`, `Assert`, `Apply` or `Describe`:
+
+| Raised by | Messages |
+|---|---|
+| Every builder | `SchemaKit.<builder> is called with a dot, not a colon`, for every builder name |
+| Builders taking a spec | `SchemaKit.<builder> spec must be a table`; `SchemaKit.<builder> spec contains unknown field "<field>"` (the alphabetically first unknown field) |
+| `string` | `SchemaKit.string min must be a non-negative integer` (and `max`); `SchemaKit.string min must not be greater than max`; `SchemaKit.string pattern must be a non-empty string`; `SchemaKit.string pattern is not a valid Lua pattern`; `SchemaKit.string oneOf must be an array`, `... must be an array without holes or other keys`, `... must not be empty`; `SchemaKit.string oneOf must list strings only`; `SchemaKit.string oneOf values must not repeat` |
+| `number` | `SchemaKit.number integer must be a boolean`; `SchemaKit.number min must be a number` (and `max`; NaN is refused too); `SchemaKit.number min must not be greater than max` |
+| `boolean`, `any` | `SchemaKit.boolean takes no arguments`; `SchemaKit.any takes no arguments` |
+| `enum` | `SchemaKit.enum values must be an array`, `... must be an array without holes or other keys`, `... must not be empty`; `SchemaKit.enum values must be strings, numbers or booleans`; `SchemaKit.enum values must not be NaN`; `SchemaKit.enum values must not repeat` |
+| `table` | `SchemaKit.table fields must be a table of schema nodes by name`; `SchemaKit.table open must be a boolean`; `SchemaKit.table field names must be non-empty strings`; `SchemaKit.table fields.<name> must be a SchemaKit schema node or sealed schema` |
+| `array` | `SchemaKit.array of must be a SchemaKit schema node or sealed schema`; `SchemaKit.array min must be a non-negative integer` (and `max`); `SchemaKit.array min must not be greater than max` |
+| `map` | `SchemaKit.map keys must be a SchemaKit schema node or sealed schema` (and `values`); `SchemaKit.map keys must not be optional`; `SchemaKit.map max is required`; `SchemaKit.map max must be a positive integer` |
+| `optional` | `SchemaKit.optional schema must be a SchemaKit schema node or sealed schema`; `SchemaKit.optional schema is already optional`; `SchemaKit.optional default nests deeper than <maxDepth> tables`; `SchemaKit.optional default<path>: expected <expected>, found <found>` (the default's own failure, formatted as by `Assert`) |
+| `oneOf` | `SchemaKit.oneOf alternatives must be an array`, `... must be an array without holes or other keys`, `... must not be empty`; `SchemaKit.oneOf alternatives[<index>] must be a SchemaKit schema node or sealed schema`; `SchemaKit.oneOf alternatives must not be optional; wrap the oneOf instead` |
+| `custom` | `SchemaKit.custom check must be a function`; `SchemaKit.custom description must be a non-empty string` |
+| `Seal` | `SchemaKit:Seal is called with a colon, not a dot`; `SchemaKit:Seal node must be a SchemaKit schema node or sealed schema`; `SchemaKit:Seal options must be a table`; `SchemaKit:Seal options contains unknown field "<field>"`; `SchemaKit:Seal freshFailures must be a boolean` |
+| Schema methods | `SchemaKit.Schema:<Method> must be called on a sealed SchemaKit schema`; `SchemaKit.Schema:Assert argumentName must be a non-empty string`; `SchemaKit.Schema:Assert level must be a positive integer` |
+| Writes | `SchemaKit schemas are sealed and cannot be modified`; `SchemaKit schema nodes are immutable` (raised at the writing line) |
+| `SetLimits`, `GetLimits` | `SchemaKit:SetLimits limits must be a table`; `SchemaKit:SetLimits is called with a colon, not a dot` (and `GetLimits`); the value messages listed under [Limits](#limits) |
 
 ## Performance
 
@@ -377,7 +396,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 - **Nodes are immutable from birth** rather than frozen by `Seal`; see [Nodes and sealing](#nodes-and-sealing).
 - **`Apply` returns `true, copy` or `false, failure`** rather than the copy alone. An `optional` root without a default legitimately applies to `nil`, so a bare return value could not tell a valid `nil` from a failure; the pair has the same shape as `Check`.
-- **The depth bound is enforced on values, not on schemas.** `Seal` does not refuse a schema that describes more than 16 nested tables; a value is simply never followed past 16, and the deeper levels of such a schema can never accept anything.
+- **The depth bound is enforced on values, not on schemas.** `Seal` does not refuse a schema that describes more nested tables than the `maxDepth` limit (16 by default); a value is simply never followed past `maxDepth`, and the deeper levels of such a schema can never accept anything.
 - **Additions:** `SchemaKit.MAX_DEPTH` and `SchemaKit.DEFAULT_ARRAY_MAX` publish the two defaults, `SetLimits`, `GetLimits` and `UNBOUNDED` open the limits (principle 4a), and `Assert` returns the value it checked so it can be used inline.
 
 ## Embedded copies and upgrades

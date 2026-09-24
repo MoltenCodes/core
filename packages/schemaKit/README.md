@@ -38,7 +38,7 @@ What each piece promises:
 - **`schema:Apply(value)`** returns `true` and a copy with every declared default filled in, or `false` and the failure. It allocates, by design.
 - **`schema:Describe()`** returns a fresh plain table describing the schema, for documentation and options screens.
 - **Bounded, opened on purpose.** `SchemaKit:SetLimits{}` raises the depth (ceiling 64), path-key and default array limits, and `SchemaKit.UNBOUNDED` lifts the default array bound; see *Limits* in the API.
-- **Bounded.** A checked value may nest at most 16 tables (rule `"depth"`); an array holds at most its `max` elements (1024 unless you say otherwise) and a map at most its required `max` entries (rule `"max"`). Oversized input is refused after `max + 1` steps, so a hostile message cannot make validation unbounded.
+- **Bounded.** A checked value may nest at most 16 tables by default (the `maxDepth` limit; rule `"depth"`); an array holds at most its `max` elements (1024 unless you say otherwise) and a map at most its required `max` entries (rule `"max"`). Oversized input is refused after `max + 1` steps, so a hostile message cannot make validation unbounded.
 - **Secret values** (Retail 12.x) are refused with rule `"secret"` before anything else touches them, whenever the client has `issecretvalue`.
 
 See [`docs/API.md`](docs/API.md) for the complete contract and a cookbook, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the compiled form.

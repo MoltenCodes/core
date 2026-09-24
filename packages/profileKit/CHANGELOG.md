@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 — 2026-09-24
+
+- Documentation and specs only; implementation revision 1 is unchanged.
+- README says the 256-section bound is the default of the `maxSections` limit.
+- The upgrade specs load the shipped revision plus one (and plus two) instead of fixed revisions 2 and 3, so they keep testing an upgrade after the next revision bump.
+
 ## 0.1.0 — 2026-09-23
 
 - Added ProfileKit API generation 1, implementation revision 1: named performance sections with call count, total time, worst spike and last time, in milliseconds of addon CPU time from `debugprofilestop`.

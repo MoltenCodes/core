@@ -132,6 +132,21 @@ describe("SchemaKit builders", function()
                     S.string({ pattern = "[a" })
                 end
             )
+            TestEnv.expectErrorContaining(
+                "SchemaKit.string pattern must be a non-empty string",
+                function()
+                    S.string({ pattern = "" })
+                end
+            )
+            TestEnv.expectErrorContaining("SchemaKit.string oneOf must be an array", function()
+                S.string({ oneOf = "TOP" })
+            end)
+            TestEnv.expectErrorContaining(
+                "SchemaKit.string oneOf must be an array without holes or other keys",
+                function()
+                    S.string({ oneOf = { "a", nil, "c" } })
+                end
+            )
             TestEnv.expectErrorContaining("SchemaKit.string oneOf must not be empty", function()
                 S.string({ oneOf = {} })
             end)

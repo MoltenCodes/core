@@ -2,7 +2,7 @@
 
 HookKit API generation **1** hooks global functions, object methods and frame scripts reversibly, under three named semantics, and refuses the hooks that break the client's secure code.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## The taint model: read this first
 
@@ -51,11 +51,13 @@ HookKit does not rely on `require()` at runtime. Loading it without Registry rai
 | `Frame:IsProtected` | the protected-frame refusals | A frame without it is not protected. |
 | `Frame:HookScript` | `SecureHookScript` | Refused at the caller for that frame. |
 | `Frame:GetScript`, `Frame:SetScript` | `HookScript`, `RawHookScript` | Refused at the caller for that frame. |
+| `Frame:IsForbidden`, `Frame:CanBeAccessedInContext` | every script hook, and releasing a script pre-hook or replacement | A frame without them is accessible. Classic clients have no `CanBeAccessedInContext`; only `IsForbidden` is asked there. |
+| `geterrorhandler` | reporting a handler error, and a failure in another Kit while arranging the logout close | The failure is passed to `print`. |
 | ClientKit API 1 | `IsSecret`, to refuse a secret method, script or addon name | `issecretvalue` is asked directly; without it nothing is secret. |
 | LifecycleKit API 1 | closing an addon scope at logout (see [At logout](#at-logout)) | EventKit's `PLAYER_LOGOUT` closes it instead. |
 | EventKit API 1 | closing an addon scope at logout when LifecycleKit is absent | Without either, the consumer closes it (case d). |
 
-The host functions are read once when the file loads. ClientKit is looked up with `Registry:Find("clientKit", 1)` when a name is validated, never on a hooked call, so it may load after HookKit. LifecycleKit and EventKit are looked up with `Registry:Find` by `ForAddon`, so they may load in any order too.
+`hooksecurefunc`, `issecurevariable`, `InCombatLockdown` and `issecretvalue` are read once when the file loads; `geterrorhandler` is read at each report, and the frame methods on the frame at hand. ClientKit is looked up with `Registry:Find("clientKit", 1)` when a name is validated, never on a hooked call, so it may load after HookKit. LifecycleKit and EventKit are looked up with `Registry:Find` by `ForAddon`, so they may load in any order too.
 
 ## Public surface
 
