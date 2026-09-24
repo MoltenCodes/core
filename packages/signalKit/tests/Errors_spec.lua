@@ -1,11 +1,6 @@
 local TestEnv = require("SignalKitTestEnv")
 
-local function expectErrorContaining(expected, callback)
-    local ok, message = pcall(callback)
-
-    assert.is_false(ok)
-    assert.is_not_nil(string.find(tostring(message), expected, 1, true))
-end
+local expectErrorContaining = TestEnv.expectErrorContaining
 
 describe("SignalKit errors", function()
     local SignalKit

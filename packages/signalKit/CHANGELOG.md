@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1 — 2026-09-24
+
+- `docs/API.md` gains an "Error messages" section listing every message SignalKit raises, each at the caller's line. The receiver rule now names `GetGeneration` and the journal's `Fire` and `History`; the hooks example activates its source with `ConnectUnit("UNIT_HEALTH", forward, "player")`, the unit-filtered registration a unit event wants; the compaction measurements compare tombstones against copying per disconnect rather than narrating revisions 1 and 2.
+- The specs share one refusal-at-the-caller assertion, `SignalKitTestEnv.ExpectRefusalAtCaller`, instead of six copies; `Bootstrap_spec.lua` and `Errors_spec.lua` use the shared `expectErrorContaining`, and `Compaction_spec.lua` the environment's `AllocatedKilobytes`. `tests/README.md` names both and records the journals `Bootstrap_spec.lua` carries into a newer revision. 213 specs, unchanged.
+- No runtime behaviour change. Implementation revision 7 and `SignalKit` API generation 1 are unchanged.
+
 ## 0.7.0 — 2026-09-24
 
 - Added the `onFirst` and `onLast` hooks: `SignalKit:New({ onFirst = fn, onLast = fn })` runs `onFirst` after the live listener count goes from 0 to 1 and `onLast` after it goes from 1 to 0, so a source can be active only while it is observed. A hook receives the signal, is never called by `Fire`, runs synchronously after its transition is committed, and holds under re-entrant connect and disconnect (a hook crossing the threshold the other way causes the opposite hook, once). `Once` listeners count until they disconnect, so the last one runs `onLast` during `Fire`, before its callback. `DisconnectAll` runs `onLast` once. A hook error propagates to the caller of the `Connect`, `Disconnect`, `DisconnectAll` or `Fire` that caused the transition, after the transition took effect. A signal without hooks pays one truthiness test per connect and disconnect. `SignalKit.New()` without options is still accepted; options handed over with a dot call are refused at the caller rather than ignored. Bus topic signals carry no hooks.

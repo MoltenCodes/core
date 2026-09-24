@@ -7,13 +7,7 @@ local SPEC_FILE = "packages/signalKit/tests/Hooks_spec.lua:"
 ---@param expected string
 ---@param callback fun()
 local function expectRefusalAtCaller(expected, callback)
-    local ok, message = pcall(callback)
-    message = tostring(message)
-
-    assert.is_false(ok)
-    assert.is_not_nil(string.find(message, expected, 1, true), message)
-    assert.is_not_nil(string.find(message, SPEC_FILE, 1, true), message)
-    assert.is_nil(string.find(message, "src/SignalKit.lua", 1, true), message)
+    TestEnv.ExpectRefusalAtCaller(SPEC_FILE, expected, callback)
 end
 
 describe("SignalKit onFirst and onLast hooks", function()

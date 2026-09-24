@@ -3,9 +3,10 @@
 --- The World of Warcraft stubs, the `package.loaded` bookkeeping and the error
 --- capture live in the shared `FrameworkTestEnv` fixture at `tests/support/`.
 --- What stays here is this package's own module load order and the helpers
---- only its specs describe: a host with `securecallfunction`, allocation
---- measurement, loading the source as another revision, and loading the two
---- optional Kits that decide who closes an addon's bus at logout.
+--- only its specs describe: the refusal-at-the-caller assertion, a host with
+--- `securecallfunction`, allocation measurement, loading the source as another
+--- revision, and loading the two optional Kits that decide who closes an
+--- addon's bus at logout.
 ---
 --- EventKit and LifecycleKit are declared under `optionalDependencies`, so the
 --- test runner puts them on `LUA_PATH`. `LoadEventKit` and `LoadLifecycleKit`
@@ -13,6 +14,9 @@
 --- chain, after SignalKit, as an addon that embeds them would; `Reset` unloads
 --- them again.
 local FrameworkTestEnv = require("FrameworkTestEnv")
+-- Busted injects `assert` into spec chunks only; this module is loaded through
+-- plain `require`, so the refusal helper names luassert itself.
+local assert = require("luassert")
 
 local SignalKitTestEnv = FrameworkTestEnv.New({
     modules = { "Registry", "SignalKit" },
@@ -100,6 +104,22 @@ function SignalKitTestEnv.NewPackageWithSecureCall()
     local Registry = require("Registry")
     local SignalKit = require("SignalKit")
     return SignalKit, Registry
+end
+
+---Assert that `callback` raises a message naming `expected` at a line of
+---`specFile` rather than somewhere inside the package, which is what "raised
+---at the caller" means for every SignalKit refusal.
+---@param specFile string the spec's repository-relative path followed by `:`
+---@param expected string
+---@param callback fun()
+function SignalKitTestEnv.ExpectRefusalAtCaller(specFile, expected, callback)
+    local ok, message = pcall(callback)
+    message = tostring(message)
+
+    assert.is_false(ok)
+    assert.is_not_nil(string.find(message, expected, 1, true), message)
+    assert.is_not_nil(string.find(message, specFile, 1, true), message)
+    assert.is_nil(string.find(message, "src/SignalKit.lua", 1, true), message)
 end
 
 ---Measure the allocation a workload causes, in kilobytes, with the collector

@@ -1,11 +1,6 @@
 local TestEnv = require("SignalKitTestEnv")
 
-local function expectErrorContaining(expected, callback)
-    local ok, message = pcall(callback)
-
-    assert.is_false(ok)
-    assert.is_not_nil(string.find(tostring(message), expected, 1, true))
-end
+local expectErrorContaining = TestEnv.expectErrorContaining
 
 ---The package-wide limits a fresh session starts with.
 local DEFAULT_LIMITS = { maxBuses = 64, maxJournalCapacity = 1024, maxJournalArguments = 8 }

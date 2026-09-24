@@ -11,18 +11,6 @@ local function tombstones(signal)
     return rawget(signal, "_tombstones")
 end
 
----Measures the allocation a workload causes, in kilobytes, with the collector
----stopped so that a collection cycle cannot hide or invent growth.
-local function allocatedKilobytes(workload)
-    collectgarbage()
-    collectgarbage("stop")
-    local before = collectgarbage("count")
-    workload()
-    local after = collectgarbage("count")
-    collectgarbage("restart")
-    return after - before
-end
-
 describe("SignalKit listener compaction", function()
     local SignalKit
     local signal
@@ -174,7 +162,7 @@ describe("SignalKit allocation behaviour", function()
         -- Tolerance covers interpreter bookkeeping that is unrelated to the
         -- dispatch path; a per-Fire allocation would be orders of magnitude
         -- larger than this over 20000 iterations.
-        local allocated = allocatedKilobytes(function()
+        local allocated = TestEnv.AllocatedKilobytes(function()
             for _ = 1, 20000 do
                 signal:Fire(1, 2)
             end
@@ -189,7 +177,7 @@ describe("SignalKit allocation behaviour", function()
             connections[index] = signal:Connect(function() end)
         end
 
-        local allocated = allocatedKilobytes(function()
+        local allocated = TestEnv.AllocatedKilobytes(function()
             for index = 1, 2047 do
                 connections[index]:Disconnect()
             end

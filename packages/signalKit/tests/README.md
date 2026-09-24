@@ -93,8 +93,12 @@ Spec files:
 | `BusScope_spec.lua` | bus scopes, `ForAddon`, `CloseAddonBus` |
 | `Limits_spec.lua` | bus limit options, `UNBOUNDED`, `SetLimits`/`GetLimits` for all three package-wide limits, refusal at the caller |
 | `LogoutClose_spec.lua` | who closes an addon's bus at logout, in each of the four cases, and across upgrades |
-| `Bootstrap_spec.lua` | Registry bootstrap, duplicate embedding, revision upgrades, limits and sentinel carried |
+| `Bootstrap_spec.lua` | Registry bootstrap, duplicate embedding, revision upgrades, limits, sentinel and journals carried |
 | `Manifest_spec.lua` | runtime metadata against `package.manifest.json` |
+
+`SignalKitTestEnv.ExpectRefusalAtCaller(specFile, expected, callback)` is the
+one assertion behind "raised at the caller": the message names `expected`, a
+line of the calling spec file, and no line inside `src/SignalKit.lua`.
 
 EventKit and LifecycleKit are declared under `optionalDependencies`, so the
 runner puts them on `LUA_PATH`. `LoadEventKit` and `LoadLifecycleKit` install

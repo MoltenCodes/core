@@ -49,7 +49,7 @@ observed (the `OnUsed` / `OnUnused` idea of CallbackHandler).
 ```lua
 local health = SignalKit:New({
     onFirst = function(signal)
-        eventScope:Connect("UNIT_HEALTH", forward) -- activate the source
+        eventScope:ConnectUnit("UNIT_HEALTH", forward, "player") -- activate the source
     end,
     onLast = function(signal)
         eventScope:DisconnectAll() -- nobody is listening any more
@@ -106,18 +106,16 @@ end)
 
 `callback` must be a function.
 
-`Connect`, `Once`, `Fire` and `DisconnectAll` must be called **on a signal**, and
-`Disconnect` and `IsConnected` **on a connection handle**. Calling them without a
+`Connect`, `Once`, `Fire`, `DisconnectAll` and `GetGeneration` must be called
+**on a signal**, `Disconnect` and `IsConnected` **on a connection handle**, and a
+journal's `Fire` and `History` **on a journal**. Calling them without a
 receiver — `SignalKit.Connect(callback)` instead of `signal:Connect(callback)` —
-raises a SignalKit error that names the mistake at the calling line:
+raises a SignalKit error that names the mistake at the calling line, rather than
+an `attempt to index` error from inside SignalKit:
 
 ```text
 SignalKit:Connect must be called on a signal instance; use signal:Connect(callback)
 ```
-
-Previously the same typo surfaced as `attempt to index a function value` or
-`attempt to get length of a nil value` somewhere inside SignalKit, naming neither
-the mistake nor the line that made it.
 
 The receiver test inspects a private field rather than comparing metatables. A
 newer embedded package revision builds its own signal metatable, so a metatable
@@ -354,11 +352,11 @@ Each compaction is `O(n)` but removes `n/2` slots, so disconnect stays amortized
 disconnected handle's callback is released immediately; only the small handle
 table survives until the next compaction.
 
-Revision 1 instead copied the whole array on every `Disconnect()`, which made
+Copying the whole array on every `Disconnect()`, the obvious alternative, makes
 tearing a signal down quadratic. Measured on Lua 5.1.5, disconnecting every
 listener of a signal one handle at a time:
 
-| Listeners | Revision 1 | Revision 2 |
+| Listeners | Copy per disconnect | Tombstones and compaction |
 |---:|---:|---:|
 | 100 | 0.13 ms, 119 KB | 0.04 ms, 2 KB |
 | 500 | 2.03 ms, 2,658 KB | 0.18 ms, 9 KB |
@@ -366,13 +364,13 @@ listener of a signal one handle at a time:
 | 2000 | 28.53 ms, 42,248 KB | 0.68 ms, 33 KB |
 | 4000 | 97.55 ms, 168,805 KB | 1.45 ms, 65 KB |
 
-Revision 1 time grows by roughly 3.4× per doubling of `n` (quadratic); revision 2
-grows by roughly 2.1× (linear). At 4000 listeners the teardown is 67× faster and
+Copying grows by roughly 3.4× per doubling of `n` (quadratic); tombstones grow
+by roughly 2.1× (linear). At 4000 listeners the teardown is 67× faster and
 allocates 2,600× less.
 
-`Fire()` is unchanged: 0 KB allocated in both revisions, and the two type tests
-that validate the receiver are within measurement noise of revision 1 across
-repeated best-of-five runs (200,000 dispatches over 8 listeners: 110.6 ms versus
+`Fire()` allocates 0 KB, and the two type tests that validate the receiver are
+within measurement noise of a dispatch without them across repeated
+best-of-five runs (200,000 dispatches over 8 listeners: 110.6 ms versus
 111.6 ms in the closest pair, 112.3 ms versus 116.1 ms in the widest).
 
 This model intentionally optimizes repeated dispatch, which is expected to be
@@ -733,6 +731,34 @@ and further additions are refused with `nil, "full"` until the count is below
 the new bound. A per-bus limit is read on every declaration and subscription,
 so it takes effect at once. A journal keeps its ring whatever
 `maxJournalCapacity` becomes; the limit applies to the next `NewJournal`.
+
+## Error messages
+
+Every error below is raised at the caller's line, never inside SignalKit.
+`<...>` marks a value filled in from the call; a published or fired argument
+value never appears in a message.
+
+| Raised by | Message |
+|---|---|
+| a signal method without a signal | `SignalKit:<Method> must be called on a signal instance; use signal:<Method>(...)` (`Connect`, `Once`, `Fire`, `DisconnectAll`, `GetGeneration`) |
+| a connection method without a handle | `SignalKit:<Method> must be called on a connection handle; use connection:<Method>()` (`Disconnect`, `IsConnected`) |
+| `Connect`, `Once` | `SignalKit:<Method> callback must be a function` |
+| `New`, `NewJournal` | `SignalKit:<Method> options must be a table or nil`; `SignalKit:<Method> options.onFirst must be a function or nil`; the same for `options.onLast` |
+| `SignalKit.New(options)` | `SignalKit:New options must be passed with a colon call: SignalKit:New(options)` |
+| a facade method without the facade | `SignalKit:<Method> must be called on the SignalKit facade; use SignalKit:<Method>(...)` (`NewJournal`, `Bus`, `ForAddon`, `CloseAddonBus`, `SetLimits`, `GetLimits`) |
+| `NewJournal` | `SignalKit:NewJournal capacity must be an integer from 1 to <maxJournalCapacity> (SignalKit:SetLimits maxJournalCapacity)`; `SignalKit:NewJournal capacity cannot be SignalKit.UNBOUNDED: the ring is allocated when the journal is created`; `SignalKit:NewJournal default capacity 128 exceeds maxJournalCapacity <n>; pass a capacity` |
+| a journal method without a journal | `SignalKit.Journal:Fire must be called on a journal; use journal:Fire(...)`; `SignalKit.Journal:History must be called on a journal; use journal:History()` |
+| `journal:Fire` | `SignalKit.Journal:Fire records at most <maxJournalArguments> arguments per firing; received <count>` |
+| a name or topic argument | `<Method> <argument> must be a non-empty string`; `<Method> <argument> must not be a secret value` |
+| `Bus` | `SignalKit:Bus options must be a table or nil`; `SignalKit:Bus options.openTopics must be a boolean or nil`; `SignalKit:Bus options.<maxTopics or maxListeners> must be a positive integer or SignalKit.UNBOUNDED`; `SignalKit:Bus bus "<name>" already exists with a different <openTopics policy, maxTopics or maxListeners>` |
+| a bus method without a bus | `SignalKit.Bus:<Method> must be called on a SignalKit bus with a colon call` |
+| `DeclareTopic` | `SignalKit.Bus:DeclareTopic options must be a table or nil`; `SignalKit.Bus:DeclareTopic options.arguments count must be a finite non-negative integer`; `SignalKit.Bus:DeclareTopic options.arguments must be a count, a validator function or nil`; `SignalKit.Bus:DeclareTopic options.description must be a string or nil`; `SignalKit.Bus:DeclareTopic cannot declare on the closed bus "<bus>"`; `SignalKit.Bus:DeclareTopic topic "<topic>" is already declared on bus "<bus>" with a different arguments policy` |
+| `Publish` | `SignalKit.Bus:Publish topic "<topic>" is not declared on bus "<bus>"; declare it with bus:DeclareTopic(topic, options) or create the bus with options.openTopics = true`; `SignalKit.Bus:Publish topic "<topic>" on bus "<bus>" refused its arguments: <reason>`; `SignalKit.Bus:Publish validator for topic "<topic>" on bus "<bus>" failed: <error>` |
+| `Subscribe`, `SubscribeOnce`, `Unsubscribe` and the scope subscriptions | `<Method> callback must be a function`; `<Method> cannot subscribe on the closed bus "<bus>"` (not `Unsubscribe`) |
+| `CreateScope` | `SignalKit.Bus:CreateScope cannot create a scope on the closed bus "<bus>"` |
+| a scope method without a scope | `SignalKit.BusScope:<Method> must be called on a SignalKit bus scope` |
+| a scope subscription after `Close` | `SignalKit.BusScope:<Method> cannot subscribe in a closed scope` |
+| `SetLimits` | `SignalKit:SetLimits limits must be a table`; `SignalKit:SetLimits limits.<key> is not a recognised limit`; `SignalKit:SetLimits limits.<name> must be an integer from 1 to <ceiling>`; `SignalKit:SetLimits limits.<name> cannot be SignalKit.UNBOUNDED: <reason>` |
 
 ## Embedded copies and revision upgrades
 
