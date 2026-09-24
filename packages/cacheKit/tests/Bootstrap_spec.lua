@@ -68,9 +68,9 @@ describe("CacheKit bootstrap", function()
         end)
         snapshot:Refresh()
 
-        local upgraded = TestEnv.LoadRevision(2)
+        local upgraded = TestEnv.LoadRevision(3)
         assert.are.equal(CacheKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(3, upgraded.REVISION)
         assert.are.equal(cachePrototype, upgraded.Cache)
 
         -- Entries, recency and statistics survive: "b" is still the least
@@ -92,6 +92,123 @@ describe("CacheKit bootstrap", function()
         source.y = 2
         local added = snapshot:Refresh()
         assert.are.same({ "y" }, added)
+    end)
+
+    it("carries lazy trees, queues and negative entries into a newer revision", function()
+        local CacheKit = TestEnv.NewPackage()
+        local lazyPrototype = CacheKit.LazyTree
+        local queuePrototype = CacheKit.Queue
+        local calls = 0
+        local tree = CacheKit:Lazy(function(...)
+            calls = calls + 1
+            return select("#", ...)
+        end, { maxEntries = 4 })
+        tree:Get("a", "b")
+        local queue = CacheKit:NewQueue(2, "dropOldest")
+        queue:Push("first")
+        queue:Push("second")
+        local ttl = CacheKit:NewTtl({ maxEntries = 2, ttlSeconds = 60 })
+        ttl:PutNegative("gone", 5)
+
+        local upgraded = TestEnv.LoadRevision(3)
+        assert.are.equal(CacheKit, upgraded)
+        assert.are.equal(lazyPrototype, upgraded.LazyTree)
+        assert.are.equal(queuePrototype, upgraded.Queue)
+
+        assert.are.equal(2, tree:Get("a", "b"))
+        assert.are.equal(1, calls)
+        assert.are.equal(1, tree:Invalidate("a"))
+        assert.are.same({ true, "first" }, { queue:Push("third") })
+        assert.are.equal("second", queue:Pop())
+        assert.are.equal("negative", select(2, ttl:Get("gone")))
+        assert.are.equal("negative", select(2, ttl:Peek("gone")))
+    end)
+
+    it("upgrades revision-1 state in place to schema 2", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        local previous = TestEnv.LoadRevision(1)
+        assert.are.equal(1, previous.REVISION)
+        local ttl = previous:NewTtl({ maxEntries = 4, ttlSeconds = 60 })
+        ttl:Set("kept", 1)
+        local calls = 0
+        local compute, memoCache = previous:Memoize(function(key)
+            calls = calls + 1
+            return key
+        end, { ttlSeconds = 60 })
+        compute("m")
+        -- A memoised closure as revision 1 built it: three arguments, no
+        -- predicate.
+        local dispatch = rawget(previous._state, "dispatch")
+        local function legacyMemoized(key)
+            return rawget(dispatch, "memoizedCall")(memoCache, function(value)
+                calls = calls + 1
+                return value
+            end, key)
+        end
+
+        -- Reduce the facade and the state to the shape revision 1 left behind.
+        local state = rawget(previous, "_state")
+        rawset(state, "schema", 1)
+        rawset(state, "lazyMetatable", nil)
+        rawset(state, "queueMetatable", nil)
+        rawset(state, "negative", nil)
+        rawset(state, "limits", nil)
+        rawset(previous, "LazyTree", nil)
+        rawset(previous, "Queue", nil)
+        rawset(previous, "Lazy", nil)
+        rawset(previous, "NewQueue", nil)
+        rawset(previous, "SetLimits", nil)
+        rawset(previous, "GetLimits", nil)
+        rawset(previous.Cache, "PutNegative", nil)
+
+        local upgraded = TestEnv.ReloadPackage()
+        assert.are.equal(previous, upgraded)
+        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(2, rawget(state, "schema"))
+        assert.are.equal("table", type(rawget(state, "lazyMetatable")))
+        assert.are.equal("table", type(rawget(state, "queueMetatable")))
+        assert.are.equal("table", type(rawget(state, "negative")))
+        assert.are.same({ maxQueueCapacity = 1024 }, upgraded:GetLimits())
+        assert.are.equal("table", type(upgraded.LazyTree))
+        assert.are.equal("table", type(upgraded.Queue))
+
+        -- Revision 1 objects gain the new surface without being replaced.
+        assert.are.equal(1, ttl:Get("kept"))
+        ttl:PutNegative("gone", 5)
+        assert.are.equal("negative", select(2, ttl:Get("gone")))
+        assert.are.equal("m", legacyMemoized("m"))
+        assert.are.equal("m", compute("m"))
+        assert.are.equal(1, calls)
+        assert.are.equal("n", legacyMemoized("n"))
+        assert.are.equal(2, calls)
+
+        local tree = upgraded:Lazy(function(...)
+            return select("#", ...)
+        end)
+        assert.are.equal(2, tree:Get("a", "b"))
+        local queue = upgraded:NewQueue(1, "reject")
+        assert.is_true(queue:Push(1))
+        assert.is_false(queue:Push(2))
+    end)
+
+    it("rejects a same-revision state whose limits are invalid", function()
+        local CacheKit = TestEnv.NewPackage()
+        rawset(rawget(rawget(CacheKit, "_state"), "limits"), "maxQueueCapacity", 0)
+        TestEnv.expectErrorContaining("corrupted or incomplete", function()
+            TestEnv.ReloadPackage()
+        end)
+    end)
+
+    it("rejects a same-revision facade whose negative marker is missing", function()
+        local CacheKit = TestEnv.NewPackage()
+        rawset(rawget(CacheKit, "_state"), "negative", nil)
+        TestEnv.expectErrorContaining("corrupted or incomplete", function()
+            TestEnv.ReloadPackage()
+        end)
     end)
 
     it("requires Registry", function()

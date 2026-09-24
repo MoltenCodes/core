@@ -89,6 +89,248 @@ describe("CacheKit error levels", function()
             snapshotOk,
             snapshotValue
         )
+
+        local cacheableLine
+        local cacheableOk, cacheableValue = pcall(function()
+            cacheableLine = currentLine() + 1
+            CacheKit:Memoize(function() end, { cacheable = "yes" })
+        end)
+        assertReportedAt(
+            cacheableLine,
+            "CacheKit:Memoize cacheable must be a function",
+            cacheableOk,
+            cacheableValue
+        )
+
+        local lazyLine
+        local lazyOk, lazyValue = pcall(function()
+            lazyLine = currentLine() + 1
+            CacheKit:Lazy(function() end, { maxEntries = {} })
+        end)
+        assertReportedAt(
+            lazyLine,
+            "CacheKit:Lazy maxEntries must be a positive integer or CacheKit.UNBOUNDED",
+            lazyOk,
+            lazyValue
+        )
+
+        local resolveLine
+        local resolveOk, resolveValue = pcall(function()
+            resolveLine = currentLine() + 1
+            CacheKit:Lazy(nil)
+        end)
+        assertReportedAt(
+            resolveLine,
+            "CacheKit:Lazy resolve must be a function",
+            resolveOk,
+            resolveValue
+        )
+
+        local capacityLine
+        local capacityOk, capacityValue = pcall(function()
+            capacityLine = currentLine() + 1
+            CacheKit:NewQueue(CacheKit.UNBOUNDED, "reject")
+        end)
+        assertReportedAt(
+            capacityLine,
+            "CacheKit:NewQueue capacity cannot be CacheKit.UNBOUNDED: "
+                .. "the ring is allocated when the queue is created",
+            capacityOk,
+            capacityValue
+        )
+
+        local tooLargeLine
+        local tooLargeOk, tooLargeValue = pcall(function()
+            tooLargeLine = currentLine() + 1
+            CacheKit:NewQueue(1025, "reject")
+        end)
+        assertReportedAt(
+            tooLargeLine,
+            "CacheKit:NewQueue capacity must be an integer from 1 to 1024 "
+                .. "(CacheKit:SetLimits maxQueueCapacity)",
+            tooLargeOk,
+            tooLargeValue
+        )
+
+        local overflowLine
+        local overflowOk, overflowValue = pcall(function()
+            overflowLine = currentLine() + 1
+            CacheKit:NewQueue(4, "keep")
+        end)
+        assertReportedAt(
+            overflowLine,
+            'CacheKit:NewQueue overflow must be "dropOldest", "dropNewest" or "reject"',
+            overflowOk,
+            overflowValue
+        )
+    end)
+
+    it("points SetLimits and GetLimits errors at the caller", function()
+        local tableLine
+        local tableOk, tableValue = pcall(function()
+            tableLine = currentLine() + 1
+            CacheKit:SetLimits(5)
+        end)
+        assertReportedAt(
+            tableLine,
+            "CacheKit:SetLimits limits must be a table",
+            tableOk,
+            tableValue
+        )
+
+        local nameLine
+        local nameOk, nameValue = pcall(function()
+            nameLine = currentLine() + 1
+            CacheKit:SetLimits({ maxQueues = 5 })
+        end)
+        assertReportedAt(
+            nameLine,
+            "CacheKit:SetLimits limits.maxQueues is not a recognised limit",
+            nameOk,
+            nameValue
+        )
+
+        local ceilingLine
+        local ceilingOk, ceilingValue = pcall(function()
+            ceilingLine = currentLine() + 1
+            CacheKit:SetLimits({ maxQueueCapacity = 65537 })
+        end)
+        assertReportedAt(
+            ceilingLine,
+            "CacheKit:SetLimits limits.maxQueueCapacity must be an integer from 1 to 65536",
+            ceilingOk,
+            ceilingValue
+        )
+
+        local unboundedLine
+        local unboundedOk, unboundedValue = pcall(function()
+            unboundedLine = currentLine() + 1
+            CacheKit:SetLimits({ maxQueueCapacity = CacheKit.UNBOUNDED })
+        end)
+        assertReportedAt(
+            unboundedLine,
+            "CacheKit:SetLimits limits.maxQueueCapacity cannot be CacheKit.UNBOUNDED: "
+                .. "the ring is allocated when the queue is created",
+            unboundedOk,
+            unboundedValue
+        )
+
+        local receiverLine
+        local receiverOk, receiverValue = pcall(function()
+            receiverLine = currentLine() + 1
+            CacheKit.GetLimits({})
+        end)
+        assertReportedAt(
+            receiverLine,
+            "CacheKit:GetLimits must be called on the CacheKit facade",
+            receiverOk,
+            receiverValue
+        )
+    end)
+
+    it("points negative-entry errors at the caller", function()
+        local ttl = CacheKit:NewTtl({ maxEntries = 1, ttlSeconds = 1 })
+        local ttlLine
+        local ttlOk, ttlValue = pcall(function()
+            ttlLine = currentLine() + 1
+            ttl:PutNegative("a", -1)
+        end)
+        assertReportedAt(
+            ttlLine,
+            "CacheKit.Cache:PutNegative ttlSeconds must be a finite number greater than zero",
+            ttlOk,
+            ttlValue
+        )
+
+        local lru = CacheKit:NewLru({ maxEntries = 1 })
+        local lruLine
+        local lruOk, lruValue = pcall(function()
+            lruLine = currentLine() + 1
+            lru:PutNegative("a", 1)
+        end)
+        assertReportedAt(
+            lruLine,
+            "CacheKit.Cache:PutNegative requires a cache with an age limit "
+                .. "(CacheKit:NewTtl, or CacheKit:Memoize with ttlSeconds)",
+            lruOk,
+            lruValue
+        )
+    end)
+
+    it("points lazy tree errors at the caller", function()
+        local tree = CacheKit:Lazy(function()
+            return true
+        end)
+        local emptyLine
+        local emptyOk, emptyValue = pcall(function()
+            emptyLine = currentLine() + 1
+            tree:Get()
+        end)
+        assertReportedAt(
+            emptyLine,
+            "CacheKit.LazyTree:Get needs at least one path part",
+            emptyOk,
+            emptyValue
+        )
+
+        local partLine
+        local partOk, partValue = pcall(function()
+            partLine = currentLine() + 1
+            tree:Invalidate("a", true)
+        end)
+        assertReportedAt(
+            partLine,
+            "CacheKit.LazyTree:Invalidate path part 2 must be a string or a number",
+            partOk,
+            partValue
+        )
+
+        tree:Close()
+        local closedLine
+        local closedOk, closedValue = pcall(function()
+            closedLine = currentLine() + 1
+            tree:Get("a")
+        end)
+        assertReportedAt(
+            closedLine,
+            "CacheKit.LazyTree:Get cannot expand a closed tree",
+            closedOk,
+            closedValue
+        )
+
+        local receiverLine
+        local receiverOk, receiverValue = pcall(function()
+            receiverLine = currentLine() + 1
+            CacheKit.LazyTree.Peek({}, "a")
+        end)
+        assertReportedAt(
+            receiverLine,
+            "CacheKit.LazyTree:Peek must be called on a CacheKit lazy tree",
+            receiverOk,
+            receiverValue
+        )
+    end)
+
+    it("points queue errors at the caller", function()
+        local queue = CacheKit:NewQueue(1, "reject")
+        local nilLine
+        local nilOk, nilValue = pcall(function()
+            nilLine = currentLine() + 1
+            queue:Push(nil)
+        end)
+        assertReportedAt(nilLine, "CacheKit.Queue:Push value must not be nil", nilOk, nilValue)
+
+        local receiverLine
+        local receiverOk, receiverValue = pcall(function()
+            receiverLine = currentLine() + 1
+            CacheKit.Queue.GetCount({})
+        end)
+        assertReportedAt(
+            receiverLine,
+            "CacheKit.Queue:GetCount must be called on a CacheKit queue",
+            receiverOk,
+            receiverValue
+        )
     end)
 
     it("points key errors at the caller", function()

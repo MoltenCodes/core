@@ -97,6 +97,110 @@ describe("CacheKit allocation", function()
         )
     end)
 
+    it("allocates nothing for a negative hit or for renewing a negative entry", function()
+        local cache = CacheKit:NewTtl({ maxEntries = 8, ttlSeconds = 60 })
+        cache:PutNegative("missing", 30)
+
+        local allocated = TestEnv.AllocatedKilobytes(function()
+            for _ = 1, ITERATIONS do
+                local _, outcome = cache:Get("missing")
+                if outcome ~= "negative" then
+                    error("expected a negative answer")
+                end
+                cache:PutNegative("missing", 30)
+            end
+        end)
+        assert.is_true(
+            allocated < THRESHOLD_KILOBYTES,
+            "negative allocated " .. allocated .. " KiB"
+        )
+    end)
+
+    it("allocates nothing for a memoised result the predicate lets through", function()
+        local compute = CacheKit:Memoize(function(key)
+            return key
+        end, {
+            cacheable = function()
+                return false
+            end,
+        })
+        compute(1)
+
+        local allocated = TestEnv.AllocatedKilobytes(function()
+            for _ = 1, ITERATIONS do
+                compute(1)
+            end
+        end)
+        assert.is_true(
+            allocated < THRESHOLD_KILOBYTES,
+            "cacheable pass-through allocated " .. allocated .. " KiB"
+        )
+    end)
+
+    it("allocates nothing for a lazy tree hit or peek", function()
+        local tree = CacheKit:Lazy(function(...)
+            return select("#", ...)
+        end)
+        tree:Get("realm", "player", 3)
+        tree:Get("realm", "other", 3)
+
+        local allocated = TestEnv.AllocatedKilobytes(function()
+            for index = 1, ITERATIONS do
+                if index % 2 == 0 then
+                    tree:Get("realm", "player", 3)
+                else
+                    tree:Get("realm", "other", 3)
+                end
+                tree:Peek("realm", "player", 3)
+            end
+        end)
+        assert.is_true(
+            allocated < THRESHOLD_KILOBYTES,
+            "lazy hit allocated " .. allocated .. " KiB"
+        )
+    end)
+
+    it("reuses nodes when a lazy tree re-expands an invalidated path", function()
+        local tree = CacheKit:Lazy(function()
+            return true
+        end, { maxEntries = 8 })
+        tree:Get("a", "b", "c")
+        tree:Invalidate("a")
+        tree:Get("a", "b", "c")
+
+        local allocated = TestEnv.AllocatedKilobytes(function()
+            for _ = 1, ITERATIONS do
+                tree:Invalidate("a")
+                tree:Get("a", "b", "c")
+            end
+        end)
+        assert.is_true(allocated < 4, "invalidate and re-expand allocated " .. allocated .. " KiB")
+    end)
+
+    it("allocates nothing for queue pushes, pops and iteration", function()
+        local queue = CacheKit:NewQueue(8, "dropOldest")
+        for value = 1, 12 do
+            queue:Push(value)
+        end
+
+        local visited = 0
+        local allocated = TestEnv.AllocatedKilobytes(function()
+            for round = 1, ITERATIONS do
+                queue:Push(round)
+                queue:Pop()
+                queue:Push(round)
+                queue:Peek()
+                for _, value in queue:Iterate() do
+                    if value ~= nil then
+                        visited = visited + 1
+                    end
+                end
+            end
+        end)
+        assert.are.equal(ITERATIONS * 8, visited)
+        assert.is_true(allocated < THRESHOLD_KILOBYTES, "queue allocated " .. allocated .. " KiB")
+    end)
+
     it("allocates nothing for a snapshot refresh in which nothing changed", function()
         local keys = {}
         local values = {}
