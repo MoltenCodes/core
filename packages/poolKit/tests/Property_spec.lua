@@ -19,8 +19,12 @@ describe("PoolKit state properties", function()
         local active = {}
         local seed = 99173
         local function random(maximum)
-            seed = (seed * 1103515245 + 12345) % 2147483648
-            return (seed % maximum) + 1
+            -- Park-Miller generator: every product stays below 2^47, so it is
+            -- exact in a Lua 5.1 double. The result is taken from the high bits,
+            -- because the low bits of a power-of-two-modulus generator cycle
+            -- within a few steps and would exercise only a handful of paths.
+            seed = (seed * 48271) % 2147483647
+            return (math.floor(seed / 65536) % maximum) + 1
         end
 
         for _ = 1, 5000 do
@@ -52,8 +56,9 @@ describe("PoolKit state properties", function()
         local active = {}
         local seed = 171717
         local function random(maximum)
-            seed = (seed * 1103515245 + 12345) % 2147483648
-            return (seed % maximum) + 1
+            -- Park-Miller: exact in a double; high bits, see the first spec.
+            seed = (seed * 48271) % 2147483647
+            return (math.floor(seed / 65536) % maximum) + 1
         end
 
         for _ = 1, 5000 do
@@ -70,21 +75,14 @@ describe("PoolKit state properties", function()
                 local limit = random(17) - 1
                 pool:SetMaxRetained(limit)
             elseif operation == 4 then
-                local maxRetained = pool:GetMaxRetained()
-                local target = 0
-                if maxRetained ~= PoolKit.UNBOUNDED then
-                    target = random(maxRetained + 1) - 1
-                end
-                pool:Prewarm(target)
+                -- The walk only ever sets integer bounds, never `UNBOUNDED`.
+                pool:Prewarm(random(pool:GetMaxRetained() + 1) - 1)
             else
                 pool:Clear()
             end
 
             assert.are.equal(#active, pool:GetActiveCount())
-            local maxRetained = pool:GetMaxRetained()
-            if maxRetained ~= PoolKit.UNBOUNDED then
-                assert.is_true(pool:GetAvailableCount() <= maxRetained)
-            end
+            assert.is_true(pool:GetAvailableCount() <= pool:GetMaxRetained())
             assert.are.equal(
                 pool:GetCreatedCount(),
                 pool:GetActiveCount() + pool:GetAvailableCount() + pool:GetDiscardedCount()

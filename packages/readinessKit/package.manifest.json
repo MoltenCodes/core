@@ -2,7 +2,7 @@
   "name": "readinessKit",
   "displayName": "ReadinessKit",
   "description": "Named readiness gates for World of Warcraft host data that arrives after load, with polling, timeouts and negative caching.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "license": "MIT",
   "api": 1,
   "revision": 2,

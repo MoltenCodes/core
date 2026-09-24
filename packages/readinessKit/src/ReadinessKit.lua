@@ -418,7 +418,8 @@ local function isPositiveFiniteNumber(value)
     return type(value) == "number" and value == value and value > 0 and value ~= math.huge
 end
 
----Refuse a non-table option table and any field outside `GATE_OPTION_KEYS`.
+---Refuse any field of an option table outside `GATE_OPTION_KEYS`. The caller
+---has already checked that `options` is a table.
 ---@param options table
 ---@param level integer stack level the failures are reported at
 local function validateOptionKeys(options, level)

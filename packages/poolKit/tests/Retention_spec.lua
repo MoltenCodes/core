@@ -67,23 +67,32 @@ describe("PoolKit retention contracts", function()
     it("refuses to construct a strictReset pool without a reset callback", function()
         local PoolKit = Env.NewPackage()
 
-        assert.has_error(function()
-            PoolKit:New({
-                create = function()
-                    return {}
-                end,
-                strictReset = true,
-            })
-        end)
+        local ok, message = pcall(PoolKit.New, PoolKit, {
+            create = function()
+                return {}
+            end,
+            strictReset = true,
+        })
+        assert.is_false(ok)
+        assert.is_not_nil(
+            string.find(
+                tostring(message),
+                "PoolKit:New strictReset requires a reset callback",
+                1,
+                true
+            )
+        )
 
-        assert.has_error(function()
-            PoolKit:New({
-                create = function()
-                    return {}
-                end,
-                strictReset = "yes",
-            })
-        end)
+        ok, message = pcall(PoolKit.New, PoolKit, {
+            create = function()
+                return {}
+            end,
+            strictReset = "yes",
+        })
+        assert.is_false(ok)
+        assert.is_not_nil(
+            string.find(tostring(message), "PoolKit:New strictReset must be a boolean", 1, true)
+        )
     end)
 
     it("accepts strictReset when a reset callback is present", function()

@@ -23,8 +23,9 @@ They also cover the contracts a caller is most likely to get wrong:
 | `Property_spec.lua` | The randomized accounting invariant below. |
 | `Generation_spec.lua` | Generation defaults, `SetGeneration`, stale retained and borrowed objects, side-table stamps. |
 | `Unfreeable_spec.lua` | `maxCreated`, `maxActive`, `SetMaxCreated`, the waiting ring (FIFO, wrap-around, cancellation, refusal, close, failures, zero allocation). |
-| `Children_spec.lua` | `AttachChild`/`DetachChild`, cascade order, cycles, child and parent reset failures. |
+| `Children_spec.lua` | `AttachChild`/`DetachChild`, cascade order, cycles, child and parent reset failures, a child's reset releasing its parent mid-release. |
 | `Deferred_spec.lua` | `ReleaseAfter`: parking, one hook per group, early completion, close, live limit, reported failures. |
+| `Allocation_spec.lua` | Zero allocation for steady-state acquire/release through generic, table and capped pools, and for attach-and-cascade. |
 | `Bootstrap_spec.lua` | Duplicate loads, newer-revision refusal, in-place upgrades from revisions 1, 3 and 5, sentinel drift. |
 | `Manifest_spec.lua` | Manifest API and revision agree with the runtime. |
 

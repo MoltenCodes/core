@@ -1,5 +1,14 @@
 local Env = require("PoolKitTestEnv")
 
+---Assert that `action` raises an error whose message contains `expected`.
+---@param expected string
+---@param action function
+local function expectRefusal(expected, action)
+    local ok, message = pcall(action)
+    assert.is_false(ok)
+    assert.is_not_nil(string.find(tostring(message), expected, 1, true))
+end
+
 describe("PoolKit ownership", function()
     before_each(function()
         Env.Reset()
@@ -16,11 +25,11 @@ describe("PoolKit ownership", function()
             end,
         })
         local object = pool:Acquire()
-        assert.has_error(function()
+        expectRefusal("object was not acquired from this pool", function()
             pool:Release({})
         end)
         pool:Release(object)
-        assert.has_error(function()
+        expectRefusal("object has already been released", function()
             pool:Release(object)
         end)
         assert.are.equal(0, pool:GetActiveCount())
@@ -39,7 +48,8 @@ describe("PoolKit ownership", function()
         pool:Release(object)
         assert.are.equal(0, pool:GetAvailableCount())
         assert.are.equal(1, pool:GetDiscardedCount())
-        assert.has_error(function()
+        -- Only the weak strict history remembers a discarded object.
+        expectRefusal("object has already been released", function()
             pool:Release(object)
         end)
         assert.is_false(pool:Owns(object))
@@ -69,7 +79,7 @@ describe("PoolKit ownership", function()
         assert.are.equal(0, pool:GetActiveCount())
     end)
 
-    it("rejects reentrant release of the same object", function()
+    it("rejects reentrant release of the same object from its own reset", function()
         local PoolKit = Env.NewPackage()
         local pool
         pool = PoolKit:New({
@@ -77,7 +87,7 @@ describe("PoolKit ownership", function()
                 return {}
             end,
             reset = function(object)
-                assert.has_error(function()
+                expectRefusal("cannot mutate this pool during its reset callback", function()
                     pool:Release(object)
                 end)
             end,
@@ -97,10 +107,11 @@ describe("PoolKit ownership", function()
         })
         local object = pool:Acquire()
         pool:Release(object)
-        assert.has_error(function()
+        -- Without the history a discarded object is simply not owned.
+        expectRefusal("object was not acquired from this pool", function()
             pool:Release(object)
         end)
-        assert.has_error(function()
+        expectRefusal("object was not acquired from this pool", function()
             pool:Release({})
         end)
         assert.are.equal(0, pool:GetActiveCount())

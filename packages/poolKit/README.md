@@ -34,7 +34,12 @@ Pools also serve objects the host can never free, such as Frames:
 
 For plain tables, `PoolKit:NewTablePool()` provides a zero-configuration pool whose reset step shallow-clears every key.
 
-See [`docs/API.md`](docs/API.md) for the complete contract and [`docs/INTERNALS.md`](docs/INTERNALS.md) for ownership/allocation invariants.
+## Documentation
+
+- [`docs/API.md`](docs/API.md): the complete contract, including a method reference with returns, exact errors and cost.
+- [`docs/INTERNALS.md`](docs/INTERNALS.md): ownership and allocation invariants, for maintainers.
+- [`tests/README.md`](tests/README.md): what each spec file covers.
+- [`src/PoolKit.lua`](src/PoolKit.lua): the whole implementation, one file, with a table of contents at the top.
 
 ## Embedding
 

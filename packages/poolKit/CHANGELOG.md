@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.3 — 2026-09-24
+
+- `docs/API.md` gained a method reference: the return values, the exact error messages and the cost of every method and constructor, and which methods count as mutating inside a lifecycle callback.
+- `docs/API.md` and `docs/INTERNALS.md` describe generations, the capacity options and the embedded-copy upgrade in their current form instead of narrating earlier revisions.
+- New `Allocation_spec.lua` proves the steady-state promise in `docs/INTERNALS.md`: acquiring and releasing through a generic, a table and a capped pool, and attaching and cascading a child once the link maps exist, allocate nothing.
+- New spec for `"release is already in progress for this object"`, reached when a child's `reset` releases the parent whose release is running. The ownership and `strictReset` specs now assert the message each refusal carries rather than only that one was raised, and the property spec lost a branch its random walk could never take.
+- `Property_spec.lua` draws its random walk from the high bits of an exact Park-Miller generator. The previous power-of-two-modulus generator overflowed double precision and its low bits, which chose each step, cycled within a few steps.
+- No runtime behaviour change; implementation revision 6 is unchanged.
+
 ## 0.4.2 — 2026-09-23
 
 - Fixed the lazy upgrade of pools built by revision 1. Revision 2 added `_callbackDepth`, `_maxActiveWarning` and `_activeWarned` to the pools it built but never back-filled them, so the first `Acquire` on a revision-1 pool raised "attempt to compare number with nil". `upgradePool` now fills each of the three when it is absent and leaves a revision 2 or 3 pool's own values alone.

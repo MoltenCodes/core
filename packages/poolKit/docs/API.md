@@ -43,6 +43,157 @@ Pool handles:
 | `DetachChild(child)` | Undo `AttachChild` without releasing anything. |
 | `ReleaseAfter(object, animationGroup)` | Release `object` when `animationGroup` finishes playing. |
 
+## Method reference
+
+Every method validates its receiver first and raises
+`<method> must be called on a PoolKit pool` at the caller's line when it is
+called on anything else; `<method>` is the qualified name, for example
+`PoolKit.Pool:Acquire`. Methods marked *mutating* also raise
+`<method> cannot mutate this pool during its <phase> callback` when called from
+inside that pool's own `create`, `reset` or `destroy` (see
+[Acquire / release invariants](#acquire--release-invariants)). Unless a row says
+otherwise, argument errors are reported at the caller's line and errors raised by
+a consumer callback are re-raised unchanged. "Allocates nothing" means PoolKit
+creates no table or string of its own; consumer callbacks may allocate.
+
+### `PoolKit:New(options)` and `PoolKit:NewTablePool(options?)`
+
+Return a new pool. Options are described in [Generic pools](#generic-pools).
+Cost: O(`maxWaiting` + `prewarm`); the pool, its bookkeeping tables and the
+waiting ring are allocated here, once.
+
+Errors of `New`; `NewTablePool` raises the ones for the options it accepts, named
+`PoolKit:NewTablePool` instead:
+
+- `PoolKit:New options must be a table`
+- `PoolKit:New create must be a function`, `PoolKit:New reset must be a function`, `PoolKit:New destroy must be a function`
+- `PoolKit:New options contains unknown field "<name>"`
+- `PoolKit:New maxRetained must be a non-negative integer or PoolKit.UNBOUNDED`
+- `PoolKit:New strict must be a boolean`, `PoolKit:New strictReset must be a boolean`
+- `PoolKit:New strictReset requires a reset callback`
+- `PoolKit:New prewarm must be a non-negative integer`, `PoolKit:New maxActiveWarning must be a non-negative integer`, `PoolKit:New maxWaiting must be a non-negative integer`
+- `PoolKit:New generation must be a positive integer`, `PoolKit:New maxCreated must be a positive integer`, `PoolKit:New maxActive must be a positive integer`
+- `PoolKit:New prewarm cannot exceed maxRetained`, `PoolKit:New prewarm cannot exceed maxCreated`
+- `PoolKit:New maxWaiting requires maxCreated or maxActive`
+- a failure of the constructor-time prewarm, re-raised verbatim after the
+  objects already built are dropped.
+
+### `pool:Acquire(onAvailable?)` — mutating
+
+Returns `object` or `nil, reason` (`"exhausted"`, `"waiting"`, `"queueFull"`;
+see [When the pool is at capacity](#when-the-pool-is-at-capacity)). Cost: O(1)
+and allocates nothing when an object is retained; otherwise one factory call.
+When requests are waiting, they are served first.
+
+Errors: `PoolKit.Pool:Acquire cannot use a closed pool`,
+`PoolKit.Pool:Acquire onAvailable must be a function`,
+`PoolKit.Pool:Acquire factory result must be a table or userdata`,
+`PoolKit.Pool:Acquire factory returned an object already owned by this pool`,
+and a raising `create`, unchanged.
+
+### `pool:Release(object)` — mutating
+
+Returns `true`. Cost: O(1) and allocates nothing, plus one release per attached
+child and the service of any waiting requests.
+
+Errors: `PoolKit.Pool:Release object must be a table or userdata`,
+`PoolKit.Pool:Release object was not acquired from this pool`,
+`PoolKit.Pool:Release object has already been released`,
+`PoolKit.Pool:Release release is already in progress for this object` (the
+object's own release is running, for example when a child's `reset` releases
+its parent), and a raising `reset` or `destroy`, unchanged, with the first
+error winning (see [Cascading release](#cascading-release)).
+
+### `pool:Prewarm(count)` — mutating
+
+Returns the number of objects built. Cost: one factory call per object built.
+
+Errors: `PoolKit.Pool:Prewarm count must be a non-negative integer`,
+`PoolKit.Pool:Prewarm cannot use a closed pool`,
+`PoolKit.Pool:Prewarm target cannot exceed maxRetained`,
+`PoolKit.Pool:Prewarm target cannot exceed maxCreated`, the two factory-result
+errors with `PoolKit.Pool:Prewarm` in place of `PoolKit.Pool:Acquire`, and a
+raising `create`, unchanged.
+
+### `pool:Trim(retainCount?)`, `pool:Clear()` — mutating
+
+Return the number of objects removed. Cost: O(removed), one scratch list when
+anything is removed. `Trim` raises
+`PoolKit.Pool:Trim retainCount must be a non-negative integer`; both re-raise
+the first `destroy` failure after the whole trim.
+
+### `pool:Close()` — mutating
+
+Returns `true`, or `false` when the pool was already closed. Cost:
+O(waiting + parked + retained). Re-raises the first failure of a parked release
+or a `destroy` after finishing the close; failures of waiting callbacks are
+reported through the host error handler.
+
+### `pool:SetMaxRetained(maxRetained)` — mutating
+
+Returns the pool. Cost: O(removed) when the bound shrinks. Errors:
+`PoolKit.Pool:SetMaxRetained maxRetained must be a non-negative integer or PoolKit.UNBOUNDED`,
+and the first `destroy` failure of the resulting trim.
+
+### `pool:SetGeneration(generation)` — mutating
+
+Returns the number of retained objects destroyed. Cost: O(retained), one scratch
+list per raise, and the weak stamp table on the first raise. Errors:
+`PoolKit.Pool:SetGeneration generation must be a positive integer`,
+`PoolKit.Pool:SetGeneration cannot lower the generation from <current> to <requested>`,
+and the first `destroy` failure.
+
+### `pool:SetMaxCreated(maxCreated)` — mutating
+
+Returns the pool. Cost: O(1), plus the service of waiting requests. Errors:
+`PoolKit.Pool:SetMaxCreated maxCreated must be a positive integer`,
+`PoolKit.Pool:SetMaxCreated cannot cap a pool that was built without maxCreated`,
+`PoolKit.Pool:SetMaxCreated cannot lower the cap from <current> to <requested>`.
+
+### `pool:CancelWaiting(callback)` — mutating
+
+Returns whether a request was withdrawn. Cost: O(`maxWaiting`), allocates
+nothing. Error: `PoolKit.Pool:CancelWaiting callback must be a function`.
+
+### `pool:AttachChild(parent, child, childPool)` — mutating
+
+Returns the pool. Cost: O(1); a pool's first `AttachChild` allocates its five
+link maps, and a child pool's first attachment its attachment map. Errors:
+`PoolKit.Pool:AttachChild parent must be a table or userdata`,
+`PoolKit.Pool:AttachChild child must be a table or userdata`,
+`PoolKit.Pool:AttachChild childPool must be a PoolKit pool`,
+`PoolKit.Pool:AttachChild parent must be borrowed from this pool`,
+`PoolKit.Pool:AttachChild child must be borrowed from childPool`,
+`PoolKit.Pool:AttachChild cannot attach an object to itself`,
+`PoolKit.Pool:AttachChild child is already attached to a parent`.
+
+### `pool:DetachChild(child)` — mutating
+
+Returns whether `child` had a parent in this pool. Cost: O(1). Error:
+`PoolKit.Pool:DetachChild child must be a table or userdata`.
+
+### `pool:ReleaseAfter(object, animationGroup)` — mutating
+
+Returns `true` when the release was deferred, `false` when it happened at once.
+Cost: O(1); a pool's first `ReleaseAfter` allocates its parked map, and a
+group's first one installs the hook. Errors:
+`PoolKit.Pool:ReleaseAfter object must be a table or userdata`,
+`PoolKit.Pool:ReleaseAfter animationGroup must be an animation group`,
+`PoolKit.Pool:ReleaseAfter animationGroup already has a pending release`, the
+`Release` ownership errors with `PoolKit.Pool:ReleaseAfter` in their place,
+`PoolKit.Pool:ReleaseAfter release is already pending for this object` for a
+parked object, and the errors of an immediate release.
+
+### Queries
+
+`IsClosed()`, `GetAvailableCount()`, `GetActiveCount()`, `GetCreatedCount()`,
+`GetDiscardedCount()`, `GetMaxRetained()`, `GetGeneration()`,
+`GetWaitingCount()`, `GetParkedCount()`, `GetMaxCreated()`, `Owns(object)` and
+`IsActive(object)` return the values listed in [Public surface](#public-surface),
+never raise except for the receiver check, are O(1) and allocate nothing. They
+may be called from inside the pool's own callbacks. `Owns` and `IsActive` return
+`false` for a value that is not a table or userdata.
+
 ## Generic pools
 
 `PoolKit:New(options)` accepts exactly:
@@ -223,8 +374,8 @@ The generation only moves forward. `SetGeneration` with a lower value raises at
 the caller's line; with the same value it does nothing and returns `0`.
 
 The default generation is `1`, whichever embedded PoolKit copy built the pool,
-so pools that never use generations behave exactly as before and never depend on
-which copy won. A consumer that versions
+so a pool that never uses generations never destroys an object for being stale
+and never depends on which copy won. A consumer that versions
 its own factory should pass its own `generation` and raise it when it replaces
 `create`, typically from the in-place upgrade of its own embedded copy:
 
@@ -255,9 +406,8 @@ pool:SetGeneration(2)   -- rows built by buildRowV1 are retired, never reused
 
 PoolKit's own in-place upgrades never change a pool's generation: a new PoolKit
 revision does not change the objects a consumer's factory builds. Pools created
-by a PoolKit revision older than generations take the default generation, `1`.
-(Revision 4 briefly used its own revision as the default; pools it created keep
-the generation they were given.)
+by a PoolKit revision older than generations take the default generation, `1`;
+a pool keeps whatever generation it already carries.
 
 Stamps live in a weak-keyed side table owned by the pool. PoolKit never writes a
 field onto the object, and a stamp never keeps an object alive. A pool whose
@@ -295,8 +445,7 @@ release*) at the same time.
 
 ### When the pool is at capacity
 
-Without `maxCreated` or `maxActive`, `Acquire` always returns an object, exactly
-as before. With them, a pool at capacity returns `nil` and a reason instead:
+Without `maxCreated` or `maxActive`, `Acquire` always returns an object. With them, a pool at capacity returns `nil` and a reason instead:
 
 | Call | Result at capacity |
 |---|---|
@@ -445,13 +594,13 @@ with it stays unbounded after an upgrade.
 
 PoolKit is registered as `poolKit`, API generation `1`, through Registry API 2. The facade, `Pool` prototype, metatable, and `UNBOUNDED` sentinel live in Registry-owned shared state, so compatible future revisions can preserve existing pool identity while replacing methods in place.
 
-Revision 4 moved the shared state from schema 1 to schema 2 and gave every pool
-new fields. Pools are not registered anywhere, so a bootstrap cannot reach them;
-instead every pool method upgrades a pool built by an older revision the first
-time it touches it. The upgraded pool keeps every object and counter, gains no
-caps, no queue and no children, and takes the default generation, `1`. A pool
-built by revision 1 also gains the re-entrancy counter and the disabled leak
-warning that revision 2 introduced; revisions 4 and 5 left those out, so such a
-pool raised on its first use until revision 6. The `OnFinished` hook calls
+The shared state carries schema `2`; loading over schema-`1` state left by
+revisions 1 to 3 adds the deferred-release tables in place. Pools are not
+registered anywhere, so a bootstrap cannot reach them; instead every pool method
+upgrades a pool built by revisions 1 to 3 the first time it touches it. The
+upgraded pool keeps every object and counter, gains no caps, no queue and no
+children, and takes the default generation, `1`. A pool built by revision 1 also
+gains the re-entrancy counter and the disabled leak warning it predates. The
+`OnFinished` hook calls
 through shared state, so a hook installed by one revision runs the newest
 accepted revision's code.

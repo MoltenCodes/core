@@ -13,7 +13,7 @@ Each pool uses:
 
 `Acquire` and the normal retained `Release` path perform O(1) table operations and create no framework-owned temporary tables. User callbacks may allocate independently.
 
-Revision 4 adds a few constant-cost checks to those paths, each a `rawget` and a comparison against a `false` or `0` default: the pool schema (see *Lazy pool upgrade*), the creation cap and live limit in `hasCapacity`, the waiting count, the child and attachment tables, and the generation (`isStale` compares `_generation` with `_baseGeneration` and reads a stamp only when they differ). Draining the waiting queue, cascading to children and completing a deferred release are the only loops, each bounded by the queue size or the number of attached children.
+Both paths also make a few constant-cost checks, each a `rawget` and a comparison against a `false` or `0` default: the pool schema (see *Lazy pool upgrade*), the creation cap and live limit in `hasCapacity`, the waiting count, the child and attachment tables, and the generation (`isStale` compares `_generation` with `_baseGeneration` and reads a stamp only when they differ). Draining the waiting queue, cascading to children and completing a deferred release are the only loops, each bounded by the queue size or the number of attached children.
 
 `Acquire` also compares `_maxActiveWarning` against the new active count. The field is `false` when leak warnings are not configured, so the default path is one `rawget` and one comparison, and the message-building work lives in a separate function that the hot path never enters.
 

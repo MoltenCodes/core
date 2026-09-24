@@ -183,4 +183,34 @@ describe("PoolKit cascading release", function()
             end
         )
     end)
+    it("refuses a child's reset releasing the parent whose release is running", function()
+        local frames = newLoggingPool(PoolKit, "frame", {})
+        local frame = frames:Acquire()
+        local refusal = nil
+        local textures = PoolKit:New({
+            create = function()
+                return {}
+            end,
+            reset = function()
+                local ok, message = pcall(frames.Release, frames, frame)
+                assert.is_false(ok)
+                refusal = tostring(message)
+            end,
+        })
+        local texture = textures:Acquire()
+        frames:AttachChild(frame, texture, textures)
+
+        frames:Release(frame)
+
+        assert.is_not_nil(
+            string.find(
+                refusal,
+                "PoolKit.Pool:Release release is already in progress for this object",
+                1,
+                true
+            )
+        )
+        assert.is_false(frames:IsActive(frame))
+        assert.is_false(textures:IsActive(texture))
+    end)
 end)

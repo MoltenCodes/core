@@ -16,6 +16,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | `gates` | Gate name to open gate. |
 | `timerScope` | The Kit-owned TimerKit scope every poll timer lives in, or `false` before the first poll. |
 | `pollCallback` | The one TimerKit callback every poll timer shares. |
+| `unbounded` | The `ReadinessKit.UNBOUNDED` sentinel, kept here so every copy and revision publishes the same table. A revision-1 state, which has none, is given one during the upgrade. |
 
 The prototypes live in state rather than on the facade because the facade's `Gate` field is the constructor the package plan names (`ReadinessKit:Gate(name, ...)`), so it cannot also be the gate method table.
 
@@ -85,7 +86,7 @@ ReadinessKit hands out three kinds of closure: `state.pollCallback` (one for the
 
 Gates and waiters use the metatables stored in state. An upgrade keeps both metatables and rewrites the prototype methods in place, so existing gates and waiters keep their state and gain the new methods. Each gate carries `_schema`, so a revision that changes the layout can upgrade old gates lazily.
 
-The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to 2 and checks that a polling gate, its queued waiter, a re-probe subscription and a `WhenAll` group all keep working.
+The upgrade spec loads the source as a revision-1 copy (with `IMPLEMENTATION_REVISION` patched to 1 and the `unbounded` sentinel removed from its state, as revision 1 had none), builds a polling gate, a queued waiter, a re-probe subscription and a `WhenAll` group on it, then loads the current revision over it and checks that all four keep working and that the sentinel is published.
 
 ## Error levels
 

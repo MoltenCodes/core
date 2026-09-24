@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- Documentation only: no runtime change, implementation revision 2 is unchanged. `docs/INTERNALS.md` lists the `unbounded` state field and describes the upgrade spec as it now runs (a revision-1 copy upgraded to the current revision). The comment on the option-key check no longer claims it refuses a non-table option table; its caller does.
+
 ## 0.1.2 — 2026-09-23
 
 - Limits (design constitution, principle 4a). The `maxWaiters` gate option accepts `ReadinessKit.UNBOUNDED`, a new sentinel published on the facade and kept in package state (`_state.unbounded`), so a gate may queue any number of the consumer's own callbacks. `UNBOUNDED` joins the public-surface check. `docs/API.md` gains a "Limits" section, which also states that `intervalSeconds` and `timeoutSeconds` are timing, not caps.
