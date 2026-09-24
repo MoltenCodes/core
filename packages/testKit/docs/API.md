@@ -2,7 +2,7 @@
 
 TestKit API generation **1** runs test suites inside the World of Warcraft client: suites registered against LifecycleKit phases, tests run one at a time inside a SchedulerKit job, save-and-restore mocking, asynchronous waits, secret-safe expectations and structured results.
 
-Implementation revision: **1**.
+Implementation revision: **3**.
 
 TestKit is **development-only**. It belongs in a development addon and never in a release bundle; see the README's "Embedding" section.
 
@@ -24,7 +24,7 @@ FixtureFidelity.lua   (optional: the fixture-fidelity suite)
 TestKit depends directly on Registry API 2, LifecycleKit API 1 and SchedulerKit API 1. Portable code resolves it through Registry:
 
 ```lua
-local TestKit = MoltenCodes.Registry:Get("testKit", 1)
+local TestKit = MoltenCodes.Registries[2]:Get("testKit", 1)
 ```
 
 Loading it without Registry raises `MoltenCodes TestKit requires Registry API 2 to be loaded first`; without LifecycleKit or SchedulerKit, `MoltenCodes TestKit requires LifecycleKit API 1 to be loaded first` or `... SchedulerKit API 1 ...`.
@@ -107,7 +107,7 @@ local suite = TestKit:Suite("MyAddon.Combat", {
 | `addonName` | the suite name | The addon whose `LifecycleKit:ForAddon(addonName)` instance the suite waits on. Matched exactly, like LifecycleKit. |
 | `timeoutSeconds` | `10` | How long one test's Before hooks and body may take before it is abandoned as `"timeout"`, and separately how long its After hooks may take. A finite number greater than zero. |
 
-Unknown option fields are refused; with several, the message names the alphabetically first.
+Unknown option fields are refused; with several, the message names the alphabetically first. A secret `phase` is refused before it is compared (`TestKit:Suite phase must not be a secret value`).
 
 Suites live in TestKit's shared state for the session. A name already registered is refused with `nil, "taken"`, and a suite past `maxSuites` (64) with `nil, "full"`; prefix suite names with your addon's name. Nothing is ever unregistered: `/reload` starts over.
 
@@ -226,7 +226,7 @@ A run **finishes** when nothing is running, queued or waiting for a phase; then 
 ## `TestKit:Report()`
 
 ```lua
-{
+local report = {
     suites = {
         {
             name = "MyAddon",
@@ -242,7 +242,7 @@ A run **finishes** when nothing is running, queued or waiting for a phase; then 
 }
 ```
 
-Every suite with at least one result appears, in registration order; tests appear in registration order. Running a test again replaces its result in place. `durationMs` is wall-clock time on `GetTimePreciseSec` from the first Before hook to the end of the last After hook, suspensions included.
+Every suite with at least one result appears, in registration order. Within a suite, tests appear in the order they first produced a result since the last `Reset`, which is registration order when the suite ran whole; running a test again replaces its result in place. `durationMs` is wall-clock time on `GetTimePreciseSec` from the first Before hook to the end of the last After hook, suspensions included.
 
 `Report` **allocates**: every call builds new tables, so the caller may keep, change or serialise the result. Call it from a slash command or an `OnFinished` callback, not every frame.
 
@@ -292,12 +292,15 @@ local limits = TestKit:GetLimits()
 ```
 
 `SetLimits` changes any subset, validates the whole table at the caller's line
-before applying any of it, and must be called on the facade. `GetLimits`
+before applying any of it, and must be called on the facade. A secret value is
+refused before it is compared (`TestKit:SetLimits limits.<name> must not be a
+secret value`), and an unknown key that is not a string, number or boolean is
+named by its type (`limits.<table>`), so no `__tostring` runs. `GetLimits`
 returns a fresh table. Lowering a limit removes nothing already registered;
 further registrations answer `nil, "full"` (or `false` from `Log`). `Reset`
 keeps the limits. The limits and the sentinel live in shared state, so every
 embedded copy sees the same values; revision-1 state is seeded with the
-defaults above.
+defaults above, and revision 3 keeps the revision 2 state as it is.
 
 ## Error behaviour
 

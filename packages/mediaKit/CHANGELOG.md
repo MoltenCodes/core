@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 — 2026-09-24
+
+- Fixed: `SetLimits` named an unknown key with `tostring`, so a table key ran the caller's `__tostring` inside MediaKit, against the documented rule that a key which is not a string is named by its type. A string key is still named as itself and a number or boolean as its value (`limits.1`); a table, function or userdata key is now named by its type (`limits.<table>`).
+- Implementation revision 2. No state changed: an in-place upgrade from revision 1 keeps the entries, lists, signals and connections, defaults objects, the limits and the `UNBOUNDED` sentinel, and the LibSharedMedia links, and replaces the methods only.
+- Specs: the upgrade specs load the next revision relative to the current one; a new spec upgrades a revision 1 copy with the current file; `Limits_spec.lua` covers a table key with a `__tostring` metamethod; `Manifest_spec.lua` checks that the version is well formed instead of pinning one. 117 specs. The README says that a font list is also rebuilt when the client's script changes, and the two one-line examples in API.md that used `...` as a body compile.
+- `MediaKit` API generation 1 is unchanged.
+
 ## 0.1.0 — 2026-09-23
 
 - Added MediaKit API generation 1, implementation revision 1.

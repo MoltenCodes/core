@@ -12,7 +12,7 @@ The framework's Busted specs prove logic against a fake client. Some facts only 
 TestKit is the small harness for those. It does not replace Busted: logic that can be tested outside the client belongs in a spec.
 
 ```lua
-local TestKit = MoltenCodes.Registry:Get("testKit", 1)
+local TestKit = MoltenCodes.Registries[2]:Get("testKit", 1)
 
 -- Waits for MyAddon's "ready" phase (loaded and logged in) by default.
 local suite = TestKit:Suite("MyAddon")
@@ -37,8 +37,8 @@ end)
 ```
 
 ```text
-/run MoltenCodes.Registry:Get("testKit", 1):Run()
-/run MoltenCodes.Registry:Get("testKit", 1):Run("MyAddon/our tooltip hook leaves GameTooltip secure")
+/run MoltenCodes.Registries[2]:Get("testKit", 1):Run()
+/run MoltenCodes.Registries[2]:Get("testKit", 1):Run("MyAddon/our tooltip hook leaves GameTooltip secure")
 ```
 
 What each piece promises:
@@ -68,7 +68,7 @@ Everything else — branching, bounds, error paths, state machines — belongs i
 
 [`fidelity/FixtureFidelity.lua`](fidelity/FixtureFidelity.lua) registers the suite `FixtureFidelity`: a handful of host facts the shared Busted fixture (`tests/support/FrameworkTestEnv.lua`) models, such as the `ADDON_LOADED` payload, `InCombatLockdown()` answering a boolean, `C_Timer.After` existing, `OnShow` / `OnHide` firing on a change only, and the edit focus moving between edit boxes with its scripts. The same file runs in both environments:
 
-- in the client, listed in a development addon's `.toc` after `TestKit.lua` (see the load order below), with `/run MoltenCodes.Registry:Get("testKit", 1):Run("FixtureFidelity")`;
+- in the client, listed in a development addon's `.toc` after `TestKit.lua` (see the load order below), with `/run MoltenCodes.Registries[2]:Get("testKit", 1):Run("FixtureFidelity")`;
 - under Busted, through [`tests/FixtureFidelity_spec.lua`](tests/FixtureFidelity_spec.lua), which loads the file into the fixture and runs the same suite.
 
 **The two must agree.** A fidelity test that passes in the client and fails against the fixture is a fixture defect; the spec names the facts the fixture does not model yet, and fails as soon as one of them starts passing so the list stays true. A fidelity test that fails in the client means the framework assumes something about the host that is wrong.
@@ -92,7 +92,7 @@ Libs\MoltenCodes\testKit\FixtureFidelity.lua
 
 Minimum footprint: Embed 7 files: Registry, SignalKit, EventKit, LifecycleKit,
 TimerKit, SchedulerKit, TestKit (plus the optional `FixtureFidelity.lua`).
-TimerKit and SchedulerKit no longer require LifecycleKit, so the two may load
+TimerKit and SchedulerKit do not require LifecycleKit, so the two may load
 before or after it; the list above is one valid order.
 
 Direct runtime dependencies: Registry API 2, LifecycleKit API 1, SchedulerKit

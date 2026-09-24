@@ -15,7 +15,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | `suiteMetatable`, `contextMetatable`, `matcherMetatable` | Their metatables; `__index` is the matching prototype. |
 | `yieldTokens` | `{ frame, wait, nextFrame }`: the unique values a test step yields to the runner. Kept in state so that a step suspended under one revision is understood by the next. |
 | `suites`, `suitesByName` | Registered suites in order, and by name. |
-| `finishedCallbacks` | `OnFinished` callbacks, at most 16. |
+| `finishedCallbacks` | `OnFinished` callbacks, at most `maxFinishedCallbacks` (16 by default). |
 | `queue` | Run entries whose phase was reached, in arrival order. |
 | `waiting` | Run entries still waiting for their phase. |
 | `activeEntry`, `activeTest` | The entry being executed and its current test record, or `false`. |
@@ -25,6 +25,7 @@ This document describes implementation invariants for maintainers. It is not an 
 | `schedulerScope`, `timerScope`, `eventScope` | Kit-owned scopes, created on first use and replaced when closed from outside. |
 | `runnerCallback` | The one SchedulerKit callback every runner job shares. |
 | `deadlineCallback` | The one TimerKit callback every test deadline shares; the test record travels as timer user data. |
+| `unbounded`, `limits` | The `UNBOUNDED` sentinel and the package-wide limits `SetLimits` writes (revision 2; revision-1 state is seeded with the defaults). |
 
 ## Suite layout
 
@@ -86,7 +87,7 @@ The **runner** is one SchedulerKit job at a time. Its body loops:
 | `waiting` | Whether the step is suspended in `WaitFor` or `WaitUntil` with no job running. |
 | `timedOut`, `deadline` | Whether the current window ran out, and the TimerKit timer measuring it. |
 | `startedAt` | `GetTimePreciseSec` in milliseconds, or `false`. |
-| `replacements`, `replacementCount` | `Replace` records as flat triples `(table, key, previous)`, so a `nil` previous value needs no sentinel; at most 256 per test. |
+| `replacements`, `replacementCount` | `Replace` records as flat triples `(table, key, previous)`, so a `nil` previous value needs no sentinel; at most `maxReplacements` (256 by default) per test. |
 
 `stepTest` resumes the current step once:
 
@@ -117,7 +118,7 @@ A halt or shutdown *later* disconnects the pending phase subscription without ca
 
 ## Secret values
 
-`isSecret` reads `issecretvalue` from the global table on every call, so the probe a test installs with `Replace` is honoured. Every value that reaches a message goes through `describeValue` or `describeMessage`, which ask `isSecret` first and never call `tostring` on a table. Comparisons check `isSecret` before any equality test, because comparing a secret raises in the client. `compareValues` returns a third value, `secret`, so that `ToEqual` can fail a comparison a secret made impossible even under `Not`.
+`isSecret` reads `issecretvalue` from the global table on every call, so the probe a test installs with `Replace` is honoured. Every value that reaches a message goes through `describeValue` or `describeMessage`, which ask `isSecret` first and never call `tostring` on a table. Comparisons check `isSecret` before any equality test, because comparing a secret raises in the client; an absent argument is told apart with `type(value) == "nil"` rather than `value == nil` for the same reason. `compareValues` returns a third value, `secret`, so that `ToEqual` can fail a comparison a secret made impossible even under `Not`.
 
 ## Closures and upgrades
 
@@ -125,7 +126,7 @@ TestKit hands out six kinds of closure: `state.runnerCallback` (one for the pack
 
 A runner job that is suspended in `schedulerContext:Yield()` during an upgrade finishes its current loop on the older code, because Lua cannot swap a running function; the next job runs the new `runnerBody`. A suspended test step is a coroutine of consumer code and is unaffected.
 
-The upgrade spec loads the same source again with `IMPLEMENTATION_REVISION` raised to 2 while one test waits in `WaitFor` and another suite waits for its phase, and checks that both finish and the run reports them.
+The upgrade spec loads the same source again with `IMPLEMENTATION_REVISION` raised by one while one test waits in `WaitFor` and another suite waits for its phase, and checks that both finish and the run reports them. Two further specs load the source as revision 1 and as revision 2 and upgrade each with the current file: revision 2 seeds the limits into revision-1 state, and revision 3 keeps revision-2 state as it is.
 
 ## Error levels
 

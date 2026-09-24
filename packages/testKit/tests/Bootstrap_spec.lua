@@ -56,7 +56,7 @@ describe("TestKit bootstrap", function()
         local upgraded = require("TestKit")
 
         assert.are.equal(old, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.is_true(upgraded.REVISION > 1)
         assert.are.equal("table", type(upgraded.UNBOUNDED))
         assert.are.same({
             maxSuites = 64,
@@ -68,6 +68,29 @@ describe("TestKit bootstrap", function()
             maxEqualDepth = 16,
         }, upgraded:GetLimits())
         assert.is_true(suite:Test("still works", function() end))
+    end)
+
+    it("upgrades revision 2 in place and keeps its suites and the limits it set", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        require("LifecycleKit")
+        require("TimerKit")
+        require("SchedulerKit")
+        local old = TestEnv.LoadRevision(2)
+        local suite = old:Suite("Carried")
+        old:SetLimits({ maxTests = old.UNBOUNDED, maxEqualDepth = 32 })
+
+        local upgraded = require("TestKit")
+        assert.are.equal(old, upgraded)
+        assert.is_true(upgraded.REVISION > 2)
+        assert.are.equal(old.UNBOUNDED, upgraded.UNBOUNDED)
+        assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxTests)
+        assert.are.equal(32, upgraded:GetLimits().maxEqualDepth)
+        assert.is_true(suite:Test("still works", function() end))
+        assert.are.same({ nil, "taken" }, { upgraded:Suite("Carried") })
     end)
 
     it("upgrades in place and keeps suites, results, a waiting test and a queued suite", function()

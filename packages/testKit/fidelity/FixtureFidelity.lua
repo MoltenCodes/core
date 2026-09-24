@@ -7,7 +7,7 @@
 -- of host facts the fixture models. The same file runs in both environments:
 --
 --   * in the client, listed in a development addon's `.toc` after TestKit, and
---     run with `/run MoltenCodes.Registry:Get("testKit", 1):Run("FixtureFidelity")`;
+--     run with `/run MoltenCodes.Registries[2]:Get("testKit", 1):Run("FixtureFidelity")`;
 --   * under Busted, from `packages/testKit/tests/FixtureFidelity_spec.lua`,
 --     which loads this file into the fixture and runs the same suite.
 --

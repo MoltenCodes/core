@@ -127,6 +127,18 @@ describe("TestKit limits", function()
         TestEnv.expectErrorContaining("limits.maxRuns is not a recognised limit", function()
             TestKit:SetLimits({ maxRuns = 2 })
         end)
+        -- A table key is named by its type; its `__tostring` never runs.
+        local ran = false
+        local key = setmetatable({}, {
+            __tostring = function()
+                ran = true
+                return "caller text"
+            end,
+        })
+        TestEnv.expectErrorContaining("limits.<table> is not a recognised limit", function()
+            TestKit:SetLimits({ [key] = 2 })
+        end)
+        assert.is_false(ran)
         for _, invalid in ipairs({ 0, -1, 1.5, "8", math.huge, 0 / 0, {} }) do
             TestEnv.expectErrorContaining(
                 "limits.maxTests must be a positive integer or TestKit.UNBOUNDED",

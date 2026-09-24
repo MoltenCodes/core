@@ -47,7 +47,7 @@
 
 local PACKAGE_NAME = "testKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLEKIT_API = 1
 local REQUIRED_SCHEDULERKIT_API = 1
@@ -800,22 +800,26 @@ local function readSuiteOptions(name, options, level)
     end
     validateSuiteOptionKeys(options, level + 1)
 
+    -- Absent options are told apart with `type`, and a secret is refused
+    -- before any comparison: comparing a secret, even with `nil`, raises.
     local phase = rawget(options, "phase")
-    if phase == nil then
+    if type(phase) == "nil" then
         phase = PHASE_READY
+    elseif isSecret(phase) then
+        error("TestKit:Suite phase must not be a secret value", level)
     elseif phase ~= PHASE_LOADED and phase ~= PHASE_READY then
         error('TestKit:Suite phase must be "loaded" or "ready"', level)
     end
 
     local addonName = rawget(options, "addonName")
-    if addonName == nil then
+    if type(addonName) == "nil" then
         addonName = name
     else
         validateName(addonName, "TestKit:Suite addonName", level + 1)
     end
 
     local timeoutSeconds = rawget(options, "timeoutSeconds")
-    if timeoutSeconds == nil then
+    if type(timeoutSeconds) == "nil" then
         timeoutSeconds = DEFAULT_TIMEOUT_SECONDS
     else
         validateTimeout(timeoutSeconds, "TestKit:Suite timeoutSeconds", level + 1)
@@ -830,7 +834,7 @@ end
 ---@return string|false suiteName `false` for every suite
 ---@return string|false testName `false` for every test of the suite
 local function readFilter(filter, level)
-    if filter == nil then
+    if type(filter) == "nil" then
         return false, false
     end
     validateName(filter, "TestKit:Run filter", level + 1)
@@ -1098,7 +1102,7 @@ end
 ---@return true
 local function matcherToRaise(self, pattern)
     validateMatcher(self, "TestKit.Matcher:ToRaise", 3)
-    if pattern ~= nil then
+    if type(pattern) ~= "nil" then
         validateName(pattern, "TestKit.Matcher:ToRaise pattern", 3)
     end
     local actual = rawget(self, "_actual")
@@ -1137,7 +1141,8 @@ end
 ---@return true
 local function matcherToBeSecure(self, target, key)
     validateMatcher(self, "TestKit.Matcher:ToBeSecure", 3)
-    if target ~= nil and type(target) ~= "table" then
+    local targetKind = type(target)
+    if targetKind ~= "nil" and targetKind ~= "table" then
         error("TestKit.Matcher:ToBeSecure target must be a table or nil", 2)
     end
     validateName(key, "TestKit.Matcher:ToBeSecure key", 3)
@@ -1338,7 +1343,9 @@ end
 ---@param message any
 local function contextFail(self, message)
     validateContext(self, "TestKit.Context:Fail", 3)
-    if message == nil then
+    -- `type`, not `== nil`: the message may be a secret, which is described
+    -- safely below but may not be compared.
+    if type(message) == "nil" then
         message = "failed"
     end
     error(describeMessage(message), 2)
@@ -1413,7 +1420,7 @@ end
 local function suiteSkip(self, name, reason)
     validateSuite(self, "TestKit.Suite:Skip", 3)
     validateName(name, "TestKit.Suite:Skip name", 3)
-    if reason == nil then
+    if type(reason) == "nil" then
         reason = "skipped"
     else
         validateName(reason, "TestKit.Suite:Skip reason", 3)
@@ -2272,12 +2279,21 @@ local function validateLimitUpdate(limits, level)
     local key = next(limits)
     while key ~= nil do
         if DEFAULT_LIMITS[key] == nil then
-            error(
-                "TestKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
-                level
-            )
+            -- A key that is not a string, number or boolean is named by its
+            -- type, so no `__tostring` of the caller's runs here.
+            local kind = type(key)
+            local keyText = "<" .. kind .. ">"
+            if kind == "string" or kind == "number" or kind == "boolean" then
+                keyText = tostring(key)
+            end
+            error("TestKit:SetLimits limits." .. keyText .. " is not a recognised limit", level)
         end
         local value = rawget(limits, key)
+        -- Before any comparison with the sentinel or a bound, which would
+        -- raise on a secret.
+        if isSecret(value) then
+            error("TestKit:SetLimits limits." .. key .. " must not be a secret value", level)
+        end
         if key == "maxEqualDepth" then
             if value == UNBOUNDED then
                 error(

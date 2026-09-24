@@ -38,7 +38,7 @@
 
 local PACKAGE_NAME = "mediaKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNALKIT_API = 1
 local STATE_SCHEMA = 1
@@ -648,6 +648,21 @@ local function describeValue(value)
         return '"' .. value .. '"'
     end
     return "<" .. type(value) .. ">"
+end
+
+---Name a table key in a message without running a caller's `__tostring`: a
+---string, number or boolean as itself, anything else by its type.
+---@param key any a table key, which can never be `nil` or a secret
+---@return string
+local function describeKey(key)
+    local kind = type(key)
+    if kind == "string" then
+        return key
+    end
+    if kind == "number" or kind == "boolean" then
+        return tostring(key)
+    end
+    return "<" .. kind .. ">"
 end
 
 ---Refuse a non-table option table and any field outside `allowedKeys`.
@@ -1299,7 +1314,7 @@ local function validateLimitUpdate(limits, level)
         end
         if type(key) ~= "string" or (key ~= "maxEntriesPerType" and key ~= "maxConsumers") then
             error(
-                "MediaKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
+                "MediaKit:SetLimits limits." .. describeKey(key) .. " is not a recognised limit",
                 level
             )
         end

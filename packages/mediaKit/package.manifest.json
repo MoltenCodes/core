@@ -2,10 +2,10 @@
   "name": "mediaKit",
   "displayName": "MediaKit",
   "description": "A typed registry of named fonts, bars, borders, backgrounds, sounds, textures and icons with deterministic sorted listing, per-consumer defaults and LibSharedMedia mirroring for World of Warcraft addons.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "api": 1,
-  "revision": 1,
+  "revision": 2,
   "dependencies": {
     "registry": {
       "api": 2

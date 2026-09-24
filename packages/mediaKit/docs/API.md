@@ -2,7 +2,7 @@
 
 MediaKit API generation **1** provides a typed registry of named media: seven fixed media types, entries that are a path or a FileDataID, fonts that declare the scripts they render, cached sorted lists, registration signals, per-consumer defaults over the client's built-in media, and a two-way bridge to LibSharedMedia-3.0.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -51,7 +51,7 @@ MediaKit reads three host globals, each at call time rather than at load (the bu
 | `GetLimits()` | A fresh table of both limits; allocates. |
 | `MAX_ENTRIES_PER_TYPE` | `1024`, the default of `maxEntriesPerType`. |
 | `UNBOUNDED` | Sentinel that lifts `maxConsumers`; the same table for every revision. |
-| `API`, `REVISION` | `1`, `1`. |
+| `API`, `REVISION` | `1`, `2`. |
 
 ## Media types
 
@@ -132,7 +132,7 @@ A successful registration stores the entry, invalidates the type's lists, mirror
 
 ```lua
 local path = MediaKit:Fetch("statusbar", "MyPack Smooth")
-if MediaKit:Has("font", savedFont) then ... end
+if MediaKit:Has("font", savedFont) then --[[ use it ]] end
 ```
 
 `Fetch` returns the data or `nil`; `Has` returns whether `Fetch` with the same arguments would return data. There is no default substitution: ask a defaults object for a name that always exists. A name must be a non-empty string; `nil` is refused at the caller, so read a saved name through `defaults:Get` rather than straight from saved variables.
@@ -144,7 +144,7 @@ if MediaKit:Has("font", savedFont) then ... end
 ## `MediaKit:List(type, options?)`
 
 ```lua
-for _, name in ipairs(MediaKit:List("statusbar")) do ... end
+for _, name in ipairs(MediaKit:List("statusbar")) do --[[ add a row ]] end
 ```
 
 Returns the names of the type sorted with `<` (byte order: upper case before lower case, `"Bar 10"` before `"Bar 2"`). The order depends only on the names, never on the order they were registered in.
@@ -266,7 +266,7 @@ Lowering a limit removes nothing: entries and defaults objects that exist stay, 
 
 ## Error behaviour
 
-Argument failures report the line that called the public method, never a line inside MediaKit. Messages name the method (`MediaKit:Register`, `MediaKit.Defaults:Set`) and the argument. Option tables refuse unknown fields and name the alphabetically first one; a key or script that is not a string is named by its type (`<number>`), so no `__tostring` runs. Calling a defaults method with `.` instead of `:` raises `MediaKit.Defaults:Get must be called on a defaults object; use defaults:Get(...)`.
+Argument failures report the line that called the public method, never a line inside MediaKit. Messages name the method (`MediaKit:Register`, `MediaKit.Defaults:Set`) and the argument. Option tables refuse unknown fields and name the alphabetically first one; a key or script that is not a string is named by its type (`<number>`), and `SetLimits` names an unknown key that is a table, function or userdata the same way (`limits.<table>`), so no `__tostring` runs. Calling a defaults method with `.` instead of `:` raises `MediaKit.Defaults:Get must be called on a defaults object; use defaults:Get(...)`.
 
 `Register` reports ordinary outcomes (`"taken"`, `"full"`) as results rather than errors, because two independent addons choosing the same name is not a programming error in either.
 
@@ -285,7 +285,7 @@ Argument failures report the line that called the public method, never a line in
 
 ## Embedded copies and upgrades
 
-Several addons may embed MediaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: entries, cached lists, signals and their connections, defaults objects, the limits a consumer set, the `UNBOUNDED` sentinel, and the LibSharedMedia adoption, subscription and mirroring all survive. The callback LibSharedMedia holds dispatches through package state, so a newer revision replaces its behaviour without subscribing again. Built-ins are registered by the first copy only.
+Several addons may embed MediaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: entries, cached lists, signals and their connections, defaults objects, the limits a consumer set, the `UNBOUNDED` sentinel, and the LibSharedMedia adoption, subscription and mirroring all survive. The callback LibSharedMedia holds dispatches through package state, so a newer revision replaces its behaviour without subscribing again. Built-ins are registered by the first copy only. Revision 2 keeps the revision 1 state as it is and replaces the methods only.
 
 Nothing survives `/reload`: packs register again.
 

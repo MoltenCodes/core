@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.3 — 2026-09-24
+
+- Fixed: arguments that may be secret were compared before a secret check, which raises on the client. `Suite` compared `options.phase` with its two words, `SetLimits` compared each value with `TestKit.UNBOUNDED` and its bounds, and `Suite`, `Run`, `Skip`, `ctx:Fail`, `ToRaise` and `ToBeSecure` compared optional arguments with `nil`; `ctx:Fail(secret)` in particular raised a host error instead of failing the test with `<secret value>`. A secret `phase` or limit value is now refused at the caller (`TestKit:Suite phase must not be a secret value`, `TestKit:SetLimits limits.<name> must not be a secret value`), and absent arguments are told apart with `type`.
+- Fixed: `SetLimits` named an unknown key with `tostring`, running a table key's `__tostring`; such a key is now named by its type (`limits.<table>`).
+- Documentation: `docs/API.md` stated implementation revision 1 while the code was revision 2; it now states 3. The report is ordered by each test's first result since the last `Reset`, which API.md described as registration order; the text now says so. The README and API.md reach TestKit through `MoltenCodes.Registries[2]`, as the fidelity file does, and the README footprint no longer narrates an older release. The report example in API.md is an assignment, so it compiles. INTERNALS.md lists the `unbounded` and `limits` state fields and names the limits where it quoted the default numbers.
+- Implementation revision 3. No state changed: an in-place upgrade from revision 2 keeps the suites, results, the limits and the sentinel, a waiting test and a queued suite, and replaces the methods only; the upgrade from revision 1 still seeds the limits.
+- Specs: a new bootstrap spec upgrades a revision 2 copy with the current file; `SecretValues_spec.lua` covers the secret phase and limit values; `Limits_spec.lua` covers a table key with a `__tostring` metamethod. 108 specs.
+- `TestKit` API generation 1 is unchanged.
+
 ## 0.1.2 — 2026-09-23
 
 - Limits (design constitution, principle 4a). Added `TestKit:SetLimits`, `TestKit:GetLimits()` and the `TestKit.UNBOUNDED` sentinel, modelled on SignalKit. The seven former constants become package-wide limits with unchanged defaults: `maxSuites` 64, `maxTests` 256, `maxHooks` 16, `maxLogLines` 64, `maxFinishedCallbacks` 16 and `maxReplacements` 256 accept `UNBOUNDED` (development-only; the consumer's own tests), and `maxEqualDepth` 16 accepts up to 64 and refuses `UNBOUNDED` because `ToEqual` recurses per level. `SetLimits` validates the whole table at the caller's line first; `GetLimits` returns a fresh table; `Reset` keeps the limits.

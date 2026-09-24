@@ -27,6 +27,25 @@ describe("TestKit and secret values", function()
         return TestEnv.RunOne(TestKit, body)
     end
 
+    it("refuses a secret suite phase and a secret limit before comparing them", function()
+        TestEnv.expectErrorContaining("TestKit:Suite phase must not be a secret value", function()
+            TestKit:Suite("SecretPhase", { phase = secret })
+        end)
+        TestEnv.expectErrorContaining(
+            "TestKit:SetLimits limits.maxTests must not be a secret value",
+            function()
+                TestKit:SetLimits({ maxTests = secret })
+            end
+        )
+        TestEnv.expectErrorContaining(
+            "TestKit:SetLimits limits.maxEqualDepth must not be a secret value",
+            function()
+                TestKit:SetLimits({ maxEqualDepth = secret })
+            end
+        )
+        assert.are.equal(256, TestKit:GetLimits().maxTests)
+    end)
+
     it("never prints a secret in a matcher failure, and never lets negation pass it", function()
         local messages = {}
         local result = run(function(ctx)

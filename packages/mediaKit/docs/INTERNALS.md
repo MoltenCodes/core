@@ -90,4 +90,4 @@ Every argument validator takes an explicit `level`, which is the value `error` n
 
 ## Upgrades
 
-The upgrade spec loads the same source a second time with `IMPLEMENTATION_REVISION` raised to 2 and checks that entries, cached lists, a connection, a defaults object, adoption, the single subscription and mirroring survive, and that the built-ins are not registered twice.
+The upgrade specs load the same source a second time with `IMPLEMENTATION_REVISION` raised by one and check that entries, cached lists, a connection, a defaults object, adoption, the single subscription, mirroring and the set limits survive, and that the built-ins are not registered twice. A further spec loads the source as revision 1 and upgrades it with the current file. Revision 2 changed no state: it keeps the revision 1 state and replaces the methods.

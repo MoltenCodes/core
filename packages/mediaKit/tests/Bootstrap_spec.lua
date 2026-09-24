@@ -52,10 +52,11 @@ describe("MediaKit bootstrap", function()
             defaults:Set("statusbar", "Pack Bar")
             MediaKit:AdoptLibSharedMedia()
             MediaKit:MirrorToLibSharedMedia()
+            local nextRevision = MediaKit.REVISION + 1
 
-            local upgraded = TestEnv.LoadRevision(2)
+            local upgraded = TestEnv.LoadRevision(nextRevision)
             assert.are.equal(MediaKit, upgraded)
-            assert.are.equal(2, upgraded.REVISION)
+            assert.are.equal(nextRevision, upgraded.REVISION)
 
             -- Entries, the cached list and the built-ins are the same.
             assert.are.equal("Interface\\Pack\\Bar", upgraded:Fetch("statusbar", "Pack Bar"))
@@ -93,13 +94,46 @@ describe("MediaKit bootstrap", function()
         local unbounded = MediaKit.UNBOUNDED
         MediaKit:SetLimits({ maxEntriesPerType = 4096, maxConsumers = unbounded })
 
-        local upgraded = TestEnv.LoadRevision(2)
+        local upgraded = TestEnv.LoadRevision(MediaKit.REVISION + 1)
         assert.are.equal(unbounded, upgraded.UNBOUNDED)
         assert.are.same(
             { maxEntriesPerType = 4096, maxConsumers = unbounded },
             upgraded:GetLimits()
         )
         assert.are.equal(unbounded, upgraded:GetLimits().maxConsumers)
+    end)
+
+    it("upgrades revision 1 in place and keeps its entries, defaults and limits", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        TestEnv.SetClientLocale(TestEnv.DEFAULT_CLIENT_LOCALE)
+        require("Registry")
+        require("SignalKit")
+        local old = TestEnv.LoadRevision(1)
+        old:Register("statusbar", "Pack Bar", "Interface\\Pack\\Bar")
+        local defaults = old:Defaults("MyAddon")
+        defaults:Set("statusbar", "Pack Bar")
+        old:SetLimits({ maxConsumers = old.UNBOUNDED })
+
+        local upgraded = require("MediaKit")
+        assert.are.equal(old, upgraded)
+        assert.is_true(upgraded.REVISION > 1)
+        assert.are.equal("Interface\\Pack\\Bar", upgraded:Fetch("statusbar", "Pack Bar"))
+        assert.are.equal(defaults, upgraded:Defaults("MyAddon"))
+        assert.are.equal("Pack Bar", defaults:Get("statusbar"))
+        assert.are.equal(old.UNBOUNDED, upgraded:GetLimits().maxConsumers)
+        -- The built-ins were registered once, by revision 1.
+        assert.are.same({ "Blizzard", "Pack Bar", "Solid" }, upgraded:List("statusbar"))
+        -- The corrected limit-key message runs for the carried state at once.
+        local ok, message = pcall(upgraded.SetLimits, upgraded, { [{}] = 1 })
+        assert.is_false(ok)
+        assert.is_truthy(
+            tostring(message):find(
+                "MediaKit:SetLimits limits.<table> is not a recognised limit",
+                1,
+                true
+            )
+        )
     end)
 
     it("refuses shared state whose limits hold an invalid value", function()

@@ -181,6 +181,29 @@ describe("MediaKit limits", function()
         assertReportedAt(line, "MediaKit:SetLimits limits.1 is not a recognised limit", ok, value)
     end)
 
+    it("names a table key by its type without running its __tostring", function()
+        local ran = false
+        local key = setmetatable({}, {
+            __tostring = function()
+                ran = true
+                return "caller text"
+            end,
+        })
+        local line
+        local ok, value = pcall(function()
+            line = currentLine() + 1
+            MediaKit:SetLimits({ [key] = 10 })
+        end)
+        assertReportedAt(
+            line,
+            "MediaKit:SetLimits limits.<table> is not a recognised limit",
+            ok,
+            value
+        )
+        assert.is_false(ran)
+        assert.are.same(DEFAULT_LIMITS, MediaKit:GetLimits())
+    end)
+
     it("refuses a limits argument that is not a table at the caller", function()
         local line
         local ok, value = pcall(function()
