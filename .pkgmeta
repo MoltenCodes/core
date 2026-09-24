@@ -22,10 +22,11 @@
 #     ├── signalKit/SignalKit.lua
 #     └── ...
 #
-# One difference is deliberate: the packager moves directories, not files, so a
-# package's README.md and CHANGELOG.md are left out of the packager zip and ship
-# only in the builder bundle attached to the GitHub release. Each package's
-# docs/ directory travels with its Lua file.
+# The documentation differs, because the packager moves directories, not
+# files: each package's whole docs/ directory travels with its Lua file as
+# <packageId>/docs/, and README.md and CHANGELOG.md are left out. The builder
+# bundle attached to the GitHub release instead carries README.md,
+# CHANGELOG.md, API.md and INTERNALS.md directly in each package folder.
 #
 # A package tag (`<packageId>-v<version>`) releases one Kit as the addon
 # "MoltenCodes-<Facade>". Its metadata is derived from this file by
@@ -48,6 +49,9 @@ license-output: LICENSE
 # Everything that exists for development rather than for the game client. A
 # package's `metadata/` (the normalised API tables apiKit is generated from)
 # and `types/` (LuaCATS definitions for editors) are development data too.
+# Every root entry except LICENSE and packages/ is listed, so the zip carries
+# only the Kits and the licence, like the builder's bundle; repository
+# validation fails when a new root file or directory is missing here.
 ignore:
   - packages/testKit
   - .busted
@@ -55,18 +59,26 @@ ignore:
   - .gitattributes
   - .github
   - .gitignore
+  - .luacov
   - .luarc.json
+  - .pkgmeta
   - .vscode
+  - CODE_OF_CONDUCT.md
+  - CONTRIBUTING.md
+  - README.md
+  - SECURITY.md
+  - SUPPORT.md
   - busted.yml
   - cspell.json
   - docs
   - examples
+  - lychee.toml
   - meta
   - pyproject.toml
   - selene.toml
   - selene-tests.toml
-  - tests
   - stylua.toml
+  - tests
   - tooling
   - packages/README.md
   - packages/*/README.md

@@ -6,6 +6,14 @@
 # one Kit per pull request. Labels are only added, never removed, so a label a
 # maintainer sets by hand stays.
 
+"kit: apiKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/apiKit/**"
+
+"kit: brokerKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/brokerKit/**"
+
 "kit: cacheKit":
   - changed-files:
       - any-glob-to-any-file: "packages/cacheKit/**"
@@ -18,13 +26,17 @@
   - changed-files:
       - any-glob-to-any-file: "packages/codecKit/**"
 
+"kit: commandKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/commandKit/**"
+
 "kit: commKit":
   - changed-files:
       - any-glob-to-any-file: "packages/commKit/**"
 
-"kit: commandKit":
+"kit: compatKit":
   - changed-files:
-      - any-glob-to-any-file: "packages/commandKit/**"
+      - any-glob-to-any-file: "packages/compatKit/**"
 
 "kit: eventKit":
   - changed-files:
@@ -45,6 +57,10 @@
 "kit: localeKit":
   - changed-files:
       - any-glob-to-any-file: "packages/localeKit/**"
+
+"kit: logKit":
+  - changed-files:
+      - any-glob-to-any-file: "packages/logKit/**"
 
 "kit: mediaKit":
   - changed-files:
@@ -113,7 +129,9 @@
           - "busted.yml"
           - "stylua.toml"
           - ".busted"
+          - ".luacov"
           - ".luarc.json"
+          - "lychee.toml"
           - "meta/**"
           - ".vscode/**"
           - ".editorconfig"

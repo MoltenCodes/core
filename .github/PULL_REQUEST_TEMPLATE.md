@@ -28,7 +28,7 @@ land separately. -->
 - [ ] `stylua --check .`
 - [ ] `python3 -m tooling.spell`
 - [ ] `lua-language-server --check packages/<name>/src --checklevel=Warning` for every Kit touched, and `lua-language-server --check examples --checklevel=Warning` when the public surface changed
-- [ ] `actionlint`, when `.github/workflows/` changed
+- [ ] `actionlint`, when `.github/workflows/` or `.github/actions/` changed
 - [ ] `python3 -m tooling.ci.check_commits origin/main..HEAD`
 
 ### Package contract ([`docs/PACKAGE_MANIFEST.md`](https://github.com/MoltenCodes/core/blob/main/docs/PACKAGE_MANIFEST.md))

@@ -9,9 +9,15 @@
 # Everything not matched below.
 *                   @yankikucuk
 
-# Workflows, templates, labels and this file: changes here alter what CI
-# enforces and who reviews what.
+# Workflows, the shared setup action, templates, labels and this file:
+# changes here alter what CI enforces and who reviews what.
 /.github/           @yankikucuk
+
+# What the addon-site packager ships, and the link-check and coverage
+# configuration the workflows read.
+/.pkgmeta           @yankikucuk
+/lychee.toml        @yankikucuk
+/.luacov            @yankikucuk
 
 # Repository tooling: validation, test orchestration, packaging and release.
 /tooling/           @yankikucuk

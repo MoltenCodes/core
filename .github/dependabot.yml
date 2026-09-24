@@ -3,9 +3,11 @@
 # Only the github-actions ecosystem is configured. The runtime is Lua 5.1 with
 # no package manifest, the Python tooling uses the standard library only
 # (pyproject.toml declares no dependencies), and cspell is pinned in
-# tooling/spell.py. The downloaded binaries in ci.yml and release.yml (Selene,
-# lua-language-server, actionlint, gitleaks) are pinned by version and SHA-256
-# in `env`, which Dependabot does not read; they are bumped by hand.
+# tooling/spell.py. The downloaded binaries in ci.yml, release.yml and
+# links.yml (Selene, StyLua, lua-language-server, actionlint, gitleaks, lychee)
+# are pinned by version and SHA-256 in `env`, and the Lua toolchain versions are
+# inputs of .github/actions/setup-lua; Dependabot reads neither, so they are
+# bumped by hand.
 #
 # Every `uses:` is pinned to a commit SHA with the release in a trailing
 # comment. Dependabot updates the SHA and rewrites that comment in the same
@@ -14,7 +16,11 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    # The workflows, and the composite action they share, which pins
+    # actions/cache itself.
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: weekly
       day: monday

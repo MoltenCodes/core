@@ -84,7 +84,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       # The `tag` input of a hand-started run wins over the ref it was started
       # from. check_tag rejects anything that is not one of the two tag forms,
@@ -121,7 +121,7 @@ jobs:
       fail-fast: true
       matrix:
         # The same two Pythons every CI job that runs repository tooling uses.
-        python-version: ["3.10", "3.13"]
+        python-version: ["3.10", "3.14"]
 
     steps:
       - name: Checkout
@@ -138,18 +138,9 @@ jobs:
       - name: Run tooling unit tests
         run: python3 -m unittest discover -s tooling/tests -p "test_*.py"
 
-      - name: Set up Lua
-        uses: leafo/gh-actions-lua@6919171ccf181b826f44b9bca76307b577217377 # v13.0.0
-        with:
-          luaVersion: "5.1.5"
-
-      - name: Set up LuaRocks
-        uses: leafo/gh-actions-luarocks@35d062def313a7699a0d513e996bcf4352f05389 # v6.1.0
-        with:
-          luaRocksVersion: "3.13.0"
-
-      - name: Install Busted
-        run: luarocks install busted 2.3.0-1
+      # The same toolchain, versions and cache as the CI `test` job.
+      - name: Set up Lua 5.1 and Busted
+        uses: ./.github/actions/setup-lua
 
       - name: Run package and example tests
         run: python3 -m tooling.test.run
@@ -229,7 +220,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       # Bundle release: the whole framework, as one bundle that installs as the
       # addon "MoltenCodes", with its checksums and its .toc verified by the
@@ -269,23 +260,20 @@ jobs:
       # The apiKit reference and search index are generated from the committed
       # metadata and are not committed themselves (they are large and mostly
       # rewritten on every build refresh); a release carries them as an asset
-      # instead. With no metadata committed the generator has nothing to do
-      # and the step produces no zip.
+      # instead.
       - name: Build the apiKit reference
         run: |
           set -euo pipefail
           python3 -m tooling.api.generate --all --check
           python3 -m tooling.api.generate --all --reference-out dist/apiKit-reference
-          if [ -d dist/apiKit-reference ]; then
-            (cd dist && zip -qr MoltenCodes-ApiKit-reference.zip apiKit-reference)
-          fi
+          (cd dist && zip -qr MoltenCodes-ApiKit-reference.zip apiKit-reference)
 
       - name: Upload the apiKit reference
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: apikit-reference
           path: dist/MoltenCodes-ApiKit-reference.zip
-          if-no-files-found: ignore
+          if-no-files-found: error
 
       - name: Upload the framework bundle
         if: env.KIND == 'bundle'
@@ -338,7 +326,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       # Decide, in one place, whether this run may upload and whether it drafts
       # a GitHub release; the rules are tooling.release.publish_mode's, where

@@ -33,3 +33,10 @@ luac.out
 # The apiKit reference is built here by `tooling.api.generate --reference-out`
 # and is never committed (docs/API_KIT_DESIGN.md, section 13).
 packages/*/docs/reference/
+
+# LuaCov output written at the root by `python3 -m tooling.test.coverage`.
+luacov.stats.out
+luacov.report.out
+
+# lychee keeps the results of external link checks here between runs.
+.lycheecache

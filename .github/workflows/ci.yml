@@ -13,7 +13,8 @@ name: CI
 # Keeping the pins current: Dependabot (.github/dependabot.yml) proposes new
 # SHAs for every `uses:` line below, weekly, and rewrites the trailing version
 # comment with them. The binaries downloaded by version and SHA-256 in `env`
-# are not tracked by Dependabot; they are bumped by hand, both values together.
+# are not tracked by Dependabot; they are bumped by hand, both values together,
+# and so are the Lua toolchain versions in .github/actions/setup-lua/action.yml.
 
 on:
   push:
@@ -31,8 +32,8 @@ concurrency:
 
 env:
   # The prebuilt Selene the lint job installs instead of building from source.
-  # "light" is the build without the Roblox standard library, which is what
-  # `cargo install selene --no-default-features` used to produce here.
+  # "light" is the build without the Roblox standard library, the same binary
+  # `cargo install selene --no-default-features` builds.
   SELENE_VERSION: "0.31.0"
   SELENE_SHA256: "0580eed94b56e8b4bad3b1d6f5a4f9e1a9f5d88ae5bc511290c3cd33cc5e0360"
 
@@ -73,7 +74,7 @@ jobs:
         # Pythons: the floor `requires-python` in `pyproject.toml` declares, and
         # the release developers actually use. The test runner is Python, so the
         # floor has to orchestrate Busted as well as the newer interpreter does.
-        python-version: ["3.10", "3.13"]
+        python-version: ["3.10", "3.14"]
 
     steps:
       # Every action below is pinned to a commit SHA. A tag such as `v7` is a
@@ -89,18 +90,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Set up Lua
-        uses: leafo/gh-actions-lua@6919171ccf181b826f44b9bca76307b577217377 # v13.0.0
-        with:
-          luaVersion: "5.1.5"
-
-      - name: Set up LuaRocks
-        uses: leafo/gh-actions-luarocks@35d062def313a7699a0d513e996bcf4352f05389 # v6.1.0
-        with:
-          luaRocksVersion: "3.13.0"
-
-      - name: Install Busted
-        run: luarocks install busted 2.3.0-1
+      # Lua 5.1.5, LuaRocks, Busted and LuaCov, built with hererocks exactly as
+      # docs/DEVELOPMENT.md builds them locally and restored from the Actions
+      # cache when the versions are unchanged.
+      - name: Set up Lua 5.1 and Busted
+        uses: ./.github/actions/setup-lua
 
       # This runs every package suite and the example addon's specs, which is
       # the same command and the same targets a developer runs locally.
@@ -180,7 +174,7 @@ jobs:
         # The linter is Python too: it discovers the Lua to lint and invokes
         # Selene, so it runs on the floor and on the current release like the
         # rest of the tooling.
-        python-version: ["3.10", "3.13"]
+        python-version: ["3.10", "3.14"]
 
     steps:
       - name: Checkout
@@ -224,7 +218,7 @@ jobs:
       matrix:
         # Both supported Pythons, like every other job that runs repository
         # tooling: a release must be buildable from the declared floor.
-        python-version: ["3.10", "3.13"]
+        python-version: ["3.10", "3.14"]
 
     steps:
       - name: Checkout
@@ -251,6 +245,60 @@ jobs:
         working-directory: ${{ runner.temp }}/bundle
         run: sha256sum --check --strict CHECKSUMS.txt
 
+      # Every commit on main leaves an installable build of itself behind, so
+      # the framework at any merged commit can be tried in the client without
+      # a release. One matrix row uploads it; the two builds are identical.
+      - name: Upload the bundle built from main
+        if: >-
+          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          && matrix.python-version == '3.14'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: MoltenCodes-${{ github.sha }}
+          path: ${{ runner.temp }}/bundle
+          if-no-files-found: error
+          retention-days: 30
+
+  coverage:
+    name: Line coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Set up Lua 5.1, Busted and LuaCov
+        uses: ./.github/actions/setup-lua
+
+      # A report, not a gate: the per-package table goes to the job summary
+      # and the full LuaCov report to an artefact. Specs that fail only under
+      # LuaCov's line hook (the allocation specs) do not fail this job; the
+      # `test` job judges the suite. The job fails when the tooling cannot
+      # produce a report.
+      - name: Measure line coverage
+        run: python3 -m tooling.test.coverage --summary "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload the LuaCov report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: luacov-report
+          path: |
+            luacov.report.out
+            luacov.stats.out
+          if-no-files-found: warn
+          retention-days: 14
+
   spell:
     name: Spell check
     runs-on: ubuntu-latest
@@ -263,7 +311,7 @@ jobs:
       matrix:
         # The runner is Python like the rest of the tooling, so it runs on the
         # floor and on the current release; cspell itself is Node.
-        python-version: ["3.10", "3.13"]
+        python-version: ["3.10", "3.14"]
 
     steps:
       - name: Checkout
@@ -308,7 +356,7 @@ jobs:
         # The floor is what `requires-python` in `pyproject.toml` declares, so
         # the documented minimum is exercised rather than merely asserted. The
         # second row is the release developers actually run.
-        python-version: ["3.10", "3.13"]
+        python-version: ["3.10", "3.14"]
 
     steps:
       - name: Checkout
@@ -347,7 +395,7 @@ jobs:
       fail-fast: false
       matrix:
         # Repository tooling runs on the floor and the current release.
-        python-version: ["3.10", "3.13"]
+        python-version: ["3.10", "3.14"]
 
     steps:
       # Full history, so both ends of the pull request's range are present.
@@ -437,7 +485,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [test, types, format, lint, package, spell, repository, commits, secrets, workflows]
+    needs: [test, coverage, types, format, lint, package, spell, repository, commits, secrets, workflows]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}

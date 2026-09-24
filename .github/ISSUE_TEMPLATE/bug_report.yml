@@ -48,16 +48,20 @@ body:
       multiple: true
       options:
         - registry
+        - apiKit
+        - brokerKit
         - cacheKit
         - clientKit
         - codecKit
         - commandKit
         - commKit
+        - compatKit
         - eventKit
         - hookKit
         - interopKit
         - lifecycleKit
         - localeKit
+        - logKit
         - mediaKit
         - moduleKit
         - optionsKit

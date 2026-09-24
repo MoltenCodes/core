@@ -1,0 +1,76 @@
+name: Set up Lua 5.1, LuaRocks, Busted and LuaCov
+description: >-
+  Builds the Lua 5.1 toolchain the test suites run on with hererocks, the way
+  docs/DEVELOPMENT.md builds it locally, restores it from the Actions cache
+  when this exact set of versions was built before, and puts it on PATH.
+
+# The versions live here, once, for every workflow that runs Busted. Changing
+# one changes the cache key, so the next run rebuilds the toolchain instead of
+# restoring a stale one. They are bumped by hand; Dependabot does not read
+# them.
+inputs:
+  lua-version:
+    description: The Lua release to build; 5.1 is the game client's runtime.
+    default: "5.1.5"
+  luarocks-version:
+    description: The LuaRocks release hererocks installs.
+    default: "3.13.0"
+  hererocks-version:
+    description: The hererocks release, from PyPI, that builds the tree.
+    default: "0.25.1"
+  busted-version:
+    description: The Busted rock.
+    default: "2.3.0-1"
+  luacov-version:
+    description: The LuaCov rock the coverage job uses.
+    default: "0.17.0-1"
+
+runs:
+  using: composite
+  steps:
+    # The runner image goes into the key as well as the versions: the tree
+    # holds compiled C modules and absolute paths, so a tree built on one image
+    # is not trusted on another.
+    - name: Compute the toolchain cache key
+      id: key
+      shell: bash
+      env:
+        LUA_VERSION: ${{ inputs.lua-version }}
+        LUAROCKS_VERSION: ${{ inputs.luarocks-version }}
+        HEREROCKS_VERSION: ${{ inputs.hererocks-version }}
+        BUSTED_VERSION: ${{ inputs.busted-version }}
+        LUACOV_VERSION: ${{ inputs.luacov-version }}
+      run: |
+        key="lua51-${RUNNER_OS}-${ImageOS:-unknown}-lua${LUA_VERSION}-luarocks${LUAROCKS_VERSION}"
+        key="${key}-hererocks${HEREROCKS_VERSION}-busted${BUSTED_VERSION}-luacov${LUACOV_VERSION}"
+        echo "key=${key}" >> "${GITHUB_OUTPUT}"
+
+    - name: Restore the toolchain
+      id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.local/lua51
+        key: ${{ steps.key.outputs.key }}
+
+    # pipx runs hererocks without installing it into the runner's system
+    # Python, which Ubuntu marks as externally managed.
+    - name: Build the toolchain
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        LUA_VERSION: ${{ inputs.lua-version }}
+        LUAROCKS_VERSION: ${{ inputs.luarocks-version }}
+        HEREROCKS_VERSION: ${{ inputs.hererocks-version }}
+        BUSTED_VERSION: ${{ inputs.busted-version }}
+        LUACOV_VERSION: ${{ inputs.luacov-version }}
+      run: |
+        set -euo pipefail
+        pipx run --spec "hererocks==${HEREROCKS_VERSION}" hererocks "${HOME}/.local/lua51" \
+          --lua "${LUA_VERSION}" --luarocks "${LUAROCKS_VERSION}"
+        "${HOME}/.local/lua51/bin/luarocks" install busted "${BUSTED_VERSION}"
+        "${HOME}/.local/lua51/bin/luarocks" install luacov "${LUACOV_VERSION}"
+
+    - name: Put the toolchain on PATH
+      shell: bash
+      run: |
+        echo "${HOME}/.local/lua51/bin" >> "${GITHUB_PATH}"
