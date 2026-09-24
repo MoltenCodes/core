@@ -198,6 +198,32 @@ describe("CacheKit lazy tree", function()
         assert.are.equal(2, calls["a"])
     end)
 
+    it(
+        "keeps a structural node it expands when eviction takes its only expanded descendant",
+        function()
+            local resolve, calls = newCountingResolver()
+            local tree = CacheKit:Lazy(resolve, { maxEntries = 1 })
+            tree:Get("a", "b")
+
+            -- "a" exists only as structure for "a/b", which is the node eviction
+            -- takes to make room for "a". Pruning after that eviction must not
+            -- detach "a" itself.
+            assert.are.equal("a", tree:Get("a"))
+            assert.are.equal("a", tree:Peek("a"))
+            assert.is_nil(tree:Peek("a", "b"))
+            assert.are.equal(1, tree:GetCount())
+            assert.are.equal(1, tree:GetStats().evictions)
+            assert.are.equal("a", tree:Get("a"))
+            assert.are.equal(1, calls["a"])
+
+            -- The tree keeps working: the next expansion evicts "a" in turn.
+            assert.are.equal("c", tree:Get("c"))
+            assert.is_nil(tree:Peek("a"))
+            assert.are.equal("c", tree:Peek("c"))
+            assert.are.equal(1, tree:GetCount())
+        end
+    )
+
     it("holds every expanded node when opened with UNBOUNDED", function()
         local tree = CacheKit:Lazy(newCountingResolver(), { maxEntries = CacheKit.UNBOUNDED })
         for index = 1, 3000 do
@@ -336,102 +362,120 @@ describe("CacheKit lazy tree", function()
         )
     end)
 
+    ---Run 3,000 random steps against a tree of `maxEntries` expanded nodes and
+    ---check the structure after every step.
+    ---@param maxEntries integer
+    ---@param seed integer
+    local function runRandomizedWorkload(maxEntries, seed)
+        -- A linear congruential generator with a power-of-two modulus has
+        -- short periods in its low bits, so the draw uses the high ones.
+        local function nextRandom(limit)
+            seed = (seed * 1103515245 + 12345) % 2147483648
+            return math.floor(seed / 65536) % limit + 1
+        end
+
+        -- The resolver sometimes invalidates its own path or clears the whole
+        -- tree before answering, so `Get` has to cope with a tree that changed
+        -- under it and must still leave the invariant intact.
+        local tree
+        tree = CacheKit:Lazy(function(...)
+            local behaviour = nextRandom(12)
+            if behaviour == 1 then
+                tree:Invalidate(...)
+            elseif behaviour == 2 then
+                tree:Clear()
+            elseif behaviour == 3 then
+                return nil
+            elseif behaviour == 4 and select("#", ...) > 1 then
+                tree:Get((...))
+            end
+            return table.concat({ ... }, "/")
+        end, { maxEntries = maxEntries })
+
+        ---Walk the tree and check, for every node, that `parent` and
+        ---`childCount` agree with the `children` tables and that a node without
+        ---a value has an expanded descendant. Returns the expanded count.
+        ---@param node table
+        ---@param parent table|false
+        ---@return integer expanded
+        ---@return boolean hasExpandedDescendant
+        local function checkNode(node, parent)
+            assert.are.equal(parent, node.parent)
+            local expanded = 0
+            local children = 0
+            local hasExpandedDescendant = false
+            if node.children ~= false then
+                for key, child in pairs(node.children) do
+                    assert.are.equal(key, child.key)
+                    children = children + 1
+                    local below, expandedBelow = checkNode(child, node)
+                    expanded = expanded + below
+                    hasExpandedDescendant = hasExpandedDescendant or expandedBelow
+                end
+            end
+            assert.are.equal(children, node.childCount)
+            if node.hasValue then
+                expanded = expanded + 1
+            elseif node ~= tree._root then
+                assert.is_true(
+                    hasExpandedDescendant,
+                    "structural node without an expanded descendant"
+                )
+            end
+            return expanded, hasExpandedDescendant or node.hasValue
+        end
+
+        for _ = 1, 3000 do
+            local first = nextRandom(4)
+            local second = nextRandom(4)
+            local third = nextRandom(3)
+            local action = nextRandom(12)
+            if action <= 5 then
+                tree:Get(first, second, third)
+            elseif action <= 7 then
+                tree:Get(first, second)
+            elseif action == 8 then
+                tree:Get(first)
+            elseif action == 9 then
+                tree:Peek(first, second, third)
+            elseif action == 10 then
+                tree:Invalidate(first, second)
+            elseif action == 11 then
+                tree:Invalidate(first)
+            else
+                tree:Clear()
+            end
+
+            local expanded = checkNode(tree._root, false)
+            assert.are.equal(tree:GetCount(), expanded)
+            assert.is_true(expanded <= maxEntries)
+            assert.is_true(tree._freeCount <= maxEntries)
+            -- The recency list holds exactly the expanded nodes.
+            local listed = 0
+            local node = tree._newest
+            while node ~= false do
+                assert.is_true(node.hasValue)
+                -- Every listed node is still attached under the root.
+                local ancestor = node
+                while ancestor.parent ~= false do
+                    ancestor = ancestor.parent
+                end
+                assert.are.equal(tree._root, ancestor)
+                listed = listed + 1
+                node = node.older
+            end
+            assert.are.equal(expanded, listed)
+        end
+    end
+
     it(
         "holds the structure invariant under a randomized workload with re-entrant resolvers",
         function()
-            local maxEntries = 6
-            local seed = 7
-            local function nextRandom(limit)
-                seed = (seed * 1103515245 + 12345) % 2147483648
-                return seed % limit + 1
-            end
-
-            -- The resolver sometimes invalidates its own path or clears the whole
-            -- tree before answering, so `Get` has to cope with a tree that changed
-            -- under it and must still leave the invariant intact.
-            local tree
-            tree = CacheKit:Lazy(function(...)
-                local behaviour = nextRandom(12)
-                if behaviour == 1 then
-                    tree:Invalidate(...)
-                elseif behaviour == 2 then
-                    tree:Clear()
-                elseif behaviour == 3 then
-                    return nil
-                elseif behaviour == 4 and select("#", ...) > 1 then
-                    tree:Get((...))
-                end
-                return table.concat({ ... }, "/")
-            end, { maxEntries = maxEntries })
-
-            ---Walk the tree and check, for every node, that `parent` and
-            ---`childCount` agree with the `children` tables and that a node without
-            ---a value has an expanded descendant. Returns the expanded count.
-            ---@param node table
-            ---@param parent table|false
-            ---@return integer expanded
-            ---@return boolean hasExpandedDescendant
-            local function checkNode(node, parent)
-                assert.are.equal(parent, node.parent)
-                local expanded = 0
-                local children = 0
-                local hasExpandedDescendant = false
-                if node.children ~= false then
-                    for key, child in pairs(node.children) do
-                        assert.are.equal(key, child.key)
-                        children = children + 1
-                        local below, expandedBelow = checkNode(child, node)
-                        expanded = expanded + below
-                        hasExpandedDescendant = hasExpandedDescendant or expandedBelow
-                    end
-                end
-                assert.are.equal(children, node.childCount)
-                if node.hasValue then
-                    expanded = expanded + 1
-                elseif node ~= tree._root then
-                    assert.is_true(
-                        hasExpandedDescendant,
-                        "structural node without an expanded descendant"
-                    )
-                end
-                return expanded, hasExpandedDescendant or node.hasValue
-            end
-
-            for _ = 1, 3000 do
-                local first = nextRandom(4)
-                local second = nextRandom(4)
-                local third = nextRandom(3)
-                local action = nextRandom(12)
-                if action <= 5 then
-                    tree:Get(first, second, third)
-                elseif action <= 7 then
-                    tree:Get(first, second)
-                elseif action == 8 then
-                    tree:Get(first)
-                elseif action == 9 then
-                    tree:Peek(first, second, third)
-                elseif action == 10 then
-                    tree:Invalidate(first, second)
-                elseif action == 11 then
-                    tree:Invalidate(first)
-                else
-                    tree:Clear()
-                end
-
-                local expanded = checkNode(tree._root, false)
-                assert.are.equal(tree:GetCount(), expanded)
-                assert.is_true(expanded <= maxEntries)
-                assert.is_true(tree._freeCount <= maxEntries)
-                -- The recency list holds exactly the expanded nodes.
-                local listed = 0
-                local node = tree._newest
-                while node ~= false do
-                    assert.is_true(node.hasValue)
-                    listed = listed + 1
-                    node = node.older
-                end
-                assert.are.equal(expanded, listed)
-            end
+            runRandomizedWorkload(6, 7)
         end
     )
+
+    it("holds the structure invariant when a tree of two evicts on almost every miss", function()
+        runRandomizedWorkload(2, 11)
+    end)
 end)

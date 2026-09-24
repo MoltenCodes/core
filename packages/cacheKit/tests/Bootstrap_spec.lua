@@ -68,9 +68,10 @@ describe("CacheKit bootstrap", function()
         end)
         snapshot:Refresh()
 
-        local upgraded = TestEnv.LoadRevision(3)
+        local nextRevision = CacheKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
         assert.are.equal(CacheKit, upgraded)
-        assert.are.equal(3, upgraded.REVISION)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(cachePrototype, upgraded.Cache)
 
         -- Entries, recency and statistics survive: "b" is still the least
@@ -110,8 +111,9 @@ describe("CacheKit bootstrap", function()
         local ttl = CacheKit:NewTtl({ maxEntries = 2, ttlSeconds = 60 })
         ttl:PutNegative("gone", 5)
 
-        local upgraded = TestEnv.LoadRevision(3)
+        local upgraded = TestEnv.LoadRevision(CacheKit.REVISION + 1)
         assert.are.equal(CacheKit, upgraded)
+        assert.are.equal(CacheKit.REVISION, upgraded.REVISION)
         assert.are.equal(lazyPrototype, upgraded.LazyTree)
         assert.are.equal(queuePrototype, upgraded.Queue)
 
@@ -125,6 +127,7 @@ describe("CacheKit bootstrap", function()
     end)
 
     it("upgrades revision-1 state in place to schema 2", function()
+        local shippedRevision = TestEnv.NewPackage().REVISION
         TestEnv.Reset()
         TestEnv.InstallWowApi()
         require("Registry")
@@ -167,7 +170,7 @@ describe("CacheKit bootstrap", function()
 
         local upgraded = TestEnv.ReloadPackage()
         assert.are.equal(previous, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(shippedRevision, upgraded.REVISION)
         assert.are.equal(2, rawget(state, "schema"))
         assert.are.equal("table", type(rawget(state, "lazyMetatable")))
         assert.are.equal("table", type(rawget(state, "queueMetatable")))
@@ -193,6 +196,46 @@ describe("CacheKit bootstrap", function()
         local queue = upgraded:NewQueue(1, "reject")
         assert.is_true(queue:Push(1))
         assert.is_false(queue:Push(2))
+    end)
+
+    it("upgrades revision-2 state in place and repairs lazy tree expansion", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("EventKit")
+        -- Revision 3 changed no state or object layout, so a copy labelled
+        -- revision 2 leaves exactly the state revision 2 wrote.
+        local previous = TestEnv.LoadRevision(2)
+        assert.are.equal(2, previous.REVISION)
+        local state = rawget(previous, "_state")
+        local calls = 0
+        local tree = previous:Lazy(function(...)
+            calls = calls + 1
+            return table.concat({ ... }, "/")
+        end, { maxEntries = 1 })
+        tree:Get("a", "b")
+        local ttl = previous:NewTtl({ maxEntries = 2, ttlSeconds = 60 })
+        ttl:PutNegative("gone", 5)
+        local queue = previous:NewQueue(2, "reject")
+        queue:Push("kept")
+        previous:SetLimits({ maxQueueCapacity = 2048 })
+
+        local upgraded = TestEnv.ReloadPackage()
+        assert.are.equal(previous, upgraded)
+        assert.are.equal(3, upgraded.REVISION)
+        assert.are.equal(state, rawget(upgraded, "_state"))
+        assert.are.equal(3, rawget(state, "runtimeRevision"))
+        assert.are.equal(2048, upgraded:GetLimits().maxQueueCapacity)
+
+        -- The tree revision 2 built runs revision 3's expansion: "a" is kept
+        -- although eviction takes "a/b", its only expanded descendant.
+        assert.are.equal("a", tree:Get("a"))
+        assert.are.equal("a", tree:Peek("a"))
+        assert.are.equal("a", tree:Get("a"))
+        assert.are.equal(2, calls)
+        assert.are.equal("negative", select(2, ttl:Get("gone")))
+        assert.are.equal("kept", queue:Pop())
     end)
 
     it("rejects a same-revision state whose limits are invalid", function()

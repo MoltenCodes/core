@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "cacheKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local OPTIONAL_EVENTKIT_API = 1
 
@@ -1977,9 +1977,15 @@ local function evictOldestNode(lazy)
     pruneUpwards(lazy, node)
 end
 
----Keep `value` on `node`, evicting first when the tree is full. Eviction
----cannot touch `node` itself, which is not expanded, nor detach its ancestors,
----each of which has at least `node` beneath it.
+---Keep `value` on `node`, then evict when the tree holds one expanded node
+---too many.
+---
+---The node is expanded before anything is evicted. Evicting first would let
+---the pruning after eviction detach `node` itself when the evicted node was its
+---only expanded descendant, leaving a value linked outside the tree. Expanded
+---first, `node` holds a value, so pruning stops at it and at every ancestor
+---above it; it is the newest node, so eviction never picks it, because the
+---tree holds at least two expanded nodes whenever it evicts.
 ---@param lazy table
 ---@param node CacheKit.LazyNode
 ---@param value any a non-nil value
@@ -1990,13 +1996,14 @@ local function expandNode(lazy, node, value)
         return
     end
 
-    if rawget(lazy, "_count") >= rawget(lazy, "_maxEntries") then
-        evictOldestNode(lazy)
-    end
     node.hasValue = true
     node.value = value
     linkNewest(lazy, node)
-    rawset(lazy, "_count", rawget(lazy, "_count") + 1)
+    local count = rawget(lazy, "_count") + 1
+    rawset(lazy, "_count", count)
+    if count > rawget(lazy, "_maxEntries") then
+        evictOldestNode(lazy)
+    end
 end
 
 ---Invalidate a path: forget the value of every node on it, remove the node at

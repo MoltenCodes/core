@@ -255,7 +255,8 @@ describe("CacheKit limits", function()
         it("is shared by every embedded copy and kept across an in-place upgrade", function()
             CacheKit:SetLimits({ maxQueueCapacity = 2048 })
             assert.are.equal(2048, TestEnv.ReloadPackage():GetLimits().maxQueueCapacity)
-            local upgraded = TestEnv.LoadRevision(3)
+            local upgraded = TestEnv.LoadRevision(CacheKit.REVISION + 1)
+            assert.are.equal(CacheKit, upgraded)
             assert.are.same({ maxQueueCapacity = 2048 }, upgraded:GetLimits())
             assert.are.equal(2048, upgraded:NewQueue(2048, "reject"):GetCapacity())
         end)
@@ -268,8 +269,9 @@ describe("CacheKit limits", function()
             cache:Set(key, key)
         end
 
-        local upgraded = TestEnv.LoadRevision(3)
-        assert.are.equal(3, upgraded.REVISION)
+        local nextRevision = CacheKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
         assert.are.equal(sentinel, upgraded._state.unbounded)
 

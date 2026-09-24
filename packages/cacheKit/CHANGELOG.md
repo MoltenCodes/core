@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 — 2026-09-24
+
+- Fixed: a lazy tree expanding a node that existed only as structure could lose it. When the tree was full and the node's only expanded descendant was the least recently read node, eviction dropped that descendant and the pruning after it detached the node being expanded, which was then kept as expanded and linked in the recency list but no longer reachable from the root: the value was unreachable, the node sat on the free list while linked, and a later eviction raised inside CacheKit (`attempt to index local 'parent'`). `expandNode` now expands the node first and evicts afterwards, so pruning stops at it; the eviction order is unchanged.
+- Implementation revision 3. The state schema and every object layout are unchanged, so an upgrade over revision 2 replaces the methods and keeps the state, the limits and every cache, snapshot, lazy tree and queue; lazy trees revision 2 built run the corrected expansion at once.
+- The randomized specs (the lazy tree workload and the LRU, negative-entry and queue model comparisons) drew from the low bits of a power-of-two-modulus generator, whose short periods kept the workload from ever reaching the case above; they now draw from the high bits. The lazy tree workload also runs with two expanded nodes, where almost every miss evicts, and checks that every node in the recency list is attached under the root. The upgrade specs load the next revision relative to the current one instead of a fixed number, and a spec covers the upgrade from revision 2.
+- API.md: the paragraphs on unbounded caches and the shared sentinel moved from under `GetLimits` to the *Limits* section they describe. README: a failed snapshot read also restores the values it changed.
+- 171 specs.
+- `CacheKit` API generation 1 is unchanged.
+
 ## 0.2.0 — 2026-09-24
 
 - Added `cache:PutNegative(key, ttlSeconds)` on caches with an age limit (`NewTtl`, or `Memoize` with `ttlSeconds`): a negative entry records that a key has no value, for `ttlSeconds` of its own, independent of the cache's `ttlSeconds`. `Get` and `Peek` answer a live negative entry with `nil, "negative"` and `Get` counts a hit; a memoised function answers `nil` without calling `fn`. The entry takes an ordinary slot, is evicted by recency, and `Set`, `Delete` and `Clear` remove it. A plain LRU cache refuses it at the caller's line (`requires a cache with an age limit`), because nothing there would ever expire it. The marker is one table kept in the package state, so no entry field was added and revision 1 entries keep their layout.

@@ -200,7 +200,9 @@ describe("CacheKit queue", function()
         local seed = 11
         local function nextRandom(limit)
             seed = (seed * 1103515245 + 12345) % 2147483648
-            return seed % limit + 1
+            -- The low bits of a power-of-two modulus repeat with short
+            -- periods, so the draw uses the high ones.
+            return math.floor(seed / 65536) % limit + 1
         end
 
         for _, policy in ipairs({ "dropOldest", "dropNewest", "reject" }) do

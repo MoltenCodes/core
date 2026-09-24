@@ -2,7 +2,7 @@
 
 CacheKit API generation **1** provides bounded caches: least-recently-used caches bounded by count, the same caches with an age limit and negative entries, memoisation of a one-key function, snapshots that report what changed between two reads, a namespace tree expanded on demand, a ring queue with an explicit overflow policy, and clearing a cache when a host event fires.
 
-Implementation revision: **2**.
+Implementation revision: **3**.
 
 ## Loading
 
@@ -124,6 +124,10 @@ CacheKit:SetLimits({ maxQueueCapacity = 4096 })
 local limits = CacheKit:GetLimits() -- { maxQueueCapacity = 4096 }
 ```
 
+An unbounded cache never evicts, so it grows with every distinct key you store and only `Delete`, `Clear`, expiry and `Close` shrink it: use it only when the key set is one you bound yourself. Its free list keeps at most 1024 blank entry tables; a bounded cache needs no separate bound, because its live plus free entries never exceed `maxEntries`. An unbounded lazy tree keeps every expanded node the same way. An unbounded snapshot accepts any number of keys per refresh.
+
+`CacheKit.UNBOUNDED` is one table kept in the package state, so every embedded copy and every revision publishes the same sentinel, and caches and trees opened with it stay unbounded across an in-place upgrade.
+
 ### `CacheKit:SetLimits(limits)`
 
 Changes any subset of the package-wide limits; today that is `maxQueueCapacity`. The whole table is validated first, so one invalid entry changes nothing: an unrecognised name raises `CacheKit:SetLimits limits.<name> is not a recognised limit`, a value outside 1 to the ceiling raises `limits.maxQueueCapacity must be an integer from 1 to 65536`, and `CacheKit.UNBOUNDED` raises `limits.maxQueueCapacity cannot be CacheKit.UNBOUNDED: the ring is allocated when the queue is created`; a non-table raises `limits must be a table`. All at the caller's line. An empty table is accepted and changes nothing.
@@ -135,10 +139,6 @@ Changes any subset of the package-wide limits; today that is `maxQueueCapacity`.
 ### `CacheKit:GetLimits()`
 
 Returns a fresh table with every package-wide limit (`{ maxQueueCapacity = 1024 }` by default). It is yours to keep or change; the next call returns another.
-
-An unbounded cache never evicts, so it grows with every distinct key you store and only `Delete`, `Clear`, expiry and `Close` shrink it: use it only when the key set is one you bound yourself. Its free list keeps at most 1024 blank entry tables; a bounded cache needs no separate bound, because its live plus free entries never exceed `maxEntries`. An unbounded lazy tree keeps every expanded node the same way. An unbounded snapshot accepts any number of keys per refresh.
-
-`CacheKit.UNBOUNDED` is one table kept in the package state, so every embedded copy and every revision publishes the same sentinel, and caches and trees opened with it stay unbounded across an in-place upgrade.
 
 ## `CacheKit:NewLru({ maxEntries })`
 
@@ -468,6 +468,6 @@ The layout behind these numbers is in [`INTERNALS.md`](INTERNALS.md).
 
 ## Embedded copies and upgrades
 
-Several addons may embed CacheKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: caches, snapshots, lazy trees and queues created by an older copy keep their contents, statistics and subscriptions, and memoised functions, fill functions and clear-on-event callbacks an older copy created run the newer implementation. Revision 2 upgrades revision 1 state by adding the lazy tree and queue metatables, the negative-entry marker and the default package-wide limits; revision 1 caches gain `PutNegative` without being touched.
+Several addons may embed CacheKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: caches, snapshots, lazy trees and queues created by an older copy keep their contents, statistics and subscriptions, and memoised functions, fill functions and clear-on-event callbacks an older copy created run the newer implementation. Revision 2 upgrades revision 1 state by adding the lazy tree and queue metatables, the negative-entry marker and the default package-wide limits; revision 1 caches gain `PutNegative` without being touched. Revision 3 keeps the revision 2 state as it is and replaces the methods only.
 
 Nothing survives `/reload`: CacheKit caches live in memory only.
