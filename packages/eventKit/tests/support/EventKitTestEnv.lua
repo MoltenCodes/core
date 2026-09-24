@@ -61,10 +61,14 @@ function EventKitTestEnv.InstallWowApi()
     EventKitTestEnv.InstallCombatLogEventInfo()
 end
 
----Reset the shared fixture, unload LifecycleKit and forget the combat-log fake.
+---Reset the shared fixture, unload LifecycleKit and forget the combat-log fake,
+---including a `C_CombatLog` namespace a spec installed. The shared fixture does
+---not own that global, because only EventKit reads it.
 function EventKitTestEnv.Reset()
     resetFixture()
     package.loaded["LifecycleKit"] = nil
+    -- selene: allow(global_usage)
+    rawset(_G, "C_CombatLog", nil)
     combatLogValues = {}
     combatLogValueCount = 0
     combatLogReads = 0

@@ -51,7 +51,7 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 12
+local IMPLEMENTATION_REVISION = 13
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local STATE_SCHEMA = 8
@@ -104,8 +104,10 @@ local MAX_UNIT_FRAMES_CEILING = 512
 -- reusable buffer table. Neither path allocates per event.
 local INLINE_ARGUMENT_SLOTS = 6
 
--- How many buffer slots one multiple assignment fills. Wider payloads than this
--- fall back to a per-slot `select`, which no WoW event is known to need.
+-- How many buffer slots one multiple assignment fills. Wider payloads fall back
+-- to a per-slot `select` for the slots past it. A `ConnectCombatLog` listener
+-- receives up to about 24 values, so it takes that fallback on the `xpcall`
+-- path; with `securecallfunction` the client forwards the payload itself.
 local BUFFERED_ARGUMENT_SLOTS = 16
 
 -- Lua 5.1 publishes unpack as a global; newer clients move it onto table.
@@ -366,7 +368,7 @@ end
 ---@class EventKit.CombatLogRouter
 ---@field channel EventKit.Channel|false The event's channel while at least one combat-log listener exists.
 ---@field inner SignalKit.Connection|false The router's connection on that channel's signal.
----@field readEventInfo function|false `CombatLogGetCurrentEventInfo`, resolved each time the router attaches.
+---@field readEventInfo function|false `CombatLogGetCurrentEventInfo`, or `C_CombatLog.GetCurrentEventInfo` without it, resolved each time the router attaches.
 ---@field routes table<string, EventKit.CombatLogRoute> Routes by sub-event name.
 ---@field anyRoute EventKit.CombatLogRoute|false The wildcard route, delivered after the sub-event's own.
 ---@field listenerCount integer Live combat-log connections; the router attaches at the first and detaches after the last.
@@ -1174,13 +1176,26 @@ end
 ---rather than at load so a copy loaded before the API existed still works,
 ---and it is checked before anything is registered so a refusal leaves nothing
 ---behind. The registration itself is refused at the caller, like `Connect`.
+---
+---The global `CombatLogGetCurrentEventInfo` is preferred, so a replacement
+---another addon installed there is honoured as before. Current classic
+---clients document only `C_CombatLog.GetCurrentEventInfo`, so the namespaced
+---function is used when the global is absent. Retail 12 clients document
+---neither for addons (only `C_CombatLogSecure`), so there the call raises.
 ---@param combatLog EventKit.CombatLogRouter
 ---@param label string qualified public method name, used in the argument error
 ---@param level integer stack level a refused registration is reported at
 local function attachCombatLogRouter(combatLog, label, level)
-    -- CombatLogGetCurrentEventInfo is a World of Warcraft client API reachable only through the global table.
+    -- CombatLogGetCurrentEventInfo and C_CombatLog are World of Warcraft client APIs reachable only through the global table.
     -- selene: allow(global_usage)
     local readEventInfo = rawget(_G, "CombatLogGetCurrentEventInfo")
+    if type(readEventInfo) ~= "function" then
+        -- selene: allow(global_usage)
+        local combatLogNamespace = rawget(_G, "C_CombatLog")
+        if type(combatLogNamespace) == "table" then
+            readEventInfo = rawget(combatLogNamespace, "GetCurrentEventInfo")
+        end
+    end
     if type(readEventInfo) ~= "function" then
         error("EventKit: requires the World of Warcraft CombatLogGetCurrentEventInfo API", 0)
     end

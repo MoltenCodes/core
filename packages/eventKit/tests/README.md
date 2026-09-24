@@ -28,7 +28,8 @@ It also covers:
   event, the `"*"` wildcard and its order after the sub-event's own listeners,
   no allocation per event, host registration held only while a combat-log
   listener exists and shared with a plain `Connect` on the same event, a
-  refused registration and a missing client API leaving nothing behind,
+  refused registration and a missing client API leaving nothing behind, the
+  `C_CombatLog.GetCurrentEventInfo` fallback when the global is absent,
   a plain listener detaching or attaching the router mid-fire, the last
   listener reconnecting inside its own callback, a wildcard listener
   connected or dropped during a dispatch, a raising client read reported
@@ -39,7 +40,7 @@ It also covers:
   EventKit's own `PLAYER_LOGOUT` one-shot, with scoped logout listeners still
   delivered, a refused registration retried, and routes given to or carried
   from an older copy;
-- in-place upgrade from implementation revisions 1, 4, 5, 6, 8, 9, 10 and 11,
+- in-place upgrade from implementation revisions 1, 4, 5, 6, 8, 9, 10, 11 and 12,
   set limits and the sentinel carried to a newer revision, and the refusal to
   downgrade a newer copy.
 

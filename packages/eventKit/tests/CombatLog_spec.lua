@@ -436,6 +436,27 @@ describe("EventKit combat-log routing", function()
             assert.are.equal(0, EventKit._state.combatLog.listenerCount)
         end)
 
+        it("reads C_CombatLog.GetCurrentEventInfo when the global is absent", function()
+            -- Current classic clients document only the namespaced function; the package resolves either
+            -- host API when its first listener connects.
+            -- selene: allow(global_usage)
+            local readGlobal = rawget(_G, "CombatLogGetCurrentEventInfo")
+            -- selene: allow(global_usage)
+            rawset(_G, "CombatLogGetCurrentEventInfo", nil)
+            -- selene: allow(global_usage)
+            rawset(_G, "C_CombatLog", { GetCurrentEventInfo = readGlobal })
+
+            local calls = recordCalls(function(callback)
+                return EventKit:ConnectCombatLog("SPELL_DAMAGE", callback)
+            end)
+            TestEnv.EmitCombatLogEvent(1, "SPELL_DAMAGE", false)
+
+            assert.are.equal(1, #calls)
+            assert.are.equal(3, calls[1].count)
+            assert.are.equal("SPELL_DAMAGE", calls[1][2])
+            assert.are.equal(1, TestEnv.CombatLogEventInfoReads())
+        end)
+
         it("keeps routing across duplicate embedding", function()
             local calls = 0
             EventKit:ConnectCombatLog("SPELL_DAMAGE", function()

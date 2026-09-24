@@ -5,11 +5,12 @@ EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.8.0`
+- Version: `0.8.1`
 - API generation: `1`
-- Implementation revision: `12`
+- Implementation revision: `13`
 - Runtime dependencies: Registry API 2, SignalKit API 1
-- Optional partner: SchedulerKit API 1, found at call time by `Coalesce` and `Derive`
+- Optional partners: SchedulerKit API 1, found at call time by `Coalesce` and `Derive`;
+  LifecycleKit API 1, found by the first `ForAddon` to close addon scopes at logout
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW
 session. That shapes four of its guarantees:
@@ -27,7 +28,9 @@ session. That shapes four of its guarantees:
 - **The combat log is read once per event.** `ConnectCombatLog(subEvent,
   callback)` calls `CombatLogGetCurrentEventInfo()` once for every combat-log
   listener in the session and routes by sub-event, so the client's hottest
-  event costs one read and one lookup however many addons listen.
+  event costs one read and one lookup however many addons listen. Retail 12
+  clients document no event reader for addons, so there it raises (see
+  "World of Warcraft specifics" in [`docs/API.md`](docs/API.md)).
 
 ## Example
 

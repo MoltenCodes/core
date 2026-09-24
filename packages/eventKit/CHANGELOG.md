@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.1 — 2026-09-24
+
+- `ConnectCombatLog` reads `C_CombatLog.GetCurrentEventInfo` when the global `CombatLogGetCurrentEventInfo` is absent. The classic-era and classic-mop metadata document only the namespaced function, so a client that does not also publish the undocumented global would have refused the router. The global is still preferred when present, and the missing-API error is unchanged.
+- `docs/API.md` no longer claims that no supported client lacks the API: the retail, PTR and beta metadata list `GetCurrentEventInfo` only under `C_CombatLogSecure` and `C_CombatLogInternal`, so on retail 12 `ConnectCombatLog` raises and registers nothing. "World of Warcraft specifics" says so, and so does the README guarantee. The README's package contract now also names LifecycleKit as an optional partner.
+- The comment on the buffered isolation slots no longer says that no event needs more than 16 values; a combat-log listener receives up to about 24 on the `xpcall` path.
+- Implementation revision 13. `_state` schema 8 is unchanged, so a copy loading over revision 12 adopts its state as it is, with its router, routes and listeners. New specs: the `C_CombatLog` fallback in `CombatLog_spec.lua` and the revision-12 upgrade with a live combat-log listener in `Bootstrap_spec.lua`; the test environment's `Reset` clears a `C_CombatLog` a spec installed.
+- `EventKit` API generation 1 is unchanged.
+
 ## 0.8.0 — 2026-09-24
 
 - Added `EventKit:ConnectCombatLog(subEvent, callback)` and `scope:ConnectCombatLog`. `COMBAT_LOG_EVENT_UNFILTERED` carries no payload, so every listener used to call `CombatLogGetCurrentEventInfo()` itself and test the sub-event it wanted. EventKit now makes that call **once per event** for every combat-log listener in the session, routes by the sub-event (the second return) in one table lookup, and calls each listener of that sub-event with every return unchanged, count intact, `nil` holes included; `"*"` subscribes to every sub-event and runs after the sub-event's own listeners. A sub-event nobody listens for costs the read and one lookup. Listeners are isolated exactly as `Connect` listeners are, and so is the router's own client read, so a raising read is reported and plain listeners of the event still run; the handle is an ordinary connection, and scopes own it like any other.

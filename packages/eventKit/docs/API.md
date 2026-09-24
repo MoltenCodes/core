@@ -2,7 +2,7 @@
 
 EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
 
-Implementation revision: **12**.
+Implementation revision: **13**.
 
 EventKit is multi-tenant: one shared instance serves every addon in a WoW session.
 
@@ -121,9 +121,12 @@ registered as long as either kind of listener remains. The delivery order
 between plain listeners and combat-log listeners of the same event is not
 defined.
 
-`ConnectCombatLog` resolves `CombatLogGetCurrentEventInfo` when the first
-combat-log listener connects. Without it (no supported client lacks it) the
-call raises `EventKit: requires the World of Warcraft
+`ConnectCombatLog` resolves the client API when the first combat-log listener
+connects: the global `CombatLogGetCurrentEventInfo`, or
+`C_CombatLog.GetCurrentEventInfo` when the global is absent (the current
+classic clients document only the namespaced function). Without either, as on retail 12 clients (see
+[World of Warcraft specifics](#the-combat-log-no-payload-two-ways-to-listen)),
+the call raises `EventKit: requires the World of Warcraft
 CombatLogGetCurrentEventInfo API` and registers nothing. A registration the
 host refuses raises `EventKit:ConnectCombatLog could not register event
 COMBAT_LOG_EVENT_UNFILTERED` at the caller's line and also leaves nothing
@@ -622,6 +625,11 @@ one would.
 
 Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
 
+Revision 13 keeps `_state` at schema 8. A copy loading over revision 12
+adopts the state as it is; its router, routes and listeners keep delivering,
+and the next attach resolves the client API as described under
+[`ConnectCombatLog`](#eventkitconnectcombatlogsubevent-callback).
+
 Revision 12 moved `_state` from schema 7 to schema 8, adding the combat-log
 router (`combatLog`: the router's share of the `COMBAT_LOG_EVENT_UNFILTERED`
 channel, the routes by sub-event, the wildcard route and the listener count)
@@ -711,7 +719,17 @@ end)
 ```
 
 Either way, keep the handler short: this is the highest-frequency event in the
-client. `COMBAT_LOG_EVENT_UNFILTERED` is a normal event, not a unit event. The
+client.
+
+**Retail 12 clients do not document an event reader for addons.** The
+retail, PTR and beta metadata under `packages/apiKit/metadata/` list
+`GetCurrentEventInfo` only under `C_CombatLogSecure` (restricted) and
+`C_CombatLogInternal`; `C_CombatLog` keeps its filter and retention functions
+but not the reader, and no `CombatLogGetCurrentEventInfo` global is listed.
+With neither function present, `ConnectCombatLog` raises the missing-API
+error above and registers nothing. The classic-era and classic-mop metadata
+list `C_CombatLog.GetCurrentEventInfo`, which EventKit reads when the global
+is absent. `COMBAT_LOG_EVENT_UNFILTERED` is a normal event, not a unit event. The
 routed form is specified under
 [`EventKit:ConnectCombatLog`](#eventkitconnectcombatlogsubevent-callback).
 
