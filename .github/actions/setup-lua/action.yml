@@ -54,6 +54,15 @@ runs:
 
     # pipx runs hererocks without installing it into the runner's system
     # Python, which Ubuntu marks as externally managed.
+    # hererocks builds Lua 5.1 for the `linux` target, whose lua.c includes
+    # readline; the hosted Ubuntu images ship the library but not its headers.
+    - name: Install the readline headers
+      if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq --no-install-recommends libreadline-dev
+
     - name: Build the toolchain
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash

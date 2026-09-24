@@ -41,7 +41,10 @@ that is what the WoW client runs; testing against a newer Lua would let 5.2+
 behaviour leak into runtime code unnoticed.
 
 [hererocks](https://github.com/luarocks/hererocks) builds a matched
-Lua + LuaRocks pair into one directory and is the recommended route:
+Lua + LuaRocks pair into one directory and is the recommended route. On Linux
+it builds the interpreter with readline, so install the headers first
+(`sudo apt-get install libreadline-dev` on Debian and Ubuntu); macOS needs
+nothing extra:
 
 ```bash
 pipx install hererocks==0.25.1
