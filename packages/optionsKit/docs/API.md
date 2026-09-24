@@ -2,7 +2,7 @@
 
 OptionsKit API generation **1** provides a typed, validated, introspectable options tree with no renderer: what an addon exposes as configurable, how each option is read and written, and what a dialog or a command line needs to present it.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -27,7 +27,8 @@ OptionsKit does not rely on `require()` at runtime.
 
 | Facility | Used by | Without it |
 |---|---|---|
-| SettingsKit API 1, through `Registry:Find` | `Define` with `options.db`, which every `bind` needs | `Define` with `options.db` raises; options with `get`/`set` work as usual. |
+| SettingsKit API 1, through `Registry:Find` | `Define` with `options.db`, which every `bind` needs; `ProfileOptions` | `Define` with `options.db` and `ProfileOptions` raise; options with `get`/`set` work as usual. |
+| `UnitName("player")`, `GetRealmName()` | `ProfileOptions`, for the per-character profile choice `"<name> - <realm>"` | The choice is left out; the group works otherwise. Read once per `ProfileOptions` call. |
 | `issecretvalue` | `Set`, `Validate`, `Describe`'s copy of a value, and every path and addon-name argument | Nothing is treated as secret, which is correct on clients without secret values. |
 
 `issecretvalue` is read from the global table at every call, as SchemaKit reads it, so a probe that appears later is used at once.
@@ -41,6 +42,7 @@ Package facade:
 | `Define(addonName, tree, options?)` | Check and copy an options tree; return its handle. |
 | `Get(addonName)` | The tree defined for `addonName`, or `nil`. |
 | `Undefine(addonName)` | Forget the tree and disconnect its listeners. `true` when there was one. |
+| `ProfileOptions(db, options?)` | A ready-made `group` over a SettingsKit database's profiles, to place in a tree (see [Profile options](#profile-options-optionskitprofileoptionsdb-options)). |
 | `MAX_OPTIONS` | `1024`: the default `maxOptions`, the most options one tree holds. |
 | `MAX_DEPTH` | `8`: the default `maxDepth`, the most keys one option path has. |
 | `UNBOUNDED` | Sentinel `maxOptions` and `maxDynamicEntries` accept to lift the bound (see [Limits](#limits)). |
@@ -249,7 +251,7 @@ options:Execute("frame.resetPosition")     -- runs func; asking `confirm` is the
 |---|---|---|
 | `type` | string | The kind, below. |
 | `name` | string | The label. Required, except on the root. |
-| `desc` | string? | Longer help text. |
+| `desc` | string, or `fun(info): string` | Longer help text. A function is called by `Describe`, with the option's `info`, and must return a string; it is the one place a description can follow the current state. Nothing else reads `desc`. |
 | `order` | number? | Sort position among siblings; default `100`. Ties sort by `name`, then by key. A number, never a function: no code of yours runs inside a sort. |
 | `disabled` | boolean or `fun(info): boolean` | Shown but not editable. A disabled group disables everything below it. |
 | `hidden` | boolean or `fun(info): boolean` | Not shown. A hidden group hides everything below it. |
@@ -382,7 +384,7 @@ A fresh plain table describing the whole tree, built on every call and safe to e
 | `path` | every node | The dotted path; `""` for the root. |
 | `depth` | every node | `0` for the root. |
 | `name`, `order` | every node | As defined; the root's `name` defaults to the addon name, `order` to `100`. |
-| `desc` | when defined | |
+| `desc` | when defined | A `desc` function's result; `Describe` raises at your line when it returns no string. |
 | `disabled`, `hidden` | every node | Effective booleans, evaluated now (`IsDisabled` / `IsHidden`). |
 | `addonName` | the root | |
 | `children` | `group` | Child nodes, sorted as `Walk` visits them. |
@@ -406,6 +408,90 @@ This is the contract WidgetKit (package E) and CommandKit build on.
 4. **Refresh** by connecting `tree:OnChange` (and, for bound options, the database's `OnChange` and `OnProfileChanged`), then calling `Describe` again — or, for one widget, `tree:Get(path)`, `tree:IsDisabled(path)` and `tree:IsHidden(path)`, which allocate nothing. Coalesce a burst of changes into one rebuild; `Describe` allocates the whole description each time.
 
 A command line needs no widgets: `Walk` lists the paths, `Describe` gives each one's help (`name`, `desc`, `usage`, `values`), `Validate` answers a typed value and `Set` stores it.
+
+## Profile options: `OptionsKit:ProfileOptions(db, options?)`
+
+The group AceDBOptions gives an AceDB database, over a SettingsKit database: the user sees and chooses the profile this character uses, creates one by name, copies another profile's settings into the current one, resets the current one and deletes one. It is built from the existing kinds only, so WidgetKit, CommandKit and any other renderer show it without knowing what a profile is. `db` is the database `SettingsKit:Open` returned.
+
+```lua
+local options = OptionsKit:Define("MyAddon", {
+    type = "group",
+    args = {
+        general = { ... },
+        profiles = OptionsKit:ProfileOptions(db, { order = 90 }),
+    },
+})
+```
+
+The returned table is a `group` to place in a tree's `args` (or to pass as the root) **as it is**: `Define` recognises the table itself, so a copy of it would be an ordinary group whose callbacks still work but whose database connections (below) are never made. A group belongs to one tree at a time; `Define` refuses it while another defined tree holds it (`OptionsKit:Define tree.args.profiles is a profile group already defined in the tree of "MyAddon"; Undefine it first`) and refuses it twice in one tree. `Undefine` frees it.
+
+### The group
+
+| Key | Kind | What it does |
+|---|---|---|
+| `intro` | `description`, `fontSize = "medium"` | Explains profiles. `options.description` replaces the text. |
+| `current` | `select` | The profile this character uses: `db:GetProfile()`. The choices are `db:GetProfiles()` — which always includes the current profile, so a fresh database shows the default it was opened with, whatever `defaultProfile` said — plus this character's own profile, `"<name> - <realm>"`, when the client knows the player. No constant `"Default"` is offered: a database opened with another default never asked for it. `Set` calls `db:SetProfile(name)`, which creates a missing profile empty. |
+| `new` | `input`, `usage = "<profile name>"` | Reads `""`. `Validate` and `Set` apply SettingsKit's rules for a name — a character other than whitespace, at most `SettingsKit:GetLimits().maxProfileNameLength` bytes — and answer with a message rather than raising. `Set` calls `db:SetProfile(name)`: the profile is created and switched to; the name of an existing profile switches to it. |
+| `copySource` | `select` | Every profile but the current one. Remembers the choice for `copy`; reads `nil` until chosen, and again while the choice no longer qualifies (deleted elsewhere, or now current). |
+| `copy` | `execute`, `confirm` | `db:CopyProfile(copySource)`: replaces the current profile's settings. Disabled until `copySource` names a profile that exists and is not current. |
+| `reset` | `execute`, `confirm` | `db:ResetProfile()`: every setting of the current profile reads its default again. |
+| `deleteTarget` | `select` | Every profile but the current one. Remembers the choice for `delete`, with the same `nil` rule. |
+| `delete` | `execute`, `confirm` | `db:DeleteProfile(deleteTarget)`, then forgets the choice. Disabled until `deleteTarget` names a profile that exists and is not current. |
+
+The `select` options take their choices from a values function, so `Describe` and every check see the profiles as they are now; the group's `desc` and those of `current`, `copySource`, `copy`, `reset` and `deleteTarget` are `desc` functions that name the current profile (`Return every setting of "Raid" to its default.`). Both are read when `Describe` runs: a renderer that redraws from `Describe` shows the current names, one that caches its last description shows them as of that call.
+
+The three buttons carry `confirm` questions; whether the user is asked is the renderer's concern, as for any `execute`. `Execute` of `copy` or `delete` while its select is unset raises at your line (`OptionsKit.Tree:Execute profiles.copy needs "profiles.copySource" to be set first`); a renderer that honours `disabled` never gets there. A refusal by SettingsKit while switching (or an error raised by one of the database's own profile listeners) propagates from `Set` unchanged.
+
+### Refresh
+
+While a defined tree holds the group, it is connected to the database's `OnProfileChanged`, `OnProfileCopied`, `OnProfileReset` and `OnProfileDeleted` signals. Each fires the tree's `OnChange` with the `current` option's path and the current profile's name — `("profiles.current", "Raid")` — so a renderer connected to `tree:OnChange` redraws after a switch made anywhere, by the group's own buttons or by the addon. A switch through `current` fires `OnChange` once, for that `Set`. Creating through `new` fires twice: `("profiles.current", name)` from the database's signal, because the current profile changed, then `("profiles.new", name)` from the `Set`. `db:ResetDatabase()` fires `profiles.current` once when the database was already on its default profile (`OnProfileReset`) and twice otherwise (`OnProfileReset`, then `OnProfileChanged` for the switch back).
+
+The connections are made at the end of `Define`, after the whole tree was checked, and disconnected at `Undefine`. A `Define` that raises leaves every group free: a connect that fails (a table that passed the structural check but is no SettingsKit database) undoes the connections made before it, and the groups attached earlier in the same tree are detached, before the error reaches your line. The connections live with the tree, which lives for the session, so nothing needs closing at logout.
+
+### Options
+
+| Option | Meaning |
+|---|---|
+| `name` | The group's label; default the `group.name` string, "Profiles". |
+| `order` | The group's `order` among its siblings; default `100`. |
+| `description` | The text of the `intro` option; default the `intro` string. |
+| `localize` | `fun(key, default): string?`, called for every user-visible string with its key and English text. A string result is used; anything else keeps the default. Called at `ProfileOptions` for fixed strings, at every `Describe` for the live descriptions, and at every `Validate` and `Set` of `new` for its messages. |
+
+Unknown fields and wrong types are refused at your line: `OptionsKit:ProfileOptions options contains unknown field "colour"`, `OptionsKit:ProfileOptions options.localize must be a function`.
+
+### Strings and their keys
+
+`%s` is replaced by the current profile's name in quotes, except in `new.long`, where it is the byte limit.
+
+| Key | English default |
+|---|---|
+| `group.name` | `Profiles` |
+| `group.desc` | `This character uses the profile %s.` |
+| `intro` | `Profiles keep separate sets of settings. Choose the one this character uses, create a new one, copy another profile's settings into it, reset it, or delete one you no longer need.` |
+| `current.name` | `Current profile` |
+| `current.desc` | `The profile this character uses, now %s. Choosing a name that has no profile yet creates an empty one.` |
+| `new.name` | `New profile` |
+| `new.desc` | `Type a name to create an empty profile and switch to it. The name of an existing profile switches to that profile.` |
+| `new.usage` | `<profile name>` |
+| `new.blank` | `a profile name needs a character other than whitespace` |
+| `new.long` | `a profile name has at most %s bytes` |
+| `copySource.name` | `Copy from` |
+| `copySource.desc` | `The profile whose settings replace those of %s when you copy.` |
+| `copy.name` | `Copy` |
+| `copy.desc` | `Replace every setting of %s with a copy of the profile chosen above.` |
+| `copy.confirm` | `Replace the current profile's settings with a copy of the chosen profile?` |
+| `reset.name` | `Reset profile` |
+| `reset.desc` | `Return every setting of %s to its default.` |
+| `reset.confirm` | `Reset the current profile to its defaults?` |
+| `deleteTarget.name` | `Delete` |
+| `deleteTarget.desc` | `A profile other than %s, to delete.` |
+| `delete.name` | `Delete profile` |
+| `delete.desc` | `Delete the profile chosen above. Characters that used it start on the default profile next time.` |
+| `delete.confirm` | `Delete the chosen profile? Its settings cannot be recovered.` |
+
+### Errors
+
+`ProfileOptions` raises at your line when `Registry:Find("settingsKit", 1)` finds nothing (`OptionsKit:ProfileOptions needs SettingsKit API 1 to be loaded`) and when `db` is not a table offering the profile methods of a SettingsKit database (`OptionsKit:ProfileOptions db must be a SettingsKit database`); SettingsKit publishes no predicate for its databases, so the check is structural, as for `options.db`.
 
 ## Limits
 
@@ -446,7 +532,8 @@ Every argument failure, schema refusal and bind-path failure reports the line th
 | `Get`, `Set` of a valid value | One map read, one secret probe, the schema check and your callbacks; no allocation by OptionsKit. A bound option adds one table read per path key and one protected call around the write; a `Set` that must create a missing record allocates that nested table. |
 | `Walk` | One pass over a pre-sorted array; no allocation. |
 | `IsDisabled`, `IsHidden` | One check per ancestor; no allocation. |
-| `Describe` | Allocates the whole description. |
+| `Describe` | Allocates the whole description; a `desc` function runs per node that has one. |
+| The profile group's callbacks | Allocate: they call `db:GetProfiles()`. An options screen, not a hot path. |
 
 ## Deviations from the planned contract
 
@@ -456,11 +543,11 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`Set` returns `false, message` when `validate` refuses** instead of raising. A schema refusal is a caller's mistake and raises at the caller's line as planned; a `validate` refusal is a message for the user, and a renderer should not need `pcall` to show it.
 - **`Reset` clears the stored value** instead of writing a default read from the SettingsKit schema. The SettingsKit database surface does not expose its schema, and a cleared value is exactly what SettingsKit's default fallback answers for — without ever writing the default into the saved variables. `Reset` on an option with `get`/`set` raises, since no default exists for OptionsKit to restore.
 - **`options.db` is checked structurally**: `Registry:Find("settingsKit", 1)` must find SettingsKit, and the database must be a table with `OnChange` and `Validate` methods whose bound scopes are tables. SettingsKit API 1 publishes no predicate that recognises its databases.
-- **Additions:** `tree:Validate`, `tree:Execute`, `tree:IsDisabled` and `tree:IsHidden` — a renderer and a command line need to check typed input, run a button and re-evaluate predicates without rebuilding the whole description — and `OptionsKit:Undefine`, `OptionsKit.MAX_OPTIONS`, `OptionsKit.MAX_DEPTH`, `OptionsKit.UNBOUNDED` and the `maxOptions`, `maxDepth` and `maxDynamicEntries` options of `Define`.
-- **Not carried over from AceConfig:** `order` and `name` as functions (no user code inside a sort), inherited `get`/`set`/`handler` (each value option names its own reader and writer or `bind`), `width`, `arg`, and validation at render time (everything is checked once at `Define`).
+- **Additions:** `tree:Validate`, `tree:Execute`, `tree:IsDisabled` and `tree:IsHidden` — a renderer and a command line need to check typed input, run a button and re-evaluate predicates without rebuilding the whole description — and `OptionsKit:Undefine`, `OptionsKit.MAX_OPTIONS`, `OptionsKit.MAX_DEPTH`, `OptionsKit.UNBOUNDED` and the `maxOptions`, `maxDepth` and `maxDynamicEntries` options of `Define`; `OptionsKit:ProfileOptions` (revision 2) and, for it, `desc` as a function evaluated by `Describe`.
+- **Not carried over from AceConfig:** `order` and `name` as functions (no user code inside a sort), inherited `get`/`set`/`handler` (each value option names its own reader and writer or `bind`), `width`, `arg`, and validation at render time (everything is checked once at `Define`). `desc` is the one text a function may supply, because it is read by `Describe` alone.
 
 ## Embedded copies and upgrades
 
-Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype.
+Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when revision 2 loads over it, and a profile group defined before an upgrade keeps its database connections.
 
 Nothing survives `/reload`: trees are defined again when the addon loads.

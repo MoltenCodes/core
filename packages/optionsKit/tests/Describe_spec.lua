@@ -182,4 +182,68 @@ describe("OptionsKit tree Describe", function()
             end
         )
     end)
+    it("calls a desc function at Describe with the option's info", function()
+        local calls = 0
+        local other = OptionsKit:Define("Other", {
+            type = "group",
+            desc = function(info)
+                calls = calls + 1
+                return "root " .. info.path .. " " .. calls
+            end,
+            args = {
+                deep = {
+                    type = "group",
+                    name = "Deep",
+                    args = {
+                        note = {
+                            type = "header",
+                            name = "Note",
+                            desc = function(info)
+                                return "at " .. info.path .. " of " .. info.tree:Get("size")
+                            end,
+                        },
+                    },
+                },
+                size = {
+                    type = "range",
+                    name = "Size",
+                    min = 1,
+                    max = 10,
+                    get = function()
+                        return 4
+                    end,
+                    set = function() end,
+                },
+            },
+        })
+
+        local root = other:Describe()
+        assert.are.equal("root  1", root.desc)
+        assert.are.equal("at deep.note of 4", root.children[1].children[1].desc)
+        assert.are.equal("root  2", other:Describe().desc)
+    end)
+
+    it("refuses a desc function that returns no string, at the caller", function()
+        local other = OptionsKit:Define("Other", {
+            type = "group",
+            args = {
+                note = {
+                    type = "header",
+                    name = "Note",
+                    desc = function()
+                        return nil
+                    end,
+                },
+            },
+        })
+        local ok, message = pcall(other.Describe, other)
+        assert.is_false(ok)
+        assert.is_truthy(
+            tostring(message):find(
+                'OptionsKit.Tree:Describe desc function of "note" returned no string',
+                1,
+                true
+            )
+        )
+    end)
 end)

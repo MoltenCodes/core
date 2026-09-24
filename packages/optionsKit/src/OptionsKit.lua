@@ -12,11 +12,12 @@
 -- An option's value is read and written either through the addon's own
 -- `get(info)` / `set(info, value)` functions or through `bind =
 -- "profile.path.to.value"`, which walks a SettingsKit database passed to
--- `Define` as `options.db`.
+-- `Define` as `options.db`. `ProfileOptions(db)` builds a ready-made group
+-- over a SettingsKit database's profiles from these same kinds.
 --
 -- OptionsKit requires Registry API 2, SchemaKit API 1 and SignalKit API 1.
 -- SettingsKit API 1 is optional and found through `Registry:Find` only when
--- `Define` receives `options.db`.
+-- `Define` receives `options.db` or `ProfileOptions` is called.
 --
 -- Contents
 -- --------
@@ -32,6 +33,7 @@
 --   Bound values .......... reading and writing a SettingsKit database path
 --   Tree methods .......... the handle `Define` returns
 --   Describe .............. the plain, allocating snapshot for renderers
+--   Profile options ....... the ready-made group over a database's profiles
 --   Package public API .... the facade published through Registry
 --   Commit ................ prototype/facade assignment and self-check
 --
@@ -41,7 +43,7 @@
 
 local PACKAGE_NAME = "optionsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -50,8 +52,8 @@ local STATE_SCHEMA = 1
 
 -- Every tree records the layout it was built with, so a later revision that
 -- changes the layout can upgrade old trees instead of guessing from which
--- fields exist.
-local TREE_SCHEMA = 1
+-- fields exist. Layout 2 (revision 2) added `_profileLinks`.
+local TREE_SCHEMA = 2
 
 -- The default of `Define`'s `maxOptions`: the most options one tree holds,
 -- counting groups and everything below the root. A tree is walked and described
@@ -158,7 +160,7 @@ local KEY_PATTERN = "^[%a_][%w_]*$"
 
 -- The published surface, listed once so the public-surface predicate reads as
 -- a checklist instead of a long boolean expression.
-local FACADE_METHODS = { "Define", "Get", "Undefine" }
+local FACADE_METHODS = { "Define", "Get", "Undefine", "ProfileOptions" }
 local TREE_METHODS = {
     "Get",
     "Set",
@@ -199,7 +201,7 @@ local TREE_METHODS = {
 ---@class OptionsKit.Option
 ---@field type OptionsKit.Kind
 ---@field name string? Label. Required except on the root group.
----@field desc string? Longer help text.
+---@field desc (string|fun(info: OptionsKit.Info): string)? Longer help text, or a function `Describe` calls for it, so the text can follow the current state.
 ---@field order number? Sort position among siblings, default 100; ties sort by name, then key.
 ---@field disabled OptionsKit.Predicate? A disabled group disables everything below it.
 ---@field hidden OptionsKit.Predicate? A hidden group hides everything below it.
@@ -233,6 +235,18 @@ local TREE_METHODS = {
 ---@field maxOptions (integer|table)? The most options the tree holds below the root: a positive integer or `OptionsKit.UNBOUNDED`; default `1024`.
 ---@field maxDepth integer? The most keys an option path has: an integer from `1` to `32`; default `8`. `UNBOUNDED` is refused: the tree is built recursively on the Lua stack.
 ---@field maxDynamicEntries (integer|table)? The most entries of a `values` table, and the map bound of a multiselect over a values function: a positive integer or `OptionsKit.UNBOUNDED`; default `1024`.
+
+---The hook `ProfileOptions` passes every user-visible string through:
+---`key` names the string (`docs/API.md` lists the keys) and `default` is its
+---English text. A string result is used; anything else keeps the default.
+---@alias OptionsKit.Localize fun(key: string, default: string): string?
+
+---Option table accepted by `OptionsKit:ProfileOptions`.
+---@class OptionsKit.ProfileOptionsOptions
+---@field name string? The group's label; default the localised `group.name`, "Profiles".
+---@field order number? The group's sort position among its siblings; default `100`.
+---@field description string? The introduction text shown above the options; default the localised `intro`.
+---@field localize OptionsKit.Localize? Translates the group's strings.
 
 ---One node of `tree:Describe()`. Every table in it is fresh.
 ---@class OptionsKit.Description
@@ -280,6 +294,7 @@ local TREE_METHODS = {
 ---@field Define fun(self: OptionsKit, addonName: string, tree: OptionsKit.Option, options: OptionsKit.DefineOptions?): OptionsKit.Tree
 ---@field Get fun(self: OptionsKit, addonName: string): OptionsKit.Tree?
 ---@field Undefine fun(self: OptionsKit, addonName: string): boolean
+---@field ProfileOptions fun(self: OptionsKit, db: table, options: OptionsKit.ProfileOptionsOptions?): OptionsKit.Option
 
 -- Dependencies ---------------------------------------------------------------
 
@@ -406,6 +421,7 @@ local function validateCurrentState(implementation)
     local currentState = rawget(implementation, "_state")
     return validateStateBase(currentState)
         and rawget(implementation, "UNBOUNDED") == rawget(currentState, "unbounded")
+        and type(rawget(currentState, "profileGroups")) == "table"
 end
 
 -- Bootstrap ------------------------------------------------------------------
@@ -446,11 +462,28 @@ if previousRevision == nil then
         -- same table and a `Define` option written against one copy keeps its
         -- meaning after an upgrade.
         unbounded = {},
+        -- The group table `ProfileOptions` returned to the link record behind
+        -- it, so `Define` recognises the group when it meets it in a tree.
+        -- Weak keys: a group the consumer dropped is forgotten with it.
+        profileGroups = setmetatable({}, { __mode = "k" }),
     }
     rawset(OptionsKit, "Tree", Tree)
     rawset(OptionsKit, "_state", state)
 elseif type(Tree) ~= "table" or not validateStateBase(state) then
     error("MoltenCodes OptionsKit package state is corrupted or incomplete", 2)
+end
+
+-- Revision 1 had no profile groups and built tree layout 1. The group map is
+-- added, and every tree gains the (empty) list of profile links `Undefine`
+-- detaches: a revision 1 tree cannot contain a profile group.
+if rawget(state, "profileGroups") == nil then
+    rawset(state, "profileGroups", setmetatable({}, { __mode = "k" }))
+end
+for _, existingTree in next, rawget(state, "trees") do
+    if rawget(existingTree, "_schema") == 1 then
+        rawset(existingTree, "_profileLinks", {})
+        rawset(existingTree, "_schema", TREE_SCHEMA)
+    end
 end
 
 -- The metatable and prototype are kept across upgrades, so trees built by an
@@ -459,6 +492,7 @@ end
 local TREE_METATABLE = rawget(state, "treeMetatable")
 local trees = rawget(state, "trees")
 local UNBOUNDED = rawget(state, "unbounded")
+local profileGroups = rawget(state, "profileGroups")
 rawset(TREE_METATABLE, "__index", Tree)
 
 -- Argument checks ------------------------------------------------------------
@@ -546,6 +580,16 @@ end
 ---@param value any
 ---@param label string
 ---@param level integer
+local function checkOptionalStringOrFunction(value, label, level)
+    local valueType = type(value)
+    if value ~= nil and valueType ~= "string" and valueType ~= "function" then
+        error(label .. " must be a string or a function", level)
+    end
+end
+
+---@param value any
+---@param label string
+---@param level integer
 local function checkOptionalBoolean(value, label, level)
     if value ~= nil and type(value) ~= "boolean" then
         error(label .. " must be a boolean", level)
@@ -627,7 +671,7 @@ local function checkCommonFields(spec, isRoot, label, level)
     elseif type(spec.name) ~= "string" then
         error(label .. ".name must be a string", level)
     end
-    checkOptionalString(spec.desc, label .. ".desc", level + 1)
+    checkOptionalStringOrFunction(spec.desc, label .. ".desc", level + 1)
     if spec.order ~= nil then
         checkNumber(spec.order, label .. ".order", level + 1)
     end
@@ -1008,6 +1052,40 @@ local function copyHints(record, spec)
     rawset(record, "_hints", hints)
 end
 
+---When `spec` is a group `ProfileOptions` returned, remember its link and
+---the path it lands at, so `define` can attach it once the whole tree is
+---built. A group already defined in a tree, or appearing twice in this one,
+---is refused: its link carries the chosen profiles and the tree it notifies,
+---which cannot be shared.
+---@param context table
+---@param spec table
+---@param path string
+---@param label string
+---@param level integer
+local function collectProfileLink(context, spec, path, label, level)
+    local link = rawget(profileGroups, spec)
+    if link == nil then
+        return
+    end
+    if link.tree then
+        error(
+            label
+                .. ' is a profile group already defined in the tree of "'
+                .. rawget(link.tree, "_addonName")
+                .. '"; Undefine it first',
+            level
+        )
+    end
+    local links = context.profileLinks
+    for index = 1, #links do
+        if links[index] == link then
+            error(label .. " is a profile group that already appears in this tree", level)
+        end
+    end
+    links[#links + 1] = link
+    context.profilePaths[#links] = path
+end
+
 local buildOption
 
 ---Build every child of a group, sort them and link them to the group.
@@ -1088,6 +1166,7 @@ buildOption = function(context, spec, parent, key, label, level)
 
     if kind == KIND_GROUP then
         checkOptionalBoolean(spec.inline, label .. ".inline", level + 1)
+        collectProfileLink(context, spec, path, label, level + 1)
         buildChildren(context, record, spec.args, label, level + 1)
     elseif VALUE_KINDS[kind] then
         buildValueFields(context, record, spec, label, level + 1)
@@ -1576,6 +1655,17 @@ local function describeRecord(tree, record, level)
         node.key = key
     end
     local desc = rawget(record, "_desc")
+    if type(desc) == "function" then
+        desc = desc(rawget(record, "_info"))
+        if type(desc) ~= "string" then
+            error(
+                'OptionsKit.Tree:Describe desc function of "'
+                    .. rawget(record, "_path")
+                    .. '" returned no string',
+                level
+            )
+        end
+    end
     if desc then
         node.desc = desc
     end
@@ -1628,6 +1718,559 @@ local function treeDescribe(self)
     local root = describeRecord(self, rawget(self, "_root"), 3)
     root.addonName = rawget(self, "_addonName")
     return root
+end
+
+-- Profile options ------------------------------------------------------------
+--
+-- `OptionsKit:ProfileOptions(db, options)` builds the group AceDBOptions gives
+-- an AceDB database, over a SettingsKit database: choose the current profile,
+-- create one, copy another one's settings into it, reset it, delete one. It is
+-- built from the existing kinds only (`description`, `select`, `input` and
+-- `execute`), so every renderer shows it without knowing what a profile is.
+--
+-- The group's callbacks close over one *link* record: the database, the
+-- SettingsKit facade, the translation hook, the profiles chosen for copying
+-- and deleting, and — once `Define` has placed the group in a tree — that tree
+-- and the group's path in it. While a tree holds the group, the link is
+-- connected to the database's four profile signals and fires the tree's
+-- `OnChange` on each, so a renderer redraws after a switch made elsewhere;
+-- `Undefine` disconnects them. The group table is the key of
+-- `state.profileGroups`, which is how `Define` finds the link.
+
+-- The methods the group calls on the database. Checked structurally, as
+-- `options.db` is: SettingsKit API 1 publishes no predicate for its databases.
+local PROFILE_DATABASE_METHODS = {
+    "GetProfile",
+    "SetProfile",
+    "GetProfiles",
+    "CopyProfile",
+    "ResetProfile",
+    "DeleteProfile",
+    "OnProfileChanged",
+    "OnProfileCopied",
+    "OnProfileReset",
+    "OnProfileDeleted",
+}
+
+-- The complete set of fields `ProfileOptions` options accept.
+local PROFILE_OPTION_KEYS = { name = true, order = true, description = true, localize = true }
+
+-- Every user-visible string of the profile group, by the key the `localize`
+-- hook receives, in English. `%s` stands for the current profile's name in
+-- quotes, except in `new.long`, where it is the byte limit.
+local PROFILE_STRINGS = {
+    ["group.name"] = "Profiles",
+    ["group.desc"] = "This character uses the profile %s.",
+    ["intro"] = "Profiles keep separate sets of settings. Choose the one this character uses, "
+        .. "create a new one, copy another profile's settings into it, reset it, or delete one "
+        .. "you no longer need.",
+    ["current.name"] = "Current profile",
+    ["current.desc"] = "The profile this character uses, now %s. Choosing a name that has no "
+        .. "profile yet creates an empty one.",
+    ["new.name"] = "New profile",
+    ["new.desc"] = "Type a name to create an empty profile and switch to it. The name of an "
+        .. "existing profile switches to that profile.",
+    ["new.usage"] = "<profile name>",
+    ["new.blank"] = "a profile name needs a character other than whitespace",
+    ["new.long"] = "a profile name has at most %s bytes",
+    ["copySource.name"] = "Copy from",
+    ["copySource.desc"] = "The profile whose settings replace those of %s when you copy.",
+    ["copy.name"] = "Copy",
+    ["copy.desc"] = "Replace every setting of %s with a copy of the profile chosen above.",
+    ["copy.confirm"] = "Replace the current profile's settings with a copy of the chosen profile?",
+    ["reset.name"] = "Reset profile",
+    ["reset.desc"] = "Return every setting of %s to its default.",
+    ["reset.confirm"] = "Reset the current profile to its defaults?",
+    ["deleteTarget.name"] = "Delete",
+    ["deleteTarget.desc"] = "A profile other than %s, to delete.",
+    ["delete.name"] = "Delete profile",
+    ["delete.desc"] = "Delete the profile chosen above. Characters that used it start on the "
+        .. "default profile next time.",
+    ["delete.confirm"] = "Delete the chosen profile? Its settings cannot be recovered.",
+}
+
+-- The keys of the group's options, so the paths built at attach and the
+-- messages that name them agree.
+local PROFILE_KEY_CURRENT = "current"
+local PROFILE_KEY_COPY_SOURCE = "copySource"
+local PROFILE_KEY_DELETE_TARGET = "deleteTarget"
+
+---Find SettingsKit API 1 through the Registry, or `nil`. It is an optional
+---dependency, so it is looked up at call time, never at load.
+---@return table|nil SettingsKit
+local function findSettingsKit()
+    local findPackage = rawget(Registry, "Find")
+    if type(findPackage) ~= "function" then
+        return nil
+    end
+    local SettingsKit = findPackage(Registry, "settingsKit", OPTIONAL_SETTINGSKIT_API)
+    if type(SettingsKit) ~= "table" then
+        return nil
+    end
+    return SettingsKit
+end
+
+---Refuse anything but a table offering every method the group calls.
+---@param db any
+---@param label string
+---@param level integer
+local function validateProfileDatabase(db, label, level)
+    if type(db) ~= "table" then
+        error(label .. " must be a SettingsKit database", level)
+    end
+    for index = 1, #PROFILE_DATABASE_METHODS do
+        if type(db[PROFILE_DATABASE_METHODS[index]]) ~= "function" then
+            error(label .. " must be a SettingsKit database", level)
+        end
+    end
+end
+
+---Read the `ProfileOptions` options into `link`.
+---@param options any
+---@param link table
+---@param level integer
+local function readProfileOptions(options, link, level)
+    if options == nil then
+        return
+    end
+    if type(options) ~= "table" then
+        error("OptionsKit:ProfileOptions options must be a table", level)
+    end
+    local firstUnknown = nil
+    for key in pairs(options) do
+        if PROFILE_OPTION_KEYS[key] ~= true then
+            local text = type(key) == "string" and key or "<" .. type(key) .. " key>"
+            if firstUnknown == nil or text < firstUnknown then
+                firstUnknown = text
+            end
+        end
+    end
+    if firstUnknown ~= nil then
+        error(
+            'OptionsKit:ProfileOptions options contains unknown field "' .. firstUnknown .. '"',
+            level
+        )
+    end
+    checkOptionalString(
+        rawget(options, "name"),
+        "OptionsKit:ProfileOptions options.name",
+        level + 1
+    )
+    local order = rawget(options, "order")
+    if order ~= nil then
+        checkNumber(order, "OptionsKit:ProfileOptions options.order", level + 1)
+    end
+    checkOptionalString(
+        rawget(options, "description"),
+        "OptionsKit:ProfileOptions options.description",
+        level + 1
+    )
+    checkOptionalFunction(
+        rawget(options, "localize"),
+        "OptionsKit:ProfileOptions options.localize",
+        level + 1
+    )
+    link.name = rawget(options, "name") or false
+    link.order = order or false
+    link.description = rawget(options, "description") or false
+    link.localize = rawget(options, "localize") or false
+end
+
+---The text for `key`: the hook's answer when it is a string, else the English
+---default.
+---@param link table
+---@param key string
+---@return string
+local function translate(link, key)
+    local default = PROFILE_STRINGS[key]
+    local localize = link.localize
+    if localize then
+        local text = localize(key, default)
+        if type(text) == "string" then
+            return text
+        end
+    end
+    return default
+end
+
+---Put `value` where `template` says `%s`. A function replacement, so a `%` in
+---a profile name is never read as a `gsub` capture.
+---@param template string
+---@param value string
+---@return string
+local function fill(template, value)
+    return (template:gsub("%%s", function()
+        return value
+    end))
+end
+
+---The text for `key` with the current profile's name, quoted, filled in.
+---@param link table
+---@param key string
+---@return string
+local function withCurrentProfile(link, key)
+    return fill(translate(link, key), '"' .. link.db:GetProfile() .. '"')
+end
+
+---The per-character profile name SettingsKit builds, `"<name> - <realm>"`, or
+---`false` when the client does not know the player. Read once, at
+---`ProfileOptions`, the way SettingsKit reads it once at `Open`.
+---@return string|false
+local function readCharacterProfile()
+    -- UnitName and GetRealmName are World of Warcraft client APIs reachable only through the global table.
+    -- selene: allow(global_usage)
+    local unitName = rawget(_G, "UnitName")
+    -- selene: allow(global_usage)
+    local getRealmName = rawget(_G, "GetRealmName")
+    if type(unitName) ~= "function" or type(getRealmName) ~= "function" then
+        return false
+    end
+    local name = unitName("player")
+    local realm = getRealmName()
+    if isSecret(name) or isSecret(realm) then
+        return false
+    end
+    if type(name) ~= "string" or name == "" or type(realm) ~= "string" or realm == "" then
+        return false
+    end
+    return name .. " - " .. realm
+end
+
+---The choices of the current-profile select: every profile, the current one
+---(which `GetProfiles` always includes, so a fresh database shows the default
+---it was opened with) and this character's own profile, which a switch
+---creates. SettingsKit's own default profile is not offered by name: a
+---database opened with another `defaultProfile` never asked for it. Key and
+---label are the name. Allocates, as `GetProfiles`.
+---@param link table
+---@return table<string, string>
+local function currentChoices(link)
+    local choices = {}
+    local names = link.db:GetProfiles()
+    for index = 1, #names do
+        choices[names[index]] = names[index]
+    end
+    local current = link.db:GetProfile()
+    choices[current] = current
+    if link.characterProfile then
+        choices[link.characterProfile] = link.characterProfile
+    end
+    return choices
+end
+
+---Every profile but the current one: what can be copied from or deleted.
+---@param link table
+---@return table<string, string>
+local function otherChoices(link)
+    local choices = {}
+    local current = link.db:GetProfile()
+    local names = link.db:GetProfiles()
+    for index = 1, #names do
+        local name = names[index]
+        if name ~= current then
+            choices[name] = name
+        end
+    end
+    return choices
+end
+
+---Whether `name` is a profile that exists and is not the current one.
+---@param link table
+---@param name any
+---@return boolean
+local function isOtherProfile(link, name)
+    if type(name) ~= "string" then
+        return false
+    end
+    return otherChoices(link)[name] ~= nil
+end
+
+---Switch the database to `name` without the link's own listener firing the
+---tree: `Set` fires `OnChange` for this write itself. The flag is cleared even
+---when SettingsKit or one of its listeners raises; the error then propagates
+---as it is.
+---@param link table
+---@param name string
+local function switchProfile(link, name)
+    local db = link.db
+    link.suppress = true
+    local switched, failure = pcall(db.SetProfile, db, name)
+    link.suppress = false
+    if not switched then
+        error(failure, 0)
+    end
+end
+
+---The check the new-profile input runs: SettingsKit's own rules for a profile
+---name, answered as a message instead of an error, so an edit box can show it.
+---@param link table
+---@param name string
+---@return boolean accepted
+---@return string|nil message
+local function validateNewProfileName(link, name)
+    if not name:find("%S") then
+        return false, translate(link, "new.blank")
+    end
+    local maxLength = link.SettingsKit:GetLimits().maxProfileNameLength
+    if #name > maxLength then
+        return false, fill(translate(link, "new.long"), tostring(maxLength))
+    end
+    return true, nil
+end
+
+---Raise, at the caller of `Execute`, for a button pressed before its select
+---was set: a renderer that honours `disabled` never gets here.
+---@param info OptionsKit.Info
+---@param selectKey string
+local function refuseUnchosen(info, selectKey)
+    local parentPath = info.path:match("^(.*)%.[^.]+$") or ""
+    local selectPath = parentPath == "" and selectKey or parentPath .. "." .. selectKey
+    -- refuseUnchosen <- func <- Execute <- the caller
+    error(
+        "OptionsKit.Tree:Execute " .. info.path .. ' needs "' .. selectPath .. '" to be set first',
+        4
+    )
+end
+
+---Build the group's options. Every callback closes over `link` only, so the
+---group works in whichever tree `Define` places it.
+---@param link table
+---@return table<string, OptionsKit.Option> args
+local function buildProfileArgs(link)
+    local db = link.db
+    return {
+        intro = {
+            type = KIND_DESCRIPTION,
+            name = link.description or translate(link, "intro"),
+            fontSize = "medium",
+            order = 1,
+        },
+        [PROFILE_KEY_CURRENT] = {
+            type = KIND_SELECT,
+            name = translate(link, "current.name"),
+            desc = function()
+                return withCurrentProfile(link, "current.desc")
+            end,
+            order = 2,
+            values = function()
+                return currentChoices(link)
+            end,
+            get = function()
+                return db:GetProfile()
+            end,
+            set = function(_, name)
+                switchProfile(link, name)
+            end,
+        },
+        new = {
+            type = KIND_INPUT,
+            name = translate(link, "new.name"),
+            desc = translate(link, "new.desc"),
+            usage = translate(link, "new.usage"),
+            order = 3,
+            get = function()
+                return ""
+            end,
+            validate = function(_, name)
+                return validateNewProfileName(link, name)
+            end,
+            -- Not suppressed: the current profile changed, so the link fires
+            -- `current` as for any other switch, beside `Set`'s own `new`.
+            set = function(_, name)
+                db:SetProfile(name)
+            end,
+        },
+        [PROFILE_KEY_COPY_SOURCE] = {
+            type = KIND_SELECT,
+            name = translate(link, "copySource.name"),
+            desc = function()
+                return withCurrentProfile(link, "copySource.desc")
+            end,
+            order = 4,
+            values = function()
+                return otherChoices(link)
+            end,
+            get = function()
+                return isOtherProfile(link, link.copySource) and link.copySource or nil
+            end,
+            set = function(_, name)
+                link.copySource = name
+            end,
+        },
+        copy = {
+            type = KIND_EXECUTE,
+            name = translate(link, "copy.name"),
+            desc = function()
+                return withCurrentProfile(link, "copy.desc")
+            end,
+            confirm = translate(link, "copy.confirm"),
+            order = 5,
+            disabled = function()
+                return not isOtherProfile(link, link.copySource)
+            end,
+            func = function(info)
+                local source = link.copySource
+                if not isOtherProfile(link, source) then
+                    refuseUnchosen(info, PROFILE_KEY_COPY_SOURCE)
+                end
+                db:CopyProfile(source)
+            end,
+        },
+        reset = {
+            type = KIND_EXECUTE,
+            name = translate(link, "reset.name"),
+            desc = function()
+                return withCurrentProfile(link, "reset.desc")
+            end,
+            confirm = translate(link, "reset.confirm"),
+            order = 6,
+            func = function()
+                db:ResetProfile()
+            end,
+        },
+        [PROFILE_KEY_DELETE_TARGET] = {
+            type = KIND_SELECT,
+            name = translate(link, "deleteTarget.name"),
+            desc = function()
+                return withCurrentProfile(link, "deleteTarget.desc")
+            end,
+            order = 7,
+            values = function()
+                return otherChoices(link)
+            end,
+            get = function()
+                return isOtherProfile(link, link.deleteTarget) and link.deleteTarget or nil
+            end,
+            set = function(_, name)
+                link.deleteTarget = name
+            end,
+        },
+        delete = {
+            type = KIND_EXECUTE,
+            name = translate(link, "delete.name"),
+            desc = translate(link, "delete.desc"),
+            confirm = translate(link, "delete.confirm"),
+            order = 8,
+            disabled = function()
+                return not isOtherProfile(link, link.deleteTarget)
+            end,
+            func = function(info)
+                local target = link.deleteTarget
+                if not isOtherProfile(link, target) then
+                    refuseUnchosen(info, PROFILE_KEY_DELETE_TARGET)
+                end
+                db:DeleteProfile(target)
+                link.deleteTarget = false
+            end,
+        },
+    }
+end
+
+-- The database methods a link connects to, in connection order.
+local PROFILE_SIGNAL_METHODS =
+    { "OnProfileChanged", "OnProfileCopied", "OnProfileReset", "OnProfileDeleted" }
+
+---Disconnect every connection in `connections`.
+---@param connections table
+local function disconnectAll(connections)
+    for index = 1, #connections do
+        connections[index]:Disconnect()
+    end
+end
+
+---Attach `link` to the tree `Define` placed its group in, at `path`: connect
+---the database's profile signals, then record the tree. Each signal fires the
+---tree's `OnChange` with the current-profile option's path and the current
+---profile's name — unless the group's own `current` is switching, which
+---fires by itself. A connect that raises (a database that is not SettingsKit's
+---after all) undoes the connections made before it and leaves the link free,
+---so the error reaches the caller of `Define` without a stuck group.
+---@param link table
+---@param tree OptionsKit.Tree
+---@param path string the group's path, `""` when the group is the root
+local function attachProfileLink(link, tree, path)
+    local currentPath = path == "" and PROFILE_KEY_CURRENT or path .. "." .. PROFILE_KEY_CURRENT
+    local db = link.db
+    local function notify()
+        if link.suppress then
+            return
+        end
+        rawget(tree, "_changed"):Fire(tree, currentPath, db:GetProfile())
+    end
+    local connections = {}
+    for index = 1, #PROFILE_SIGNAL_METHODS do
+        local connected, result = pcall(db[PROFILE_SIGNAL_METHODS[index]], db, notify)
+        if not connected then
+            disconnectAll(connections)
+            error(result, 0)
+        end
+        connections[index] = result
+    end
+    link.connections = connections
+    link.tree = tree
+    link.path = path
+end
+
+---Detach `link` from its tree: disconnect the profile signals, so the group
+---can be defined again elsewhere.
+---@param link table
+local function detachProfileLink(link)
+    local connections = link.connections
+    if not connections then
+        return
+    end
+    disconnectAll(connections)
+    link.connections = false
+    link.tree = false
+    link.path = false
+end
+
+---Build a ready-made options group over the profiles of a SettingsKit
+---database, to place in a tree's `args`. See `docs/API.md`, *Profile options*.
+---@param _ OptionsKit
+---@param db table a SettingsKit API 1 database
+---@param options OptionsKit.ProfileOptionsOptions?
+---@return OptionsKit.Option group
+local function profileOptions(_, db, options)
+    local SettingsKit = findSettingsKit()
+    if SettingsKit == nil then
+        error("OptionsKit:ProfileOptions needs SettingsKit API 1 to be loaded", 2)
+    end
+    validateProfileDatabase(db, "OptionsKit:ProfileOptions db", 3)
+    local link = {
+        db = db,
+        SettingsKit = SettingsKit,
+        characterProfile = readCharacterProfile(),
+        -- The `ProfileOptions` options, `false` when absent.
+        name = false,
+        order = false,
+        description = false,
+        localize = false,
+        -- The profiles chosen in the copy and delete selects, `false` for none.
+        copySource = false,
+        deleteTarget = false,
+        -- `true` while the group's own `Set` switches the profile.
+        suppress = false,
+        -- Set by `attachProfileLink`, cleared by `detachProfileLink`.
+        tree = false,
+        path = false,
+        connections = false,
+    }
+    readProfileOptions(options, link, 3)
+
+    local group = {
+        type = KIND_GROUP,
+        name = link.name or translate(link, "group.name"),
+        desc = function()
+            return withCurrentProfile(link, "group.desc")
+        end,
+        args = buildProfileArgs(link),
+    }
+    if link.order then
+        group.order = link.order
+    end
+    rawset(profileGroups, group, link)
+    return group
 end
 
 -- Package public API ---------------------------------------------------------
@@ -1739,11 +2382,7 @@ local function readDefineOptions(options, context, level)
     if db == nil then
         return false
     end
-    local findPackage = rawget(Registry, "Find")
-    local SettingsKit = type(findPackage) == "function"
-            and findPackage(Registry, "settingsKit", OPTIONAL_SETTINGSKIT_API)
-        or nil
-    if type(SettingsKit) ~= "table" then
+    if findSettingsKit() == nil then
         error("OptionsKit:Define options.db needs SettingsKit API 1 to be loaded", level)
     end
     if
@@ -1775,6 +2414,9 @@ local function define(_, addonName, spec, options)
         label = "OptionsKit:Define tree",
         count = 0,
         records = {},
+        -- The profile groups met while building, and the path of each.
+        profileLinks = {},
+        profilePaths = {},
         -- Filled in by `readDefineOptions`: numbers, `math.huge` for
         -- `OptionsKit.UNBOUNDED`.
         maxOptions = MAX_OPTIONS,
@@ -1804,6 +2446,20 @@ local function define(_, addonName, spec, options)
     rawset(tree, "_records", context.records)
     rawset(tree, "_walk", walk)
     rawset(tree, "_changed", SignalKit:New())
+    -- Attached last: a refusal above leaves no link pointing at this tree,
+    -- and a link that fails to attach frees the ones attached before it.
+    local links = context.profileLinks
+    local paths = context.profilePaths
+    for index = 1, #links do
+        local attached, failure = pcall(attachProfileLink, links[index], tree, paths[index])
+        if not attached then
+            for previous = 1, index - 1 do
+                detachProfileLink(links[previous])
+            end
+            error(failure, 0)
+        end
+    end
+    rawset(tree, "_profileLinks", links)
     rawset(tree, "_defined", true)
     rawset(trees, addonName, tree)
     return tree
@@ -1833,6 +2489,10 @@ local function undefine(_, addonName)
     rawset(trees, addonName, nil)
     rawset(tree, "_defined", false)
     rawget(tree, "_changed"):DisconnectAll()
+    local links = rawget(tree, "_profileLinks")
+    for index = 1, #links do
+        detachProfileLink(links[index])
+    end
     return true
 end
 
@@ -1857,6 +2517,7 @@ rawset(OptionsKit, "UNBOUNDED", UNBOUNDED)
 rawset(OptionsKit, "Define", define)
 rawset(OptionsKit, "Get", getTree)
 rawset(OptionsKit, "Undefine", undefine)
+rawset(OptionsKit, "ProfileOptions", profileOptions)
 
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 

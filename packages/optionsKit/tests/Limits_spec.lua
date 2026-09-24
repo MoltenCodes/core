@@ -244,8 +244,9 @@ describe("OptionsKit limits", function()
             maxDynamicEntries = 4,
         })
 
-        local upgraded = TestEnv.LoadRevision(2)
-        assert.are.equal(2, upgraded.REVISION)
+        local nextRevision = OptionsKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
         assert.are.equal(sentinel, upgraded._state.unbounded)
         assert.are.equal(tree, upgraded:Get("Addon"))

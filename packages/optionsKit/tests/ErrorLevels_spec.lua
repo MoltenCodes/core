@@ -72,6 +72,13 @@ describe("OptionsKit error levels", function()
                 OptionsKit:Define("Other", {}, { db = {} })
             end
         )
+        assertReportedAtCaller(
+            "OptionsKit:ProfileOptions needs SettingsKit API 1 to be loaded",
+            function(mark)
+                mark()
+                OptionsKit:ProfileOptions({})
+            end
+        )
         assertReportedAtCaller("OptionsKit:Get addonName must be a non-empty string", function(mark)
             mark()
             OptionsKit:Get(false)
@@ -342,6 +349,43 @@ describe("OptionsKit error levels", function()
             function(mark)
                 mark()
                 tree:OnChange(nil)
+            end
+        )
+    end)
+    it("points a desc refusal and a failing desc function at the caller", function()
+        assertReportedAtCaller(
+            "OptionsKit:Define tree.args.note.desc must be a string or a function",
+            function(mark)
+                mark()
+                OptionsKit:Define("Other", {
+                    type = "group",
+                    args = { note = { type = "header", name = "Note", desc = 1 } },
+                })
+            end
+        )
+        local other = OptionsKit:Define("Other", {
+            type = "group",
+            args = {
+                deep = {
+                    type = "group",
+                    name = "Deep",
+                    args = {
+                        note = {
+                            type = "header",
+                            name = "Note",
+                            desc = function()
+                                return 1
+                            end,
+                        },
+                    },
+                },
+            },
+        })
+        assertReportedAtCaller(
+            'OptionsKit.Tree:Describe desc function of "deep.note" returned no string',
+            function(mark)
+                mark()
+                other:Describe()
             end
         )
     end)

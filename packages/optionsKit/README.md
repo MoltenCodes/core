@@ -62,6 +62,7 @@ local options = OptionsKit:Define("MyAddon", {
                 },
             },
         },
+        profiles = OptionsKit:ProfileOptions(MyAddon.db, { order = 90 }), -- choose, create, copy, reset, delete
     },
 }, { db = MyAddon.db }) -- a SettingsKit database, needed only for `bind`
 
@@ -83,6 +84,7 @@ What each piece promises:
 - **Cheap where it is called often.** `Get`, `Set`, `Walk`, `IsDisabled` and `IsHidden` look paths up in a map built at `Define` and allocate nothing; `Describe` allocates by design.
 - **Bounded.** At most 1024 options per tree and 8 keys per path by default, refused at `Define`; `maxOptions`, `maxDepth` (up to 32) and `maxDynamicEntries` open them per tree, and `OptionsKit.UNBOUNDED` lifts the first and last (see *Limits* in the API).
 - **Secrets refused.** `Set` refuses a secret value at your line.
+- **Profiles, ready-made.** `ProfileOptions(db)` returns a group over a SettingsKit database's profiles — choose the current one (the existing profiles and this character's own), create one by name, copy another into it, reset it, delete one, with confirmations and the current profile's name in the descriptions — built from the kinds above, so every renderer shows it. The tree fires `OnChange` when the database's profile changes anywhere. Every string goes through a `localize(key, default)` hook.
 
 See [`docs/API.md`](docs/API.md) for every kind's fields and schema, the `Describe` shape and how a renderer consumes it, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the index, the sorted arrays and the reused `info` tables.
 
@@ -105,9 +107,10 @@ Direct runtime dependencies: Registry API 2, SchemaKit API 1 and SignalKit API 1
 All four files above are required; omitting any of the first three makes this
 package raise at load.
 
-Optional: SettingsKit API 1, needed only when an option uses `bind`. OptionsKit
-looks it up with `Registry:Find` when `Define` receives `options.db`, so it may
-load in any order before that call; open the database first, then define the
+Optional: SettingsKit API 1, needed only when an option uses `bind` or the tree
+holds `ProfileOptions`. OptionsKit looks it up with `Registry:Find` when
+`Define` receives `options.db` and when `ProfileOptions` is called, so it may
+load in any order before those calls; open the database first, then define the
 tree:
 
 ```lua

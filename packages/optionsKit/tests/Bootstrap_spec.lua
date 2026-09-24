@@ -63,9 +63,10 @@ describe("OptionsKit bootstrap", function()
             changes = changes + 1
         end)
 
-        local upgraded = TestEnv.LoadRevision(2)
+        local nextRevision = OptionsKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
         assert.are.equal(OptionsKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(tree, upgraded:Get("Addon"))
 
         -- The tree built by revision 1 is served by revision 2's methods.
@@ -75,6 +76,31 @@ describe("OptionsKit bootstrap", function()
         assert.are.equal(1, changes)
         assert.is_true(connection:IsConnected())
         assert.are.equal(1, tree:Walk(function() end))
+    end)
+
+    it("upgrades a revision 1 layout: the profile group map and each tree's link list", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        require("SchemaKit")
+        local OptionsKit = TestEnv.LoadRevision(1)
+        local tree = OptionsKit:Define("Addon", toggleTree({}))
+        local state = rawget(OptionsKit, "_state")
+        -- Strip what revision 1 never had.
+        rawset(state, "profileGroups", nil)
+        rawset(tree, "_profileLinks", nil)
+        rawset(tree, "_schema", 1)
+
+        local upgraded = TestEnv.LoadRevision(2)
+        assert.are.equal(OptionsKit, upgraded)
+        assert.are.equal(2, upgraded.REVISION)
+        local groups = rawget(state, "profileGroups")
+        assert.are.equal("table", type(groups))
+        assert.are.equal("k", getmetatable(groups).__mode)
+        assert.are.equal(2, rawget(tree, "_schema"))
+        assert.are.same({}, rawget(tree, "_profileLinks"))
+        assert.is_true(upgraded:Undefine("Addon"))
     end)
 
     it("requires Registry", function()

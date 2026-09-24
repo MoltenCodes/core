@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 — 2026-09-24
+
+- Added `OptionsKit:ProfileOptions(db, options?)`, the AceDBOptions group over a SettingsKit database: a `description`, a `select` of the current profile (every profile, the current one included, plus this character's `"<name> - <realm>"` profile, created on switch; no constant `"Default"`, since a database may be opened with another default), an `input` that creates a profile by name and switches to it after checking SettingsKit's name rules as a `validate` message, a `select` and a confirmed `execute` to copy another profile into the current one, a confirmed `execute` to reset it, and a `select` and a confirmed `execute` to delete one. Built from existing kinds only, so every renderer shows it. The copy and delete buttons are `disabled` until their select names a profile that exists and is not current, the selects read `nil` while their choice does not qualify, and `Execute` of one still unset raises at the caller.
+- The group's descriptions name the current profile and its selects list the profiles as they are now, both read at `Describe`. While a defined tree holds the group, the database's four profile signals fire the tree's `OnChange` with the current-profile option's path and the profile's name; a switch through the select fires once, creating through the input fires `current` then `new`. Connected at the end of `Define` (a failing connect frees every group of that tree before the error reaches the caller), disconnected at `Undefine`; a group is held by one tree at a time and `Define` refuses it elsewhere until then. `options` carry `name`, `order`, `description` and a `localize(key, default)` hook; `docs/API.md` lists the keys and English defaults.
+- `desc` may be a function `fun(info): string`, called by `Describe` with the option's `info`; a result that is not a string is refused at the caller. `name` and `order` stay plain values: they take part in the sort.
+- `ProfileOptions` refuses at the caller when `Registry:Find("settingsKit", 1)` finds nothing or when `db` does not offer a SettingsKit database's profile methods; SettingsKit stays an optional dependency, and `UnitName`/`GetRealmName` are read once per call for the character choice.
+- Implementation revision 2, tree layout 2 (`_profileLinks`) and the weak-keyed `profileGroups` state field. An upgrade over revision 1 adds the field and gives every tree an empty link list in place; the upgrade specs now load the next revision instead of revision 2.
+- 140 specs; `ProfileOptions_spec.lua` drives a real SettingsKit database through the group, and `Bootstrap_spec.lua` covers the upgrade from a revision 1 layout.
+
 ## 0.1.0 — 2026-09-23
 
 - Added OptionsKit API generation 1, implementation revision 1.
