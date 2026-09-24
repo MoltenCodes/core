@@ -181,7 +181,7 @@ local MATCHER_METHODS = { "ToBe", "ToEqual", "ToBeTruthy", "ToBeNil", "ToRaise",
 ---@field Replace fun(self: TestKit.Context, target: table, key: any, value: any): any, string?
 ---@field Yield fun(self: TestKit.Context)
 ---@field WaitFor fun(self: TestKit.Context, eventName: string, timeoutSeconds: number): boolean, ...
----@field WaitUntil fun(self: TestKit.Context, predicate: fun(): any, timeoutSeconds: number): boolean, string?
+---@field WaitUntil fun(self: TestKit.Context, predicate: (fun(): any), timeoutSeconds: number): boolean, string?
 ---@field Expect fun(self: TestKit.Context, actual: any): TestKit.Matcher
 ---@field Fail fun(self: TestKit.Context, message: string?)
 ---@field Log fun(self: TestKit.Context, message: any): boolean

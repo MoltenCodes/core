@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.3 — 2026-09-24
+
+- Documentation: `docs/API.md` gained a "Measured in the client" subsection under "Cost" with the Retail 12.1.0 (build 69933) measurements of 2026-09-24: `After(0.25)` fired 7.45 ms after its recorded deadline, not early (longest frame 13.28 ms); `Every(0.1)` intervals of 100.23, 99.74 and 99.94 ms; a ticker whose callback raised kept ticking (5 ticks in the next 500 ms, state `running`), confirming the documented behaviour; and `Start` costing about 194 bytes beyond the client's own `NewTimer` and `Cancel`. No code changed; implementation revision 9 is unchanged.
+
 ## 0.6.2 — 2026-09-24
 
 - Nil rule (decision of 2026-09-24): absence of a value that comes from outside the Kit (the `repeating` option, the Registry lookups, the optional LifecycleKit and EventKit facades, the host timer handle) is tested with `type(value) == "nil"`, never by comparing it with `nil`, because comparing a secret value raises inside the Kit instead of at the caller.

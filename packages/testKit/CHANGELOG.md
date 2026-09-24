@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5 — 2026-09-24
+
+- Annotation: the `TestKit.Context` field `WaitUntil` wrote its predicate as `fun(): any` inside the outer function type, where the language server reads the inner return list greedily and took `timeoutSeconds` for a second return of the predicate. The predicate type is now parenthesised, `(fun(): any)`. The other `fun(...)` fields of `TestKit.Context`, `TestKit.Suite` and `TestKit.Matcher` have no nested function type followed by a parameter and are unchanged. The compiled listing is identical, so implementation revision 4 is unchanged.
+
 ## 0.1.4 — 2026-09-24
 
 - Fixed: the remaining tests for absence on values that did not originate in TestKit compared them with `nil`; they now use `type(value) == "nil"`, as the 0.1.3 fixes already did for `Suite`, `Run`, `Skip`, `ctx:Fail` and the optional `ToRaise` pattern check. This covers the `options` of `Suite`, the `pattern` branches inside `ToRaise`, the `target` of `ToBeSecure`, the key walk and the copied values of `SetLimits`, and the key lookup of `ToEqual` in the table under test. No argument is newly refused.

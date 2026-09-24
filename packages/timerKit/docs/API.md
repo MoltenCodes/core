@@ -372,6 +372,21 @@ first`, `MoltenCodes TimerKit requires a valid Registry API 2 facade`,
 - `ForAddon` is one table lookup once the addon's logout route is decided; see
   [At logout](#at-logout) for what deciding it costs.
 
+### Measured in the client
+
+Measured on 2026-09-24 in the Retail 12.1.0 (build 69933) client:
+
+- `After(0.25)` fired 7.45 ms after the deadline TimerKit recorded, not before
+  it; the longest frame of that run took 13.28 ms. This is the lateness of up
+  to one frame that [Precision](#precision) describes.
+- Three consecutive `Every(0.1)` intervals measured 100.23, 99.74 and 99.94 ms.
+- A ticker whose callback raised kept ticking: 5 more ticks arrived in the next
+  500 ms and its state stayed `running`, as
+  [Repeating callback errors](#repeating-callback-errors) documents.
+- `Start` costs about 194 bytes of Lua heap beyond what the client's own
+  `C_Timer.NewTimer` followed by `Cancel` costs; the list above says what a
+  start allocates.
+
 ## Limits
 
 TimerKit has no limits to open, so it has no `SetLimits` and no `UNBOUNDED`
