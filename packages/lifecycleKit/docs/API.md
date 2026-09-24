@@ -67,7 +67,11 @@ local subscription = instance:OnReady(callback)
 local subscription = instance:OnShutdown(callback)
 ```
 
-Callbacks receive the lifecycle instance as their only argument.
+Callbacks receive the lifecycle instance as their first argument. A delivery
+that replays a phase already reached passes a second argument that is `nil`
+(the slot `OnHalted` uses for its reason), so a callback that counts its
+arguments with `select("#", ...)` sees two on replay and one on a live
+delivery; read the instance and ignore the rest.
 
 Each phase is delivered at most once per subscription. If the requested phase has already occurred, the callback is invoked synchronously before the method returns and the returned subscription is already disconnected. This replay behavior is intentional and prevents event-registration races.
 

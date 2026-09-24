@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.3 — 2026-09-24
+
+- `docs/API.md` states the arguments a phase callback receives truthfully: a replayed
+  `OnLoaded`, `OnReady` or `OnShutdown` delivery passes the instance and a `nil`
+  second argument, which the real-client suite observed. Documentation only;
+  implementation revision 14 is unchanged.
+
 ## 0.6.2 — 2026-09-24
 
 - LifecycleKit follows the repository-wide nil rule. On a client with secret values a comparison with a secret, `nil` included, raises inside LifecycleKit instead of at the caller, so every value LifecycleKit did not create — `SetLimits` entries and what Registry returns for SignalKit, EventKit and LifecycleKit itself — is tested for absence with `type(value) == "nil"`.
