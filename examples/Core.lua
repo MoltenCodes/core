@@ -78,7 +78,7 @@ local Registry = resolveRegistry()
 local function requirePackage(packageName)
     local api = REQUIRED_APIS[packageName]
     local implementation = Registry:Get(packageName, api)
-    if implementation == nil then
+    if type(implementation) == "nil" then
         error(
             ADDON_NAME
                 .. " requires MoltenCodes "
@@ -204,7 +204,10 @@ end
 ---@param self ExampleAddon.Main
 local function waitForSpellData(self)
     local gate = Kits.ReadinessKit:Gate(ADDON_NAME .. ".spellData", function()
-        return Kits.ClientKit:GetSpellInfo(SPELL_ID) ~= nil
+        -- Absence of a value the addon did not create is tested with `type`:
+        -- on Retail 12.x a client value may be secret, and comparing a secret
+        -- with anything, `nil` included, raises.
+        return type(Kits.ClientKit:GetSpellInfo(SPELL_ID)) ~= "nil"
     end, { intervalSeconds = 1, timeoutSeconds = 30 })
     self.spellGate = gate
 

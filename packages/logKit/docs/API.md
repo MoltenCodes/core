@@ -4,7 +4,7 @@ LogKit API generation **1** provides levelled, structured logging: one logger
 per addon with lazily formatted, secret-safe messages, a tri-state level, a
 bounded journal readable after the fact, and sinks.
 
-Implementation revision: **2**.
+Implementation revision: **3**.
 
 ## Loading
 
@@ -302,7 +302,8 @@ level are ignored. Setting an addon's level **never creates its logger**, so a
 typed name cannot consume `maxLoggers`; the level applies when `ForAddon` is
 called. An unknown level prints `/log: unknown level "x"; use one of trace,
 debug, info, warn, error, off, or default to clear`. `show` is a sub-command,
-so an addon literally named `show` cannot be set from the command.
+so an addon literally named `show` cannot be set from the command. A secret
+addon name or level word prints the usage and changes nothing.
 `/log show` prints `global: <level or "not set">` then `<addon>: <level>
 (<source>)` for every logger, sorted by name; it allocates, as a chat command
 may.
@@ -407,7 +408,9 @@ is under the limit again. `maxMessageLength` applies to the next message.
 ## Errors
 
 Argument errors are raised at the caller's line and never format a value that
-may be secret:
+may be secret. Absence of a value LogKit did not create (an argument, a limits
+field, a saved level) is tested with `type`, never with `== nil`, because
+comparing a secret with `nil` raises too:
 
 - `LogKit:ForAddon addonName must be a non-empty string` / `... must not be a secret value`
 - `LogKit.Logger:<Method> must be called on a LogKit logger` (every logger method)
@@ -430,7 +433,7 @@ may be secret:
 - `LogKit:SetLimits limits.journalCapacity exceeds SignalKit maxJournalCapacity (<n>); raise it with SignalKit:SetLimits first`
 - `LogKit:SetLimits limits.maxMessageLength must be an integer of at least 16 or LogKit.UNBOUNDED`
 - `LogKit:SetLimits limits.maxSinks must be a positive integer or LogKit.UNBOUNDED` (and `maxLoggers`)
-- `LogKit:<Method> must be called on the LogKit facade; use LogKit:<Method>(...)` (every facade method)
+- `LogKit:<Method> must be called on the LogKit facade; use LogKit:<Method>(...)` (every facade method; a secret receiver included, reported before it is compared)
 - `LogKit.LEVELS is read-only`
 
 Failures that are not the caller's argument go to the host error handler
@@ -497,7 +500,7 @@ binding live in the shared package state, so an in-place upgrade keeps all of
 them: a logger created by an older embedded copy resolves to the newer copy's
 methods, a chat sink built by it writes through the newer copy, and the `/log`
 handlers dispatch through package state so a newer revision replaces their
-behaviour without registering again. Revision 2 kept the state layout of
-revision 1, so it takes a revision 1 state over as it is.
+behaviour without registering again. Revisions 2 and 3 kept the state layout
+of revision 1, so either takes an older state over as it is.
 
 Nothing survives `/reload` except what `BindLevels` persisted.

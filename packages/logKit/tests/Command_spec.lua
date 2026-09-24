@@ -31,6 +31,22 @@ describe("LogKit slash command", function()
             assert.is_true(LogKit:RegisterCommand())
         end)
 
+        it("answers a secret addon name or level word with the usage", function()
+            Env.InstallSecretProbe("Hidden")
+            Env.RunSlash("/log Hidden debug")
+            Env.RunSlash("/log MyAddon Hidden")
+            Env.RunSlash("/log show Hidden")
+            local usages = 0
+            for _, line in ipairs(Env.ChatLines()) do
+                if line:find("Usage: /log", 1, true) then
+                    usages = usages + 1
+                end
+            end
+            assert.are.equal(3, usages)
+            assert.is_nil(LogKit._state.addonLevels.Hidden)
+            assert.are.equal("default", select(2, LogKit:ForAddon("MyAddon"):GetLevel()))
+        end)
+
         it("is idempotent and registers /log once", function()
             assert.is_true(LogKit:RegisterCommand())
             local count = 0
@@ -132,7 +148,7 @@ describe("LogKit slash command", function()
     it("dispatches through the newest revision after an upgrade", function()
         Env.LoadCommandKit()
         assert.is_true(LogKit:RegisterCommand())
-        local upgraded = Env.LoadRevision(3)
+        local upgraded = Env.LoadRevision(LogKit.REVISION + 1)
         assert.is_true(upgraded:RegisterCommand())
         Env.RunSlash("/log MyAddon trace")
         assert.are.equal("trace", (upgraded:ForAddon("MyAddon"):GetLevel()))

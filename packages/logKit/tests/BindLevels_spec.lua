@@ -109,6 +109,17 @@ describe("LogKit BindLevels", function()
         assert.are.equal("error", (LogKit:ForAddon("Later"):GetLevel()))
     end)
 
+    it("skips a secret level name in the database on bind", function()
+        local SettingsKit, S = Env.LoadSettingsKit()
+        local db = openDatabase(SettingsKit, S)
+        db.global.logLevels.Hidden = "trace"
+        db.global.logLevels.Plain = "info"
+        Env.InstallSecretProbe("trace")
+        assert.is_true(LogKit:BindLevels(db))
+        assert.are.equal("default", select(2, LogKit:ForAddon("Hidden"):GetLevel()))
+        assert.are.equal("info", (LogKit:ForAddon("Plain"):GetLevel()))
+    end)
+
     it("writes the database once per change, not once per call", function()
         local SettingsKit, S = Env.LoadSettingsKit()
         local db = openDatabase(SettingsKit, S)

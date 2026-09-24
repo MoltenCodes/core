@@ -42,7 +42,7 @@
 
 local PACKAGE_NAME = "logKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNALKIT_API = 1
 local OPTIONAL_COMMANDKIT_API = 1
@@ -641,7 +641,8 @@ rawset(CHAT_SINK_METATABLE, "__index", CHAT_SINK_PROTOTYPE)
 ---@param label string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-    if receiver ~= LogKit then
+    -- `type` first: a secret receiver is never a table, and comparing it raises.
+    if type(receiver) ~= "table" or receiver ~= LogKit then
         error(label .. " must be called on the LogKit facade; use " .. label .. "(...)", level)
     end
 end
@@ -1050,7 +1051,7 @@ local function loggerSetLevel(self, level)
     validateLogger(self, "LogKit.Logger:SetLevel", 3)
     ---@type integer|false
     local number = false
-    if level ~= nil then
+    if type(level) ~= "nil" then
         number = readLevel(level, "LogKit.Logger:SetLevel", "level", true, 3)
     end
     setAddonLevel(self._name, number)
@@ -1213,7 +1214,7 @@ local function validateLimitUpdate(limits, level)
         error("LogKit:SetLimits limits must be a table", level)
     end
     local key = next(limits)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         if isSecret(key) then
             error("LogKit:SetLimits limits must not have a secret key", level)
         end
@@ -1288,7 +1289,11 @@ end
 ---@param addonName string?
 function dispatch.commandShow(context, addonName)
     local globalLevel = rawget(state, "globalLevel")
-    if addonName ~= nil then
+    if isSecret(addonName) then
+        context:Usage()
+        return
+    end
+    if type(addonName) ~= "nil" then
         context:Print(describeLevel(addonName))
         return
     end
@@ -1313,7 +1318,15 @@ end
 ---@param target string?
 ---@param levelWord string?
 function dispatch.commandSetLevel(context, target, levelWord)
-    if target == nil or target == "" or levelWord == nil then
+    -- The tokens come from the chat box through CommandKit: absence is tested
+    -- with `type`, and a secret is refused before it is compared.
+    if
+        type(target) == "nil"
+        or type(levelWord) == "nil"
+        or isSecret(target)
+        or isSecret(levelWord)
+        or target == ""
+    then
         context:Usage()
         return
     end
@@ -1381,6 +1394,7 @@ local function isSettingsDatabase(SettingsKit, db)
     local prototype = rawget(SettingsKit, "Database")
     return type(prototype) == "table"
         and type(db.Validate) == "function"
+        and type(db.Pairs) == "function"
         and db.Validate == rawget(prototype, "Validate")
         and db.Pairs == rawget(prototype, "Pairs")
 end
@@ -1392,7 +1406,12 @@ end
 ---@param view table
 local function restoreLevels(db, view)
     for key, value in db:Pairs(view) do
-        local number = type(value) == "string" and LEVEL_VALUES[value] or nil
+        -- Saved data is not LogKit's: a secret value is skipped before it is
+        -- used as a key. SettingsKit's `Pairs` never yields a secret key.
+        local number = nil
+        if type(value) == "string" and not isSecret(value) then
+            number = LEVEL_VALUES[value]
+        end
         if type(key) == "string" and number ~= nil then
             if key == GLOBAL_LEVEL_KEY then
                 rawset(state, "globalLevel", number)
@@ -1428,7 +1447,7 @@ local function setGlobalLevel(self, level)
     validateFacade(self, "LogKit:SetGlobalLevel", 3)
     ---@type integer|false
     local number = false
-    if level ~= nil then
+    if type(level) ~= "nil" then
         number = readLevel(level, "LogKit:SetGlobalLevel", "level", true, 3)
     end
     if rawget(state, "globalLevel") == number then
@@ -1500,7 +1519,7 @@ end
 ---@return LogKit.SinkTable sink
 local function chatSink(self, chatFrame)
     validateFacade(self, "LogKit:ChatSink", 3)
-    if chatFrame ~= nil then
+    if type(chatFrame) ~= "nil" then
         if isSecret(chatFrame) then
             error("LogKit:ChatSink chatFrame must not be a secret value", 2)
         end
@@ -1522,11 +1541,11 @@ end
 ---@return integer start
 local function history(self, addonName, minimumLevel)
     validateFacade(self, "LogKit:History", 3)
-    if addonName ~= nil then
+    if type(addonName) ~= "nil" then
         validateAddonName(addonName, "LogKit:History", "addonName", 3)
     end
     local level = LEVEL_TRACE
-    if minimumLevel ~= nil then
+    if type(minimumLevel) ~= "nil" then
         level = readLevel(minimumLevel, "LogKit:History", "minimumLevel", true, 3)
     end
 
@@ -1575,7 +1594,7 @@ end
 ---@return boolean bound
 local function bindLevels(self, db)
     validateFacade(self, "LogKit:BindLevels", 3)
-    if db == nil then
+    if type(db) == "nil" then
         rawset(state, "binding", false)
         return false
     end
@@ -1632,7 +1651,7 @@ local function setLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             if name == "journalCapacity" and value ~= rawget(sharedLimits, name) then
                 replaceJournal(value)
             end

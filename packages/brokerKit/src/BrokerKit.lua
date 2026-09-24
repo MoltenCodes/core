@@ -40,7 +40,7 @@
 
 local PACKAGE_NAME = "brokerKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNALKIT_API = 1
 local STATE_SCHEMA = 1
@@ -492,7 +492,8 @@ end
 ---@param label string public method name, used in the argument error
 ---@param level integer stack level the failure is reported at
 local function validateFacade(receiver, label, level)
-    if receiver ~= BrokerKit then
+    -- `type` first: a secret receiver is never a table, and comparing it raises.
+    if type(receiver) ~= "table" or receiver ~= BrokerKit then
         error(label .. " must be called on the BrokerKit facade; use " .. label .. "(...)", level)
     end
 end
@@ -696,7 +697,7 @@ end
 ---@return BrokerKit.Object? object
 local function iterateNext(cache, previous)
     local index = 1
-    if previous ~= nil then
+    if type(previous) ~= "nil" then
         index = cache.positions[previous] + 1
     end
     local name = cache.names[index]
@@ -973,7 +974,14 @@ local function onAttributeChanged(name, attribute, value, dataObject)
         return
     end
     local record = objects[name]
-    if record == nil or not record.foreign or record.source ~= dataObject then
+    -- `type` before the identity test: `dataObject` comes from LibDataBroker's
+    -- callback, and a secret compared with the source would raise.
+    if
+        record == nil
+        or not record.foreign
+        or type(dataObject) ~= "table"
+        or record.source ~= dataObject
+    then
         return
     end
     if
@@ -1104,7 +1112,7 @@ local function validateDefinition(definition, level)
         validateAttributeValue(key, value, "BrokerKit:New", level + 1)
         count = count + 1
     end
-    if rawget(definition, "type") == nil then
+    if type(rawget(definition, "type")) == "nil" then
         count = count + 1
     end
     local maxAttributes = rawget(sharedLimits, "maxAttributes")
@@ -1311,7 +1319,7 @@ local function packageSetLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, name, value)
         end
     end

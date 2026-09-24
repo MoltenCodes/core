@@ -99,6 +99,23 @@ describe("LogKit and secret values", function()
         assert.are.equal(16, LogKit:GetLimits().maxSinks)
     end)
 
+    it("reports a secret receiver as a facade misuse at the caller's line", function()
+        local secret = Env.NewSecretValue()
+        local action = function()
+            LogKit.SetGlobalLevel(secret, "info")
+        end
+        local ok, value = pcall(action)
+        assert.is_false(ok)
+        assert.are.equal(
+            debug.getinfo(1, "S").short_src
+                .. ":"
+                .. debug.getinfo(action, "S").linedefined + 1
+                .. ": LogKit:SetGlobalLevel must be called on the LogKit facade; use LogKit:SetGlobalLevel(...)",
+            value
+        )
+        assert.is_nil(LogKit:GetGlobalLevel())
+    end)
+
     it("looks the probe up at call time", function()
         Env.SetGlobal("issecretvalue", nil)
         local value = {}

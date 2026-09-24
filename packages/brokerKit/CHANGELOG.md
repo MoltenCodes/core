@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 — 2026-09-24
+
+- Implementation revision 2, applying the repository rule for values BrokerKit did not create: their absence is tested with `type`, never with `== nil`, and a secret is never compared. The facade check tests the receiver's type before comparing it with the facade, so a secret receiver is reported as a call without the facade at the caller's line instead of raising inside BrokerKit. A `LibDataBroker_AttributeChanged` whose data object is not a table (a secret included) is ignored before the data object is compared with the adopted one. `Iterate`'s iterator, `New`'s default `type` and `SetLimits` test absence with `type`. Behaviour for every non-secret value is unchanged.
+- The state layout is unchanged; a new bootstrap spec loads revision 1, fills its state (an object with a connection, an adopted foreign object, a raised limit) and checks that revision 2 takes it over in place. The upgrade specs load the next revision as `REVISION + 1`.
+- New specs: a secret receiver, and a foreign change with a secret data object. 130 specs.
+
 ## 0.1.1 — 2026-09-24
 
 - Documentation and tests only; implementation revision 1 is unchanged. `docs/API.md` states the lookups a field read costs (two, `name` three, the methods four), and `docs/INTERNALS.md` gives the real reason adoption collects attribute names before writing them (ordering).

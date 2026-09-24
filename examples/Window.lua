@@ -50,7 +50,7 @@ local function newWindow(options, database)
             return
         end
         local created, reason = WidgetKit:Create("Frame")
-        if created == nil then
+        if type(created) == "nil" then
             -- "exhausted": every frame this type may create is in use.
             error(ADDON_NAME .. " could not open its window: " .. tostring(reason), 0)
         end

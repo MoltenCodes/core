@@ -56,9 +56,10 @@ describe("BrokerKit bootstrap", function()
             BrokerKit:ExposeToLibDataBroker()
             local names = BrokerKit:Objects()
 
-            local upgraded = TestEnv.LoadRevision(2)
+            local nextRevision = BrokerKit.REVISION + 1
+            local upgraded = TestEnv.LoadRevision(nextRevision)
             assert.are.equal(BrokerKit, upgraded)
-            assert.are.equal(2, upgraded.REVISION)
+            assert.are.equal(nextRevision, upgraded.REVISION)
 
             -- Objects, their identity and the foreign flag are the same.
             assert.are.equal(mine, upgraded:Get("Mine"))
@@ -93,12 +94,49 @@ describe("BrokerKit bootstrap", function()
         end
     )
 
+    it("takes over the previous revision's state in place", function()
+        local shippedRevision = TestEnv.NewPackage().REVISION
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        local library = TestEnv.InstallLibDataBroker({
+            objects = { Theirs = { type = "data source", text = "T" } },
+        })
+        local previous = TestEnv.LoadRevision(shippedRevision - 1)
+        assert.are.equal(shippedRevision - 1, previous.REVISION)
+        local state = previous._state
+        local mine = previous:New("Mine", { text = "Ready" })
+        local seen = {}
+        mine:OnChange("text", function(_, _, value)
+            seen[#seen + 1] = value
+        end)
+        previous:AdoptFromLibDataBroker()
+        previous:SetLimits({ maxObjects = 300 })
+
+        local BrokerKit = TestEnv.ReloadPackage()
+        assert.are.equal(previous, BrokerKit)
+        assert.are.equal(shippedRevision, BrokerKit.REVISION)
+        assert.are.equal(state, BrokerKit._state)
+        assert.are.equal(mine, BrokerKit:Get("Mine"))
+        assert.are.equal(300, BrokerKit:GetLimits().maxObjects)
+        mine.text = "After"
+        assert.are.same({ "After" }, seen)
+
+        -- The fix the shipped revision carries: a foreign change whose data
+        -- object is not the adopted table is ignored before it is compared.
+        library.Fire("LibDataBroker_AttributeChanged", "Theirs", "text", "Changed", "other")
+        assert.are.equal("T", BrokerKit:Get("Theirs").text)
+        library:GetDataObjectByName("Theirs").text = "Changed"
+        assert.are.equal("Changed", BrokerKit:Get("Theirs").text)
+    end)
+
     it("upgrades in place and keeps the set limits and the UNBOUNDED sentinel", function()
         local BrokerKit = TestEnv.NewPackage()
         local unbounded = BrokerKit.UNBOUNDED
         BrokerKit:SetLimits({ maxObjects = 4096, maxAttributes = unbounded })
 
-        local upgraded = TestEnv.LoadRevision(2)
+        local upgraded = TestEnv.LoadRevision(BrokerKit.REVISION + 1)
         assert.are.equal(unbounded, upgraded.UNBOUNDED)
         assert.are.same({ maxObjects = 4096, maxAttributes = unbounded }, upgraded:GetLimits())
         assert.are.equal(unbounded, upgraded:GetLimits().maxAttributes)

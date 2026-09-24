@@ -2,7 +2,7 @@
 
 BrokerKit API generation **1** provides data objects for display addons in the LibDataBroker-1.1 idiom: named objects whose attributes are plain fields, typed at the caller's line; change signals per object and per attribute; sorted enumeration; and a two-way bridge to LibDataBroker-1.1.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -237,7 +237,10 @@ On Retail 12.x the client hands tainted code secret values that raise when compa
 
 - a secret **name** or **attribute name** is refused at the caller in every method, and skipped when it comes from LibDataBroker;
 - a secret value for a **known attribute** is refused at the caller (`BrokerKit.Object:Set attribute "text" must not be a secret value`), because displays format those and LibDataBroker compares them;
-- a secret value for a **custom attribute** is stored without being compared, so every write of it counts as a change and fires, and it is never mirrored into LibDataBroker; a secret foreign value is kept the same way.
+- a secret value for a **custom attribute** is stored without being compared, so every write of it counts as a change and fires, and it is never mirrored into LibDataBroker; a secret foreign value is kept the same way;
+- a secret **receiver** is reported as a call without the facade (`BrokerKit:Get must be called on the BrokerKit facade; use BrokerKit:Get(...)`), and a `LibDataBroker_AttributeChanged` whose data object is secret is ignored, both without comparing it.
+
+Absence of a value BrokerKit did not create (an argument, a definition or limits field, anything LibDataBroker hands over) is tested with `type`, never with `== nil`, because comparing a secret with `nil` raises too.
 
 `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 

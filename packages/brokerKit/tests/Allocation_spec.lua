@@ -6,7 +6,7 @@ local TestEnv = require("BrokerKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("BrokerKit allocation", function()
+describe("BrokerKit allocation #allocation", function()
     local BrokerKit
     local object
     before_each(function()

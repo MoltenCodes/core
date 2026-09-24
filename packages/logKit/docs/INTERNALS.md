@@ -129,4 +129,6 @@ recomputes every logger's cached level. `validateStateBase` refuses a state
 whose limits, global level or any table field is missing or invalid; a newer
 revision that changes the layout adds a migration step and raises
 `STATE_SCHEMA`. Revision 2 changed behaviour only (the secret checks in
-`SetLimits`), so it validates and adopts a revision 1 state unchanged.
+`SetLimits`), so it validates and adopts a revision 1 state unchanged; so did
+revision 3 (absence of outside values tested with `type`, secrets refused
+before comparison), which adopts a revision 1 or 2 state unchanged.

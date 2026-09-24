@@ -37,7 +37,7 @@ describe("LogKit bootstrap", function()
         local LogKit, Registry = Env.NewPackage()
         assert.are.equal(LogKit, Registry:Get("logKit", 1))
         assert.are.equal(1, LogKit.API)
-        assert.are.equal(2, LogKit.REVISION)
+        assert.are.equal(3, LogKit.REVISION)
     end)
 
     it("reuses the shared facade, loggers, levels and journal on duplicate load", function()
@@ -83,10 +83,11 @@ describe("LogKit bootstrap", function()
         logger:Debug("before")
         LogKit:SetLimits({ maxSinks = 3 })
 
-        local upgraded = Env.LoadRevision(3)
+        local nextRevision = LogKit.REVISION + 1
+        local upgraded = Env.LoadRevision(nextRevision)
 
         assert.are.equal(LogKit, upgraded)
-        assert.are.equal(3, upgraded.REVISION)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(levels, upgraded.LEVELS)
         assert.are.equal(unbounded, upgraded.UNBOUNDED)
         assert.are.equal(logger, upgraded:ForAddon("upgraded"))
@@ -126,7 +127,7 @@ describe("LogKit bootstrap", function()
 
         local LogKit = Env.ReloadPackage()
         assert.are.equal(previous, LogKit)
-        assert.are.equal(2, LogKit.REVISION)
+        assert.are.equal(3, LogKit.REVISION)
         assert.are.equal(logger, LogKit:ForAddon("Kept"))
         assert.are.equal("info", (logger:GetLevel()))
         assert.are.equal("error", LogKit:GetGlobalLevel())
@@ -147,6 +148,48 @@ describe("LogKit bootstrap", function()
         assert.are.equal(4, LogKit:GetLimits().maxSinks)
     end)
 
+    it(
+        "upgrades the previous revision's state in place and refuses a secret receiver afterwards",
+        function()
+            local shippedRevision = Env.NewPackage().REVISION
+            Env.Reset()
+            Env.InstallWowApi()
+            require("Registry")
+            require("SignalKit")
+            local previous = Env.LoadRevision(shippedRevision - 1)
+            assert.are.equal(shippedRevision - 1, previous.REVISION)
+            local state = previous._state
+            local logger = previous:ForAddon("Kept")
+            logger:SetLevel("debug")
+            previous:SetGlobalLevel("warn")
+            local delivered = {}
+            previous:AddSink(function(record)
+                delivered[#delivered + 1] = record.message
+            end)
+            logger:Debug("before")
+
+            local LogKit = Env.ReloadPackage()
+            assert.are.equal(previous, LogKit)
+            assert.are.equal(shippedRevision, LogKit.REVISION)
+            assert.are.equal(state, LogKit._state)
+            assert.are.equal(logger, LogKit:ForAddon("Kept"))
+            assert.are.equal("warn", LogKit:GetGlobalLevel())
+            logger:Debug("after")
+            assert.are.same({ "before", "after" }, delivered)
+
+            -- The fix the shipped revision carries: a secret receiver is reported
+            -- as a call without the facade, before it is compared.
+            local secret = Env.NewSecretValue()
+            Env.expectErrorContaining(
+                "LogKit:SetGlobalLevel must be called on the LogKit facade",
+                function()
+                    LogKit.SetGlobalLevel(secret, nil)
+                end
+            )
+            assert.are.equal("warn", LogKit:GetGlobalLevel())
+        end
+    )
+
     it("upgrades in place and routes an older chat sink through the newest Write", function()
         local LogKit = Env.NewPackage()
         Env.InstallChatApi()
@@ -154,7 +197,7 @@ describe("LogKit bootstrap", function()
         LogKit:AddSink(sink)
         local oldWrite = sink.Write
 
-        local upgraded = Env.LoadRevision(3)
+        local upgraded = Env.LoadRevision(LogKit.REVISION + 1)
         assert.are_not.equal(oldWrite, sink.Write)
         upgraded:ForAddon("MyAddon"):Warn("still printed")
         assert.are.same({ "[MyAddon] |cffffa500warn|r: still printed" }, Env.ChatLines())

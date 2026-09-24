@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 — 2026-09-24
+
+- Implementation revision 3, applying the repository rule for values LogKit did not create: their absence is tested with `type`, never with `== nil`, and a secret is refused before it is compared. `SetLimits` no longer compares a limit key with `nil` before asking `issecretvalue` (a secret key is still refused with `LogKit:SetLimits limits must not have a secret key`). The facade check tests the receiver's type before comparing it with the facade, so a secret receiver raises `LogKit:<Method> must be called on the LogKit facade; use LogKit:<Method>(...)` at the caller's line instead of raising inside LogKit. `/log` and `/log show` answer a secret addon name or level word with the usage and change nothing. `BindLevels` skips a secret saved level name, and checks that the database's `Pairs` is a function before comparing it. `SetLevel`, `SetGlobalLevel`, `History`, `ChatSink`, `BindLevels` and `SetLimits` test an omitted argument or field with `type`. Behaviour for every non-secret value is unchanged.
+- The state layout is unchanged; a new bootstrap spec loads revision 2 (`REVISION - 1`), fills its state and checks that revision 3 takes it over in place. The upgrade specs load the next revision as `REVISION + 1`.
+- New specs: a secret receiver, a secret slash-command token, a secret saved level name, and the upgrade from the previous revision. 150 specs.
+
 ## 0.1.1 — 2026-09-24
 
 - Fixed `SetLimits` comparing a secret limit value (and indexing with a secret key) before asking `issecretvalue`, which raised inside LogKit on a client with secret values. It now refuses both at the caller's line, as every other argument is refused: `LogKit:SetLimits limits must not have a secret key`, `LogKit:SetLimits limits.<name> must not be a secret value`.

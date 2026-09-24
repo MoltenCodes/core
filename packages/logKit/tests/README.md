@@ -32,7 +32,9 @@ The LogKit suite covers:
 - secret values: the placeholder in place of a secret argument, no `tostring`
   or `string.format` of a secret, a secret message refused at the caller and not
   read while disabled, secret addon names, levels, sinks, chat frames and
-  limit keys and values refused, and the probe looked up at call time;
+  limit keys and values refused, a secret receiver reported as a call without
+  the facade, a secret `/log` token answered with the usage, a secret saved
+  level name skipped on bind, and the probe looked up at call time;
 - limits: defaults, fresh `GetLimits` tables, subsets, `maxMessageLength`
   truncation with the marker at exactly the limit and never inside a UTF-8
   sequence, `UNBOUNDED` where allowed and refused with the reason for
@@ -54,9 +56,12 @@ The LogKit suite covers:
   enabled formatted message whose result is interned, `IsEnabled`/`GetLevel`,
   and filtered and unfiltered history walks;
 - duplicate embedded loading, refusal to downgrade, an in-place upgrade from
-  revision 1 (the real source loaded as revision 1, then revision 2 over it)
-  that keeps a logger, its override, the global level, a sink, the journal and
-  a raised limit and then refuses a secret limit, an in-place upgrade to the
+  revision 1 (the real source loaded as revision 1, then the shipped revision
+  over it) that keeps a logger, its override, the global level, a sink, the
+  journal and a raised limit and then refuses a secret limit, an in-place
+  upgrade from the previous revision (`REVISION - 1`) that keeps the state
+  table, a logger, the global level and a sink and then refuses a secret
+  receiver, an in-place upgrade to the
   next revision (the real source with its revision constant rewritten) that
   keeps loggers, levels, sinks, the journal, `LEVELS` and `UNBOUNDED`, an older
   chat sink routed through the newest `Write`, the slash command working across

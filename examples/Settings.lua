@@ -45,7 +45,7 @@ local MIGRATIONS = {
     -- table. Migrations receive the raw saved table and run before the layout
     -- exists, so a step can restructure anything an older release wrote.
     [1] = function(raw)
-        if raw.greetings ~= nil then
+        if type(raw.greetings) ~= "nil" then
             raw.global = raw.global or {}
             raw.global.greetings = raw.greetings
             raw.greetings = nil

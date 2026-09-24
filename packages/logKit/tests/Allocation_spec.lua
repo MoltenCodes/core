@@ -6,7 +6,7 @@ local Env = require("LogKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("LogKit allocation", function()
+describe("LogKit allocation #allocation", function()
     local LogKit, logger
 
     before_each(function()

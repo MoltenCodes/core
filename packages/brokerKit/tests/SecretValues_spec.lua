@@ -167,6 +167,39 @@ describe("BrokerKit and secret values", function()
         )
     end)
 
+    it("reports a secret receiver as a facade misuse at the caller's line", function()
+        local secret = "Secret Receiver"
+        TestEnv.InstallSecretProbe(secret)
+        local action = function()
+            BrokerKit.Get(secret, "Mine")
+        end
+        local ok, value = pcall(action)
+        assert.is_false(ok)
+        assert.are.equal(
+            debug.getinfo(1, "S").short_src
+                .. ":"
+                .. debug.getinfo(action, "S").linedefined + 1
+                .. ": BrokerKit:Get must be called on the BrokerKit facade; use BrokerKit:Get(...)",
+            value
+        )
+    end)
+
+    it("ignores a foreign change whose data object is secret", function()
+        local secret = "Secret Data Object"
+        local library =
+            TestEnv.InstallLibDataBroker({ objects = { Theirs = { type = "data source" } } })
+        BrokerKit:AdoptFromLibDataBroker()
+        local theirs = BrokerKit:Get("Theirs")
+        local count = 0
+        theirs:OnChange(function()
+            count = count + 1
+        end)
+        TestEnv.InstallSecretProbe(secret)
+        library.Fire("LibDataBroker_AttributeChanged", "Theirs", "text", "Changed", secret)
+        assert.is_nil(theirs.text)
+        assert.are.equal(0, count)
+    end)
+
     it("looks the probe up at call time", function()
         local object = BrokerKit:New("Mine", { text = "Late" })
         TestEnv.InstallSecretProbe("Late")
