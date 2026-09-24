@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 — 2026-09-24
+
+- A secret value is now refused at the caller before CommKit compares it with anything, as `docs/API.md` promises, in the three places that compared first: `SetLimits` compared every value with `CommKit.UNBOUNDED` before asking `issecretvalue` (and asked only about numbers, so a secret string reported the wrong reason), `maxRegistrations` and `maxListeners` were compared with `nil` and with `CommKit.UNBOUNDED` first. On a client with secret values each comparison raised a host error inside CommKit instead of `CommKit:SetLimits limits.burst must not be a secret value` at the caller's line. Absent options are now tested with `type`.
+- Implementation revision 3. The state layout and scope layout 2 are unchanged: a revision 3 copy inherits everything a revision 2 copy built, queued sends and the logout arrangement included, and still upgrades a revision 1 scope layout in place. `Bootstrap_spec.lua` loads a revision 2 copy with a send in flight and upgrades it; `CommKitTestEnv.Load` gains `commKitRevision` for that.
+- Documentation in current form: `docs/API.md` states revision 3 (it still said 1), the Battle.net constraint no longer refers to "revision 1", and the secret-value section names the limits it covers. The `CommKit.Constraints` annotation says the same.
+- 187 specs.
+
 ## 0.2.0 — 2026-09-23
 
 - CommKit addon scopes are now closed at logout whatever revisions are paired, and an addon without LifecycleKit no longer closes its scope itself. `CommKit:ForAddon(addonName)` finds LifecycleKit with `Registry:Find` and leaves the scope to a LifecycleKit whose `CLOSES_ADDON_SCOPES` names `commKit` (making sure the addon has a LifecycleKit instance), subscribes once to an older LifecycleKit's `OnShutdown`, or, without LifecycleKit, connects one package-level `PLAYER_LOGOUT` watcher in CommKit's own EventKit scope; EventKit is required, so that case is always available. The decision is taken again by later `ForAddon` calls until LifecycleKit has taken the scope over. See "At logout" in `docs/API.md`.

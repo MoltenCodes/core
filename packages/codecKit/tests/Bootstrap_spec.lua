@@ -48,10 +48,11 @@ describe("CodecKit bootstrap", function()
         local value = { "upgrade", 2 ^ 60, { nested = true } }
         local _, before = CodecKit:Encode(value, { compress = "deflate", channel = "print" })
 
-        local upgraded = TestEnv.LoadRevision(2)
+        local nextRevision = CodecKit.REVISION + 1
+        local upgraded = TestEnv.LoadRevision(nextRevision)
         assert.are.equal(CodecKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
-        assert.are.equal(2, upgraded._state.runtimeRevision)
+        assert.are.equal(nextRevision, upgraded.REVISION)
+        assert.are.equal(nextRevision, upgraded._state.runtimeRevision)
         assert.are.equal(pool, upgraded._state.pool)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
         assert.are.equal(sentinel, upgraded._state.unbounded)
@@ -67,6 +68,38 @@ describe("CodecKit bootstrap", function()
         local _, after = upgraded:Encode(value, { compress = "deflate", channel = "print" })
         assert.are.equal(before, after)
         assert.are.equal(0, pool:GetActiveCount())
+    end)
+
+    it("upgrades a revision 1 copy in place and refuses secret options afterwards", function()
+        TestEnv.Reset()
+        require("Registry")
+        require("PoolKit")
+        local older = TestEnv.LoadRevision(1)
+        assert.are.equal(1, older.REVISION)
+        older:SetLimits({ maxValues = older.UNBOUNDED, maxDepth = 9 })
+        local pool = older._state.pool
+        local _, frame = older:Encode({ "kept" }, { channel = "addon" })
+
+        package.loaded["CodecKit"] = nil
+        local CodecKit = require("CodecKit")
+        assert.are.equal(older, CodecKit)
+        assert.is_true(CodecKit.REVISION > 1)
+        assert.are.equal(CodecKit.REVISION, CodecKit._state.runtimeRevision)
+        assert.are.equal(pool, CodecKit._state.pool)
+        local limits = CodecKit:GetLimits()
+        assert.are.equal(CodecKit.UNBOUNDED, limits.maxValues)
+        assert.are.equal(9, limits.maxDepth)
+        local ok, decoded = CodecKit:Decode(frame)
+        assert.is_true(ok)
+        assert.are.same({ "kept" }, decoded)
+
+        TestEnv.InstallSecretProbe({ [3] = true })
+        TestEnv.expectErrorContaining(
+            "CodecKit:Encode options.level must not be a secret value",
+            function()
+                CodecKit:Encode(1, { level = 3 })
+            end
+        )
     end)
 
     it("requires Registry", function()

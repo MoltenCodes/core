@@ -188,6 +188,55 @@ describe("CodecKit error levels", function()
         end)
     end)
 
+    it("refuses a secret option or limit value at the caller before comparing it", function()
+        -- Plain values the probe calls secret: a secret may not even be
+        -- compared with nil, so each is refused before its option is read.
+        TestEnv.InstallSecretProbe({ [7] = true, ["deflate"] = true, ["print"] = true, [99] = true })
+        assertReportedAtCaller(
+            "CodecKit:Encode options.compress must not be a secret value",
+            function(mark)
+                mark()
+                CodecKit:Encode(1, { compress = "deflate" })
+            end
+        )
+        assertReportedAtCaller(
+            "CodecKit:EncodeMany options.channel must not be a secret value",
+            function(mark)
+                mark()
+                CodecKit:EncodeMany({ channel = "print" }, 1)
+            end
+        )
+        assertReportedAtCaller(
+            "CodecKit:Encode options.level must not be a secret value",
+            function(mark)
+                mark()
+                CodecKit:Encode(1, { level = 7 })
+            end
+        )
+        assertReportedAtCaller(
+            "CodecKit:Compress options.level must not be a secret value",
+            function(mark)
+                mark()
+                CodecKit:Compress("bytes", { level = 7 })
+            end
+        )
+        assertReportedAtCaller(
+            "CodecKit:Decode options.channel must not be a secret value",
+            function(mark)
+                mark()
+                CodecKit:Decode("\1\1\1", { channel = "print" })
+            end
+        )
+        assertReportedAtCaller(
+            "CodecKit:SetLimits limits.maxDepth must not be a secret value",
+            function(mark)
+                mark()
+                CodecKit:SetLimits({ maxDepth = 99 })
+            end
+        )
+        assert.are.equal(16, CodecKit:GetLimits().maxDepth)
+    end)
+
     it("points limit errors at the caller", function()
         local cases = {
             { 5, "CodecKit:SetLimits limits must be a table" },

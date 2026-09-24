@@ -2,7 +2,7 @@
 
 CodecKit API generation **1** turns Lua values into transport-safe strings and back in three composable stages — serialise, compress, channel-encode — behind a two-byte, self-describing header. Decoding never raises on malformed input.
 
-Implementation revision: **1**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
+Implementation revision: **2**. Wire format version: **1** (`CodecKit.FORMAT_VERSION`).
 
 ## Loading
 
@@ -274,7 +274,7 @@ The callback is never called when the job is cancelled, by `job:Cancel()`, `scop
 
 ## Secret values
 
-Retail clients hand addon code **secret values** in restricted contexts; see [`EMBEDDING.md` → Secret values](../../../docs/EMBEDDING.md#secret-values-retail-12x). CodecKit asks `issecretvalue` about every value before anything else touches it, and a secret anywhere in the value — at the top, in a table value, in a key, deep in a nested table — raises at the caller: `CodecKit:Encode value must not contain a secret value`. `EncodeAsync` scans the value for secrets at the call, visiting values in the encoder's order and stopping where the encoder would refuse with `"maxDepth"` or `"maxValues"`, so its refusal is at the caller too. A decoding or stage method refuses a secret string argument the same way.
+Retail clients hand addon code **secret values** in restricted contexts; see [`EMBEDDING.md` → Secret values](../../../docs/EMBEDDING.md#secret-values-retail-12x). CodecKit asks `issecretvalue` about every value before anything else touches it, and a secret anywhere in the value — at the top, in a table value, in a key, deep in a nested table — raises at the caller: `CodecKit:Encode value must not contain a secret value`. `EncodeAsync` scans the value for secrets at the call, visiting values in the encoder's order and stopping where the encoder would refuse with `"maxDepth"` or `"maxValues"`, so its refusal is at the caller too. A decoding or stage method refuses a secret string argument the same way, and a secret option value (`compress`, `channel`, `level`) or `SetLimits` value is refused before anything compares it: `CodecKit:Encode options.level must not be a secret value`, `CodecKit:SetLimits limits.maxDepth must not be a secret value`.
 
 ## Security: decoded data is untrusted
 

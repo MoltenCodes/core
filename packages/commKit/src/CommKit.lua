@@ -69,7 +69,7 @@
 
 local PACKAGE_NAME = "commKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 
 -- The API generation of every package CommKit uses: required (Registry,
 -- SignalKit, EventKit, TimerKit, SchedulerKit, PoolKit) and optional
@@ -566,7 +566,7 @@ local SURFACE = {
 ---What the payload of a send requires of the channel.
 ---@class CommKit.Constraints
 ---@field logged boolean? `true` sends on the logged channel (`SendAddonMessageLogged`), for payloads carrying text a player wrote.
----@field battleNet boolean? `true` permits Battle.net transport; API 1 revision 1 never selects it.
+---@field battleNet boolean? `true` permits Battle.net transport; CommKit has no Battle.net pipe yet and never selects it.
 
 ---The table `scope:Send` accepts.
 ---@class CommKit.SendRequest
@@ -1237,11 +1237,12 @@ end
 ---@param label string the option, qualified by its method
 ---@param level integer
 local function validateObjectLimit(value, label, level)
+    -- Asked before the sentinel comparison: comparing a secret raises.
+    if isSecret(value) then
+        error(label .. " must not be a secret value", level)
+    end
     if value == UNBOUNDED then
         return
-    end
-    if type(value) == "number" and isSecret(value) then
-        error(label .. " must not be a secret value", level)
     end
     if
         type(value) ~= "number"
@@ -4274,7 +4275,7 @@ function ScopeMethods.SyncSet(self, prefix, options)
     local fieldSet, fieldList = readSyncFields(rawget(options, "fields"), 3)
     local schemas = readSyncSchemas(rawget(options, "schema"), fieldSet, 3)
     local maxListeners = rawget(options, "maxListeners")
-    if maxListeners == nil then
+    if type(maxListeners) == "nil" then
         maxListeners = SYNC.defaultMaxListeners
     else
         validateObjectLimit(maxListeners, "CommKit.Scope:SyncSet options.maxListeners", 3)
@@ -4400,7 +4401,9 @@ local function readScopeOptions(options, label, level)
     end
     validateKeys(options, OPTION_KEYS.scope, label .. " options", level + 1)
     local maxRegistrations = rawget(options, "maxRegistrations")
-    if maxRegistrations == nil then
+    -- `type` rather than `== nil`: the value may be a secret, which
+    -- `validateObjectLimit` refuses before anything compares it.
+    if type(maxRegistrations) == "nil" then
         return MAX_REGISTRATIONS
     end
     validateObjectLimit(maxRegistrations, label .. " options.maxRegistrations", level + 1)
@@ -4551,6 +4554,11 @@ function FacadeMethods.SetLimits(self, newLimits)
     validateKeys(newLimits, LIMIT_RANGES, "CommKit:SetLimits limits", 3)
     for name, value in pairs(newLimits) do
         local range = LIMIT_RANGES[name]
+        -- Asked first, whatever the type: comparing a secret with the
+        -- sentinel would raise inside CommKit instead of at the caller.
+        if isSecret(value) then
+            error("CommKit:SetLimits limits." .. name .. " must not be a secret value", 2)
+        end
         if value == UNBOUNDED then
             error(
                 "CommKit:SetLimits limits."
@@ -4559,9 +4567,6 @@ function FacadeMethods.SetLimits(self, newLimits)
                     .. range.unboundedRefusal,
                 2
             )
-        end
-        if type(value) == "number" and isSecret(value) then
-            error("CommKit:SetLimits limits." .. name .. " must not be a secret value", 2)
         end
         if
             type(value) ~= "number"

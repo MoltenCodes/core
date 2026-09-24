@@ -49,7 +49,7 @@
 
 local PACKAGE_NAME = "codecKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_POOLKIT_API = 1
 local OPTIONAL_SCHEDULERKIT_API = 1
@@ -3009,6 +3009,21 @@ local function validateBytes(value, label, level)
     end
 end
 
+---Refuse a secret option or limit value before anything compares it, `nil`
+---included: comparing a secret raises in the client. Callers test for an
+---absent value with `type`, never with `== nil`, for the same reason. The
+---message is built only on refusal, so the check allocates nothing.
+---@param value any
+---@param label string the method, qualified
+---@param name string the option or limit, qualified by its table (`options.level`)
+---@param level integer
+local function refuseSecretSetting(value, label, name, level)
+    local isSecret = readSecretProbe()
+    if isSecret ~= nil and isSecret(value) then
+        error(label .. " " .. name .. " must not be a secret value", level)
+    end
+end
+
 ---Refuse option keys outside `known`.
 ---@param options table
 ---@param known table<string, true>
@@ -3029,7 +3044,8 @@ end
 ---@param errorLevel integer
 ---@return integer
 local function readLevel(level, label, errorLevel)
-    if level == nil then
+    refuseSecretSetting(level, label, "options.level", errorLevel + 1)
+    if type(level) == "nil" then
         return DEFAULT_LEVEL
     end
     if type(level) ~= "number" or level % 1 ~= 0 or level < 1 or level > 9 then
@@ -3043,7 +3059,11 @@ end
 ---@param level integer
 ---@return string|nil
 local function readChannel(channel, label, level)
-    if channel ~= nil and (type(channel) ~= "string" or CHANNELS[channel] ~= true) then
+    refuseSecretSetting(channel, label, "options.channel", level + 1)
+    if type(channel) == "nil" then
+        return nil
+    end
+    if type(channel) ~= "string" or CHANNELS[channel] ~= true then
         error(label .. ' options.channel must be "none", "addon" or "print"', level)
     end
     return channel
@@ -3065,7 +3085,8 @@ local function readEncodeOptions(options, label, level)
     end
     validateOptionKeys(options, ENCODE_OPTION_KEYS, label, level + 1)
     local compress = rawget(options, "compress")
-    if compress == nil then
+    refuseSecretSetting(compress, label, "options.compress", level + 1)
+    if type(compress) == "nil" then
         compress = "none"
     elseif type(compress) ~= "string" or COMPRESSIONS[compress] ~= true then
         error(label .. ' options.compress must be "none" or "deflate"', level)
@@ -3164,6 +3185,7 @@ local function validateLimitUpdate(limits, level)
         end
         local value = rawget(limits, key)
         local ceiling = LIMIT_CEILINGS[key]
+        refuseSecretSetting(value, "CodecKit:SetLimits", "limits." .. key, level + 1)
         if value == UNBOUNDED then
             if UNBOUNDED_ALLOWED[key] ~= true then
                 error(

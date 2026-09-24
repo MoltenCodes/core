@@ -358,4 +358,46 @@ describe("CommKit error levels", function()
         )
         assert.are.equal(256, CommKit:GetLimits().maxQueuedMessages)
     end)
+
+    it(
+        "refuses a secret limit of any type, and a secret object bound, before comparing it",
+        function()
+            -- A secret string and a secret number. The string limit is refused as
+            -- a secret, not as a non-number: it is asked before the comparison
+            -- with `CommKit.UNBOUNDED`, which would raise on a secret.
+            -- selene: allow(global_usage)
+            rawset(_G, "issecretvalue", function(value)
+                return value == "hidden" or value == 17
+            end)
+            assertReportedAtCaller(
+                "CommKit:SetLimits limits.burst must not be a secret value",
+                function(mark)
+                    mark()
+                    CommKit:SetLimits({ burst = "hidden" })
+                end
+            )
+            assertReportedAtCaller(
+                "CommKit:CreateScope options.maxRegistrations must not be a secret value",
+                function(mark)
+                    mark()
+                    CommKit:CreateScope({ maxRegistrations = 17 })
+                end
+            )
+            assertReportedAtCaller(
+                "CommKit:ForAddon options.maxRegistrations must not be a secret value",
+                function(mark)
+                    mark()
+                    CommKit:ForAddon("MyAddon", { maxRegistrations = 17 })
+                end
+            )
+            assertReportedAtCaller(
+                "CommKit.Scope:SyncSet options.maxListeners must not be a secret value",
+                function(mark)
+                    mark()
+                    scope:SyncSet("CKSync", { fields = { "a" }, maxListeners = 17 })
+                end
+            )
+            assert.are.equal(4000, CommKit:GetLimits().burst)
+        end
+    )
 end)

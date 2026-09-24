@@ -273,6 +273,7 @@ end
 ---@field hookKit boolean? Load HookKit and a `hooksecurefunc` stub; defaults to `false`.
 ---@field schemaKit boolean? Load SchemaKit; defaults to `false`.
 ---@field secureCall boolean? Install the fixture's `securecallfunction`; defaults to `false`.
+---@field commKitRevision integer? Load CommKit as a copy carrying this revision (see `LoadRevision`), the way an older embedded copy loads first; defaults to the shipped revision.
 ---@field lifecycleKit (boolean|table)? Load LifecycleKit after CommKit; `true` makes it announce `CLOSES_ADDON_SCOPES`, `false` models an older revision without it. Defaults to `nil`: not loaded.
 
 ---Reset, install the host stubs, then load the module chain.
@@ -301,7 +302,11 @@ function CommKitTestEnv.Load(options)
     for index = 1, #ALL_MODULES do
         local name = ALL_MODULES[index]
         if not skip[name] then
-            loaded[name] = require(name)
+            if name == "CommKit" and options.commKitRevision ~= nil then
+                loaded[name] = CommKitTestEnv.LoadRevision(options.commKitRevision)
+            else
+                loaded[name] = require(name)
+            end
         end
     end
     if options.lifecycleKit ~= nil then

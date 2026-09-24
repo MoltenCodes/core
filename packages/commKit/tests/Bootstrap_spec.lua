@@ -96,6 +96,47 @@ describe("CommKit bootstrap", function()
         assert.is_true(sync:IsClosed())
     end)
 
+    it("upgrades a revision 2 copy in place with a send in flight", function()
+        local older = TestEnv.Load({ commKitRevision = 2 })
+        assert.are.equal(2, older.REVISION)
+        older:SetLimits({ burst = 400, maxCps = 100 })
+        local scope = older:ForAddon("MyAddon")
+        local received = {}
+        scope:Register(PREFIX, function(_, text)
+            received[#received + 1] = text
+        end)
+        local text = TestEnv.Text(700)
+        local handle = scope:Send({ prefix = PREFIX, text = text, distribution = "PARTY" })
+        TestEnv.Advance(0)
+        assert.are.equal("sending", handle:GetState())
+        TestEnv.Loopback("Friend-Realm")
+
+        package.loaded["CommKit"] = nil
+        local CommKit = require("CommKit")
+        assert.are.equal(older, CommKit)
+        assert.is_true(CommKit.REVISION > 2)
+        assert.are.equal(scope, CommKit:ForAddon("MyAddon"))
+        assert.are.equal("playerLogout", rawget(scope, "_logoutCloser"))
+        assert.are.equal(400, CommKit:GetLimits().burst)
+
+        TestEnv.Advance(10)
+        assert.are.equal("sent", handle:GetState())
+        TestEnv.Loopback("Friend-Realm")
+        assert.are.same({ text }, received)
+
+        -- The inherited facade now refuses a secret before comparing it.
+        -- selene: allow(global_usage)
+        rawset(_G, "issecretvalue", function(value)
+            return value == 7
+        end)
+        TestEnv.expectErrorContaining(
+            "CommKit:CreateScope options.maxRegistrations must not be a secret value",
+            function()
+                CommKit:CreateScope({ maxRegistrations = 7 })
+            end
+        )
+    end)
+
     it("requires Registry", function()
         TestEnv.Reset()
         TestEnv.InstallWowApi()

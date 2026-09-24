@@ -2,7 +2,7 @@
 
 CommKit API generation **1** sends and receives addon messages of any length: prefix registration, a chunk protocol with bounded reassembly, three priority queues that refuse rather than grow, a bandwidth budget shared with everything else in the session, and a `SyncSet` of named fields versioned by content hash.
 
-Implementation revision: **1**. Wire protocol: control bytes `0x01`–`0x05`, specified in [Wire protocol](#wire-protocol).
+Implementation revision: **3**. Wire protocol: control bytes `0x01`–`0x05`, specified in [Wire protocol](#wire-protocol).
 
 ## Loading
 
@@ -165,7 +165,7 @@ A refusal allocates nothing and queues nothing. **Escaping is the caller's job**
 
 ### Constraints: the payload chooses the channel
 
-`constraints.logged = true` sends every chunk with `SendAddonMessageLogged`, the channel the client logs so players can report what it carried; use it for payloads that contain text a player wrote. Logged and ordinary messages to the same destination travel in separate [pipes](#queues-and-priorities). `constraints.battleNet = true` permits Battle.net transport; revision 1 has none and never selects it, so the flag changes nothing yet (see [Deviations](#deviations-from-the-planned-contract)).
+`constraints.logged = true` sends every chunk with `SendAddonMessageLogged`, the channel the client logs so players can report what it carried; use it for payloads that contain text a player wrote. Logged and ordinary messages to the same destination travel in separate [pipes](#queues-and-priorities). `constraints.battleNet = true` permits Battle.net transport; CommKit has no Battle.net pipe and never selects it, so the flag changes nothing yet (see [Deviations](#deviations-from-the-planned-contract)).
 
 ### Send states
 
@@ -473,7 +473,7 @@ In case (b) CommKit's `OnShutdown` subscription is made at the first `ForAddon`,
 
 ## Secret values
 
-Retail clients hand addon code **secret values** in restricted contexts; see [`EMBEDDING.md` → Secret values](../../../docs/EMBEDDING.md#secret-values-retail-12x). A secret prefix, text, distribution, target, priority, constraint, limit, addon name, sender, field or value passed to CommKit raises at the caller, before CommKit compares it with anything, `nil` included. A received message whose prefix, text, channel or sender is secret is dropped before any of them is used as a key, compared or measured, and counted in `secretsDropped`. Error messages never format a value CommKit did not create.
+Retail clients hand addon code **secret values** in restricted contexts; see [`EMBEDDING.md` → Secret values](../../../docs/EMBEDDING.md#secret-values-retail-12x). A secret prefix, text, distribution, target, priority, constraint, limit (a `SetLimits` value, `maxRegistrations` or `maxListeners`), addon name, sender, field or value passed to CommKit raises at the caller, before CommKit compares it with anything, `nil` and `CommKit.UNBOUNDED` included. A received message whose prefix, text, channel or sender is secret is dropped before any of them is used as a key, compared or measured, and counted in `secretsDropped`. Error messages never format a value CommKit did not create.
 
 ## Security: received data is untrusted
 
@@ -490,7 +490,7 @@ A received message is whatever the sender chose to send, and a sender may be hos
 
 The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
-- **`battleNet` is accepted and never selects Battle.net.** The plan lets the payload permit Battle.net transport; revision 1 has no Battle.net pipe (it needs a game-account target and a separate receive event), and a permission that is never used is still honoured. A later revision can add the transport without changing the contract.
+- **`battleNet` is accepted and never selects Battle.net.** The plan lets the payload permit Battle.net transport; CommKit has no Battle.net pipe (it needs a game-account target and a separate receive event), and a permission that is never used is still honoured. A later revision can add the transport without changing the contract.
 - **Refusal reasons beyond the plan's three**: `"forbiddenByte"`, `"badDistribution"` and `"unavailable"` for `Send`; `"full"` and the client's reasons for `Register`. Each names a condition the caller can act on.
 - **The scope bound counts registrations**, 32 per scope by default with SyncSet registrations included, rather than distinct prefixes; bounding registrations bounds prefixes too.
 - **Priorities are weighted 4 : 2 : 1 per chunk**, where ChatThrottleLib split bandwidth equally between priorities with traffic; equal shares make ALERT no faster than BULK under load.
@@ -510,4 +510,4 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 The package state (`_state`) holds the queues, the bucket, the limits, the statistics, the reassembly streams, the prefix signals, the Kit-owned scopes and the pools, and all of it is kept across an in-place upgrade: a newer compatible revision replaces the functions on the shared prototypes and in the dispatch table, and every callback CommKit handed to EventKit, TimerKit, SchedulerKit and HookKit calls through that table, so queued sends, open streams, registrations and SyncSets keep working under the new code.
 
-Revision 2 upgrades the addon scopes revision 1 built in place and arranges their [logout close](#at-logout) while it loads, for every open one. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: the subscription calls the facade and the watcher calls through the `logout` trampoline, so both run the newest code, and nothing is subscribed twice. The wire protocol belongs to API generation 1, not to the revision.
+Revision 3 inherits revision 2's state unchanged. Revision 2 and later upgrade the addon scopes revision 1 built in place and arrange their [logout close](#at-logout) while it loads, for every open one. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: the subscription calls the facade and the watcher calls through the `logout` trampoline, so both run the newest code, and nothing is subscribed twice. The wire protocol belongs to API generation 1, not to the revision.

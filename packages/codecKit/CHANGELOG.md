@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 — 2026-09-24
+
+- A secret option value (`compress`, `channel`, `level`) or `SetLimits` value is now refused at the caller before anything compares it: `CodecKit:Encode options.level must not be a secret value`, `CodecKit:SetLimits limits.maxDepth must not be a secret value`. Revision 1 compared these values with `nil`, a set or the `UNBOUNDED` sentinel first, which raises a host error at a line inside CodecKit when the value is a secret. Absent options are now tested with `type`, never with `== nil`.
+- Implementation revision 2. The state layout is unchanged: a revision 2 copy inherits the limits, the `UNBOUNDED` sentinel and the pool a revision 1 copy built. `Bootstrap_spec.lua` loads a revision 1 copy and upgrades it in place, and the next-revision upgrade spec now loads the revision after the current one.
+- `docs/API.md` states revision 2 and the refusal of secret option and limit values; `docs/INTERNALS.md` describes the upgrade in current form.
+- 105 specs.
+
 ## 0.1.0 — 2026-09-23
 
 First release: CodecKit API generation 1, implementation revision 1, wire format version 1 (`CodecKit.FORMAT_VERSION`). Requires Registry API 2 and PoolKit API 1; SchedulerKit API 1 is optional and found with `Registry:Find` by the asynchronous methods.
