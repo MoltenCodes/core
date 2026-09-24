@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 15
+local IMPLEMENTATION_REVISION = 16
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -82,8 +82,8 @@ local OWN_ADDON_HALTED = "halted"
 ---@field requiresAddons string[]? other addons this module cannot work without, at most `maxRequiredAddons` (default 16; see `ModuleKit:SetLimits`)
 ---@field implements ModuleKit.Implements? members the module must carry when `CreateModule` returns
 ---@field onInitialize fun(self: ModuleKit.Module, injections: table<string, any>)?
----@field onEnable fun(self: ModuleKit.Module)?
----@field onDisable fun(self: ModuleKit.Module)?
+---@field onEnable fun(self: ModuleKit.Module, injections: table<string, any>)?
+---@field onDisable fun(self: ModuleKit.Module, injections: table<string, any>)?
 
 ---What a provided value, or a module, must carry: a dense array of distinct
 ---method names, each looked up as `value[name]` and required to be a function,
@@ -102,8 +102,8 @@ local OWN_ADDON_HALTED = "halted"
 ---@class ModuleKit.Module
 ---@field scope ModuleKit.Scope framework registrations released on disable
 ---@field OnInitialize fun(self: ModuleKit.Module, injections: table<string, any>)?
----@field OnEnable fun(self: ModuleKit.Module)?
----@field OnDisable fun(self: ModuleKit.Module)?
+---@field OnEnable fun(self: ModuleKit.Module, injections: table<string, any>)?
+---@field OnDisable fun(self: ModuleKit.Module, injections: table<string, any>)?
 ---@field GetName fun(self: ModuleKit.Module): string
 ---@field GetAddon fun(self: ModuleKit.Module): ModuleKit.Addon
 ---@field GetState fun(self: ModuleKit.Module): ModuleKit.ModuleState
@@ -464,25 +464,19 @@ local NO_REQUIRED_ADDONS = {}
 
 -- Validation helpers --------------------------------------------------------
 
+-- Error levels. Every helper that raises takes the level it raises at,
+-- counted from its own frame (`2` is its caller), and names the public method
+-- in full, `ModuleKit.Module:Enable` or `ModuleKit.Addon:CreateModule`. Lua 5.1
+-- counts a frame replaced by a tail call as one level, so the count is the same
+-- whether a public method tail-calls its helper or not.
+
 ---@param value any
 ---@param label string argument description, used in the argument error
----@param level integer? stack level the failure is reported at; defaults to `3`
+---@param level integer stack level the failure is reported at, counted from this function
 local function validateNonEmptyString(value, label, level)
     if type(value) ~= "string" or value == "" then
-        error(label .. " must be a non-empty string", level or 3)
+        error(label .. " must be a non-empty string", level)
     end
-end
-
----@param value any
----@param methodName string public method name, used in the argument error
-local function validateModuleName(value, methodName)
-    validateNonEmptyString(value, "ModuleKit.Module:" .. methodName .. " moduleName", 4)
-end
-
----@param value any
----@param methodName string public method name, used in the argument error
-local function validateProviderName(value, methodName)
-    validateNonEmptyString(value, "ModuleKit.Addon:" .. methodName .. " providerName", 4)
 end
 
 ---Copy one level of `source`, so a caller cannot mutate container-owned state.
@@ -498,8 +492,9 @@ end
 
 ---Refuse a definition change to a module that has already been initialized.
 ---@param module ModuleKit.Module
----@param methodName string public method name, used in the argument error
-local function ensureDefinitionMutable(module, methodName)
+---@param methodName string public `Module` method name, used in the argument error
+---@param level integer stack level the failure is reported at, counted from this function
+local function ensureDefinitionMutable(module, methodName, level)
     if rawget(module, "_state") ~= "created" then
         error(
             "ModuleKit.Module:"
@@ -507,18 +502,18 @@ local function ensureDefinitionMutable(module, methodName)
                 .. ' cannot change module "'
                 .. rawget(module, "_name")
                 .. '" after initialization',
-            3
+            level
         )
     end
 end
 
 ---Refuse an operation on a container whose addon has already shut down.
 ---@param addon ModuleKit.Addon
----@param methodName string public method name, used in the argument error
----@param level integer|nil error level counted from this function; `3` (a public method's caller) when omitted
-local function ensureNotShutdown(addon, methodName, level)
+---@param methodLabel string the public method in full, `ModuleKit.Addon:CreateModule` or `ModuleKit.Module:Enable`
+---@param level integer stack level the failure is reported at, counted from this function
+local function ensureNotShutdown(addon, methodLabel, level)
     if rawget(addon, "_shutdown") == true then
-        error("ModuleKit.Addon:" .. methodName .. " cannot run after addon shutdown", level or 3)
+        error(methodLabel .. " cannot run after addon shutdown", level)
     end
 end
 
@@ -529,15 +524,20 @@ end
 ---@param module ModuleKit.Module
 ---@param field "_hardDependencies"|"_optionalDependencies"|"_before"|"_after"
 ---@param targetName string
----@param methodName string public method name, used in the argument errors
+---@param methodName string public `Module` method name, used in the argument errors
+---@param level integer stack level the failures are reported at, counted from this function: `3` from the public method, `5` from a `CreateModule` definition list
 ---@return ModuleKit.Module module
-local function addNameConstraint(module, field, targetName, methodName)
-    ensureDefinitionMutable(module, methodName)
-    ensureNotShutdown(rawget(module, "_addon"), methodName)
-    validateModuleName(targetName, methodName)
+local function addNameConstraint(module, field, targetName, methodName, level)
+    ensureDefinitionMutable(module, methodName, level + 1)
+    ensureNotShutdown(rawget(module, "_addon"), "ModuleKit.Module:" .. methodName, level + 1)
+    validateNonEmptyString(
+        targetName,
+        "ModuleKit.Module:" .. methodName .. " moduleName",
+        level + 1
+    )
 
     if targetName == rawget(module, "_name") then
-        error('ModuleKit module "' .. targetName .. '" cannot depend/order against itself', 3)
+        error('ModuleKit module "' .. targetName .. '" cannot depend/order against itself', level)
     end
 
     if field == "_before" then
@@ -550,7 +550,7 @@ local function addNameConstraint(module, field, targetName, methodName)
                     .. '" cannot be ordered before already-initialized module "'
                     .. targetName
                     .. '"',
-                3
+                level
             )
         end
     end
@@ -1237,10 +1237,18 @@ local function readProvideOptions(options, methodName, level)
     if type(options) ~= "table" then
         error(label .. " must be a table when provided", level)
     end
+    -- Every unknown field is collected and the first in sorted order named, so
+    -- the message does not depend on `next` order when there are several.
+    local unknown
     for key in next, options do
         if key ~= "implements" then
-            error(label .. ' contains unknown field "' .. tostring(key) .. '"', level)
+            unknown = unknown or {}
+            unknown[#unknown + 1] = tostring(key)
         end
+    end
+    if unknown ~= nil then
+        table.sort(unknown)
+        error(label .. ' contains unknown field "' .. unknown[1] .. '"', level)
     end
     return compileImplements(rawget(options, "implements"), label .. ".implements", level + 1)
 end
@@ -1263,7 +1271,7 @@ end
 ---@param methodName string public method name, used in the argument errors
 ---@return ModuleKit.Addon addon
 local function registerProvider(addon, name, provider, methodName)
-    validateProviderName(name, methodName)
+    validateNonEmptyString(name, "ModuleKit.Addon:" .. methodName .. " providerName", 4)
     if providerConflict(addon, name) then
         error("ModuleKit.Addon:" .. methodName .. ' name "' .. name .. '" is already in use', 3)
     end
@@ -1281,7 +1289,7 @@ end
 ---@param requestingModule ModuleKit.Module|nil scope context for module providers
 ---@return any value
 local function resolveProvider(addon, name, requestingModule)
-    validateProviderName(name, "Resolve")
+    validateNonEmptyString(name, "ModuleKit.Addon:Resolve providerName", 4)
 
     local providers = rawget(addon, "_providers")
     local provider = rawget(providers, name)
@@ -1817,12 +1825,12 @@ end
 ---reported at the line that called `Initialize` or `Activate`.
 ---@param module ModuleKit.Module
 ---@param visiting table<ModuleKit.Module, boolean>|nil recursion guard, `automatic` policy only
----@param depth integer|nil recursion depth below the public call; `nil` at the top
+---@param depth integer|nil frames between this call and the public method: the recursion depth, plus two under definition catch-up; `nil` for a direct call
 ---@return ModuleKit.Module module
 local function initializeWithPolicy(module, visiting, depth)
     depth = depth or 0
     local addon = rawget(module, "_addon")
-    ensureNotShutdown(addon, "Initialize", 4 + depth)
+    ensureNotShutdown(addon, "ModuleKit.Module:Initialize", 4 + depth)
 
     if rawget(module, "_state") ~= "created" then
         return module
@@ -1858,7 +1866,7 @@ local function initializeWithPolicy(module, visiting, depth)
                         .. '" requires initialized dependency "'
                         .. name
                         .. '"',
-                    3
+                    3 + depth
                 )
             end
         end
@@ -1874,12 +1882,12 @@ end
 ---is still reported at the line that called `Enable` or `Activate`.
 ---@param module ModuleKit.Module
 ---@param visiting table<ModuleKit.Module, boolean>|nil recursion guard, `automatic` policy only
----@param depth integer|nil recursion depth below the public call; `nil` at the top
+---@param depth integer|nil frames between this call and the public method: the recursion depth, plus two under definition catch-up; `nil` for a direct call
 ---@return ModuleKit.Module module
 local function enableWithPolicy(module, visiting, depth)
     depth = depth or 0
     local addon = rawget(module, "_addon")
-    ensureNotShutdown(addon, "Enable", 4 + depth)
+    ensureNotShutdown(addon, "ModuleKit.Module:Enable", 4 + depth)
 
     -- A halt is terminal, so no dependency policy can satisfy it.
     if rawget(module, "_state") ~= "enabled" then
@@ -1942,7 +1950,7 @@ local function enableWithPolicy(module, visiting, depth)
                         .. '" requires enabled dependency "'
                         .. name
                         .. '"',
-                    3
+                    3 + depth
                 )
             end
         end
@@ -2062,12 +2070,16 @@ end
 -- Whole-container passes ----------------------------------------------------
 
 ---Catch one module up to the LifecycleKit phases its container has reached.
+---
+---Reached from `CreateModule` through `scheduleCatchUp`, two frames below the
+---public method, so a missing dependency, a cycle or a `strict` refusal is
+---reported at the line that called `CreateModule`.
 ---@param addon ModuleKit.Addon
 ---@param module ModuleKit.Module
 local function catchUpModule(addon, module)
     local lifecycle = rawget(addon, "_lifecycle")
     if lifecycle:IsLoaded() then
-        initializeWithPolicy(module)
+        initializeWithPolicy(module, nil, 2)
     end
     if lifecycle:IsReady() then
         -- Catch-up is implicit, so a halt blocks it quietly instead of
@@ -2076,7 +2088,7 @@ local function catchUpModule(addon, module)
         if blocker ~= nil then
             recordHaltRefusal(module, blocker)
         else
-            enableWithPolicy(module)
+            enableWithPolicy(module, nil, 2)
         end
     end
 end
@@ -2215,7 +2227,7 @@ end
 ---@return ModuleKit.Addon addon
 local function initializeAllInternal(addon, level)
     level = level or 3
-    ensureNotShutdown(addon, "InitializeAll", level + 1)
+    ensureNotShutdown(addon, "ModuleKit.Addon:InitializeAll", level + 1)
     local order = buildGraph(addon, level + 1)
     return runContainerPass(addon, runInitializeAllPass, order)
 end
@@ -2286,7 +2298,7 @@ end
 ---@return ModuleKit.Addon addon
 local function enableAllInternal(addon, lifecycleDriven, level)
     level = level or 3
-    ensureNotShutdown(addon, "EnableAll", level + 1)
+    ensureNotShutdown(addon, "ModuleKit.Addon:EnableAll", level + 1)
     local order = buildGraph(addon, level + 1)
 
     if not lifecycleDriven then
@@ -2342,23 +2354,27 @@ end
 ---Disable the whole container in reverse graph order.
 ---@param addon ModuleKit.Addon
 ---@param shutdown boolean `true` for terminal LifecycleKit cleanup
+---@param level integer|nil error level of an invalid graph outside shutdown, counted from this function: `3` when `DisableAll` calls it, the default
 ---@return ModuleKit.Addon addon
-local function disableAllInternal(addon, shutdown)
+local function disableAllInternal(addon, shutdown, level)
     local order
     local seedError
-    local graphOk, graphResult = pcall(buildGraph, addon)
 
-    if graphOk then
-        order = graphResult
-    elseif shutdown then
-        -- Shutdown is terminal cleanup. A malformed inactive definition must
-        -- not prevent already-enabled modules from releasing resources. Keep
-        -- the graph error for diagnostics, but continue in a safe order based
-        -- on the hard-dependency edges of enabled modules only.
-        seedError = { value = graphResult }
-        order = buildEnabledHardOrder(addon)
+    if not shutdown then
+        order = buildGraph(addon, (level or 3) + 1)
     else
-        error(graphResult, 0)
+        local graphOk, graphResult = pcall(buildGraph, addon)
+        if graphOk then
+            order = graphResult
+        else
+            -- Shutdown is terminal cleanup. A malformed inactive definition
+            -- must not prevent already-enabled modules from releasing
+            -- resources. Keep the graph error for diagnostics, but continue in
+            -- a safe order based on the hard-dependency edges of enabled
+            -- modules only.
+            seedError = { value = graphResult }
+            order = buildEnabledHardOrder(addon)
+        end
     end
 
     if shutdown then
@@ -2550,7 +2566,7 @@ end
 ---@param moduleName string
 ---@return ModuleKit.Module self
 local function moduleDependsOn(self, moduleName)
-    return addNameConstraint(self, "_hardDependencies", moduleName, "DependsOn")
+    return addNameConstraint(self, "_hardDependencies", moduleName, "DependsOn", 3)
 end
 
 ---Order after `moduleName` when it exists, without requiring it.
@@ -2558,7 +2574,7 @@ end
 ---@param moduleName string
 ---@return ModuleKit.Module self
 local function moduleOptionalDependency(self, moduleName)
-    return addNameConstraint(self, "_optionalDependencies", moduleName, "OptionalDependency")
+    return addNameConstraint(self, "_optionalDependencies", moduleName, "OptionalDependency", 3)
 end
 
 ---Order this module before `moduleName`, without requiring it.
@@ -2566,7 +2582,7 @@ end
 ---@param moduleName string
 ---@return ModuleKit.Module self
 local function moduleBefore(self, moduleName)
-    return addNameConstraint(self, "_before", moduleName, "Before")
+    return addNameConstraint(self, "_before", moduleName, "Before", 3)
 end
 
 ---Order this module after `moduleName`, without requiring it.
@@ -2574,7 +2590,41 @@ end
 ---@param moduleName string
 ---@return ModuleKit.Module self
 local function moduleAfter(self, moduleName)
-    return addNameConstraint(self, "_after", moduleName, "After")
+    return addNameConstraint(self, "_after", moduleName, "After", 3)
+end
+
+---Record injection aliases on `module`.
+---@param module ModuleKit.Module
+---@param aliasOrMap any one alias, or an alias-to-name map
+---@param target any target name, when a single alias was given
+---@param level integer stack level the failures are reported at, counted from this function: `3` from `Inject`, `4` from a `CreateModule` definition
+local function addInjections(module, aliasOrMap, target, level)
+    ensureDefinitionMutable(module, "Inject", level + 1)
+    ensureNotShutdown(rawget(module, "_addon"), "ModuleKit.Module:Inject", level + 1)
+
+    local specification = rawget(module, "_injectSpec")
+    if type(aliasOrMap) == "table" and target == nil then
+        local aliases = {}
+        for alias in next, aliasOrMap do
+            if type(alias) ~= "string" or alias == "" then
+                error("ModuleKit.Module:Inject map aliases must be non-empty strings", level)
+            end
+            aliases[#aliases + 1] = alias
+        end
+        table.sort(aliases)
+
+        for index = 1, #aliases do
+            local alias = aliases[index]
+            local dependency = rawget(aliasOrMap, alias)
+            validateNonEmptyString(dependency, "ModuleKit.Module:Inject target", level + 1)
+            rawset(specification, alias, dependency)
+        end
+        return
+    end
+
+    validateNonEmptyString(aliasOrMap, "ModuleKit.Module:Inject alias", level + 1)
+    validateNonEmptyString(target, "ModuleKit.Module:Inject target", level + 1)
+    rawset(specification, aliasOrMap, target)
 end
 
 ---Declare injection aliases.
@@ -2588,32 +2638,7 @@ end
 ---@return ModuleKit.Module self
 ---@overload fun(self: ModuleKit.Module, map: table<string, string>): ModuleKit.Module
 local function moduleInject(self, aliasOrMap, target)
-    ensureDefinitionMutable(self, "Inject")
-    ensureNotShutdown(rawget(self, "_addon"), "Inject")
-
-    local specification = rawget(self, "_injectSpec")
-    if type(aliasOrMap) == "table" and target == nil then
-        local aliases = {}
-        for alias in next, aliasOrMap do
-            if type(alias) ~= "string" or alias == "" then
-                error("ModuleKit.Module:Inject map aliases must be non-empty strings", 3)
-            end
-            aliases[#aliases + 1] = alias
-        end
-        table.sort(aliases)
-
-        for index = 1, #aliases do
-            local alias = aliases[index]
-            local dependency = rawget(aliasOrMap, alias)
-            validateNonEmptyString(dependency, "ModuleKit.Module:Inject target", 3)
-            rawset(specification, alias, dependency)
-        end
-        return self
-    end
-
-    validateNonEmptyString(aliasOrMap, "ModuleKit.Module:Inject alias", 3)
-    validateNonEmptyString(target, "ModuleKit.Module:Inject target", 3)
-    rawset(specification, aliasOrMap, target)
+    addInjections(self, aliasOrMap, target, 3)
     return self
 end
 
@@ -2671,6 +2696,7 @@ end
 ---@param providerName string
 ---@return any
 local function moduleResolve(self, providerName)
+    validateNonEmptyString(providerName, "ModuleKit.Module:Resolve providerName", 3)
     return resolveProvider(rawget(self, "_addon"), providerName, self)
 end
 
@@ -2695,9 +2721,9 @@ end
 ---@param policy ModuleKit.DependencyPolicy
 ---@return ModuleKit.DependencyPolicy previous
 local function addonSetDependencyPolicy(self, policy)
-    ensureNotShutdown(self, "SetDependencyPolicy")
+    ensureNotShutdown(self, "ModuleKit.Addon:SetDependencyPolicy", 3)
     if policy ~= "automatic" and policy ~= "strict" then
-        error('ModuleKit.Addon:SetDependencyPolicy policy must be "automatic" or "strict"', 3)
+        error('ModuleKit.Addon:SetDependencyPolicy policy must be "automatic" or "strict"', 2)
     end
     local previous = rawget(self, "_dependencyPolicy")
     rawset(self, "_dependencyPolicy", policy)
@@ -2716,40 +2742,6 @@ local DEFINITION_FIELDS = {
     onEnable = true,
     onDisable = true,
 }
-
----Apply one dense-array definition field by calling `method` per entry.
----@param module ModuleKit.Module
----@param definition ModuleKit.Definition
----@param key "dependsOn"|"optionalDependencies"|"before"|"after"|"requiresAddons"
----@param method fun(module: ModuleKit.Module, targetName: string): ModuleKit.Module
-local function applyDefinitionList(module, definition, key, method)
-    local values = rawget(definition, key)
-    if values == nil then
-        return
-    end
-    if type(values) ~= "table" then
-        error("ModuleKit module definition " .. key .. " must be a dense array", 4)
-    end
-
-    local count = 0
-    local maximum = 0
-    for index in next, values do
-        if type(index) ~= "number" or index < 1 or index % 1 ~= 0 then
-            error("ModuleKit module definition " .. key .. " must be a dense array", 4)
-        end
-        count = count + 1
-        if index > maximum then
-            maximum = index
-        end
-    end
-    if count ~= maximum then
-        error("ModuleKit module definition " .. key .. " must be a dense array", 4)
-    end
-
-    for index = 1, count do
-        method(module, rawget(values, index))
-    end
-end
 
 ---Record one `requiresAddons` entry on `module`.
 ---
@@ -2793,6 +2785,53 @@ local function addRequiredAddon(module, addonName)
     return module
 end
 
+---Apply one dense-array definition field entry by entry: through the
+---constraint `field` a `Module` method records, or, for `requiresAddons`
+---(`field` is `nil`), through `addRequiredAddon`. Every refusal is raised at
+---the caller of `CreateModule`, and an entry reports the same message the
+---`Module` method it stands for would.
+---@param module ModuleKit.Module
+---@param definition ModuleKit.Definition
+---@param key "dependsOn"|"optionalDependencies"|"before"|"after"|"requiresAddons"
+---@param field "_hardDependencies"|"_optionalDependencies"|"_before"|"_after"|nil
+---@param methodName string|nil the `Module` method the field stands for, used in the argument errors
+local function applyDefinitionList(module, definition, key, field, methodName)
+    local values = rawget(definition, key)
+    if values == nil then
+        return
+    end
+    if type(values) ~= "table" then
+        error("ModuleKit module definition " .. key .. " must be a dense array", 4)
+    end
+
+    local count = 0
+    local maximum = 0
+    for index in next, values do
+        if type(index) ~= "number" or index < 1 or index % 1 ~= 0 then
+            error("ModuleKit module definition " .. key .. " must be a dense array", 4)
+        end
+        count = count + 1
+        if index > maximum then
+            maximum = index
+        end
+    end
+    if count ~= maximum then
+        error("ModuleKit module definition " .. key .. " must be a dense array", 4)
+    end
+
+    for index = 1, count do
+        local value = rawget(values, index)
+        if field == nil then
+            addRequiredAddon(module, value)
+        else
+            -- A constraint field always comes with the method it stands for.
+            ---@cast methodName string
+            -- Level 5 counts this frame, `applyDefinition` and `CreateModule`.
+            addNameConstraint(module, field, value, methodName, 5)
+        end
+    end
+end
+
 ---Copy one definition hook onto the module under its public field name.
 ---@param module ModuleKit.Module
 ---@param definition ModuleKit.Definition
@@ -2810,6 +2849,9 @@ local function applyDefinitionCallback(module, definition, key, field)
 end
 
 ---Apply a complete definition table in a fixed, deterministic field order.
+---
+---Called by `CreateModule`, so its own refusals use level 3 and the helpers
+---it calls count their frames on top.
 ---@param module ModuleKit.Module
 ---@param definition ModuleKit.Definition|nil
 local function applyDefinition(module, definition)
@@ -2817,7 +2859,7 @@ local function applyDefinition(module, definition)
         return
     end
     if type(definition) ~= "table" then
-        error("ModuleKit.Addon:CreateModule definition must be a table when provided", 4)
+        error("ModuleKit.Addon:CreateModule definition must be a table when provided", 3)
     end
 
     local unknown = {}
@@ -2828,20 +2870,26 @@ local function applyDefinition(module, definition)
     end
     if #unknown > 0 then
         table.sort(unknown)
-        error('ModuleKit module definition contains unknown field "' .. unknown[1] .. '"', 4)
+        error('ModuleKit module definition contains unknown field "' .. unknown[1] .. '"', 3)
     end
 
     -- Apply in a fixed order so malformed definitions fail deterministically
     -- on every Lua implementation and every load order.
-    applyDefinitionList(module, definition, "dependsOn", moduleDependsOn)
-    applyDefinitionList(module, definition, "optionalDependencies", moduleOptionalDependency)
-    applyDefinitionList(module, definition, "before", moduleBefore)
-    applyDefinitionList(module, definition, "after", moduleAfter)
-    applyDefinitionList(module, definition, "requiresAddons", addRequiredAddon)
+    applyDefinitionList(module, definition, "dependsOn", "_hardDependencies", "DependsOn")
+    applyDefinitionList(
+        module,
+        definition,
+        "optionalDependencies",
+        "_optionalDependencies",
+        "OptionalDependency"
+    )
+    applyDefinitionList(module, definition, "before", "_before", "Before")
+    applyDefinitionList(module, definition, "after", "_after", "After")
+    applyDefinitionList(module, definition, "requiresAddons", nil, nil)
 
     local inject = rawget(definition, "inject")
     if inject ~= nil then
-        moduleInject(module, inject)
+        addInjections(module, inject, nil, 4)
     end
 
     applyDefinitionCallback(module, definition, "onInitialize", "OnInitialize")
@@ -2897,12 +2945,12 @@ end
 ---@param definition ModuleKit.Definition|nil atomic definition table; see `docs/API.md`
 ---@return ModuleKit.Module module
 local function addonCreateModule(self, name, definition)
-    ensureNotShutdown(self, "CreateModule")
-    validateModuleName(name, "CreateModule")
+    ensureNotShutdown(self, "ModuleKit.Addon:CreateModule", 3)
+    validateNonEmptyString(name, "ModuleKit.Addon:CreateModule name", 3)
 
     local modules = rawget(self, "_modules")
     if rawget(modules, name) ~= nil or rawget(rawget(self, "_providers"), name) ~= nil then
-        error('ModuleKit.Addon:CreateModule name "' .. name .. '" is already in use', 3)
+        error('ModuleKit.Addon:CreateModule name "' .. name .. '" is already in use', 2)
     end
 
     local order = rawget(self, "_moduleOrder")
@@ -2976,7 +3024,7 @@ end
 ---@param name string
 ---@return ModuleKit.Module|nil
 local function addonGetModule(self, name)
-    validateModuleName(name, "GetModule")
+    validateNonEmptyString(name, "ModuleKit.Addon:GetModule name", 3)
     return rawget(rawget(self, "_modules"), name)
 end
 
@@ -2985,7 +3033,7 @@ end
 ---@param name string
 ---@return boolean
 local function addonHasModule(self, name)
-    validateModuleName(name, "HasModule")
+    validateNonEmptyString(name, "ModuleKit.Addon:HasModule name", 3)
     return rawget(rawget(self, "_modules"), name) ~= nil
 end
 
@@ -3044,7 +3092,9 @@ end
 ---@param self ModuleKit.Addon
 ---@return ModuleKit.Addon self
 local function addonDisableAll(self)
-    return disableAllInternal(self, false)
+    -- Not a tail call, for the same reason as `addonInitializeAll`.
+    local addon = disableAllInternal(self, false, 3)
+    return addon
 end
 
 ---Register an addon-scoped constant. `nil` is rejected. The value exists
@@ -3055,11 +3105,11 @@ end
 ---@param options ModuleKit.ProvideOptions|nil
 ---@return ModuleKit.Addon self
 local function addonProvideValue(self, name, value, options)
-    ensureNotShutdown(self, "ProvideValue")
+    ensureNotShutdown(self, "ModuleKit.Addon:ProvideValue", 3)
     if value == nil then
-        error("ModuleKit.Addon:ProvideValue value must not be nil", 3)
+        error("ModuleKit.Addon:ProvideValue value must not be nil", 2)
     end
-    validateProviderName(name, "ProvideValue")
+    validateNonEmptyString(name, "ModuleKit.Addon:ProvideValue providerName", 3)
     local contract = readProvideOptions(options, "ProvideValue", 3)
     checkImplements(contract, value, 'provider "' .. name .. '"', 3)
     return registerProvider(
@@ -3074,7 +3124,7 @@ end
 ---@param methodName string public method name, used in the argument error
 local function validateFactory(factory, methodName)
     if type(factory) ~= "function" then
-        error("ModuleKit.Addon:" .. methodName .. " factory must be a function", 4)
+        error("ModuleKit.Addon:" .. methodName .. " factory must be a function", 3)
     end
 end
 
@@ -3086,7 +3136,7 @@ end
 ---@param options ModuleKit.ProvideOptions|nil
 ---@return ModuleKit.Addon self
 local function addonProvideSingleton(self, name, factory, options)
-    ensureNotShutdown(self, "ProvideSingleton")
+    ensureNotShutdown(self, "ModuleKit.Addon:ProvideSingleton", 3)
     validateFactory(factory, "ProvideSingleton")
     local contract = readProvideOptions(options, "ProvideSingleton", 3)
     return registerProvider(self, name, {
@@ -3107,7 +3157,7 @@ end
 ---@param options ModuleKit.ProvideOptions|nil
 ---@return ModuleKit.Addon self
 local function addonProvideModule(self, name, factory, options)
-    ensureNotShutdown(self, "ProvideModule")
+    ensureNotShutdown(self, "ModuleKit.Addon:ProvideModule", 3)
     validateFactory(factory, "ProvideModule")
     local contract = readProvideOptions(options, "ProvideModule", 3)
     return registerProvider(self, name, {
@@ -3126,7 +3176,7 @@ end
 ---@param options ModuleKit.ProvideOptions|nil
 ---@return ModuleKit.Addon self
 local function addonProvideTransient(self, name, factory, options)
-    ensureNotShutdown(self, "ProvideTransient")
+    ensureNotShutdown(self, "ModuleKit.Addon:ProvideTransient", 3)
     validateFactory(factory, "ProvideTransient")
     local contract = readProvideOptions(options, "ProvideTransient", 3)
     return registerProvider(self, name, {
@@ -3154,7 +3204,7 @@ local function addonResolve(self, name, requestingModule)
         then
             error(
                 "ModuleKit.Addon:Resolve requestingModule must be a module owned by this addon",
-                3
+                2
             )
         end
     end

@@ -314,12 +314,12 @@ end)
 describe("ModuleKit limits across an in-place upgrade", function()
     after_each(TestEnv.Reset)
 
-    it("registers itself as ModuleKit API 1 revision 15", function()
+    it("registers itself as ModuleKit API 1 revision 16", function()
         local ModuleKit, Registry = TestEnv.NewPackage()
         local _, revision = Registry:Get("moduleKit", 1)
 
-        assert.are.equal(15, ModuleKit.REVISION)
-        assert.are.equal(15, revision)
+        assert.are.equal(16, ModuleKit.REVISION)
+        assert.are.equal(16, revision)
     end)
 
     it("keeps set limits and the sentinel when a newer revision loads", function()
@@ -330,7 +330,7 @@ describe("ModuleKit limits across an in-place upgrade", function()
         local upgraded = TestEnv.LoadRevision(ModuleKit.REVISION + 1)
 
         assert.are.equal(ModuleKit, upgraded)
-        assert.are.equal(16, upgraded.REVISION)
+        assert.are.equal(17, upgraded.REVISION)
         assert.are.equal(sentinel, upgraded.UNBOUNDED)
         assert.are.equal(5, upgraded:GetLimits().maxRequiredAddons)
     end)
@@ -347,13 +347,13 @@ describe("ModuleKit limits across an in-place upgrade", function()
 
     it("leaves a newer revision's limits alone when an older copy loads after it", function()
         TestEnv.LoadDependencies()
-        local newer = TestEnv.LoadRevision(16)
+        local newer = TestEnv.LoadRevision(17)
         newer:SetLimits({ maxRequiredAddons = 3 })
 
-        local selected = TestEnv.LoadRevision(15)
+        local selected = TestEnv.LoadRevision(16)
 
         assert.are.equal(newer, selected)
-        assert.are.equal(16, selected.REVISION)
+        assert.are.equal(17, selected.REVISION)
         assert.are.equal(3, selected:GetLimits().maxRequiredAddons)
     end)
 
@@ -372,7 +372,7 @@ describe("ModuleKit limits across an in-place upgrade", function()
         local upgraded = require("ModuleKit")
 
         assert.are.equal(previous, upgraded)
-        assert.are.equal(15, upgraded.REVISION)
+        assert.are.equal(16, upgraded.REVISION)
         assert.are.equal(addon, upgraded:ForAddon("MyAddon"))
         assert.are.equal("table", type(upgraded.UNBOUNDED))
         assert.are.equal(rawget(state, "unbounded"), upgraded.UNBOUNDED)
@@ -418,7 +418,7 @@ describe("ModuleKit implements across an in-place upgrade", function()
         local upgraded = require("ModuleKit")
 
         assert.are.equal(previous, upgraded)
-        assert.are.equal(15, upgraded.REVISION)
+        assert.are.equal(16, upgraded.REVISION)
         assert.are.equal(addon, upgraded:ForAddon("MyAddon"))
         assert.is_nil(rawget(rawget(rawget(addon, "_providers"), "Database"), "implements"))
         assert.is_table(addon:Resolve("Database"))
@@ -438,9 +438,47 @@ describe("ModuleKit implements across an in-place upgrade", function()
         local upgraded = TestEnv.LoadRevision(ModuleKit.REVISION + 1)
 
         assert.are.equal(ModuleKit, upgraded)
-        assert.are.equal(16, upgraded.REVISION)
+        assert.are.equal(17, upgraded.REVISION)
         TestEnv.expectErrorContaining('provider "Database" must implement "Save"', function()
             upgraded:ForAddon("MyAddon"):Resolve("Database")
         end)
+    end)
+end)
+
+-- Revision 16 changed error levels and method labels only, so nothing in
+-- package state, on a container, on a module or on a provider record changes:
+-- what revision 15 created keeps working, and its argument errors now point at
+-- the caller's line.
+describe("ModuleKit upgrade from revision 15", function()
+    after_each(TestEnv.Reset)
+
+    it("keeps containers, modules and contracts and reports errors at the caller", function()
+        TestEnv.LoadDependencies()
+        local previous = TestEnv.LoadRevision(15)
+        local addon = previous:ForAddon("MyAddon")
+        local module = addon:CreateModule("UI")
+        addon:ProvideSingleton("Database", function()
+            return {}
+        end, { implements = { "Save" } })
+
+        local upgraded = require("ModuleKit")
+
+        assert.are.equal(previous, upgraded)
+        assert.are.equal(16, upgraded.REVISION)
+        assert.are.equal(addon, upgraded:ForAddon("MyAddon"))
+        assert.are.equal(module, addon:GetModule("UI"))
+        TestEnv.expectErrorContaining('provider "Database" must implement "Save"', function()
+            addon:Resolve("Database")
+        end)
+
+        local line = debug.getinfo(1, "l").currentline + 2
+        local ok, message = pcall(function()
+            module:DependsOn("")
+        end)
+        assert.is_false(ok)
+        assert.is_not_nil(
+            string.find(message, "Bootstrap_spec.lua:" .. line .. ":", 1, true),
+            message
+        )
     end)
 end)

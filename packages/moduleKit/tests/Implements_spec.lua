@@ -5,23 +5,7 @@
 
 local TestEnv = require("ModuleKitTestEnv")
 
----Assert that `callback` raises `expected` at the line that calls into
----ModuleKit, which is the first line of `callback`'s body, the line after
----its `function()`.
----@param expected string substring the message must contain
----@param callback fun()
-local function expectCallerError(expected, callback)
-    local source = debug.getinfo(2, "S").short_src
-    local line = debug.getinfo(callback, "S").linedefined + 1
-    local ok, message = pcall(callback)
-
-    assert.is_false(ok)
-    assert.is_not_nil(string.find(tostring(message), expected, 1, true), tostring(message))
-    assert.is_not_nil(
-        string.find(tostring(message), source .. ":" .. line .. ":", 1, true),
-        tostring(message)
-    )
-end
+local expectCallerError = TestEnv.expectCallerError
 
 ---A class whose instances inherit their methods through a metatable, the
 ---shape a provided object usually has.
@@ -486,7 +470,7 @@ describe("ModuleKit implements without SchemaKit", function()
     end
 
     before_each(function()
-        ModuleKit = TestEnv.NewPackageWithoutHookKit()
+        ModuleKit = TestEnv.NewPackageWithoutOptionalKits()
         addon = ModuleKit:ForAddon("MyAddon")
     end)
 

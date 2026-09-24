@@ -11,23 +11,7 @@ local function addonNames(count)
     return names
 end
 
----Assert that `callback` raises `expected` at the line that calls into
----ModuleKit, which is the first line of `callback`'s body, the line after
----its `function()`.
----@param expected string substring the message must contain
----@param callback fun()
-local function expectCallerError(expected, callback)
-    local source = debug.getinfo(2, "S").short_src
-    local line = debug.getinfo(callback, "S").linedefined + 1
-    local ok, message = pcall(callback)
-
-    assert.is_false(ok)
-    assert.is_not_nil(string.find(tostring(message), expected, 1, true), tostring(message))
-    assert.is_not_nil(
-        string.find(tostring(message), source .. ":" .. line .. ":", 1, true),
-        tostring(message)
-    )
-end
+local expectCallerError = TestEnv.expectCallerError
 
 ---Make every LifecycleKit instance accept any number of `DependsOn`
 ---declarations, modelling a LifecycleKit whose own limit was opened. It is

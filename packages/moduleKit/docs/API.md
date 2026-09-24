@@ -420,7 +420,7 @@ addon:ValidateGraph()
 local names = addon:GetActivationOrder()
 ```
 
-Whole-container operations validate the complete graph. Missing hard dependencies and graph cycles fail with human-readable diagnostics, raised at the line that called `InitializeAll()`, `EnableAll()`, `ValidateGraph()`, `GetActivationOrder()`, `Initialize()`, `Enable()` or `Activate()`, however deep in a dependency chain the problem was found.
+Whole-container operations validate the complete graph. Missing hard dependencies and graph cycles fail with human-readable diagnostics, raised at the line that called `InitializeAll()`, `EnableAll()`, `DisableAll()`, `ValidateGraph()`, `GetActivationOrder()`, `Initialize()`, `Enable()` or `Activate()`, however deep in a dependency chain the problem was found. A definition-table module that catches up inside `CreateModule` reports the same failures at the `CreateModule` line.
 
 Targeted `Initialize()` / `Enable()` operations intentionally inspect only the module's hard `DependsOn` closure. An unrelated invalid optional feature therefore does not prevent an otherwise independent targeted operation. Ordering-only constraints are honored by whole-container graph ordering and introspection; use `DependsOn` whenever runtime activation of another module is required.
 
@@ -601,6 +601,56 @@ Bulk initialization/enable operations continue independent modules, block hard d
 For non-terminal `addon:DisableAll()`, if a dependent's `OnDisable` fails and remains enabled, its hard dependency is kept enabled as well. This preserves the runtime invariant that an enabled module never loses a hard dependency solely because bulk cleanup continued after an error.
 
 Lifecycle shutdown is different: it is terminal best-effort cleanup. ModuleKit attempts every enabled module even after earlier failures. If an inactive late definition makes the full graph invalid, enabled modules are still cleaned up using their hard-dependency subgraph, and the original graph error is re-raised after cleanup.
+
+## Argument and state errors
+
+Every refusal below is raised at the line that called the public method,
+including a refusal found while a definition table is applied, which is raised
+at the `CreateModule` line. Messages name the public method in full.
+
+| Raised by | Message |
+|---|---|
+| `ForAddon` | `ModuleKit:ForAddon addonName must be a non-empty string` |
+| `SetDependencyPolicy` | `ModuleKit.Addon:SetDependencyPolicy policy must be "automatic" or "strict"` |
+| `CreateModule`, `GetModule`, `HasModule` | `ModuleKit.Addon:<Method> name must be a non-empty string` |
+| `CreateModule` | `ModuleKit.Addon:CreateModule name "<name>" is already in use` (a module or a provider) |
+| `CreateModule` | `ModuleKit.Addon:CreateModule definition must be a table when provided` |
+| `CreateModule` | `ModuleKit module definition contains unknown field "<field>"` (the first unknown field in sorted order) |
+| `CreateModule` | `ModuleKit module definition <field> must be a dense array` |
+| `CreateModule` | `ModuleKit module definition <hook> must be a function` |
+| `CreateModule` | `ModuleKit module definition requiresAddons entries must be non-empty strings`, `... must name other addons, not "<addon>" itself`, `... must list at most <n> addons (ModuleKit:SetLimits maxRequiredAddons)` |
+| `CreateModule` | `ModuleKit.Addon:CreateModule module "<name>" requires addon "<addon>", but addon "<own>" already declares the most addon dependencies LifecycleKit accepts` |
+| `CreateModule`, `Before` | `ModuleKit cannot create late module "<name>" because it would need to run before already-initialized module "<other>"`; `ModuleKit module "<name>" cannot be ordered before already-initialized module "<other>"` |
+| `DependsOn`, `OptionalDependency`, `Before`, `After` (and the matching definition lists) | `ModuleKit.Module:<Method> moduleName must be a non-empty string`; `ModuleKit module "<name>" cannot depend/order against itself` |
+| `DependsOn`, `OptionalDependency`, `Before`, `After`, `Inject` | `ModuleKit.Module:<Method> cannot change module "<name>" after initialization` |
+| `Inject` (and the definition's `inject`) | `ModuleKit.Module:Inject map aliases must be non-empty strings`, `ModuleKit.Module:Inject alias must be a non-empty string`, `ModuleKit.Module:Inject target must be a non-empty string` |
+| `Provide*` | `ModuleKit.Addon:<Method> providerName must be a non-empty string`, `... name "<name>" is already in use`, `... factory must be a function`, `... options must be a table when provided`, `... options contains unknown field "<field>"` (first in sorted order); the `implements` refusals are listed under [Implements](#implements) |
+| `ProvideValue` | `ModuleKit.Addon:ProvideValue value must not be nil` |
+| `Resolve` | `ModuleKit.Addon:Resolve providerName must be a non-empty string` (`ModuleKit.Module:Resolve ...` for the module form), `ModuleKit.Addon:Resolve requestingModule must be a module owned by this addon`, `ModuleKit injectable "<name>" does not exist`, `ModuleKit module-scoped provider "<name>" requires a requesting module`, `ModuleKit provider "<name>" factory returned nil`, `ModuleKit provider resolution cycle: A -> B -> A` |
+| `Initialize`, `Enable`, `Activate` | `ModuleKit strict policy: module "<name>" requires initialized dependency "<dependency>"` (`enabled` for `Enable`); `ModuleKit dependency cycle detected while initializing "<name>"` (`enabling`); `ModuleKit module "<name>" cannot be enabled from state "<state>"`; the halted refusals under [Halted addons](#halted-addons) |
+| `Disable` | `ModuleKit strict policy: cannot disable module "<name>" while dependent "<dependent>" is enabled` |
+| graph operations | `ModuleKit module "<name>" requires missing dependency "<dependency>"`, `ModuleKit dependency cycle detected: A -> B -> A` |
+| after shutdown | `<Method> cannot run after addon shutdown`, for example `ModuleKit.Addon:ProvideValue cannot run after addon shutdown` or `ModuleKit.Module:Enable cannot run after addon shutdown` |
+| reading `module.scope.<Field>` outside the enable window | `ModuleKit module "<name>" scope.<Field> is available only while the module is enabling or enabled` |
+| `SetLimits` | see [Limits](#limits) |
+
+A hook field that is set but is not a function is not refused when it is
+assigned; the phase that would call it records `ModuleKit module "<name>"
+<Hook> must be a function` as the module's failure and re-raises it.
+
+## Cost
+
+Name lookups (`GetModule`, `HasModule`, the `Get*` / `Is*` inspection methods)
+are table reads and allocate nothing. `GetModules`, `GetInjections`,
+`GetEnableState` and `GetLimits` return a fresh table on every call. Resolving
+a value, or a singleton or module-scoped provider already cached for the
+requester, allocates nothing; a factory run allocates one resolution-stack
+entry, and the `implements` list form adds one `value[name]` lookup per
+declared name. Graph operations (`ValidateGraph`, `GetActivationOrder`, the
+whole-container passes, and a targeted `Enable` or `Activate` while some
+module is blocked by a dependency) build the graph afresh on every call and
+allocate in proportion to modules and edges. All of these are lifecycle-scale
+operations; none is meant to run per frame.
 
 ## LifecycleKit integration
 

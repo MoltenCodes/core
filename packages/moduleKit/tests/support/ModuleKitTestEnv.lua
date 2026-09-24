@@ -4,13 +4,15 @@
 --- capture live in the shared `FrameworkTestEnv` fixture at `tests/support/`.
 --- What stays here is this package's own module load order.
 ---
---- HookKit and CommandKit are optional dependencies: only `module.scope.Hooks`
---- and `module.scope.Commands` use them, found through `Registry:Find` at first
---- read. The manifest declares both under `optionalDependencies`, so the test
---- runner puts them (and SchemaKit, which CommandKit requires) on `LUA_PATH`,
---- and the module chain loads them as an addon that embeds them would.
---- `NewPackageWithoutHookKit` loads the chain without either.
+--- HookKit, CommandKit and SchemaKit are optional dependencies: `module.scope.Hooks`
+--- and `module.scope.Commands` find the first two through `Registry:Find` at
+--- first read, and the schema form of `implements` finds SchemaKit at
+--- registration. The manifest declares them under `optionalDependencies`, so
+--- the test runner puts them on `LUA_PATH`, and the module chain loads them as
+--- an addon that embeds them would. `NewPackageWithoutOptionalKits` loads the
+--- chain without them.
 local FrameworkTestEnv = require("FrameworkTestEnv")
+local assert = require("luassert")
 
 local ModuleKitTestEnv = FrameworkTestEnv.New({
     modules = {
@@ -139,10 +141,10 @@ function ModuleKitTestEnv.Reset()
     removeSlashApi()
 end
 
----Load the module chain without HookKit and CommandKit, as an addon that
----embeds neither does.
+---Load the module chain without HookKit, SchemaKit and CommandKit, as an
+---addon that embeds none of them does.
 ---@return table ModuleKit
-function ModuleKitTestEnv.NewPackageWithoutHookKit()
+function ModuleKitTestEnv.NewPackageWithoutOptionalKits()
     ModuleKitTestEnv.Reset()
     ModuleKitTestEnv.InstallWowApi()
     require("Registry")
@@ -209,6 +211,24 @@ function ModuleKitTestEnv.LoadRevision(revision)
         )
     end
     return chunk()
+end
+
+---Assert that `callback` raises `expected` at the line that calls into
+---ModuleKit, which is the first line of `callback`'s body, the line after its
+---`function()`. The source compared is the spec file that called this helper.
+---@param expected string substring the message must contain
+---@param callback fun()
+function ModuleKitTestEnv.expectCallerError(expected, callback)
+    local source = debug.getinfo(2, "S").short_src
+    local line = debug.getinfo(callback, "S").linedefined + 1
+    local ok, message = pcall(callback)
+
+    assert.is_false(ok)
+    assert.is_not_nil(string.find(tostring(message), expected, 1, true), tostring(message))
+    assert.is_not_nil(
+        string.find(tostring(message), source .. ":" .. line .. ":", 1, true),
+        tostring(message)
+    )
 end
 
 return ModuleKitTestEnv

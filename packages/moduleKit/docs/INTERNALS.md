@@ -21,6 +21,7 @@ ModuleKit keeps its bootstrap and implementation in `src/ModuleKit.lua`, like ev
 | Module public API | The functions installed on the shared `Module` prototype. |
 | Addon public API | The functions installed on the shared `Addon` prototype. |
 | Addon creation | Container identity, the dispatched-phase set, and LifecycleKit subscriptions, including the halted notices. |
+| Package-wide limits | `SetLimits` / `GetLimits` and the call-time coupling to LifecycleKit's `maxDependencies`. |
 | Commit | Publishes the public surface, installs shared runtime dispatch, and runs the in-place upgrade. |
 
 ## Shared embedded state
@@ -192,7 +193,7 @@ The ready set is kept sorted by *descending* creation order and consumed from it
 - emitting a module is `ready[#ready] = nil`, which is O(1);
 - a module that becomes ready is placed by binary search, which is O(log n) comparisons plus one array shift.
 
-The previous implementation removed from the front of an ascending array and re-sorted the whole ready set after every insertion. Both are eliminated; the emitted order is unchanged, and `Graph_spec` pins it on a twelve-module fixture as well as on the small ones.
+Neither step removes from the front of an array or re-sorts the ready set, and the emitted order is identical to a full re-sort after every insertion; `Graph_spec` pins it on a twelve-module fixture as well as on the small ones.
 
 Successors of an emitted module are visited in ascending creation order, so `pairs` iteration over the adjacency set cannot leak into the result.
 
@@ -218,6 +219,27 @@ A whole-container pass therefore behaves like this:
 4. after the walk, re-raise the first real callback or provider error.
 
 Terminal shutdown differs deliberately: it is best-effort cleanup, so it attempts every enabled module even after earlier failures, and it keeps going when the full graph is invalid.
+
+## Error levels
+
+Every helper that raises takes the level it raises at, counted from its own
+frame, and every public method passes the level that reaches its caller.
+Lua 5.1 counts a frame replaced by a tail call as one level (its position is
+lost, not skipped), so a public method may tail-call its helper and the count
+stays the same. The paths that are several frames deep pass the depth on:
+
+- the `automatic` policy recursion adds its depth, so a refusal deep in a
+  dependency chain points at the line that called `Enable`, `Initialize` or
+  `Activate`;
+- definition catch-up calls `initializeWithPolicy` / `enableWithPolicy` with a
+  depth of two (`catchUpModule`, `scheduleCatchUp`), so a missing dependency
+  or a `strict` refusal points at the `CreateModule` line;
+- a definition's list entries reach `addNameConstraint` at level 5 and its
+  `inject` reaches `addInjections` at level 4, which is the `CreateModule`
+  caller in both cases; the messages are those of the `Module` methods they
+  stand for.
+
+`ErrorLevels_spec.lua` pins one refusal per path at the calling line.
 
 ## Hooks run under `pcall`
 

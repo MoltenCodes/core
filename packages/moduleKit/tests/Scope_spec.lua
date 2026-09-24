@@ -307,7 +307,7 @@ describe("ModuleKit module scopes over the real HookKit", function()
     end)
 
     it("reads nil when HookKit is not loaded", function()
-        local ModuleKit = TestEnv.NewPackageWithoutHookKit()
+        local ModuleKit = TestEnv.NewPackageWithoutOptionalKits()
         local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Bare")
         local observed = {}
         module.OnEnable = function(self)
@@ -432,7 +432,7 @@ describe("ModuleKit module scopes over the real CommandKit", function()
     end)
 
     it("reads nil when CommandKit is not loaded", function()
-        local ModuleKit = TestEnv.NewPackageWithoutHookKit()
+        local ModuleKit = TestEnv.NewPackageWithoutOptionalKits()
         local module = ModuleKit:ForAddon("MyAddon"):CreateModule("Bare")
         local observed = {}
         module.OnEnable = function(self)
