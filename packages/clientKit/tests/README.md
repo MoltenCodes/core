@@ -22,11 +22,30 @@ The suite covers:
   for forbidden, context-restricted, unrestricted and method-less frames;
   `IsEventValid` for a known, an invalid and an unknowable name;
 - every shim on modern and legacy hosts and on a host with neither;
-- `error` levels: every argument failure reports the caller's own line;
+- `GetManifest`: every snapshot field on all four profiles (the `C_AddOns`
+  form and the legacy globals), locale-suffixed `Title`/`Notes` before the
+  plain ones and no suffixed read without a locale, list fields split into
+  arrays with the raw strings behind `Get`, `RequiredDeps` as the second
+  spelling of `Dependencies`, the host's dependency calls as the fallback
+  list source, `X-` fields through `Get` with the host asked once per field,
+  absent fields not remembered, a field the client refuses reading as absent,
+  the same snapshot on every call, an unknown addon (`GetAddOnInfo` reason
+  `"MISSING"`) answering `nil, "unknown"` and never being cached even after
+  fifty unknown names, names matched case-insensitively with one record and
+  the host's spelling in `name`, a host without `GetAddOnInfo` recognising an
+  addon by its `Title` and keeping the caller's spelling, a host with neither
+  metadata call answering `nil, "unavailable"`, secret names and fields
+  refused, writes refused at the writer's line, a cache holding one record per
+  listed addon, and zero allocation for a cached manifest;
+- `error` levels: every argument failure, secret refusal and manifest write
+  reports the caller's own line;
 - Registry publication, duplicate loads, a newer revision not being
   downgraded, an in-place upgrade that re-reads the host into the same state
-  tables (a copy of the source loaded with a higher revision), load-order
-  failures, and corrupted-state refusal on a reload and on an upgrade;
+  tables (a copy of the source loaded with a higher revision), an upgrade
+  over a revision 1 layout that adds the locale and the manifest tables, a
+  cached manifest keeping its identity and its rewritten `Get` across an
+  upgrade, load-order failures, and corrupted-state refusal on a reload and
+  on an upgrade;
 - manifest/runtime API and revision consistency.
 
 | Spec | Covers |
@@ -35,10 +54,24 @@ The suite covers:
 | `Capabilities_spec.lua` | `Has`, the capability table, allocation guard |
 | `Taint_spec.lua` | `IsSecret`, `CanAccessFrame`, `IsEventValid` |
 | `Shims_spec.lua` | `GetSpellInfo`, `GetItemInfo`, `GetAddOnMetadata`, `IsAddOnLoaded` |
+| `GetManifest_spec.lua` | `GetManifest`, the snapshot fields, locale fallback, `Get`, caching |
 | `ErrorLevels_spec.lua` | argument errors reported at the caller's line |
 | `Bootstrap_spec.lua` | publication, duplicate loads, upgrades, load order, corrupted state |
 | `Manifest_spec.lua` | manifest and runtime `API` / `REVISION` agreement |
 
 `support/ClientKitTestEnv.lua` selects a client profile, builds frame doubles
 for `CanAccessFrame` and loads the source at a patched revision for the
-upgrade specs.
+upgrade specs. It also installs the host functions only ClientKit reads and
+the shared fixture does not stub: `GetLocale` (`NewPackageFor(profile, {
+locale = "deDE" })`, `false` for a host without it) and `GetAddOnInfo` with
+the two dependency-list calls (`RegisterAddOn(name, { dependencies,
+optionalDependencies })`; `{ addOnInfo = false }` for a host without them),
+placed in `C_AddOns` when the profile has that table and as legacy globals
+otherwise. `GetAddOnInfo` models the real call: an unknown name is echoed
+back with the reason `"MISSING"`, never raised for, and names are matched
+case-insensitively. The profile's metadata call is wrapped so
+`MetadataReads(addon, field)` counts what the host was asked,
+`RefuseMetadataField(field)` models a client that raises for a field it does
+not export, and a registered addon is found under any spelling of its name.
+`{ secretStrings = { ... } }` makes the profile's `issecretvalue` report
+those strings secret.

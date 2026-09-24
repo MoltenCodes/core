@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0 — 2026-09-24
+
+- Added `ClientKit:GetManifest(addonName)`: a read-only snapshot of an addon's `.toc`, read through `C_AddOns.GetAddOnMetadata` (else the legacy `GetAddOnMetadata`) once per addon on the first call and cached for the session. The snapshot carries `name`, `title`, `notes`, `version`, `author`, `interface`, `iconTexture`, `iconAtlas`, `category`, `group`, `loadOnDemand`, `defaultState` and `addonCompartmentFunc` as the raw `.toc` strings (`nil` when absent, empty or not exported by the client), and `dependencies`, `optionalDependencies`, `savedVariables` and `savedVariablesPerCharacter` as arrays split on commas. `Dependencies` and `RequiredDeps` are one list; when the metadata call exports no dependency list the host's own `GetAddOnDependencies` / `GetAddOnOptionalDependencies` (either form) fill the arrays.
+- `Title` and `Notes` try the locale-suffixed spelling first (`Title-deDE` before `Title`), with the locale read from `GetLocale()` at bootstrap into `_state.locale`; a host without `GetLocale`, or one answering something that is not a locale code, reads the plain fields only.
+- `manifest:Get(field)` returns any raw `## Field`, `X-` fields included. A field is asked of the host once and remembered; the snapshot fields are remembered at creation, absence included, so `Get("Version")` never asks again. A field the `.toc` lacks is not remembered, so the memo grows only by fields the file actually has.
+- Writes to a snapshot raise at the writer's line (`ClientKit manifest for "MyAddon" is read-only; field "version" cannot be written`); the four arrays are shared and documented read-only, since Lua 5.1 cannot refuse writes to an array without breaking `#` and `ipairs`.
+- An addon the host does not list (`GetAddOnInfo` echoes the name with the reason `"MISSING"`, and no `## Title` reads) answers `nil, "unknown"` and is not cached; a host with neither metadata call answers `nil, "unavailable"`. The cache is therefore bounded by the addons installed in the client, a set no caller can grow, and needs no `SetLimits`.
+- Addon names are matched case-insensitively, as the host matches them: the cache is keyed by the lower-cased name, so every spelling of one addon shares one snapshot, and `manifest.name` carries the folder name as the host spells it when `GetAddOnInfo` reports one.
+- A secret `addonName` or `field` is refused at the caller (`must not be a secret value`) before it is compared or used as a table key.
+- On real clients the metadata call exports only `Title`, `Notes`, `Author`, `Version`, `IconTexture`, `IconAtlas` and the `X-` fields; `docs/API.md` says which snapshot fields are therefore usually empty and that the dependency arrays come from the dependency host calls.
+- Every host read a manifest makes goes through `pcall`, because a client raises for a `.toc` field its metadata call does not export; such a field reads `nil`.
+- Implementation revision 2. An upgrade over revision 1 adds `locale`, `manifests` and `manifestPrototype` to the shared state without a schema change and binds `getLocale`, `getAddOnInfo`, `getAddOnDependencies` and `getAddOnOptionalDependencies` into the shared host table; snapshots cached before a later upgrade keep their identity and resolve `Get` through the prototype the newer copy rewrote. The upgrade specs now load the next revision instead of revision 2.
+- 125 specs; `GetManifest_spec.lua` covers every field on all four profiles and both host forms, locale fallback, list splitting and the host list fallback, `X-` fields and memoisation counted at the host, unknown and unavailable addons (fifty unknown names leave the cache untouched), case-insensitive names, secret refusals, read-only enforcement, cache bounds and an allocation guard.
+
 ## 0.1.0 — 2026-09-23
 
 - Added ClientKit API generation 1, implementation revision 1.

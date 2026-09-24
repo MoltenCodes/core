@@ -58,6 +58,7 @@ pcall
 rawget
 rawset
 setmetatable
+tonumber
 tostring
 upvalue
 upvalues

@@ -127,4 +127,92 @@ describe("ClientKit error levels", function()
             itemValue
         )
     end)
+
+    it("points GetManifest argument errors at the caller", function()
+        local line
+        local ok, value = pcall(function()
+            line = currentLine() + 1
+            ClientKit:GetManifest(nil)
+        end)
+        assertReportedAt(line, "ClientKit:GetManifest addonName must be a string", ok, value)
+    end)
+
+    it("points manifest Get argument and receiver errors at the caller", function()
+        Env.RegisterAddOn("MyAddon")
+        Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")
+        local manifest = ClientKit:GetManifest("MyAddon")
+
+        local fieldLine
+        local fieldOk, fieldValue = pcall(function()
+            fieldLine = currentLine() + 1
+            manifest:Get(1)
+        end)
+        assertReportedAt(
+            fieldLine,
+            "ClientKit.Manifest:Get field must be a string",
+            fieldOk,
+            fieldValue
+        )
+
+        local receiverLine
+        local receiverOk, receiverValue = pcall(function()
+            receiverLine = currentLine() + 1
+            manifest.Get({}, "Version")
+        end)
+        assertReportedAt(
+            receiverLine,
+            "ClientKit.Manifest:Get must be called on a manifest",
+            receiverOk,
+            receiverValue
+        )
+    end)
+
+    it("points secret-value refusals of GetManifest and Get at the caller", function()
+        ClientKit = Env.NewPackageFor("mainline", { secretStrings = { "Hidden" } })
+        Env.RegisterAddOn("MyAddon")
+        Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")
+        local manifest = ClientKit:GetManifest("MyAddon")
+
+        local nameLine
+        local nameOk, nameValue = pcall(function()
+            nameLine = currentLine() + 1
+            ClientKit:GetManifest("Hidden")
+        end)
+        assertReportedAt(
+            nameLine,
+            "ClientKit:GetManifest addonName must not be a secret value",
+            nameOk,
+            nameValue
+        )
+
+        local fieldLine
+        local fieldOk, fieldValue = pcall(function()
+            fieldLine = currentLine() + 1
+            manifest:Get("Hidden")
+        end)
+        assertReportedAt(
+            fieldLine,
+            "ClientKit.Manifest:Get field must not be a secret value",
+            fieldOk,
+            fieldValue
+        )
+    end)
+
+    it("points a write to a manifest at the line that wrote", function()
+        Env.RegisterAddOn("MyAddon")
+        Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")
+        local manifest = ClientKit:GetManifest("MyAddon")
+
+        local line
+        local ok, value = pcall(function()
+            line = currentLine() + 1
+            manifest.title = "Renamed"
+        end)
+        assertReportedAt(
+            line,
+            'ClientKit manifest for "MyAddon" is read-only; field "title" cannot be written',
+            ok,
+            value
+        )
+    end)
 end)

@@ -23,6 +23,12 @@ end
 if not ClientKit:IsSecret(name) and name == trackedName then
     -- only a non-secret value may be compared
 end
+
+local manifest = ClientKit:GetManifest("MyAddon") -- read once, cached for the session
+if manifest then
+    print(manifest.title, manifest.version, #manifest.savedVariables)
+    print(manifest:Get("X-Website"))
+end
 ```
 
 What it offers:
@@ -36,6 +42,12 @@ What it offers:
   `IsEventValid(eventName)`.
 - **Shims** — `GetAddOnMetadata`, `IsAddOnLoaded`, `GetSpellInfo` and
   `GetItemInfo`, each with one documented shape on every flavour.
+- **Manifests** — `GetManifest(addonName)`: a read-only snapshot of an
+  addon's `.toc` with `Title`/`Notes` in the client's locale when the file
+  has them, the dependency and saved-variable lists split into arrays, and
+  any other field (`X-…` included) through `manifest:Get(field)`. Read once
+  per addon and kept for the session; an addon the client does not list
+  answers `nil, "unknown"`.
 
 An absent `WOW_PROJECT_ID` never makes ClientKit report every flavour or every
 capability: it answers `"classic"`, the flavour that assumes the least, and the
@@ -43,13 +55,15 @@ capability flags still come from the host.
 
 Everything is read once when the file loads and re-read in place when a newer
 embedded copy upgrades it. After that every probe is a table read and every
-shim adds one call. ClientKit owns nothing that needs tearing down.
+shim adds one call; a manifest is read on its first request and is a table
+read from then on. ClientKit owns nothing that needs tearing down.
 
 It is not a polyfill: a missing facility is reported, not emulated, and game
 data, range and spell logic belong to the libraries that need them.
 
-See [`docs/API.md`](docs/API.md) for the capability table, the shim shapes and
-what each answer means on a client that lacks the underlying call.
+See [`docs/API.md`](docs/API.md) for the capability table, the shim shapes,
+the manifest fields and what each answer means on a client that lacks the
+underlying call.
 
 ## Embedding
 

@@ -18,7 +18,7 @@ describe("ClientKit bootstrap", function()
         local ClientKit, Registry = Env.NewPackageFor("mainline")
         assert.are.equal(ClientKit, Registry:Get("clientKit", 1))
         assert.are.equal(1, ClientKit.API)
-        assert.are.equal(1, ClientKit.REVISION)
+        assert.are.equal(2, ClientKit.REVISION)
     end)
 
     it("reuses the shared facade and state on a duplicate load", function()
@@ -56,10 +56,11 @@ describe("ClientKit bootstrap", function()
             return true
         end)
 
-        local upgraded = Env.LoadSourceAtRevision(2)
+        local nextRevision = ClientKit.REVISION + 1
+        local upgraded = Env.LoadSourceAtRevision(nextRevision)
 
         assert.are.equal(ClientKit, upgraded)
-        assert.are.equal(2, ClientKit.REVISION)
+        assert.are.equal(nextRevision, ClientKit.REVISION)
         assert.are.equal(state, ClientKit._state)
         assert.are.equal(capabilities, ClientKit._state.capabilities)
         assert.are.equal(host, ClientKit._state.host)
@@ -73,10 +74,69 @@ describe("ClientKit bootstrap", function()
 
     it("keeps the newest copy when an older one loads after an upgrade", function()
         local ClientKit = Env.NewPackageFor("mainline")
-        Env.LoadSourceAtRevision(2)
+        local nextRevision = ClientKit.REVISION + 1
+        Env.LoadSourceAtRevision(nextRevision)
         local selected = Env.ReloadPackage()
         assert.are.equal(ClientKit, selected)
-        assert.are.equal(2, selected.REVISION)
+        assert.are.equal(nextRevision, selected.REVISION)
+    end)
+
+    it("upgrades a revision 1 layout in place and adds the manifest tables", function()
+        Env.Reset()
+        Env.SetWowProfile("mainline")
+        Env.InstallWowApi()
+        require("Registry")
+        local ClientKit = Env.LoadSourceAtRevision(1)
+        local state = ClientKit._state
+        local host = state.host
+        -- Strip what revision 1 never had: the locale, the manifest cache,
+        -- the manifest prototype and the four host functions revision 2 binds.
+        rawset(state, "locale", nil)
+        rawset(state, "manifests", nil)
+        rawset(state, "manifestPrototype", nil)
+        for _, name in ipairs({
+            "getLocale",
+            "getAddOnInfo",
+            "getAddOnDependencies",
+            "getAddOnOptionalDependencies",
+        }) do
+            rawset(host, name, nil)
+        end
+
+        -- The host gained a locale between the two copies loading.
+        setGlobal("GetLocale", function()
+            return "deDE"
+        end)
+        Env.SetAddOnMetadata("MyAddon", "Title-deDE", "Mein Addon")
+
+        local upgraded = Env.LoadSourceAtRevision(2)
+
+        assert.are.equal(ClientKit, upgraded)
+        assert.are.equal(2, ClientKit.REVISION)
+        assert.are.equal(state, ClientKit._state)
+        assert.are.equal(host, ClientKit._state.host)
+        assert.is_table(state.manifests)
+        assert.is_table(state.manifestPrototype)
+        assert.are.equal("deDE", state.locale)
+        assert.are.equal("Mein Addon", ClientKit:GetManifest("MyAddon").title)
+    end)
+
+    it("keeps cached manifests and their Get across an upgrade", function()
+        local ClientKit = Env.NewPackageFor("mainline")
+        Env.SetAddOnMetadata("MyAddon", "Title", "My Addon")
+        Env.SetAddOnMetadata("MyAddon", "X-Website", "https://example.invalid")
+        local manifest = ClientKit:GetManifest("MyAddon")
+        local Get = manifest.Get
+
+        local nextRevision = ClientKit.REVISION + 1
+        Env.LoadSourceAtRevision(nextRevision)
+
+        -- The same snapshot is handed out, and the method a caller kept from
+        -- before the upgrade is the one the newer copy rewrote in place.
+        assert.are.equal(manifest, ClientKit:GetManifest("MyAddon"))
+        assert.are_not.equal(Get, manifest.Get)
+        assert.are.equal("https://example.invalid", manifest:Get("X-Website"))
+        assert.are.equal(1, Env.MetadataReads("MyAddon", "X-Website"))
     end)
 
     it("refuses to load before Registry", function()
@@ -113,12 +173,29 @@ describe("ClientKit bootstrap", function()
     it("refuses to upgrade over state that lost its host table", function()
         local ClientKit = Env.NewPackageFor("mainline")
         rawset(ClientKit._state, "host", nil)
+        local nextRevision = ClientKit.REVISION + 1
         Env.expectErrorContaining(
             "MoltenCodes ClientKit package state is corrupted or incomplete",
             function()
-                Env.LoadSourceAtRevision(2)
+                Env.LoadSourceAtRevision(nextRevision)
             end
         )
+    end)
+
+    it("rejects same-revision state that lost its manifest cache", function()
+        local ClientKit = Env.NewPackageFor("mainline")
+        rawset(ClientKit._state, "manifests", nil)
+        assert.has_error(function()
+            Env.ReloadPackage()
+        end)
+    end)
+
+    it("rejects same-revision state whose locale is neither false nor a string", function()
+        local ClientKit = Env.NewPackageFor("mainline")
+        rawset(ClientKit._state, "locale", 1)
+        assert.has_error(function()
+            Env.ReloadPackage()
+        end)
     end)
 
     it("rejects same-revision state with a capability that is not a boolean", function()
