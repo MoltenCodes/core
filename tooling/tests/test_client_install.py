@@ -80,6 +80,36 @@ class InstallTests(FakeClientTests):
         self.assertIn("installed", output)
         self.assert_neighbour_untouched()
 
+    def test_installs_the_signalkit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "signalKit")
+
+        self.assertEqual(0, status, errors)
+        signal_kit_addon = self.addons / "MoltenCodesTest_SignalKit"
+        self.assertEqual(
+            ["MoltenCodesTest_SignalKit.toc", "SignalKitSuite.lua"],
+            sorted(path.name for path in signal_kit_addon.iterdir()),
+        )
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_Registry").exists())
+        self.assertIn(str(signal_kit_addon), output)
+        self.assert_neighbour_untouched()
+
+    def test_installs_several_test_addons_in_one_command(self):
+        status, _, errors = self.run_command("--package", "registry", "--package", "signalKit")
+
+        self.assertEqual(0, status, errors)
+        self.assertTrue((self.addons / "MoltenCodesTest_Registry" / "RegistrySuite.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest_SignalKit" / "SignalKitSuite.lua").is_file())
+
+    def test_registry_and_signalkit_are_the_packages_with_a_test_addon(self):
+        manifests, _ = load_manifests()
+
+        available = module.available_test_packages(manifests)
+
+        self.assertIn("registry", available)
+        self.assertIn("signalKit", available)
+        self.assertNotIn("eventKit", available)
+
     def test_expected_lua_lists_every_bundled_package_and_testkit_at_their_manifest_revisions(self):
         self.run_command("--package", "registry")
 
@@ -113,7 +143,7 @@ class InstallTests(FakeClientTests):
         stale = self.addons / "MoltenCodes" / "stale.lua"
         stale.parent.mkdir()
         stale.write_text("-- old\n", encoding="utf-8")
-        other_test_addon = self.addons / "MoltenCodesTest_SignalKit"
+        other_test_addon = self.addons / "MoltenCodesTest_EventKit"
         other_test_addon.mkdir()
 
         status, output, errors = self.run_command("--package", "registry")
@@ -126,10 +156,11 @@ class InstallTests(FakeClientTests):
         self.assert_neighbour_untouched()
 
     def test_refuses_a_package_without_a_test_addon(self):
-        status, _, errors = self.run_command("--package", "signalKit")
+        status, _, errors = self.run_command("--package", "eventKit")
 
         self.assertEqual(1, status)
         self.assertIn("has no test addon", errors)
+        self.assertIn("signalKit", errors)
         self.assertFalse((self.addons / "MoltenCodes").exists())
 
     def test_refuses_an_unknown_package(self):
@@ -163,7 +194,7 @@ class InstallTests(FakeClientTests):
 class RemoveTests(FakeClientTests):
     def test_removes_its_addons_and_every_harness_saved_variables_file(self):
         self.run_command("--package", "registry")
-        (self.addons / "MoltenCodesTest_SignalKit").mkdir()
+        (self.addons / "MoltenCodesTest_EventKit").mkdir()
         account = self.saved_variables("ACCOUNT")
         character = self.saved_variables("ACCOUNT", "Realm", "Character")
         for folder in (account, character):

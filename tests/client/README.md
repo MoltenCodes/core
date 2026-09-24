@@ -21,10 +21,14 @@ tests/client/
 ├── MoltenCodesTest/                   # the harness addon
 │   ├── MoltenCodesTest.toc
 │   └── Harness.lua                    # /mct, the chat report, the saved results
-└── MoltenCodesTest_Registry/          # the test addon of the `registry` package
-    ├── MoltenCodesTest_Registry.toc
-    ├── RegistrySuite.lua              # the TestKit suites
-    └── EXPECTED.md                    # what a run should print, and what to send back
+├── MoltenCodesTest_Registry/          # the test addon of the `registry` package
+│   ├── MoltenCodesTest_Registry.toc
+│   ├── RegistrySuite.lua              # the TestKit suites
+│   └── EXPECTED.md                    # what a run should print, and what to send back
+└── MoltenCodesTest_SignalKit/         # the test addon of the `signalKit` package
+    ├── MoltenCodesTest_SignalKit.toc
+    ├── SignalKitSuite.lua
+    └── EXPECTED.md
 ```
 
 The harness `.toc` also lists `TestKit.lua` and `Expected.lua`. Neither is
@@ -199,6 +203,21 @@ the package's Busted specs.
 
 Add an `EXPECTED.md` next to the `.toc`: the exact chat lines of a correct
 run, what counts as unexpected, and what to send back.
+
+### Catching an error a Kit reports instead of raising
+
+A Kit that isolates a consumer's failure (a bus listener, an event handler)
+runs it through `securecallfunction` on the Retail client, and the client
+reports the failure to the handler `seterrorhandler` installed. The global
+`geterrorhandler` only reads that handler there: replacing the global with
+`ctx:Replace` neither catches the failure nor keeps the error window closed,
+and it taints a global Blizzard code calls. A test that provokes such a
+failure therefore swaps the handler with `seterrorhandler` for the one call
+and puts the previous one back at once, and replaces `geterrorhandler` only
+where `securecallfunction` is absent and the Kit's `xpcall` path asks it. An
+error-capturing addon such as BugGrabber may refuse the swap; the test says
+so instead of passing. `collectReportedErrors` in
+`MoltenCodesTest_SignalKit/SignalKitSuite.lua` is the reference.
 
 ## Gates
 
