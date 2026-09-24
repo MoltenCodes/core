@@ -1,0 +1,13 @@
+-- LuaCov configuration for `python3 -m tooling.test.coverage` (docs/TOOLING.md,
+-- "Coverage"). LuaCov reads this file from the directory Busted runs in, which
+-- the test runner sets to the repository root.
+--
+-- Only runtime package source is measured. Specs, the shared fixture under
+-- tests/support/, package test support and the example addon are loaded by the
+-- same Busted processes and would otherwise dilute every package's figure.
+-- Patterns are Lua patterns over the file path without its `.lua` extension.
+return {
+    statsfile = "luacov.stats.out",
+    reportfile = "luacov.report.out",
+    include = { "packages/[^/]+/src/" },
+}

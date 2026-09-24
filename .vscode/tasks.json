@@ -14,6 +14,12 @@
       "problemMatcher": []
     },
     {
+      "label": "Measure Lua line coverage",
+      "type": "shell",
+      "command": "python3 -m tooling.test.coverage",
+      "problemMatcher": []
+    },
+    {
       "label": "Run Registry tests",
       "type": "shell",
       "command": "python3 -m tooling.test.run registry",

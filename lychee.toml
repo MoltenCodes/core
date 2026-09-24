@@ -1,0 +1,44 @@
+# lychee configuration for the Markdown link check (docs/TOOLING.md,
+# "Continuous integration"). The inputs are named on the command line in
+# .github/workflows/links.yml: every Markdown file in the repository.
+#
+# `python3 -m tooling.validation.validate_repository` already proves that every
+# repository-relative link names a file that exists. lychee adds what that check
+# leaves out: external URLs, and `#fragment` anchors into Markdown headings,
+# relative ones included.
+
+# Check `#section` anchors against the headings of the target document.
+include_fragments = "anchor-only"
+
+# Generated documentation is validated by its generator
+# (`tooling.api.generate`), and local build output is not documentation.
+exclude_path = [
+  "packages/[^/]+/docs/reference/",
+  "packages/[^/]+/docs/changes/",
+  "(^|/)build/",
+  "(^|/)dist/",
+  "(^|/)node_modules/",
+]
+
+exclude = [
+  # This repository's own pages on github.com: a link to `main` from a pull
+  # request names content that only exists once the change merges, and the
+  # relative-link check covers the files. Discussions may not be enabled.
+  '^https://github\.com/MoltenCodes/core/',
+  # Example hosts in prose and code, never meant to resolve.
+  '^https?://(www\.)?example\.(com|org|test)',
+]
+
+# Rate limiting (429) means the page exists; a transient failure is retried
+# before it fails the check.
+accept = ["200..=299", "429"]
+max_retries = 3
+retry_wait_time = 5
+timeout = 30
+
+# The GitHub workflow restores this cache between runs, so a page confirmed a
+# day ago is not requested again on every pull request.
+cache = true
+max_cache_age = "1d"
+
+no_progress = true

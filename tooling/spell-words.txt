@@ -73,6 +73,7 @@ xpcall
 checklevel
 compileall
 hererocks
+luacov
 luarc
 luarocks
 luassert
