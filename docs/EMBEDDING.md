@@ -65,8 +65,11 @@ or written by an addon. Two Kits write further globals on request and only
 when asked: `SettingsKit` writes the saved-variables global your `.toc` names,
 and `CommandKit` writes the `SLASH_<key>1` and `SlashCmdList[<key>]` entries
 for the commands you register, plus `ChatEdit_CustomTabPressed` when you turn
-completion on (see the taint rules below). Nothing else in the framework
-writes a global.
+completion on (see the taint rules below). `ApiKit` publishes one more, the
+short `wow` global (`local api = wow.retail.api`), and only when nothing else
+owns that name; it never overwrites an existing `wow`, reports the case
+through `ApiKit:GetGlobalStatus()`, and the same tables are always reachable
+as `MoltenCodes.wow`. Nothing else in the framework writes a global.
 
 The portable access path is:
 
@@ -135,6 +138,7 @@ after the packages it depends on.** The current graph is:
 
 ```text
 registry
+├──→ apiKit (plus its flavour files)
 ├──→ clientKit
 ├──→ cacheKit
 ├──→ profileKit
@@ -167,6 +171,12 @@ is what the release artifact's `manifest.json` records under `loadOrder`:
 
 ```text
 registry/Registry.lua
+apiKit/ApiKit.lua
+apiKit/flavours/Beta.lua
+apiKit/flavours/ClassicEra.lua
+apiKit/flavours/ClassicMop.lua
+apiKit/flavours/Ptr.lua
+apiKit/flavours/Retail.lua
 cacheKit/CacheKit.lua
 clientKit/ClientKit.lua
 poolKit/PoolKit.lua
@@ -205,12 +215,17 @@ addon does. Both are equivalent to the client; pick one.
 `.xml` paths use backslashes, like `.toc` paths. The client accepts forward
 slashes on some platforms and not on others, so use backslashes everywhere.
 
-Every Kit listed above is one file. A Kit may also carry further runtime files
-in subdirectories of its package directory (the planned `apiKit` ships one
-generated file per client flavour under `apiKit\flavours\`); such a Kit's
-README says which of those files to embed, and the rule is the same for all
-of them: the Kit's facade first, then the further files, in any order among
-themselves, because they depend only on the facade.
+Every Kit listed above is one file except `apiKit`, which also carries one
+generated file per client flavour under `apiKit\flavours\` (`Retail.lua`,
+`ClassicEra.lua`, `ClassicMop.lua`, `Ptr.lua`, `Beta.lua`). Embed the facade
+and the files of the flavours your addon supports; the rule is the same for
+all of them: the Kit's facade first, then the flavour files, in any order
+among themselves, because they depend only on the facade:
+
+```text
+apiKit/ApiKit.lua
+apiKit/flavours/Retail.lua
+```
 
 
 ## Minimum footprint per Kit
@@ -222,6 +237,7 @@ optional and found at call time, so embedding one Kit costs this many files:
 | Files | Kit | Alongside `registry/Registry.lua` |
 |---|---|---|
 | 2 | `clientKit`, `cacheKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `poolKit`, `signalKit`, `timerKit` | nothing |
+| 3 | `apiKit` | nothing; the third file is the flavour file of the client you support (one more per further flavour) |
 | 3 | `codecKit` | `poolKit` |
 | 3 | `commandKit` | `schemaKit` |
 | 3 | `eventKit`, `mediaKit` | `signalKit` |
@@ -619,6 +635,7 @@ actually touch, which is deliberately small:
 | `lifecycleKit` | EventKit's surface; the events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`, `PLAYER_REGEN_DISABLED`, `PLAYER_REGEN_ENABLED` | `C_AddOns.IsAddOnLoaded` (falls back to the legacy global), `IsLoggedIn`, `InCombatLockdown` (absent: never in combat), TimerKit, SchedulerKit, HookKit, CommandKit and CommKit API 1 through `Registry:Find` (their addon scopes are closed at logout in that order, then the EventKit scope and the SignalKit addon bus); publishes the read-only `LifecycleKit.CLOSES_ADDON_SCOPES` naming the seven packages it closes at shutdown, and pairs with any revision of them |
 | `readinessKit` | TimerKit's surface | `GetTimePreciseSec` (negative cache disabled, timeouts counted in polls), EventKit API 1 through `Registry:Find` (`gate:ReprobeOn` raises at the caller), `geterrorhandler` (probe and waiter failures fall back to `print`) |
 | `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | `GetTimePreciseSec` (`GetRemaining` and `GetDeadline` then return `nil`); LifecycleKit is not needed: it calls `TimerKit:CloseAddonScopes` at logout when both are present, otherwise call it yourself on `PLAYER_LOGOUT`; LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes the addon scope at logout (with neither, call `TimerKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
+| `apiKit` | nothing but Lua 5.1 | `WOW_PROJECT_ID`, `IsTestBuild`, `IsBetaBuild` (a client matching no flavour is `"unsupported"` and gets no surface); every namespace or function the running build lacks is simply absent from the wrapper; the `wow` global when another addon owns it (`GetGlobalStatus` says `"taken"`; use `MoltenCodes.wow`) |
 | `clientKit` | nothing but Lua 5.1 | `WOW_PROJECT_ID` (flavour `"classic"`), `GetBuildInfo` (interface `0`), `issecretvalue` (`IsSecret` false), `C_EventUtils.IsEventValid` (`IsEventValid` nil), `IsForbidden` / `CanBeAccessedInContext` (`CanAccessFrame` true), `C_AddOns` / `C_Spell` / `C_Item` (legacy globals, then nil or false); any other probed facility (`Has` answers `false`) |
 | `cacheKit` | nothing but Lua 5.1 | `GetTimePreciseSec` (age limits disabled: TTL caches never expire), EventKit API 1 (`cache:ClearOn` raises at the caller), `issecretvalue` (snapshot `fill` treats nothing as secret) |
 | `profileKit` | nothing but Lua 5.1 | `debugprofilestop` (`Enable` returns `false, "unavailable"`) |
@@ -1094,6 +1111,19 @@ falls back silently; these two are not.
 
 Raised when the first subscription is made, not at load, because EventKit creates
 its frame lazily. Same cause as above.
+
+### `MoltenCodes ApiKit (<Flavour> bindings) requires ApiKit API 1 to be loaded first`
+
+A flavour file (`apiKit\flavours\Retail.lua`) is listed before
+`apiKit\ApiKit.lua`, or the facade is missing. The facade comes first, then the
+flavour files.
+
+### `api.<namespace>` is `nil` on a client that has the namespace
+
+Either no flavour file for the running client is embedded (`ApiKit:GetFlavor()`
+names the flavour; `ApiKit:GetMetadataBuild(flavour)` returns nothing when its
+file never registered), or the client is one ApiKit does not describe
+(`"unsupported"`). A namespace the client itself lacks is absent by design.
 
 ### `Registry:Get(...)` returned `nil`
 

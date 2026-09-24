@@ -28,6 +28,7 @@ packages/
 ├── testKit/
 ├── commKit/
 ├── widgetKit/
+├── apiKit/
 ├── <future-package>/
 └── ...
 ```
@@ -36,7 +37,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -76,6 +77,7 @@ The current runtime dependency graph is:
 
 ```text
 registry
+├──→ apiKit
 ├──→ clientKit
 ├──→ cacheKit
 ├──→ profileKit
@@ -240,5 +242,7 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 `testKit` depends on Registry API 2, LifecycleKit API 1 and SchedulerKit API 1 and is development-only, never bundled (`"distribution": "development"` in its manifest, ignored by `.pkgmeta`). Suites wait for a LifecycleKit phase; tests run one at a time in a SchedulerKit job, one coroutine per step; EventKit and TimerKit are found through `Registry:Find`, adding no load-order edge.
 
 `commKit` depends on Registry API 2 and on SignalKit, EventKit, TimerKit, SchedulerKit and PoolKit API 1; LifecycleKit closes its addon scopes at shutdown through `CommKit:CloseAddonScopes` when both are present. It owns addon messaging: a control-byte chunk protocol, reassembly bounded in streams, bytes per sender and time (the sender keeps the same in-flight and byte bounds so a well-behaved peer never trips them, and an abort chunk tells receivers a cancelled stream is gone), three bounded priority queues with per-destination round-robin, one token bucket shared by the session and charged for outside traffic through HookKit when present, and content-hash sync sets. The send driver is a SchedulerKit job that exists only while something is queued. TimerKit is found through `Registry:Find`; CodecKit, HookKit and SchemaKit are optional.
+
+`apiKit` depends on Registry API 2 and nothing else. It is the flavour-aware wrapper over the public World of Warcraft API: a handwritten facade (`ApiKit.lua`) that publishes the namespace tables (`MoltenCodes.wow.<flavour>.api`, and the `wow` global when free), detects the running client's flavour once at load and runs the matching installer; and one generated file per flavour (`flavours/<Flavour>.lua`) that binds every documented Blizzard function to a readable name by direct alias. The generated files, the LuaCATS definitions under `types/<flavour>/` and the change reports are produced from the metadata under `metadata/<flavour>/` by `tooling/api/`, never edited by hand; the design is [`API_KIT_DESIGN.md`](API_KIT_DESIGN.md). The flavour files depend on the facade only, so the builder lists them after it in load order; this is the one package whose `src/` holds more than the facade.
 
 `widgetKit` depends on Registry API 2, PoolKit API 1 and SignalKit API 1. It owns a versioned registry of widget types, each drawn from one capped, generation-stamped PoolKit pool; containers laid out by registered layout functions only when asked, never from `OnSizeChanged`; a plain anchor value type with position bindings; and a renderer for OptionsKit trees. OptionsKit, SchedulerKit and MediaKit are found at call time through `Registry:Find`, adding no load-order edge; a SettingsKit scope view is accepted as the position storage table without WidgetKit depending on SettingsKit.

@@ -1,7 +1,10 @@
 # ApiKit design baseline
 
-> **Status:** design baseline, accepted 2026-09-23. No code exists yet; the
-> delivery plan is package H in [`ROADMAP.md`](ROADMAP.md#package-h--apikit-the-wow-api-wrapper).
+> **Status:** design baseline, accepted 2026-09-23; implemented as
+> `packages/apiKit` on 2026-09-24 (package H in
+> [`ROADMAP.md`](ROADMAP.md#package-h--apikit-the-wow-api-wrapper)), all five
+> flavours captured. Where the implementation settled a detail, this document
+> records it.
 >
 > This document is the canonical design of `apiKit`, the MoltenCodes package
 > that gives addon authors a complete, typed, documented and flavour-aware
@@ -574,26 +577,30 @@ local result = C_AddOnProfiler.MeasureCall(myFunction)
 ## 20. Definition of done
 
 The first production-ready `apiKit` release needs, in addition to the
-repository's [definition of done for a Kit](ROADMAP.md#definition-of-done-for-a-kit):
+repository's [definition of done for a Kit](ROADMAP.md#definition-of-done-for-a-kit)
+(every item met on 2026-09-24; the reference is built into a release asset
+rather than committed, section 13; the performance review is the "Load cost"
+section of `packages/apiKit/docs/API.md`; the update procedure is
+`packages/apiKit/docs/UPDATING.md`):
 
-- [ ] a documented canonical metadata schema;
-- [ ] a deterministic generation pipeline;
-- [ ] flavour-specific namespaces and the `wow` publication rule;
-- [ ] Retail generation;
-- [ ] Classic Era generation;
-- [ ] Mists of Pandaria Classic generation;
-- [ ] PTR generation (when the mirror branch carries the tables);
-- [ ] Beta generation (when the mirror branch carries the tables);
-- [ ] LuaCATS definitions per flavour;
-- [ ] documented naming rules with the exception and alias tables;
-- [ ] raw escape-hatch documentation;
-- [ ] generated reference documentation;
-- [ ] machine-readable metadata and search index;
-- [ ] automated validation;
-- [ ] build-to-build diff and change reports;
-- [ ] regression tests;
-- [ ] a performance review of the runtime facade and of load cost;
-- [ ] the procedure for updating to a new Blizzard build.
+- [x] a documented canonical metadata schema;
+- [x] a deterministic generation pipeline;
+- [x] flavour-specific namespaces and the `wow` publication rule;
+- [x] Retail generation;
+- [x] Classic Era generation;
+- [x] Mists of Pandaria Classic generation;
+- [x] PTR generation (when the mirror branch carries the tables);
+- [x] Beta generation (when the mirror branch carries the tables);
+- [x] LuaCATS definitions per flavour;
+- [x] documented naming rules with the exception and alias tables;
+- [x] raw escape-hatch documentation;
+- [x] generated reference documentation;
+- [x] machine-readable metadata and search index;
+- [x] automated validation;
+- [x] build-to-build diff and change reports;
+- [x] regression tests;
+- [x] a performance review of the runtime facade and of load cost;
+- [x] the procedure for updating to a new Blizzard build.
 
 ## 21. Future capabilities
 

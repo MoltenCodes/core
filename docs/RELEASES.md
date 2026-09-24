@@ -15,6 +15,14 @@ Runtime `api` and `revision` mean different things, described in
 [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md), and must not be inferred from the
 SemVer number.
 
+`apiKit` adds one rule of its own (decided 2026-09-23): a refresh of one or
+more flavours' metadata to a newer client build is at least a **minor**
+version, its changelog entry summarises the generated change report, and an
+entry Blizzard removed is noted there as breaking for that flavour. The API
+generation stays at 1 as long as the facade's contract does not move; the
+generated surface is data, not the contract. The procedure is
+`packages/apiKit/docs/UPDATING.md`.
+
 ## Tags
 
 Two kinds of tag release something. Pushing either starts the release workflow.

@@ -45,6 +45,7 @@ those defaults when they are documented and observable.
 - [x] `testKit` (development only)
 - [x] `commKit`
 - [x] `widgetKit`
+- [x] `apiKit`
 
 These entries describe packages present in this repository snapshot. A checked
 item means its implementation is part of the repository; it does not mean the
@@ -1067,7 +1068,12 @@ way packages A to G were handled. Code starts only after the owner's go.
    second-global rule, the footprint row and the load-order entries;
    ARCHITECTURE.md and `docs/README.md` list the package; the design document
    stays current.
-9. Status: planned; recorded 2026-09-23. Nothing implemented.
+9. Status: implemented (package H, 0.1.0, 2026-09-24) with all five flavours
+   captured; deviations from this record are stated in
+   `packages/apiKit/docs/API.md` (the `info` argument of `RegisterFlavor`,
+   `SUPPORTED_FLAVOR_COUNT`, `GetGlobalStatus` read live) and the reference
+   is a release asset rather than a committed file (design document,
+   section 13).
 
 ##### Delivery sequence
 
@@ -1164,10 +1170,15 @@ begins; H4 to H6 may overlap where they do not share files.
       probes `IsTestBuild` and `IsBetaBuild` were verified as documented
       functions of the Retail client. Package after five flavours: 36 MB
       committed, of which metadata 24 MB and types 8 MB (2026-09-24).
-- [ ] **H7 — documentation and review.** `docs/UPDATING.md`; EMBEDDING,
-      ARCHITECTURE, `docs/README.md`, RELEASES (how a metadata refresh is
-      versioned) updated; performance review written; acceptance review;
-      `API_KIT_DESIGN.md` checked against what shipped.
+- [x] **H7 — documentation and review.** `packages/apiKit/docs/UPDATING.md`
+      (the six-command refresh, the two expected refusals and their fixes,
+      adding a flavour); EMBEDDING (load order with the flavour files, the
+      footprint row, the second-global rule, the host-requirements row, two
+      troubleshooting entries), ARCHITECTURE, `docs/README.md`, the root
+      README and RELEASES (how a metadata refresh is versioned) updated; the
+      performance review is the "Load cost" section of the package's API
+      document; `API_KIT_DESIGN.md` checked against what shipped and its
+      definition of done ticked; acceptance review (2026-09-24).
 
 Settled with the project owner on 2026-09-23, before H1: Blizzard's
 documentation prose is carried into hover text and the reference with
@@ -1239,6 +1250,6 @@ duplicating those specifications.
 
 ---
 
-Last roadmap baseline update: 2026-09-23 (phases 0 through 4 and packages F
-and G complete: 24 packages, every gate green; package H, `apiKit`, planned
-and awaiting the owner's go; the standing obligations continue).
+Last roadmap baseline update: 2026-09-24 (phases 0 through 4 and packages F,
+G and H complete: 25 packages, every gate green; the standing obligations
+continue).

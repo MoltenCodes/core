@@ -35,6 +35,7 @@ This repository is a monorepo. Every publishable runtime package lives under `pa
 | [`mediaKit`](packages/mediaKit/) | Implemented | Typed media registry (fonts with scripts, bars, borders, backgrounds, sounds, textures, icons), sorted cached lists, per-consumer defaults, LibSharedMedia adoption and mirroring. |
 | [`commKit`](packages/commKit/) | Implemented | Addon messaging of any length: prefixes, a chunk protocol with bounded reassembly, priority queues that refuse rather than grow, a session-wide bandwidth budget, content-hash sync sets. |
 | [`widgetKit`](packages/widgetKit/) | Implemented | Pooled, versioned widgets with explicit layouts, saveable anchors with position persistence, and an OptionsKit renderer. |
+| [`apiKit`](packages/apiKit/) | Implemented | Flavour-aware, typed, documented wrapper over the public World of Warcraft API (`wow.retail.api`, `wow.classic.era.api`, ...), generated from the client's own documentation tables; every entry is a direct alias, the raw API stays valid. |
 | [`testKit`](packages/testKit/) | Implemented (development only) | In-client test suites against LifecycleKit phases in SchedulerKit jobs: save-and-restore mocking, secret-safe expectations, structured results; never in a release bundle. |
 
 ## Using the framework in an addon
@@ -136,7 +137,8 @@ python3 -m tooling.spell
 │   ├── mediaKit/
 │   ├── testKit/
 │   ├── commKit/
-│   └── widgetKit/
+│   ├── widgetKit/
+│   └── apiKit/
 ├── pyproject.toml           # Python tooling metadata and the supported floor
 ├── selene.toml              # Selene configuration for runtime Lua
 ├── selene-tests.toml        # Selene configuration for test Lua
