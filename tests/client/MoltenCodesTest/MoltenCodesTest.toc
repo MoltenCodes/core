@@ -1,0 +1,20 @@
+## Interface: 120100
+## Title: MoltenCodes Test
+## Notes: Development harness that runs the MoltenCodes real-client test suites with /mct and saves their results.
+## Author: MoltenCodes
+## Version: 1.0.0
+## Dependencies: MoltenCodes
+## SavedVariables: MoltenCodesTestResults
+## X-Category: Development Tools
+## X-License: MIT
+
+# Development only: never ship this addon. See tests/client/README.md.
+#
+# TestKit.lua and Expected.lua are written here by
+# `python3 -m tooling.client.install`; they are not committed. TestKit.lua is a
+# fresh copy of packages/testKit/src/TestKit.lua (TestKit is a development
+# package, so the MoltenCodes bundle never carries it), and Expected.lua lists
+# every package the installed bundle carries with its API and revision.
+TestKit.lua
+Expected.lua
+Harness.lua

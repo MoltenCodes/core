@@ -24,11 +24,13 @@ class LuaLintDiscoveryTests(unittest.TestCase):
             module.PACKAGES,
             module.EXAMPLES,
             module.SHARED_TEST_SUPPORT,
+            module.CLIENT_TESTS,
         )
         module.ROOT = self.root
         module.PACKAGES = self.packages
         module.EXAMPLES = self.examples
         module.SHARED_TEST_SUPPORT = self.shared_support
+        module.CLIENT_TESTS = self.root / "tests" / "client"
 
     def tearDown(self):
         (
@@ -36,6 +38,7 @@ class LuaLintDiscoveryTests(unittest.TestCase):
             module.PACKAGES,
             module.EXAMPLES,
             module.SHARED_TEST_SUPPORT,
+            module.CLIENT_TESTS,
         ) = self.originals
         self.tempdir.cleanup()
 
@@ -76,6 +79,16 @@ class LuaLintDiscoveryTests(unittest.TestCase):
         fidelity = self.packages / "testKit" / "fidelity" / "cases"
         fidelity.mkdir(parents=True)
         suite = fidelity / "Timers.lua"
+        suite.write_text("", encoding="utf-8")
+
+        self.assertIn(suite, module.discover_runtime_lua_files())
+        self.assertNotIn(suite, module.discover_test_lua_files())
+
+    def test_real_client_test_addons_are_runtime_lua(self):
+        """A real-client test addon runs in the game client, so it is judged as runtime code."""
+        addon = self.root / "tests" / "client" / "MoltenCodesTest_Registry"
+        addon.mkdir(parents=True)
+        suite = addon / "RegistrySuite.lua"
         suite.write_text("", encoding="utf-8")
 
         self.assertIn(suite, module.discover_runtime_lua_files())
@@ -127,11 +140,13 @@ class LintScopeTests(unittest.TestCase):
             module.PACKAGES,
             module.EXAMPLES,
             module.SHARED_TEST_SUPPORT,
+            module.CLIENT_TESTS,
         )
         module.ROOT = self.root
         module.PACKAGES = self.packages
         module.EXAMPLES = self.examples
         module.SHARED_TEST_SUPPORT = self.shared_support
+        module.CLIENT_TESTS = self.root / "tests" / "client"
 
     def tearDown(self):
         (
@@ -139,6 +154,7 @@ class LintScopeTests(unittest.TestCase):
             module.PACKAGES,
             module.EXAMPLES,
             module.SHARED_TEST_SUPPORT,
+            module.CLIENT_TESTS,
         ) = self.originals
         self.tempdir.cleanup()
 

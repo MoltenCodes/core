@@ -203,9 +203,16 @@ and the example addon, which is checked against the packages' own annotations:
 lua-language-server --check examples --checklevel=Warning
 ```
 
+and the real-client test addons, which are checked against `meta/` and
+TestKit's dependency closure:
+
+```bash
+lua-language-server --check tests/client --checklevel=Warning
+```
+
 `--check` treats the directory it is given as its workspace root and ignores
-parent configuration, so each package source directory and `examples/` owns a
-`.luarc.json`. Repository validation keeps those files in step with what they
+parent configuration, so each package source directory, `examples/` and
+`tests/client/` owns a `.luarc.json`. Repository validation keeps those files in step with what they
 describe: a package's file with the manifests, and `examples/.luarc.json` with
 `examples/embeds.xml`, so the example is only ever type-checked against the
 packages it actually embeds. See [`CONTRIBUTING.md`](CONTRIBUTING.md).

@@ -126,12 +126,13 @@ jobs:
       # Each package source directory carries its own `.luarc.json`, because
       # `--check` treats the directory it is given as the workspace root and
       # ignores parent configuration. Checking every directory is therefore the
-      # only way to prove each package type-checks on its own.
+      # only way to prove each package type-checks on its own. The example addon
+      # and the real-client test addons (tests/client) own one too.
       - name: Type-check every source directory
         run: |
           set -euo pipefail
           status=0
-          for directory in packages/*/src examples; do
+          for directory in packages/*/src examples tests/client; do
             echo "==> ${directory}"
             lua-language-server --check "${directory}" --checklevel=Warning || status=1
           done

@@ -78,6 +78,16 @@ Check commit subjects (the pull request gate runs the same command):
 python3 -m tooling.ci.check_commits origin/main..HEAD
 ```
 
+Install the bundle, the real-client test harness and a package's test addon
+into a game folder, and remove them (and the harness's saved variables) again;
+see `tests/client/README.md`:
+
+```bash
+python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package registry
+python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --remove --dry-run
+python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --remove
+```
+
 Build a distributable bundle:
 
 ```bash

@@ -13,7 +13,8 @@
     ".github/ISSUE_TEMPLATE/*.yml",
     "packages/*/README.md",
     "packages/*/CHANGELOG.md",
-    "packages/*/docs/*.md"
+    "packages/*/docs/*.md",
+    "tests/client/**/*.md"
   ],
   "ignorePaths": [
     "build/**",

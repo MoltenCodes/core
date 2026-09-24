@@ -19,8 +19,10 @@ Before submitting a change:
    [`tooling/spell-words.txt`](../tooling/spell-words.txt) under the rule in
    [`TOOLING.md`](TOOLING.md#adding-a-word).
 7. Run `lua-language-server --check packages/<name>/src --checklevel=Warning` for every
-   package you touched, and `lua-language-server --check examples --checklevel=Warning`
-   when the public surface changed.
+   package you touched, `lua-language-server --check examples --checklevel=Warning`
+   when the public surface changed, and
+   `lua-language-server --check tests/client --checklevel=Warning` when you
+   changed the real-client tests.
 8. Run `actionlint` when you changed `.github/workflows/` or `.github/actions/`.
 9. Run `python3 -m tooling.ci.check_commits origin/main..HEAD` to check your
    commit subjects (see [Commit subjects](#commit-subjects)).

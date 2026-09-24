@@ -26,6 +26,8 @@ tooling/
 │   └── heads.py                   # compares committed metadata builds with the mirror heads
 ├── ci/
 │   └── check_commits.py           # checks commit subjects and pull request titles
+├── client/
+│   └── install.py                 # installs the bundle and the real-client test addons into a game folder, or removes them
 ├── package/
 │   ├── build.py                   # assembles a checksummed bundle that installs as an addon
 │   ├── list.py                    # prints package IDs from the manifests
@@ -126,7 +128,8 @@ does with a package:
 | `package/build.py --package <id>` | builds it with its closure | refused with an error |
 
 A fidelity suite under `packages/<id>/fidelity/` runs inside the game client, so
-the linter judges it as runtime Lua, not test Lua.
+the linter judges it as runtime Lua, not test Lua. So are the real-client test
+addons under `tests/client/`.
 
 ## Repository validation
 
@@ -208,7 +211,7 @@ standard libraries:
 
 | Scope | Files | Configuration |
 |---|---|---|
-| runtime Lua | `packages/*/src/**`, `packages/*/fidelity/**`, `examples/*.lua` | [`selene.toml`](../selene.toml) |
+| runtime Lua | `packages/*/src/**`, `packages/*/fidelity/**`, `examples/*.lua`, `tests/client/**` | [`selene.toml`](../selene.toml) |
 | test Lua | `packages/*/tests/**`, `examples/tests/**`, `tests/support/**` | [`selene-tests.toml`](../selene-tests.toml) |
 
 Both scopes run even when the first fails, so one broken scope cannot hide the
@@ -390,8 +393,9 @@ leave both alone, because the generator validates its own output.
 ## Spell check
 
 `python3 -m tooling.spell` runs [cspell](https://cspell.org) over the Markdown
-the repository publishes: `README.md`, `docs/`, and every package's README,
-changelog and `docs/`. The globs are the `files` list in
+the repository publishes: `README.md`, `docs/`, every package's README,
+changelog and `docs/`, and the real-client test documents under
+`tests/client/`. The globs are the `files` list in
 [`../cspell.json`](../cspell.json), which the runner reads, so the command line
 and an editor running the cspell extension check the same files.
 
@@ -424,6 +428,41 @@ under the heading that says why it is there, in alphabetical order within that
 group (a unit test checks the order). cspell already splits `camelCase` and
 `PascalCase`, so names such as `SignalKit` or `GetTimePreciseSec` never need an
 entry. A typo is fixed in the document, never added to the dictionary.
+
+## Real-client install
+
+`python3 -m tooling.client.install` puts the real-client tests
+([`../tests/client/README.md`](../tests/client/README.md)) into a game folder
+and takes them out again. It is the only tool that writes outside the
+repository and a temporary directory, so it is deliberately narrow:
+
+```bash
+python3 -m tooling.client.install --wow-dir DIR [--flavour-dir _retail_] --package ID [--package ID ...] [--dry-run]
+python3 -m tooling.client.install --wow-dir DIR [--flavour-dir _retail_] --remove [--dry-run]
+```
+
+- **Install** builds the bundle with `tooling.package.build` (`--all`) into a
+  temporary directory and copies, under `<DIR>/<flavour>/Interface/AddOns`,
+  `MoltenCodes/`, the harness `MoltenCodesTest/` with a fresh copy of
+  `packages/testKit/src/TestKit.lua` and a generated `Expected.lua` (every
+  bundled package plus TestKit, with the API, revision and version of its
+  committed manifest), and `MoltenCodesTest_<Facade>/` for each `--package`.
+  A package without a test addon under `tests/client/` is refused. Exactly
+  these folders are replaced when they exist; only `.toc` and `.lua` files are
+  copied from the repository's addon folders.
+- **Remove** deletes `MoltenCodes`, `MoltenCodesTest` and every
+  `MoltenCodesTest_*` entry of `AddOns`, and every `MoltenCodesTest.lua` and
+  `MoltenCodesTest.lua.bak` under `WTF/Account/*/SavedVariables/` and
+  `WTF/Account/*/*/*/SavedVariables/`, so no saved results stay behind.
+- **Safety.** Both refuse, with exit status 1, when the `AddOns` folder does
+  not exist. A symbolic link is removed as a link and never followed; a
+  saved-variables folder reached through a link out of the game folder is
+  reported as skipped. `--dry-run` prints every path it would install or
+  remove and changes nothing.
+
+`tooling/tests/test_client_install.py` runs both against a fake game folder in
+a temporary directory, with a neighbouring addon and saved variables that must
+survive.
 
 ## Release tooling
 
@@ -563,7 +602,7 @@ timeout:
 |---|---|
 | `test` | `python3 -m tooling.test.run`: every package suite and the example addon, under Lua 5.1.5 and Busted |
 | `coverage` | `python3 -m tooling.test.coverage`: every spec but the `#allocation` ones passes under LuaCov and every package meets its floor; the per-package table with floors in the job summary, the LuaCov report as the `luacov-report` artefact |
-| `types` | `lua-language-server --check` for every package source directory and `examples/` |
+| `types` | `lua-language-server --check` for every package source directory, `examples/` and `tests/client/` |
 | `format` | `stylua --check .` |
 | `lint` | `python3 -m tooling.lint`, both scopes |
 | `package` | `tooling.package.build --all --verify`, then `sha256sum --check --strict`; on a push to `main`, the bundle is uploaded as the artefact `MoltenCodes-<commit>` |

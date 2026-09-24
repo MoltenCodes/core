@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = ROOT / "packages"
 EXAMPLES = ROOT / "examples"
 SHARED_TEST_SUPPORT = ROOT / "tests" / "support"
+#: The real-client test addons: addon code the game client loads, not specs.
+CLIENT_TESTS = ROOT / "tests" / "client"
 
 #: Selene configuration for test code: the Lua 5.1 library plus Busted's globals.
 TEST_CONFIG = "selene-tests.toml"
@@ -49,9 +51,10 @@ def discover_runtime_lua_files() -> list[Path]:
     """Return every runtime Lua file in deterministic order.
 
     That is each package's `src/` tree, each package's `fidelity/` tree (a
-    suite that runs in the game client) and the example addon's own source. The
-    example is addon code rather than test code, so it is held to the runtime
-    standard library: a Busted global there would be a real defect.
+    suite that runs in the game client), the example addon's own source and the
+    real-client test addons under `tests/client/`. The example and the test
+    addons are addon code rather than Busted code, so they are held to the
+    runtime standard library: a Busted global there would be a real defect.
     """
     discovered = [path for path in PACKAGES.glob("*/src/**/*.lua") if path.is_file()]
     # A fidelity suite runs inside the game client, not under Busted, so it is
@@ -67,6 +70,9 @@ def discover_runtime_lua_files() -> list[Path]:
         and not path.name.endswith("_spec.lua")
         and not path.is_relative_to(example_tests)
     )
+    # The real-client test addons run inside the game client, under TestKit,
+    # never under Busted (tests/client/README.md).
+    discovered.extend(path for path in CLIENT_TESTS.glob("**/*.lua") if path.is_file())
     return sorted(set(discovered))
 
 

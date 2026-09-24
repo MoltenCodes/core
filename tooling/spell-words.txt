@@ -33,6 +33,7 @@ langmask
 libstub
 MAXEMOTEINDEX
 MOLTENCODES
+MOLTENCODESTEST
 myaddon
 nilable
 Pandaria

@@ -1,0 +1,11 @@
+## Interface: 120100
+## Title: MoltenCodes Test: Registry
+## Notes: Real-client test suites for the MoltenCodes Registry. Run them with /mct run registry.
+## Author: MoltenCodes
+## Version: 1.0.0
+## Dependencies: MoltenCodesTest
+## X-Category: Development Tools
+## X-License: MIT
+
+# Development only: never ship this addon. See tests/client/README.md.
+RegistrySuite.lua

@@ -15,6 +15,7 @@ in the repository and one command:
 | Example addon | the embedding instructions work as written: `.toc`, `embeds.xml`, load order, type-checking | `examples/tests/` | `python3 -m tooling.test.run examples` |
 | Fixture fidelity | the shared fake client behaves like the real one | `packages/testKit/fidelity/` (runs under Busted and in the client) | `python3 -m tooling.test.run testKit`, and testKit in the client |
 | In-client suites | what only the client shows: event order and payloads, combat lockdown, taint | testKit suites | the game client, by hand |
+| Real-client tests | a package as the owner's installed client loads it: the published globals, the committed revisions, the documented behaviour on the client's own Lua | `tests/client/MoltenCodesTest_<Facade>/`, run by the harness `tests/client/MoltenCodesTest/` | `python3 -m tooling.client.install`, then `/mct run <package>` in the client |
 
 Line coverage (`python3 -m tooling.test.coverage`) is a gate over the first
 four layers, not a layer of its own: every spec except the allocation guards
@@ -62,6 +63,31 @@ through `packages/testKit/tests/FixtureFidelity_spec.lua`, which lists what the
 fixture does not model yet (`InCombatLockdown` in `AddonStub`, `C_Timer.After`
 in `TimerStub`) and fails as soon as one of them starts passing, so the list
 stays truthful. Add a fidelity test whenever a stub models a new host fact.
+
+### Real-client tests
+
+[`tests/client/`](../tests/client/README.md) turns the in-client layer into a
+package-by-package procedure an owner of a real installation can follow. Each
+package gets a development addon, `MoltenCodesTest_<Facade>`, whose TestKit
+suites prove in the client what the shared fixture can only simulate; the
+harness addon `MoltenCodesTest` runs them with `/mct run <package>`, prints one
+line per test and a totals line, and saves the full `TestKit:Report()` with the
+client's build, flavour, locale, date and loaded package revisions in its saved
+variable, keyed by package ID.
+
+```bash
+python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package registry
+python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --remove
+```
+
+The first builds the release bundle and installs it with the harness, a fresh
+copy of TestKit, a generated `Expected.lua` (every package's committed API and
+revision) and the requested test addons; the second removes all of them and
+the harness's saved-variables files. Nothing runs at login: runs start only by
+`/mct run`. Each test addon's `EXPECTED.md` lists the exact chat lines of a
+correct run and what to send back. The addons are runtime Lua for the gates:
+the runtime lint scope, StyLua, and
+`lua-language-server --check tests/client --checklevel=Warning`.
 
 Pure Lua tests should remain independent from the WoW client whenever practical. WoW-specific integration should be isolated at narrow boundaries.
 
@@ -294,7 +320,8 @@ judged against the `busted.yml` standard library selected by
 ## CI
 
 CI validates formatting, Lua linting for runtime and test code, the
-lua-language-server check for every source directory, repository structure,
+lua-language-server check for every source directory (the real-client test
+addons included), repository structure,
 that the generated `apiKit` outputs match their committed metadata
 (`python3 -m tooling.api.generate --all --check`), repository-tooling unit
 tests on the supported Python floor and the current release, the Lua

@@ -23,6 +23,7 @@ This directory is the entry point for repository-wide documentation.
 
 - [`DEVELOPMENT.md`](DEVELOPMENT.md) contains local prerequisites and canonical repository commands.
 - [`TESTING.md`](TESTING.md) describes test layers, Busted conventions, and package-aware test orchestration.
+- [`../tests/client/`](../tests/client/README.md) holds the real-client tests: the `/mct` harness addon, one test addon per package, and how to install, run and remove them.
 - [`TOOLING.md`](TOOLING.md) explains repository tooling, what repository validation checks, coverage, and every CI job and workflow.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) defines contribution expectations, including the LuaCATS annotation rules.
 - [`RELEASES.md`](RELEASES.md) describes independent package versioning, the build command, and release artifacts.
