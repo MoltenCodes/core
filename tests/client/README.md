@@ -33,10 +33,12 @@ tests/client/
 │   ├── MoltenCodesTest_EventKit.toc
 │   ├── EventKitSuite.lua
 │   └── EXPECTED.md
-└── MoltenCodesTest_LifecycleKit/      # the test addon of the `lifecycleKit` package
-    ├── MoltenCodesTest_LifecycleKit.toc
-    ├── LifecycleKitSuite.lua
-    └── EXPECTED.md
+├── MoltenCodesTest_LifecycleKit/      # the test addon of the `lifecycleKit` package
+│   ├── MoltenCodesTest_LifecycleKit.toc
+│   ├── LifecycleKitSuite.lua
+│   └── EXPECTED.md
+├── MoltenCodesTest_ModuleKit/         # the test addon of the `moduleKit` package (.toc, suite, EXPECTED.md)
+└── MoltenCodesTest_TimerKit/          # the test addon of the `timerKit` package (.toc, suite, EXPECTED.md)
 ```
 
 The harness `.toc` also lists `TestKit.lua` and `Expected.lua`. Neither is

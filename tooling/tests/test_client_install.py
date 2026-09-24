@@ -140,6 +140,60 @@ class InstallTests(FakeClientTests):
         self.assertIn(str(lifecycle_kit_addon), output)
         self.assert_neighbour_untouched()
 
+    def test_installs_the_timerkit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "timerKit")
+
+        self.assertEqual(0, status, errors)
+        timer_kit_addon = self.addons / "MoltenCodesTest_TimerKit"
+        self.assertEqual(
+            ["MoltenCodesTest_TimerKit.toc", "TimerKitSuite.lua"],
+            sorted(path.name for path in timer_kit_addon.iterdir()),
+        )
+        toc = (timer_kit_addon / "MoltenCodesTest_TimerKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nTimerKitSuite.lua\n", toc)
+        bundle = self.addons / "MoltenCodes"
+        self.assertTrue((bundle / "timerKit" / "TimerKit.lua").is_file())
+        # The ForAddon test logs the logout route LifecycleKit provides.
+        self.assertTrue((bundle / "lifecycleKit" / "LifecycleKit.lua").is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_Registry").exists())
+        self.assertIn(str(timer_kit_addon), output)
+        self.assert_neighbour_untouched()
+
+    def test_installs_the_modulekit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "moduleKit")
+
+        self.assertEqual(0, status, errors)
+        module_kit_addon = self.addons / "MoltenCodesTest_ModuleKit"
+        self.assertEqual(
+            ["ModuleKitSuite.lua", "MoltenCodesTest_ModuleKit.toc"],
+            sorted(path.name for path in module_kit_addon.iterdir()),
+        )
+        toc = (module_kit_addon / "MoltenCodesTest_ModuleKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nModuleKitSuite.lua\n", toc)
+        bundle = self.addons / "MoltenCodes"
+        self.assertTrue((bundle / "moduleKit" / "ModuleKit.lua").is_file())
+        # The scope and injection tests use every Kit behind module.scope and
+        # SchemaKit for the schema form of implements, all from the bundle.
+        for kit in (
+            "timerKit/TimerKit.lua",
+            "eventKit/EventKit.lua",
+            "schedulerKit/SchedulerKit.lua",
+            "hookKit/HookKit.lua",
+            "commandKit/CommandKit.lua",
+            "commKit/CommKit.lua",
+            "signalKit/SignalKit.lua",
+            "schemaKit/SchemaKit.lua",
+        ):
+            with self.subTest(kit=kit):
+                self.assertTrue((bundle / kit).is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_LifecycleKit").exists())
+        self.assertIn(str(module_kit_addon), output)
+        self.assert_neighbour_untouched()
+
     def test_installs_several_test_addons_in_one_command(self):
         status, _, errors = self.run_command("--package", "registry", "--package", "signalKit")
 
@@ -156,7 +210,9 @@ class InstallTests(FakeClientTests):
         self.assertIn("signalKit", available)
         self.assertIn("eventKit", available)
         self.assertIn("lifecycleKit", available)
-        self.assertNotIn("timerKit", available)
+        self.assertIn("timerKit", available)
+        self.assertIn("moduleKit", available)
+        self.assertNotIn("widgetKit", available)
 
     def test_expected_lua_lists_every_bundled_package_and_testkit_at_their_manifest_revisions(self):
         self.run_command("--package", "registry")
@@ -204,7 +260,7 @@ class InstallTests(FakeClientTests):
         self.assert_neighbour_untouched()
 
     def test_refuses_a_package_without_a_test_addon(self):
-        status, _, errors = self.run_command("--package", "timerKit")
+        status, _, errors = self.run_command("--package", "widgetKit")
 
         self.assertEqual(1, status)
         self.assertIn("has no test addon", errors)
