@@ -1349,7 +1349,8 @@ under their Kit, new Kits carry nine points.
    limits, upgrade, manifest, error levels.
 8. Docs: README, API.md, CHANGELOG; the catalogue in EMBEDDING's taint
    section; EMBEDDING rows.
-9. Status: planned 2026-09-24.
+9. Status: implemented 2026-09-24, 0.1.0, revision 1, 114 specs; deviations
+   recorded in `packages/compatKit/docs/API.md`.
 
 #### Package M — the user-interface phase (last, by the owner's decision)
 
@@ -1419,6 +1420,6 @@ duplicating those specifications.
 ---
 
 Last roadmap baseline update: 2026-09-24 (phases 0 through 4 and packages F,
-G and H complete; phase 5 packages I, J and K complete: 27 packages, every gate
-green; compatKit next, the user-interface phase last; the standing obligations
+G and H complete; phase 5 packages I, J, K and L complete: 28 packages, every gate
+green; the user-interface phase (package M) is what remains; the standing obligations
 continue).

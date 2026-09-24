@@ -27,6 +27,7 @@ packages/
 ├── mediaKit/
 ├── brokerKit/
 ├── logKit/
+├── compatKit/
 ├── testKit/
 ├── commKit/
 ├── widgetKit/
@@ -39,7 +40,7 @@ Every visible directory directly under `packages/` is considered a publishable p
 
 ## Package naming
 
-Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`).
+Public framework capability packages use an Apple-style `Kit` suffix. The canonical machine-readable package ID is lowerCamelCase (`signalKit`, `eventKit`, `lifecycleKit`, `moduleKit`, `timerKit`, `schedulerKit`, `poolKit`, `clientKit`, `cacheKit`, `profileKit`, `readinessKit`, `schemaKit`, `localeKit`, `hookKit`, `settingsKit`, `optionsKit`, `commandKit`, `codecKit`, `interopKit`, `mediaKit`, `testKit`, `commKit`, `widgetKit`, `apiKit`, `brokerKit`, `logKit`, `compatKit`), while the Lua facade/module name is PascalCase (`SignalKit`, `EventKit`, `LifecycleKit`, `ModuleKit`, `TimerKit`, `SchedulerKit`, `PoolKit`, `ClientKit`, `CacheKit`, `ProfileKit`, `ReadinessKit`, `SchemaKit`, `LocaleKit`, `HookKit`, `SettingsKit`, `OptionsKit`, `CommandKit`, `CodecKit`, `InteropKit`, `MediaKit`, `TestKit`, `CommKit`, `WidgetKit`, `ApiKit`, `BrokerKit`, `LogKit`, `CompatKit`).
 
 `registry` / `Registry` is an infrastructure exception because it provides package identity and revision reconciliation rather than a framework capability surface.
 
@@ -81,6 +82,7 @@ The current runtime dependency graph is:
 registry
 ├──→ apiKit
 ├──→ clientKit
+├──→ compatKit
 ├──→ cacheKit
 ├──→ profileKit
 ├──→ schemaKit
@@ -216,6 +218,8 @@ The dependency layer directly above Registry holds the Kits that need nothing el
 `poolKit` depends only on Registry API 2. Its pooling algorithm is pure Lua and intentionally sits outside the lifecycle/event/scheduling branch: consumers can reuse objects without pulling in Frames, timers, coroutines, or addon lifecycle state. Retention is bounded by default, with `PoolKit.UNBOUNDED` as an explicit caller-owned escape hatch.
 
 `clientKit` depends only on Registry API 2. It answers which client flavour is running and what the host exposes, through a capability table probed once at bootstrap, offers shims that give the few flavour-dependent host calls one shape, and reads an addon's `.toc` fields once into a read-only manifest snapshot with locale fallback (`GetManifest`). Every flag is `false` when the host lacks the feature, and an absent `WOW_PROJECT_ID` yields the most conservative flavour, never "everything true".
+
+`compatKit` depends only on Registry API 2. It keeps one entry per shim name and applies each pending shim once, in name order, under `pcall` with failures reported through the host error handler; the highest version registered before `Apply` wins across embedded copies, a later higher version is recorded but not run, and `SkipShim` is the host's opt-out. Provider registries keep an array ordered by priority and name so `Resolve` walks it without allocating, memoise the cascade's answer and re-validate it with the provider's probe on every call. ClientKit (the flavour shims are filtered on) and ApiKit (whose installed surface `context.hasApi` checks by function identity, since generated bindings are direct aliases) are found at call time through `Registry:Find`, adding no load-order edge. The catalogue of taint-hostile subsystems is published as a read-only table mirroring EMBEDDING.md, and a tooling test holds both against the apiKit metadata.
 
 `cacheKit` depends only on Registry API 2. It gives consumers bounded caches (LRU by count, TTL by age with negative entries, memoisation with a `cacheable` predicate, snapshots with diffs, lazily expanded trees and bounded queues) so that "bounded by default" is a structure rather than a rule to remember. Clearing on a host event is resolved at call time through `Registry:Find("eventKit", 1)`, so EventKit is optional and never an edge in the load order.
 

@@ -35,6 +35,7 @@ This repository is a monorepo. Every publishable runtime package lives under `pa
 | [`mediaKit`](packages/mediaKit/) | Implemented | Typed media registry (fonts with scripts, bars, borders, backgrounds, sounds, textures, icons), sorted cached lists, per-consumer defaults, LibSharedMedia adoption and mirroring. |
 | [`brokerKit`](packages/brokerKit/) | Implemented | LibDataBroker-compatible data objects for display addons: the fifteen LibDataBroker attributes typed at the caller, plain-field reads and writes, per-attribute change signals, sorted enumeration, exposure into and read-only adoption from LibDataBroker-1.1. |
 | [`logKit`](packages/logKit/) | Implemented | Levelled, structured logging: per-addon loggers whose disabled calls cost one comparison, lazy secret-safe formatting, addon, global and default level precedence, a bounded journal on SignalKit, chat, callback and table sinks, an optional `/log` command and optional persisted levels. |
+| [`compatKit`](packages/compatKit/) | Implemented | Named, versioned shims applied once per session with the newest version winning across embedded copies and a host opt-out, provider registries with liveness probes and a deterministic fallback cascade, and the catalogue of taint-hostile subsystems published as data checked against the apiKit metadata. |
 | [`commKit`](packages/commKit/) | Implemented | Addon messaging of any length: prefixes, a chunk protocol with bounded reassembly, priority queues that refuse rather than grow, a session-wide bandwidth budget, content-hash sync sets. |
 | [`widgetKit`](packages/widgetKit/) | Implemented | Pooled, versioned widgets with explicit layouts, saveable anchors with position persistence, and an OptionsKit renderer. |
 | [`apiKit`](packages/apiKit/) | Implemented | Flavour-aware, typed, documented wrapper over the public World of Warcraft API (`wow.retail.api`, `wow.classic.era.api`, ...), generated from the client's own documentation tables; every entry is a direct alias, the raw API stays valid. |
@@ -139,6 +140,7 @@ python3 -m tooling.spell
 │   ├── mediaKit/
 │   ├── brokerKit/
 │   ├── logKit/
+│   ├── compatKit/
 │   ├── testKit/
 │   ├── commKit/
 │   ├── widgetKit/

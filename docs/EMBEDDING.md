@@ -140,6 +140,7 @@ after the packages it depends on.** The current graph is:
 registry
 ├──→ apiKit (plus its flavour files)
 ├──→ clientKit
+├──→ compatKit
 ├──→ cacheKit
 ├──→ profileKit
 ├──→ schemaKit
@@ -191,6 +192,7 @@ schedulerKit/SchedulerKit.lua
 commKit/CommKit.lua
 schemaKit/SchemaKit.lua
 commandKit/CommandKit.lua
+compatKit/CompatKit.lua
 hookKit/HookKit.lua
 interopKit/InteropKit.lua
 lifecycleKit/LifecycleKit.lua
@@ -240,7 +242,7 @@ optional and found at call time, so embedding one Kit costs this many files:
 
 | Files | Kit | Alongside `registry/Registry.lua` |
 |---|---|---|
-| 2 | `clientKit`, `cacheKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `poolKit`, `signalKit`, `timerKit` | nothing |
+| 2 | `clientKit`, `cacheKit`, `compatKit`, `profileKit`, `schemaKit`, `localeKit`, `hookKit`, `interopKit`, `poolKit`, `signalKit`, `timerKit` | nothing |
 | 3 | `apiKit` | nothing; the third file is the flavour file of the client you support (one more per further flavour) |
 | 3 | `codecKit` | `poolKit` |
 | 3 | `commandKit` | `schemaKit` |
@@ -277,7 +279,7 @@ into `Interface/AddOns/ExampleAddon/`, drop the framework files into
 ## IconTexture: Interface\Icons\INV_Misc_Gear_01
 ## X-Category: Development Tools
 ## X-License: MIT
-## X-Embeds: MoltenCodes-Registry, MoltenCodes-CacheKit, MoltenCodes-ClientKit, MoltenCodes-PoolKit, MoltenCodes-CodecKit, MoltenCodes-SignalKit, MoltenCodes-EventKit, MoltenCodes-LifecycleKit, MoltenCodes-TimerKit, MoltenCodes-SchedulerKit, MoltenCodes-CommKit, MoltenCodes-SchemaKit, MoltenCodes-CommandKit, MoltenCodes-HookKit, MoltenCodes-InteropKit, MoltenCodes-LocaleKit, MoltenCodes-MediaKit, MoltenCodes-BrokerKit, MoltenCodes-LogKit, MoltenCodes-ModuleKit, MoltenCodes-OptionsKit, MoltenCodes-ProfileKit, MoltenCodes-ReadinessKit, MoltenCodes-SettingsKit, MoltenCodes-WidgetKit
+## X-Embeds: MoltenCodes-Registry, MoltenCodes-CacheKit, MoltenCodes-ClientKit, MoltenCodes-PoolKit, MoltenCodes-CodecKit, MoltenCodes-SignalKit, MoltenCodes-EventKit, MoltenCodes-LifecycleKit, MoltenCodes-TimerKit, MoltenCodes-SchedulerKit, MoltenCodes-CommKit, MoltenCodes-SchemaKit, MoltenCodes-CommandKit, MoltenCodes-HookKit, MoltenCodes-InteropKit, MoltenCodes-LocaleKit, MoltenCodes-MediaKit, MoltenCodes-BrokerKit, MoltenCodes-LogKit, MoltenCodes-CompatKit, MoltenCodes-ModuleKit, MoltenCodes-OptionsKit, MoltenCodes-ProfileKit, MoltenCodes-ReadinessKit, MoltenCodes-SettingsKit, MoltenCodes-WidgetKit
 
 # Embedded framework packages. This file must come first: every package below
 # resolves its dependencies at load time and raises if one is missing.
@@ -642,6 +644,7 @@ actually touch, which is deliberately small:
 | `readinessKit` | TimerKit's surface | `GetTimePreciseSec` (negative cache disabled, timeouts counted in polls), EventKit API 1 through `Registry:Find` (`gate:ReprobeOn` raises at the caller), `geterrorhandler` (probe and waiter failures fall back to `print`) |
 | `timerKit` | `C_Timer.NewTimer`, `C_Timer.NewTicker` | `GetTimePreciseSec` (`GetRemaining` and `GetDeadline` then return `nil`); LifecycleKit is not needed: it calls `TimerKit:CloseAddonScopes` at logout when both are present, otherwise call it yourself on `PLAYER_LOGOUT`; LifecycleKit and EventKit API 1 through `Registry:Find` decide who closes the addon scope at logout (with neither, call `TimerKit:CloseAddonScopes` on `PLAYER_LOGOUT`) |
 | `apiKit` | nothing but Lua 5.1 | `WOW_PROJECT_ID`, `IsTestBuild`, `IsBetaBuild` (a client matching no flavour is `"unsupported"` and gets no surface); every namespace or function the running build lacks is simply absent from the wrapper; the `wow` global when another addon owns it (`GetGlobalStatus` says `"taken"`; use `MoltenCodes.wow`) |
+| `compatKit` | nothing but Lua 5.1 | `issecretvalue` (nothing treated as secret), `geterrorhandler` (failing shims and probes fall back to `print`), ClientKit API 1 through `Registry:Find` (`context.flavour` is `false` and every shim applies whatever its `flavours`), ApiKit API 1 with the client's flavour file through `Registry:Find` (`context.hasApi` answers `false` for every name; a shim record's `missing` stays `false`) |
 | `clientKit` | nothing but Lua 5.1 | `WOW_PROJECT_ID` (flavour `"classic"`), `C_AddOns.GetAddOnMetadata` / `GetAddOnMetadata` (`GetManifest` answers `nil, "unavailable"`), `GetLocale` (no localized `Title`/`Notes` fallback), `GetBuildInfo` (interface `0`), `issecretvalue` (`IsSecret` false), `C_EventUtils.IsEventValid` (`IsEventValid` nil), `IsForbidden` / `CanBeAccessedInContext` (`CanAccessFrame` true), `C_AddOns` / `C_Spell` / `C_Item` (legacy globals, then nil or false); any other probed facility (`Has` answers `false`) |
 | `cacheKit` | nothing but Lua 5.1 | `GetTimePreciseSec` (age limits disabled: TTL caches never expire and `PutNegative` entries never lapse), EventKit API 1 (`cache:ClearOn` raises at the caller), `issecretvalue` (snapshot `fill` treats nothing as secret) |
 | `profileKit` | nothing but Lua 5.1 | `debugprofilestop` (`Enable` returns `false, "unavailable"`) |
@@ -898,6 +901,34 @@ The same shape applies to a tooltip post-hook
 (`TooltipDataProcessor.AddTooltipPostCall`): check the tooltip frame with `canTouch`, treat every
 field of the tooltip data as possibly secret, and treat any string built from
 one as secret too.
+
+### Catalogue of taint-hostile subsystems
+
+The subsystems below taint when insecure code touches them, whatever the
+intent. Each row names the sanctioned replacement and, when that replacement is
+a documented client API, the apiKit flavours whose committed metadata
+(`packages/apiKit/metadata/<flavour>/namespaces.json`) describes it; a
+replacement that is FrameXML or the addon's own frames is not in the documented
+API tables, and the column says so. `CompatKit.CATALOGUE` (package `compatKit`)
+publishes the same rows as a read-only Lua table for tooling and addons, and
+`tooling/tests/test_compat_catalogue.py` holds this table, that table and the
+metadata together.
+
+| Subsystem | Why it taints | Sanctioned replacement | Replacement in the apiKit metadata |
+|---|---|---|---|
+| `UIDropDownMenu (UIDropDownMenu_*, EasyMenu)` | One shared set of dropdown frames and globals (`UIDROPDOWNMENU_OPEN_MENU`, `UIDROPDOWNMENU_MENU_LEVEL`) serves every menu; a write from insecure code taints them and blocks the next secure menu (unit frame and raid frame menus). | `Menu` and `MenuUtil` (`Blizzard_Menu`, FrameXML): own menu descriptions, no shared globals. | FrameXML, not a documented API; none. |
+| `StaticPopup_Show dialogs` | The four `StaticPopup<n>` frames are shared; a dialog shown from insecure code taints the frame Blizzard reuses for its next protected confirmation. | Own dialog frames (WidgetKit; dialogKit when it ships). | Own frames; none. |
+| `ActionButton_ShowOverlayGlow / ActionButton_HideOverlayGlow` | Writes overlay fields on secure action buttons, tainting the action bar and blocking its secure updates in combat. | Own glow frame parented to the button, state kept in a table of your own keyed by the button. | Own frames; none. |
+| `Hidden tooltip scanning (GameTooltip:SetOwner/SetUnit, GameTooltipTextLeft<n>)` | `GameTooltip` is shared with the secure UI; setting it from insecure code taints it, and in combat the text it shows is a secret value. | `C_TooltipInfo.GetUnit` and its siblings return the tooltip data as a table; post-hook with `TooltipDataProcessor.AddTooltipPostCall`. | `C_TooltipInfo.GetUnit`: `beta`, `ptr`, `retail` (the Classic flavours document the namespace without `GetUnit`). |
+| `GetAddOnMetadata (legacy global)` | Removed from Retail in 10.1; an addon that writes the global back to shim it taints a name secure code reads. | `C_AddOns.GetAddOnMetadata` (`ClientKit:GetAddOnMetadata` chooses per client). | `C_AddOns.GetAddOnMetadata`: `beta`, `classic-era`, `classic-mop`, `ptr`, `retail`. |
+| `ShowUIPanel / HideUIPanel on Blizzard panels` | `UIParent`'s panel management (`UIPanelWindows`, `UIParent_ManageFramePositions`) is secure; a call from insecure code taints its layout state and blocks secure panels in combat. | Own frames outside the UIPanel system; `UISpecialFrames` for Escape to close. | Own frames; none. |
+| `InterfaceOptionsFrame_OpenToCategory` | Removed with `InterfaceOptionsFrame` in 10.0; compatibility wrappers that recreate it write into the Settings frames. | `Settings.OpenToCategory(categoryID)` (`Blizzard_Settings`, FrameXML) opens your category; `C_SettingsUtil.OpenSettingsPanel` opens the panel. | `C_SettingsUtil.OpenSettingsPanel`: `beta`, `classic-era`, `classic-mop`, `ptr`, `retail`; `Settings.OpenToCategory` is FrameXML. |
+| `SetOverrideBindingClick in combat` | Protected while in combat lockdown; a call from insecure code then raises `ADDON_ACTION_BLOCKED` and the binding is lost. | Record the intent at once and apply it out of combat (LifecycleKit `instance:WhenOutOfCombat`). | Not an API change; none. |
+| `CompactUnitFrame hooks that write frame fields` | The compact raid frames are secure; replacing `CompactUnitFrame_*` functions or writing fields on the frames taints them for the session. | `hooksecurefunc` post-hooks (HookKit `SecureHook`) that write nothing on the frame; read auras through `C_UnitAuras.GetAuraDataByIndex`. | `C_UnitAuras.GetAuraDataByIndex`: `beta`, `classic-era`, `classic-mop`, `ptr`, `retail`. |
+
+The flavour lists were read from the committed metadata on 2026-09-24; a
+metadata refresh that adds or removes one of these functions fails the tooling
+test until both tables are updated.
 
 ## The combat log
 

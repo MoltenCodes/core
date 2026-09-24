@@ -129,6 +129,8 @@ move-folders:
   MoltenCodes/packages/brokerKit/docs: MoltenCodes/brokerKit/docs
   MoltenCodes/packages/logKit/src: MoltenCodes/logKit
   MoltenCodes/packages/logKit/docs: MoltenCodes/logKit/docs
+  MoltenCodes/packages/compatKit/src: MoltenCodes/compatKit
+  MoltenCodes/packages/compatKit/docs: MoltenCodes/compatKit/docs
   MoltenCodes/packages/commKit/src: MoltenCodes/commKit
   MoltenCodes/packages/commKit/docs: MoltenCodes/commKit/docs
   MoltenCodes/packages/widgetKit/src: MoltenCodes/widgetKit

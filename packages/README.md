@@ -31,6 +31,7 @@ Current packages:
 - [`mediaKit`](mediaKit/) — typed media registry, font scripts, sorted lists, per-consumer defaults, LibSharedMedia bridge.
 - [`brokerKit`](brokerKit/) — LibDataBroker-compatible data objects for display addons: typed attributes as plain fields, per-attribute change signals, sorted enumeration, two-way LibDataBroker-1.1 bridge.
 - [`logKit`](logKit/) — levelled, structured logging: per-addon loggers with lazy secret-safe formatting, a tri-state level, a bounded journal, chat, callback and table sinks.
+- [`compatKit`](compatKit/) — versioned shims applied once per session with a host opt-out, provider registries with liveness probes and a deterministic fallback cascade, the catalogue of taint-hostile subsystems as data.
 - [`commKit`](commKit/) — addon messaging: chunk protocol, bounded reassembly, refusing priority queues, session bandwidth budget, sync sets.
 - [`widgetKit`](widgetKit/) — pooled versioned widgets, List/Fill/Flow layouts, anchors, position bindings, OptionsKit renderer.
 - [`apiKit`](apiKit/) — the flavour-aware, typed wrapper over the World of Warcraft API (`wow.retail.api`, ...): direct aliases generated from the client's own documentation tables, LuaCATS types per flavour, the raw API always valid.
