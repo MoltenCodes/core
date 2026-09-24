@@ -205,4 +205,34 @@ describe("CompatKit Apply", function()
         assert.are.same({ 1, 0, 0 }, { CompatKit:Apply() })
         assert.are.same({ "late" }, ran)
     end)
+
+    it("re-raises a failure that escapes the isolation and still releases the guard", function()
+        -- The handler raises and so does its `print` fallback: the report
+        -- itself fails, which the per-shim `pcall` does not cover.
+        setGlobal("geterrorhandler", function()
+            return function()
+                error("the error display is broken", 0)
+            end
+        end)
+        local originalPrint = print
+        setGlobal("print", function()
+            error("the chat frame is broken", 0)
+        end)
+        CompatKit:Shim("a-fails", 1, function()
+            error("shim broke", 0)
+        end)
+        local ok, failure = pcall(CompatKit.Apply, CompatKit)
+        setGlobal("print", originalPrint)
+        assert.is_false(ok)
+        assert.are.equal("the chat frame is broken", failure)
+        assert.are.equal("failed", recordOf("a-fails").status)
+
+        -- The guard is released: a later Apply runs later shims.
+        local ran = {}
+        CompatKit:Shim("b-later", 1, function()
+            ran[#ran + 1] = "b"
+        end)
+        assert.are.same({ 1, 0, 0 }, { CompatKit:Apply() })
+        assert.are.same({ "b" }, ran)
+    end)
 end)

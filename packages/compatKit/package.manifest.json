@@ -2,10 +2,10 @@
   "name": "compatKit",
   "displayName": "CompatKit",
   "description": "Named, versioned shims applied once with a host opt-out, provider registries with liveness probes and a deterministic fallback cascade, and the catalogue of taint-hostile Blizzard subsystems with their sanctioned replacements, for World of Warcraft addons.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
   "api": 1,
-  "revision": 1,
+  "revision": 2,
   "dependencies": {
     "registry": {
       "api": 2

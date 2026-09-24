@@ -41,7 +41,7 @@
 
 local PACKAGE_NAME = "compatKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -606,7 +606,8 @@ end
 ---@param label string public method name
 ---@param level integer
 local function validateFacade(receiver, label, level)
-    if receiver ~= CompatKit then
+    -- `type` first: a secret receiver is never a table, and comparing it raises.
+    if type(receiver) ~= "table" or receiver ~= CompatKit then
         error(label .. " must be called on the CompatKit facade; use " .. label .. "(...)", level)
     end
 end
@@ -698,17 +699,17 @@ local function readShimOptions(options, level)
     if isSecret(options) then
         error("CompatKit:Shim options must not be a secret value", level)
     end
-    if options == nil then
+    if type(options) == "nil" then
         return false, false, false
     end
     validateOptionKeys(options, SHIM_OPTION_KEYS, "CompatKit:Shim", level + 1)
 
-    -- Each field is checked for secrecy before it is compared with `nil`.
+    -- Each field is checked for secrecy first; absence is tested with `type`.
     local description = rawget(options, "description")
     if isSecret(description) then
         error("CompatKit:Shim options.description must not be a secret value", level)
     end
-    if description ~= nil and type(description) ~= "string" then
+    if type(description) ~= "nil" and type(description) ~= "string" then
         error("CompatKit:Shim options.description must be a string", level)
     end
 
@@ -716,7 +717,7 @@ local function readShimOptions(options, level)
     if isSecret(flavours) then
         error("CompatKit:Shim options.flavours must not be a secret value", level)
     end
-    if flavours ~= nil then
+    if type(flavours) ~= "nil" then
         flavours = readStringArray(
             flavours,
             "CompatKit:Shim options.flavours",
@@ -730,7 +731,7 @@ local function readShimOptions(options, level)
     if isSecret(covers) then
         error("CompatKit:Shim options.covers must not be a secret value", level)
     end
-    if covers ~= nil then
+    if type(covers) ~= "nil" then
         covers = readStringArray(
             covers,
             "CompatKit:Shim options.covers",
@@ -920,7 +921,8 @@ local function newShimContext(flavour)
 
     local function hasGlobal(name)
         validateName(name, "CompatKit.ShimContext.hasGlobal name", 3)
-        return readGlobalPath(name) ~= nil
+        -- A host value may be secret: absence is tested with `type`.
+        return type(readGlobalPath(name)) ~= "nil"
     end
 
     local fields = { flavour = flavour, hasApi = hasApi, hasGlobal = hasGlobal }
@@ -1220,7 +1222,9 @@ local function providerAlive(entry)
         reportError(alive)
         return false
     end
-    return alive == true
+    -- Only `true` counts as alive. The answer is the probe's, so a secret is
+    -- dead before it is compared.
+    return not isSecret(alive) and alive == true
 end
 
 ---Whether the provider `left` comes before `right` in the cascade.
@@ -1284,23 +1288,23 @@ local function registryRegister(self, name, implementation, probe, priority)
     local methodName = "CompatKit.ProviderRegistry:Register"
     validateRegistry(self, methodName, 3)
     validateName(name, methodName .. " name", 3)
-    -- Each argument is checked for secrecy before it is compared with `nil`.
+    -- Each argument is checked for secrecy first; absence is tested with `type`.
     if isSecret(implementation) then
         error(methodName .. " implementation must not be a secret value", 2)
     end
-    if implementation == nil then
+    if type(implementation) == "nil" then
         error(methodName .. " implementation must not be nil", 2)
     end
     if isSecret(probe) then
         error(methodName .. " probe must not be a secret value", 2)
     end
-    if probe ~= nil and type(probe) ~= "function" then
+    if type(probe) ~= "nil" and type(probe) ~= "function" then
         error(methodName .. " probe must be a function or nil", 2)
     end
     if isSecret(priority) then
         error(methodName .. " priority must not be a secret value", 2)
     end
-    if priority == nil then
+    if type(priority) == "nil" then
         priority = DEFAULT_PRIORITY
     else
         validatePriority(priority, methodName .. " priority", 3)
@@ -1367,7 +1371,7 @@ local function registryResolve(self, preferred)
     if isSecret(preferred) then
         error(methodName .. " preferred must not be a secret value", 2)
     end
-    if preferred ~= nil then
+    if type(preferred) ~= "nil" then
         validateName(preferred, methodName .. " preferred", 3)
         local entry = providers[preferred]
         if entry ~= nil then
@@ -1503,7 +1507,7 @@ local function packageSetLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, name, value)
         end
     end

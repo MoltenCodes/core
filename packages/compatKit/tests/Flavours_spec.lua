@@ -101,4 +101,22 @@ describe("CompatKit flavour filtering", function()
         assert.are.same({ 2, 1, 0 }, { CompatKit:Apply() })
         assert.are.equal("skipped", statusOf(CompatKit, "retail-only"))
     end)
+
+    it("treats a ClientKit flavour that is not a string as no flavour", function()
+        local CompatKit = Env.NewPackageFor("mainline")
+        local ClientKit = Env.LoadClientKit()
+        -- A ClientKit that cannot name the client answers `nil`; CompatKit then
+        -- filters nothing, exactly as it does without ClientKit.
+        rawset(ClientKit, "GetFlavor", function()
+            return nil
+        end)
+        local ran = registerFlavourShims(CompatKit)
+        local flavour
+        CompatKit:Shim("z-inspect", 1, function(context)
+            flavour = context.flavour
+        end)
+        assert.are.same({ 4, 0, 0 }, { CompatKit:Apply() })
+        assert.are.same({ "classic-family", "everywhere", "retail-only" }, ran)
+        assert.is_false(flavour)
+    end)
 end)

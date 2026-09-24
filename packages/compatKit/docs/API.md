@@ -5,7 +5,7 @@ session with a host opt-out, provider registries with liveness probes and a
 deterministic fallback cascade, and the read-only catalogue of taint-hostile
 Blizzard subsystems.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -189,8 +189,8 @@ on a provider registry; use registry:Resolve(...)`.
   what `Resolve` hands back, unchanged.
 - `probe` is `function() -> boolean`, asked whether the provider is usable at
   the moment of a `Resolve` or `List`. Default: always alive. Only `true`
-  counts as alive; a probe that raises is reported through the host error
-  handler and counts as dead.
+  counts as alive (a secret answer is dead and is never compared); a probe
+  that raises is reported through the host error handler and counts as dead.
 - `priority` is an integer, negative allowed, default `0`; higher wins.
 
 | Result | When |
@@ -271,7 +271,14 @@ MyAddon/Core.lua:12: CompatKit:Shim name must not be a secret value
 
 A shim's error value and a probe's error value are handed to the host error
 handler and stored unchanged; CompatKit never formats or compares them, so a
-secret string built inside a shim stays a secret string.
+secret string built inside a shim stays a secret string. A probe that answers
+with a secret counts as dead, and `hasGlobal` reports a global holding a secret
+as present; neither compares it. A secret receiver is reported as a call
+without the facade, before it is compared.
+
+Absence of a value CompatKit did not create (an argument, an options or limits
+field, a host global) is tested with `type`, never with `== nil`, because
+comparing a secret with `nil` raises too.
 
 ## Limits
 
@@ -316,7 +323,7 @@ inside CompatKit, and name the method and the argument:
 
 | Message | Cause |
 |---|---|
-| `CompatKit:<Method> must be called on the CompatKit facade; use CompatKit:<Method>(...)` | Called with `.` instead of `:`, or on another table. |
+| `CompatKit:<Method> must be called on the CompatKit facade; use CompatKit:<Method>(...)` | Called with `.` instead of `:`, or on another table or a secret value. |
 | `CompatKit:Shim name must be a non-empty string` | Also for `SkipShim name`, `Providers kind`. |
 | `CompatKit:Shim version must be a positive integer` | Not an integer from 1 to 2^53. |
 | `CompatKit:Shim implementation must be a function` | |
@@ -334,7 +341,7 @@ inside CompatKit, and name the method and the argument:
 | `CompatKit.ProviderRegistry:Register probe must not be a secret value` | See [Secret values](#secret-values); also `implementation`, `priority` and `Resolve preferred`. |
 | `CompatKit.ProviderRegistry:Register priority must be an integer` | |
 | `CompatKit.ShimContext.hasApi name must be a non-empty string` | Also `hasGlobal name`; reported at the shim's line. |
-| `CompatKit:<Method> <argument> must not be a secret value` | See [Secret values](#secret-values); also `options must not be a secret value`, `options must not have a secret key`, `options.<field> must not be a secret value`, `options.flavours must not contain a secret value`, `limits must not have a secret key`. Every secret check runs before the value is compared with `nil`. |
+| `CompatKit:<Method> <argument> must not be a secret value` | See [Secret values](#secret-values); also `options must not be a secret value`, `options must not have a secret key`, `options.<field> must not be a secret value`, `options.flavours must not contain a secret value`, `limits must not have a secret key`. Every secret check runs before the value is compared, and absence is tested with `type`. |
 | `CompatKit:SetLimits limits must be a table` | |
 | `CompatKit:SetLimits limits.<name> is not a recognised limit` | |
 | `CompatKit:SetLimits limits.<name> must be a positive integer or CompatKit.UNBOUNDED` | |

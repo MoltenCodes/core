@@ -27,13 +27,16 @@ The suite covers:
   with `Apply` still usable afterwards, the read-only context and `hasGlobal` on
   plain, dotted, absent, non-table and absent-then-global paths, re-entry
   refused and the guard released, a shim registering another shim that runs on
-  the next `Apply`;
+  the next `Apply`, and a failure that escapes the isolation (handler and
+  `print` both raising) re-raised with the guard still released;
 - flavours: everything applied and `flavour` `false` without ClientKit; filtering
   on Retail and Classic Era clients with ClientKit, a filtered shim never run
   later, the flavour read at `Apply` so a ClientKit loaded afterwards counts, and
-  a skipped shim counted before its flavour is considered;
+  a skipped shim counted before its flavour is considered; a ClientKit flavour
+  that is not a string treated as no flavour;
 - `hasApi` and `covers`: `false` for everything without ApiKit, with ApiKit but
-  no flavour file, and on a client the Retail file does not install on; the
+  no flavour file, with ApiKit but without its `MoltenCodes.wow` root, and on a
+  client the Retail file does not install on; the
   installed Retail surface with documented and present, documented but absent,
   undocumented and present-but-undocumented names; the installed Classic Era
   surface on a Classic client; a later path segment never read as a global;
@@ -66,7 +69,9 @@ The suite covers:
   flavours, covers, flavour, cover or option key, a secret provider kind, name,
   implementation, probe, priority or preferred name, a secret name in the
   context helpers, and a secret limit value or key, all refused at the caller
-  through an `issecretvalue` stub looked up at call time;
+  through an `issecretvalue` stub looked up at call time; a probe answering a
+  secret counted as dead, `hasGlobal` reporting a secret global as present, and
+  a secret receiver reported as a call without the facade;
 - the limits: defaults and fresh `GetLimits` tables, `"full"` for shims and
   providers (per kind), skips waiting for their shim counted against
   `maxShims` and their slot taken over by the shim, the kinds bound raising,
@@ -77,8 +82,12 @@ The suite covers:
   the line inside the shim, and a context helper failure the shim's line;
 - duplicate embedded loading, Registry publication, yielding to a newer
   revision, an in-place upgrade that keeps shims, skips, providers, limits and
-  the `UNBOUNDED` sentinel and rewrites the registry methods, an older copy
-  after an upgrade, missing Registry, an incomplete facade and corrupted state;
+  the `UNBOUNDED` sentinel and rewrites the registry methods, an in-place
+  upgrade from the previous revision (`REVISION - 1`), an older copy
+  after an upgrade, Registry found through the `MoltenCodes.Registry` alias
+  alone, missing Registry, an incomplete facade, a shared table missing a
+  method or the catalogue, and corrupted state (limits missing or invalid, an
+  unknown schema on a reload and on an upgrade);
 - manifest/runtime API and revision consistency, the declared dependency, the
   two optional dependencies and their position after `api`.
 

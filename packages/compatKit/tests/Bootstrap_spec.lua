@@ -16,7 +16,7 @@ describe("CompatKit bootstrap", function()
         local registered, revision = Registry:Get("compatKit", 1)
         assert.are.equal(CompatKit, registered)
         assert.are.equal(1, CompatKit.API)
-        assert.are.equal(1, CompatKit.REVISION)
+        assert.are.equal(2, CompatKit.REVISION)
         assert.are.equal(CompatKit.REVISION, revision)
     end)
 
@@ -63,9 +63,10 @@ describe("CompatKit bootstrap", function()
         local Shim = CompatKit.Shim
         local Resolve = registry.Resolve
 
-        local upgraded = Env.LoadSourceAtRevision(2)
+        local nextRevision = CompatKit.REVISION + 1
+        local upgraded = Env.LoadSourceAtRevision(nextRevision)
         assert.are.equal(CompatKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(nextRevision, upgraded.REVISION)
         assert.are.equal(state, upgraded._state)
         assert.are.equal(unbounded, upgraded.UNBOUNDED)
         assert.are_not.equal(Shim, upgraded.Shim)
@@ -89,12 +90,55 @@ describe("CompatKit bootstrap", function()
         assert.are.equal(3, #upgraded:GetShims())
     end)
 
+    it("takes over the previous revision's state in place", function()
+        local shippedRevision = Env.NewPackage().REVISION
+        Env.Reset()
+        Env.InstallWowApi()
+        require("Registry")
+        local previous = Env.LoadSourceAtRevision(shippedRevision - 1)
+        assert.are.equal(shippedRevision - 1, previous.REVISION)
+        local state = previous._state
+        local ran = {}
+        previous:Shim("applied", 1, function()
+            ran[#ran + 1] = "applied"
+        end)
+        previous:SkipShim("later")
+        previous:Apply()
+        local registry = previous:Providers("output")
+        local answer = true
+        assert.is_true(registry:Register("chat", "chat-sink", function()
+            return answer
+        end, 5))
+        assert.is_true(registry:Register("print", "print-sink"))
+        previous:SetLimits({ maxShims = 3 })
+
+        local CompatKit = Env.ReloadPackage()
+        assert.are.equal(previous, CompatKit)
+        assert.are.equal(shippedRevision, CompatKit.REVISION)
+        assert.are.equal(state, CompatKit._state)
+        assert.are.equal(registry, CompatKit:Providers("output"))
+        assert.are.same({ "chat-sink", "chat" }, { registry:Resolve() })
+        assert.are.equal(3, CompatKit:GetLimits().maxShims)
+        CompatKit:Shim("later", 1, function()
+            ran[#ran + 1] = "later"
+        end)
+        assert.are.same({ 0, 1, 0 }, { CompatKit:Apply() })
+        assert.are.same({ "applied" }, ran)
+
+        -- The fix the shipped revision carries: a probe answering a secret
+        -- counts as dead before the answer is compared.
+        answer = {}
+        Env.InstallSecretProbe(answer)
+        assert.are.same({ "print-sink", "print" }, { registry:Resolve() })
+    end)
+
     it("keeps the newest copy when an older one loads after an upgrade", function()
         local CompatKit = Env.NewPackage()
-        Env.LoadSourceAtRevision(2)
+        local nextRevision = CompatKit.REVISION + 1
+        Env.LoadSourceAtRevision(nextRevision)
         local selected = Env.ReloadPackage()
         assert.are.equal(CompatKit, selected)
-        assert.are.equal(2, selected.REVISION)
+        assert.are.equal(nextRevision, selected.REVISION)
     end)
 
     it("refuses to load before Registry", function()
@@ -144,5 +188,57 @@ describe("CompatKit bootstrap", function()
         Env.expectErrorContaining("package state is corrupted or incomplete", function()
             Env.ReloadPackage()
         end)
+    end)
+
+    it("finds Registry through the MoltenCodes.Registry alias alone", function()
+        Env.Reset()
+        Env.InstallWowApi()
+        local Registry = require("Registry")
+        -- The shared namespace is the one documented global handoff point.
+        -- selene: allow(global_usage)
+        rawset(rawget(_G, Env.NAMESPACE_KEY), "Registries", nil)
+        local CompatKit = require("CompatKit")
+        assert.are.equal(CompatKit, Registry:Get("compatKit", 1))
+    end)
+
+    it("rejects a shared table that lost a facade method", function()
+        local CompatKit = Env.NewPackage()
+        rawset(CompatKit, "GetLimits", nil)
+        Env.expectErrorContaining(
+            "MoltenCodes CompatKit package state is corrupted or incomplete",
+            function()
+                Env.ReloadPackage()
+            end
+        )
+    end)
+
+    it("rejects a shared table that lost its catalogue", function()
+        local CompatKit = Env.NewPackage()
+        rawset(CompatKit, "CATALOGUE", nil)
+        Env.expectErrorContaining(
+            "MoltenCodes CompatKit package state is corrupted or incomplete",
+            function()
+                Env.ReloadPackage()
+            end
+        )
+    end)
+
+    it("rejects shared state whose limits are not a table", function()
+        local CompatKit = Env.NewPackage()
+        rawset(CompatKit._state, "limits", nil)
+        Env.expectErrorContaining("package state is corrupted or incomplete", function()
+            Env.ReloadPackage()
+        end)
+    end)
+
+    it("rejects an upgrade from a newer revision over state with an unknown schema", function()
+        local CompatKit = Env.NewPackage()
+        rawset(CompatKit._state, "schema", 99)
+        Env.expectErrorContaining(
+            "MoltenCodes CompatKit package state is corrupted or incomplete",
+            function()
+                Env.LoadSourceAtRevision(CompatKit.REVISION + 1)
+            end
+        )
     end)
 end)

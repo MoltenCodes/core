@@ -178,4 +178,15 @@ describe("CompatKit hasApi and covers", function()
         CompatKit:Apply()
         assert.is_true(answer)
     end)
+
+    it("answers false when ApiKit is registered but its namespace root is gone", function()
+        local CompatKit = Env.NewPackageFor("mainline")
+        Env.LoadApiKit("flavours.Retail")
+        -- The walk starts at `MoltenCodes.wow`; without it nothing is installed.
+        -- The shared namespace is the one documented global handoff point.
+        -- selene: allow(global_usage)
+        rawset(rawget(_G, Env.NAMESPACE_KEY), "wow", nil)
+        local answers = probeApis(CompatKit, { "C_AddOns.GetAddOnMetadata" })
+        assert.is_false(answers["C_AddOns.GetAddOnMetadata"])
+    end)
 end)

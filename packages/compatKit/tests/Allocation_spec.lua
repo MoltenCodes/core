@@ -6,7 +6,7 @@ local Env = require("CompatKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("CompatKit allocation", function()
+describe("CompatKit allocation #allocation", function()
     local CompatKit
     local registry
 

@@ -150,6 +150,46 @@ describe("CompatKit secret values", function()
         )
     end)
 
+    it("counts a probe answering a secret as dead, without comparing it", function()
+        local registry = CompatKit:Providers("output")
+        assert.is_true(registry:Register("secretive", "first", function()
+            return SECRET
+        end, 10))
+        assert.is_true(registry:Register("plain", "second", function()
+            return true
+        end, 1))
+        assert.are.same({ "second", "plain" }, { registry:Resolve() })
+        assert.are.same({ "second", "plain" }, { registry:Resolve("secretive") })
+    end)
+
+    it("reports a secret global as present to hasGlobal, without comparing it", function()
+        -- selene: allow(global_usage)
+        rawset(_G, "CompatKitSpecSecretGlobal", SECRET)
+        local present
+        CompatKit:Shim("inspect", 1, function(context)
+            present = context.hasGlobal("CompatKitSpecSecretGlobal")
+        end)
+        CompatKit:Apply()
+        -- selene: allow(global_usage)
+        rawset(_G, "CompatKitSpecSecretGlobal", nil)
+        assert.is_true(present)
+    end)
+
+    it("reports a secret receiver as a facade misuse at the caller's line", function()
+        local action = function()
+            CompatKit.Apply(SECRET)
+        end
+        local ok, value = pcall(action)
+        assert.is_false(ok)
+        assert.are.equal(
+            debug.getinfo(1, "S").short_src
+                .. ":"
+                .. debug.getinfo(action, "S").linedefined + 1
+                .. ": CompatKit:Apply must be called on the CompatKit facade; use CompatKit:Apply(...)",
+            value
+        )
+    end)
+
     it("accepts ordinary values while the probe is installed", function()
         assert.is_true(CompatKit:Shim("fix", 1, function() end, { description = "plain" }))
         assert.is_true(CompatKit:Providers("output"):Register("chat", "sink", nil, 1))

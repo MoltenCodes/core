@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 — 2026-09-24
+
+- Implementation revision 2, applying the repository rule for values CompatKit did not create: their absence is tested with `type`, never with `== nil`, and a secret is never compared. A provider probe's answer is checked with `issecretvalue` before it is compared with `true`: only `true` still counts as alive, and a secret answer counts as dead instead of raising inside `Resolve` or `List`. `hasGlobal` tests the host value with `type`, so a global holding a secret is reported present. The facade check tests the receiver's type before comparing it with the facade, so a secret receiver raises `CompatKit:<Method> must be called on the CompatKit facade; use CompatKit:<Method>(...)` at the caller's line. `Shim` options, `Register`'s `implementation`, `probe` and `priority`, `Resolve`'s `preferred` and `SetLimits` test absence with `type`. Behaviour for every non-secret value is unchanged.
+- The state layout is unchanged; a new bootstrap spec loads revision 1, fills its state (an applied shim, a skip, providers with a probe, a raised limit) and checks that revision 2 takes it over in place. The upgrade specs load the next revision as `REVISION + 1`.
+- New specs: a probe answering a secret, `hasGlobal` over a secret global, a secret receiver, and the upgrade from the previous revision; a ClientKit flavour that is not a string, ApiKit without its namespace root, a failure escaping the per-shim isolation (the guard still released), the `MoltenCodes.Registry` alias, a shared table missing a method or the catalogue, limits that are not a table and an upgrade over an unknown schema. 126 specs.
+
 ## 0.1.1 — 2026-09-24
 
 - Documentation and tests only; implementation revision 1 is unchanged. `docs/API.md`: the limits table is whole again (a paragraph had been inserted between its rows) and says what each limit bounds. The README's first example names the resolved provider `output` rather than `print_`.
