@@ -83,6 +83,22 @@ describe("LogKit and secret values", function()
         end)
     end)
 
+    it("refuses a secret limit key or value at the caller, changing nothing", function()
+        local secret = Env.NewSecretValue()
+        Env.expectErrorContaining("LogKit:SetLimits limits must not have a secret key", function()
+            LogKit:SetLimits({ [secret] = 4 })
+        end)
+        for _, name in ipairs({ "journalCapacity", "maxSinks", "maxMessageLength", "maxLoggers" }) do
+            Env.expectErrorContaining(
+                "LogKit:SetLimits limits." .. name .. " must not be a secret value",
+                function()
+                    LogKit:SetLimits({ [name] = secret })
+                end
+            )
+        end
+        assert.are.equal(16, LogKit:GetLimits().maxSinks)
+    end)
+
     it("looks the probe up at call time", function()
         Env.SetGlobal("issecretvalue", nil)
         local value = {}

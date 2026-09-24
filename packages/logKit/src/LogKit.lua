@@ -42,7 +42,7 @@
 
 local PACKAGE_NAME = "logKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNALKIT_API = 1
 local OPTIONAL_COMMANDKIT_API = 1
@@ -833,8 +833,6 @@ local function compactSinks()
     rawset(state, "pendingRemovals", 0)
 end
 
----Call every sink with the shared record. A sink that raises is reported
----through the host error handler and the others still run.
 ---Call a table sink's `Write` with the shared record. The method is looked
 ---up now rather than at `AddSink`, so a sink built by an older embedded copy
 ---(a chat sink) writes through the newest revision's `Write`.
@@ -843,6 +841,8 @@ local function writeThrough(receiver)
     receiver:Write(record)
 end
 
+---Call every sink with the shared record. A sink that raises is reported
+---through the host error handler and the others still run.
 local function callSinks()
     local count = #sinks
     for index = 1, count do
@@ -887,10 +887,11 @@ end
 ---sinks: the record table is in use, and a sink that logs at its own level
 ---would otherwise recurse without end.
 ---
----The sink pass runs under `pcall` so that whatever escapes it (the host
----error handler itself raising while a sink failure is reported) can never
----leave `delivering` set for the rest of the session or reach the logging
----caller; the flag is cleared first, then the failure is reported.
+---The sink pass runs under `pcall` so that whatever escapes it (the host's
+---`geterrorhandler` or `print` raising while a sink failure is reported; the
+---handler it returns already runs under `pcall`) can never leave `delivering`
+---set for the rest of the session or reach the logging caller; the flag is
+---cleared first, then the failure is reported.
 ---@param logger LogKit.Logger
 ---@param level integer
 ---@param text string
@@ -1203,7 +1204,8 @@ end
 -- Limits ---------------------------------------------------------------------------
 
 ---Refuse a `SetLimits` argument before any limit changes, so a call with one
----bad entry leaves every limit as it was.
+---bad entry leaves every limit as it was. A secret key or value is refused
+---before it is used as a key or compared, because either raises.
 ---@param limits any
 ---@param level integer stack level the failure is reported at
 local function validateLimitUpdate(limits, level)
@@ -1212,6 +1214,9 @@ local function validateLimitUpdate(limits, level)
     end
     local key = next(limits)
     while key ~= nil do
+        if isSecret(key) then
+            error("LogKit:SetLimits limits must not have a secret key", level)
+        end
         if type(key) ~= "string" or LIMIT_NAME_SET[key] ~= true then
             error(
                 "LogKit:SetLimits limits." .. tostring(key) .. " is not a recognised limit",
@@ -1219,6 +1224,9 @@ local function validateLimitUpdate(limits, level)
             )
         end
         local value = rawget(limits, key)
+        if isSecret(value) then
+            error("LogKit:SetLimits limits." .. key .. " must not be a secret value", level)
+        end
         if key == "journalCapacity" then
             if value == UNBOUNDED then
                 error(

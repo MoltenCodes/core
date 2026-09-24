@@ -128,4 +128,5 @@ Every loading revision rewrites the logger and chat-sink prototypes and the
 recomputes every logger's cached level. `validateStateBase` refuses a state
 whose limits, global level or any table field is missing or invalid; a newer
 revision that changes the layout adds a migration step and raises
-`STATE_SCHEMA`.
+`STATE_SCHEMA`. Revision 2 changed behaviour only (the secret checks in
+`SetLimits`), so it validates and adopts a revision 1 state unchanged.

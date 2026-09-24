@@ -4,7 +4,7 @@ LogKit API generation **1** provides levelled, structured logging: one logger
 per addon with lazily formatted, secret-safe messages, a tri-state level, a
 bounded journal readable after the fact, and sinks.
 
-Implementation revision: **1**.
+Implementation revision: **2**.
 
 ## Loading
 
@@ -370,7 +370,8 @@ local limits = LogKit:GetLimits() -- a fresh table; allocates
 
 `SetLimits` accepts any subset and returns nothing. It raises at the caller's
 line, **before changing anything**, when `limits` is not a table, names an
-unknown limit, or gives a value outside the rules above (see [Errors](#errors)).
+unknown limit, has a secret key or value, or gives a value outside the rules
+above (see [Errors](#errors)).
 `GetLimits` returns a new table on every call, with `LogKit.UNBOUNDED` itself
 for a lifted limit.
 
@@ -401,7 +402,7 @@ is under the limit again. `maxMessageLength` applies to the next message.
 | `"full"` | `AddSink` | `maxSinks` sinks are registered. |
 | `"absent"` | `RegisterCommand` | CommandKit API 1 is not loaded. |
 | `"unavailable"` | `RegisterCommand` | The host has no `SlashCmdList`. |
-| `"taken"`, `"emote"` | `RegisterCommand` | CommandKit refused `/log`. |
+| `"taken"`, `"emote"`, `"full"` | `RegisterCommand` | CommandKit refused `/log`: another command, chat type or emote holds it, or LogKit's scope is full. |
 
 ## Errors
 
@@ -414,7 +415,8 @@ may be secret:
 - `LogKit.Logger:<Method> accepts at most 16 format arguments; received <n>`
 - `LogKit.Logger:Log level must be a level name (trace, debug, info, warn, error, off) or a LogKit.LEVELS value` (and the same for `IsEnabled`, `SetLevel`, `LogKit:SetGlobalLevel`, `LogKit:History minimumLevel`)
 - `LogKit.Logger:Log level cannot be off` (and `IsEnabled`)
-- `LogKit:History addonName must be a non-empty string`
+- `LogKit:History addonName must be a non-empty string` / `... must not be a secret value`
+- `LogKit.Logger:SetLevel level must not be a secret value` (every `level` and `minimumLevel` argument)
 - `LogKit:AddSink sink must be a function or a table with a Write method` / `... must not be a secret value`
 - `LogKit:ChatSink chatFrame must be a table with an AddMessage method` / `... must not be a secret value`
 - `LogKit:BindLevels requires SettingsKit API 1, which is not loaded (<reason>)`
@@ -422,6 +424,7 @@ may be secret:
 - `LogKit:BindLevels db must declare global.logLevels as an optional map of addon name to level name; see LogKit docs/API.md`
 - `LogKit:SetLimits limits must be a table`
 - `LogKit:SetLimits limits.<name> is not a recognised limit`
+- `LogKit:SetLimits limits must not have a secret key` / `LogKit:SetLimits limits.<name> must not be a secret value`
 - `LogKit:SetLimits limits.journalCapacity must be an integer from 1 to 65536`
 - `LogKit:SetLimits limits.journalCapacity cannot be LogKit.UNBOUNDED: the ring is allocated when the journal is created`
 - `LogKit:SetLimits limits.journalCapacity exceeds SignalKit maxJournalCapacity (<n>); raise it with SignalKit:SetLimits first`
@@ -494,6 +497,7 @@ binding live in the shared package state, so an in-place upgrade keeps all of
 them: a logger created by an older embedded copy resolves to the newer copy's
 methods, a chat sink built by it writes through the newer copy, and the `/log`
 handlers dispatch through package state so a newer revision replaces their
-behaviour without registering again.
+behaviour without registering again. Revision 2 kept the state layout of
+revision 1, so it takes a revision 1 state over as it is.
 
 Nothing survives `/reload` except what `BindLevels` persisted.

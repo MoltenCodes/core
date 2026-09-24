@@ -33,11 +33,11 @@ describe("LogKit bootstrap", function()
         end)
     end)
 
-    it("publishes through Registry and the shared namespace", function()
+    it("publishes through Registry", function()
         local LogKit, Registry = Env.NewPackage()
         assert.are.equal(LogKit, Registry:Get("logKit", 1))
         assert.are.equal(1, LogKit.API)
-        assert.are.equal(1, LogKit.REVISION)
+        assert.are.equal(2, LogKit.REVISION)
     end)
 
     it("reuses the shared facade, loggers, levels and journal on duplicate load", function()
@@ -83,10 +83,10 @@ describe("LogKit bootstrap", function()
         logger:Debug("before")
         LogKit:SetLimits({ maxSinks = 3 })
 
-        local upgraded = Env.LoadRevision(2)
+        local upgraded = Env.LoadRevision(3)
 
         assert.are.equal(LogKit, upgraded)
-        assert.are.equal(2, upgraded.REVISION)
+        assert.are.equal(3, upgraded.REVISION)
         assert.are.equal(levels, upgraded.LEVELS)
         assert.are.equal(unbounded, upgraded.UNBOUNDED)
         assert.are.equal(logger, upgraded:ForAddon("upgraded"))
@@ -108,6 +108,45 @@ describe("LogKit bootstrap", function()
         assert.is_true(upgraded:RemoveSink(handle))
     end)
 
+    it("upgrades revision 1 state in place and refuses a secret limit afterwards", function()
+        Env.InstallWowApi()
+        require("Registry")
+        require("SignalKit")
+        local previous = Env.LoadRevision(1)
+        assert.are.equal(1, previous.REVISION)
+        local logger = previous:ForAddon("Kept")
+        logger:SetLevel("info")
+        previous:SetGlobalLevel("error")
+        local delivered = {}
+        local handle = previous:AddSink(function(record)
+            delivered[#delivered + 1] = record.message
+        end)
+        logger:Info("before")
+        previous:SetLimits({ maxSinks = 4 })
+
+        local LogKit = Env.ReloadPackage()
+        assert.are.equal(previous, LogKit)
+        assert.are.equal(2, LogKit.REVISION)
+        assert.are.equal(logger, LogKit:ForAddon("Kept"))
+        assert.are.equal("info", (logger:GetLevel()))
+        assert.are.equal("error", LogKit:GetGlobalLevel())
+        assert.are.equal(4, LogKit:GetLimits().maxSinks)
+        logger:Info("after")
+        assert.are.same({ "before", "after" }, delivered)
+        assert.is_true(LogKit:RemoveSink(handle))
+
+        -- The fix revision 2 carries: a secret limit value is refused at the
+        -- caller before it is compared.
+        local secret = Env.NewSecretValue()
+        Env.expectErrorContaining(
+            "LogKit:SetLimits limits.maxSinks must not be a secret value",
+            function()
+                LogKit:SetLimits({ maxSinks = secret })
+            end
+        )
+        assert.are.equal(4, LogKit:GetLimits().maxSinks)
+    end)
+
     it("upgrades in place and routes an older chat sink through the newest Write", function()
         local LogKit = Env.NewPackage()
         Env.InstallChatApi()
@@ -115,7 +154,7 @@ describe("LogKit bootstrap", function()
         LogKit:AddSink(sink)
         local oldWrite = sink.Write
 
-        local upgraded = Env.LoadRevision(2)
+        local upgraded = Env.LoadRevision(3)
         assert.are_not.equal(oldWrite, sink.Write)
         upgraded:ForAddon("MyAddon"):Warn("still printed")
         assert.are.same({ "[MyAddon] |cffffa500warn|r: still printed" }, Env.ChatLines())

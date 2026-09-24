@@ -10,10 +10,10 @@ The LogKit suite covers:
 - formatting: a metatable-driven probe proving the arguments are never touched
   while disabled, `string.format` once per enabled message, a table's
   `__tostring` run once and only when enabled, `nil`, booleans and tables
-  formatted through `tostring`, a bare message with `%` delivered unchanged, a bad format string reported through the host error
-  handler without raising or recording, the `MAX_FORMAT_ARGUMENTS` ceiling, the
-  message checked only when enabled, and `time` from `GetTimePreciseSec` or
-  `false` without it;
+  formatted through `tostring`, a bare message with `%` delivered unchanged, a
+  bad format string reported through the host error handler without raising
+  or recording, the `MAX_FORMAT_ARGUMENTS` ceiling, the message checked only
+  when enabled, and `time` from `GetTimePreciseSec` or `false` without it;
 - the journal: always on, oldest to newest, the ring at `journalCapacity`, the
   addon and level filters alone and combined, re-creation on a new capacity
   keeping the newest entries, the journal kept when the capacity repeats, a
@@ -26,13 +26,13 @@ The LogKit suite covers:
   raises falling back to `print` with delivery still working afterwards, a sink
   removing itself or another sink during a message, a sink added during a
   message starting with the next one, a journal firing SignalKit refuses
-  reported while the sinks are still fed, the `maxSinks` bound, and the chat sink's `[addon] level: message` lines
-  with every level's colour, the given frame, `DEFAULT_CHAT_FRAME` read per line
-  and the `print` fallback;
+  reported while the sinks are still fed, the `maxSinks` bound, and the chat
+  sink's `[addon] level: message` lines with every level's colour, the given
+  frame, `DEFAULT_CHAT_FRAME` read per line and the `print` fallback;
 - secret values: the placeholder in place of a secret argument, no `tostring`
   or `string.format` of a secret, a secret message refused at the caller and not
-  read while disabled, secret addon names, levels, sinks and chat frames
-  refused, and the probe looked up at call time;
+  read while disabled, secret addon names, levels, sinks, chat frames and
+  limit keys and values refused, and the probe looked up at call time;
 - limits: defaults, fresh `GetLimits` tables, subsets, `maxMessageLength`
   truncation with the marker at exactly the limit and never inside a UTF-8
   sequence, `UNBOUNDED` where allowed and refused with the reason for
@@ -48,12 +48,15 @@ The LogKit suite covers:
 - `BindLevels`: refusals without SettingsKit, for a non-database and for a
   schema without `global.logLevels`, storing and clearing levels, restoring on
   bind (unknown level names ignored, a logger created later sees its level),
-  one saved-variable write per change, `BindLevels(nil)`, and a refused write reported through the host error handler
-  while the session level stays;
+  one saved-variable write per change, `BindLevels(nil)`, and a refused write
+  reported through the host error handler while the session level stays;
 - allocation guards on a disabled call, an enabled bare message with a sink, an
   enabled formatted message whose result is interned, `IsEnabled`/`GetLevel`,
   and filtered and unfiltered history walks;
-- duplicate embedded loading, refusal to downgrade, an in-place upgrade to the
+- duplicate embedded loading, refusal to downgrade, an in-place upgrade from
+  revision 1 (the real source loaded as revision 1, then revision 2 over it)
+  that keeps a logger, its override, the global level, a sink, the journal and
+  a raised limit and then refuses a secret limit, an in-place upgrade to the
   next revision (the real source with its revision constant rewritten) that
   keeps loggers, levels, sinks, the journal, `LEVELS` and `UNBOUNDED`, an older
   chat sink routed through the newest `Write`, the slash command working across

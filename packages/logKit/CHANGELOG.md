@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 — 2026-09-24
+
+- Fixed `SetLimits` comparing a secret limit value (and indexing with a secret key) before asking `issecretvalue`, which raised inside LogKit on a client with secret values. It now refuses both at the caller's line, as every other argument is refused: `LogKit:SetLimits limits must not have a secret key`, `LogKit:SetLimits limits.<name> must not be a secret value`.
+- Implementation revision 2. The state layout is unchanged; a new bootstrap spec loads revision 1, fills its state (a logger with an override, the global level, a sink, a journal entry, a raised limit) and checks that revision 2 takes it over in place.
+- `docs/API.md`: `RegisterCommand` also passes CommandKit's `"full"` through, now listed with the refusal reasons; the error list names the secret refusals of `History` and of every level argument.
+- Source comments: `callSinks` and `writeThrough` each carry their own description again, and `deliver` names what its `pcall` actually guards against.
+- 146 specs.
+
 ## 0.1.0 — 2026-09-24
 
 - Added LogKit API generation 1, implementation revision 1: levelled logging with per-addon loggers, lazy secret-safe formatting, a tri-state level, a bounded journal built on SignalKit's journal, and sinks.
