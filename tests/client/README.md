@@ -29,9 +29,13 @@ tests/client/
 │   ├── MoltenCodesTest_SignalKit.toc
 │   ├── SignalKitSuite.lua
 │   └── EXPECTED.md
-└── MoltenCodesTest_EventKit/          # the test addon of the `eventKit` package
-    ├── MoltenCodesTest_EventKit.toc
-    ├── EventKitSuite.lua
+├── MoltenCodesTest_EventKit/          # the test addon of the `eventKit` package
+│   ├── MoltenCodesTest_EventKit.toc
+│   ├── EventKitSuite.lua
+│   └── EXPECTED.md
+└── MoltenCodesTest_LifecycleKit/      # the test addon of the `lifecycleKit` package
+    ├── MoltenCodesTest_LifecycleKit.toc
+    ├── LifecycleKitSuite.lua
     └── EXPECTED.md
 ```
 
@@ -196,9 +200,12 @@ suite:Test("PLAYER_TARGET_CHANGED reaches a listener once per change", function(
 end)
 ```
 
-`Harness:Suite(packageId, part, addonName)` registers a TestKit suite named
-`<packageId>.<part>` that waits for the test addon's `ready` phase;
-`Harness:GetExpectedPackages()` returns what `Expected.lua` lists. Every test
+`Harness:Suite(packageId, part, addonName, options)` registers a TestKit suite
+named `<packageId>.<part>` that waits for the test addon's `ready` phase;
+`options` is optional, and its one field, `timeoutSeconds`, lengthens
+TestKit's 10-second limit per test for a suite whose test waits for the player
+(the LifecycleKit training-dummy test waits up to 30 seconds for combat to
+end). `Harness:GetExpectedPackages()` returns what `Expected.lua` lists. Every test
 name says what it proves, every test is independent of the others, and a test
 cleans up what the API lets it clean up; the file header says what remains for
 the session. Test here only what the fake client cannot show (see
@@ -207,6 +214,18 @@ the package's Busted specs.
 
 Add an `EXPECTED.md` next to the `.toc`: the exact chat lines of a correct
 run, what counts as unexpected, and what to send back.
+
+### Skipping a test at run time
+
+TestKit decides a skip when a test is registered (`suite:Skip`), which suits a
+precondition the client answers at load, such as whether it has `secretwrap`.
+A precondition only the moment of the run can answer, such as whether the
+player is in combat, needs `Harness:SkipTest(ctx, reason)` inside the test: it
+ends the test at once, and the harness prints and saves it as `SKIP` with
+`reason`. Underneath, it fails the test with `reason` behind a marker that the
+harness recognises when it splits the report per package, because TestKit has
+no skip for a test that already runs; TestKit's own `Report()` therefore still
+lists it as failed. The suite's After hooks run as after any other failure.
 
 ### Catching an error a Kit reports instead of raising
 

@@ -111,6 +111,35 @@ class InstallTests(FakeClientTests):
         self.assertIn(str(event_kit_addon), output)
         self.assert_neighbour_untouched()
 
+    def test_installs_the_lifecyclekit_test_addon_without_its_expected_md(self):
+        status, output, errors = self.run_command("--package", "lifecycleKit")
+
+        self.assertEqual(0, status, errors)
+        lifecycle_kit_addon = self.addons / "MoltenCodesTest_LifecycleKit"
+        self.assertEqual(
+            ["LifecycleKitSuite.lua", "MoltenCodesTest_LifecycleKit.toc"],
+            sorted(path.name for path in lifecycle_kit_addon.iterdir()),
+        )
+        toc = (lifecycle_kit_addon / "MoltenCodesTest_LifecycleKit.toc").read_text(encoding="utf-8")
+        self.assertIn("## Dependencies: MoltenCodesTest\n", toc)
+        self.assertIn("\nLifecycleKitSuite.lua\n", toc)
+        bundle = self.addons / "MoltenCodes"
+        self.assertTrue((bundle / "lifecycleKit" / "LifecycleKit.lua").is_file())
+        # The capability test reads every Kit CLOSES_ADDON_SCOPES names from the bundle.
+        for kit in (
+            "timerKit/TimerKit.lua",
+            "schedulerKit/SchedulerKit.lua",
+            "hookKit/HookKit.lua",
+            "commandKit/CommandKit.lua",
+            "commKit/CommKit.lua",
+        ):
+            with self.subTest(kit=kit):
+                self.assertTrue((bundle / kit).is_file())
+        self.assertTrue((self.addons / "MoltenCodesTest" / "Harness.lua").is_file())
+        self.assertFalse((self.addons / "MoltenCodesTest_EventKit").exists())
+        self.assertIn(str(lifecycle_kit_addon), output)
+        self.assert_neighbour_untouched()
+
     def test_installs_several_test_addons_in_one_command(self):
         status, _, errors = self.run_command("--package", "registry", "--package", "signalKit")
 
@@ -118,7 +147,7 @@ class InstallTests(FakeClientTests):
         self.assertTrue((self.addons / "MoltenCodesTest_Registry" / "RegistrySuite.lua").is_file())
         self.assertTrue((self.addons / "MoltenCodesTest_SignalKit" / "SignalKitSuite.lua").is_file())
 
-    def test_registry_signalkit_and_eventkit_are_the_packages_with_a_test_addon(self):
+    def test_registry_signalkit_eventkit_and_lifecyclekit_are_packages_with_a_test_addon(self):
         manifests, _ = load_manifests()
 
         available = module.available_test_packages(manifests)
@@ -126,6 +155,7 @@ class InstallTests(FakeClientTests):
         self.assertIn("registry", available)
         self.assertIn("signalKit", available)
         self.assertIn("eventKit", available)
+        self.assertIn("lifecycleKit", available)
         self.assertNotIn("timerKit", available)
 
     def test_expected_lua_lists_every_bundled_package_and_testkit_at_their_manifest_revisions(self):

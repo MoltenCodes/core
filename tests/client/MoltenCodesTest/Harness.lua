@@ -56,6 +56,14 @@ local CHAT_PREFIX = "|cff33ccffMoltenCodes Test|r: "
 --- A package ID and a suite part share the manifest naming rule.
 local IDENTIFIER_PATTERN = "^[a-z][A-Za-z0-9]*$"
 
+--- Starts the message `Harness:SkipTest` fails a test with. TestKit has no way
+--- to skip a test once it runs, so the harness reports a failure that carries
+--- this marker as skipped, with the text after the marker as the reason.
+local RUNTIME_SKIP_MARKER = "[MoltenCodesTest: skipped at run time] "
+
+--- The suite options `Harness:Suite` accepts and forwards to TestKit.
+local SUITE_OPTION_NAMES = { timeoutSeconds = true }
+
 --- How each TestKit status is printed, coloured so a failure stands out.
 local STATUS_LABELS = {
     passed = "|cff00ff00PASS|r",
@@ -314,8 +322,25 @@ local function countResult(totals, status)
     end
 end
 
+---Turn a failure `Harness:SkipTest` raised into the skip it stands for: the
+---status becomes `"skipped"` and the message the reason after the marker.
+---The report is TestKit's fresh copy, so changing it in place is safe.
+---@param test table one test of a `TestKit.Report` suite
+local function reclassifyRuntimeSkip(test)
+    if test.status ~= "failed" or type(test.message) ~= "string" then
+        return
+    end
+    local _, markerEnd = test.message:find(RUNTIME_SKIP_MARKER, 1, true)
+    if type(markerEnd) == "nil" then
+        return
+    end
+    test.status = "skipped"
+    test.message = test.message:sub(markerEnd + 1)
+end
+
 ---Split a TestKit report into one report per package, each shaped like the
----whole: `{ suites = { ... }, totals = { ... } }`.
+---whole: `{ suites = { ... }, totals = { ... } }`. A test ended with
+---`Harness:SkipTest` is counted as skipped.
 ---@param report TestKit.Report
 ---@return table<string, table>
 local function reportsByPackage(report)
@@ -341,6 +366,7 @@ local function reportsByPackage(report)
             packageReport.suites[#packageReport.suites + 1] = suite
             packageReport.totals.suites = packageReport.totals.suites + 1
             for _, test in ipairs(suite.tests) do
+                reclassifyRuntimeSkip(test)
                 countResult(packageReport.totals, test.status)
             end
         end
@@ -586,16 +612,54 @@ end
 ---@field RESULTS_SCHEMA integer Layout version of the saved results.
 local Harness = { RESULTS_SCHEMA = RESULTS_SCHEMA }
 
+---Options a test addon may pass to `Harness:Suite`.
+---@class MoltenCodesTest.SuiteOptions
+---@field timeoutSeconds number|nil How long one test may take, forwarded to TestKit (10 seconds by default).
+
+---Check the optional `options` of `Harness:Suite` and return the TestKit suite
+---options they add up to, raising at the test addon's line otherwise.
+---@param addonName string
+---@param options MoltenCodesTest.SuiteOptions|nil
+---@return table testKitOptions
+local function suiteOptions(addonName, options)
+    local testKitOptions = { phase = "ready", addonName = addonName }
+    if type(options) == "nil" then
+        return testKitOptions
+    end
+    if type(options) ~= "table" then
+        error("MoltenCodesTest:Suite options must be a table or nil", 3)
+    end
+    for name in pairs(options) do
+        if not SUITE_OPTION_NAMES[name] then
+            error("MoltenCodesTest:Suite options." .. tostring(name) .. " is not an option", 3)
+        end
+    end
+    local timeoutSeconds = options.timeoutSeconds
+    if type(timeoutSeconds) ~= "nil" then
+        if
+            type(timeoutSeconds) ~= "number"
+            or not (timeoutSeconds > 0 and timeoutSeconds < math.huge)
+        then
+            error("MoltenCodesTest:Suite options.timeoutSeconds must be a finite number above 0", 3)
+        end
+        testKitOptions.timeoutSeconds = timeoutSeconds
+    end
+    return testKitOptions
+end
+
 ---Register a TestKit suite that tests `packageId`.
 ---
 ---The suite is named `<packageId>.<part>` and waits for the `ready` phase of
 ---`addonName`, the calling test addon (`local addonName = ...`). `/mct run
----<packageId>` runs every suite registered for that package.
+---<packageId>` runs every suite registered for that package. `options` is
+---optional; `timeoutSeconds` lengthens TestKit's 10-second limit per test for
+---a suite whose test waits for the player (see tests/client/README.md).
 ---@param packageId string The framework package the suite tests, for example `"registry"`.
 ---@param part string What part of it, for example `"lookup"`.
 ---@param addonName string The test addon's folder name.
+---@param options MoltenCodesTest.SuiteOptions|nil
 ---@return TestKit.Suite
-function Harness:Suite(packageId, part, addonName)
+function Harness:Suite(packageId, part, addonName, options)
     if self ~= Harness then
         error("MoltenCodesTest:Suite must be called on the MoltenCodesTest harness", 2)
     end
@@ -609,8 +673,10 @@ function Harness:Suite(packageId, part, addonName)
         error("MoltenCodesTest:Suite addonName must be the test addon's folder name", 2)
     end
 
+    local testKitOptions = suiteOptions(addonName, options)
+
     local suiteName = packageId .. "." .. part
-    local suite, problem = TestKit:Suite(suiteName, { phase = "ready", addonName = addonName })
+    local suite, problem = TestKit:Suite(suiteName, testKitOptions)
     if type(suite) == "nil" then
         error(
             ('MoltenCodesTest:Suite could not register "%s" (%s)'):format(
@@ -629,6 +695,26 @@ function Harness:Suite(packageId, part, addonName)
     names[#names + 1] = suiteName
     packageBySuiteName[suiteName] = packageId
     return suite
+end
+
+---End the running test as skipped, naming why: for a test whose precondition
+---only the moment of the run can tell, such as the player being in combat.
+---
+---TestKit decides a skip when a test is registered, not while it runs, so
+---this fails the test with `reason` behind a marker, and the harness reports
+---that failure as `SKIP` with `reason`, in the chat and in the saved results.
+---Nothing after the call runs; the suite's After hooks still do. Keep `reason`
+---under about 150 bytes: TestKit cuts a failure message at 256.
+---@param ctx TestKit.Context The context of the running test.
+---@param reason string Why the test was not exercised.
+function Harness:SkipTest(ctx, reason)
+    if self ~= Harness then
+        error("MoltenCodesTest:SkipTest must be called on the MoltenCodesTest harness", 2)
+    end
+    if type(reason) ~= "string" or reason == "" then
+        error("MoltenCodesTest:SkipTest reason must be a non-empty string", 2)
+    end
+    ctx:Fail(RUNTIME_SKIP_MARKER .. reason)
 end
 
 ---The packages Expected.lua lists, or `nil` when it was not installed. The
