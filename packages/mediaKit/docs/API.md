@@ -2,7 +2,7 @@
 
 MediaKit API generation **1** provides a typed registry of named media: seven fixed media types, entries that are a path or a FileDataID, fonts that declare the scripts they render, cached sorted lists, registration signals, per-consumer defaults over the client's built-in media, and a two-way bridge to LibSharedMedia-3.0.
 
-Implementation revision: **2**.
+Implementation revision: **3**.
 
 ## Loading
 
@@ -51,7 +51,7 @@ MediaKit reads three host globals, each at call time rather than at load (the bu
 | `GetLimits()` | A fresh table of both limits; allocates. |
 | `MAX_ENTRIES_PER_TYPE` | `1024`, the default of `maxEntriesPerType`. |
 | `UNBOUNDED` | Sentinel that lifts `maxConsumers`; the same table for every revision. |
-| `API`, `REVISION` | `1`, `2`. |
+| `API`, `REVISION` | `1`, `3`. |
 
 ## Media types
 
@@ -238,7 +238,7 @@ With both directions on, nothing bounces:
 
 ## Secret values
 
-On Retail 12.x the client hands tainted code secret values that raise when compared or used as table keys. MediaKit asks `issecretvalue` about a type, name, data or script name before any comparison and refuses a secret one at the caller (`MediaKit:Register name must not be a secret value`); `IsFileDataID` answers `false` for a secret, and adoption skips secret LibSharedMedia entries. `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
+On Retail 12.x the client hands tainted code secret values that raise when compared or used as table keys. MediaKit asks `issecretvalue` about a type, name, data or script name before any comparison and refuses a secret one at the caller (`MediaKit:Register name must not be a secret value`, and for a default's name `MediaKit.Defaults:Set name must not be a secret value`); the absence of an optional argument, option or LibSharedMedia entry is tested with `type`, never by comparing with `nil`; `IsFileDataID` answers `false` for a secret, and adoption skips secret LibSharedMedia entries. `issecretvalue` is looked up at every call; without it nothing is secret. See [`docs/EMBEDDING.md`](../../../docs/EMBEDDING.md#secret-values-retail-12x).
 
 ## Limits
 
@@ -285,7 +285,7 @@ Argument failures report the line that called the public method, never a line in
 
 ## Embedded copies and upgrades
 
-Several addons may embed MediaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: entries, cached lists, signals and their connections, defaults objects, the limits a consumer set, the `UNBOUNDED` sentinel, and the LibSharedMedia adoption, subscription and mirroring all survive. The callback LibSharedMedia holds dispatches through package state, so a newer revision replaces its behaviour without subscribing again. Built-ins are registered by the first copy only. Revision 2 keeps the revision 1 state as it is and replaces the methods only.
+Several addons may embed MediaKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: entries, cached lists, signals and their connections, defaults objects, the limits a consumer set, the `UNBOUNDED` sentinel, and the LibSharedMedia adoption, subscription and mirroring all survive. The callback LibSharedMedia holds dispatches through package state, so a newer revision replaces its behaviour without subscribing again. Built-ins are registered by the first copy only. Revisions 2 and 3 keep the revision 1 state as it is and replace the methods only.
 
 Nothing survives `/reload`: packs register again.
 

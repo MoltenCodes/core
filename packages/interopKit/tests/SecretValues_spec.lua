@@ -53,6 +53,15 @@ describe("InteropKit secret values", function()
         )
     end)
 
+    it("refuses a secret package name in options.except at the caller", function()
+        Env.expectErrorContaining(
+            "InteropKit:ExposeAll packageName must not be a secret value",
+            function()
+                InteropKit:ExposeAll({ except = { SECRET } })
+            end
+        )
+    end)
+
     it("accepts ordinary names while the probe is installed", function()
         assert.is_true(InteropKit:ExposeToLibStub("interopKit", 1))
     end)

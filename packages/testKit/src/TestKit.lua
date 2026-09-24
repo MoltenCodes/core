@@ -47,7 +47,7 @@
 
 local PACKAGE_NAME = "testKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 3
+local IMPLEMENTATION_REVISION = 4
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLEKIT_API = 1
 local REQUIRED_SCHEDULERKIT_API = 1
@@ -261,7 +261,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -792,7 +792,7 @@ end
 ---@return string addonName
 ---@return number timeoutSeconds
 local function readSuiteOptions(name, options, level)
-    if options == nil then
+    if type(options) == "nil" then
         return PHASE_READY, name, DEFAULT_TIMEOUT_SECONDS
     end
     if type(options) ~= "table" then
@@ -979,7 +979,7 @@ local function compareValues(actual, expected, depth, trail)
         trail[#trail] = nil
     end
     for key, value in next, expected do
-        if rawget(actual, key) == nil then
+        if type(rawget(actual, key)) == "nil" then
             trail[#trail + 1] = key
             if isSecret(value) then
                 return false, "a secret value cannot be compared", true
@@ -1111,7 +1111,7 @@ local function matcherToRaise(self, pattern)
     end
 
     local phrase = "to raise"
-    if pattern ~= nil then
+    if type(pattern) ~= "nil" then
         phrase = "to raise an error matching " .. quoteString(pattern)
     end
 
@@ -1120,7 +1120,7 @@ local function matcherToRaise(self, pattern)
         conclude(self, false, "function", phrase, "it returned normally")
         return true
     end
-    if pattern == nil then
+    if type(pattern) == "nil" then
         conclude(self, true, "function", phrase, "it raised " .. describeValue(raised))
         return true
     end
@@ -1147,12 +1147,12 @@ local function matcherToBeSecure(self, target, key)
     end
     validateName(key, "TestKit.Matcher:ToBeSecure key", 3)
 
-    local subject = (target == nil and "global " or "field ") .. quoteString(key)
+    local subject = (targetKind == "nil" and "global " or "field ") .. quoteString(key)
     local probe = readHostFunction("issecurevariable")
     local secure, taintedBy = false, nil
     if probe == nil then
         refuse(subject, "issecurevariable is not available on this host", 3)
-    elseif target == nil then
+    elseif targetKind == "nil" then
         secure, taintedBy = probe(key)
     else
         secure, taintedBy = probe(target, key)
@@ -2277,7 +2277,7 @@ local function validateLimitUpdate(limits, level)
         error("TestKit:SetLimits limits must be a table", level)
     end
     local key = next(limits)
-    while key ~= nil do
+    while type(key) ~= "nil" do
         if DEFAULT_LIMITS[key] == nil then
             -- A key that is not a string, number or boolean is named by its
             -- type, so no `__tostring` of the caller's runs here.
@@ -2337,7 +2337,7 @@ local function packageSetLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, name, value)
         end
     end

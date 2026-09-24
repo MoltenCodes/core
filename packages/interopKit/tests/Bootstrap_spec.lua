@@ -17,7 +17,7 @@ describe("InteropKit bootstrap", function()
         local InteropKit, Registry = Env.NewPackage()
         assert.are.equal(InteropKit, Registry:Get("interopKit", 1))
         assert.are.equal(1, InteropKit.API)
-        assert.are.equal(1, InteropKit.REVISION)
+        assert.are.equal(2, InteropKit.REVISION)
     end)
 
     it("reuses the shared facade and state on a duplicate load", function()
@@ -50,10 +50,11 @@ describe("InteropKit bootstrap", function()
         local adopted = state.adopted
         local Find = InteropKit.Find
 
-        local upgraded = Env.LoadSourceAtRevision(2)
+        local nextRevision = InteropKit.REVISION + 1
+        local upgraded = Env.LoadSourceAtRevision(nextRevision)
 
         assert.are.equal(InteropKit, upgraded)
-        assert.are.equal(2, InteropKit.REVISION)
+        assert.are.equal(nextRevision, InteropKit.REVISION)
         assert.are.equal(state, InteropKit._state)
         assert.are.equal(adopted, InteropKit._state.adopted)
         assert.are_not.equal(Find, InteropKit.Find)
@@ -65,10 +66,31 @@ describe("InteropKit bootstrap", function()
 
     it("keeps the newest copy when an older one loads after an upgrade", function()
         local InteropKit = Env.NewPackage()
-        Env.LoadSourceAtRevision(2)
+        local nextRevision = InteropKit.REVISION + 1
+        Env.LoadSourceAtRevision(nextRevision)
         local selected = Env.ReloadPackage()
         assert.are.equal(InteropKit, selected)
-        assert.are.equal(2, selected.REVISION)
+        assert.are.equal(nextRevision, selected.REVISION)
+    end)
+
+    it("upgrades a revision 1 copy in place with the current file", function()
+        Env.Reset()
+        Env.InstallWowApi()
+        require("Registry")
+        local old = Env.LoadSourceAtRevision(1)
+        local libStub = Env.InstallLibStub()
+        local broker = libStub:NewLibrary("LibDataBroker-1.1", 4)
+        assert.are.equal(broker, old:AdoptFromLibStub("LibDataBroker-1.1"))
+        local state = old._state
+
+        local upgraded = Env.requireAfterFailedLoad("InteropKit")
+
+        assert.are.equal(old, upgraded)
+        assert.is_true(upgraded.REVISION > 1)
+        assert.are.equal(state, upgraded._state)
+        local library, minor = upgraded:Find("LibDataBroker-1.1")
+        assert.are.equal(broker, library)
+        assert.are.equal(4, minor)
     end)
 
     it("refuses to load before Registry", function()
@@ -107,7 +129,7 @@ describe("InteropKit bootstrap", function()
         Env.expectErrorContaining(
             "MoltenCodes InteropKit package state is corrupted or incomplete",
             function()
-                Env.LoadSourceAtRevision(2)
+                Env.LoadSourceAtRevision(InteropKit.REVISION + 1)
             end
         )
     end)

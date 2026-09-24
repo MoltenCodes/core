@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4 — 2026-09-24
+
+- Fixed: the remaining tests for absence on values that did not originate in TestKit compared them with `nil`; they now use `type(value) == "nil"`, as the 0.1.3 fixes already did for `Suite`, `Run`, `Skip`, `ctx:Fail` and the optional `ToRaise` pattern check. This covers the `options` of `Suite`, the `pattern` branches inside `ToRaise`, the `target` of `ToBeSecure`, the key walk and the copied values of `SetLimits`, and the key lookup of `ToEqual` in the table under test. No argument is newly refused.
+- Implementation revision 4. No state changed: an in-place upgrade from revision 2 or 3 keeps the suites, results, the limits and the sentinel, a waiting test and a queued suite, and replaces the methods only; the upgrade from revision 1 still seeds the limits.
+- Specs: a new bootstrap spec upgrades a revision 3 copy with the current file. 109 specs.
+- `TestKit` API generation 1 is unchanged.
+
 ## 0.1.3 — 2026-09-24
 
 - Fixed: arguments that may be secret were compared before a secret check, which raises on the client. `Suite` compared `options.phase` with its two words, `SetLimits` compared each value with `TestKit.UNBOUNDED` and its bounds, and `Suite`, `Run`, `Skip`, `ctx:Fail`, `ToRaise` and `ToBeSecure` compared optional arguments with `nil`; `ctx:Fail(secret)` in particular raised a host error instead of failing the test with `<secret value>`. A secret `phase` or limit value is now refused at the caller (`TestKit:Suite phase must not be a secret value`, `TestKit:SetLimits limits.<name> must not be a secret value`), and absent arguments are told apart with `type`.

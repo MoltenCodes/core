@@ -79,4 +79,41 @@ function ApiKitTestEnv.NewPackageFor(flavor)
     return ApiKit, Registry
 end
 
+---Load the ApiKit source again as a copy carrying `revision`, the way a copy
+---of another revision embedded by another addon loads in the client.
+---@param revision integer
+---@return table ApiKit
+function ApiKitTestEnv.LoadRevision(revision)
+    -- Lua 5.1 has no `package.searchpath`, so walk the path templates the way
+    -- `require` does.
+    local path = nil
+    for template in package.path:gmatch("[^;]+") do
+        local candidate = template:gsub("%?", "ApiKit")
+        local file = io.open(candidate, "r")
+        if file ~= nil then
+            file:close()
+            path = candidate
+            break
+        end
+    end
+    if path == nil then
+        error("ApiKitTestEnv.LoadRevision could not find ApiKit.lua on package.path", 2)
+    end
+
+    local file = assert(io.open(path, "r"))
+    local text = file:read("*a")
+    file:close()
+
+    local patched, replacements = text:gsub(
+        "local IMPLEMENTATION_REVISION = %d+",
+        "local IMPLEMENTATION_REVISION = " .. revision
+    )
+    if replacements ~= 1 then
+        error("ApiKitTestEnv.LoadRevision could not find IMPLEMENTATION_REVISION", 2)
+    end
+
+    local chunk = assert(loadstring(patched, "@" .. path))
+    return chunk()
+end
+
 return ApiKitTestEnv

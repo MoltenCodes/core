@@ -158,4 +158,5 @@ ApiKit registers with Registry as package `apiKit`, API generation 1. When two
 addons embed different revisions, Registry keeps the newest copy and hands it
 the older one's state: the namespace tables, the installed flavours and their
 `info` survive an in-place upgrade, and a flavour file that registered before
-the upgrade is not run again.
+the upgrade is not run again. Revision 2 keeps the revision 1 state as it is
+and replaces the methods only; the flavour is probed again on the upgrade.

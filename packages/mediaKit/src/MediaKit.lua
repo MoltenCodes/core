@@ -38,7 +38,7 @@
 
 local PACKAGE_NAME = "mediaKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 2
+local IMPLEMENTATION_REVISION = 3
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNALKIT_API = 1
 local STATE_SCHEMA = 1
@@ -308,7 +308,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -697,12 +697,12 @@ end
 ---@param level integer
 ---@return boolean anyScript
 local function readAnyScript(options, methodName, level)
-    if options == nil then
+    if type(options) == "nil" then
         return false
     end
     validateOptionKeys(options, LOOKUP_OPTION_KEYS, methodName, level + 1)
     local flag = rawget(options, "anyScript")
-    if flag ~= nil and type(flag) ~= "boolean" then
+    if type(flag) ~= "nil" and type(flag) ~= "boolean" then
         error(methodName .. " anyScript must be a boolean", level)
     end
     return flag == true
@@ -748,12 +748,12 @@ local function readRegisterOptions(mediaType, options, level)
     -- would show missing glyphs, while hiding a wider font only costs the
     -- author one `scripts` line. Other types are never filtered.
     local undeclared = mediaType == "font" and DEFAULT_FONT_SCRIPTS or ALL_SCRIPTS
-    if options == nil then
+    if type(options) == "nil" then
         return undeclared
     end
     validateOptionKeys(options, REGISTER_OPTION_KEYS, "MediaKit:Register", level + 1)
     local scripts = rawget(options, "scripts")
-    if scripts == nil then
+    if type(scripts) == "nil" then
         return undeclared
     end
     if mediaType ~= "font" then
@@ -935,7 +935,7 @@ local function mirrorEntry(mediaType, name, data, scriptMask)
         return false
     end
     local hash = library:HashTable(mediaType)
-    if type(hash) == "table" and hash[name] ~= nil then
+    if type(hash) == "table" and type(hash[name]) ~= "nil" then
         return false
     end
     local langmask = nil
@@ -1053,7 +1053,7 @@ end
 local function defaultsSet(self, mediaType, name)
     validateDefaults(self, "MediaKit.Defaults:Set", 3)
     validateMediaType(mediaType, "MediaKit.Defaults:Set", 3)
-    if name ~= nil then
+    if type(name) ~= "nil" then
         validateName(name, "MediaKit.Defaults:Set name", 3)
     end
     rawget(self, "_names")[mediaType] = name
@@ -1335,7 +1335,7 @@ local function packageSetLimits(self, limits)
     for index = 1, #LIMIT_NAMES do
         local name = LIMIT_NAMES[index]
         local value = rawget(limits, name)
-        if value ~= nil then
+        if type(value) ~= "nil" then
             rawset(sharedLimits, name, value)
         end
     end

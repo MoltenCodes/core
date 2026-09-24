@@ -16,7 +16,10 @@ documented function and nothing else is `tooling/tests/test_api_committed_flavou
 - `error` levels: every argument and receiver failure reports the caller's own
   line;
 - duplicate embedded loading, Registry publication, refusal of state owned by
-  a newer revision, corrupted state, the read-only flavour list;
+  a newer revision, corrupted state, the read-only flavour list, a revision 1
+  copy upgraded in place by the current file (namespace, installed flavour and
+  `info` kept), and the flavour probed again when the next revision upgrades
+  in place;
 - the facade's flavour table against `tooling/api/flavours.json`;
 - manifest/runtime API and revision consistency.
 
@@ -32,10 +35,6 @@ Spec files:
 | `FlavourTable_spec.lua` | the facade's table against the tooling's flavour table |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
 | `RetailBindings_spec.lua`, `ClassicEraBindings_spec.lua`, `ClassicMopBindings_spec.lua`, `PtrBindings_spec.lua`, `BetaBindings_spec.lua` | each committed flavour file against the real facade and the shared fixture: direct aliases, absent namespaces, another flavour's client, loading before the facade |
-
-Not yet covered: an in-place upgrade from an older revision (none exists), so
-the facade's own inherited-state validation is exercised only by a same-revision
-copy with incomplete state, which Registry refuses first.
 
 `tests/support/ApiKitTestEnv.lua` builds the two-module chain (Registry, ApiKit)
 on the shared fixture and installs the client identity a spec asks for

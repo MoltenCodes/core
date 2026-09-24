@@ -54,14 +54,60 @@ describe("ApiKit bootstrap", function()
 
     it("keeps the flavour a same-revision copy already probed", function()
         -- Registry returns a complete same-revision copy unchanged, so the
-        -- re-probe every bootstrap runs is only reachable through an upgrade
-        -- from an older revision, which does not exist yet (see tests/README.md).
+        -- re-probe every bootstrap runs is only reachable through an upgrade;
+        -- the upgrade specs below cover it.
         local ApiKit = TestEnv.NewPackageFor("tbc")
         assert.are.equal("unsupported", ApiKit:GetFlavor())
         TestEnv.SetClient({ projectId = 1, testBuild = false, betaBuild = false })
         package.loaded["ApiKit"] = nil
         require("ApiKit")
         assert.are.equal("unsupported", ApiKit:GetFlavor())
+    end)
+
+    it("upgrades a revision 1 copy in place and keeps the namespace and registrations", function()
+        TestEnv.Reset()
+        TestEnv.InstallWowApi()
+        TestEnv.SetClient({ projectId = 1, testBuild = false, betaBuild = false })
+        require("Registry")
+        local old = TestEnv.LoadRevision(1)
+        local state = old._state
+        local runs = 0
+        assert.is_true(old:RegisterFlavor("retail", function(api)
+            runs = runs + 1
+            api.marker = true
+        end, { version = "12.0.1", build = 60000 }))
+        -- selene: allow(global_usage)
+        local root = rawget(_G, "MoltenCodes").wow
+
+        local upgraded = TestEnv.requireAfterFailedLoad("ApiKit")
+
+        assert.are.equal(old, upgraded)
+        assert.is_true(upgraded.REVISION > 1)
+        assert.are.equal(state, upgraded._state)
+        -- selene: allow(global_usage)
+        assert.are.equal(root, rawget(_G, "MoltenCodes").wow)
+        assert.is_true(root.retail.api.marker)
+        assert.are.equal("published", upgraded:GetGlobalStatus())
+        assert.are.same({ "12.0.1", 60000 }, { upgraded:GetMetadataBuild("retail") })
+        -- The installed flavour is not installed a second time.
+        assert.is_false(upgraded:RegisterFlavor("retail", function()
+            runs = runs + 1
+        end))
+        assert.are.equal(1, runs)
+        -- Absent info is told apart with `type` by the current methods.
+        assert.is_false(upgraded:RegisterFlavor("classic-era", function() end, nil))
+    end)
+
+    it("re-probes the client when a newer revision upgrades in place", function()
+        local ApiKit = TestEnv.NewPackageFor("tbc")
+        assert.are.equal("unsupported", ApiKit:GetFlavor())
+        TestEnv.SetClient({ projectId = 1, testBuild = false, betaBuild = false })
+
+        local upgraded = TestEnv.LoadRevision(ApiKit.REVISION + 1)
+
+        assert.are.equal(ApiKit, upgraded)
+        assert.are.equal(ApiKit.REVISION, upgraded.REVISION)
+        assert.are.equal("retail", upgraded:GetFlavor())
     end)
 
     it("keeps the namespace tables across a reload", function()

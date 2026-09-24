@@ -126,7 +126,7 @@ TestKit hands out six kinds of closure: `state.runnerCallback` (one for the pack
 
 A runner job that is suspended in `schedulerContext:Yield()` during an upgrade finishes its current loop on the older code, because Lua cannot swap a running function; the next job runs the new `runnerBody`. A suspended test step is a coroutine of consumer code and is unaffected.
 
-The upgrade spec loads the same source again with `IMPLEMENTATION_REVISION` raised by one while one test waits in `WaitFor` and another suite waits for its phase, and checks that both finish and the run reports them. Two further specs load the source as revision 1 and as revision 2 and upgrade each with the current file: revision 2 seeds the limits into revision-1 state, and revision 3 keeps revision-2 state as it is.
+The upgrade spec loads the same source again with `IMPLEMENTATION_REVISION` raised by one while one test waits in `WaitFor` and another suite waits for its phase, and checks that both finish and the run reports them. Three further specs load the source as revision 1, 2 and 3 and upgrade each with the current file: revision 2 seeds the limits into revision-1 state, and revisions 3 and 4 keep revision-2 state as it is.
 
 ## Error levels
 

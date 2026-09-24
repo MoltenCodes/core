@@ -38,7 +38,7 @@
 
 local PACKAGE_NAME = "interopKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -109,7 +109,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -365,13 +365,13 @@ local function exposeFacade(libStub, facade, major, revision)
     local held = rawget(libs, major)
     local heldMinor = rawget(minors, major)
 
-    if held ~= nil and held ~= facade then
+    if type(held) ~= "nil" and held ~= facade then
         -- Another library owns the name. Asking LibStub for it with a higher
         -- minor would already raise that library's recorded minor, so the
         -- refusal happens before LibStub is called at all.
         return false, REASON_TAKEN
     end
-    if held == nil and heldMinor ~= nil then
+    if type(held) == "nil" and type(heldMinor) ~= "nil" then
         -- A minor without a library is a state LibStub itself never produces.
         return false, REASON_UNSUPPORTED
     end
@@ -413,7 +413,7 @@ local function packageExposeToLibStub(_, packageName, api, major)
     local methodName = "InteropKit:ExposeToLibStub"
     validatePackageName(packageName, methodName, 3)
     validateApi(api, methodName, 3)
-    if major ~= nil then
+    if type(major) ~= "nil" then
         validateName(major, methodName, "major", 3)
     else
         major = DEFAULT_MAJOR_PREFIX .. displayName(packageName) .. "-" .. api
@@ -443,7 +443,7 @@ end
 ---@return table<string, boolean>
 local function readExcept(options, level)
     local methodName = "InteropKit:ExposeAll"
-    if options == nil then
+    if type(options) == "nil" then
         return {}
     end
     if type(options) ~= "table" then
@@ -452,7 +452,7 @@ local function readExcept(options, level)
 
     local except = rawget(options, "except")
     local excluded = {}
-    if except == nil then
+    if type(except) == "nil" then
         return excluded
     end
     if type(except) ~= "table" then

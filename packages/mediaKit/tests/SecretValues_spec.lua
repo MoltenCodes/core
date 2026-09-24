@@ -80,6 +80,21 @@ describe("MediaKit and secret values", function()
         assert.is_false(MediaKit:Has("statusbar", "Secret Key"))
     end)
 
+    it("refuses a secret default name at the caller", function()
+        local secret = "Secret Default"
+        TestEnv.InstallSecretProbe(secret)
+        local defaults = MediaKit:Defaults("MyAddon")
+        local ok, message = pcall(function()
+            defaults:Set("statusbar", secret)
+        end)
+        assert.is_false(ok)
+        assert.is_truthy(
+            tostring(message):find("MediaKit.Defaults:Set name must not be a secret value", 1, true)
+        )
+        assert.is_truthy(tostring(message):find("SecretValues_spec.lua", 1, true))
+        assert.are.equal("Blizzard", defaults:Get("statusbar"))
+    end)
+
     it("looks the probe up at call time", function()
         assert.is_true(MediaKit:Register("statusbar", "Late", "Interface\\Late"))
         TestEnv.InstallSecretProbe("Late")

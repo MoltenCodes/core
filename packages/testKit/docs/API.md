@@ -2,7 +2,7 @@
 
 TestKit API generation **1** runs test suites inside the World of Warcraft client: suites registered against LifecycleKit phases, tests run one at a time inside a SchedulerKit job, save-and-restore mocking, asynchronous waits, secret-safe expectations and structured results.
 
-Implementation revision: **3**.
+Implementation revision: **4**.
 
 TestKit is **development-only**. It belongs in a development addon and never in a release bundle; see the README's "Embedding" section.
 
@@ -300,7 +300,7 @@ returns a fresh table. Lowering a limit removes nothing already registered;
 further registrations answer `nil, "full"` (or `false` from `Log`). `Reset`
 keeps the limits. The limits and the sentinel live in shared state, so every
 embedded copy sees the same values; revision-1 state is seeded with the
-defaults above, and revision 3 keeps the revision 2 state as it is.
+defaults above, and revisions 3 and 4 keep the revision 2 state as it is.
 
 ## Error behaviour
 

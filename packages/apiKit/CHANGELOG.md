@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-09-24
+
+- Fixed: absence of a value that did not originate in the facade is tested with `type(value) == "nil"` rather than compared with `nil`: the optional `info` of `RegisterFlavor` with its `version` and `build` fields, the short `wow` global another addon may own, and the `wow` field of the `MoltenCodes` namespace. No argument is newly refused, and the generated flavour files are unchanged.
+- Implementation revision 2. No state changed: an in-place upgrade from revision 1 keeps the namespace tables, the installed flavours and their `info`, and replaces the methods only; the flavour is probed again on the upgrade, as documented.
+- Specs: a revision 1 copy is upgraded in place with the current file, and the next revision re-probes the client when it upgrades in place; `tests/support/ApiKitTestEnv.lua` gained `LoadRevision`. 71 specs.
+- `ApiKit` API generation 1 is unchanged.
+
 ## 0.1.1 — 2026-09-24
 
 - Documentation only: no runtime change, implementation revision 1 is unchanged. `docs/API.md` says the namespace root is written into `MoltenCodes` when the facade first loads (it said "at the first registration", but the facade publishes it before any flavour file registers), and the load-cost table counts what the installed Retail surface retains as 312 tables, one per bound namespace, with `api.profiler` reusing its namespace's table (it said 313 tables, "one per namespace, one per alias"). The README's opening example assigns the event and enumeration it reads, so it compiles.

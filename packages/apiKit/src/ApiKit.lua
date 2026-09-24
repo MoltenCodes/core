@@ -27,7 +27,7 @@
 
 local PACKAGE_NAME = "apiKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 1
+local IMPLEMENTATION_REVISION = 2
 local REQUIRED_REGISTRY_API = 2
 local STATE_SCHEMA = 1
 
@@ -120,7 +120,7 @@ local generations = type(namespace) == "table" and rawget(namespace, "Registries
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
 local Registry = type(generations) == "table" and rawget(generations, REQUIRED_REGISTRY_API) or nil
-if Registry == nil and type(namespace) == "table" then
+if type(Registry) == "nil" and type(namespace) == "table" then
     Registry = rawget(namespace, "Registry")
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= REQUIRED_REGISTRY_API then
@@ -290,7 +290,7 @@ end
 ---@param root table
 local function publishShortGlobal(root)
     -- selene: allow(global_usage)
-    if rawget(_G, SHORT_GLOBAL_NAME) == nil then
+    if type(rawget(_G, SHORT_GLOBAL_NAME)) == "nil" then
         -- selene: allow(global_usage)
         rawset(_G, SHORT_GLOBAL_NAME, root)
     end
@@ -307,7 +307,7 @@ local function publishNamespaceRoot(root)
         return
     end
     local existing = rawget(namespace, SHORT_GLOBAL_NAME)
-    if existing == nil then
+    if type(existing) == "nil" then
         rawset(namespace, SHORT_GLOBAL_NAME, root)
     elseif existing ~= root then
         error("MoltenCodes ApiKit found MoltenCodes.wow owned by something else", 2)
@@ -389,7 +389,7 @@ end
 ---@param info any
 ---@return table|false
 local function validateInfoArgument(info)
-    if info == nil then
+    if type(info) == "nil" then
         return false
     end
     if type(info) ~= "table" then
@@ -397,10 +397,10 @@ local function validateInfoArgument(info)
     end
     local version = rawget(info, "version")
     local build = rawget(info, "build")
-    if version ~= nil and type(version) ~= "string" then
+    if type(version) ~= "nil" and type(version) ~= "string" then
         error("ApiKit:RegisterFlavor info.version must be a string when given", 3)
     end
-    if build ~= nil and (type(build) ~= "number" or build % 1 ~= 0) then
+    if type(build) ~= "nil" and (type(build) ~= "number" or build % 1 ~= 0) then
         error("ApiKit:RegisterFlavor info.build must be an integer when given", 3)
     end
     return { version = version, build = build }

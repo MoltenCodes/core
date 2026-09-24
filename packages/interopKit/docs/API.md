@@ -128,8 +128,10 @@ never upgrades them and never registers them with LibStub again.
 ## Secret values
 
 On a client with secret values, a `packageName`, `api` or `major` that
-`issecretvalue` reports secret is refused at the caller before it is compared,
-matched or formatted:
+`issecretvalue` reports secret, including a package name inside
+`ExposeAll`'s `options.except`, is refused at the caller before it is compared,
+matched or formatted. Absence of an optional argument is tested with `type`, so
+not even a comparison with `nil` runs first:
 
 ```text
 MyAddon/Core.lua:12: InteropKit:AdoptFromLibStub major must not be a secret value
@@ -171,7 +173,8 @@ identity across compatible revisions: a newer copy rewrites the facade methods
 in place and reuses the records, so adoptions made through an older copy stay
 readable through `Find`. An older copy loading after a newer one yields to it.
 Exposures live in LibStub, not in InteropKit's state, and are unaffected by an
-InteropKit upgrade.
+InteropKit upgrade. Revision 2 keeps the revision 1 state as it is and
+replaces the methods only.
 
 `_state` is private; its layout is not part of the contract.
 

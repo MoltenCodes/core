@@ -77,23 +77,24 @@ describe("InteropKit:ExposeToLibStub", function()
             assert.is_true(ok)
             assert.are.equal("MoltenCodes-InteropKit-1", major)
             assert.are.equal(InteropKit, libStub("MoltenCodes-InteropKit-1"))
-            assert.are.equal(1, libStub.minors["MoltenCodes-InteropKit-1"])
+            assert.are.equal(InteropKit.REVISION, libStub.minors["MoltenCodes-InteropKit-1"])
         end)
 
         it("makes LibStub refuse an older or equal copy of the same major", function()
             InteropKit:ExposeToLibStub("interopKit", 1)
-            assert.is_nil(libStub:NewLibrary("MoltenCodes-InteropKit-1", 1))
+            assert.is_nil(libStub:NewLibrary("MoltenCodes-InteropKit-1", InteropKit.REVISION))
             assert.are.equal(InteropKit, libStub("MoltenCodes-InteropKit-1"))
         end)
 
         it("re-exposes with a higher minor after an in-place upgrade", function()
             InteropKit:ExposeToLibStub("interopKit", 1)
-            Env.LoadSourceAtRevision(2)
+            local nextRevision = InteropKit.REVISION + 1
+            Env.LoadSourceAtRevision(nextRevision)
 
             assert.is_true(InteropKit:ExposeToLibStub("interopKit", 1))
             local library, minor = libStub:GetLibrary("MoltenCodes-InteropKit-1")
             assert.are.equal(InteropKit, library)
-            assert.are.equal(2, minor)
+            assert.are.equal(nextRevision, minor)
         end)
 
         it("refuses a major a foreign library holds, without touching it", function()

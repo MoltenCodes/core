@@ -14,7 +14,7 @@ The TestKit suite covers:
 - `Reset` and `OnFinished`: results cleared with suites and callbacks kept, a run in progress abandoned with its replacements restored and no callback called, `Reset` refused inside a test, and a raising callback reported while the others still run;
 - the fixture-fidelity suite (`fidelity/FixtureFidelity.lua`) run against the shared fixture, with the known gaps as a ratchet (see below);
 - cost: loading and registering create no frame, timer or `OnUpdate`, and a finished run leaves no armed timer, event registration or `OnUpdate` behind;
-- duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, LifecycleKit or SchedulerKit, an incomplete facade, and an in-place upgrade that keeps a waiting test and a queued suite, and the upgrades of a revision 1 and a revision 2 copy by the current file;
+- duplicate embedded loading, Registry publication, yielding to a newer revision, missing Registry, LifecycleKit or SchedulerKit, an incomplete facade, and an in-place upgrade that keeps a waiting test and a queued suite, and the upgrades of a revision 1, a revision 2 and a revision 3 copy by the current file;
 - `error` levels: facade and suite argument errors, and facade methods called with a dot, report the caller's line, and context errors, matcher errors and matcher failures report the test's own line;
 - manifest/runtime API and revision consistency.
 

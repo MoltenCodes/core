@@ -6,7 +6,7 @@ local TestEnv = require("MediaKitTestEnv")
 local ITERATIONS = 2000
 local THRESHOLD_KILOBYTES = 1
 
-describe("MediaKit allocation", function()
+describe("MediaKit allocation #allocation", function()
     local MediaKit
     before_each(function()
         MediaKit = TestEnv.NewPackage("enUS")

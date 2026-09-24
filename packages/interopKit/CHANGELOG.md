@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 — 2026-09-24
+
+- Fixed: absence of a value that did not originate in InteropKit is tested with `type(value) == "nil"` rather than compared with `nil`, so no comparison runs on a caller's value before its secret check. This covers the optional `major` of `ExposeToLibStub` (a secret major is now refused as a secret instead of first being compared with `nil`), `options` and `options.except` of `ExposeAll`, and the library and minor InteropKit reads from LibStub's `libs` and `minors` tables.
+- Implementation revision 2. No state changed: an in-place upgrade from revision 1 keeps the adoption records and replaces the methods only.
+- Specs: the upgrade specs load the next revision relative to the current one; a new spec upgrades a revision 1 copy with the current file; a secret package name in `options.except` is refused at the caller. 59 specs.
+- `InteropKit` API generation 1 is unchanged.
+
 ## 0.1.0 — 2026-09-23
 
 - Added InteropKit API generation 1, implementation revision 1: the LibStub bridge.

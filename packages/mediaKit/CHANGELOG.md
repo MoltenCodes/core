@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-09-24
+
+- Fixed: absence of a value that did not originate in MediaKit is tested with `type(value) == "nil"` rather than compared with `nil`, so no comparison runs on a caller's value before its secret check. This covers the optional `name` of `Defaults:Set` (a secret name is now refused as a secret instead of first being compared with `nil`), the `options` of `Register`, `Fetch`, `Has` and `List` with their `scripts` and `anyScript` fields, the values `SetLimits` copies, and the entry MediaKit looks up in LibSharedMedia's hash table before mirroring.
+- Implementation revision 3. No state changed: an in-place upgrade from revision 1 or 2 keeps the entries, lists, signals and connections, defaults objects, the limits and the `UNBOUNDED` sentinel, and the LibSharedMedia links, and replaces the methods only.
+- Specs: a revision 2 copy is upgraded in place with the current file; a secret default name is refused at the caller. 119 specs.
+- `MediaKit` API generation 1 is unchanged.
+
 ## 0.1.1 — 2026-09-24
 
 - Fixed: `SetLimits` named an unknown key with `tostring`, so a table key ran the caller's `__tostring` inside MediaKit, against the documented rule that a key which is not a string is named by its type. A string key is still named as itself and a number or boolean as its value (`limits.1`); a table, function or userdata key is now named by its type (`limits.<table>`).

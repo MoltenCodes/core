@@ -32,11 +32,13 @@ The suite covers:
   after adoption and after LibStub is gone, refreshing the recorded minor, no
   writes into LibStub or the library, the sorted and fresh `Adopted()` listing,
   and an allocation guard on `Find`;
-- secret values: a secret `major`, `packageName` or `api` refused at the caller;
+- secret values: a secret `major`, `packageName` or `api`, and a secret package
+  name in `options.except`, refused at the caller;
 - `error` levels: every argument failure reports the caller's own line;
 - Registry publication, duplicate loads, a newer revision not being
   downgraded, an in-place upgrade that keeps adoptions (the source loaded with
-  its revision patched to 2), load-order failures, and corrupted-state refusal;
+  its revision raised by one), a revision 1 copy upgraded with the current
+  file, load-order failures, and corrupted-state refusal;
 - manifest/runtime API and revision consistency.
 
 | Spec | Covers |
