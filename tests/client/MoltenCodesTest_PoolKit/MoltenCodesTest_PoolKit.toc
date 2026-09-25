@@ -1,4 +1,4 @@
-## Interface: 120100
+## Interface: 120100, 50504, 20506, 11509
 ## Title: MoltenCodes Test: PoolKit
 ## Notes: Real-client test suites for MoltenCodes PoolKit. Run them with /mct run poolKit.
 ## Author: MoltenCodes

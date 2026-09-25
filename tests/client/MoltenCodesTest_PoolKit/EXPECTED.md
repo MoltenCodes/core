@@ -2,8 +2,14 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package poolKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat, with the interface shown (not hidden with Alt+Z).
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package poolKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package poolKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. Run it out of combat, with the interface shown (not
+hidden with Alt+Z). The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 ## At login
 
@@ -127,6 +133,58 @@ MoltenCodes Test: SKIP poolKit.secrets: a secret Prewarm count is refused at the
 MoltenCodes Test: SKIP poolKit.secrets: secret Trim, SetMaxRetained, SetGeneration and SetMaxCreated arguments are each refused at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
+A client that has both functions but makes no secret with them (the harness
+asks once whether `issecretvalue` reports what `secretwrap` returns as
+secret) skips the same five tests with the harness's own reason, and the
+totals line is the same
+`31 passed, 0 failed, 5 skipped, 0 timed out (36 tests)`:
+
+```text
+MoltenCodes Test: SKIP poolKit.secrets: a secret maxRetained is refused by PoolKit:New at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP poolKit.secrets: a secret maxCreated is refused by PoolKit:New at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP poolKit.secrets: a secret strictReset is refused by PoolKit:New at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP poolKit.secrets: a secret Prewarm count is refused at the calling line and builds no Frame -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP poolKit.secrets: secret Trim, SetMaxRetained, SetGeneration and SetMaxCreated arguments are each refused at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+## Per flavour
+
+Every test uses only what all three promised clients have. PoolKit needs
+nothing but Lua 5.1 (docs/EMBEDDING.md) and reads `geterrorhandler` and
+`issecretvalue` when present. The suite uses `CreateFrame`, `UIParent`,
+`GetTime`, `seterrorhandler` and `geterrorhandler`, core client globals the
+documentation tables do not list, present on every client, and the Frame,
+AnimationGroup and Alpha animation methods every client has (`Show`, `Hide`,
+`SetParent`, `ClearAllPoints`, `SetPoint`, `SetAlpha`, `CreateAnimationGroup`,
+`CreateAnimation`, `SetFromAlpha`, `SetToAlpha`, `SetDuration`, `Play`,
+`Stop`, `IsPlaying`, `IsVisible`). The apiKit metadata documents
+`issecretvalue` and `secretwrap` for `retail`, `classic-era` and
+`classic-mop` alike. No test needs combat.
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: poolKit: 36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`,
+with no `SKIP` line while the interface is shown.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line and every test line are the same as Retail's, in the same
+order. Whether the five `poolKit.secrets` tests run depends on one answer
+only the running client gives: whether its `secretwrap` makes a value
+`issecretvalue` reports as secret (both Classic flavours document the two
+functions).
+
+- When it does, the totals line is Retail's:
+  `MoltenCodes Test: poolKit: 36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`.
+- When it does not, the five lines above with the reason
+  `the client makes no secret values (...)` are `SKIP`, and the totals line is
+  `MoltenCodes Test: poolKit: 31 passed, 0 failed, 5 skipped, 0 timed out (36 tests)`.
+
+With the interface hidden, the six animation tests skip on every flavour as
+[With the interface hidden](#with-the-interface-hidden) shows, and each
+totals line has six more skipped and six fewer passed tests.
+
 ## What each test proves
 
 | Test | Proves in the real client |
@@ -170,7 +228,9 @@ MoltenCodes Test: SKIP poolKit.secrets: secret Trim, SetMaxRetained, SetGenerati
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1 with the
   interface shown, or a totals line other than
-  `36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`.
+  `36 passed, 0 failed, 0 skipped, 0 timed out (36 tests)`; on a Classic
+  client, a `SKIP` or a totals line that [Per flavour](#per-flavour) does
+  not list.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - Anything drawn on screen, or a Lua error window or a BugSack entry naming
@@ -203,7 +263,9 @@ MoltenCodes Test: SKIP poolKit.secrets: secret Trim, SetMaxRetained, SetGenerati
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`
+   (`_classic_era_` or `_classic_` instead of `_retail_` on the Classic
+   clients).
    It holds the full report, each test's logs (the client's own error
    messages with their paths, how many Frames the suite has created this
    session, how long the animation took to return the Frame, whether the

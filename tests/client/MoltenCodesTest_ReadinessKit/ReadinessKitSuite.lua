@@ -139,9 +139,10 @@ local PROBE_FAILURE = "mctReadinessKit deliberate probe failure"
 local CALLBACK_FAILURE = "mctReadinessKit deliberate callback failure"
 
 --- The CVar the tests change so the client raises CVAR_UPDATE. It is cosmetic
---- (whether chat bubbles are drawn), always present on Retail, not read-only
---- and not secure, so `C_CVar.SetCVar` accepts it from addon code; every
---- change is put back by the After hook.
+--- (whether chat bubbles are drawn), present on Retail, Classic Era and Mists
+--- Classic (the CVar metadata of all three lists it), not read-only and not
+--- secure, so `C_CVar.SetCVar` accepts it from addon code; every change is put
+--- back by the After hook.
 local PROBE_CVAR = "chatBubbles"
 
 --- The event the client raises inside `C_CVar.SetCVar`: `(cvarName, value)`.
@@ -160,14 +161,17 @@ local UNKNOWN_EVENT = "MOLTENCODES_TEST_NO_SUCH_EVENT"
 --- always has.
 local AUTO_ATTACK_SPELL_ID = 6603
 
---- Items every Retail client knows by ID but few characters have seen this
---- session: legendary weapons of past expansions. The item test uses the
---- first one the client has not cached, so it waits for the server; the item
---- stays cached afterwards, which is why there are several.
+--- Items few characters have seen this session: legendary weapons of past
+--- expansions, oldest first. The first three are original-game items every
+--- client knows, Classic Era included; the item test skips any candidate
+--- `C_Item.DoesItemExistByID` denies and uses the first one the client has not
+--- cached, so it waits for the server. The item stays cached afterwards, which
+--- is why there are several.
 local ITEM_CANDIDATES = { 19019, 17182, 22691, 32837, 34334, 49623, 71086, 77949 }
 
---- Spells every Retail client knows by ID. The spell test uses the first one
---- whose data the client has not loaded this session.
+--- Spells of the original game, which every client knows by ID, Classic Era
+--- included. The spell test uses the first one whose data the client has not
+--- loaded this session.
 local SPELL_CANDIDATES = { 118, 133, 116, 5176, 585, 172, 686, 403, 348, 1464, 2061, 19750 }
 
 --- Every method docs/API.md of readinessKit lists on the facade.
@@ -260,6 +264,12 @@ end
 local isSecretValue = readHost("issecretvalue")
 local secretWrap = readHost("secretwrap")
 local SECRETS_AVAILABLE = type(isSecretValue) == "function" and type(secretWrap) == "function"
+
+--- Read once at load: whether the client makes a secret value, as the harness
+--- measures it. Classic Era and Mists Classic document `issecretvalue` and
+--- `secretwrap` too, so their presence alone does not prove the client applies
+--- secrets; the secrets suite registers its tests as skipped when it does not.
+local SECRETS_ACTIVE = Harness:CanMakeSecrets()
 
 ---Whether `value` is a secret. `false` on a client without `issecretvalue`.
 ---@param value any
@@ -1872,8 +1882,10 @@ local SECRETS_SKIP_REASON =
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
+  if SECRETS_ACTIVE then
     secrets:Test(name, body)
+  elseif SECRETS_AVAILABLE then
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
   else
     secrets:Skip(name, SECRETS_SKIP_REASON)
   end
@@ -2020,7 +2032,7 @@ local session = newSuite("session")
 
 session:Skip(
   "without GetTimePreciseSec a timeout is counted in polls and Probe never answers from the cache",
-  "not observable here: every Retail client has GetTimePreciseSec; packages/readinessKit/tests/Timeout_spec.lua and NegativeCache_spec.lua prove the fallback"
+  "not observable here: every supported client has GetTimePreciseSec; packages/readinessKit/tests/Timeout_spec.lua and NegativeCache_spec.lua prove the fallback"
 )
 
 session:Skip(

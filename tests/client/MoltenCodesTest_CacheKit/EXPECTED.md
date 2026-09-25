@@ -2,8 +2,13 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package cacheKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package cacheKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package cacheKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. Run it out of combat. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 ## At login
 
@@ -98,8 +103,12 @@ out of combat without side effects: the client's own API documentation
 (`FrameScriptDocumentation`, mirrored in
 `packages/apiKit/metadata/retail/namespaces.json`) lists it with no
 restriction, and it only converts the values handed to it. Retail 12.1 has
-both. A client without them prints these eight lines instead, and the totals
-line reads `30 passed, 0 failed, 8 skipped, 0 timed out (38 tests)`:
+both. Whether the client makes a secret is read once, when the suite loads,
+through the harness's `CanMakeSecrets` (both functions present, and
+`issecretvalue` reporting what `secretwrap` returns as secret). A client
+without the two functions prints these eight lines instead, and the totals
+line reads
+`30 passed, 0 failed, 8 skipped, 0 timed out (38 tests)`:
 
 ```text
 MoltenCodes Test: SKIP cacheKit.secrets: the client's handling of secrets is logged: rawequal, ==, type, table keys, and CacheKit's read paths -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -112,12 +121,68 @@ MoltenCodes Test: SKIP cacheKit.secrets: a snapshot read that fills a secret val
 MoltenCodes Test: SKIP cacheKit.secrets: a secret key reaching Get raises the client's own error, as docs/API.md says, and the cache is unchanged -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
+A client that has both functions but whose `secretwrap` makes no value
+`issecretvalue` reports as secret (secrets are not active there) prints the
+same eight test names with a different reason, and the same totals line:
+
+```text
+MoltenCodes Test: SKIP cacheKit.secrets: the client's handling of secrets is logged: rawequal, ==, type, table keys, and CacheKit's read paths -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP cacheKit.secrets: a secret value stored with Set comes back from Get and Peek still secret and untouched -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP cacheKit.secrets: a memoised function that returns a secret hands it back still secret on the second call without running again -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP cacheKit.secrets: a secret value pushed on a queue comes back from Iterate and Pop still secret -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP cacheKit.secrets: a secret maxEntries is refused by NewLru, NewTtl, Memoize and Lazy at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP cacheKit.secrets: a secret NewQueue capacity and a secret SetLimits maxQueueCapacity are refused at the calling line and the limits stay as they were -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP cacheKit.secrets: a snapshot read that fills a secret value fails Refresh at the fill line in CacheKitSuite.lua and keeps nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP cacheKit.secrets: a secret key reaching Get raises the client's own error, as docs/API.md says, and the cache is unchanged -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
 ### A client without the item or spell functions
 
 The four tests that read `C_Item.GetItemInfoInstant`, and the one that reads
 `C_Spell.GetSpellInfo`, end as skipped naming the missing function (`the
-client has no C_Item.GetItemInfoInstant`). Retail 12.1 has both, so a `SKIP`
-there is unexpected.
+client has no C_Item.GetItemInfoInstant`). Retail 12.1 has both, and so do
+Classic Era and Mists Classic by their committed metadata, so a `SKIP` there
+is unexpected.
+
+## Per flavour
+
+Everything the suite reads from the client is documented for `retail`,
+`classic-era` and `classic-mop` alike in the committed apiKit metadata
+(`packages/apiKit/metadata/<flavour>/`): `GetTimePreciseSec`,
+`C_Item.GetItemInfoInstant` (same eight returns), `C_Spell.GetSpellInfo`
+(the same `SpellInfo` table with `name`), `C_CVar.GetCVar` and
+`C_CVar.SetCVar`, the `chatBubbles` CVar, the event `CVAR_UPDATE` (payload
+`eventName, value`, synchronous, on all three), `C_EventUtils.IsEventValid`
+(so EventKit refuses the unknown event name the same way), and `issecretvalue`
+and `secretwrap`. `UIParent`, `debugstack`, `collectgarbage` and the error
+positions are core client facilities every flavour has. The Hearthstone
+(6948) and Auto Attack (6603) are original-game data every flavour carries. So no test is
+skipped by flavour, nothing the suite reads at load is missing on a Classic
+client, and CacheKit documents no flavour difference.
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: cacheKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`,
+with no `SKIP` line.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line (9 suites) and every test line are the same as Retail's,
+in the same order. Whether the eight `cacheKit.secrets` tests run depends on
+one answer only the running client gives, read when the suite loads: whether
+`secretwrap` makes a value `issecretvalue` reports as secret (both Classic
+flavours document the two functions; CacheKit documents secret values as a
+Retail 12.x behaviour).
+
+- Secrets made: the totals line is Retail's,
+  `MoltenCodes Test: cacheKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`.
+- No secrets made: the second set of eight `SKIP` lines under
+  [On a client without secret values](#on-a-client-without-secret-values)
+  replaces the eight `PASS` lines and the totals line is
+  `MoltenCodes Test: cacheKit: 30 passed, 0 failed, 8 skipped, 0 timed out (38 tests)`.
+  A client without the two functions at all gives the same totals with the
+  first set of eight `SKIP` lines.
 
 ## What each test proves
 
@@ -164,7 +229,9 @@ there is unexpected.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1, or a totals
-  line other than `38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`.
+  line other than `38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`
+  (on a Classic client, other than the two totals lines under
+  [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -194,7 +261,8 @@ there is unexpected.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`
+   (`_classic_era_` or `_classic_` instead of `_retail_` on a Classic client).
    It holds the full report, each test's logs (the measured instants of every
    age-limit test in milliseconds, the item and spell data the client
    answered, the entry count right after `SetCVar`, the client's own error

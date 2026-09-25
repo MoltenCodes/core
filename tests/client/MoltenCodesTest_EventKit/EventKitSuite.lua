@@ -77,6 +77,11 @@ local UNIT_EVENT = "PLAYER_FLAGS_CHANGED"
 --- The payload-free combat-log event `ConnectCombatLog` shares with `Connect`.
 local COMBAT_LOG_EVENT = "COMBAT_LOG_EVENT_UNFILTERED"
 
+--- The flavours (`Harness:GetFlavour()`) whose client documents a combat-log
+--- event reader EventKit uses: `C_CombatLog.GetCurrentEventInfo` in the
+--- classic-era and classic-mop metadata (docs/API.md of eventKit, "Cost").
+local CLASSIC_FLAVOURS = { ["classic-era"] = true, ["classic-mop"] = true }
+
 --- An event name no client defines.
 local UNKNOWN_EVENT = "MOLTENCODES_TEST_NO_SUCH_EVENT"
 
@@ -1183,6 +1188,15 @@ combatLog:Test(
     local reported = EventKit:IsCombatLogAvailable()
     ctx:Log("EventKit:IsCombatLogAvailable() answered " .. describeFact(reported))
     ctx:Expect(reported):ToBe(readerAvailable)
+
+    -- Documented: the classic-era and classic-mop clients list
+    -- C_CombatLog.GetCurrentEventInfo, which EventKit reads when the global
+    -- is absent, so on those two flavours the reader path is the one taken.
+    local flavour = Harness:GetFlavour()
+    ctx:Log("client flavour: " .. tostring(flavour))
+    if CLASSIC_FLAVOURS[flavour or ""] then
+      ctx:Expect(readerAvailable):ToBe(true)
+    end
 
     local before = nil
     if REGISTRATIONS_READABLE then

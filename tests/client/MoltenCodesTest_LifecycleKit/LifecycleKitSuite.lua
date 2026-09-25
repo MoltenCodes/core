@@ -21,11 +21,13 @@
 --     client's `secretwrap`, pointing at this file as the client names it.
 --
 -- Nothing here needs combat, a group or an instance, and nothing waits in a
--- normal run. One test is passive and optional: `lifecycleKit.combatDeferral`
--- exercises the deferred path of the combat gate only when the run starts in
--- combat (EXPECTED.md, "Optional: the training-dummy run"), and is reported as
--- skipped otherwise. Logout ends the session, so what shutdown does cannot be
--- observed in a run; the Busted specs prove it.
+-- normal run. One suite is a combat suite: `lifecycleKit.combatDeferral`
+-- exercises the deferred path of the combat gate in a combat run, `/mct run
+-- lifecycleKit combat`, which waits for the player to attack a training dummy
+-- (EXPECTED.md, "Combat run"); a default run out of combat reports its test as
+-- skipped. The test is passive: it attacks, casts and moves nothing. Logout
+-- ends the session, so what shutdown does cannot be observed in a run; the
+-- Busted specs prove it.
 --
 -- Run with `/mct run lifecycleKit`;
 -- tests/client/MoltenCodesTest_LifecycleKit/EXPECTED.md lists what the chat
@@ -112,13 +114,13 @@ local SCOPE_READERS = {
   { id = "signalKit", readsFrom = "0.6.0" },
 }
 
---- Seconds the training-dummy test waits for combat to end. The owner stops
---- attacking right after typing the command; a dummy drops combat a few
+--- Seconds the combat test waits for combat to end. The owner stops
+--- attacking as soon as the combat run starts; a dummy drops combat a few
 --- seconds after the last hit.
 local COMBAT_END_TIMEOUT_SECONDS = 30
 
---- TestKit's limit for one test of the training-dummy suite: the wait above
---- plus room for the steps around it.
+--- TestKit's limit for one test of the combat suite: the wait above plus room
+--- for the steps around it.
 local COMBAT_SUITE_TIMEOUT_SECONDS = COMBAT_END_TIMEOUT_SECONDS + 10
 
 ---Read a client global, or `nil`.
@@ -158,6 +160,14 @@ local EventKit = EventKitOrNil
 local isSecretValue = readHost("issecretvalue")
 local secretWrap = readHost("secretwrap")
 local SECRETS_AVAILABLE = type(isSecretValue) == "function" and type(secretWrap) == "function"
+
+--- Read once at load: `IsLoggedIn` is optional for LifecycleKit (docs/API.md,
+--- "Dependencies": without it the Kit assumes not logged in), and only the Retail
+--- metadata documents it, so the test that asserts its answer is registered as
+--- skipped on a client without it.
+local HAS_IS_LOGGED_IN = type(readHost("IsLoggedIn")) == "function"
+local NO_IS_LOGGED_IN_REASON =
+  "the client has no IsLoggedIn, which LifecycleKit treats as optional (not logged in); the login answer was not observed"
 
 -- Client facts -------------------------------------------------------------------------
 
@@ -535,7 +545,19 @@ facade:Test(
 
 local phases = newSuite("phases")
 
-phases:Test(
+---Register `body` as a `phases` test when the client has `IsLoggedIn`, and
+---as a skipped test naming why otherwise.
+---@param name string
+---@param body fun(ctx: TestKit.Context)
+local function loginAnswerTest(name, body)
+  if HAS_IS_LOGGED_IN then
+    phases:Test(name, body)
+  else
+    phases:Skip(name, NO_IS_LOGGED_IN_REASON)
+  end
+end
+
+loginAnswerTest(
   "while this file ran, the client reported the addon not finished loading and not logged in, and its instance was loading",
   function(ctx)
     ctx:Log("C_AddOns.IsAddOnLoaded answered loaded " .. describeFact(fileFacts.addonLoaded))
@@ -580,7 +602,10 @@ phases:Test(
       "PLAYER_LOGIN listener",
     })
     ctx:Expect(states):ToEqual({ "loading", "loaded", "loaded", "ready", "ready" })
-    ctx:Expect(loggedIn):ToEqual({ false, false, false, true, true })
+    -- Without IsLoggedIn the client gives no login answer to compare.
+    if HAS_IS_LOGGED_IN then
+      ctx:Expect(loggedIn):ToEqual({ false, false, false, true, true })
+    end
   end
 )
 
@@ -958,14 +983,19 @@ local SECRETS_SKIP_REASON =
   "the client has no issecretvalue and secretwrap; the secret path was not exercised"
 
 ---Register `body` as a test when the client can make a secret value, and as a
----skipped test naming why otherwise.
+---skipped test naming why otherwise: it lacks the two functions, or has them
+---but makes no secret (`Harness:CanMakeSecrets`).
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
-    secrets:Test(name, body)
-  else
+  if not SECRETS_AVAILABLE then
     secrets:Skip(name, SECRETS_SKIP_REASON)
+  elseif not Harness:CanMakeSecrets() then
+    -- The Classic clients document both functions too; whether the client
+    -- applies secrets is measured once by the harness.
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
+  else
+    secrets:Test(name, body)
   end
 end
 
@@ -1063,11 +1093,13 @@ shutdown:Skip(
 
 -- lifecycleKit.combatDeferral -----------------------------------------------------------
 --
--- Passive and optional: it changes nothing in the world and only reads the
--- combat the owner is already in. EXPECTED.md, "Optional: the training-dummy
--- run", says how to be in combat when the run starts.
+-- A combat suite: `/mct run lifecycleKit combat` waits for the player to attack
+-- a training dummy and runs it in combat (EXPECTED.md, "Combat run"). It is
+-- passive: it changes nothing in the world and only reads the combat the owner
+-- is in. It needs no preparation out of combat.
 
-local combatDeferral = newSuite("combatDeferral", { timeoutSeconds = COMBAT_SUITE_TIMEOUT_SECONDS })
+local combatDeferral =
+  newSuite("combatDeferral", { timeoutSeconds = COMBAT_SUITE_TIMEOUT_SECONDS, combat = true })
 
 combatDeferral:Test(
   "in combat, WhenOutOfCombat queues the call, refuses one past the limit, and runs it at PLAYER_REGEN_ENABLED before OnCombatEnd",
@@ -1079,7 +1111,7 @@ combatDeferral:Test(
     if lockdown ~= true and not inCombat then
       Harness:SkipTest(
         ctx,
-        "not in combat; to exercise it, attack a training dummy and type /mct run lifecycleKit (EXPECTED.md)"
+        "not in combat; type /mct run lifecycleKit combat and attack a training dummy to run it (EXPECTED.md, Combat run)"
       )
       return
     end
@@ -1124,7 +1156,7 @@ combatDeferral:Test(
     end, COMBAT_END_TIMEOUT_SECONDS)
     if not ended then
       ctx:Fail(
-        ("combat did not end within %d seconds; stop attacking right after typing the command"):format(
+        ("combat did not end within %d seconds; stop attacking as soon as the combat run starts"):format(
           COMBAT_END_TIMEOUT_SECONDS
         )
       )

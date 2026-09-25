@@ -2,9 +2,14 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package optionsKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat, logged in with a character (the profile tests read its name and
-realm).
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package optionsKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package optionsKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. Run it out of combat, logged in with a character (the
+profile tests read its name and realm). The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 ## At login
 
@@ -91,7 +96,7 @@ Running it again in the same session prints the same lines.
 
 ## Expected skips
 
-None on Retail 12.1.
+None on Retail 12.1; [Per flavour](#per-flavour) gives the Classic clients.
 
 ### On a client without secret values
 
@@ -120,6 +125,51 @@ bind and the first two profile tests) end as skipped with
 `UnitName('player') or GetRealmName() answered no plain name` when the client
 answers either with nothing, an empty string or a secret. After login it
 always knows the player, so a `SKIP` there is unexpected.
+
+## Per flavour
+
+The suite reads only what all three promised clients have: `C_CVar.GetCVar`
+and `C_CVar.SetCVar`, `UnitName` and `GetRealmName` (documented by the apiKit
+metadata for `retail`, `classic-era` and `classic-mop`), `UIParent`, and the
+`chatBubbles` CVar behind the "Chat Bubbles" interface option, which every
+flavour has (the metadata does not list CVars). The metadata of all three
+flavours also documents `issecretvalue` and `secretwrap`. No test depends on
+the flavour itself.
+
+### Retail (12.1)
+
+The lines above: `MoltenCodes Test: optionsKit: 29 passed, 0 failed, 0 skipped, 0 timed out (29 tests)`,
+with no `SKIP` line.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line and every test line are the same as Retail's, in the same
+order. Whether the six `optionsKit.secrets` tests run depends on answers only the
+running client gives, measured when the suite loads: whether it has the
+global functions `issecretvalue` and `secretwrap` (both Classic flavours
+document them), and whether it actually makes secrets, which
+`Harness:CanMakeSecrets()` measures once as
+`issecretvalue(secretwrap(true)) == true`.
+
+- The client makes secrets: the totals line is Retail's,
+  `MoltenCodes Test: optionsKit: 29 passed, 0 failed, 0 skipped, 0 timed out (29 tests)`.
+- The client has both functions but makes no secrets: the six tests print
+  these lines, and the totals line is
+  `MoltenCodes Test: optionsKit: 23 passed, 0 failed, 6 skipped, 0 timed out (29 tests)`:
+
+```text
+MoltenCodes Test: SKIP optionsKit.secrets: Set of a secret true on the chatBubbles toggle raises at OptionsKitSuite.lua:<line> before the setter runs, Validate answers secret value, and the CVar is unchanged -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP optionsKit.secrets: a secret path to Get and Set, and a secret addon name to Get and Define, are refused at OptionsKitSuite.lua:<line> before they index anything -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP optionsKit.secrets: Get and Describe pass a getter's secret through untouched, at the top and inside a colour table, and a desc function's secret string becomes the description -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP optionsKit.secrets: a secret true from disabled and hidden predicates counts as false in IsDisabled, IsHidden and Describe, and a secret true from validate refuses the value as refused by validate -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP optionsKit.secrets: Define refuses a secret disabled field and a secret maxDepth, and ProfileOptions a secret options.name, at OptionsKitSuite.lua:<line> -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP optionsKit.secrets: a colour holding a secret red is refused by the schema: Set raises tint.r expected number, found secret value at OptionsKitSuite.lua:<line> and Validate answers the same without the prefix -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+- The client lacks either function: the six lines listed under
+  [On a client without secret values](#on-a-client-without-secret-values)
+  are `SKIP`, with the same totals line
+  `MoltenCodes Test: optionsKit: 23 passed, 0 failed, 6 skipped, 0 timed out (29 tests)`.
 
 ## What each test proves
 
@@ -158,7 +208,9 @@ always knows the player, so a `SKIP` there is unexpected.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1, or a totals
-  line other than `29 passed, 0 failed, 0 skipped, 0 timed out (29 tests)`.
+  line other than `29 passed, 0 failed, 0 skipped, 0 timed out (29 tests)`
+  (on a Classic client, other than the two totals lines under
+  [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -191,7 +243,8 @@ always knows the player, so a `SKIP` there is unexpected.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`,
+   where the flavour folder is `_retail_`, `_classic_era_` or `_classic_`.
    It holds the full report, each test's logs (SettingsKit's revision, the
    character profile name, `chatBubbles` before the test, the two
    descriptions, the client's pattern answers, every `Validate` message, the

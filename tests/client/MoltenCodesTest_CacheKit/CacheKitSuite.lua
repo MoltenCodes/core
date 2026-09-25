@@ -79,8 +79,9 @@ local LONG_TTL_SECONDS = 60
 --- frame is far shorter; this only ends a test whose client stopped rendering.
 local CLOCK_WAIT_LIMIT_SECONDS = 2
 
---- The Hearthstone: an item every Retail client knows from its own data, so
---- `C_Item.GetItemInfoInstant` answers it without asking the server.
+--- The Hearthstone: an item every client (Retail, Classic Era, Mists Classic)
+--- knows from its own data, so `C_Item.GetItemInfoInstant` answers it without
+--- asking the server.
 local HEARTHSTONE_ITEM_ID = 6948
 
 --- An item ID no item has: `C_Item.GetItemInfoInstant` answers it with nothing.
@@ -90,9 +91,10 @@ local MISSING_ITEM_ID = 0
 local AUTO_ATTACK_SPELL_ID = 6603
 
 --- The CVar the ClearOn tests change so the client raises CVAR_UPDATE. It is
---- cosmetic (whether chat bubbles are drawn), always present on Retail, not
---- read-only and not secure, so `C_CVar.SetCVar` accepts it from addon code;
---- every change is put back by the After hook.
+--- cosmetic (whether chat bubbles are drawn), present on Retail, Classic Era
+--- and Mists Classic (the CVar metadata of all three lists it), not read-only
+--- and not secure, so `C_CVar.SetCVar` accepts it from addon code; every
+--- change is put back by the After hook.
 local PROBE_CVAR = "chatBubbles"
 
 --- The event the client raises when a CVar changes.
@@ -172,6 +174,12 @@ end
 local isSecretValue = readHost("issecretvalue")
 local secretWrap = readHost("secretwrap")
 local SECRETS_AVAILABLE = type(isSecretValue) == "function" and type(secretWrap) == "function"
+
+--- Read once at load: whether the client makes a secret value, as the harness
+--- measures it. Classic Era and Mists Classic document `issecretvalue` and
+--- `secretwrap` too, so their presence alone does not prove the client applies
+--- secrets; the secrets suite registers its tests as skipped when it does not.
+local SECRETS_ACTIVE = Harness:CanMakeSecrets()
 
 ---Whether `value` is a secret. `false` on a client without `issecretvalue`.
 ---@param value any
@@ -1203,8 +1211,10 @@ local SECRETS_SKIP_REASON =
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
+  if SECRETS_ACTIVE then
     secrets:Test(name, body)
+  elseif SECRETS_AVAILABLE then
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
   else
     secrets:Skip(name, SECRETS_SKIP_REASON)
   end

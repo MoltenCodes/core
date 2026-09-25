@@ -2,8 +2,9 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package clientKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat.
+for Retail, adding `--flavour-dir _classic_era_` for Classic Era or
+`--flavour-dir _classic_` for Mists of Pandaria Classic, and nothing else from
+the MoltenCodes framework enabled in the client. Run it out of combat.
 
 ClientKit is almost entirely host probing, so this suite compares every
 answer ClientKit gives with the answer the running client gives when asked
@@ -75,7 +76,9 @@ MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to
 ```
 
 `GetFlavor` answers `"mainline"` on Retail (`WOW_PROJECT_ID` 1): that is the
-name docs/API.md gives the Retail flavour. Running it again in the same
+name docs/API.md gives the Retail flavour. On Classic Era (2) it answers
+`"classic"` and on Mists Classic (19) `"mists"`; the test checks the answer
+against the flavour the harness names as well as against `WOW_PROJECT_ID`. Running it again in the same
 session prints the same lines.
 
 ## Visible side effects
@@ -121,6 +124,21 @@ MoltenCodes Test: SKIP clientKit.secrets: a secret addon name is refused by GetM
 MoltenCodes Test: SKIP clientKit.secrets: a secret field name is refused by manifest:Get at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
+### On a client that has both functions but makes no secrets
+
+The harness measures once, when this file loads, whether
+`issecretvalue(secretwrap(true))` is `true` (`Harness:CanMakeSecrets()`).
+When it is not, the four `clientKit.secrets` tests are registered as skipped
+with the harness's reason, and the totals line reads
+`36 passed, 0 failed, 5 skipped, 0 timed out (41 tests)`:
+
+```text
+MoltenCodes Test: SKIP clientKit.secrets: IsSecret answers true for a genuine secret made by secretwrap -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP clientKit.secrets: a secret capability name is refused by Has at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP clientKit.secrets: a secret addon name is refused by GetManifest at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP clientKit.secrets: a secret field name is refused by manifest:Get at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
 ### In combat
 
 On Retail 12.x some spell fields may be secret while restrictions apply. When
@@ -132,6 +150,49 @@ MoltenCodes Test: SKIP clientKit.shims: GetSpellInfo(8936) returns a fresh table
 ```
 
 Run out of combat to exercise it.
+
+## Per flavour
+
+ClientKit requires nothing but Lua 5.1 and degrades per facility
+(docs/EMBEDDING.md, "What the framework promises"); every test compares it
+with the running client, so most answers follow the client. What the tests
+need, and what the metadata under `packages/apiKit/metadata/<flavour>/`
+documents for the three clients:
+
+- `C_AddOns.GetAddOnMetadata`, `C_AddOns.IsAddOnLoaded`,
+  `C_AddOns.GetAddOnDependencies`, `C_Spell.GetSpellInfo` (the same
+  `SpellInfo` fields), `C_Item.GetItemInfo` (the same eighteen returns),
+  `C_EventUtils.IsEventValid`, `issecretvalue`, `secretwrap`,
+  `GetTimePreciseSec`, `debugprofilestop`, `GetLocale` and the four
+  `C_AddOns`, `C_Spell`, `C_Item`, `C_Timer` namespaces: documented on all
+  three.
+- `C_SpellBook.GetSpellBookItemInfo`: Retail only. `Has("spellbookApi")` is
+  `false` on the Classic clients, and the capability test still passes because
+  it compares with a direct probe that also finds nothing.
+- `GetBuildInfo`, `securecallfunction`, `UIParent` and its `IsForbidden` and
+  `CanBeAccessedInContext` methods, and the `WOW_PROJECT_*` constants: core
+  globals and frame methods the documentation does not list. They are taken to
+  be present on all three, except `CanBeAccessedInContext`, which
+  docs/API.md dates to 12.1.0; each test compares with the client, so an
+  absent one changes a logged value, not the outcome.
+- Regrowth (spell 8936, rank 1 on Classic Era) and the Hearthstone (item 6948)
+  exist on all three clients.
+
+| Client | Totals line | SKIP lines |
+|---|---|---|
+| Retail (`_retail_`) | `MoltenCodes Test: clientKit: 40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)` | the forbidden-frame line |
+| Classic Era (`_classic_era_`) | secrets made: `MoltenCodes Test: clientKit: 40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)`; no secrets made: `MoltenCodes Test: clientKit: 36 passed, 0 failed, 5 skipped, 0 timed out (41 tests)` | the forbidden-frame line, plus the four lines under "On a client that has both functions but makes no secrets" when it makes none |
+| Mists of Pandaria Classic (`_classic_`) | secrets made: `MoltenCodes Test: clientKit: 40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)`; no secrets made: `MoltenCodes Test: clientKit: 36 passed, 0 failed, 5 skipped, 0 timed out (41 tests)` | the forbidden-frame line, plus the four lines under "On a client that has both functions but makes no secrets" when it makes none |
+
+Whether the Classic clients make secrets cannot be read from the metadata:
+they document `issecretvalue` and `secretwrap`, and only the running client can
+say whether `secretwrap` returns a secret. Both outcomes above are honest; the
+saved client facts record which one this client gave.
+
+No ClientKit test needs combat, a group, a second character or another addon,
+so the package has no combat suites. The Regrowth test ends as skipped in
+combat only when a spell field is secret (see "In combat"), which is why the
+suite is run out of combat.
 
 ## What each test proves
 
@@ -174,7 +235,8 @@ Run out of combat to exercise it.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line other than the forbidden-frame
   one on Retail 12.1 out of combat, or a totals line other than
-  `40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)`.
+  `40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)`; on the Classic
+  clients, anything other than the outcomes listed under "Per flavour".
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -199,14 +261,16 @@ Run out of combat to exercise it.
   `type()` does not answer `"string"` for a secret string (the log says what
   it answered). With "secretwrap raised" or "secretwrap returned a value
   issecretvalue does not report as secret": the client's secret functions
-  behave differently from their documentation.
+  behave differently from their documentation (the harness found that they
+  make secrets, yet one call did not).
 
 ## What to send back
 
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`,
+   where the flavour folder is `_retail_`, `_classic_era_` or `_classic_`.
    It holds the full report, each test's logs (the capability table as
    ClientKit and the client answer it, the project constants, the build facts,
    the event validity answers, the metadata answers for exported and

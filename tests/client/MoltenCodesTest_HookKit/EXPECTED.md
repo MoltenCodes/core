@@ -2,33 +2,45 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package hookKit`
-and nothing else from the MoltenCodes framework enabled in the client.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package hookKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package hookKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 Run it standing idle, **out of combat**, solo, outside any instance (a capital
-city is ideal). No test needs combat, a group or an instance, and nothing a
-test does is visible.
+city is ideal). No test of the default run needs combat, a group or an
+instance, and nothing a test does is visible. The one combat test runs in a
+separate [combat run](#combat-run) at a training dummy.
 
 ## What is hooked, and why it is harmless
 
 HookKit is the most taint-sensitive Kit, so this addon keeps to three rules:
 
 - **One Blizzard function, post-hooked securely.** The only Blizzard function
-  the suite hooks is the global `IsLinuxClient`: a C function of the client's
-  Build system that takes no argument, answers one boolean, has no side effect
-  or restriction flag, returns no secret, and has nothing to do with combat,
-  units, actions or protected frames (see
+  the suite hooks is the global `IsLinuxClient` on Retail: a C function of the
+  client's Build system that takes no argument, answers one boolean, has no
+  side effect or restriction flag, returns no secret, and has nothing to do
+  with combat, units, actions or protected frames (see
   `packages/apiKit/metadata/retail/namespaces.json`, `BuildDocumentation.lua`).
+  The Classic Era and Mists Classic metadata document no `IsLinuxClient`, so
+  on those clients the suite hooks `IsDebugBuild` instead, a Build-system
+  function all three flavours document with the same shape.
   It is hooked only with `SecureHook`, which goes through the client's
   `hooksecurefunc` and leaves the global secure; the test checks exactly that
   with the client's `issecurevariable`.
 - **Non-secure hooks of it are only ever refused.** The tests that ask HookKit
-  for `Hook` or `RawHook` of `IsLinuxClient` expect a refusal, and run only
-  while `issecurevariable("IsLinuxClient")` answers `true`, which is exactly
+  for `Hook` or `RawHook` of `IsLinuxClient` (`IsDebugBuild` on Classic)
+  expect a refusal, and run only while `issecurevariable` answers `true` for
+  that global, which is exactly
   when HookKit refuses. If another addon already tainted the global, they are
   reported as `SKIP` instead.
 - **Nothing protected is hooked.** The protected-frame refusals are asked of a
   secure action button (`SecureActionButtonTemplate`) the suite creates itself,
-  out of combat: it has no action, no size and is never shown. Every other
+  out of combat (on the first default run, or by the combat run's preparation):
+  it has no action, no size and is never shown. Every other
   hook targets a table or a plain 1x1, alpha-0 test frame without a parent that the
   suite owns.
 
@@ -46,7 +58,7 @@ Within a second or two, exactly these lines, in this order (`PASS` is green
 and `SKIP` yellow in the client):
 
 ```text
-MoltenCodes Test: running hookKit: 9 suites. Results follow when every test has finished.
+MoltenCodes Test: running hookKit: 10 suites. Results follow when every test has finished.
 MoltenCodes Test: PASS hookKit.facade: Registry:Get('hookKit', 1) is the HookKit facade with API 1, every documented method, MAX_HOOKS 256 and UNBOUNDED
 MoltenCodes Test: PASS hookKit.facade: the installed HookKit carries the revision of the committed manifest
 MoltenCodes Test: PASS hookKit.secureGlobal: SecureHook of the Blizzard global IsLinuxClient runs the handler once per call with no argument, the caller gets the original answer, and issecurevariable still reports the global secure
@@ -65,7 +77,7 @@ MoltenCodes Test: PASS hookKit.access: a test-owned frame answers IsForbidden fa
 MoltenCodes Test: SKIP hookKit.access: a script hook of a genuinely forbidden frame is refused at the calling line -- no forbidden frame is reachable from addon code without side effects; hookKit.errors checks the refusal on a stand-in, packages/hookKit/tests on the fixture
 MoltenCodes Test: PASS hookKit.access: Hook of Show on a test-owned frame is refused at the calling line: the method the frame inherits from the client's widget table is secure there, and the frame gets no field
 MoltenCodes Test: PASS hookKit.access: on a test-owned secure action button (IsProtected true), HookScript of OnClick is refused outright and RawHookScript of OnEnter without forceSecure too, both at the calling line, and the scripts stay as they were
-MoltenCodes Test: SKIP hookKit.access: during combat lockdown a forced script hook of the test's secure button is refused at the calling line (passive: skipped out of combat) -- the player is not in combat; this passive test never starts combat
+MoltenCodes Test: SKIP hookKit.combat: during combat lockdown a forced script hook of the test's secure button is refused at the calling line (passive: skipped out of combat) -- the player is not in combat; type /mct run hookKit combat and attack a training dummy to run it
 MoltenCodes Test: PASS hookKit.release: Unhook of a pre-hook and of a replacement on a test-owned table writes each original back exactly, and a second Unhook answers false
 MoltenCodes Test: PASS hookKit.release: UnhookAll undoes every hook newest first and keeps the scope usable; Close is terminal and a later hook is refused at the calling line
 MoltenCodes Test: PASS hookKit.release: a scope opened with maxHooks 1 answers nil and full to a second hook and leaves that target untouched
@@ -95,19 +107,125 @@ The two `SKIP` lines are expected on every run out of combat:
   addon code without side effects. The refusal itself is checked on a stand-in
   whose `IsForbidden` answers `true` (`hookKit.errors`), and on the fixture by
   `packages/hookKit/tests`.
-- **The combat-lockdown refusal** is a passive test: it runs only when the
-  player already is in combat at `/mct run` (and after one earlier run out of
-  combat has created the secure button). Out of combat it is skipped with
-  "the player is not in combat". It never starts combat.
+- **The combat-lockdown refusal** is the one test of the combat suite
+  `hookKit.combat`. A default run out of combat reports it as skipped with
+  "the player is not in combat"; the [combat run](#combat-run) exercises it.
+  It never starts combat itself.
 
 Running it again in the same session prints the same lines.
 
 ### If the run happens in combat
 
-Every test that touches `IsLinuxClient` or the secure button is then reported
-as `SKIP` with "the player is in combat; ...", and the passive combat test runs
-instead (or skips with "the secure button is created out of combat by the test
-before ..." when no earlier run made the button). Leave combat and run again.
+Every test that touches `IsLinuxClient` (`IsDebugBuild` on Classic) or the secure button is then reported
+as `SKIP` with "the player is in combat; ...", and the combat test runs instead
+(or skips with "the secure button is created out of combat; type /mct run
+hookKit combat out of combat so its preparation creates it" when no earlier
+run made the button). Leave combat and run again.
+
+## Per flavour
+
+What the suite reads from the client, per flavour, in the committed apiKit
+metadata (`packages/apiKit/metadata/<flavour>/namespaces.json`):
+
+- `hooksecurefunc`, `issecurevariable`, `issecure`, `seterrorhandler`,
+  `geterrorhandler`, `CreateFrame`, `SecureActionButtonTemplate` and the frame
+  methods `Show`, `Hide`, `SetScript`, `GetScript`, `SetSize`, `SetAlpha` are
+  core client functions the documentation tables do not list; every flavour
+  has them.
+- `InCombatLockdown`, `Frame:IsForbidden`, `Frame:IsProtected` and
+  `Frame:HookScript`: documented on all three.
+- `IsLinuxClient`: Retail only. The suite hooks `IsDebugBuild` on the two
+  Classic clients (documented on all three), so the two `secureGlobal` tests
+  that name the global print `IsDebugBuild` there.
+- `Frame:HookScript`'s answer: Retail documents a `success` boolean, the two
+  Classic flavours no return value, so the test of that answer expects no
+  value there and says so in its name.
+- `Frame:CanBeAccessedInContext`: Retail only. The access test asks only
+  `IsForbidden` on Classic (docs/API.md of hookKit says the same of HookKit)
+  and logs "the client has no CanBeAccessedInContext".
+- `issecretvalue` and `secretwrap`: documented on all three. Whether a Classic
+  client makes secrets with them is measured once at load
+  (`Harness:CanMakeSecrets`).
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: hookKit: 36 passed, 0 failed, 2 skipped, 0 timed out (38 tests)`,
+with the two `SKIP` lines above.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line (10 suites) and every test line are Retail's, in the same
+order, except for three names:
+
+```text
+MoltenCodes Test: PASS hookKit.secureGlobal: SecureHook of the Blizzard global IsDebugBuild runs the handler once per call with no argument, the caller gets the original answer, and issecurevariable still reports the global secure
+MoltenCodes Test: PASS hookKit.secureGlobal: Hook and RawHook of the secure Blizzard global IsDebugBuild are refused at the calling line, write nothing and leave the global secure
+MoltenCodes Test: PASS hookKit.scripts: the client's own Frame:HookScript answers no value for OnShow on a test-owned frame, as the Classic documentation says (HookKit discards any answer; it is logged)
+```
+
+- When the client makes secrets, the totals line is Retail's:
+  `MoltenCodes Test: hookKit: 36 passed, 0 failed, 2 skipped, 0 timed out (38 tests)`,
+  with the same two `SKIP` lines.
+- When it makes none, the five `hookKit.secrets` tests are skipped as well,
+  and the totals line is
+  `MoltenCodes Test: hookKit: 31 passed, 0 failed, 7 skipped, 0 timed out (38 tests)`:
+
+```text
+MoltenCodes Test: SKIP hookKit.secrets: a secret method name is refused by SecureHook and Hook at the calling line before HookKit compares it -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP hookKit.secrets: a secret global name is refused by SecureHook and by Unhook at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP hookKit.secrets: a secret script name is refused by SecureHookScript and HookScript at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP hookKit.secrets: a secret addon name is refused by ForAddon and a secret maxHooks by CreateScope at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP hookKit.secrets: a secret argument reaches a pre-hook handler, the original and a secure post-hook handler still secret, and the original's secret result reaches the caller -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+A client without `issecretvalue` and `secretwrap` at all (none of the three
+promised flavours) skips the same five with "the client has no issecretvalue
+and secretwrap; the secret path was not exercised".
+
+The script, access and allocation tests were measured on Retail only; the
+Classic answers they log (whether `SetScript` drops `HookScript` post-hooks,
+the frame's metatable shape, what `HookScript` does with a script a frame
+lacks) are what a first Classic run should send back. The combat run is the
+same on every flavour.
+
+## Combat run
+
+The combat suite `hookKit.combat` holds one passive test: it attacks, casts
+and moves nothing, and only asks HookKit for a hook it must refuse while the
+client is in combat lockdown.
+
+1. Install as above, log in, and stand at a training dummy (a capital city
+   has them), out of combat, with nothing else pulled.
+2. Type `/mct run hookKit combat`. Out of combat the run first creates the
+   test's secure button (the suite's preparation) and prints:
+
+   ```text
+   MoltenCodes Test: waiting up to 60 seconds for combat: attack a training dummy now. The combat suites of hookKit start when combat begins.
+   ```
+
+3. Attack the dummy within 60 seconds (auto-attack is enough). When combat
+   begins, within a second:
+
+   ```text
+   MoltenCodes Test: running hookKit (combat suites): 1 suites. Results follow when every test has finished.
+   MoltenCodes Test: PASS hookKit.combat: during combat lockdown a forced script hook of the test's secure button is refused at the calling line (passive: skipped out of combat)
+   MoltenCodes Test: hookKit:combat: 1 passed, 0 failed, 0 skipped, 0 timed out (1 tests)
+   MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
+   ```
+
+4. Stop attacking; the test does not wait for combat to end.
+
+The results are saved under `hookKit:combat` and never replace the default
+run's. If combat does not start within 60 seconds, the run prints
+`MoltenCodes Test: combat did not start within 60 seconds; nothing was run or saved for hookKit.`
+and nothing else; type the command again. Typed while already in combat, the
+run starts at once without the waiting line and without the preparation; if
+no earlier run of this session created the secure button, the test is then
+reported as
+`MoltenCodes Test: SKIP hookKit.combat: during combat lockdown a forced script hook of the test's secure button is refused at the calling line (passive: skipped out of combat) -- the secure button is created out of combat; type /mct run hookKit combat out of combat so its preparation creates it`
+with the totals line
+`MoltenCodes Test: hookKit:combat: 0 passed, 0 failed, 1 skipped, 0 timed out (1 tests)`.
 
 ## Visible side effects
 
@@ -127,9 +245,10 @@ the one hooked call whose handler fails on purpose, and put back at once.
 What stays for the rest of the session, by design (a secure hook cannot be
 removed; `docs/API.md` of hookKit, "Secure post-hook"):
 
-- **`IsLinuxClient`'s `hooksecurefunc` chain** grows by two inert closures per
-  run (one per `secureGlobal` test that installs a post-hook). Each reads one
-  flag and does nothing. The global stays secure. `/reload` removes them.
+- **`IsLinuxClient`'s `hooksecurefunc` chain** (`IsDebugBuild`'s on Classic)
+  grows by two inert closures per run (one per `secureGlobal` test that
+  installs a post-hook). Each reads one flag and does nothing. The global
+  stays secure. `/reload` removes them.
 - **The test frames' `HookScript` chains** keep inert HookKit closures and a few
   no-op closures the `scripts` tests add directly with `Frame:HookScript`, one
   set per run.
@@ -138,7 +257,7 @@ removed; `docs/API.md` of hookKit, "Secure post-hook"):
   the client never frees a frame.
 - **This addon's HookKit scope**, `HookKit:ForAddon("MoltenCodesTest_HookKit")`,
   open and empty; LifecycleKit closes it at logout.
-- HookKit's memo that `IsLinuxClient` and the widget method `Show` were secure
+- HookKit's memo that `IsLinuxClient` (or `IsDebugBuild`) and the widget method `Show` were secure
   (weak-keyed, `docs/INTERNALS.md` of hookKit, `secureStatus`).
 
 Nothing is written to a global, a saved variable (other than the harness's own
@@ -150,13 +269,13 @@ results) or a CVar.
 |---|---|
 | `Registry:Get('hookKit', 1) is the HookKit facade ...` | The facade the client loaded is API 1, has `CreateScope`, `ForAddon`, `CloseAddonScopes`, `MAX_HOOKS` 256, `UNBOUNDED` and a `Scope` prototype with every method `docs/API.md` lists. |
 | `the installed HookKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's. |
-| `SecureHook of the Blizzard global IsLinuxClient ...` | The client's `hooksecurefunc` runs HookKit's closure once per call with no argument, the caller gets the answer the unhooked function gave, `IsHooked` reports `"secure"`, and the client's `issecurevariable("IsLinuxClient")` still answers `true` after the hook: the post-hook did not taint the global. The log says whether `hooksecurefunc` replaced the global with a new function and what `issecure()` answers inside the handler. |
+| `SecureHook of the Blizzard global IsLinuxClient ...` (`IsDebugBuild` on Classic) | The client's `hooksecurefunc` runs HookKit's closure once per call with no argument, the caller gets the answer the unhooked function gave, `IsHooked` reports `"secure"`, and the client's `issecurevariable("IsLinuxClient")` still answers `true` after the hook: the post-hook did not taint the global. The log says whether `hooksecurefunc` replaced the global with a new function and what `issecure()` answers inside the handler. |
 | `Unhook of that secure post-hook ...` | After `Unhook` the handler no longer runs, the global still holds the client's wrapper (HookKit wrote nothing back, which would have tainted it), and `issecurevariable` still answers `true`. This is the documented limit: a secure hook can be silenced, not removed. |
 | `Hook and RawHook of the secure Blizzard global ...` | HookKit's secure-target refusal, asked through the client's real `issecurevariable`, names this file at the calling line, the global is the same function afterwards and still secure, and the scope holds nothing. |
 | `SecureHook of a method of a test-owned table ...` | Through the client's `hooksecurefunc` on a table method, the handler receives the receiver and all four arguments with their nils and count, and the caller gets the original's five results unchanged. |
 | `a raising secure post-hook handler is reported once ...` | HookKit's `pcall` around the handler: the failure reaches the handler `seterrorhandler` installed exactly once, naming this file at the raising line, and the call still returns the original's results. No error window opens. |
 | `SecureHookScript runs OnShow and OnHide handlers ...` | The client's `Frame:HookScript` post-hooks run when a real frame is shown and hidden, with the frame as argument, and are silent after `Unhook`. |
-| `the client's own Frame:HookScript answers true ...` | What the Retail `HookScript` returns (documented as a `success` boolean) for a script the frame has: one value, `true`. HookKit discards this value; the log records it. |
+| `the client's own Frame:HookScript answers true ...` | What the Retail `HookScript` returns (documented as a `success` boolean) for a script the frame has: one value, `true`. On Classic (`... answers no value ...`) the documentation lists no return value, and the test expects none. HookKit discards the answer either way; the log records it. |
 | `SecureHookScript of a script a plain Frame lacks ...` | What the client does with `HookScript` of `OnValueChanged` on a plain Frame (raise, or answer `false`; logged), and that HookKit then records no hook. See "What counts as unexpected" for the `false` case. |
 | `HookScript runs its handler before the frame's own OnShow ...` | A script pre-hook installed with the client's `SetScript` runs first with the frame, the frame's own script still runs, `Original` returns that script, and `Unhook` puts that same function back (`GetScript` returns it). |
 | `RawHookScript of OnHide on a frame without one ...` | A replacement receives `nil` as the previous script and the frame, and `Unhook` leaves `OnHide` empty. |
@@ -165,6 +284,7 @@ results) or a CVar.
 | `a test-owned frame answers IsForbidden false ...` | The two access probes HookKit asks answer `false` and `true` for an addon's own frame, and `SecureHookScript` accepts it. |
 | `Hook of Show on a test-owned frame is refused ...` | On a real frame, `Show` is inherited through the metatable's `__index` table, the client reports it secure there, and HookKit refuses the non-secure hook at the calling line without writing a `Show` field on the frame. The log holds what `getmetatable` and `issecurevariable` answered. |
 | `on a test-owned secure action button ...` | The client reports a `SecureActionButtonTemplate` button protected, HookKit refuses `OnClick` outright and `OnEnter` without `forceSecure`, both at the calling line, and neither script changes. |
+| `during combat lockdown a forced script hook ...` | In a [combat run](#combat-run), with `InCombatLockdown()` true, HookKit refuses even a `forceSecure` `HookScript` of `OnEnter` on the secure button at the calling line with `... cannot replace a script of a protected frame during combat lockdown`, and `OnEnter` stays as it was. |
 | `Unhook of a pre-hook and of a replacement ...` | Both originals are written back as the exact functions, a second `Unhook` answers `false`, and the replacement received the original first. |
 | `UnhookAll undoes every hook newest first ...` | `Hooks()` lists the kinds in creation order, `UnhookAll` answers 3 and restores the frame's empty `OnShow`, the scope stays usable, `Close` answers `true` then `false`, and a later hook raises at the calling line. |
 | `a scope opened with maxHooks 1 ...` | The limit answers `nil, "full"` and leaves the target untouched. |
@@ -178,15 +298,21 @@ results) or a CVar.
 
 ## What counts as unexpected
 
-- Any `FAIL` or `TIMEOUT` line, any `SKIP` other than the two above, or a
-  totals line other than `36 passed, 0 failed, 2 skipped, 0 timed out (38 tests)`.
+- Any `FAIL` or `TIMEOUT` line, any `SKIP` other than the two above (and, on
+  a Classic client that makes no secrets, the five listed under
+  [Per flavour](#per-flavour)), or a totals line other than the one
+  [Per flavour](#per-flavour) gives for the client.
+- On Classic, the `Frame:HookScript` answer test failing because the client
+  answered a value: the Classic documentation is out of date. Send the log;
+  HookKit discards the answer, so it is not a HookKit defect.
 - **`SecureHookScript of a script a plain Frame lacks ...` failing with "the
   client declined HookScript, yet HookKit recorded the hook ...":** the client
   answered `false` instead of raising, and HookKit ignores that answer. That is
   a HookKit defect to report, not a fault of the run; the log holds the
   client's exact answer.
 - A `secureGlobal` test reported as `SKIP` with "IsLinuxClient is already
-  tainted in this session": another addon wrote over that global. `/reload`
+  tainted in this session" (`IsDebugBuild` on Classic): another addon wrote
+  over that global. `/reload`
   with other addons disabled and run again.
 - A `secureGlobal` test failing at `ToBeSecure`: the post-hook tainted the
   global. That is a serious finding; send the saved file back at once and
@@ -211,7 +337,9 @@ results) or a CVar.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs and any blocked-action warning.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`
+   (`_classic_era_` or `_classic_` in place of `_retail_` on the Classic
+   clients).
    Its logs answer the open questions: what `Frame:HookScript` returns, what
    the client does with `HookScript` of a script a frame lacks, whether
    `SetScript` drops `HookScript` post-hooks, whether `GetScript` changes when a

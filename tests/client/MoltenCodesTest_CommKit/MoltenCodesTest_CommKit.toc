@@ -1,4 +1,4 @@
-## Interface: 120100
+## Interface: 120100, 50504, 20506, 11509
 ## Title: MoltenCodes Test: CommKit
 ## Notes: Real-client test suites for MoltenCodes CommKit. Run them with /mct run commKit. They whisper addon messages to your own character only.
 ## Author: MoltenCodes

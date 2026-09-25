@@ -2,8 +2,14 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package commandKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat, with the chat box closed.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package commandKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package commandKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. Run it out of combat, with the chat box closed. The
+lines below are Retail's; [Per flavour](#per-flavour) gives the two Classic
+clients.
 
 ## At login
 
@@ -153,6 +159,72 @@ returns false and completion is not available`, making the totals
 way: the facade test records whether `ChatEdit_CustomTabPressed` and
 `ChatEdit_GetActiveWindow` exist and whether the client reports them secure.
 
+## Per flavour
+
+The committed apiKit metadata (`packages/apiKit/metadata/<flavour>/`)
+documents what the suite calls for `retail`, `classic-era` and `classic-mop`
+alike: `C_Item.GetItemInfo` and `C_Item.RequestLoadItemDataByID` (Linen Cloth,
+2589, and the Hearthstone, 6948, exist on every client), `issecretvalue` and
+`secretwrap`. Everything else it reads is the client's chat and slash code
+and core globals, which the metadata does not list and which every client
+provides: `SlashCmdList`, `SLASH_<key><n>`, `DEFAULT_CHAT_FRAME` with
+`AddMessage`, `GetNumMessages` and `GetMessageInfo`, `ChatFrame1EditBox`,
+`SLASH_SAY1`, `EMOTE1_CMD1`, `UIParent`, `issecurevariable`, `geterrorhandler`,
+`seterrorhandler` and `securecallfunction`. The facilities docs/API.md names
+as optional (`hash_SlashCmdList`, `hash_ChatTypeInfoList`,
+`hash_EmoteTokenList`, `SecureCmdList`, `IsSecureCmd`,
+`ChatEdit_CustomTabPressed`, `ChatEdit_GetActiveWindow`) are probed at run
+time and logged by the facade test. So no test is skipped by flavour, and
+nothing the suite reads at load is missing on a Classic client.
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: commandKit: 33 passed, 0 failed, 3 skipped, 0 timed out (36 tests)`,
+with the three `SKIP` lines listed under
+[The three expected SKIPs](#the-three-expected-skips).
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line (9 suites) and every test line are the same as Retail's,
+in the same order, with the same three `SKIP` lines. The taken check reads a
+slash command of the client's own from `hash_SlashCmdList` when that table
+holds one, else from `SlashCmdList`, so it finds one whichever of the two a
+Classic chat frame keeps its commands in; the log says which, and the sizes
+of both tables.
+Whether the six `commandKit.secrets` tests run depends on one answer only the
+running client gives: whether it has the global functions `issecretvalue` and
+`secretwrap` (both Classic flavours document them; the suite reads them at
+load).
+
+- With both functions, and secrets made with them, the totals line is
+  Retail's:
+  `MoltenCodes Test: commandKit: 33 passed, 0 failed, 3 skipped, 0 timed out (36 tests)`.
+- Without them, the six `commandKit.secrets` lines are `SKIP` with the reason
+  given under [On a client without secret values](#on-a-client-without-secret-values),
+  and the totals line is
+  `MoltenCodes Test: commandKit: 27 passed, 0 failed, 9 skipped, 0 timed out (36 tests)`.
+
+A client that has both functions but makes no secret with them
+(`issecretvalue` does not report what `secretwrap` returns as secret;
+`Harness:CanMakeSecrets` measures this once at load) skips the same six
+tests with another reason, and the totals line is again
+`MoltenCodes Test: commandKit: 27 passed, 0 failed, 9 skipped, 0 timed out (36 tests)`:
+
+```text
+MoltenCodes Test: SKIP commandKit.secrets: Parse and ParseInto refuse a secret text at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP commandKit.secrets: Register with a secret name and CreateScope with a secret maxCommands are refused at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP commandKit.secrets: SetLimits with a secret maxCaptured or maxCompletions is refused at the calling line and the limits stay as they were -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP commandKit.secrets: inside a dispatched handler, context:Print and Printf refuse a secret argument at the handler's line in CommandKitSuite.lua and write nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP commandKit.secrets: a handler that raises a secret message writes '/mcttestsecret failed' without the message and hands the secret, still secret, to the client's error handler -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP commandKit.secrets: a bound option whose getter returns a secret prints '(secret value)', and set toggle on a secret toggle is refused and writes nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+A Classic client without `ChatEdit_CustomTabPressed` adds the one
+`SKIP` described under
+[A client without `ChatEdit_CustomTabPressed`](#a-client-without-chatedit_customtabpressed),
+one pass fewer and one skip more than either totals line above.
+
 ## What each test proves
 
 | Test | Proves in the real client |
@@ -197,7 +269,8 @@ way: the facade test records whether `ChatEdit_CustomTabPressed` and
   12.1, or a totals line other than
   `33 passed, 0 failed, 3 skipped, 0 timed out (36 tests)` (see the two
   sections above for a client without secrets or without
-  `ChatEdit_CustomTabPressed`).
+  `ChatEdit_CustomTabPressed`, and [Per flavour](#per-flavour) for a Classic
+  client).
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -231,7 +304,8 @@ way: the facade test records whether `ChatEdit_CustomTabPressed` and
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`,
+   where the flavour folder is `_retail_`, `_classic_era_` or `_classic_`.
    It holds the full report, each test's logs (the host facilities and their
    `issecurevariable` answers, the names the taken check tried, the real item
    links with their escape codes, the sink lines of the options tests, the

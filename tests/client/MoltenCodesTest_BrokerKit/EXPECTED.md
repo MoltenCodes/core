@@ -2,9 +2,12 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package brokerKit`
-and nothing else enabled in the client: no other addon, and in particular no
-addon that loads LibStub (Titan Panel, Bazooka, ChocolateBar, any Ace3 addon).
-Run it out of combat.
+for Retail, with `--flavour-dir _classic_era_` added for Classic Era or
+`--flavour-dir _classic_` for Mists of Pandaria Classic, and nothing else
+enabled in the client: no other addon, and in particular no addon that loads
+LibStub (Titan Panel, Bazooka, ChocolateBar, any Ace3 addon). Run it out of
+combat. The lines below are Retail's; "Per flavour" says what differs on the
+two Classic clients.
 
 ## At login
 
@@ -152,6 +155,56 @@ The totals line then reads `27 passed, 0 failed, 5 skipped, 0 timed out (32 test
 On Retail 12.1 with only the MoltenCodes addons enabled, any `SKIP` is
 unexpected.
 
+## Per flavour
+
+Nothing this suite or BrokerKit uses differs between the three clients.
+BrokerKit itself needs nothing from the client but `issecretvalue`, which the
+client documentation of Retail, Classic Era and Mists Classic lists
+(`packages/apiKit/metadata/<flavour>/namespaces.json`, with `secretwrap`), and
+the global `LibStub`, which is never the client's own. The suite also uses
+`UIParent`, `GameTooltip` with `SetOwner`, `AddLine`, `NumLines`, `IsShown`,
+`Hide` and `GetName`, and the `GameTooltipTextLeft<n>` FontStrings: the
+client's own interface code, which the documentation does not list and every
+flavour has. The FileDataID `134400` (the question-mark icon) is only stored
+as an attribute and compared, never loaded. No test waits for an event and
+none needs combat.
+
+| Client | Totals line with no LibStub | Tests that `SKIP` |
+|---|---|---|
+| Retail 12.1 | `MoltenCodes Test: brokerKit: 32 passed, 0 failed, 0 skipped, 0 timed out (32 tests)` | none |
+| Classic Era 1.15 | the same as Retail when `Harness:CanMakeSecrets()` is `true`; otherwise `27 passed, 0 failed, 5 skipped, 0 timed out (32 tests)` | none, or the five `brokerKit.secrets` lines below when the client makes no secrets |
+| Mists of Pandaria Classic 5.5 | the same as Retail when `Harness:CanMakeSecrets()` is `true`; otherwise `27 passed, 0 failed, 5 skipped, 0 timed out (32 tests)` | none, or the five `brokerKit.secrets` lines below when the client makes no secrets |
+
+With another addon's LibStub the totals line is
+`MoltenCodes Test: brokerKit: 25 passed, 0 failed, 7 skipped, 0 timed out (32 tests)`
+on all three, with the seven `SKIP` lines of that section.
+
+**Secret values on the Classic clients.** Both Classic clients publish
+`issecretvalue` and `secretwrap`, but whether `secretwrap` hands back a value
+that `issecretvalue` reports as secret there cannot be read from the
+documentation. The suite asks the harness once, at load:
+`Harness:CanMakeSecrets()` wraps one value with `secretwrap` and asks
+`issecretvalue` about it. When it answers `true`, the five `brokerKit.secrets`
+tests run and the run is the same as Retail's. When it answers `false`, they
+are registered as skipped and print these lines instead:
+
+```text
+MoltenCodes Test: SKIP brokerKit.secrets: the client's handling of a secret key on a broker object is logged: reading and writing object[secret] both raise, and the object is unchanged -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP brokerKit.secrets: a secret text is refused at the calling line by a field write, by Set and in a New definition; the object keeps its text, no listener runs and no object is created -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP brokerKit.secrets: a secret custom attribute is stored without comparison: read back secret by field and Get, every write of it fires, listeners get it still secret, and clearing it fires with the secret as previous -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP brokerKit.secrets: secret names are refused before any comparison at the calling line: New and Get of a secret name, Set, Get and OnChange of a secret attribute name, a secret receiver and a secret SetLimits value; the limits stay as they were -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP brokerKit.secrets: a secret custom attribute of an exposed object is never written into the stand-in LibDataBroker-1.1, and a secret another addon writes into a foreign data object reaches BrokerKit still secret -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+and the totals line reads
+`MoltenCodes Test: brokerKit: 27 passed, 0 failed, 5 skipped, 0 timed out (32 tests)`
+(no LibStub) or
+`MoltenCodes Test: brokerKit: 21 passed, 0 failed, 11 skipped, 0 timed out (32 tests)`
+(another addon's LibStub, whose six `libDataBroker` `SKIP` lines then stand beside these five).
+These skips say the client makes no secrets, so BrokerKit has nothing to refuse
+there: it treats a value as secret only when `issecretvalue` says so. On
+Retail 12.1 these lines are unexpected.
+
 ## What each test proves
 
 | Test | Proves in the real client |
@@ -192,8 +245,10 @@ unexpected.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line when only the MoltenCodes addons
-  are enabled on Retail 12.1, or a totals line other than
-  `32 passed, 0 failed, 0 skipped, 0 timed out (32 tests)`.
+  are enabled, or a totals line other than
+  `32 passed, 0 failed, 0 skipped, 0 timed out (32 tests)`, on any of the three
+  clients, apart from the secrets skips "Per flavour" describes for the
+  Classic clients.
 - No login line, or `Expected.lua is missing`: the harness or the installer did
   not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -216,7 +271,8 @@ unexpected.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`,
+   where the folder is `_retail_`, `_classic_era_` or `_classic_`.
    It holds the full report, each test's logs (the LibStub facts, the object
    count and room, the bridge answers and whether each was the session's first,
    the tooltip lines, the memory deltas, the client's own error messages with

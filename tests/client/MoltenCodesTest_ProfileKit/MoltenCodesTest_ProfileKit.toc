@@ -1,4 +1,4 @@
-## Interface: 120100
+## Interface: 120100, 50504, 20506, 11509
 ## Title: MoltenCodes Test: ProfileKit
 ## Notes: Real-client test suites for MoltenCodes ProfileKit. Run them with /mct run profileKit.
 ## Author: MoltenCodes

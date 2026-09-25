@@ -1,4 +1,4 @@
-## Interface: 120100
+## Interface: 120100, 50504, 20506, 11509
 ## Title: MoltenCodes Test: SignalKit
 ## Notes: Real-client test suites for MoltenCodes SignalKit. Run them with /mct run signalKit.
 ## Author: MoltenCodes

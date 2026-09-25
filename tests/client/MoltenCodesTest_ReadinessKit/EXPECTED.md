@@ -2,7 +2,13 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package readinessKit`
-and nothing else from the MoltenCodes framework enabled in the client.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package readinessKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package readinessKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 Run it standing idle, out of combat, solo, outside any instance (a capital
 city is ideal). No test needs combat, a group, an instance or any action of
@@ -59,7 +65,7 @@ MoltenCodes Test: PASS readinessKit.secrets: Gate and Get refuse a secret name a
 MoltenCodes Test: PASS readinessKit.secrets: Gate refuses a secret intervalSeconds, timeoutSeconds and maxWaiters at the calling line, and defines no gate
 MoltenCodes Test: PASS readinessKit.secrets: ReprobeOn refuses a secret event name at the calling line
 MoltenCodes Test: PASS readinessKit.secrets: a probe that answers a secret true or false is a probe failure: Gate returns without raising, the gate stays pending, the handler gets one fixed report naming the gate, and GetProbeErrorCount counts every answer
-MoltenCodes Test: SKIP readinessKit.session: without GetTimePreciseSec a timeout is counted in polls and Probe never answers from the cache -- not observable here: every Retail client has GetTimePreciseSec; packages/readinessKit/tests/Timeout_spec.lua and NegativeCache_spec.lua prove the fallback
+MoltenCodes Test: SKIP readinessKit.session: without GetTimePreciseSec a timeout is counted in polls and Probe never answers from the cache -- not observable here: every supported client has GetTimePreciseSec; packages/readinessKit/tests/Timeout_spec.lua and NegativeCache_spec.lua prove the fallback
 MoltenCodes Test: SKIP readinessKit.session: gates live in memory only and none survives /reload -- not observable in a run: /reload ends the session before a result could be printed; docs/API.md, Embedded copies and upgrades
 MoltenCodes Test: readinessKit: 29 passed, 0 failed, 3 skipped, 0 timed out (32 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
@@ -71,8 +77,9 @@ The three `SKIP` lines are expected on every client:
   client's own code, and every other addon allocates in that window too, so a
   memory reading around it cannot be pinned on ReadinessKit.
   `packages/readinessKit/tests/Allocation_spec.lua` guards it.
-- **Without `GetTimePreciseSec`.** Every Retail client has the clock, so the
-  fallback that counts polls instead cannot run here.
+- **Without `GetTimePreciseSec`.** Every supported client (Retail, Classic
+  Era, Mists Classic) has the clock, so the fallback that counts polls
+  instead cannot run here.
   `packages/readinessKit/tests/Timeout_spec.lua` and `NegativeCache_spec.lua`
   prove it.
 - **`/reload`.** Gates live in memory only; a `/reload` ends the session
@@ -87,9 +94,11 @@ definition, and still print `PASS`.
 ### On a client without secret values
 
 The four `readinessKit.secrets` tests need the client's `issecretvalue` and
-`secretwrap`, which Retail 12.1 has. `secretwrap` only converts the value
-handed to it into a secret and changes no game state. A client without them
-prints these four lines instead, and the totals line reads
+`secretwrap`, which Retail 12.1 has, and a `secretwrap` that makes a value
+`issecretvalue` reports as secret; the suite asks the harness's
+`CanMakeSecrets` once, when it loads. `secretwrap` only converts the value
+handed to it into a secret and changes no game state. A client without the
+two functions prints these four lines instead, and the totals line reads
 `25 passed, 0 failed, 7 skipped, 0 timed out (32 tests)`:
 
 ```text
@@ -97,6 +106,17 @@ MoltenCodes Test: SKIP readinessKit.secrets: Gate and Get refuse a secret name a
 MoltenCodes Test: SKIP readinessKit.secrets: Gate refuses a secret intervalSeconds, timeoutSeconds and maxWaiters at the calling line, and defines no gate -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP readinessKit.secrets: ReprobeOn refuses a secret event name at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP readinessKit.secrets: a probe that answers a secret true or false is a probe failure: Gate returns without raising, the gate stays pending, the handler gets one fixed report naming the gate, and GetProbeErrorCount counts every answer -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+```
+
+A client that has both functions but whose `secretwrap` makes no secret
+(secrets are not active there) prints these four lines instead, with the same
+totals line:
+
+```text
+MoltenCodes Test: SKIP readinessKit.secrets: Gate and Get refuse a secret name at the calling line, before comparing it -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP readinessKit.secrets: Gate refuses a secret intervalSeconds, timeoutSeconds and maxWaiters at the calling line, and defines no gate -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP readinessKit.secrets: ReprobeOn refuses a secret event name at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP readinessKit.secrets: a probe that answers a secret true or false is a probe failure: Gate returns without raising, the gate stays pending, the handler gets one fixed report naming the gate, and GetProbeErrorCount counts every answer -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
 ```
 
 ### Skips decided while the test runs
@@ -112,6 +132,58 @@ read; on Retail 12.1 none of them should appear:
 - the two host data tests and every `readinessKit.reprobe` test, plus the
   `WhenAll` test: `EventKit API 1 is not loaded ...`, which cannot happen with
   the MoltenCodes bundle installed.
+
+Classic Era and Mists Classic document every function these tests read (see
+[Per flavour](#per-flavour)), so none of these skips is expected there either.
+
+## Per flavour
+
+Everything the suite reads from the client is documented for `retail`,
+`classic-era` and `classic-mop` alike in the committed apiKit metadata
+(`packages/apiKit/metadata/<flavour>/`): `GetTimePreciseSec`, `GetFramerate`,
+`C_Timer` (TimerKit's timers), `C_Item.GetItemInfo`,
+`C_Item.RequestLoadItemDataByID`, `C_Item.IsItemDataCachedByID`,
+`C_Item.DoesItemExistByID`, `C_Spell.IsSpellDataCached`,
+`C_Spell.RequestLoadSpellData`, `C_Spell.DoesSpellExist`,
+`C_Spell.GetSpellInfo`, `C_CVar.GetCVar` and `C_CVar.SetCVar`, the
+`chatBubbles` CVar, `C_EventUtils.IsEventValid` (so EventKit refuses the
+unknown event name with the same reason), the events `CVAR_UPDATE`,
+`GET_ITEM_INFO_RECEIVED` and `SPELL_DATA_LOAD_RESULT` (the same payloads and
+all synchronous on the three), and `issecretvalue` and `secretwrap`.
+`seterrorhandler`, `geterrorhandler`, `CreateFrame`, `collectgarbage` and the
+error positions are core client facilities every flavour has. ReadinessKit
+documents no flavour difference. So no test is skipped by flavour, and
+nothing the suite reads at load is missing on a Classic client.
+
+What differs is data, not outcome. The item test takes the first candidate
+`C_Item.DoesItemExistByID` confirms and the client has not cached; the first
+three candidates (items 19019, 17182 and 22691) are legendary weapons of the
+original game, so a Classic Era run uses one of them while any is uncached,
+and the server answers it as it does on Retail. The spell candidates are all original-game
+spells. The log names the item and spell chosen.
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: readinessKit: 29 passed, 0 failed, 3 skipped, 0 timed out (32 tests)`,
+with the three `SKIP` lines listed under them.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line (12 suites) and every test line are the same as Retail's,
+in the same order, the three expected `SKIP` lines included. Whether the four
+`readinessKit.secrets` tests run depends on one answer only the running client
+gives, read when the suite loads: whether `issecretvalue` reports what
+`secretwrap` returns as secret (both Classic flavours document the two
+functions).
+
+- Secrets made: the totals line is Retail's,
+  `MoltenCodes Test: readinessKit: 29 passed, 0 failed, 3 skipped, 0 timed out (32 tests)`.
+- No secrets made: the second set of four `SKIP` lines under
+  [On a client without secret values](#on-a-client-without-secret-values)
+  replaces the four `PASS` lines of `readinessKit.secrets`, and the totals
+  line is
+  `MoltenCodes Test: readinessKit: 25 passed, 0 failed, 7 skipped, 0 timed out (32 tests)`.
 
 ## Visible side effects
 
@@ -192,7 +264,8 @@ results.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` other than the three above on Retail
   12.1, or a totals line other than
-  `29 passed, 0 failed, 3 skipped, 0 timed out (32 tests)`.
+  `29 passed, 0 failed, 3 skipped, 0 timed out (32 tests)` (on a Classic
+  client, other than the two totals lines under [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -225,7 +298,8 @@ results.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`
+   (`_classic_era_` or `_classic_` instead of `_retail_` on a Classic client).
    It holds the full report, each test's logs (the item and spell chosen and
    whether they were cached, the server's answer time, the poll lateness and
    intervals, the timeouts, the negative-cache spin, the client's error

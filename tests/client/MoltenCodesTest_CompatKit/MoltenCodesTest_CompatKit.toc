@@ -1,4 +1,4 @@
-## Interface: 120100
+## Interface: 120100, 50504, 20506, 11509
 ## Title: MoltenCodes Test: CompatKit
 ## Notes: Real-client test suites for MoltenCodes CompatKit. Run them with /mct run compatKit.
 ## Author: MoltenCodes

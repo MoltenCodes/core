@@ -72,21 +72,34 @@ package gets a development addon, `MoltenCodesTest_<Facade>`, whose TestKit
 suites prove in the client what the shared fixture can only simulate; the
 harness addon `MoltenCodesTest` runs them with `/mct run <package>`, prints one
 line per test and a totals line, and saves the full `TestKit:Report()` with the
-client's build, flavour, locale, date and loaded package revisions in its saved
-variable, keyed by package ID.
+client's build, flavour, operating system (where the client reports it),
+locale, date, loaded package revisions and the commit the installer
+installed, in its saved variable, keyed by package ID.
 
 ```bash
 python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package registry
+python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package registry
+python3 -m tooling.client.report --wow-dir "/Applications/World of Warcraft"
 python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --remove
 ```
 
 The first builds the release bundle and installs it with the harness, a fresh
 copy of TestKit, a generated `Expected.lua` (every package's committed API and
-revision) and the requested test addons; the second removes all of them, the
-harness's and test addons' saved-variables files and the addons' lines in the
-client's `AddOns.txt`. Nothing runs at login: runs start only by
-`/mct run`. Each test addon's `EXPECTED.md` lists the exact chat lines of a
-correct run and what to send back. The addons are runtime Lua for the gates:
+revision, and the installed commit with a flag for uncommitted changes) and
+the requested test addons, into Retail's folder or, with `--flavour-dir`, into
+Classic Era's (`_classic_era_`) or Mists Classic's (`_classic_`). Every test
+`.toc` carries the supported `## Interface` line, so the same addons load on
+all three. The report command merges the saved results of every flavour
+folder into [`tests/client/RESULTS.md`](../tests/client/RESULTS.md), the
+result matrix: one column group per flavour, every skip with its reason
+(a skip never counts as a pass), and the gaps no run covers, such as Windows
+and group communication with a second character. The last command removes
+everything, the saved results included. Nothing runs at login: runs start
+only by `/mct run`. Tests that need the player in combat live in combat suites
+that `/mct run <package> combat` runs after waiting a bounded time for combat
+(a training dummy); the default run reports them as skips. Each test addon's
+`EXPECTED.md` lists the exact chat lines of a correct run, per flavour where
+they differ, and what to send back. The addons are runtime Lua for the gates:
 the runtime lint scope, StyLua, and
 `lua-language-server --check tests/client --checklevel=Warning`.
 

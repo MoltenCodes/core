@@ -2,7 +2,13 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package schedulerKit`
-and nothing else from the MoltenCodes framework enabled in the client.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package schedulerKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package schedulerKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 Run it standing idle, out of combat, solo, outside any instance (a capital
 city is ideal). No test needs combat, a group, an instance or any action of
@@ -98,12 +104,62 @@ MoltenCodes Test: SKIP schedulerKit.secrets: package-level Schedule priority and
 MoltenCodes Test: SKIP schedulerKit.secrets: a coalesce handle refuses a secret key at the calling line and delivers a secret value still secret -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
+A client that has both functions but makes no secret with them (the harness
+asks once whether `issecretvalue` reports what `secretwrap` returns as
+secret) skips the same five tests with the harness's own reason, and the
+totals line is the same
+`30 passed, 0 failed, 7 skipped, 0 timed out (37 tests)`:
+
+```text
+MoltenCodes Test: SKIP schedulerKit.secrets: ForAddon, CloseAddonScopes and Lane refuse a secret name at the calling line before comparing it -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP schedulerKit.secrets: SetFrameBudget, SetRunawayThreshold and SetMaxResumesPerFrame refuse a secret at the calling line and change nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP schedulerKit.secrets: Debounce leading, Coalesce maxKeys, Watch intervalSeconds and SetLimits maxLanes refuse a secret at the calling line and change no limit -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP schedulerKit.secrets: package-level Schedule priority and name, After delay and a scope's Every interval refuse a secret at the calling line and schedule nothing (messages logged) -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP schedulerKit.secrets: a coalesce handle refuses a secret key at the calling line and delivers a secret value still secret -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
 ### On a client without the clocks
 
 Every test that measures time or counts frames needs `GetTime`,
 `GetTimePreciseSec` and `debugprofilestop`, which every Retail client has.
 Without one of them those tests print `SKIP` with the reason
 `the client lacks GetTime, GetTimePreciseSec or debugprofilestop; frames and time were not measured`.
+
+## Per flavour
+
+Every test uses only what all three promised clients have. The apiKit
+metadata documents `C_Timer.After`, `C_Timer.NewTimer`, `C_Timer.NewTicker`,
+`GetTimePreciseSec`, `debugprofilestop`, `GetFramerate`, `issecretvalue` and
+`secretwrap` for `retail`, `classic-era` and `classic-mop` alike; `GetTime`,
+`CreateFrame`, `seterrorhandler`, `geterrorhandler` and `debugstack` are core
+client globals the documentation tables do not list, present on every
+client. SchedulerKit needs TimerKit, `CreateFrame` and `GetTimePreciseSec`,
+and reads `debug.traceback` or the client's `debugstack`, whichever the
+client has (docs/EMBEDDING.md); the job-error test accepts the traceback of
+either. No test needs combat.
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: schedulerKit: 35 passed, 0 failed, 2 skipped, 0 timed out (37 tests)`,
+with the two `SKIP` lines for the logout and the Watch tick.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line and every test line are the same as Retail's, in the same
+order, including the two `SKIP` lines expected on every client; the debug
+library test logs what that client publishes. Whether the five
+`schedulerKit.secrets` tests run depends on one answer only the running
+client gives: whether its `secretwrap` makes a value `issecretvalue` reports
+as secret (both Classic flavours document the two functions).
+
+- When it does, the totals line is Retail's:
+  `MoltenCodes Test: schedulerKit: 35 passed, 0 failed, 2 skipped, 0 timed out (37 tests)`.
+- When it does not, the five lines under
+  [On a client without secret values](#on-a-client-without-secret-values)
+  with the reason `the client makes no secret values (...)` are `SKIP`, and
+  the totals line is
+  `MoltenCodes Test: schedulerKit: 30 passed, 0 failed, 7 skipped, 0 timed out (37 tests)`.
 
 ## Visible side effects
 
@@ -196,7 +252,9 @@ method, so every such message names the same line number.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` other than the two above on Retail
   12.1, or a totals line other than
-  `35 passed, 0 failed, 2 skipped, 0 timed out (37 tests)`.
+  `35 passed, 0 failed, 2 skipped, 0 timed out (37 tests)`; on a Classic
+  client, a `SKIP` or a totals line that [Per flavour](#per-flavour) does
+  not list.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -232,7 +290,9 @@ method, so every such message names the same line number.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`
+   (`_classic_era_` or `_classic_` instead of `_retail_` on the Classic
+   clients).
    It holds the full report, each test's logs (the clock deltas, the
    milliseconds per frame, the service order, the lateness and gaps, the
    runaway slice and its report, the client's yield-boundary message, the

@@ -2,12 +2,18 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package lifecycleKit`
-and nothing else from the MoltenCodes framework enabled in the client.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package lifecycleKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package lifecycleKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 Run it out of combat, solo, outside any instance (a capital city is ideal). No
-test needs combat, a group or an instance, and none waits: a normal run
-finishes within a second or two. One optional test uses combat, and only when
-you are already in it; see [Optional: the training-dummy run](#optional-the-training-dummy-run).
+test of the default run needs combat, a group or an instance, and none waits:
+a normal run finishes within a second or two. The one combat test runs in a
+separate [combat run](#combat-run) at a training dummy.
 
 Most of what these tests prove happened while the client loaded the addon, at
 login or at `/reload`: the test addon records what it saw then, and the run
@@ -56,7 +62,7 @@ MoltenCodes Test: PASS lifecycleKit.secrets: DependsOn with a secret addon name 
 MoltenCodes Test: PASS lifecycleKit.secrets: SetCombatQueueLimit with a secret limit is refused at the calling line and leaves the limit unchanged
 MoltenCodes Test: PASS lifecycleKit.secrets: SetLimits with a secret maxDependencies is refused at the calling line and changes nothing
 MoltenCodes Test: SKIP lifecycleKit.shutdown: at logout the Kit reaches shutdown and closes this addon's scopes after its OnShutdown callbacks -- not observable in a run: PLAYER_LOGOUT ends the session before a result could be printed or saved; packages/lifecycleKit/tests/OwnedScopes_spec.lua proves it
-MoltenCodes Test: SKIP lifecycleKit.combatDeferral: in combat, WhenOutOfCombat queues the call, refuses one past the limit, and runs it at PLAYER_REGEN_ENABLED before OnCombatEnd -- not in combat; to exercise it, attack a training dummy and type /mct run lifecycleKit (EXPECTED.md)
+MoltenCodes Test: SKIP lifecycleKit.combatDeferral: in combat, WhenOutOfCombat queues the call, refuses one past the limit, and runs it at PLAYER_REGEN_ENABLED before OnCombatEnd -- not in combat; type /mct run lifecycleKit combat and attack a training dummy to run it (EXPECTED.md, Combat run)
 MoltenCodes Test: lifecycleKit: 25 passed, 0 failed, 3 skipped, 0 timed out (28 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
@@ -76,7 +82,9 @@ The three `SKIP` lines are expected on every normal run:
   HookKit, CommandKit and CommKit scopes and the SignalKit bus closed in that
   order) happens at `PLAYER_LOGOUT`, after which the client runs no more addon
   code that could print or save a result. Do not log out to test it.
-- **The training-dummy test**, unless you ran it in combat (below).
+- **The combat test.** `lifecycleKit.combatDeferral` is a combat suite: a
+  default run out of combat reports it as skipped, and the
+  [combat run](#combat-run) exercises it.
 
 Running it again in the same session prints the same lines.
 
@@ -86,38 +94,121 @@ The five `lifecycleKit.secrets` tests need the client's `issecretvalue` and
 `secretwrap`, which Retail 12.1 has. A client without them prints each of the
 five with `SKIP` and ` -- the client has no issecretvalue and secretwrap; the
 secret path was not exercised`, and the totals line reads
-`20 passed, 0 failed, 8 skipped, 0 timed out (28 tests)`.
+`20 passed, 0 failed, 8 skipped, 0 timed out (28 tests)`. A client that has
+both but makes no secret with them prints the same five with `SKIP` and
+` -- the client makes no secret values (issecretvalue does not report what
+secretwrap returns as secret)`, with the same totals.
 
-## Optional: the training-dummy run
+### If the default run happens in combat
 
-This proves the one thing the combat gate does that needs real combat: work
-handed to `WhenOutOfCombat` in combat waits, and runs when the client ends
-combat. The test is passive: it attacks nothing, casts nothing and moves
-nothing; it only reads the combat you are already in.
-
-1. Stand at a training dummy (any capital city or your class hall), with
-   nothing else pulled.
-2. Start attacking it (auto-attack is enough).
-3. While still in combat, type `/mct run lifecycleKit`.
-4. Keep attacking for about three more seconds, then stop attacking and step
-   back. The dummy drops combat a few seconds after the last hit.
-5. The results appear once combat has ended; the test waits for it up to 30
-   seconds.
-
-Expected lines: the same list as above, except for two lines. The
-out-of-combat test is skipped, because the run started in combat:
+The out-of-combat test is then skipped:
 
 ```text
 MoltenCodes Test: SKIP lifecycleKit.combatGate: out of combat, WhenOutOfCombat runs the callback with the instance and true before it returns and hands back a spent call -- in combat, so the out-of-combat path was not exercised; run it again out of combat
 ```
 
-and the training-dummy test passes:
+and the combat test runs inside the default run, waiting up to 30 seconds for
+combat to end, as in the [combat run](#combat-run). Prefer the combat run: it
+keeps the default run's results out of combat.
+
+## Per flavour
+
+What the suite reads from the client, per flavour, in the committed apiKit
+metadata (`packages/apiKit/metadata/<flavour>/`):
+
+- `C_AddOns.IsAddOnLoaded` and `InCombatLockdown`: documented on all three.
+- The events `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_LOGOUT`,
+  `PLAYER_REGEN_DISABLED` and `PLAYER_REGEN_ENABLED` (LifecycleKit's watchers
+  and the suite's listeners): documented on all three.
+- `IsLoggedIn`: documented on Retail only (the Classic metadata has
+  `C_VoiceChat.IsLoggedIn`, not the global). LifecycleKit treats it as
+  optional (docs/API.md of lifecycleKit, "Dependencies": without it the Kit
+  assumes not logged in and relies on `PLAYER_LOGIN`). The suite reads it at
+  load: without it, the test that asserts its answer while the file ran is
+  skipped, and the load-order test checks the order and the states but not the
+  login answers.
+- `issecretvalue` and `secretwrap`: documented on all three. Whether a Classic
+  client makes secrets with them is measured once at load
+  (`Harness:CanMakeSecrets`).
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: lifecycleKit: 25 passed, 0 failed, 3 skipped, 0 timed out (28 tests)`,
+with the three `SKIP` lines above.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line (9 suites) and every test line are Retail's, in the same
+order. Two answers only the running client gives decide the totals: whether
+it has the global `IsLoggedIn` (undocumented there, but the client may still
+have it), and whether it makes secrets.
+
+- `IsLoggedIn` present, secrets made: Retail's totals,
+  `MoltenCodes Test: lifecycleKit: 25 passed, 0 failed, 3 skipped, 0 timed out (28 tests)`.
+- `IsLoggedIn` present, no secrets made: the five `lifecycleKit.secrets` tests
+  are skipped as well,
+  `MoltenCodes Test: lifecycleKit: 20 passed, 0 failed, 8 skipped, 0 timed out (28 tests)`.
+- `IsLoggedIn` absent, secrets made:
+  `MoltenCodes Test: lifecycleKit: 24 passed, 0 failed, 4 skipped, 0 timed out (28 tests)`.
+- `IsLoggedIn` absent, no secrets made:
+  `MoltenCodes Test: lifecycleKit: 19 passed, 0 failed, 9 skipped, 0 timed out (28 tests)`.
+
+Without `IsLoggedIn`, this line replaces the `PASS` line of that test:
 
 ```text
-MoltenCodes Test: PASS lifecycleKit.combatDeferral: in combat, WhenOutOfCombat queues the call, refuses one past the limit, and runs it at PLAYER_REGEN_ENABLED before OnCombatEnd
+MoltenCodes Test: SKIP lifecycleKit.phases: while this file ran, the client reported the addon not finished loading and not logged in, and its instance was loading -- the client has no IsLoggedIn, which LifecycleKit treats as optional (not logged in); the login answer was not observed
 ```
 
-The totals line is the same, `25 passed, 0 failed, 3 skipped, 0 timed out (28 tests)`.
+Without secrets, these five replace the `PASS` lines of `lifecycleKit.secrets`:
+
+```text
+MoltenCodes Test: SKIP lifecycleKit.secrets: ForAddon with a secret name is refused at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP lifecycleKit.secrets: Halt with a secret reason is refused at the calling line and halts nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP lifecycleKit.secrets: DependsOn with a secret addon name is refused at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP lifecycleKit.secrets: SetCombatQueueLimit with a secret limit is refused at the calling line and leaves the limit unchanged -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP lifecycleKit.secrets: SetLimits with a secret maxDependencies is refused at the calling line and changes nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+The combat run is the same on every flavour.
+
+## Combat run
+
+This proves the one thing the combat gate does that needs real combat: work
+handed to `WhenOutOfCombat` in combat waits, and runs when the client ends
+combat. The combat suite `lifecycleKit.combatDeferral` holds one passive test:
+it attacks nothing, casts nothing and moves nothing; it only reads the combat
+you are in. It needs no preparation out of combat.
+
+1. Install as above, log in, and stand at a training dummy (any capital city
+   or your class hall), out of combat, with nothing else pulled.
+2. Type `/mct run lifecycleKit combat`. The harness prints:
+
+   ```text
+   MoltenCodes Test: waiting up to 60 seconds for combat: attack a training dummy now. The combat suites of lifecycleKit start when combat begins.
+   ```
+
+3. Attack the dummy within 60 seconds (auto-attack is enough). When combat
+   begins:
+
+   ```text
+   MoltenCodes Test: running lifecycleKit (combat suites): 1 suites. Results follow when every test has finished.
+   ```
+
+4. **Stop attacking as soon as that line appears**, and step back. The dummy
+   drops combat a few seconds after the last hit; the test waits for that up
+   to 30 seconds.
+5. When combat has ended:
+
+   ```text
+   MoltenCodes Test: PASS lifecycleKit.combatDeferral: in combat, WhenOutOfCombat queues the call, refuses one past the limit, and runs it at PLAYER_REGEN_ENABLED before OnCombatEnd
+   MoltenCodes Test: lifecycleKit:combat: 1 passed, 0 failed, 0 skipped, 0 timed out (1 tests)
+   MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
+   ```
+
+The results are saved under `lifecycleKit:combat` and never replace the
+default run's. Typed while already in combat, the run starts at once, without
+the waiting line.
 
 The test sets this addon's combat-queue limit to 1, queues one call, checks
 that a second call is refused with `nil, "full"`, then waits. When combat ends
@@ -127,11 +218,19 @@ inside it, and that it ran before the addon's `OnCombatEnd` notice, which ran
 before a plain EventKit `PLAYER_REGEN_ENABLED` listener connected after
 LifecycleKit's own. The queue limit is put back afterwards.
 
-If combat does not end within 30 seconds (you kept attacking, or something
-else attacked you), the test fails with
-`combat did not end within 30 seconds; stop attacking right after typing the command`;
-its After hook cancels the queued call and puts the limit back, so nothing is
-left waiting. Run it again.
+If combat does not start within 60 seconds, the run prints
+`MoltenCodes Test: combat did not start within 60 seconds; nothing was run or saved for lifecycleKit.`
+and nothing else; type the command again. If combat does not end within 30
+seconds (you kept attacking, or something else attacked you), the test fails:
+
+```text
+MoltenCodes Test: FAIL lifecycleKit.combatDeferral: in combat, WhenOutOfCombat queues the call, refuses one past the limit, and runs it at PLAYER_REGEN_ENABLED before OnCombatEnd -- combat did not end within 30 seconds; stop attacking as soon as the combat run starts
+MoltenCodes Test: lifecycleKit:combat: 0 passed, 1 failed, 0 skipped, 0 timed out (1 tests)
+```
+
+Its After hook cancels the queued call and puts the limit back, so nothing is
+left waiting. Run it again. A `TIMEOUT` line instead would mean the test did
+not end within its 40-second limit, which is unexpected.
 
 ## Visible side effects
 
@@ -178,14 +277,15 @@ arrives, during the login. Nothing is written to a global or a saved variable.
 | `every Kit CLOSES_ADDON_SCOPES names is loaded ...` | Each of the seven is loaded at the revision Expected.lua lists, and its manifest version is at least the one its docs name as the first that reads the field (TimerKit 0.6.0, SchedulerKit 0.8.0, EventKit 0.7.0, HookKit, CommandKit and CommKit 0.2.0, SignalKit 0.6.0). The log lists each version and revision. |
 | `errors` tests | Each documented argument error names `LifecycleKitSuite.lua` at the calling line, with the documented message; the refused `Halt`, `SetCombatQueueLimit` and `SetLimits` change nothing. |
 | `secrets` tests | A genuine secret from `secretwrap` passed as the `ForAddon` name, the `Halt` reason, the `DependsOn` name, the `SetCombatQueueLimit` limit or a `SetLimits` value is refused at the calling line before LifecycleKit compares it, and changes nothing. |
-| `in combat, WhenOutOfCombat queues the call ...` | See [Optional: the training-dummy run](#optional-the-training-dummy-run). |
+| `in combat, WhenOutOfCombat queues the call ...` | See [Combat run](#combat-run). |
 
 ## What counts as unexpected
 
-- Any `FAIL` or `TIMEOUT` line, any `SKIP` other than the three listed (or,
-  in the training-dummy run, the out-of-combat one instead of the dummy one),
-  or a totals line other than
-  `25 passed, 0 failed, 3 skipped, 0 timed out (28 tests)`.
+- Any `FAIL` or `TIMEOUT` line, any `SKIP` other than the three listed (and,
+  on a Classic client, the ones [Per flavour](#per-flavour) names), or a
+  totals line other than the one [Per flavour](#per-flavour) gives for the
+  client; in the combat run, anything but
+  `1 passed, 0 failed, 0 skipped, 0 timed out (1 tests)`.
 - No login line, or `Expected.lua is missing`: the harness or the installer did
   not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -199,20 +299,22 @@ arrives, during the login. Nothing is written to a global or a saved variable.
 - `every Kit CLOSES_ADDON_SCOPES names is loaded ...` or
   `the installed LifecycleKit carries the revision ...` failing: another
   enabled addon embeds a different copy of a Kit.
-- The training-dummy test failing for any reason but the 30-second wait.
+- The combat test failing for any reason but the 30-second wait.
 
 ## What to send back
 
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs, and say whether you ran the
-   training-dummy run.
+   combat run.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`
+   (`_classic_era_` or `_classic_` in place of `_retail_` on the Classic
+   clients).
    It holds the full report, each test's logs (what `C_AddOns.IsAddOnLoaded`,
    `IsLoggedIn()` and `InCombatLockdown()` answered while the addon loaded, the
    load order the Kit and the listeners saw, the `DependsOn` answers, the
    combat-queue limit, the Kit versions, the client's messages with their
-   paths, and in the dummy run the order of the deferred call, `OnCombatEnd`
+   paths, and in the combat run the order of the deferred call, `OnCombatEnd`
    and the `PLAYER_REGEN_ENABLED` listener) and the client facts. Lua shortens
    a long file path from the left, so a logged message may start with `...`;
    the tests compare only the `LifecycleKitSuite.lua:<line>` part.

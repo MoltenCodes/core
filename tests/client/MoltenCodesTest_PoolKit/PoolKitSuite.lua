@@ -178,7 +178,12 @@ end
 --- the client cannot make a secret value.
 local isSecretValue = readHost("issecretvalue")
 local secretWrap = readHost("secretwrap")
-local SECRETS_AVAILABLE = type(isSecretValue) == "function" and type(secretWrap) == "function"
+local SECRET_FUNCTIONS_PRESENT = type(isSecretValue) == "function"
+  and type(secretWrap) == "function"
+--- Whether the client makes genuine secrets: the Classic clients document
+--- both functions, and the harness measures once whether `secretwrap` makes a
+--- value `issecretvalue` reports as secret.
+local SECRETS_AVAILABLE = SECRET_FUNCTIONS_PRESENT and Harness:CanMakeSecrets()
 
 -- The Frame bank -----------------------------------------------------------------------
 --
@@ -1230,14 +1235,17 @@ local SECRETS_SKIP_REASON =
   "the client has no issecretvalue and secretwrap; the secret path was not exercised"
 
 ---Register `body` as a test when the client can make a secret value, and as a
----skipped test naming why otherwise.
+---skipped test naming why otherwise: the functions are missing, or the
+---client has them but makes no secret (`Harness:CanMakeSecrets`).
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
   if SECRETS_AVAILABLE then
     secrets:Test(name, body)
-  else
+  elseif not SECRET_FUNCTIONS_PRESENT then
     secrets:Skip(name, SECRETS_SKIP_REASON)
+  else
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
   end
 end
 

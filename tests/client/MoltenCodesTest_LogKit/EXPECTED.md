@@ -2,8 +2,13 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package logKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package logKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package logKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. Run it out of combat. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 ## At login
 
@@ -137,6 +142,65 @@ MoltenCodes Test: SKIP logKit.command: /log refuses a level for a name the clien
 With only the MoltenCodes addons enabled any `SKIP` is unexpected on Retail
 12.1.
 
+## Per flavour
+
+Everything the suite and LogKit read from the client is documented for
+`retail`, `classic-era` and `classic-mop` alike in the committed apiKit
+metadata (`packages/apiKit/metadata/<flavour>/namespaces.json`):
+`GetTimePreciseSec` (the one host function the addon requires at load),
+`C_AddOns.DoesAddOnExist`, and `issecretvalue` and `secretwrap`. The rest are
+core client globals and FrameXML the metadata does not cover and every
+flavour has: `CreateFrame` (a `ScrollingMessageFrame` included), `UIParent`,
+`geterrorhandler` and `seterrorhandler`, `SlashCmdList`, `DEFAULT_CHAT_FRAME`,
+`ChatFontNormal` and the client's `string.format`. So no test is skipped by
+flavour, and nothing the addon reads at load is missing on a Classic client.
+The suite needs no combat, so it has no combat suite.
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: logKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`,
+with no `SKIP` line.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line (11 suites) and every test line are the same as Retail's,
+in the same order, and the `ChatSink()` line reaches the chat frame the same
+way. Whether the five `logKit.secrets` tests run depends on one answer only
+the running client gives: whether it makes secret values. That needs the
+global functions `issecretvalue` and `secretwrap` (both Classic flavours
+document them; the suite reads them at load), and `issecretvalue` reporting
+what `secretwrap` returns as secret, which the harness's
+`Harness:CanMakeSecrets` measures once at load.
+
+- With both functions and secrets made, the totals line is Retail's:
+  `MoltenCodes Test: logKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`.
+- With both functions but no secret made, the five tests print these lines
+  instead, and the totals line is
+  `MoltenCodes Test: logKit: 33 passed, 0 failed, 5 skipped, 0 timed out (38 tests)`:
+
+  ```text
+  MoltenCodes Test: SKIP logKit.secrets: a secret number and a secret string as %s arguments reach a table sink, the journal and a hidden ChatSink as '<secret>', and neither the call nor the error handler sees a client error -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+  MoltenCodes Test: SKIP logKit.secrets: a secret number given to %d is replaced by '<secret>' before string.format, so no secret reaches it and the call raises nothing: LogKit reports or delivers exactly as the client's string.format decides for '<secret>' -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+  MoltenCodes Test: SKIP logKit.secrets: a secret message raises at the calling line when the level is enabled and is not read at all when it is disabled -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+  MoltenCodes Test: SKIP logKit.secrets: a secret level, addon name, History filter, sink, chat frame and SetLimits value are refused at the calling line, RemoveSink answers false for a secret, and nothing changes -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+  MoltenCodes Test: SKIP logKit.secrets: a secret string a sink raises reaches the client's error handler still secret, and the next sink still runs -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+  ```
+
+- Without the functions, the five lines under
+  [On a client without secret values](#on-a-client-without-secret-values)
+  are `SKIP` and the totals line is the same
+  `MoltenCodes Test: logKit: 33 passed, 0 failed, 5 skipped, 0 timed out (38 tests)`.
+
+Other answers only the running client gives are not expected to differ from
+the Retail run, and a difference is something to send back: a Classic
+`string.format` that accepts `'%100s'` fails the format-failure test early,
+naming why, and a client or addon that holds `/log` turns the four
+`logKit.command` tests into the `SKIP` lines under
+[When `/log` is already taken](#when-log-is-already-taken). The `%d` test
+given the string `'many'` passes either way and logs what the Classic client
+answered.
+
 ## What each test proves
 
 | Test | Proves in the real client |
@@ -212,7 +276,8 @@ With only the MoltenCodes addons enabled any `SKIP` is unexpected on Retail
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`
+   (`_retail_`, `_classic_era_` or `_classic_`).
    It holds the full report, each test's logs (the session's limits, the
    `SlashCmdList` key of `/log`, the lines of the hidden frame, the journal
    timings, the memory deltas, the client's messages for the secret

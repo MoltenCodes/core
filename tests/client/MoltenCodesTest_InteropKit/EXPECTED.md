@@ -2,8 +2,11 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package interopKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat.
+for Retail, with `--flavour-dir _classic_era_` added for Classic Era or
+`--flavour-dir _classic_` for Mists of Pandaria Classic, and nothing else from
+the MoltenCodes framework enabled in the client. Run it out of combat. The
+lines below are Retail's; "Per flavour" says what differs on the two Classic
+clients.
 
 The run adapts to one fact of the session, decided when each test starts:
 whether a global `LibStub` exists. The client itself has none; it exists only
@@ -115,6 +118,51 @@ MoltenCodes Test: SKIP interopKit.secrets: a secret package name inside ExposeAl
 and the totals read `16 passed, 0 failed, 6 skipped` (no LibStub) or
 `10 passed, 0 failed, 12 skipped` (a real LibStub).
 
+## Per flavour
+
+Nothing this suite or InteropKit uses differs between the three clients.
+`LibStub` is never the client's own: it exists only when another addon ships
+it, on every flavour alike, and the stand-in, absent and real-LibStub cases
+above apply unchanged. The rest is Lua 5.1 (`pcall`, `error` positions,
+`collectgarbage`) and the two secret-value functions, which the client
+documentation of all three flavours lists (`issecretvalue` and `secretwrap` in
+`packages/apiKit/metadata/<flavour>/namespaces.json`). No test waits for an
+event and none needs combat.
+
+| Client | Totals line with no LibStub | Tests that `SKIP` |
+|---|---|---|
+| Retail 12.1 | `MoltenCodes Test: interopKit: 19 passed, 0 failed, 3 skipped, 0 timed out (22 tests)` | the three `interopKit.realLibStub` lines above |
+| Classic Era 1.15 | the same as Retail when `Harness:CanMakeSecrets()` is `true`; otherwise `16 passed, 0 failed, 6 skipped, 0 timed out (22 tests)` | the same as Retail, plus the three `interopKit.secrets` lines below when the client makes no secrets |
+| Mists of Pandaria Classic 5.5 | the same as Retail when `Harness:CanMakeSecrets()` is `true`; otherwise `16 passed, 0 failed, 6 skipped, 0 timed out (22 tests)` | the same as Retail, plus the three `interopKit.secrets` lines below when the client makes no secrets |
+
+With another addon's LibStub the totals line is
+`MoltenCodes Test: interopKit: 13 passed, 0 failed, 9 skipped, 0 timed out (22 tests)`
+on all three, with the nine `SKIP` lines of that section.
+
+**Secret values on the Classic clients.** Both Classic clients publish
+`issecretvalue` and `secretwrap`, but whether `secretwrap` hands back a value
+that `issecretvalue` reports as secret there cannot be read from the
+documentation. The suite asks the harness once, at load:
+`Harness:CanMakeSecrets()` wraps one value with `secretwrap` and asks
+`issecretvalue` about it. When it answers `true`, the three `interopKit.secrets`
+tests run and the run is the same as Retail's. When it answers `false`, they
+are registered as skipped and print these lines instead:
+
+```text
+MoltenCodes Test: SKIP interopKit.secrets: a secret packageName, api or major handed to ExposeToLibStub is refused at the calling line before anything compares it, and LibStub is left as it was -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP interopKit.secrets: a secret major handed to AdoptFromLibStub and Find is refused at the calling line, and the adoption record is unchanged -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP interopKit.secrets: a secret package name inside ExposeAll's options.except, first or after a plain one, is refused at the calling line before any row is exposed -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+and the totals line reads
+`MoltenCodes Test: interopKit: 16 passed, 0 failed, 6 skipped, 0 timed out (22 tests)`
+(no LibStub) or
+`MoltenCodes Test: interopKit: 10 passed, 0 failed, 12 skipped, 0 timed out (22 tests)`
+(another addon's LibStub).
+These skips say the client makes no secrets, so InteropKit has nothing to refuse
+there: it treats a value as secret only when `issecretvalue` says so. On
+Retail 12.1 these lines are unexpected.
+
 ## The LibStub stand-in
 
 `newLibStubStandIn` in `InteropKitSuite.lua` builds a table with LibStub's
@@ -189,7 +237,9 @@ appears, and no client setting (CVar) changes.
 - Any `FAIL` or `TIMEOUT` line, or a totals line other than
   `19 passed, 0 failed, 3 skipped, 0 timed out (22 tests)` with no LibStub, or
   `13 passed, 0 failed, 9 skipped, 0 timed out (22 tests)` with another
-  addon's LibStub. A `SKIP` of a `secrets` test on Retail 12.1 is unexpected.
+  addon's LibStub, apart from the secrets skips "Per flavour" describes
+  for the Classic clients. A `SKIP` of a `secrets` test on Retail 12.1 is
+  unexpected.
 - A log line `stand-in left in place: ...`: another addon replaced or took
   over the stand-in while a test ran. Send the list of enabled addons.
 - No login line, or `Expected.lua is missing`: the harness or the installer
@@ -213,7 +263,8 @@ appears, and no client setting (CVar) changes.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`,
+   where the folder is `_retail_`, `_classic_era_` or `_classic_`.
    It holds the full report, each test's logs (whether a LibStub was loaded
    and what it holds, the `ExposeAll` counts, the memory deltas, the client's
    own error messages with their paths) and the client facts. Lua shortens a

@@ -87,7 +87,8 @@ local TREE_NAME = addonName
 local DATABASE_NAME = "OptionsKitClientTestDB"
 
 --- The CVar the getter tests read and write. It is cosmetic (whether chat
---- bubbles are drawn), always present on Retail, not read-only and not
+--- bubbles are drawn), present on Retail, Classic Era and Mists Classic
+--- alike (the "Chat Bubbles" interface option), not read-only and not
 --- secure, so `C_CVar.SetCVar` accepts it from addon code; every change is put
 --- back by the After hook.
 local PROBE_CVAR = "chatBubbles"
@@ -162,7 +163,7 @@ local S = SchemaKit
 ---@type any
 local SettingsKit = Registry:Find("settingsKit", SETTINGS_KIT_API)
 
---- The Frame the receiver-check test hands a tree method. Every Retail client has it.
+--- The Frame the receiver-check test hands a tree method. Every promised client has it.
 local uiParent = readHost("UIParent")
 if type(uiParent) ~= "table" then
   error(addonName .. " requires the client's UIParent", 0)
@@ -1532,10 +1533,14 @@ local SECRETS_SKIP_REASON =
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
-    secrets:Test(name, body)
-  else
+  if not SECRETS_AVAILABLE then
     secrets:Skip(name, SECRETS_SKIP_REASON)
+  elseif not Harness:CanMakeSecrets() then
+    -- Classic Era and Mists Classic document both functions, but only the
+    -- running client shows whether `secretwrap` makes a genuine secret.
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
+  else
+    secrets:Test(name, body)
   end
 end
 

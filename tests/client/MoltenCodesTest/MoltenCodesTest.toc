@@ -1,4 +1,4 @@
-## Interface: 120100
+## Interface: 120100, 50504, 20506, 11509
 ## Title: MoltenCodes Test
 ## Notes: Development harness that runs the MoltenCodes real-client test suites with /mct and saves their results.
 ## Author: MoltenCodes

@@ -175,6 +175,12 @@ local isSecretValue = readHost("issecretvalue")
 local secretWrap = readHost("secretwrap")
 local SECRETS_AVAILABLE = type(isSecretValue) == "function" and type(secretWrap) == "function"
 
+--- Read once at load: whether the client makes a secret value, as the harness
+--- measures it. Classic Era and Mists Classic document `issecretvalue` and
+--- `secretwrap` too, so their presence alone does not prove the client applies
+--- secrets; the secrets suite registers its tests as skipped when it does not.
+local SECRETS_ACTIVE = Harness:CanMakeSecrets()
+
 -- Helpers ---------------------------------------------------------------------------
 
 --- ProfileKit's session-wide state as the Before hook found it.
@@ -1158,8 +1164,10 @@ local SECRETS_SKIP_REASON =
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
+  if SECRETS_ACTIVE then
     secrets:Test(name, body)
+  elseif SECRETS_AVAILABLE then
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
   else
     secrets:Skip(name, SECRETS_SKIP_REASON)
   end

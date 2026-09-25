@@ -1849,13 +1849,18 @@ local SECRETS_SKIP_REASON =
 
 ---Register `body` as a test when the client can make a secret value (and,
 ---with `needsCodecKit`, the bundle carries CodecKit), and as a skipped test
----naming why otherwise.
+---naming why otherwise. A client can make one when it has both functions and
+---`issecretvalue` reports what `secretwrap` returns as secret
+---(`Harness:CanMakeSecrets`, measured once; Classic Era and Mists Classic
+---document both functions, so their presence alone proves nothing).
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 ---@param needsCodecKit boolean|nil
 local function secretTest(name, body, needsCodecKit)
   if not SECRETS_AVAILABLE then
     secrets:Skip(name, SECRETS_SKIP_REASON)
+  elseif not Harness:CanMakeSecrets() then
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
   elseif needsCodecKit and not CODEC_KIT_AVAILABLE then
     secrets:Skip(name, "the MoltenCodes addon carries no CodecKit API 1, which a SyncSet requires")
   else

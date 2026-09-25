@@ -2,7 +2,13 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package timerKit`
-and nothing else from the MoltenCodes framework enabled in the client.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package timerKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package timerKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 Run it standing idle, out of combat, solo, outside any instance (a capital
 city is ideal). No test needs combat, a group, an instance or any action of
@@ -89,6 +95,52 @@ MoltenCodes Test: SKIP timerKit.secrets: ForAddon and CloseAddonScopes refuse a 
 MoltenCodes Test: SKIP timerKit.secrets: SetUserData stores a secret value and GetUserData hands it back still secret -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
+A client that has both functions but makes no secret with them (the harness
+asks once whether `issecretvalue` reports what `secretwrap` returns as
+secret) skips the same four tests with the harness's own reason, and the
+totals line is the same
+`23 passed, 0 failed, 6 skipped, 0 timed out (29 tests)`:
+
+```text
+MoltenCodes Test: SKIP timerKit.secrets: After and Every refuse a secret delay at the calling line before comparing it, and start nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP timerKit.secrets: New refuses a secret delay and a secret repeating flag at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP timerKit.secrets: ForAddon and CloseAddonScopes refuse a secret addon name at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP timerKit.secrets: SetUserData stores a secret value and GetUserData hands it back still secret -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+## Per flavour
+
+Every test uses only what all three promised clients have. The apiKit
+metadata documents `C_Timer.After`, `C_Timer.NewTimer`, `C_Timer.NewTicker`,
+`GetTimePreciseSec`, `GetFramerate`, `issecretvalue` and `secretwrap` for
+`retail`, `classic-era` and `classic-mop` alike; `seterrorhandler`,
+`geterrorhandler` and `GetTime` are core client globals the documentation
+tables do not list, present on every client. TimerKit itself needs only
+`C_Timer.NewTimer`, `C_Timer.NewTicker` and, for `GetRemaining` and
+`GetDeadline`, `GetTimePreciseSec` (docs/EMBEDDING.md). No test needs combat.
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: timerKit: 27 passed, 0 failed, 2 skipped, 0 timed out (29 tests)`,
+with the two `SKIP` lines for the logout and the delivered tick.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line and every test line are the same as Retail's, in the same
+order, including the two `SKIP` lines expected on every client. Whether the
+four `timerKit.secrets` tests run depends on one answer only the running
+client gives: whether its `secretwrap` makes a value `issecretvalue` reports
+as secret (both Classic flavours document the two functions).
+
+- When it does, the totals line is Retail's:
+  `MoltenCodes Test: timerKit: 27 passed, 0 failed, 2 skipped, 0 timed out (29 tests)`.
+- When it does not, the four lines under
+  [On a client without secret values](#on-a-client-without-secret-values)
+  with the reason `the client makes no secret values (...)` are `SKIP`, and
+  the totals line is
+  `MoltenCodes Test: timerKit: 23 passed, 0 failed, 6 skipped, 0 timed out (29 tests)`.
+
 ## Visible side effects
 
 None. No window opens, nothing is printed besides the harness lines, and no
@@ -152,7 +204,9 @@ results.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` other than the two above on Retail
   12.1, or a totals line other than
-  `27 passed, 0 failed, 2 skipped, 0 timed out (29 tests)`.
+  `27 passed, 0 failed, 2 skipped, 0 timed out (29 tests)`; on a Classic
+  client, a `SKIP` or a totals line that [Per flavour](#per-flavour) does
+  not list.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -184,7 +238,9 @@ results.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`
+   (`_classic_era_` or `_classic_` instead of `_retail_` on the Classic
+   clients).
    It holds the full report, each test's logs (the lateness of the one-shot,
    the tick intervals, the remaining-time readings, the logout route, the
    ticks after a raising tick, the measured memory deltas, the client's own

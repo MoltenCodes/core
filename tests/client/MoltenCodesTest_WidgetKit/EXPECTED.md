@@ -2,9 +2,14 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package widgetKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat, with no options window of another addon and no colour picker
-open.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package widgetKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package widgetKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. Run it out of combat, with no options window of another
+addon and no colour picker open. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 ## At login
 
@@ -133,6 +138,91 @@ On Retail 12.1 any `SKIP` is unexpected, except the `ColorPicker` test when
 the colour picker was open: `SKIP widgetKit.types: ColorPicker: ... -- the
 client's ColorPickerFrame is open; it was not touched`. Close it and run again.
 
+### On a client without `ColorPickerFrame:SetupColorPickerAndShow`
+
+docs/API.md lists the client's `ColorPickerFrame` with
+`SetupColorPickerAndShow` as an optional host facility: without it
+`OpenPicker` fires `OnValueChanged` with the current colour and opens nothing.
+The `ColorPicker` test proves the client picker path, so a client without that
+function (it is FrameXML, which the apiKit metadata does not cover; the
+facade test logs whether the client has it) prints this line instead, and the
+totals line reads `40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)`:
+
+```text
+MoltenCodes Test: SKIP widgetKit.types: ColorPicker: white and opaque; SetColor fires nothing; OpenPicker opens the client's ColorPickerFrame with the colour, its swatch and cancel callbacks fire OnValueChanged, a disabled picker opens nothing, and a release disarms the callbacks of the previous use -- the client has no ColorPickerFrame:SetupColorPickerAndShow; the client picker path was not exercised
+```
+
+Retail 12.1 has it, so on Retail this line is unexpected.
+
+## Per flavour
+
+Every client function, widget method and event the suite and WidgetKit use
+that the Retail apiKit metadata documents is documented for `classic-era` and
+`classic-mop` as well (`packages/apiKit/metadata/<flavour>/`), among them
+`SetFixedFrameStrata`, `SetResizeBounds`, `SetObeyStepOnDrag`,
+`GetVerticalScrollRange`, `SetColorTexture`, `IsForbidden`, the
+`ADDON_ACTION_BLOCKED` and `ADDON_ACTION_FORBIDDEN` events the taint listener
+registers at load, and `issecretvalue` and `secretwrap`. The rest are core
+client globals and FrameXML the metadata does not cover and every flavour
+has: `CreateFrame`, `UIParent`, `geterrorhandler` and `seterrorhandler`,
+`issecurevariable`, the templates `UIPanelButtonTemplate`,
+`UIPanelCloseButton`, `UICheckButtonTemplate` and `InputBoxTemplate`, the font
+objects `GameFontNormal`, `GameFontHighlight`, `GameFontHighlightSmall` and
+`GameFontHighlightLarge`, and `ColorPickerFrame`. Only
+`ColorPickerFrame:SetupColorPickerAndShow` is asked of the client when the
+test runs. So nothing the addon reads at load is missing on a Classic client.
+The suite needs no combat, so it has no combat suite.
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: widgetKit: 41 passed, 0 failed, 0 skipped, 0 timed out (41 tests)`,
+with no `SKIP` line.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line (10 suites) and every test line are the same as Retail's,
+in the same order. Two answers only the running client gives decide the
+totals line: whether it makes secret values (it has the global functions
+`issecretvalue` and `secretwrap`, which both Classic flavours document and the
+suite reads at load, and `issecretvalue` reports what `secretwrap` returns as
+secret, which the harness's `Harness:CanMakeSecrets` measures once), and
+whether its `ColorPickerFrame` has `SetupColorPickerAndShow` (the facade test
+logs it).
+
+| Secret values | `SetupColorPickerAndShow` | Totals line |
+|---|---|---|
+| made | present | `MoltenCodes Test: widgetKit: 41 passed, 0 failed, 0 skipped, 0 timed out (41 tests)` |
+| made | absent | `MoltenCodes Test: widgetKit: 40 passed, 0 failed, 1 skipped, 0 timed out (41 tests)` |
+| not made | present | `MoltenCodes Test: widgetKit: 34 passed, 0 failed, 7 skipped, 0 timed out (41 tests)` |
+| not made | absent | `MoltenCodes Test: widgetKit: 33 passed, 0 failed, 8 skipped, 0 timed out (41 tests)` |
+
+Where the row says absent, the `ColorPicker` test prints the line under
+[On a client without `ColorPickerFrame:SetupColorPickerAndShow`](#on-a-client-without-colorpickerframesetupcolorpickerandshow).
+Where it says not made, the seven secrets tests print, when the client has
+both functions, these lines:
+
+```text
+MoltenCodes Test: SKIP widgetKit.secrets: text setters refuse a secretwrap string at the calling line; with allowSecret a Label shows it one line high on a font string of its own, and the next use of the same Label shows a plain empty text and measures plain texts again, wrapped ones included -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP widgetKit.secrets: a secretwrap boolean handed to SetDisabled, SetFullWidth, SetIsPercent, SetKeyCapture, SetTriState, SetMultiLine, SetHasAlpha, SetResizable or options.allowSecret is refused at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP widgetKit.secrets: secret values WidgetKit would compare or use as a key are refused at the calling line (CheckBox and Dropdown values, a SetList order key and label, a user-data key, sizes, an index, a letter count, a justification, a type name), while a secret user-data value is kept -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP widgetKit.secrets: Anchor.Normalize and Anchor.Apply refuse a secret offset at the calling line, and a binding's Restore of a saved anchor with a secret offset reports it through the error handler and leaves the frame where it was -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP widgetKit.secrets: a layout function that returns secret sizes is ignored like any non-number, so the group keeps its insets; the client's answer to SetWidth with a secret from addon code is logged -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP widgetKit.secrets: RenderOptions shows a secret input value as '<secret value>' and disables it, disables a toggle whose value is secret, and refuses a secret options.allowSecret at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP widgetKit.secrets: EditBox:SetText refuses a secret at the calling line even with allowSecret, as the client's edit box refuses one from addon code (logged), and RenderOptions with allowSecret shows a secret input value as '<secret value>', disabled -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+and, when it lacks them, the seven lines under
+[On a client without secret values](#on-a-client-without-secret-values).
+
+Where secrets are made, the secrets tests also rest on what Retail 12.1
+measured of its font strings and edit boxes (a font string takes a secret
+text from addon code, an edit box refuses one); a Classic client that answers
+differently fails the test that says so, and its log gives the client's
+answer. The font metrics the type and layout tests
+log may differ between flavours; where a check involves text, it compares
+with the client's own measure of that text.
+
 ## What each test proves
 
 | Test | Proves in the real client |
@@ -184,7 +274,8 @@ client's ColorPickerFrame is open; it was not touched`. Close it and run again.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1 (other than the
   open colour picker), or a totals line other than
-  `41 passed, 0 failed, 0 skipped, 0 timed out (41 tests)`.
+  `41 passed, 0 failed, 0 skipped, 0 timed out (41 tests)` on Retail, or than
+  one of the four [Per flavour](#per-flavour) gives on a Classic client.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - Anything appearing on screen: a window, a list, the colour picker, a flicker
@@ -220,7 +311,8 @@ client's ColorPickerFrame is open; it was not touched`. Close it and run again.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`
+   (`_retail_`, `_classic_era_` or `_classic_`).
    It holds the full report, each test's logs (the client's string widths and
    heights, the rectangles of every layout, the effective scale, the captured
    offsets, the MediaKit counts, the memory deltas, the colour picker

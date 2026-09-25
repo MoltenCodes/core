@@ -7,14 +7,17 @@
 -- files), what a stand-in host cannot:
 --
 --   * the installed facade and its committed revision;
---   * that the client's own facts (`WOW_PROJECT_ID`, `IsTestBuild()`,
---     `IsBetaBuild()`) make `GetFlavor()` answer `"retail"`, that the
---     committed Retail metadata names the client's version, and how far its
---     build is from the client's `GetBuildInfo()` build (logged);
---   * that the short `wow` global is published, that only
---     `MoltenCodes.wow.retail.api` is filled while the other four flavours'
---     tables stay empty, and that every flavour file registered its metadata;
---   * the direct-alias promise over the whole installed Retail surface: every
+--   * that the client's own facts (`WOW_PROJECT_ID`, and on Retail
+--     `IsTestBuild()` and `IsBetaBuild()`) make `GetFlavor()` answer the
+--     running flavour, that the committed metadata of that flavour names the
+--     client's version, and how far its build is from the client's
+--     `GetBuildInfo()` build (logged);
+--   * that the short `wow` global is published, that only the running
+--     flavour's `api` table (`MoltenCodes.wow.retail.api`,
+--     `MoltenCodes.wow.classic.era.api` or `MoltenCodes.wow.classic.mop.api`)
+--     is filled while the other four flavours' tables stay empty, and that
+--     every flavour file registered its metadata;
+--   * the direct-alias promise over the whole installed surface: every
 --     bound function is the very host function the naming rules of
 --     packages/apiKit/docs/NAMING.md derive for it (`api.timer.newTicker` is
 --     `C_Timer.NewTicker`, `api.unit.name` is `UnitName`), or, for a function
@@ -37,8 +40,14 @@
 -- nothing is sent. The getters called are read-only; `C_CVar.GetCVar` reads
 -- one setting and changes none.
 --
+-- The suites run on Retail, Classic Era and Mists of Pandaria Classic. What
+-- they expect of the running flavour (its metadata, its documented counts,
+-- the samples and getters its committed metadata binds) is the flavour's row
+-- of `FLAVOUR_EXPECTATIONS` below, chosen by `Harness:GetFlavour()`; the test
+-- names that mention the flavour are built from that row.
+--
 -- Run with `/mct run apiKit`; tests/client/MoltenCodesTest_ApiKit/EXPECTED.md
--- lists what the chat frame should show.
+-- lists what the chat frame should show on each flavour.
 --
 -- What a run leaves behind. The registration tests call `RegisterFlavor` for
 -- the running flavour, which is already installed, and for flavours the client
@@ -80,14 +89,113 @@ local COMMITTED_FLAVORS = {
   { id = "beta", version = "12.0.1", build = 66220, path = { "beta" } },
 }
 
---- What the committed Retail capture binds (packages/apiKit/README.md and
---- docs/API.md, "Load cost"): namespaces, functions, events and enumerations.
---- A client that lacks a documented function leaves it unbound, so the
---- installed counts may be lower, never higher.
-local DOCUMENTED_NAMESPACE_COUNT = 312
-local DOCUMENTED_BOUND_FUNCTION_COUNT = 4900
-local DOCUMENTED_EVENT_COUNT = 1782
-local DOCUMENTED_ENUM_COUNT = 844
+---The committed metadata row of `flavorId` in `COMMITTED_FLAVORS`.
+---@param flavorId string
+---@return table
+local function committedFlavor(flavorId)
+  for _, committed in ipairs(COMMITTED_FLAVORS) do
+    if committed.id == flavorId then
+      return committed
+    end
+  end
+  error("ApiKitSuite.lua has no committed metadata row for " .. flavorId, 2)
+end
+
+--- What the suite expects of each flavour it runs on, keyed by the flavour id
+--- `Harness:GetFlavour()` answers. Per flavour:
+---
+--- * `label` names the flavour in test names and logs, `apiPath` is the
+---   dotted path of its `api` table under `MoltenCodes.wow`, `emptyPath` the
+---   path of another flavour's `api` table, which stays empty on this client;
+--- * `projectId` is the `WOW_PROJECT_ID` of its row in docs/API.md, "Flavour
+---   detection", and `buildFactsApply` whether ApiKit consults `IsTestBuild()`
+---   and `IsBetaBuild()` for it (Retail's project id alone);
+--- * the counts are what the committed capture binds (packages/apiKit/README.md,
+---   "Flavours", and the flavour's `metadata/<flavour>/*.json`): documented
+---   namespaces, bound functions, events and enumerations. A client that lacks
+---   a documented function leaves it unbound, so the installed counts may be
+---   lower, never higher; the event table is written whole, so its count is
+---   exact;
+--- * `allocationGetters` are the two getters the second allocation test calls
+---   through the wrapper; the second must answer `false` on this client.
+---
+--- The Classic Era and Mists of Pandaria Classic metadata do not document
+--- `GetBuildInfo`, `GetTime`, `IsTestBuild`, `IsPublicBuild`,
+--- `IsWindowsClient`, `IsMacClient`, `IsLoggedIn` or `UnitLevel`, so their
+--- surfaces bind none of them (`RETAIL_ONLY_WRAPPERS`); every other sample
+--- and getter below is documented by all three.
+local FLAVOUR_EXPECTATIONS = {
+  retail = {
+    id = "retail",
+    label = "Retail",
+    path = { "retail" },
+    emptyPath = { "classic", "era" },
+    projectId = 1,
+    buildFactsApply = true,
+    namespaceCount = 312,
+    functionCount = 4900,
+    eventCount = 1782,
+    enumCount = 844,
+    allocationGetters = { { "systemTime", "getTime" }, { "build", "isTestBuild" } },
+  },
+  ["classic-era"] = {
+    id = "classic-era",
+    label = "Classic Era",
+    path = { "classic", "era" },
+    emptyPath = { "retail" },
+    projectId = 2,
+    buildFactsApply = false,
+    namespaceCount = 261,
+    functionCount = 3229,
+    eventCount = 1483,
+    enumCount = 740,
+    allocationGetters = { { "locale", "getLocale" }, { "build", "isBetaBuild" } },
+  },
+  ["classic-mop"] = {
+    id = "classic-mop",
+    label = "Mists of Pandaria Classic",
+    path = { "classic", "mop" },
+    emptyPath = { "retail" },
+    projectId = 19,
+    buildFactsApply = false,
+    namespaceCount = 261,
+    functionCount = 3230,
+    eventCount = 1483,
+    enumCount = 740,
+    allocationGetters = { { "locale", "getLocale" }, { "build", "isBetaBuild" } },
+  },
+}
+
+--- The expectations of the running flavour. A client the harness does not
+--- map to a promised flavour is held to Retail's, so every flavour-dependent
+--- test fails there visibly instead of passing for the wrong reason.
+local RUNNING = FLAVOUR_EXPECTATIONS[Harness:GetFlavour() or "retail"]
+  or FLAVOUR_EXPECTATIONS.retail
+RUNNING.committed = committedFlavor(RUNNING.id)
+RUNNING.apiPath = table.concat(RUNNING.path, ".")
+
+--- The wrapper paths only the Retail metadata documents (see
+--- `FLAVOUR_EXPECTATIONS`): the samples and getters naming them are checked
+--- on Retail only.
+local RETAIL_ONLY_WRAPPERS = {
+  ["build.getBuildInfo"] = true,
+  ["build.isTestBuild"] = true,
+  ["build.isPublicBuild"] = true,
+  ["build.isWindowsClient"] = true,
+  ["build.isMacClient"] = true,
+  ["playerScript.isLoggedIn"] = true,
+  ["systemTime.getTime"] = true,
+  ["unit.level"] = true,
+}
+
+---Whether the running flavour's metadata documents the wrapper
+---`namespaceName.functionName`, so its surface binds it where the client has it.
+---@param namespaceName string
+---@param functionName string
+---@return boolean
+local function documentedOnRunningFlavour(namespaceName, functionName)
+  return RUNNING.id == "retail" or not RETAIL_ONLY_WRAPPERS[namespaceName .. "." .. functionName]
+end
 
 --- The three data tables of a flavour's surface; every other key of `api` is a
 --- function namespace.
@@ -97,13 +205,15 @@ local DATA_TABLE_NAMES = { events = true, enums = true, constants = true }
 --- systematic name whose table it shares (packages/apiKit/docs/NAMING.md, rule 7).
 local NAMESPACE_ALIASES = { profiler = "addOnProfiler" }
 
---- The Retail bindings the naming rules cannot derive: functions the client's
+--- The bindings the naming rules cannot derive: functions the client's
 --- documentation tables place outside their system's namespace with their own
 --- `Namespace` attribute (packages/apiKit/docs/NAMING.md, rule 3). Each is
 --- wrapper namespace, wrapper function, host table (nil for a global) and host
 --- function, exactly the `wrapper` and `binding` of
 --- packages/apiKit/metadata/retail/namespaces.json;
 --- tooling/tests/test_api_committed_flavours.py holds this list to that file.
+--- The committed Classic Era and Mists of Pandaria Classic metadata relocate
+--- the same seven functions to the same host paths.
 --- The identity walk resolves these from here, and reports every one whose
 --- host member is missing or whose wrapper is not bound.
 local RELOCATED_BINDINGS = {
@@ -200,10 +310,14 @@ if type(ApiKit) == "nil" then
 end
 
 --- Read once at load: the secrets suite registers its tests as skipped when
---- the client cannot make a secret value.
+--- the client cannot make a secret value, because it lacks the two functions
+--- or because it has them but `secretwrap` makes no secret (the Classic
+--- clients document both; the harness measures whether they work).
 local isSecretValue = readHost("issecretvalue")
 local secretWrap = readHost("secretwrap")
-local SECRETS_AVAILABLE = type(isSecretValue) == "function" and type(secretWrap) == "function"
+local SECRET_FUNCTIONS_PRESENT = type(isSecretValue) == "function"
+  and type(secretWrap) == "function"
+local SECRETS_AVAILABLE = SECRET_FUNCTIONS_PRESENT and Harness:CanMakeSecrets()
 
 ---Whether `value` is a secret; `false` on a client without secret values.
 ---@param value any
@@ -244,11 +358,15 @@ local function flavorApi(path)
   return api
 end
 
----The installed Retail surface, `MoltenCodes.wow.retail.api`.
+---The installed surface of the running flavour, `MoltenCodes.wow.retail.api`
+---on Retail.
 ---@return table|nil
-local function retailApi()
-  return flavorApi({ "retail" })
+local function runningApi()
+  return flavorApi(RUNNING.path)
 end
+
+--- The failure message of a test that finds no installed surface.
+local NO_RUNNING_API = ("MoltenCodes.wow.%s.api is not a table"):format(RUNNING.apiPath)
 
 -- Log helpers ------------------------------------------------------------------------------
 
@@ -775,34 +893,50 @@ local function probeBuild(name)
   return answer, name .. "() " .. tostring(answer)
 end
 
-flavour:Test(
-  "GetFlavor() is 'retail' because the client reports WOW_PROJECT_ID 1 and neither IsTestBuild() nor IsBetaBuild(); the facts are logged",
-  function(ctx)
-    local projectId = readHost("WOW_PROJECT_ID")
-    local testBuild, testDescription = probeBuild("IsTestBuild")
-    local betaBuild, betaDescription = probeBuild("IsBetaBuild")
-    local _, publicTestDescription = probeBuild("IsPublicTestClient")
-    ctx:Log(
-      ("WOW_PROJECT_ID %s, WOW_PROJECT_MAINLINE %s, %s, %s, %s"):format(
-        tostring(projectId),
-        tostring(readHost("WOW_PROJECT_MAINLINE")),
-        testDescription,
-        betaDescription,
-        publicTestDescription
-      )
+--- The name of the detection test: Retail's row needs both build probes to
+--- answer `false`; a Classic project id maps without them (docs/API.md,
+--- "Flavour detection").
+local DETECTION_TEST_NAME = RUNNING.buildFactsApply
+    and ("GetFlavor() is '%s' because the client reports WOW_PROJECT_ID %d and neither IsTestBuild() nor IsBetaBuild(); the facts are logged"):format(
+      RUNNING.id,
+      RUNNING.projectId
     )
-    ctx:Log("ApiKit:GetFlavor(): " .. tostring(ApiKit:GetFlavor()))
-    ctx:Expect(projectId):ToBe(1)
+  or ("GetFlavor() is '%s' because the client reports WOW_PROJECT_ID %d, which ApiKit maps without consulting IsTestBuild() or IsBetaBuild(); the facts are logged"):format(
+    RUNNING.id,
+    RUNNING.projectId
+  )
+
+flavour:Test(DETECTION_TEST_NAME, function(ctx)
+  local projectId = readHost("WOW_PROJECT_ID")
+  local testBuild, testDescription = probeBuild("IsTestBuild")
+  local betaBuild, betaDescription = probeBuild("IsBetaBuild")
+  local _, publicTestDescription = probeBuild("IsPublicTestClient")
+  ctx:Log(
+    ("WOW_PROJECT_ID %s, WOW_PROJECT_MAINLINE %s, %s, %s, %s"):format(
+      tostring(projectId),
+      tostring(readHost("WOW_PROJECT_MAINLINE")),
+      testDescription,
+      betaDescription,
+      publicTestDescription
+    )
+  )
+  ctx:Log("ApiKit:GetFlavor(): " .. tostring(ApiKit:GetFlavor()))
+  ctx:Expect(projectId):ToBe(RUNNING.projectId)
+  if RUNNING.buildFactsApply then
     ctx:Expect(testBuild == true):ToBe(false)
     ctx:Expect(betaBuild == true):ToBe(false)
-    ctx:Expect(ApiKit:GetFlavor()):ToBe("retail")
   end
-)
+  ctx:Expect(ApiKit:GetFlavor()):ToBe(RUNNING.id)
+end)
 
 flavour:Test(
-  "GetMetadataBuild('retail') is 12.1.0 build 69933 and names the client's own GetBuildInfo() version; the two builds are logged side by side",
+  ("GetMetadataBuild('%s') is %s build %d and names the client's own GetBuildInfo() version; the two builds are logged side by side"):format(
+    RUNNING.id,
+    RUNNING.committed.version,
+    RUNNING.committed.build
+  ),
   function(ctx)
-    local version, build = ApiKit:GetMetadataBuild("retail")
+    local version, build = ApiKit:GetMetadataBuild(RUNNING.id)
     local getBuildInfo = readHostFunction("GetBuildInfo")
     if type(getBuildInfo) == "nil" then
       ctx:Fail("the client has no GetBuildInfo")
@@ -821,7 +955,9 @@ flavour:Test(
     local clientBuildNumber = tonumber(clientBuild)
     if type(clientBuildNumber) == "number" and type(build) == "number" then
       if clientBuildNumber == build then
-        ctx:Log("the client runs the build the Retail metadata was captured from")
+        ctx:Log(
+          ("the client runs the build the %s metadata was captured from"):format(RUNNING.label)
+        )
       else
         ctx:Log(
           ("the client build is %d builds %s the metadata build"):format(
@@ -831,8 +967,8 @@ flavour:Test(
         )
       end
     end
-    ctx:Expect(version):ToBe(COMMITTED_FLAVORS[1].version)
-    ctx:Expect(build):ToBe(COMMITTED_FLAVORS[1].build)
+    ctx:Expect(version):ToBe(RUNNING.committed.version)
+    ctx:Expect(build):ToBe(RUNNING.committed.build)
     ctx:Expect(clientVersion):ToBe(version)
   end
 )
@@ -874,7 +1010,9 @@ namespaces:Test(
 )
 
 namespaces:Test(
-  "MoltenCodes.wow holds retail, classic.era, classic.mop, ptr and beta, and only retail.api is filled: the four other api tables are empty",
+  ("MoltenCodes.wow holds retail, classic.era, classic.mop, ptr and beta, and only %s.api is filled: the four other api tables are empty"):format(
+    RUNNING.apiPath
+  ),
   function(ctx)
     local root = namespaceRoot()
     if type(root) == "nil" then
@@ -907,7 +1045,7 @@ namespaces:Test(
         )
       )
       ctx:Expect(type(api)):ToBe("table")
-      if committed.id == "retail" then
+      if committed.id == RUNNING.id then
         ctx:Expect(keyCount > 0):ToBe(true)
       else
         ctx:Expect(keyCount):ToBe(0)
@@ -921,11 +1059,13 @@ namespaces:Test(
 local bindings = Harness:Suite(PACKAGE_ID, "bindings", addonName)
 
 bindings:Test(
-  "every function of the installed Retail surface is the very host function the naming rules name: C_ namespace members and global functions compared by identity, every relocated binding's host member present, counts logged",
+  ("every function of the installed %s surface is the very host function the naming rules name: C_ namespace members and global functions compared by identity, every relocated binding's host member present, counts logged"):format(
+    RUNNING.label
+  ),
   function(ctx)
-    local api = retailApi()
+    local api = runningApi()
     if type(api) == "nil" then
-      ctx:Fail("MoltenCodes.wow.retail.api is not a table")
+      ctx:Fail(NO_RUNNING_API)
       return
     end
     local host = hostTable()
@@ -933,16 +1073,16 @@ bindings:Test(
     ctx:Log(
       ("installed: %d namespaces (documented %d), %d functions bound (documented %d): %d from C_ namespaces, %d global functions"):format(
         report.namespaces,
-        DOCUMENTED_NAMESPACE_COUNT,
+        RUNNING.namespaceCount,
         report.functions,
-        DOCUMENTED_BOUND_FUNCTION_COUNT,
+        RUNNING.functionCount,
         report.fromNamespaces,
         report.fromGlobals
       )
     )
     ctx:Log(
       ("documented functions this client lacks, so unbound: %d"):format(
-        DOCUMENTED_BOUND_FUNCTION_COUNT - report.functions
+        RUNNING.functionCount - report.functions
       )
     )
     ctx:Log(
@@ -972,43 +1112,50 @@ bindings:Test(
     ctx:Expect(#report.unboundRelocated):ToBe(0)
     ctx:Expect(report.relocated):ToBe(#RELOCATED_BINDINGS)
     ctx:Expect(report.functions > 0):ToBe(true)
-    ctx:Expect(report.functions <= DOCUMENTED_BOUND_FUNCTION_COUNT):ToBe(true)
-    ctx:Expect(report.namespaces <= DOCUMENTED_NAMESPACE_COUNT):ToBe(true)
+    ctx:Expect(report.functions <= RUNNING.functionCount):ToBe(true)
+    ctx:Expect(report.namespaces <= RUNNING.namespaceCount):ToBe(true)
     ctx:Expect(report.fromNamespaces + report.fromGlobals):ToBe(report.functions)
   end
 )
 
-bindings:Test(
-  "named samples are the host's own functions: api.timer.newTicker is C_Timer.NewTicker, api.unit.name is UnitName, api.build.getBuildInfo is GetBuildInfo, api.restrictedActions.inCombatLockdown is InCombatLockdown, and api.profiler is api.addOnProfiler",
-  function(ctx)
-    local api = retailApi()
-    if type(api) == "nil" then
-      ctx:Fail("MoltenCodes.wow.retail.api is not a table")
-      return
-    end
-    -- Each pair is a `wrapper` and `binding` of the Retail metadata
-    -- (packages/apiKit/metadata/retail/namespaces.json).
-    -- api.restrictedActions.inCombatLockdown is the global InCombatLockdown:
-    -- the tables document it in the C_RestrictedActions system with
-    -- `Namespace = ""`, and the metadata binds it by that attribute
-    -- (CHANGELOG 0.1.4; the run of 2026-09-25 found the wrapper nil).
-    local samples = {
-      { "timer", "newTicker", "C_Timer", "NewTicker" },
-      { "timer", "after", "C_Timer", "After" },
-      { "addOns", "getNumAddOns", "C_AddOns", "GetNumAddOns" },
-      { "cvar", "getCVar", "C_CVar", "GetCVar" },
-      { "eventUtils", "isEventValid", "C_EventUtils", "IsEventValid" },
-      { "map", "getBestMapForUnit", "C_Map", "GetBestMapForUnit" },
-      { "restrictedActions", "inCombatLockdown", nil, "InCombatLockdown" },
-      { "unit", "name", nil, "UnitName" },
-      { "unit", "class", nil, "UnitClass" },
-      { "build", "getBuildInfo", nil, "GetBuildInfo" },
-      { "systemTime", "getTime", nil, "GetTime" },
-      { "locale", "getLocale", nil, "GetLocale" },
-    }
-    for _, sample in ipairs(samples) do
-      local namespaceName, functionName, hostNamespaceName, hostName =
-        sample[1], sample[2], sample[3], sample[4]
+--- The name of the samples test: the Retail name cites api.build.getBuildInfo,
+--- which the Classic metadata does not document, so a Classic client's name
+--- cites api.locale.getLocale instead.
+local SAMPLES_TEST_NAME = RUNNING.id == "retail"
+    and "named samples are the host's own functions: api.timer.newTicker is C_Timer.NewTicker, api.unit.name is UnitName, api.build.getBuildInfo is GetBuildInfo, api.restrictedActions.inCombatLockdown is InCombatLockdown, and api.profiler is api.addOnProfiler"
+  or "named samples are the host's own functions: api.timer.newTicker is C_Timer.NewTicker, api.unit.name is UnitName, api.locale.getLocale is GetLocale, api.restrictedActions.inCombatLockdown is InCombatLockdown, and api.profiler is api.addOnProfiler"
+
+bindings:Test(SAMPLES_TEST_NAME, function(ctx)
+  local api = runningApi()
+  if type(api) == "nil" then
+    ctx:Fail(NO_RUNNING_API)
+    return
+  end
+  -- Each pair is a `wrapper` and `binding` of the Retail metadata
+  -- (packages/apiKit/metadata/retail/namespaces.json); a Classic client
+  -- checks the ten its metadata documents too (`RETAIL_ONLY_WRAPPERS`).
+  -- api.restrictedActions.inCombatLockdown is the global InCombatLockdown:
+  -- the tables document it in the C_RestrictedActions system with
+  -- `Namespace = ""`, and the metadata binds it by that attribute
+  -- (CHANGELOG 0.1.4; the run of 2026-09-25 found the wrapper nil).
+  local samples = {
+    { "timer", "newTicker", "C_Timer", "NewTicker" },
+    { "timer", "after", "C_Timer", "After" },
+    { "addOns", "getNumAddOns", "C_AddOns", "GetNumAddOns" },
+    { "cvar", "getCVar", "C_CVar", "GetCVar" },
+    { "eventUtils", "isEventValid", "C_EventUtils", "IsEventValid" },
+    { "map", "getBestMapForUnit", "C_Map", "GetBestMapForUnit" },
+    { "restrictedActions", "inCombatLockdown", nil, "InCombatLockdown" },
+    { "unit", "name", nil, "UnitName" },
+    { "unit", "class", nil, "UnitClass" },
+    { "build", "getBuildInfo", nil, "GetBuildInfo" },
+    { "systemTime", "getTime", nil, "GetTime" },
+    { "locale", "getLocale", nil, "GetLocale" },
+  }
+  for _, sample in ipairs(samples) do
+    local namespaceName, functionName, hostNamespaceName, hostName =
+      sample[1], sample[2], sample[3], sample[4]
+    if documentedOnRunningFlavour(namespaceName, functionName) then
       local bound = type(api[namespaceName]) == "table" and api[namespaceName][functionName] or nil
       local hostFunction
       local hostPath
@@ -1031,17 +1178,17 @@ bindings:Test(
       ctx:Expect(type(bound)):ToBe("function")
       ctx:Expect(bound):ToBe(hostFunction)
     end
-    ctx:Expect(type(api.profiler)):ToBe("table")
-    ctx:Expect(api.profiler):ToBe(api.addOnProfiler)
   end
-)
+  ctx:Expect(type(api.profiler)):ToBe("table")
+  ctx:Expect(api.profiler):ToBe(api.addOnProfiler)
+end)
 
 bindings:Test(
   "host functions of C_Timer, C_AddOns, C_Spell, C_Item and other watched namespaces that the capture does not bind are logged as client additions, and every C_ namespace the client has but the surface lacks is counted",
   function(ctx)
-    local api = retailApi()
+    local api = runningApi()
     if type(api) == "nil" then
-      ctx:Fail("MoltenCodes.wow.retail.api is not a table")
+      ctx:Fail(NO_RUNNING_API)
       return
     end
     local report = walkSurface(api, hostTable())
@@ -1130,12 +1277,14 @@ bindings:Test(
 local data = Harness:Suite(PACKAGE_ID, "data", addonName)
 
 data:Test(
-  "api.events holds 1782 event strings, each named by its own lowerCamelCase, api.events.playerLogin is 'PLAYER_LOGIN', and the client's C_EventUtils.IsEventValid is asked about every one",
+  ("api.events holds %d event strings, each named by its own lowerCamelCase, api.events.playerLogin is 'PLAYER_LOGIN', and the client's C_EventUtils.IsEventValid is asked about every one"):format(
+    RUNNING.eventCount
+  ),
   function(ctx)
-    local api = retailApi()
+    local api = runningApi()
     local events = type(api) == "table" and api.events or nil
     if type(events) ~= "table" then
-      ctx:Fail("MoltenCodes.wow.retail.api.events is not a table")
+      ctx:Fail(("MoltenCodes.wow.%s.api.events is not a table"):format(RUNNING.apiPath))
       return
     end
     local count = 0
@@ -1167,7 +1316,7 @@ data:Test(
       ctx:Log("C_EventUtils.IsEventValid is absent; event strings not checked against the client")
     end
 
-    ctx:Expect(count):ToBe(DOCUMENTED_EVENT_COUNT)
+    ctx:Expect(count):ToBe(RUNNING.eventCount)
     ctx:Expect(#misnamed):ToBe(0)
     ctx:Expect(events.playerLogin):ToBe("PLAYER_LOGIN")
     ctx:Expect(events.addonLoaded):ToBe("ADDON_LOADED")
@@ -1236,10 +1385,10 @@ end
 data:Test(
   "every api.enums entry is the client's Enum table of the same name, api.enums.itemQuality.Epic is Enum.ItemQuality.Epic, and Enum tables the capture lacks are logged",
   function(ctx)
-    local api = retailApi()
+    local api = runningApi()
     local enums = type(api) == "table" and api.enums or nil
     if type(enums) ~= "table" then
-      ctx:Fail("MoltenCodes.wow.retail.api.enums is not a table")
+      ctx:Fail(("MoltenCodes.wow.%s.api.enums is not a table"):format(RUNNING.apiPath))
       return
     end
     local present, mismatched = compareAliasTable(ctx, "api.enums", enums, "Enum")
@@ -1247,7 +1396,7 @@ data:Test(
     ctx:Expect(type(hostEnums)):ToBe("table")
     ctx:Expect(mismatched):ToBe(0)
     ctx:Expect(present > 0):ToBe(true)
-    ctx:Expect(present <= DOCUMENTED_ENUM_COUNT):ToBe(true)
+    ctx:Expect(present <= RUNNING.enumCount):ToBe(true)
     ctx:Expect(enums.itemQuality):ToBe(hostEnums.ItemQuality)
     ctx:Expect(enums.itemQuality.Epic):ToBe(hostEnums.ItemQuality.Epic)
     ctx:Expect(enums.phaseReason):ToBe(hostEnums.PhaseReason)
@@ -1263,10 +1412,10 @@ data:Test(
 data:Test(
   "every api.constants entry is the client's Constants table of the same name, api.constants.auctionConstants is Constants.AuctionConstants",
   function(ctx)
-    local api = retailApi()
+    local api = runningApi()
     local constants = type(api) == "table" and api.constants or nil
     if type(constants) ~= "table" then
-      ctx:Fail("MoltenCodes.wow.retail.api.constants is not a table")
+      ctx:Fail(("MoltenCodes.wow.%s.api.constants is not a table"):format(RUNNING.apiPath))
       return
     end
     local present, mismatched = compareAliasTable(ctx, "api.constants", constants, "Constants")
@@ -1318,55 +1467,63 @@ local function compareResults(wrapperResults, hostResults, logValues)
   return ("%d values: %s"):format(wrapperResults.count, table.concat(shown, ", ")), true
 end
 
-calls:Test(
-  "read-only getters called through the wrapper answer exactly what the raw calls answer: GetBuildInfo, the build probes, GetLocale, UnitName, UnitClass, C_AddOns, C_CVar.GetCVar, C_EventUtils.IsEventValid, C_Map.GetBestMapForUnit and others",
-  function(ctx)
-    local api = retailApi()
-    if type(api) == "nil" then
-      ctx:Fail("MoltenCodes.wow.retail.api is not a table")
-      return
-    end
-    -- wrapper namespace, wrapper function, host namespace (nil for a global),
-    -- host function, arguments, whether the values may be logged (a player's
-    -- name, realm and GUID are not). Each is a `wrapper` and `binding` of the
-    -- Retail metadata that Retail 12.1.0 b69933 binds.
-    -- Both calls of a pair run in the same frame with the same arguments.
-    local getters = {
-      { "build", "getBuildInfo", nil, "GetBuildInfo", {}, true },
-      { "build", "isTestBuild", nil, "IsTestBuild", {}, true },
-      { "build", "isBetaBuild", nil, "IsBetaBuild", {}, true },
-      { "build", "isPublicBuild", nil, "IsPublicBuild", {}, true },
-      { "build", "isWindowsClient", nil, "IsWindowsClient", {}, true },
-      { "build", "isMacClient", nil, "IsMacClient", {}, true },
-      { "locale", "getLocale", nil, "GetLocale", {}, true },
-      { "locale", "getCurrentRegion", nil, "GetCurrentRegion", {}, true },
-      { "expansion", "getExpansionLevel", nil, "GetExpansionLevel", {}, true },
-      { "playerScript", "isLoggedIn", nil, "IsLoggedIn", {}, true },
-      { "restrictedActions", "inCombatLockdown", nil, "InCombatLockdown", {}, true },
-      { "unit", "name", nil, "UnitName", { "player" }, false },
-      { "unit", "class", nil, "UnitClass", { "player" }, true },
-      { "unit", "level", nil, "UnitLevel", { "player" }, true },
-      { "unit", "factionGroup", nil, "UnitFactionGroup", { "player" }, true },
-      { "unit", "guid", nil, "UnitGUID", { "player" }, false },
-      { "connectionScript", "getRealmName", nil, "GetRealmName", {}, false },
-      { "addOns", "getNumAddOns", "C_AddOns", "GetNumAddOns", {}, true },
-      { "addOns", "isAddOnLoaded", "C_AddOns", "IsAddOnLoaded", { "MoltenCodes" }, true },
-      {
-        "addOns",
-        "getAddOnMetadata",
-        "C_AddOns",
-        "GetAddOnMetadata",
-        { "MoltenCodes", "Title" },
-        true,
-      },
-      { "cvar", "getCVar", "C_CVar", "GetCVar", { "scriptErrors" }, true },
-      { "eventUtils", "isEventValid", "C_EventUtils", "IsEventValid", { "PLAYER_LOGIN" }, true },
-      { "map", "getBestMapForUnit", "C_Map", "GetBestMapForUnit", { "player" }, true },
-    }
-    local disagreements = 0
-    for _, getter in ipairs(getters) do
-      local namespaceName, functionName, hostNamespaceName, hostName, arguments, logValues =
-        getter[1], getter[2], getter[3], getter[4], getter[5], getter[6]
+--- The name of the calls test: a Classic surface binds no `GetBuildInfo` and
+--- only one build probe, `IsBetaBuild` (`RETAIL_ONLY_WRAPPERS`).
+local CALLS_TEST_NAME = RUNNING.id == "retail"
+    and "read-only getters called through the wrapper answer exactly what the raw calls answer: GetBuildInfo, the build probes, GetLocale, UnitName, UnitClass, C_AddOns, C_CVar.GetCVar, C_EventUtils.IsEventValid, C_Map.GetBestMapForUnit and others"
+  or "read-only getters called through the wrapper answer exactly what the raw calls answer: IsBetaBuild, GetLocale, UnitName, UnitClass, C_AddOns, C_CVar.GetCVar, C_EventUtils.IsEventValid, C_Map.GetBestMapForUnit and others"
+
+calls:Test(CALLS_TEST_NAME, function(ctx)
+  local api = runningApi()
+  if type(api) == "nil" then
+    ctx:Fail(NO_RUNNING_API)
+    return
+  end
+  -- wrapper namespace, wrapper function, host namespace (nil for a global),
+  -- host function, arguments, whether the values may be logged (a player's
+  -- name, realm and GUID are not). Each is a `wrapper` and `binding` of the
+  -- Retail metadata that Retail 12.1.0 b69933 binds; a Classic client calls
+  -- the sixteen its metadata documents too (`RETAIL_ONLY_WRAPPERS`).
+  -- Both calls of a pair run in the same frame with the same arguments.
+  local getters = {
+    { "build", "getBuildInfo", nil, "GetBuildInfo", {}, true },
+    { "build", "isTestBuild", nil, "IsTestBuild", {}, true },
+    { "build", "isBetaBuild", nil, "IsBetaBuild", {}, true },
+    { "build", "isPublicBuild", nil, "IsPublicBuild", {}, true },
+    { "build", "isWindowsClient", nil, "IsWindowsClient", {}, true },
+    { "build", "isMacClient", nil, "IsMacClient", {}, true },
+    { "locale", "getLocale", nil, "GetLocale", {}, true },
+    { "locale", "getCurrentRegion", nil, "GetCurrentRegion", {}, true },
+    { "expansion", "getExpansionLevel", nil, "GetExpansionLevel", {}, true },
+    { "playerScript", "isLoggedIn", nil, "IsLoggedIn", {}, true },
+    { "restrictedActions", "inCombatLockdown", nil, "InCombatLockdown", {}, true },
+    { "unit", "name", nil, "UnitName", { "player" }, false },
+    { "unit", "class", nil, "UnitClass", { "player" }, true },
+    { "unit", "level", nil, "UnitLevel", { "player" }, true },
+    { "unit", "factionGroup", nil, "UnitFactionGroup", { "player" }, true },
+    { "unit", "guid", nil, "UnitGUID", { "player" }, false },
+    { "connectionScript", "getRealmName", nil, "GetRealmName", {}, false },
+    { "addOns", "getNumAddOns", "C_AddOns", "GetNumAddOns", {}, true },
+    { "addOns", "isAddOnLoaded", "C_AddOns", "IsAddOnLoaded", { "MoltenCodes" }, true },
+    {
+      "addOns",
+      "getAddOnMetadata",
+      "C_AddOns",
+      "GetAddOnMetadata",
+      { "MoltenCodes", "Title" },
+      true,
+    },
+    { "cvar", "getCVar", "C_CVar", "GetCVar", { "scriptErrors" }, true },
+    { "eventUtils", "isEventValid", "C_EventUtils", "IsEventValid", { "PLAYER_LOGIN" }, true },
+    { "map", "getBestMapForUnit", "C_Map", "GetBestMapForUnit", { "player" }, true },
+  }
+  local disagreements = 0
+  local called = 0
+  for _, getter in ipairs(getters) do
+    local namespaceName, functionName, hostNamespaceName, hostName, arguments, logValues =
+      getter[1], getter[2], getter[3], getter[4], getter[5], getter[6]
+    if documentedOnRunningFlavour(namespaceName, functionName) then
+      called = called + 1
       local wrapperFunction = type(api[namespaceName]) == "table"
           and api[namespaceName][functionName]
         or nil
@@ -1410,9 +1567,10 @@ calls:Test(
         )
       end
     end
-    ctx:Expect(disagreements):ToBe(0)
   end
-)
+  ctx:Log(("%d getters compared, %d disagreements"):format(called, disagreements))
+  ctx:Expect(disagreements):ToBe(0)
+end)
 
 -- apiKit.allocation -----------------------------------------------------------------------------------
 
@@ -1422,23 +1580,40 @@ local allocation = Harness:Suite(PACKAGE_ID, "allocation", addonName)
 --- away and none allocates a result.
 local lookupSink
 
+---The `api` table at `path` under the namespace root `root`, indexed the way
+---an addon does (`wow.classic.era.api`); allocates nothing.
+---@param root table
+---@param path string[]
+---@return any
+local function lookUpApi(root, path)
+  local node = root
+  for index = 1, #path do
+    node = node[path[index]]
+  end
+  return node.api
+end
+
 allocation:Test(
-  "looking up wow.retail.api, api.timer.newTicker, api.unit.name, api.events.playerLogin, api.enums.itemQuality and an empty flavour's table again allocates nothing over 2000 rounds",
+  ("looking up wow.%s.api, api.timer.newTicker, api.unit.name, api.events.playerLogin, api.enums.itemQuality and an empty flavour's table again allocates nothing over 2000 rounds"):format(
+    RUNNING.apiPath
+  ),
   function(ctx)
-    if type(retailApi()) == "nil" or type(readHost("wow")) ~= "table" then
-      ctx:Fail("the wow global or MoltenCodes.wow.retail.api is not a table")
+    if type(runningApi()) == "nil" or type(readHost("wow")) ~= "table" then
+      ctx:Fail("the wow global or " .. NO_RUNNING_API)
       return
     end
+    local runningPath = RUNNING.path
+    local emptyPath = RUNNING.emptyPath
     expectNoAllocation(ctx, "api.* lookups", function()
       local wowGlobal = readHost("wow")
-      local api = wowGlobal.retail.api
+      local api = lookUpApi(wowGlobal, runningPath)
       lookupSink = api.timer.newTicker
       lookupSink = api.unit.name
       lookupSink = api.profiler
       lookupSink = api.events.playerLogin
       lookupSink = api.enums.itemQuality
       lookupSink = api.constants.auctionConstants
-      lookupSink = wowGlobal.classic.era.api
+      lookupSink = lookUpApi(wowGlobal, emptyPath)
       lookupSink = rawget(namespace, "wow").ptr.api
     end)
     ctx:Expect(lookupSink):ToBe(flavorApi({ "ptr" }))
@@ -1447,19 +1622,26 @@ allocation:Test(
 )
 
 allocation:Test(
-  "GetFlavor, GetGlobalStatus, GetMetadataBuild('retail') and a getter called through the wrapper allocate nothing over 2000 rounds",
+  ("GetFlavor, GetGlobalStatus, GetMetadataBuild('%s') and a getter called through the wrapper allocate nothing over 2000 rounds"):format(
+    RUNNING.id
+  ),
   function(ctx)
-    local api = retailApi()
+    local api = runningApi()
     if type(api) == "nil" then
-      ctx:Fail("MoltenCodes.wow.retail.api is not a table")
+      ctx:Fail(NO_RUNNING_API)
       return
     end
-    expectNoAllocation(ctx, "facade getters and api.systemTime.getTime", function()
+    local runningId = RUNNING.id
+    local firstGetter, secondGetter = RUNNING.allocationGetters[1], RUNNING.allocationGetters[2]
+    local firstNamespace, firstFunction = firstGetter[1], firstGetter[2]
+    local secondNamespace, secondFunction = secondGetter[1], secondGetter[2]
+    local label = ("facade getters and api.%s.%s"):format(firstNamespace, firstFunction)
+    expectNoAllocation(ctx, label, function()
       lookupSink = ApiKit:GetFlavor()
       lookupSink = ApiKit:GetGlobalStatus()
-      lookupSink = ApiKit:GetMetadataBuild("retail")
-      lookupSink = api.systemTime.getTime()
-      lookupSink = api.build.isTestBuild()
+      lookupSink = ApiKit:GetMetadataBuild(runningId)
+      lookupSink = api[firstNamespace][firstFunction]()
+      lookupSink = api[secondNamespace][secondFunction]()
     end)
     ctx:Expect(lookupSink):ToBe(false)
     lookupSink = nil
@@ -1521,7 +1703,7 @@ errors:Test(
     local versionAfter, buildAfter = ApiKit:GetMetadataBuild("retail")
     ctx:Expect(versionAfter):ToBe(versionBefore)
     ctx:Expect(buildAfter):ToBe(buildBefore)
-    ctx:Expect(ApiKit:GetFlavor()):ToBe("retail")
+    ctx:Expect(ApiKit:GetFlavor()):ToBe(RUNNING.id)
   end
 )
 
@@ -1549,16 +1731,16 @@ errors:Test(
 errors:Test(
   "a second registration of the running flavour and a registration of the Public Test Realm on this client are dropped: both return false, neither installer runs, the surface and the metadata stay as they were",
   function(ctx)
-    local api = retailApi()
+    local api = runningApi()
     if type(api) == "nil" then
-      ctx:Fail("MoltenCodes.wow.retail.api is not a table")
+      ctx:Fail(NO_RUNNING_API)
       return
     end
     local keysBefore = countKeys(api)
     local timerBefore = api.timer
     local installer, installerCalls = countingInstaller()
 
-    ctx:Expect(ApiKit:RegisterFlavor("retail", installer, registeredInfo("retail"))):ToBe(false)
+    ctx:Expect(ApiKit:RegisterFlavor(RUNNING.id, installer, registeredInfo(RUNNING.id))):ToBe(false)
     ctx:Expect(ApiKit:RegisterFlavor("ptr", installer, registeredInfo("ptr"))):ToBe(false)
 
     ctx:Expect(installerCalls()):ToBe(0)
@@ -1567,9 +1749,9 @@ errors:Test(
     local ptrApi = flavorApi({ "ptr" })
     ctx:Expect(type(ptrApi)):ToBe("table")
     ctx:Expect(countKeys(ptrApi or {})):ToBe(0)
-    local version, build = ApiKit:GetMetadataBuild("retail")
-    ctx:Expect(version):ToBe(COMMITTED_FLAVORS[1].version)
-    ctx:Expect(build):ToBe(COMMITTED_FLAVORS[1].build)
+    local version, build = ApiKit:GetMetadataBuild(RUNNING.id)
+    ctx:Expect(version):ToBe(RUNNING.committed.version)
+    ctx:Expect(build):ToBe(RUNNING.committed.build)
   end
 )
 
@@ -1582,14 +1764,17 @@ local SECRETS_SKIP_REASON =
   "the client has no issecretvalue and secretwrap; the secret path was not exercised"
 
 ---Register `body` as a test when the client can make a secret value, and as a
----skipped test naming why otherwise.
+---skipped test naming why otherwise: the functions are missing, or the
+---client has them but makes no secret (`Harness:CanMakeSecrets`).
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
   if SECRETS_AVAILABLE then
     secrets:Test(name, body)
-  else
+  elseif not SECRET_FUNCTIONS_PRESENT then
     secrets:Skip(name, SECRETS_SKIP_REASON)
+  else
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
   end
 end
 
@@ -1648,13 +1833,15 @@ secretTest(
 )
 
 secretTest(
-  "a secret info.version is accepted, as docs/API.md says: the registration of the installed Retail flavour returns false without raising and its metadata stays the committed one",
+  ("a secret info.version is accepted, as docs/API.md says: the registration of the installed %s flavour returns false without raising and its metadata stays the committed one"):format(
+    RUNNING.label
+  ),
   function(ctx)
-    local secretVersion = makeSecret(ctx, "12.1.0")
+    local secretVersion = makeSecret(ctx, RUNNING.committed.version)
     local installer, installerCalls = countingInstaller()
-    local succeeded, installed = pcall(ApiKit.RegisterFlavor, ApiKit, "retail", installer, {
+    local succeeded, installed = pcall(ApiKit.RegisterFlavor, ApiKit, RUNNING.id, installer, {
       version = secretVersion,
-      build = COMMITTED_FLAVORS[1].build,
+      build = RUNNING.committed.build,
     })
     ctx:Log(
       ("RegisterFlavor with a secret info.version: %s, %s"):format(
@@ -1665,9 +1852,9 @@ secretTest(
     ctx:Expect(succeeded):ToBe(true)
     ctx:Expect(installed):ToBe(false)
     ctx:Expect(installerCalls()):ToBe(0)
-    local version, build = ApiKit:GetMetadataBuild("retail")
+    local version, build = ApiKit:GetMetadataBuild(RUNNING.id)
     ctx:Expect(isSecret(version)):ToBe(false)
-    ctx:Expect(version):ToBe(COMMITTED_FLAVORS[1].version)
-    ctx:Expect(build):ToBe(COMMITTED_FLAVORS[1].build)
+    ctx:Expect(version):ToBe(RUNNING.committed.version)
+    ctx:Expect(build):ToBe(RUNNING.committed.build)
   end
 )

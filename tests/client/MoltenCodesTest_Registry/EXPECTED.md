@@ -2,7 +2,9 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package registry`
-and nothing else from the MoltenCodes framework enabled in the client.
+for Retail, adding `--flavour-dir _classic_era_` for Classic Era or
+`--flavour-dir _classic_` for Mists of Pandaria Classic, and nothing else from
+the MoltenCodes framework enabled in the client.
 
 ## At login
 
@@ -47,6 +49,26 @@ test registers a probe package under a fresh ID (`mctRegistryProbe1`,
 harmless and appear in the saved `client.packages` of later runs in the same
 session.
 
+## Per flavour
+
+Registry is plain Lua 5.1 (docs/EMBEDDING.md, "What the framework promises":
+`registry` requires nothing but Lua 5.1), and no test here reads a client
+API: the suites touch only the `MoltenCodes` namespace, `collectgarbage`,
+`error` positions and the global table. `registry.globals` also asks ApiKit's
+`GetGlobalStatus`, whose answer it only logs and follows. So every flavour
+prints the same lines.
+
+| Client | Totals line | SKIP lines |
+|---|---|---|
+| Retail (`_retail_`) | `MoltenCodes Test: registry: 17 passed, 0 failed, 0 skipped, 0 timed out (17 tests)` | none |
+| Classic Era (`_classic_era_`) | `MoltenCodes Test: registry: 17 passed, 0 failed, 0 skipped, 0 timed out (17 tests)` | none; same as Retail |
+| Mists of Pandaria Classic (`_classic_`) | `MoltenCodes Test: registry: 17 passed, 0 failed, 0 skipped, 0 timed out (17 tests)` | none; same as Retail |
+
+On the Classic clients, `every installed Kit is registered at its committed
+API and revision ...` is the first place a Kit that failed to load on that
+client shows up: its log then names the Kit as "is not registered". That is a
+package defect on that flavour, not a fault of this suite.
+
 ## What each test proves
 
 | Test | Proves in the real client |
@@ -86,7 +108,8 @@ session.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`,
+   where the flavour folder is `_retail_`, `_classic_era_` or `_classic_`.
    It holds the full report, each test's logs (the client's own error
    messages with their paths, the measured memory delta, ApiKit's `wow` status,
    the private key's name) and the client facts. Lua shortens a long file path

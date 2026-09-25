@@ -70,7 +70,8 @@ local SCHEMA_KIT_API = 1
 local PACKAGE_ID = "moduleKit"
 
 --- The CVar the events test changes to make the client raise CVAR_UPDATE. It
---- is cosmetic (whether chat bubbles are drawn), always present on Retail, not
+--- is cosmetic (whether chat bubbles are drawn), present on Retail, Classic
+--- Era and Mists Classic (the CVar metadata of all three lists it), not
 --- read-only and not secure, so `C_CVar.SetCVar` accepts it from addon code;
 --- every change is put back by the After hook.
 local PROBE_CVAR = "chatBubbles"
@@ -230,6 +231,12 @@ local REGISTRATIONS_READABLE = type(getFramesRegisteredForEvent) == "function"
 local isSecretValue = readHost("issecretvalue")
 local secretWrap = readHost("secretwrap")
 local SECRETS_AVAILABLE = type(isSecretValue) == "function" and type(secretWrap) == "function"
+
+--- Read once at load: whether the client makes a secret value, as the harness
+--- measures it. Classic Era and Mists Classic document `issecretvalue` and
+--- `secretwrap` too, so their presence alone does not prove the client applies
+--- secrets; the secrets suite registers its tests as skipped when it does not.
+local SECRETS_ACTIVE = Harness:CanMakeSecrets()
 
 -- Helpers ---------------------------------------------------------------------------
 
@@ -1575,8 +1582,10 @@ local SECRETS_SKIP_REASON =
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
+  if SECRETS_ACTIVE then
     secrets:Test(name, body)
+  elseif SECRETS_AVAILABLE then
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
   else
     secrets:Skip(name, SECRETS_SKIP_REASON)
   end

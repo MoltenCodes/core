@@ -17,6 +17,8 @@ and the bundle builder never reads it.
 ```text
 tests/client/
 ├── README.md                          # this file
+├── RESULTS.md                         # the result matrix, generated from results.json; never edited by hand
+├── results.json                       # every package's latest recorded run per flavour: the one source of truth
 ├── .luarc.json                        # lua-language-server workspace for the addons below
 ├── MoltenCodesTest/                   # the harness addon
 │   ├── MoltenCodesTest.toc
@@ -87,22 +89,62 @@ temporary directory and installs, under `_retail_/Interface/AddOns/`:
 generation and revision its committed `package.manifest.json` declares. The
 suites compare the live client with it, so a stale install or a newer copy
 embedded by another addon shows up as a failure instead of passing silently.
-`--flavour-dir` selects another client folder than `_retail_`, and
-`--dry-run` prints what would be installed.
+It also records the installation: the commit `git rev-parse HEAD` named, a
+`dirty` flag when the working tree had changes (untracked files included), the
+flavour folder and the time. The harness saves that with every result, so each
+row of the result matrix names the commit it proves. `--dry-run` prints what
+would be installed, the `## Interface` line and the commit.
 
-In the game:
+### Client flavours
+
+The same addons run on the three flavours the framework promises. Each is a
+folder of its own under the game folder, named by the Battle.net launcher, and
+`--flavour-dir` selects it:
+
+| Flavour | Folder | `WOW_PROJECT_ID` |
+|---|---|---:|
+| Retail | `_retail_` (the default) | 1 |
+| Classic Era (also Hardcore and Season of Discovery) | `_classic_era_` | 2 |
+| Mists of Pandaria Classic | `_classic_` | 19 |
+| Burning Crusade Classic Anniversary (optional: listed, not promised) | `_anniversary_` | 5 |
+
+The Anniversary client loads the addons too, because the supported-client
+table lists its Interface number, but the framework does not promise it: the
+matrix shows it as optional and gives it columns only once it has a run, and
+`Harness:GetFlavour()` answers `nil` there. A test realm (`_ptr_`,
+`_classic_era_ptr_`, ...) can be installed into, but its runs never enter the
+matrix.
+
+```bash
+python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package registry
+python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package registry
+```
+
+Every `.toc` here carries one `## Interface` line with every number of
+[`tooling/validation/supported_clients.json`](../../tooling/validation/supported_clients.json),
+the line `python3 -m tooling.validation.interface_numbers` prints and the
+bundle's generated `.toc` carries, so every client loads the addons without
+"out of date". The installer writes that line into every `.toc` it installs,
+taken from the table at install time, and repository validation holds the
+committed files to it, so the numbers cannot drift. Where a suite's outcome
+differs by flavour, its `EXPECTED.md` says so in `## Per flavour` with the
+exact totals line of each client.
+
+### In the game
 
 1. Log in. The chat frame shows one line, for example
    `MoltenCodes Test: test suites loaded for registry. Type /mct run registry to run them; /mct help lists every command.`
 2. Type `/mct run registry`. A line per test and a totals line follow within a
    second or two.
 3. `/reload` (or log out) so the client writes the saved variables.
-4. Send back `WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+4. Record the run in the result matrix (next section), or send back
+   `WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua` from the flavour
+   folder.
 
 Each test addon's `EXPECTED.md` lists the exact lines a correct run prints.
 
-When testing is over, remove everything the installer added, and the saved
-results with it:
+When testing is over, record the results first, then remove everything the
+installer added, and the saved results with it:
 
 ```bash
 python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --remove
@@ -115,53 +157,60 @@ and their `.bak` copies under `WTF/Account/*/SavedVariables/` and
 those addons in every `WTF/Account/*/AddOns.txt` and
 `WTF/Account/*/*/*/AddOns.txt` (every other line stays byte for byte). Close
 the game first: a running client writes its saved variables and addon list
-again at logout or `/reload`. Add `--dry-run` to see the list first.
+again at logout or `/reload`. Add `--dry-run` to see the list first, and
+`--flavour-dir` for a Classic client.
 Both commands refuse when the `AddOns` folder does not exist, and neither
 follows a symbolic link out of the game folder.
 
-## Last full run
+## Result matrix
 
-Every package test addon ran on Retail 12.1.0 build 69933 (enUS, macOS)
-between 2026-09-24 and 2026-09-25; the table holds each package's latest run.
-No test failed or timed out. Each skip is one its `EXPECTED.md` announces: a
-capability that client does not have (the combat-log reader, for one) or a
-condition the session cannot create on its own. The defects earlier runs found
-were fixed in the packages, and their CHANGELOGs record each run and what it
-showed.
+[`RESULTS.md`](RESULTS.md) is the matrix of every package's latest recorded
+run, one column group per flavour (tests, passed, failed, skipped, timeout),
+with the build, interface, locale, operating system, date and installed
+commit of each row, every skipped test with its reason, every failure, and the
+gaps no run covers. It is generated from [`results.json`](results.json), the
+one source of truth, by a command that only reads the game folder:
 
-| Package | Tests | Passed | Failed | Skipped |
-|---|---:|---:|---:|---:|
-| `apiKit` | 23 | 23 | 0 | 0 |
-| `brokerKit` | 32 | 32 | 0 | 0 |
-| `cacheKit` | 38 | 38 | 0 | 0 |
-| `clientKit` | 41 | 40 | 0 | 1 |
-| `codecKit` | 32 | 32 | 0 | 0 |
-| `commandKit` | 36 | 33 | 0 | 3 |
-| `commKit` | 30 | 26 | 0 | 4 |
-| `compatKit` | 24 | 24 | 0 | 0 |
-| `eventKit` | 19 | 18 | 0 | 1 |
-| `hookKit` | 38 | 36 | 0 | 2 |
-| `interopKit` | 22 | 19 | 0 | 3 |
-| `lifecycleKit` | 28 | 25 | 0 | 3 |
-| `localeKit` | 32 | 29 | 0 | 3 |
-| `logKit` | 38 | 38 | 0 | 0 |
-| `mediaKit` | 34 | 32 | 0 | 2 |
-| `moduleKit` | 39 | 36 | 0 | 3 |
-| `optionsKit` | 29 | 29 | 0 | 0 |
-| `poolKit` | 36 | 36 | 0 | 0 |
-| `profileKit` | 42 | 40 | 0 | 2 |
-| `readinessKit` | 32 | 29 | 0 | 3 |
-| `registry` | 17 | 17 | 0 | 0 |
-| `schedulerKit` | 37 | 35 | 0 | 2 |
-| `schemaKit` | 34 | 34 | 0 | 0 |
-| `settingsKit` | 40 | 39 | 0 | 1 |
-| `signalKit` | 35 | 35 | 0 | 0 |
-| `timerKit` | 29 | 27 | 0 | 2 |
-| `widgetKit` | 41 | 41 | 0 | 0 |
-| **total** | **878** | **843** | **0** | **35** |
+```bash
+python3 -m tooling.client.report --wow-dir "/Applications/World of Warcraft"
+```
+
+It reads the harness's saved results from every flavour folder that exists
+(`--flavour-dir` limits it; `--saved-variables FILE` reads a file someone sent
+instead), attributes each run to the flavour the client reported, leaves out
+runs on a test build, and merges it: a run replaces the row of its flavour, package and mode unless the
+recorded row is newer, and every other row stays with its own date and commit.
+A session that ran four packages therefore updates four rows. `--dry-run`
+prints what would change; `--check` fails when the committed files differ
+from what the command would write, and writes nothing.
+
+A flavour no session can run for now is recorded with its reason, and the
+matrix shows it as `not run` with that reason rather than blank; the first
+run recorded for it clears the reason:
+
+```bash
+python3 -m tooling.client.report --unavailable "classic-era=no client session available; the owner has no active game time"
+python3 -m tooling.client.report --available classic-era
+```
+
+Classic Era and Mists Classic are recorded that way at the moment: the owner
+has no active game time, so those clients cannot log in, and every suite's
+`## Per flavour` expectations for them are derived from the code and the
+apiKit metadata, not yet measured.
+
+The first Retail rows were moved from the table this README used to hold (every
+package on Retail 12.1.0 build 69933, enUS, macOS, between 2026-09-24 and
+2026-09-25): they carry that interval as their date, no commit and no skip
+reasons, and the matrix says so until each package runs again.
+
+What the matrix never shows as covered: a skip (listed apart, with its
+reason), a flavour or package without a run, a combat suite without a
+`/mct run <package> combat`, anything only a Windows client shows (the owner's
+clients run on macOS), and group communication with a second character (none
+is available). Those are listed under its Gaps.
 
 Run again after any change to a package's runtime code, and compare with its
-`EXPECTED.md` rather than with this table.
+`EXPECTED.md` rather than with the matrix.
 
 ## The harness
 
@@ -169,6 +218,8 @@ Run again after any change to a package's runtime code, and compare with its
 |---|---|
 | `/mct run` | Runs the suites of every loaded test addon. |
 | `/mct run <package>` | Runs the suites of one package, for example `/mct run registry`. |
+| `/mct run <package> combat` | Waits up to 60 seconds for combat, then runs the package's combat suites (see "Combat runs"). |
+| `/mct run combat` | The same for every loaded package that has combat suites. |
 | `/mct list` | Lists the loaded packages and their suites. |
 | `/mct report` | Prints the saved totals and every test that did not pass. |
 | `/mct clear` | Empties the saved results. |
@@ -189,16 +240,23 @@ failure carries TestKit's message, which names the test file and line.
 ### Saved results
 
 `MoltenCodesTestResults` (the `## SavedVariables` of the harness) is keyed by
-package ID. A run replaces its package's entry:
+package ID; a combat run is keyed `<package>:combat`, so it never replaces the
+package's default run. A run replaces its own entry:
 
 ```lua
 MoltenCodesTestResults = {
   registry = {
-    schema = 1,
+    schema = 2,
     package = "registry",
+    mode = "default", -- or "combat"
+    installation = { -- from Expected.lua; absent fields are unknown
+      commit = "16878c910979...", dirty = false,
+      flavourDirectory = "_retail_", installedAt = "2026-09-26T08:00:00Z",
+    },
     client = {
       version = "12.1.0", build = "...", buildDate = "...", interface = 120100,
-      projectId = 1, locale = "enUS", date = "2026-09-24 18:00:00",
+      projectId = 1, flavour = "retail", testBuild = false, os = "macOS",
+      locale = "enUS", date = "2026-09-24 18:00:00",
       registryRevision = 13, expectedInstalled = true,
       packages = {
         { package = "apiKit", api = 1, revision = 2, status = "active",
@@ -212,10 +270,53 @@ MoltenCodesTestResults = {
 ```
 
 The client facts are taken when the run starts: `GetBuildInfo()`,
-`WOW_PROJECT_ID`, `GetLocale()`, `date()`, and every package Registry holds
-with the `REVISION` its facade publishes. `report` has the shape of
-`TestKit:Report()` (see the [TestKit API](../../packages/testKit/docs/API.md#testkitreport)),
-restricted to the package's suites, with each test's `logs`.
+`WOW_PROJECT_ID` and the apiKit flavour it stands for (`retail`,
+`classic-era`, `classic-mop`), `IsTestBuild()` as `testBuild`, the operating system when the client answers
+`IsMacClient`, `IsWindowsClient` or `IsLinuxClient` (Retail documents them;
+where none answers, `os` is absent), `GetLocale()`, `date()`, and every
+package Registry holds with the `REVISION` its facade publishes. `report` has
+the shape of `TestKit:Report()` (see the
+[TestKit API](../../packages/testKit/docs/API.md#testkitreport)), restricted to
+the package's suites, with each test's `logs`. Schema 1 entries, written before
+the installation and flavour facts, have no `mode`, `installation`,
+`client.flavour`, `client.testBuild` or `client.os`; the report command reads
+both.
+
+### Combat runs
+
+Some behaviour exists only in combat lockdown (a protected frame refusing a
+script hook, a deferred call waiting for combat to end). A test of it lives in
+a **combat suite**, registered with `Harness:Suite(..., { combat = true })`.
+The default run queues combat suites like any other, and their tests skip
+while the player is out of combat, so the default totals stay what
+`EXPECTED.md` states. To exercise them:
+
+1. Stand next to a training dummy, out of combat. Classic Era's cities have
+   no training dummies (they arrived with a later expansion): attack a
+   low-level creature there instead, and let it die or leave it so combat ends
+   when a suite waits for that.
+2. Type `/mct run <package> combat`. The harness calls the suites' `prepare`
+   functions (set-up the client allows only out of combat, such as creating a
+   secure button), then prints
+   `MoltenCodes Test: waiting up to 60 seconds for combat: attack a training dummy now. The combat suites of <package> start when combat begins.`
+3. Attack the dummy. At `PLAYER_REGEN_DISABLED` the harness queues only the
+   package's combat suites and prints
+   `MoltenCodes Test: running <package> (combat suites): <n> suites. Results follow when every test has finished.`
+   The client raises that event before it applies the lockdown; the tests run
+   in later frames, when `InCombatLockdown()` answers `true`. Stop attacking
+   when the package's `EXPECTED.md` says so (a suite that waits for combat to
+   end needs the dummy to drop combat).
+4. The totals line reads `MoltenCodes Test: <package>:combat: ...`; `/reload`
+   as after any run.
+
+Typed while already in combat, the command starts at once, without `prepare`.
+`Harness:IsCombatRun()` tells a running test which kind of run it is in.
+When combat does not start within 60 seconds the harness prints
+`MoltenCodes Test: combat did not start within 60 seconds; nothing was run or saved for <package>.`
+and records nothing, so a missed combat window never shows up as a result. Each
+affected `EXPECTED.md` has a `## Combat run` section with the exact lines.
+Tests that need a group or a second character have no such procedure: they
+stay skips, and the matrix lists them as a gap.
 
 ### Why nothing runs automatically
 
@@ -260,7 +361,7 @@ for example `MoltenCodesTest_EventKit` for `eventKit`. The installer finds it
 by that name.
 
 ```toc
-## Interface: 120100
+## Interface: 120100, 50504, 20506, 11509
 ## Title: MoltenCodes Test: EventKit
 ## Dependencies: MoltenCodesTest
 
@@ -279,11 +380,13 @@ end)
 ```
 
 `Harness:Suite(packageId, part, addonName, options)` registers a TestKit suite
-named `<packageId>.<part>` that waits for the test addon's `ready` phase;
-`options` is optional, and its one field, `timeoutSeconds`, lengthens
-TestKit's 10-second limit per test for a suite whose test waits for the player
-(the LifecycleKit training-dummy test waits up to 30 seconds for combat to
-end). `Harness:GetExpectedPackages()` returns what `Expected.lua` lists. Every test
+named `<packageId>.<part>` that waits for the test addon's `ready` phase.
+`options` is optional: `timeoutSeconds` lengthens TestKit's 10-second limit
+per test for a suite whose test waits for the player (the LifecycleKit
+training-dummy test waits up to 30 seconds for combat to end); `combat = true`
+makes a combat suite, and `prepare`, a function allowed only with it, runs out
+of combat before a combat run waits (see "Combat runs").
+`Harness:GetExpectedPackages()` returns what `Expected.lua` lists. Every test
 name says what it proves, every test is independent of the others, and a test
 cleans up what the API lets it clean up; the file header says what remains for
 the session. Test here only what the fake client cannot show (see
@@ -291,7 +394,30 @@ the session. Test here only what the fake client cannot show (see
 the package's Busted specs.
 
 Add an `EXPECTED.md` next to the `.toc`: the exact chat lines of a correct
-run, what counts as unexpected, and what to send back.
+run, what counts as unexpected, and what to send back, with a `## Per flavour`
+section giving the exact totals line on Retail, Classic Era and Mists Classic
+and every test that skips on one of them.
+
+### Writing for every flavour
+
+A test must be honest on each promised client. Where a client lacks a
+capability the package documents as optional, the test skips with a reason
+that names the missing capability (for example "the client has no
+ColorPickerFrame:SetupColorPickerAndShow; ..."), decided by probing the
+client, not by its flavour; check what each flavour documents in
+`packages/apiKit/metadata/<flavour>/` before deciding. Where the package
+itself would break on a flavour, the test stays real and fails there: that is
+a package defect to fix, never a skip. Two harness helpers support this:
+
+- `Harness:CanMakeSecrets()` answers whether `issecretvalue` reports what
+  `secretwrap` returns as secret, measured once. Classic Era and Mists Classic
+  document both functions, so their presence alone proves nothing; a test that
+  needs a secret skips with `Harness.NO_SECRETS_REASON` when it answers
+  `false`.
+- `Harness:GetFlavour()` answers `"retail"`, `"classic-era"` or
+  `"classic-mop"` from `WOW_PROJECT_ID`, for the rare expected value the
+  package documents per flavour (EventKit's combat-log reader, ClientKit's
+  `GetFlavor`).
 
 ### Skipping a test at run time
 

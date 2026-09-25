@@ -2,8 +2,13 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package codecKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package codecKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package codecKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. Run it out of combat. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 ## At login
 
@@ -118,6 +123,64 @@ With both missing, the totals line reads
 missing, `27 passed, 0 failed, 5 skipped` or `29 passed, 0 failed, 3 skipped`.
 On Retail 12.1 any `SKIP` is unexpected.
 
+## Per flavour
+
+CodecKit computes with Lua 5.1 alone, so most of the suite reads nothing from
+the client but `string`, `math`, `unpack`, `collectgarbage`, `debugprofilestop`
+and `GetTime`, which every client provides. What else it reads is documented
+for `retail`, `classic-era` and `classic-mop` alike in the committed apiKit
+metadata (`packages/apiKit/metadata/<flavour>/`): the six `C_EncodingUtil`
+functions the interoperability tests call (`CompressString` and
+`DecompressString`, the two Base64 functions, and the client's serialiser and
+its reader), `Enum.CompressionMethod` (`Deflate` 0) and
+`Enum.CompressionLevel` (`Default` 0, `OptimizeForSpeed` 1,
+`OptimizeForSize` 2) with the same values, `C_ChatInfo.SendAddonMessage`
+(looked up only), and `issecretvalue` and `secretwrap`. So no test is skipped
+by flavour, and nothing the suite reads at load is missing on a Classic
+client.
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: codecKit: 32 passed, 0 failed, 0 skipped, 0 timed out (32 tests)`,
+with no `SKIP` line.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line (9 suites) and every test line are the same as Retail's,
+in the same order; the facade test logs which `C_EncodingUtil` functions the
+Classic client has. Whether the five `codecKit.secrets` tests run depends on
+one answer only the running client gives: whether it has the global functions
+`issecretvalue` and `secretwrap` (both Classic flavours document them; the
+suite reads them at load).
+
+- With both functions, and secrets made with them, the totals line is
+  Retail's:
+  `MoltenCodes Test: codecKit: 32 passed, 0 failed, 0 skipped, 0 timed out (32 tests)`.
+- Without them, the five lines under
+  [On a client without secret values](#on-a-client-without-secret-values)
+  are `SKIP` and the totals line is
+  `MoltenCodes Test: codecKit: 27 passed, 0 failed, 5 skipped, 0 timed out (32 tests)`.
+
+A client that has both functions but makes no secret with them
+(`issecretvalue` does not report what `secretwrap` returns as secret;
+`Harness:CanMakeSecrets` measures this once at load) skips the same five
+tests with another reason, and the totals line is again
+`MoltenCodes Test: codecKit: 27 passed, 0 failed, 5 skipped, 0 timed out (32 tests)`:
+
+```text
+MoltenCodes Test: SKIP codecKit.secrets: Encode refuses a secretwrap value at the top, in an array, as a map value and three tables deep, each at the calling line, and leaves no pooled table leased -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP codecKit.secrets: EncodeMany and Serialize refuse a secret argument at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP codecKit.secrets: EncodeAsync refuses a secret deep in the value at the calling line, schedules no job and never calls back -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP codecKit.secrets: a secret string handed to Decode, DecodeMany, Deserialize, Decompress, DecodeForAddon and DecodeForPrint is refused at the calling line before anything reads it -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP codecKit.secrets: a secret options.level, a secret options.channel and a secret SetLimits maxDepth are refused at the calling line and the limits stay as they were -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+The same holds for the interoperability tests: both Classic
+flavours document `C_EncodingUtil`, so the three `SKIP` lines under
+[On a client without `C_EncodingUtil`](#on-a-client-without-c_encodingutil)
+are unexpected there too.
+
 ## What each test proves
 
 | Test | Proves in the real client |
@@ -155,7 +218,9 @@ On Retail 12.1 any `SKIP` is unexpected.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1, or a totals
-  line other than `32 passed, 0 failed, 0 skipped, 0 timed out (32 tests)`.
+  line other than `32 passed, 0 failed, 0 skipped, 0 timed out (32 tests)`
+  (on a Classic client, other than the two totals lines under
+  [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -186,7 +251,8 @@ On Retail 12.1 any `SKIP` is unexpected.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`,
+   where the flavour folder is `_retail_`, `_classic_era_` or `_classic_`.
    It holds the full report, each test's logs (whether `bit` exists, the
    `C_EncodingUtil` functions, every timing in milliseconds, the side-by-side
    sizes, the reason counts of the fuzz tests, the memory deltas, the client's

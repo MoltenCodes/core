@@ -47,6 +47,15 @@
 -- rendered. No key, click or mouse movement of the player is needed or
 -- intercepted.
 --
+-- The suites run unchanged on Retail, Classic Era and Mists of Pandaria
+-- Classic: every function, widget method and event they use that the Retail
+-- apiKit metadata documents is documented for both Classic flavours too; the
+-- core globals (CreateFrame, issecurevariable, geterrorhandler) and FrameXML
+-- (templates, font objects) are outside the metadata and present on all three.
+-- The one FrameXML facility docs/API.md calls optional,
+-- `ColorPickerFrame:SetupColorPickerAndShow`, is asked of the client by the
+-- `ColorPicker` test, which skips, naming it, when it is absent.
+--
 -- Run with `/mct run widgetKit`; tests/client/MoltenCodesTest_WidgetKit/EXPECTED.md
 -- lists what the chat frame should show.
 --
@@ -147,6 +156,11 @@ local RECT_TOLERANCE = 1
 --- tolerance absorbs a stray allocation by the client between two readings.
 local ALLOCATION_CYCLES = 500
 local ALLOCATION_TOLERANCE_KB = 1
+
+--- Why the `ColorPicker` test is skipped on a client whose colour picker
+--- lacks the optional facility docs/API.md names for `OpenPicker`.
+local COLOR_PICKER_SKIP_REASON =
+  "the client has no ColorPickerFrame:SetupColorPickerAndShow; the client picker path was not exercised"
 
 --- A sentence long enough to wrap at every width a test gives a Label.
 local LONG_TEXT = "WidgetKit lays its children out only when asked, so this sentence"
@@ -1497,7 +1511,14 @@ types:Test(
   "ColorPicker: white and opaque; SetColor fires nothing; OpenPicker opens the client's ColorPickerFrame with the colour, its swatch and cancel callbacks fire OnValueChanged, a disabled picker opens nothing, and a release disarms the callbacks of the previous use",
   function(ctx)
     local picker = readHost("ColorPickerFrame")
-    if type(picker) == "table" and picker:IsShown() then
+    -- docs/API.md lists `ColorPickerFrame` with `SetupColorPickerAndShow` as
+    -- an optional host facility: without it `OpenPicker` fires the current
+    -- colour and opens nothing, so the client picker path cannot be proven.
+    -- It is FrameXML, not in the apiKit metadata, so the client is asked.
+    if type(picker) ~= "table" or type(picker.SetupColorPickerAndShow) ~= "function" then
+      Harness:SkipTest(ctx, COLOR_PICKER_SKIP_REASON)
+    end
+    if picker:IsShown() then
       Harness:SkipTest(ctx, "the client's ColorPickerFrame is open; it was not touched")
     end
     local color = createPlaced(ctx, "ColorPicker")
@@ -2681,14 +2702,19 @@ local SECRETS_SKIP_REASON =
   "the client has no issecretvalue and secretwrap; the secret path was not exercised"
 
 ---Register `body` as a test when the client can make a secret value, and as a
----skipped test otherwise.
+---skipped test naming why otherwise: the client lacks `issecretvalue` and
+---`secretwrap`, or it has both (Classic Era and Mists Classic document them)
+---but `issecretvalue` does not report what `secretwrap` returns as secret,
+---which `Harness:CanMakeSecrets` measures once.
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
-    secrets:Test(name, body)
-  else
+  if not SECRETS_AVAILABLE then
     secrets:Skip(name, SECRETS_SKIP_REASON)
+  elseif not Harness:CanMakeSecrets() then
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
+  else
+    secrets:Test(name, body)
   end
 end
 

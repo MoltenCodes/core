@@ -108,6 +108,14 @@ local FLAVOR_BY_PROJECT_CONSTANT = {
 --- What an unmapped or absent project id answers.
 local FALLBACK_FLAVOR = "classic"
 
+--- The flavour docs/API.md ("Flavour") gives each client the framework
+--- promises, keyed by the apiKit flavour ID `Harness:GetFlavour()` answers.
+local FLAVOR_BY_HARNESS_FLAVOUR = {
+  retail = "mainline",
+  ["classic-era"] = "classic",
+  ["classic-mop"] = "mists",
+}
+
 --- The `.toc` values of this addon (MoltenCodesTest_ClientKit.toc) the tests
 --- read back. Keep them in step with that file.
 local TOC_TITLE = "MoltenCodes Test: ClientKit"
@@ -132,20 +140,22 @@ local UNEXPORTED_FIELDS = {
 --- Shape of a locale code, as ClientKit accepts one.
 local LOCALE_CODE_PATTERN = "^%l%l%u%u$"
 
---- Regrowth: a spell every Retail client knows, whether or not the player can cast it.
+--- Regrowth (rank 1 on Classic Era): a spell every Retail, Classic Era and Mists
+--- Classic client knows, whether or not the player can cast it.
 local KNOWN_SPELL_ID = 8936
 
 --- A spell ID no client defines.
 local UNKNOWN_SPELL_ID = 9999999
 
---- The Hearthstone: an item every Retail client knows.
+--- The Hearthstone: an item every Retail, Classic Era and Mists Classic client knows.
 local KNOWN_ITEM_ID = 6948
 
 --- How long the item test waits for a cold item cache to fill.
 local ITEM_WAIT_SECONDS = 5
 
 --- The item list docs/API.md names, with the Lua type each position must
---- have on Retail 12.x; `optional` allows `nil` too.
+--- have; `optional` allows `nil` too. The retail, classic-era and classic-mop
+--- metadata document the same eighteen returns for `C_Item.GetItemInfo`.
 local ITEM_FIELDS = {
   { name = "itemName", kind = "string" },
   { name = "itemLink", kind = "string" },
@@ -234,6 +244,11 @@ end
 local isSecretValue = readHost("issecretvalue")
 local secretWrap = readHost("secretwrap")
 local SECRETS_AVAILABLE = type(isSecretValue) == "function" and type(secretWrap) == "function"
+
+--- Whether the client also makes secrets with them: the Classic Era and Mists
+--- Classic clients document both functions, so only the harness's measurement
+--- (`issecretvalue(secretwrap(true))`) tells whether secrets are applied there.
+local SECRETS_MADE = SECRETS_AVAILABLE and Harness:CanMakeSecrets()
 
 -- Asking the client directly -------------------------------------------------------------
 
@@ -495,6 +510,15 @@ identity:Test(
     ctx:Expect(ClientKit:GetFlavor()):ToBe(expected)
     if projectId == 1 then
       ctx:Expect(ClientKit:GetFlavor()):ToBe("mainline")
+    end
+
+    -- The harness names the promised client from the same WOW_PROJECT_ID;
+    -- each has the flavour docs/API.md documents for it.
+    local harnessFlavour = Harness:GetFlavour()
+    ctx:Log("the harness names the client " .. tostring(harnessFlavour))
+    local documented = FLAVOR_BY_HARNESS_FLAVOUR[harnessFlavour or ""]
+    if type(documented) ~= "nil" then
+      ctx:Expect(ClientKit:GetFlavor()):ToBe(documented)
     end
   end
 )
@@ -1291,12 +1315,16 @@ local SECRETS_SKIP_REASON =
   "the client has no issecretvalue and secretwrap; the secret path was not exercised"
 
 ---Register `body` as a test when the client can make a secret value, and as a
----skipped test otherwise.
+---skipped test naming why otherwise: the functions are missing, or the client
+---has them but `issecretvalue` does not report what `secretwrap` returns as
+---secret (`Harness.NO_SECRETS_REASON`).
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
+  if SECRETS_MADE then
     secrets:Test(name, body)
+  elseif SECRETS_AVAILABLE then
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
   else
     secrets:Skip(name, SECRETS_SKIP_REASON)
   end

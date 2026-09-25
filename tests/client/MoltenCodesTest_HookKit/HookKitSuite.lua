@@ -7,7 +7,8 @@
 --
 --   * the installed facade and its committed revision;
 --   * `SecureHook` through the client's real `hooksecurefunc` on one harmless
---     Blizzard global, `IsLinuxClient` (see "The Blizzard global" below), and
+--     Blizzard global, `IsLinuxClient` on Retail and `IsDebugBuild` on the
+--     Classic clients (see "The Blizzard global" below), and
 --     that the client's own `issecurevariable` still reports that global
 --     secure after the hook and after `Unhook`, which leaves the client's
 --     wrapper in place because a secure hook cannot be removed, only silenced;
@@ -19,14 +20,18 @@
 --     handler while the call still returns;
 --   * `SecureHookScript`, `HookScript` and `RawHookScript` on hidden 1x1 test
 --     frames driven by `Show` and `Hide`; the client's own `Frame:HookScript`
---     answer (Retail documents a `success` boolean, which HookKit discards);
+--     answer (Retail documents a `success` boolean, the Classic clients no
+--     return value; HookKit discards it either way);
 --     what HookKit does when the client declines a `HookScript`; whether the
 --     client's `SetScript` drops `HookScript` post-hooks, which is why HookKit
 --     refuses a script pre-hook after a post-hook;
 --   * the secure-target check on a method a real frame inherits from the
 --     client's widget method table, the protected-frame refusals on a secure
 --     action button this file creates, and the `IsForbidden` and
---     `CanBeAccessedInContext` answers of a test frame;
+--     `CanBeAccessedInContext` answers of a test frame (the Classic clients
+--     have no `CanBeAccessedInContext`; only `IsForbidden` is asked there);
+--   * in a combat run (`/mct run hookKit combat`), the refusal of a forced
+--     script hook of that secure button during combat lockdown;
 --   * `Unhook`, `UnhookAll`, `Close` and `ForAddon`, and a scope's limit;
 --   * that a hooked call and the lookups allocate nothing, measured with the
 --     client's own garbage collector;
@@ -34,17 +39,21 @@
 --     `secretwrap`, pointing at this file as the client names it, and secret
 --     arguments passing through the hooks untouched.
 --
--- Run with `/mct run hookKit`; tests/client/MoltenCodesTest_HookKit/EXPECTED.md
--- lists what the chat frame should show.
+-- Run with `/mct run hookKit`, and the combat suite with `/mct run hookKit
+-- combat`; tests/client/MoltenCodesTest_HookKit/EXPECTED.md lists what the
+-- chat frame should show.
 --
--- The Blizzard global. The one Blizzard function this file post-hooks is
--- `IsLinuxClient`: a C function of the Build system
--- (packages/apiKit/metadata/retail/namespaces.json, BuildDocumentation.lua)
--- that takes no argument, answers one boolean, has no side effect, carries no
--- restriction flag, returns no secret, and has nothing to do with combat,
--- units, actions or protected frames. The Retail interface code has no reason
--- to call it on a Windows or macOS client, so the inert closure the hook leaves
--- behind is almost never even reached. It is hooked only with `SecureHook`,
+-- The Blizzard global. The one Blizzard function this file post-hooks is a C
+-- function of the Build system (BuildDocumentation.lua in
+-- packages/apiKit/metadata/<flavour>/namespaces.json) that takes no argument,
+-- answers one boolean, has no side effect, carries no restriction flag,
+-- returns no secret, and has nothing to do with combat, units, actions or
+-- protected frames: `IsLinuxClient` on Retail, which the Retail interface code
+-- has no reason to call on a Windows or macOS client, so the inert closure the
+-- hook leaves behind is almost never even reached. The Classic Era and Mists
+-- Classic metadata document no `IsLinuxClient`, so on those clients the same
+-- role goes to `IsDebugBuild`, which all three flavours document with the same
+-- shape (no argument, one boolean). It is hooked only with `SecureHook`,
 -- which goes through `hooksecurefunc` and keeps the global secure; the tests
 -- that ask HookKit for a non-secure hook of it expect a refusal, and run only
 -- while `issecurevariable` reports the global secure, which is exactly when
@@ -57,7 +66,7 @@
 -- suite's After hook, pass or fail, which silences every hook and writes back
 -- every original HookKit may restore. What the client keeps for the session,
 -- because a secure hook cannot be removed, is documented in EXPECTED.md: per
--- run, two inert closures in the `hooksecurefunc` chain of `IsLinuxClient`,
+-- run, two inert closures in the `hooksecurefunc` chain of that global,
 -- and inert or no-op closures in the `HookScript` chains of this file's own
 -- test frames. The test frames themselves (plain 1x1 frames at alpha 0, never
 -- visible, and one hidden secure action button) stay, because the client never
@@ -83,9 +92,20 @@ local REGISTRY_API = 2
 local HOOK_KIT_API = 1
 local PACKAGE_ID = "hookKit"
 
---- The one Blizzard global this file post-hooks; see "The Blizzard global" in
---- the header for why it is harmless.
-local BLIZZARD_GLOBAL = "IsLinuxClient"
+--- The one Blizzard global this file post-hooks on each apiKit flavour; see
+--- "The Blizzard global" in the header for why it is harmless. Only the Retail
+--- metadata documents `IsLinuxClient`; `IsDebugBuild` is documented on all
+--- three flavours with the same shape.
+local BLIZZARD_GLOBAL_BY_FLAVOUR = {
+  retail = "IsLinuxClient",
+  ["classic-era"] = "IsDebugBuild",
+  ["classic-mop"] = "IsDebugBuild",
+}
+
+--- The Blizzard global this run post-hooks: the running flavour's, or the
+--- Retail one on a client the harness does not recognise.
+local BLIZZARD_GLOBAL = BLIZZARD_GLOBAL_BY_FLAVOUR[Harness:GetFlavour() or "retail"]
+  or BLIZZARD_GLOBAL_BY_FLAVOUR.retail
 
 --- A global name no client defines, for the secret global-name refusal.
 local ABSENT_GLOBAL = "MoltenCodesTestHookKitNoSuchGlobal"
@@ -116,6 +136,14 @@ local HANDLER_KEPT_REASON =
 --- the end of combat.
 local IN_COMBAT_REASON =
   "the player is in combat; this test touches a Blizzard global or a protected frame only out of combat"
+
+--- Why the combat suite's test is skipped out of combat.
+local NOT_IN_COMBAT_REASON =
+  "the player is not in combat; type /mct run hookKit combat and attack a training dummy to run it"
+
+--- Why the combat suite's test is skipped when the secure button does not exist.
+local NO_SECURE_BUTTON_REASON =
+  "the secure button is created out of combat; type /mct run hookKit combat out of combat so its preparation creates it"
 
 --- Every facade method docs/API.md lists.
 local FACADE_METHODS = { "CreateScope", "ForAddon", "CloseAddonScopes" }
@@ -197,8 +225,12 @@ local hookSecureFunc = readHost("hooksecurefunc")
 local isSecureVariable = readHost("issecurevariable")
 local HOOK_API_AVAILABLE = type(hookSecureFunc) == "function"
   and type(isSecureVariable) == "function"
-  and type(readHost(BLIZZARD_GLOBAL)) == "function"
-local HOOK_API_SKIP_REASON = "the client has no hooksecurefunc, issecurevariable or "
+local HOOK_API_SKIP_REASON =
+  "the client has no hooksecurefunc or issecurevariable; the secure-hook path was not exercised"
+
+--- Whether the client has the Blizzard global the `secureGlobal` tests hook.
+local BLIZZARD_GLOBAL_AVAILABLE = type(readHost(BLIZZARD_GLOBAL)) == "function"
+local BLIZZARD_GLOBAL_SKIP_REASON = "the client has no "
   .. BLIZZARD_GLOBAL
   .. "; the secure-global path was not exercised"
 
@@ -304,9 +336,10 @@ end
 
 ---Register a suite of this package whose tests all end with every scope closed.
 ---@param part string
+---@param options MoltenCodesTest.SuiteOptions|nil
 ---@return TestKit.Suite
-local function newSuite(part)
-  local suite = Harness:Suite(PACKAGE_ID, part, addonName)
+local function newSuite(part, options)
+  local suite = Harness:Suite(PACKAGE_ID, part, addonName, options)
   suite:After(releaseEverything)
   return suite
 end
@@ -542,15 +575,19 @@ local secureGlobal = newSuite("secureGlobal")
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secureGlobalTest(name, body)
-  if HOOK_API_AVAILABLE then
-    secureGlobal:Test(name, body)
-  else
+  if not HOOK_API_AVAILABLE then
     secureGlobal:Skip(name, HOOK_API_SKIP_REASON)
+  elseif not BLIZZARD_GLOBAL_AVAILABLE then
+    secureGlobal:Skip(name, BLIZZARD_GLOBAL_SKIP_REASON)
+  else
+    secureGlobal:Test(name, body)
   end
 end
 
 secureGlobalTest(
-  "SecureHook of the Blizzard global IsLinuxClient runs the handler once per call with no argument, the caller gets the original answer, and issecurevariable still reports the global secure",
+  "SecureHook of the Blizzard global "
+    .. BLIZZARD_GLOBAL
+    .. " runs the handler once per call with no argument, the caller gets the original answer, and issecurevariable still reports the global secure",
   function(ctx)
     requireOutOfCombat(ctx)
     requireSecureBlizzardGlobal(ctx)
@@ -617,7 +654,9 @@ secureGlobalTest(
 )
 
 secureGlobalTest(
-  "Hook and RawHook of the secure Blizzard global IsLinuxClient are refused at the calling line, write nothing and leave the global secure",
+  "Hook and RawHook of the secure Blizzard global "
+    .. BLIZZARD_GLOBAL
+    .. " are refused at the calling line, write nothing and leave the global secure",
   function(ctx)
     requireOutOfCombat(ctx)
     requireSecureBlizzardGlobal(ctx)
@@ -763,28 +802,42 @@ scripts:Test(
   end
 )
 
-scripts:Test(
-  "the client's own Frame:HookScript answers true for OnShow on a test-owned frame (HookKit discards this answer; it is logged)",
-  function(ctx)
-    local frame = plainFrame("hookScriptAnswer")
-    local succeeded, answer = pcall(function()
-      return pack(frame:HookScript("OnShow", ignore))
-    end)
-    ctx:Log("HookScript raised: " .. tostring(not succeeded))
-    if not succeeded then
-      ctx:Fail("Frame:HookScript raised for OnShow: " .. tostring(answer))
-      return
-    end
-    ctx:Log(
-      ("HookScript returned %d value(s); the first is %s"):format(
-        answer.count,
-        type(answer.values[1]) .. " " .. tostring(answer.values[1])
-      )
+--- What the client documents `Frame:HookScript` to return, per apiKit flavour
+--- (SimpleScriptRegionAPIDocumentation in
+--- packages/apiKit/metadata/<flavour>/namespaces.json): Retail a `success`
+--- boolean, the Classic clients no value.
+local HOOK_SCRIPT_ANSWERS_SUCCESS = Harness:GetFlavour() ~= "classic-era"
+  and Harness:GetFlavour() ~= "classic-mop"
+
+--- The name of the `Frame:HookScript` answer test, which states the answer
+--- the running flavour documents.
+local HOOK_SCRIPT_ANSWER_TEST = HOOK_SCRIPT_ANSWERS_SUCCESS
+    and "the client's own Frame:HookScript answers true for OnShow on a test-owned frame (HookKit discards this answer; it is logged)"
+  or "the client's own Frame:HookScript answers no value for OnShow on a test-owned frame, as the Classic documentation says (HookKit discards any answer; it is logged)"
+
+scripts:Test(HOOK_SCRIPT_ANSWER_TEST, function(ctx)
+  local frame = plainFrame("hookScriptAnswer")
+  local succeeded, answer = pcall(function()
+    return pack(frame:HookScript("OnShow", ignore))
+  end)
+  ctx:Log("HookScript raised: " .. tostring(not succeeded))
+  if not succeeded then
+    ctx:Fail("Frame:HookScript raised for OnShow: " .. tostring(answer))
+    return
+  end
+  ctx:Log(
+    ("HookScript returned %d value(s); the first is %s"):format(
+      answer.count,
+      type(answer.values[1]) .. " " .. tostring(answer.values[1])
     )
+  )
+  if HOOK_SCRIPT_ANSWERS_SUCCESS then
     ctx:Expect(answer.count):ToBe(1)
     ctx:Expect(answer.values[1]):ToBe(true)
+  else
+    ctx:Expect(answer.count):ToBe(0)
   end
-)
+end)
 
 scripts:Test(
   "SecureHookScript of a script a plain Frame lacks records no hook when the client declines it (the client's own HookScript answer is logged)",
@@ -815,7 +868,9 @@ scripts:Test(
         .. (installed and "returned " or "raised: ")
         .. tostring(outcome)
     )
-    local clientAccepted = directSucceeded and direct.values[1] == true
+    -- Retail answers a success boolean; the Classic clients document no
+    -- answer, so there a call that did not raise accepted the script.
+    local clientAccepted = directSucceeded and direct.values[1] ~= false
     if clientAccepted then
       -- This client binds any script name; HookKit records what it installed.
       ctx:Expect(installed):ToBe(true)
@@ -1099,20 +1154,31 @@ access:Test(
   end
 )
 
-access:Test(
+-- hookKit.combat ----------------------------------------------------------------------------
+--
+-- A combat suite: `/mct run hookKit combat` creates the secure button out of
+-- combat (its `prepare`), waits for the player to attack a training dummy and
+-- runs the test in combat lockdown. A default run out of combat reports it as
+-- skipped. The test is passive: it attacks, casts and moves nothing.
+
+local combat = newSuite("combat", {
+  combat = true,
+  prepare = function()
+    protectedButton()
+  end,
+})
+
+combat:Test(
   "during combat lockdown a forced script hook of the test's secure button is refused at the calling line (passive: skipped out of combat)",
   function(ctx)
     local inCombatLockdown = readHost("InCombatLockdown")
     if type(inCombatLockdown) ~= "function" or not inCombatLockdown() then
-      Harness:SkipTest(ctx, "the player is not in combat; this passive test never starts combat")
+      Harness:SkipTest(ctx, NOT_IN_COMBAT_REASON)
       return
     end
     local button = protectedButton()
     if button == nil then
-      Harness:SkipTest(
-        ctx,
-        "the secure button is created out of combat by the test before; run once out of combat first"
-      )
+      Harness:SkipTest(ctx, NO_SECURE_BUTTON_REASON)
       return
     end
     local enterBefore = button:GetScript("OnEnter")
@@ -1503,14 +1569,19 @@ local SECRETS_SKIP_REASON =
   "the client has no issecretvalue and secretwrap; the secret path was not exercised"
 
 ---Register `body` as a test when the client can make a secret value, and as a
----skipped test naming why otherwise.
+---skipped test naming why otherwise: it lacks the two functions, or has them
+---but makes no secret (`Harness:CanMakeSecrets`).
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
-    secrets:Test(name, body)
-  else
+  if not SECRETS_AVAILABLE then
     secrets:Skip(name, SECRETS_SKIP_REASON)
+  elseif not Harness:CanMakeSecrets() then
+    -- The Classic clients document both functions too; whether the client
+    -- applies secrets is measured once by the harness.
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
+  else
+    secrets:Test(name, body)
   end
 end
 

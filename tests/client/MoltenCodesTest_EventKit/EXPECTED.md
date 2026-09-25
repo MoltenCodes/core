@@ -2,7 +2,9 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package eventKit`
-and nothing else from the MoltenCodes framework enabled in the client.
+for Retail, adding `--flavour-dir _classic_era_` for Classic Era or
+`--flavour-dir _classic_` for Mists of Pandaria Classic, and nothing else from
+the MoltenCodes framework enabled in the client.
 
 Run it standing idle, out of combat, solo, outside any instance (a capital
 city is ideal), with the character neither away (AFK) nor busy (DND). No test
@@ -107,7 +109,7 @@ reuse, because the client never frees a Frame.
 | `Derive recomputes after a CVar change ...` | The derived value follows the CVar within three seconds and `OnChange` reports the new and the previous value once. |
 | `Connect with an event name that is not a string ...` | The argument error names this file at the calling line. |
 | `ConnectUnit with three distinct unit tokens ...` | The two-slot refusal names this file at the calling line, with the documented message. |
-| `Connect to an event name the client does not know ...` | `MOLTENCODES_TEST_NO_SUCH_EVENT` is refused on two attempts in a row, so EventKit kept nothing from the first, and a real event still connects afterwards. Where the client has `C_EventUtils.IsEventValid` (Retail 12.1 does), each refusal is EventKit's own, `EventKit:Connect eventName "MOLTENCODES_TEST_NO_SUCH_EVENT" is not an event this client knows`, naming `EventKitSuite.lua` at the calling line; without the function it is the client's `RegisterEvent` refusal, which names no caller line. The log holds what `IsEventValid` answers and each message. |
+| `Connect to an event name the client does not know ...` | `MOLTENCODES_TEST_NO_SUCH_EVENT` is refused on two attempts in a row, so EventKit kept nothing from the first, and a real event still connects afterwards. Where the client has `C_EventUtils.IsEventValid` (Retail 12.1 does, and the Classic Era and Mists Classic metadata document it), each refusal is EventKit's own, `EventKit:Connect eventName "MOLTENCODES_TEST_NO_SUCH_EVENT" is not an event this client knows`, naming `EventKitSuite.lua` at the calling line; without the function it is the client's `RegisterEvent` refusal, which names no caller line. The log holds what `IsEventValid` answers and each message. |
 | `ConnectCombatLog does what docs/API.md documents ...` | See below. |
 
 ### The combat-log facts
@@ -135,13 +137,55 @@ outcome matches the documented contract for the facts it found:
 - **A reader**: `IsCombatLogAvailable()` answers `true`, and each call either connects (and disconnects cleanly) or raises
   the client's refusal of the registration; either way nothing stays registered.
 
+The test also logs the flavour the harness names. On Classic Era and Mists
+Classic (`classic-era`, `classic-mop`) it additionally requires the reader
+path: EventKit's docs/API.md ("Cost") says those clients document
+`C_CombatLog.GetCurrentEventInfo`, which EventKit reads when the global is
+absent, so finding no reader there fails the test.
+
 The log is the answer to the open question of which reader Retail 12.1 gives
 addon code, so send it back whatever the result.
+
+## Per flavour
+
+Every client capability the suites use is documented for all three clients in
+`packages/apiKit/metadata/<flavour>/`: `C_CVar.GetCVar` and `C_CVar.SetCVar`,
+`RequestTimePlayed`, `UnitIsDND`, `UnitIsAFK`, `C_ChatInfo.SendChatMessage`,
+`C_EventUtils.IsEventValid`, `C_CombatLog.IsCombatLogRestricted`,
+`C_CombatLogInternal.GetCurrentEventInfo`, `Frame:IsEventRegistered` (the same
+`isRegistered, units` returns), and the events `CVAR_UPDATE` (`eventName,
+value`), `TIME_PLAYED_MSG` (two numbers), `PLAYER_FLAGS_CHANGED` (a unit
+token) and `COMBAT_LOG_EVENT_UNFILTERED`, with the same payloads. The core
+globals `CreateFrame`, `GetFramesRegisteredForEvent`, `securecallfunction`,
+`seterrorhandler` and `geterrorhandler` are not in that documentation and are
+taken to be present on all three; the isolation test passes on either of
+EventKit's documented paths (`securecallfunction` or `xpcall`), and a client
+without `GetFramesRegisteredForEvent` would print the two registration tests
+as SKIP with the reason above. The `chatBubbles` CVar is taken to exist on
+every client; if it did not, the CVar tests would fail with
+"C_CVar.GetCVar is missing or does not know the CVar chatBubbles".
+
+The one difference is the combat log: the Classic clients document
+`C_CombatLog.GetCurrentEventInfo`, so the `combatLog` test there takes the
+"a reader" path described above instead of Retail's "no reader" path. Its
+chat line is the same `PASS`.
+
+| Client | Totals line | SKIP lines |
+|---|---|---|
+| Retail (`_retail_`) | `MoltenCodes Test: eventKit: 18 passed, 0 failed, 1 skipped, 0 timed out (19 tests)` | the allocation line above |
+| Classic Era (`_classic_era_`) | `MoltenCodes Test: eventKit: 18 passed, 0 failed, 1 skipped, 0 timed out (19 tests)` | same as Retail |
+| Mists of Pandaria Classic (`_classic_`) | `MoltenCodes Test: eventKit: 18 passed, 0 failed, 1 skipped, 0 timed out (19 tests)` | same as Retail |
+
+No EventKit test needs combat, a group, a second character or another addon,
+so the package has no combat suites. The combat-log reader on the Classic
+clients is connected and disconnected, but no combat-log event is awaited:
+that would need combat nearby.
 
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, any `SKIP` other than the allocation one, or a
-  totals line other than `18 passed, 0 failed, 1 skipped, 0 timed out (19 tests)`.
+  totals line other than `18 passed, 0 failed, 1 skipped, 0 timed out (19 tests)`,
+  on any of the three clients.
 - No login line, or `Expected.lua is missing`: the harness or the installer did
   not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`, `MoltenCodesTest`
@@ -170,7 +214,8 @@ addon code, so send it back whatever the result.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs and any blocked-action warning.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`,
+   where the flavour folder is `_retail_`, `_classic_era_` or `_classic_`.
    It holds the full report, each test's logs (the combat-log facts, the
    CVAR_UPDATE payload and whether it arrived during `SetCVar`, the time-played
    payload, `IsEventRegistered`'s answer, the client's messages with their

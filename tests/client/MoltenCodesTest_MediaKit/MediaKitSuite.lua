@@ -1672,14 +1672,19 @@ local SECRETS_SKIP_REASON =
   "the client has no issecretvalue and secretwrap; the secret path was not exercised"
 
 ---Register `body` as a test when the client can make a secret value, and as a
----skipped test naming why otherwise.
+---skipped test naming why otherwise: the client lacks the two functions, or it
+---has them but `issecretvalue` does not report what `secretwrap` returns as
+---secret (`Harness:CanMakeSecrets`, measured once; Classic Era and Mists
+---Classic document both functions, so their presence alone proves nothing).
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
-    secrets:Test(name, body)
-  else
+  if not SECRETS_AVAILABLE then
     secrets:Skip(name, SECRETS_SKIP_REASON)
+  elseif not Harness:CanMakeSecrets() then
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
+  else
+    secrets:Test(name, body)
   end
 end
 

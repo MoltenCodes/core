@@ -125,7 +125,7 @@ if type(SchemaKit) == "nil" then
 end
 local S = SchemaKit
 
---- The Frame the host-value tests read. Every Retail client has it.
+--- The Frame the host-value tests read. Retail, Classic Era and Mists Classic all have it.
 local uiParent = readHost("UIParent")
 if type(uiParent) ~= "table" then
   error(addonName .. " requires the client's UIParent", 0)
@@ -643,9 +643,12 @@ hostValues:Test(
     ctx:Expect(ok):ToBe(true)
     ctx:Expect(BuildInfo:Assert(facts, "build facts")):ToBe(facts)
 
-    local OldInterface = SchemaKit:Seal(S.number({ integer = true, max = 99999 }))
-    ok, failure = OldInterface:Check(interface)
-    expectFailure(ctx, ok, failure, "", "max", "integer <= 99999", "larger number")
+    -- Every promised client's interface number has five digits or more
+    -- (Classic Era 11509, Mists Classic 50504, Retail 120100), so a
+    -- four-digit ceiling fails on each of them.
+    local FourDigitInterface = SchemaKit:Seal(S.number({ integer = true, max = 9999 }))
+    ok, failure = FourDigitInterface:Check(interface)
+    expectFailure(ctx, ok, failure, "", "max", "integer <= 9999", "larger number")
     local shown = tostring(interface)
     if type(failure) == "table" then
       for _, field in ipairs({ "path", "rule", "expected", "found" }) do
@@ -1019,10 +1022,14 @@ local SECRETS_SKIP_REASON =
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
-    secrets:Test(name, body)
-  else
+  if not SECRETS_AVAILABLE then
     secrets:Skip(name, SECRETS_SKIP_REASON)
+  elseif not Harness:CanMakeSecrets() then
+    -- Classic Era and Mists Classic document both functions, but only the
+    -- running client shows whether `secretwrap` makes a genuine secret.
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
+  else
+    secrets:Test(name, body)
   end
 end
 

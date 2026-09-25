@@ -112,6 +112,11 @@ local isSecretValue = readHost("issecretvalue")
 local secretWrap = readHost("secretwrap")
 local SECRETS_AVAILABLE = type(isSecretValue) == "function" and type(secretWrap) == "function"
 
+--- Whether the client also makes secrets with them: the Classic Era and Mists
+--- Classic clients document both functions, so only the harness's measurement
+--- (`issecretvalue(secretwrap(true))`) tells whether secrets are applied there.
+local SECRETS_MADE = SECRETS_AVAILABLE and Harness:CanMakeSecrets()
+
 -- Validators are created once, at load, so a later run in the same session
 -- re-declares their topics with the same policy, which SignalKit accepts.
 
@@ -1047,12 +1052,16 @@ local SECRETS_SKIP_REASON =
   "the client has no issecretvalue and secretwrap; the secret path was not exercised"
 
 ---Register `body` as a test when the client can make a secret value, and as a
----skipped test naming why otherwise.
+---skipped test naming why otherwise: the functions are missing, or the client
+---has them but `issecretvalue` does not report what `secretwrap` returns as
+---secret (`Harness.NO_SECRETS_REASON`).
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
+  if SECRETS_MADE then
     secrets:Test(name, body)
+  elseif SECRETS_AVAILABLE then
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
   else
     secrets:Skip(name, SECRETS_SKIP_REASON)
   end

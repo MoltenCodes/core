@@ -2,8 +2,15 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package settingsKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat, on one character for the whole procedure.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package settingsKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package settingsKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. Run it out of combat, on one character for the whole
+procedure. The lines below are Retail's; [Per flavour](#per-flavour) gives
+the two Classic clients. The `WTF` paths below are inside the flavour folder
+(`_retail_`, `_classic_era_` or `_classic_`).
 
 This addon declares two real saved variables in its `.toc`:
 
@@ -242,6 +249,71 @@ The 6 `settingsKit.secrets` tests need the client's `issecretvalue` and
 client has no issecretvalue and secretwrap; the secret path was not
 exercised`, and the totals read 31 and 33 passed with 9 and 7 skipped.
 
+## Per flavour
+
+The suite reads only what all three promised clients have: `UnitName`,
+`GetRealmName`, `UnitClass` and `UnitFactionGroup` (documented by the apiKit
+metadata for `retail`, `classic-era` and `classic-mop`), the `PLAYER_LOGOUT`
+event EventKit connects the compaction to (in `events.json` of all three),
+`## SavedVariables` and `## SavedVariablesPerCharacter`, and the core global
+`date`. The metadata of all three flavours also documents `issecretvalue` and
+`secretwrap`. No test depends on the flavour itself.
+
+### Retail (12.1)
+
+The lines above: run 1 ends with
+`MoltenCodes Test: settingsKit: 37 passed, 0 failed, 3 skipped, 0 timed out (40 tests)`
+and run 2 with
+`MoltenCodes Test: settingsKit: 39 passed, 0 failed, 1 skipped, 0 timed out (40 tests)`,
+with the persistence and cleanup skips listed there and no other.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line, every test line and the persistence and cleanup skips
+of both runs are the same as Retail's, in the same order; the scope test logs
+the Classic realm, class file and faction (a Mists Classic character of a race
+that has not yet chosen a side logs the faction `Neutral`, which is keyed like
+any other). Whether the six `settingsKit.secrets` tests run depends on answers only the
+running client gives, measured when the suite loads: whether it has the
+global functions `issecretvalue` and `secretwrap` (both Classic flavours
+document them), and whether it actually makes secrets, which
+`Harness:CanMakeSecrets()` measures once as
+`issecretvalue(secretwrap(true)) == true`.
+
+- The client makes secrets: the totals lines are Retail's,
+  run 1 `MoltenCodes Test: settingsKit: 37 passed, 0 failed, 3 skipped, 0 timed out (40 tests)`,
+  run 2 `MoltenCodes Test: settingsKit: 39 passed, 0 failed, 1 skipped, 0 timed out (40 tests)`.
+- The client has both functions but makes no secrets: in both runs the six
+  tests print these lines in place of their `PASS` lines, and the totals
+  lines are
+  run 1 `MoltenCodes Test: settingsKit: 31 passed, 0 failed, 9 skipped, 0 timed out (40 tests)`,
+  run 2 `MoltenCodes Test: settingsKit: 33 passed, 0 failed, 7 skipped, 0 timed out (40 tests)`:
+
+```text
+MoltenCodes Test: SKIP settingsKit.secrets: a secret string and a secret number stored in the raw saved table behind profile.label and profile.frame.x read back through the views still secret, of their types, without raising -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP settingsKit.secrets: Compact walks a profile holding a secret without raising and leaves the secret in place -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP settingsKit.secrets: writing a secret value, or a table holding one, through a view raises at the writing line with 'refused a secret value' and the raw saved table is unchanged -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP settingsKit.secrets: Validate refuses a secret key on the path with 'refused a secret key' and stores nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP settingsKit.secrets: a secret key never reads or stores: db.profile[secret], db.profile.auras[secret], db[secret] and db.profile[secret] = 1 each raise at this file's line, and the raw profile gains no key -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP settingsKit.secrets: OnChange and Validate refuse a secret scope, Open a secret version and SetLimits a secret value, each at the calling line before comparing it, and the limits stay as they were -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+- The client lacks either function: the same six tests print these lines
+  instead, with the same totals lines as the case before:
+
+```text
+MoltenCodes Test: SKIP settingsKit.secrets: a secret string and a secret number stored in the raw saved table behind profile.label and profile.frame.x read back through the views still secret, of their types, without raising -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+MoltenCodes Test: SKIP settingsKit.secrets: Compact walks a profile holding a secret without raising and leaves the secret in place -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+MoltenCodes Test: SKIP settingsKit.secrets: writing a secret value, or a table holding one, through a view raises at the writing line with 'refused a secret value' and the raw saved table is unchanged -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+MoltenCodes Test: SKIP settingsKit.secrets: Validate refuses a secret key on the path with 'refused a secret key' and stores nothing -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+MoltenCodes Test: SKIP settingsKit.secrets: a secret key never reads or stores: db.profile[secret], db.profile.auras[secret], db[secret] and db.profile[secret] = 1 each raise at this file's line, and the raw profile gains no key -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+MoltenCodes Test: SKIP settingsKit.secrets: OnChange and Validate refuse a secret scope, Open a secret version and SetLimits a secret value, each at the calling line before comparing it, and the limits stay as they were -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+```
+
+Running again in the same session after the cleanup test reads
+`11 passed, 0 failed, 29 skipped, 0 timed out (40 tests)` on every flavour
+and in every case, since the six secrets tests skip there either way.
+
 ## What each test proves
 
 | Test | Proves in the real client |
@@ -289,8 +361,9 @@ exercised`, and the totals read 31 and 33 passed with 9 and 7 skipped.
 
 ## What counts as unexpected
 
-- Any `FAIL` or `TIMEOUT` line, a totals line other than the ones above, or a
-  `SKIP` other than the listed ones.
+- Any `FAIL` or `TIMEOUT` line, a totals line other than the ones above (on
+  a Classic client, those under [Per flavour](#per-flavour)), or a `SKIP`
+  other than the listed ones.
 - Run 2 printing `run again after /reload: no marker from an earlier session
   yet ...` for the step-two tests: the client did not write or restore
   `MoltenCodesTest_SettingsKitDB`. Check that the `.toc` was installed with its

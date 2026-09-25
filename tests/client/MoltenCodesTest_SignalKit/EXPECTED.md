@@ -2,8 +2,9 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package signalKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat.
+for Retail, adding `--flavour-dir _classic_era_` for Classic Era or
+`--flavour-dir _classic_` for Mists of Pandaria Classic, and nothing else from
+the MoltenCodes framework enabled in the client. Run it out of combat.
 
 ## At login
 
@@ -86,6 +87,51 @@ MoltenCodes Test: SKIP signalKit.secrets: a journal records a secret argument an
 MoltenCodes Test: SKIP signalKit.secrets: a validator that answers with a secret instead of true refuses the publish -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
+## Per flavour
+
+SignalKit requires nothing but Lua 5.1 (docs/EMBEDDING.md, "What the framework
+promises"). The client facilities the suites touch are `securecallfunction`,
+`seterrorhandler` and `geterrorhandler` (core globals the API documentation
+does not list; the isolation tests take the `xpcall` path, which SignalKit
+documents, when `securecallfunction` is absent, and pass either way),
+`collectgarbage`, and `issecretvalue` and `secretwrap`, which the retail,
+classic-era and classic-mop metadata all document. Nothing at load reads a
+namespace that may be absent.
+
+| Client | Totals line | SKIP lines |
+|---|---|---|
+| Retail (`_retail_`) | `MoltenCodes Test: signalKit: 35 passed, 0 failed, 0 skipped, 0 timed out (35 tests)` | none |
+| Classic Era (`_classic_era_`) | secrets made: `MoltenCodes Test: signalKit: 35 passed, 0 failed, 0 skipped, 0 timed out (35 tests)`; no secrets made: `MoltenCodes Test: signalKit: 31 passed, 0 failed, 4 skipped, 0 timed out (35 tests)` | none, or the four secrets lines below |
+| Mists of Pandaria Classic (`_classic_`) | secrets made: `MoltenCodes Test: signalKit: 35 passed, 0 failed, 0 skipped, 0 timed out (35 tests)`; no secrets made: `MoltenCodes Test: signalKit: 31 passed, 0 failed, 4 skipped, 0 timed out (35 tests)` | none, or the four secrets lines below |
+
+The metadata cannot say whether secret values are active on the Classic
+clients: they document `issecretvalue` and `secretwrap`, but only the running
+client can tell whether `issecretvalue` reports what `secretwrap` returns as
+secret. The harness measures that once (`Harness:CanMakeSecrets()`, which asks
+`issecretvalue(secretwrap(true))`) when this file loads, and the four
+`signalKit.secrets` tests are registered as skipped when the answer is no:
+
+- **The client makes secrets** (as Retail 12.1 does): every line is the same
+  as on Retail, and the totals line is
+  `MoltenCodes Test: signalKit: 35 passed, 0 failed, 0 skipped, 0 timed out (35 tests)`.
+- **The client has both functions but makes no secrets**: the four secrets
+  lines read as below, and the totals line is
+  `MoltenCodes Test: signalKit: 31 passed, 0 failed, 4 skipped, 0 timed out (35 tests)`.
+
+```text
+MoltenCodes Test: SKIP signalKit.secrets: a secret value published on a counted bus topic reaches the subscriber still secret -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP signalKit.secrets: a secret topic name is refused at the calling line before SignalKit compares it -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP signalKit.secrets: a journal records a secret argument and History hands it back still secret -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP signalKit.secrets: a validator that answers with a secret instead of true refuses the publish -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+A client with neither function (contrary to the metadata) prints the four
+SKIP lines under "On a client without secret values" above instead, with the
+same totals line, `31 passed, 0 failed, 4 skipped, 0 timed out (35 tests)`.
+
+No SignalKit test needs combat, a group, a second character or another addon,
+so the package has no combat suites.
+
 ## What each test proves
 
 | Test | Proves in the real client |
@@ -129,7 +175,9 @@ MoltenCodes Test: SKIP signalKit.secrets: a validator that answers with a secret
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1, or a totals line
-  other than `35 passed, 0 failed, 0 skipped, 0 timed out (35 tests)`.
+  other than `35 passed, 0 failed, 0 skipped, 0 timed out (35 tests)`; on the
+  Classic clients, anything other than the outcomes listed under "Per
+  flavour".
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -147,14 +195,16 @@ MoltenCodes Test: SKIP signalKit.secrets: a validator that answers with a secret
   addon embeds a different SignalKit copy.
 - A `signalKit.secrets` test failing with "secretwrap raised" or "secretwrap
   returned a value issecretvalue does not report as secret": the client's
-  secret functions behave differently from their documentation.
+  secret functions behave differently from their documentation (the harness
+  found that they make secrets, yet one call did not).
 
 ## What to send back
 
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`,
+   where the flavour folder is `_retail_`, `_classic_era_` or `_classic_`.
    It holds the full report, each test's logs (the client's own error
    messages with their paths, the three measured memory deltas, whether
    `securecallfunction` was present, the message the error handler received)

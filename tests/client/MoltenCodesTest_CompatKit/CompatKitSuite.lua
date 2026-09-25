@@ -102,6 +102,20 @@ local DEFAULT_LIMITS = { maxShims = 64, maxProviders = 32, maxProviderKinds = 32
 --- Every ClientKit flavour docs/API.md of ClientKit names ("Flavour").
 local CLIENT_KIT_FLAVOURS = { "mainline", "mists", "tbc", "classic" }
 
+---One row of ClientKit's documented `WOW_PROJECT_ID` mapping.
+---@class MoltenCodesTest.CompatKit.ProjectRow
+---@field constant string the client's name for the project number
+---@field flavour string what `ClientKit:GetFlavor()` answers for it
+
+--- ClientKit's `WOW_PROJECT_ID` mapping, by value (docs/API.md of ClientKit,
+--- "Flavour"), for the three clients the framework promises.
+---@type table<integer, MoltenCodesTest.CompatKit.ProjectRow>
+local PROJECT_FLAVOURS = {
+  [1] = { constant = "WOW_PROJECT_MAINLINE", flavour = "mainline" },
+  [2] = { constant = "WOW_PROJECT_CLASSIC", flavour = "classic" },
+  [19] = { constant = "WOW_PROJECT_MISTS_CLASSIC", flavour = "mists" },
+}
+
 --- Where ApiKit keeps the `api` table of each of its flavour ids under
 --- `MoltenCodes.wow` (packages/apiKit/src/ApiKit.lua, `FLAVORS`).
 local API_KIT_FLAVOUR_PATHS = {
@@ -127,38 +141,106 @@ local CATALOGUE_SUBSYSTEMS = {
   "CompactUnitFrame hooks that write frame fields",
 }
 
---- The names the `hasApi` test asks about, with what the committed Retail
---- metadata (packages/apiKit/metadata/retail/namespaces.json) says: `true`
---- when it documents the function, so the Retail flavour file binds it.
+--- The names the `hasApi` test asks about, with what the committed metadata
+--- says: `documented` is `true` when packages/apiKit/metadata/retail/namespaces.json
+--- documents the function, so the Retail flavour file binds it, and
+--- `documentedOnClassic` the same for the classic-era and classic-mop files,
+--- which agree on every name here.
 local HAS_API_CASES = {
-  { name = "C_Timer.NewTicker", documented = true, why = "documented; a FrameXML function" },
-  { name = "C_Timer.After", documented = true, why = "documented; a host function" },
-  { name = "GetMouseFoci", documented = true, why = "a documented global" },
-  { name = "C_AddOns.GetAddOnMetadata", documented = true, why = "catalogue row 5" },
-  { name = "C_TooltipInfo.GetUnit", documented = true, why = "catalogue row 4" },
-  { name = "C_SettingsUtil.OpenSettingsPanel", documented = true, why = "catalogue row 7" },
-  { name = "C_UnitAuras.GetAuraDataByIndex", documented = true, why = "catalogue row 9" },
+  {
+    name = "C_Timer.NewTicker",
+    documented = true,
+    documentedOnClassic = true,
+    why = "documented; a FrameXML function",
+  },
+  {
+    name = "C_Timer.After",
+    documented = true,
+    documentedOnClassic = true,
+    why = "documented; a host function",
+  },
+  {
+    name = "GetMouseFoci",
+    documented = true,
+    documentedOnClassic = true,
+    why = "a documented global",
+  },
+  {
+    name = "C_AddOns.GetAddOnMetadata",
+    documented = true,
+    documentedOnClassic = true,
+    why = "catalogue row 5",
+  },
+  {
+    name = "C_TooltipInfo.GetUnit",
+    documented = true,
+    documentedOnClassic = false,
+    why = "catalogue row 4; the Classic metadata documents C_TooltipInfo without GetUnit",
+  },
+  {
+    name = "C_SettingsUtil.OpenSettingsPanel",
+    documented = true,
+    documentedOnClassic = true,
+    why = "catalogue row 7",
+  },
+  {
+    name = "C_UnitAuras.GetAuraDataByIndex",
+    documented = true,
+    documentedOnClassic = true,
+    why = "catalogue row 9",
+  },
   {
     name = "GetAddOnMetadata",
     documented = false,
-    why = "catalogue row 5's legacy global, absent from the Retail metadata",
+    documentedOnClassic = false,
+    why = "catalogue row 5's legacy global, absent from the metadata",
   },
   {
     name = "InterfaceOptionsFrame_OpenToCategory",
     documented = false,
+    documentedOnClassic = false,
     why = "catalogue row 7's removed function",
   },
-  { name = "hooksecurefunc", documented = false, why = "on the host, not in the metadata" },
-  { name = "C_Timer.MoltenCodesNoSuchFunction", documented = false, why = "on no client" },
+  {
+    name = "hooksecurefunc",
+    documented = false,
+    documentedOnClassic = false,
+    why = "on the host, not in the metadata",
+  },
+  {
+    name = "C_Timer.MoltenCodesNoSuchFunction",
+    documented = false,
+    documentedOnClassic = false,
+    why = "on no client",
+  },
 }
 
---- The `covers` of the `hasApi` shim: two documented names, then the legacy
---- global and an undocumented host function, which Apply must record missing.
+--- The `covers` of the `hasApi` shim: two names documented on Retail, then the
+--- legacy global and an undocumented host function, which Apply must record
+--- missing. The Classic metadata does not document `C_TooltipInfo.GetUnit`
+--- either, so there Apply records three names missing.
 local HAS_API_COVERS = {
   "C_Timer.NewTicker",
   "GetAddOnMetadata",
   "C_TooltipInfo.GetUnit",
   "hooksecurefunc",
+}
+
+--- What `covers` records missing, per apiKit flavour, in `covers` order.
+local HAS_API_MISSING = {
+  retail = { "GetAddOnMetadata", "hooksecurefunc" },
+  ["classic-era"] = { "GetAddOnMetadata", "C_TooltipInfo.GetUnit", "hooksecurefunc" },
+  ["classic-mop"] = { "GetAddOnMetadata", "C_TooltipInfo.GetUnit", "hooksecurefunc" },
+}
+
+--- The apiKit flavours whose metadata documents each catalogue
+--- `replacementApi` (docs/EMBEDDING.md, "Catalogue of taint-hostile
+--- subsystems", last column), in the sorted order CompatKit keeps.
+local REPLACEMENT_FLAVOURS = {
+  ["C_TooltipInfo.GetUnit"] = { "beta", "ptr", "retail" },
+  ["C_AddOns.GetAddOnMetadata"] = { "beta", "classic-era", "classic-mop", "ptr", "retail" },
+  ["C_SettingsUtil.OpenSettingsPanel"] = { "beta", "classic-era", "classic-mop", "ptr", "retail" },
+  ["C_UnitAuras.GetAuraDataByIndex"] = { "beta", "classic-era", "classic-mop", "ptr", "retail" },
 }
 
 --- The paths the `hasGlobal` test asks about. `expected` is what raw reads of
@@ -344,6 +426,25 @@ local function apiKitFlavour()
   end
   return flavour
 end
+
+--- The row of `PROJECT_FLAVOURS` for the running client's `WOW_PROJECT_ID`, or
+--- `nil` on a client the framework does not promise.
+---@type MoltenCodesTest.CompatKit.ProjectRow|nil
+local runningProject = nil
+do
+  local projectId = readHost("WOW_PROJECT_ID")
+  if type(projectId) == "number" then
+    runningProject = PROJECT_FLAVOURS[projectId]
+  end
+end
+
+--- The project row the test names are written for: the running one, or
+--- Retail's on a client the framework does not promise.
+local NAMED_PROJECT = runningProject or PROJECT_FLAVOURS[1]
+
+--- Whether the running ApiKit flavour is one of the two Classic flavours,
+--- whose metadata the `hasApi` and catalogue tests hold their own names to.
+local ON_CLASSIC_METADATA = apiKitFlavour() == "classic-era" or apiKitFlavour() == "classic-mop"
 
 ---Every function the running flavour's ApiKit `api` table binds, keyed by the
 ---function, and how many there are: this file's own walk, independent of
@@ -752,7 +853,10 @@ facade:Test("the installed CompatKit carries the revision of the committed manif
 end)
 
 facade:Test(
-  "the bundle's ClientKit and ApiKit are found through Registry:Find: ClientKit answers 'mainline' on WOW_PROJECT_MAINLINE, and ApiKit's flavour file for the running client is installed (flavour, metadata build and binding count logged)",
+  ("the bundle's ClientKit and ApiKit are found through Registry:Find: ClientKit answers '%s' on %s, and ApiKit's flavour file for the running client is installed (flavour, metadata build and binding count logged)"):format(
+    NAMED_PROJECT.flavour,
+    NAMED_PROJECT.constant
+  ),
   function(ctx)
     if not requireOptionalKits(ctx) then
       return
@@ -768,8 +872,9 @@ facade:Test(
       )
     )
     ctx:Expect(type(flavour)):ToBe("string")
-    if type(projectId) == "number" and projectId == mainlineId then
-      ctx:Expect(flavour):ToBe("mainline")
+    -- ClientKit maps WOW_PROJECT_ID by value (docs/API.md of ClientKit).
+    if type(runningProject) ~= "nil" then
+      ctx:Expect(flavour):ToBe(runningProject.flavour)
     end
 
     local apiFlavour = apiKitFlavour()
@@ -794,7 +899,9 @@ facade:Test(
 local shimsSuite = newSuite("shims")
 
 shimsSuite:Test(
-  "Apply runs a shim for the running ClientKit flavour and one without flavours once each, filters one for every other flavour, and hands every shim context.flavour 'mainline'",
+  ("Apply runs a shim for the running ClientKit flavour and one without flavours once each, filters one for every other flavour, and hands every shim context.flavour '%s'"):format(
+    NAMED_PROJECT.flavour
+  ),
   function(ctx)
     if not requireOptionalKits(ctx) then
       return
@@ -828,9 +935,8 @@ shimsSuite:Test(
     )
     ctx:Expect(runs):ToEqual({ current = 1, other = 0, every = 1 })
     ctx:Expect(seenFlavours):ToEqual({ current, current })
-    local projectId = readHost("WOW_PROJECT_ID")
-    if type(projectId) == "number" and projectId == readHost("WOW_PROJECT_MAINLINE") then
-      ctx:Expect(seenFlavours[1]):ToBe("mainline")
+    if type(runningProject) ~= "nil" then
+      ctx:Expect(seenFlavours[1]):ToBe(runningProject.flavour)
     end
 
     local currentRow = findShim(prefix .. "a-current") or {}
@@ -929,98 +1035,104 @@ shimsSuite:Test(
 
 local contextSuite = newSuite("context")
 
-contextSuite:Test(
-  "context.hasApi answers by identity with the installed ApiKit surface: C_Timer.NewTicker and the catalogue's replacements true, the legacy GetAddOnMetadata global and undocumented hooksecurefunc false, and covers records those two missing",
-  function(ctx)
-    if not requireOptionalKits(ctx) then
-      return
-    end
-    local answers = {}
-    local name = nextShimPrefix() .. "hasApi"
-    registerShim(ctx, name, 1, function(context)
-      for _, case in ipairs(HAS_API_CASES) do
-        answers[case.name] = context.hasApi(case.name)
-      end
-    end, { description = "no-op; asks hasApi", covers = HAS_API_COVERS })
-    applyAccounted(ctx)
+--- The name of the `hasApi` test, which states what the running flavour's
+--- metadata documents.
+local HAS_API_TEST = ON_CLASSIC_METADATA
+    and "context.hasApi answers by identity with the installed ApiKit surface: C_Timer.NewTicker and the three catalogue replacements Classic documents true, C_TooltipInfo.GetUnit, the legacy GetAddOnMetadata global and undocumented hooksecurefunc false, and covers records those three missing"
+  or "context.hasApi answers by identity with the installed ApiKit surface: C_Timer.NewTicker and the catalogue's replacements true, the legacy GetAddOnMetadata global and undocumented hooksecurefunc false, and covers records those two missing"
 
-    local bound = installedBindings()
-    local flavour = apiKitFlavour()
-    ---Whether this file's own walk finds the host function `apiName` bound.
-    ---@param apiName string
-    ---@return boolean
-    local function boundByFlavourFile(apiName)
-      local hostFunction = readHostPath(apiName)
-      return type(hostFunction) == "function" and bound[hostFunction] == true
-    end
-
+contextSuite:Test(HAS_API_TEST, function(ctx)
+  if not requireOptionalKits(ctx) then
+    return
+  end
+  local answers = {}
+  local name = nextShimPrefix() .. "hasApi"
+  registerShim(ctx, name, 1, function(context)
     for _, case in ipairs(HAS_API_CASES) do
-      local expectedByIdentity = boundByFlavourFile(case.name)
-      ctx:Log(
-        ("%s: hasApi %s; host %s; bound by the %s flavour file %s; Retail metadata documents it %s (%s)"):format(
-          case.name,
-          describe(answers[case.name]),
-          describeHost(case.name),
-          describe(flavour),
-          tostring(expectedByIdentity),
-          tostring(case.documented),
-          case.why
-        )
-      )
-      ctx:Expect(answers[case.name]):ToBe(expectedByIdentity)
-      if flavour == "retail" then
-        ctx:Expect(answers[case.name]):ToBe(case.documented)
-      end
+      answers[case.name] = context.hasApi(case.name)
     end
+  end, { description = "no-op; asks hasApi", covers = HAS_API_COVERS })
+  applyAccounted(ctx)
 
-    -- The legacy global could be answered `true` by identity only if the
-    -- client aliased it to the documented C_AddOns function; log whether it is.
-    local legacy = readHost("GetAddOnMetadata")
-    local addOns = readHost("C_AddOns")
-    local modern = type(addOns) == "table" and rawget(addOns, "GetAddOnMetadata") or nil
+  local bound = installedBindings()
+  local flavour = apiKitFlavour()
+  ---Whether this file's own walk finds the host function `apiName` bound.
+  ---@param apiName string
+  ---@return boolean
+  local function boundByFlavourFile(apiName)
+    local hostFunction = readHostPath(apiName)
+    return type(hostFunction) == "function" and bound[hostFunction] == true
+  end
+
+  for _, case in ipairs(HAS_API_CASES) do
+    local expectedByIdentity = boundByFlavourFile(case.name)
     ctx:Log(
-      ("legacy GetAddOnMetadata global: %s; the same function as C_AddOns.GetAddOnMetadata: %s"):format(
-        describeHost("GetAddOnMetadata"),
-        tostring(type(legacy) == "function" and rawequal(legacy, modern))
+      ("%s: hasApi %s; host %s; bound by the %s flavour file %s; documented on Retail %s, on Classic %s (%s)"):format(
+        case.name,
+        describe(answers[case.name]),
+        describeHost(case.name),
+        describe(flavour),
+        tostring(expectedByIdentity),
+        tostring(case.documented),
+        tostring(case.documentedOnClassic),
+        case.why
       )
     )
-
-    -- The direct identity the answer rests on, read without CompatKit.
-    local timerNamespace = readHost("C_Timer")
-    local hostTicker = type(timerNamespace) == "table" and rawget(timerNamespace, "NewTicker")
-      or nil
-    local wowRoot = rawget(namespace, "wow")
-    local retailApi = type(wowRoot) == "table"
-        and type(rawget(wowRoot, "retail")) == "table"
-        and rawget(rawget(wowRoot, "retail"), "api")
-      or nil
-    local timerBindings = type(retailApi) == "table" and rawget(retailApi, "timer") or nil
-    local boundTicker = type(timerBindings) == "table" and rawget(timerBindings, "newTicker") or nil
-    ctx:Log(
-      ("MoltenCodes.wow.retail.api.timer.newTicker is C_Timer.NewTicker: %s"):format(
-        tostring(type(hostTicker) == "function" and rawequal(boundTicker, hostTicker))
-      )
-    )
+    ctx:Expect(answers[case.name]):ToBe(expectedByIdentity)
     if flavour == "retail" then
-      ctx:Expect(rawequal(boundTicker, hostTicker)):ToBe(true)
-    end
-
-    local expectedMissing = {}
-    for _, apiName in ipairs(HAS_API_COVERS) do
-      if not boundByFlavourFile(apiName) then
-        expectedMissing[#expectedMissing + 1] = apiName
-      end
-    end
-    local row = findShim(name) or {}
-    ctx:Log("missing: " .. table.concat(type(row.missing) == "table" and row.missing or {}, ", "))
-    ctx:Expect(row.status):ToBe("applied")
-    ctx:Expect(row.covers):ToEqual(HAS_API_COVERS)
-    ctx:Expect(row.missing):ToEqual(expectedMissing)
-    if flavour == "retail" then
-      ctx:Expect(row.missing):ToEqual({ "GetAddOnMetadata", "hooksecurefunc" })
+      ctx:Expect(answers[case.name]):ToBe(case.documented)
+    elseif ON_CLASSIC_METADATA then
+      ctx:Expect(answers[case.name]):ToBe(case.documentedOnClassic)
     end
   end
-)
+
+  -- The legacy global could be answered `true` by identity only if the
+  -- client aliased it to the documented C_AddOns function; log whether it is.
+  local legacy = readHost("GetAddOnMetadata")
+  local addOns = readHost("C_AddOns")
+  local modern = type(addOns) == "table" and rawget(addOns, "GetAddOnMetadata") or nil
+  ctx:Log(
+    ("legacy GetAddOnMetadata global: %s; the same function as C_AddOns.GetAddOnMetadata: %s"):format(
+      describeHost("GetAddOnMetadata"),
+      tostring(type(legacy) == "function" and rawequal(legacy, modern))
+    )
+  )
+
+  -- The direct identity the answer rests on, read without CompatKit.
+  local timerNamespace = readHost("C_Timer")
+  local hostTicker = type(timerNamespace) == "table" and rawget(timerNamespace, "NewTicker") or nil
+  local wowRoot = rawget(namespace, "wow")
+  local retailApi = type(wowRoot) == "table"
+      and type(rawget(wowRoot, "retail")) == "table"
+      and rawget(rawget(wowRoot, "retail"), "api")
+    or nil
+  local timerBindings = type(retailApi) == "table" and rawget(retailApi, "timer") or nil
+  local boundTicker = type(timerBindings) == "table" and rawget(timerBindings, "newTicker") or nil
+  ctx:Log(
+    ("MoltenCodes.wow.retail.api.timer.newTicker is C_Timer.NewTicker: %s"):format(
+      tostring(type(hostTicker) == "function" and rawequal(boundTicker, hostTicker))
+    )
+  )
+  if flavour == "retail" then
+    ctx:Expect(rawequal(boundTicker, hostTicker)):ToBe(true)
+  end
+
+  local expectedMissing = {}
+  for _, apiName in ipairs(HAS_API_COVERS) do
+    if not boundByFlavourFile(apiName) then
+      expectedMissing[#expectedMissing + 1] = apiName
+    end
+  end
+  local row = findShim(name) or {}
+  ctx:Log("missing: " .. table.concat(type(row.missing) == "table" and row.missing or {}, ", "))
+  ctx:Expect(row.status):ToBe("applied")
+  ctx:Expect(row.covers):ToEqual(HAS_API_COVERS)
+  ctx:Expect(row.missing):ToEqual(expectedMissing)
+  local documentedMissing = HAS_API_MISSING[flavour or ""]
+  if type(documentedMissing) ~= "nil" then
+    ctx:Expect(row.missing):ToEqual(documentedMissing)
+  end
+end)
 
 contextSuite:Test(
   "context.hasGlobal answers what raw reads of the client's global table answer: UIParent and C_Timer.NewTicker present, UIParent.GetName absent (a metatable method), a path through a number absent; Menu, MenuUtil and Settings.OpenToCategory logged",
@@ -1059,51 +1171,73 @@ contextSuite:Test(
 
 local catalogueSuite = newSuite("catalogue")
 
-catalogueSuite:Test(
-  "CATALOGUE holds docs/EMBEDDING.md's nine rows in order, and every replacementApi (C_TooltipInfo.GetUnit, C_AddOns.GetAddOnMetadata, C_SettingsUtil.OpenSettingsPanel, C_UnitAuras.GetAuraDataByIndex) is a function of this client with the running ApiKit flavour in its flavours (each logged)",
-  function(ctx)
-    local catalogue = CompatKit.CATALOGUE
-    local flavour = apiKitFlavour()
-    ctx:Expect(CompatKit.CATALOGUE_COUNT):ToBe(#CATALOGUE_SUBSYSTEMS)
-    local replacementCount = 0
-    for index = 1, CompatKit.CATALOGUE_COUNT do
-      local row = catalogue[index]
-      ctx:Expect(row.subsystem):ToBe(CATALOGUE_SUBSYSTEMS[index])
-      ctx:Expect(type(row.reason)):ToBe("string")
-      ctx:Expect(type(row.replacement)):ToBe("string")
+--- The name of the first catalogue test, which states which replacements the
+--- running flavour's metadata documents.
+local CATALOGUE_TEST = ON_CLASSIC_METADATA
+    and "CATALOGUE holds docs/EMBEDDING.md's nine rows in order; every replacementApi whose flavours list the running ApiKit flavour (C_AddOns.GetAddOnMetadata, C_SettingsUtil.OpenSettingsPanel, C_UnitAuras.GetAuraDataByIndex) is a function of this client, and C_TooltipInfo.GetUnit's leave it out (each logged)"
+  or "CATALOGUE holds docs/EMBEDDING.md's nine rows in order, and every replacementApi (C_TooltipInfo.GetUnit, C_AddOns.GetAddOnMetadata, C_SettingsUtil.OpenSettingsPanel, C_UnitAuras.GetAuraDataByIndex) is a function of this client with the running ApiKit flavour in its flavours (each logged)"
 
-      local flavours = {}
-      local listsRunningFlavour = false
-      for position = 1, row.flavourCount do
-        flavours[position] = row.flavours[position]
-        if row.flavours[position] == flavour then
-          listsRunningFlavour = true
-        end
-      end
-      local api = row.replacementApi
-      if api == false then
-        ctx:Log(
-          ("row %d %s: FrameXML or own frames, no documented API"):format(index, row.subsystem)
-        )
-        ctx:Expect(row.flavourCount):ToBe(0)
-      else
-        replacementCount = replacementCount + 1
-        ctx:Log(
-          ("row %d %s: %s is %s on this client; flavours %s"):format(
-            index,
-            row.subsystem,
-            api,
-            describeHost(api),
-            table.concat(flavours, ", ")
-          )
-        )
-        ctx:Expect(type(readHostPath(api))):ToBe("function")
-        ctx:Expect(listsRunningFlavour):ToBe(true)
+---Whether `list` holds `value`.
+---@param list string[]
+---@param value any
+---@return boolean
+local function listHolds(list, value)
+  for _, entry in ipairs(list) do
+    if entry == value then
+      return true
+    end
+  end
+  return false
+end
+
+catalogueSuite:Test(CATALOGUE_TEST, function(ctx)
+  local catalogue = CompatKit.CATALOGUE
+  local flavour = apiKitFlavour()
+  ctx:Expect(CompatKit.CATALOGUE_COUNT):ToBe(#CATALOGUE_SUBSYSTEMS)
+  local replacementCount = 0
+  for index = 1, CompatKit.CATALOGUE_COUNT do
+    local row = catalogue[index]
+    ctx:Expect(row.subsystem):ToBe(CATALOGUE_SUBSYSTEMS[index])
+    ctx:Expect(type(row.reason)):ToBe("string")
+    ctx:Expect(type(row.replacement)):ToBe("string")
+
+    local flavours = {}
+    local listsRunningFlavour = false
+    for position = 1, row.flavourCount do
+      flavours[position] = row.flavours[position]
+      if row.flavours[position] == flavour then
+        listsRunningFlavour = true
       end
     end
-    ctx:Expect(replacementCount):ToBe(4)
+    local api = row.replacementApi
+    if api == false then
+      ctx:Log(("row %d %s: FrameXML or own frames, no documented API"):format(index, row.subsystem))
+      ctx:Expect(row.flavourCount):ToBe(0)
+    else
+      replacementCount = replacementCount + 1
+      ctx:Log(
+        ("row %d %s: %s is %s on this client; flavours %s"):format(
+          index,
+          row.subsystem,
+          api,
+          describeHost(api),
+          table.concat(flavours, ", ")
+        )
+      )
+      -- docs/EMBEDDING.md names the flavours whose metadata documents the
+      -- replacement; only on those must the client have it. Elsewhere what
+      -- the client holds is only logged.
+      local documentedFlavours = REPLACEMENT_FLAVOURS[api] or {}
+      local documentedHere = listHolds(documentedFlavours, flavour)
+      ctx:Expect(flavours):ToEqual(documentedFlavours)
+      ctx:Expect(listsRunningFlavour):ToBe(documentedHere)
+      if documentedHere then
+        ctx:Expect(type(readHostPath(api))):ToBe("function")
+      end
+    end
   end
-)
+  ctx:Expect(replacementCount):ToBe(4)
+end)
 
 catalogueSuite:Test(
   "the FrameXML replacements the catalogue names (Menu, MenuUtil, Settings.OpenToCategory, TooltipDataProcessor.AddTooltipPostCall, UISpecialFrames) and the legacy subsystems it warns about are logged as this client has them",
@@ -1517,14 +1651,19 @@ local SECRETS_SKIP_REASON =
   "the client has no issecretvalue and secretwrap; the secret path was not exercised"
 
 ---Register `body` as a test when the client can make a secret value, and as a
----skipped test naming why otherwise.
+---skipped test naming why otherwise: it lacks the two functions, or has them
+---but makes no secret (`Harness:CanMakeSecrets`).
 ---@param name string
 ---@param body fun(ctx: TestKit.Context)
 local function secretTest(name, body)
-  if SECRETS_AVAILABLE then
-    secrets:Test(name, body)
-  else
+  if not SECRETS_AVAILABLE then
     secrets:Skip(name, SECRETS_SKIP_REASON)
+  elseif not Harness:CanMakeSecrets() then
+    -- The Classic clients document both functions too; whether the client
+    -- applies secrets is measured once by the harness.
+    secrets:Skip(name, Harness.NO_SECRETS_REASON)
+  else
+    secrets:Test(name, body)
   end
 end
 

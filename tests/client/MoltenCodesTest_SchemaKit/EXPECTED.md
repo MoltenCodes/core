@@ -2,8 +2,13 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package schemaKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package schemaKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package schemaKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. Run it out of combat. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 ## At login
 
@@ -110,8 +115,58 @@ MoltenCodes Test: SKIP schemaKit.secrets: a Check of a secret at the root alloca
 The three tests that read `C_Spell.GetSpellInfo` end as skipped with `the
 client has no C_Spell.GetSpellInfo`, or with `C_Spell.GetSpellInfo(6603)
 answered no plain table` when the answer is missing or secret; the
-`GetBuildInfo` test ends as skipped with `the client has no GetBuildInfo`. Retail 12.1 has both, so a `SKIP` there is
-unexpected.
+`GetBuildInfo` test ends as skipped with `the client has no GetBuildInfo`.
+All three promised clients have both (see [Per flavour](#per-flavour)), so
+such a `SKIP` is unexpected on each of them.
+
+## Per flavour
+
+Every test reads only what all three promised clients have: Lua 5.1's
+`string.find` and `string.format`, `collectgarbage`, `UIParent` and its
+userdata handle, and `GetBuildInfo`, which every client provides as a core
+global although the committed Classic metadata does not list it. The apiKit
+metadata documents `C_Spell.GetSpellInfo` (with the same seven `SpellInfo`
+fields), `issecretvalue` and `secretwrap` for `retail`, `classic-era` and
+`classic-mop` alike.
+
+### Retail (12.1)
+
+The lines above: `MoltenCodes Test: schemaKit: 34 passed, 0 failed, 0 skipped, 0 timed out (34 tests)`,
+with no `SKIP` line.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line and every test line are the same as Retail's, in the same
+order; the build test logs the Classic version, build and interface (for
+example `1.15.9` and `11509`, or `5.5.4` and `50504`). Whether the nine `schemaKit.secrets` tests run depends on answers only the
+running client gives, measured when the suite loads: whether it has the
+global functions `issecretvalue` and `secretwrap` (both Classic flavours
+document them), and whether it actually makes secrets, which
+`Harness:CanMakeSecrets()` measures once as
+`issecretvalue(secretwrap(true)) == true`.
+
+- The client makes secrets: the totals line is Retail's,
+  `MoltenCodes Test: schemaKit: 34 passed, 0 failed, 0 skipped, 0 timed out (34 tests)`.
+- The client has both functions but makes no secrets: the nine tests print
+  these lines, and the totals line is
+  `MoltenCodes Test: schemaKit: 25 passed, 0 failed, 9 skipped, 0 timed out (34 tests)`:
+
+```text
+MoltenCodes Test: SKIP schemaKit.secrets: the client raises when a secret number meets a number in < or == or is used as a key, and answers type and a comparison with nil: the hazards SchemaKit must refuse before -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP schemaKit.secrets: a secret number checked against number schemas with min, max and integer fails with rule secret and found secret value, and no client compare error escapes -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP schemaKit.secrets: a secret string, boolean and number are refused with rule secret by string with a pattern, bounds or a oneOf list, enum, boolean, any, oneOf and optional, each without raising -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP schemaKit.secrets: a custom check is never called with a secret, and the failure names rule secret -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP schemaKit.secrets: a secret inside a table, an array and a map is refused at stats.health, [2] and byUnit.player without raising -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP schemaKit.secrets: Assert with a secret raises at the calling line in SchemaKitSuite.lua with 'health: expected number, found secret value', a plain string without the secret's text -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP schemaKit.secrets: Apply of a secret in a declared field fails with rule secret, while a secret in an undeclared field of an open table is kept, still secret, in the copy -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP schemaKit.secrets: SetLimits refuses a secret maxDepth and a secret defaultArrayMax at the calling line with the messages any invalid value gets, and the limits stay as they were -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP schemaKit.secrets: a Check of a secret at the root allocates nothing over 5000 cycles -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+- The client lacks either function: the nine lines listed under
+  [On a client without secret values](#on-a-client-without-secret-values)
+  are `SKIP`, with the same totals line
+  `MoltenCodes Test: schemaKit: 25 passed, 0 failed, 9 skipped, 0 timed out (34 tests)`.
 
 ## What each test proves
 
@@ -125,7 +180,7 @@ unexpected.
 | `a pattern of 32 captures ...` | The client's matcher has Lua 5.1's limit of 32 captures: a 32-capture pattern checks without raising, the client refuses 33 with `too many captures`, and SchemaKit refuses that pattern at the calling line. |
 | `number bounds in failures are printed by the client's %.14g ...` | Each bound phrase (`number >= 0.1`, `number <= 1e+15`, `number <= 9.007199254741e+15`, `number >= -0.5`, `number <= 0.33333333333333`, `integer <= 100`) is exactly what the client's `string.format` prints, with rule `min` or `max` and found `smaller number` or `larger number`. |
 | `string bounds count the bytes of the client's UTF-8 text ...` | `Épée` (four characters, six bytes) fails `max = 4` as `string of length 6` and passes `min = 5`; the client's `0/0` is found as `NaN`, `math.huge` under `integer` as `infinite number`, and an enum phrase doubles `|` so no chat escape survives. |
-| `GetBuildInfo's version, build, date and interface ...` | The first four answers of the real `GetBuildInfo()` match a schema of their shapes (`^%d+%.%d+%.%d+$`, digits, a date, an integer interface) through `Check` and `Assert`; a bound the interface fails is reported as `max`, `integer <= 99999`, `larger number`, and no failure field contains the interface number. The log gives the answers. |
+| `GetBuildInfo's version, build, date and interface ...` | The first four answers of the real `GetBuildInfo()` match a schema of their shapes (`^%d+%.%d+%.%d+$`, digits, a date, an integer interface) through `Check` and `Assert`; a bound the interface fails is reported as `max`, `integer <= 9999` (every promised client's interface number has five digits or more), `larger number`, and no failure field contains the interface number. The log gives the answers. |
 | `C_Spell.GetSpellInfo(6603) matches an open spell info schema ...` | The client's spell info table passes an open schema of its documented fields, and a closed schema naming only `name` and `spellID` refuses one of the client's other fields with rule `unknown`, the path being that field's name. The log gives the table's field names and the field refused. |
 | `Apply copies C_Spell.GetSpellInfo(6603) ...` | `Apply` returns a new table with the declared default filled in, every field the client put there kept, and the client's table unchanged. |
 | `a table schema reads UIParent with rawget ...` | A Frame's `GetName` comes from its metatable, so a field schema that reads with `rawget` finds it missing (`required`, `any value`, `nil`); an open table schema and `any` accept the Frame. |
@@ -155,7 +210,9 @@ unexpected.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1, or a totals
-  line other than `34 passed, 0 failed, 0 skipped, 0 timed out (34 tests)`.
+  line other than `34 passed, 0 failed, 0 skipped, 0 timed out (34 tests)`
+  (on a Classic client, other than the two totals lines under
+  [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -187,7 +244,8 @@ unexpected.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`,
+   where the flavour folder is `_retail_`, `_classic_era_` or `_classic_`.
    It holds the full report, each test's logs (the session's limits, the
    client's answer to every pattern and subject, the client's own matcher
    messages, the `GetBuildInfo` answers, the spell info field names, the five

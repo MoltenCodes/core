@@ -10,13 +10,18 @@
 --   * publishes `MoltenCodesTest`, the small API a package test addon
 --     (`MoltenCodesTest_<Facade>`) registers its TestKit suites through, keyed
 --     by the package they test;
---   * answers `/mct` (`run [package]`, `list`, `report`, `clear`, `help`);
+--   * answers `/mct` (`run [package] [combat]`, `list`, `report`, `clear`,
+--     `help`);
 --   * prints one line per test and one totals line per package to the default
 --     chat frame when a run finishes;
 --   * writes each package's full TestKit report, with the facts of the client it
---     ran on, into the saved variable `MoltenCodesTestResults`, keyed by package
---     ID, so it can be read from `WTF/Account/<ACCOUNT>/SavedVariables/` after a
---     `/reload` or a logout.
+--     ran on and the commit the installer installed, into the saved variable
+--     `MoltenCodesTestResults`, keyed by package ID, so it can be read from
+--     `WTF/Account/<ACCOUNT>/SavedVariables/` after a `/reload` or a logout, and
+--     turned into the result matrix by `python3 -m tooling.client.report`;
+--   * runs the combat suites of a package on request (`/mct run <package>
+--     combat`): it waits a bounded time for the player to enter combat, for
+--     example by attacking a training dummy, then runs only those suites.
 --
 -- Nothing runs on its own. The only thing that happens at login is one chat
 -- line naming the packages whose suites are loaded and how to run them: a run
@@ -29,13 +34,15 @@
 -- `python3 -m tooling.client.install`, then this file.
 
 -- WoW passes every addon file its folder name and the addon's private table.
--- Expected.lua, loaded just before this file, leaves the installed packages in
--- that table.
+-- Expected.lua, loaded just before this file, leaves the installed packages
+-- and the facts of the installation (commit, flavour folder) in that table.
 local ADDON_NAME, private = ...
 
 local REGISTRY_API = 2
 local TEST_KIT_API = 1
 local LIFECYCLE_KIT_API = 1
+local EVENT_KIT_API = 1
+local TIMER_KIT_API = 1
 
 --- The global the harness publishes for package test addons.
 local PUBLIC_NAME = "MoltenCodesTest"
@@ -47,8 +54,48 @@ local SAVED_VARIABLES_NAME = "MoltenCodesTestResults"
 local SLASH_KEY = "MOLTENCODESTEST"
 local SLASH_COMMAND = "/mct"
 
---- Layout version of one package entry in `MoltenCodesTestResults`.
-local RESULTS_SCHEMA = 1
+--- Layout version of one package entry in `MoltenCodesTestResults`. Schema 2
+--- added `mode`, `installation`, `client.flavour`, `client.os` and
+--- `client.testBuild`; readers accept schema 1 entries, which have none of them.
+local RESULTS_SCHEMA = 2
+
+--- The two kinds of run. A default run queues every suite of a package; a
+--- combat run queues only the suites registered with `combat = true`, once the
+--- player is in combat.
+local DEFAULT_MODE = "default"
+local COMBAT_MODE = "combat"
+
+--- The key of a combat run's entry in `MoltenCodesTestResults` is the package
+--- ID followed by this suffix, so a combat run never replaces the package's
+--- default run.
+local COMBAT_RESULTS_SUFFIX = ":combat"
+
+--- Seconds `/mct run <package> combat` waits for the player to enter combat
+--- before it gives up and runs nothing.
+local COMBAT_WAIT_SECONDS = 60
+
+--- The apiKit flavour ID (tooling/api/flavours.json) of each `WOW_PROJECT_ID`
+--- the framework promises to run on. Another client (the Burning Crusade
+--- Classic Anniversary one, say) has no flavour here; its runs are still saved
+--- with their `projectId`.
+local FLAVOURS_BY_PROJECT_ID = {
+  [1] = "retail",
+  [2] = "classic-era",
+  [19] = "classic-mop",
+}
+
+--- The operating-system probes some clients publish, in the order they are
+--- asked, with the name the saved results record. Retail documents all three;
+--- a client without them leaves `client.os` absent.
+local OS_PROBES = {
+  { functionName = "IsMacClient", name = "macOS" },
+  { functionName = "IsWindowsClient", name = "Windows" },
+  { functionName = "IsLinuxClient", name = "Linux" },
+}
+
+--- The installation facts Expected.lua may carry and the harness copies into
+--- every saved entry; any other field is ignored.
+local INSTALLATION_FIELDS = { "commit", "dirty", "flavourDirectory", "installedAt" }
 
 --- Printed before every chat line, so harness output is easy to find.
 local CHAT_PREFIX = "|cff33ccffMoltenCodes Test|r: "
@@ -61,8 +108,8 @@ local IDENTIFIER_PATTERN = "^[a-z][A-Za-z0-9]*$"
 --- this marker as skipped, with the text after the marker as the reason.
 local RUNTIME_SKIP_MARKER = "[MoltenCodesTest: skipped at run time] "
 
---- The suite options `Harness:Suite` accepts and forwards to TestKit.
-local SUITE_OPTION_NAMES = { timeoutSeconds = true }
+--- The suite options `Harness:Suite` accepts.
+local SUITE_OPTION_NAMES = { timeoutSeconds = true, combat = true, prepare = true }
 
 --- How each TestKit status is printed, coloured so a failure stands out.
 local STATUS_LABELS = {
@@ -82,6 +129,13 @@ local STATUS_LABELS = {
 ---@field revision integer The implementation revision the manifest declares.
 ---@field version string The manifest version.
 ---@field bundled boolean `true` when the MoltenCodes bundle carries it; `false` for TestKit, which the harness loads.
+
+---What the installer recorded about the installation, as Expected.lua lists it.
+---@class MoltenCodesTest.Installation
+---@field commit string|nil The commit `git rev-parse HEAD` named when the installer ran; absent outside a git checkout.
+---@field dirty boolean|nil `true` when the working tree had changes the commit does not hold.
+---@field flavourDirectory string|nil The client folder the installer wrote to, for example `"_retail_"`.
+---@field installedAt string|nil When the installer ran, in UTC (`YYYY-MM-DDTHH:MM:SSZ`).
 
 -- Resolving the framework -------------------------------------------------------
 
@@ -117,6 +171,13 @@ if type(TestKit) == "nil" or type(LifecycleKit) == "nil" then
   error(ADDON_NAME .. " requires TestKit API 1 and LifecycleKit API 1; reinstall it", 0)
 end
 
+--- EventKit and TimerKit are needed only by a combat run, which waits for
+--- PLAYER_REGEN_DISABLED with a bounded timer; the bundle carries both.
+---@type EventKit|nil
+local EventKit = Registry:Get("eventKit", EVENT_KIT_API)
+---@type TimerKit|nil
+local TimerKit = Registry:Get("timerKit", TIMER_KIT_API)
+
 --- TestKit keeps at most 64 suites per session by default. Every package test
 --- addon registers several suites, so installing many of them passes that bound
 --- (eight addons already register 68). The harness is the one development tool
@@ -150,11 +211,26 @@ local suiteNamesByPackage = {}
 ---@type table<string, string>
 local packageBySuiteName = {}
 
+--- Combat suite names per package ID, in registration order: the suites a
+--- combat run queues. A default run queues them too, like every other suite.
+---@type table<string, string[]>
+local combatSuiteNamesByPackage = {}
+
+--- The `prepare` functions of each package's combat suites, called when a
+--- combat run is requested out of combat, before the harness waits.
+---@type table<string, fun()[]>
+local combatPreparationsByPackage = {}
+
 --- The run `/mct run` started and has not seen finish, or `nil`. TestKit is
 --- shared by every development addon in the session, so a finished run that the
 --- harness did not start is ignored rather than recorded.
----@type { packageIds: string[], client: table, previousRunawayThreshold: number|false }|nil
+---@type { packageIds: string[], mode: string, client: table, installation: table, previousRunawayThreshold: number|false }|nil
 local activeRun = nil
+
+--- The combat run `/mct run <package> combat` is waiting to start, or `nil`:
+--- the packages, the PLAYER_REGEN_DISABLED connection and the timeout timer.
+---@type { packageIds: string[], connection: EventKit.Connection|nil, timer: TimerKit.Timer|nil }|nil
+local pendingCombatRun = nil
 
 ---Raise SchedulerKit's runaway threshold for the run and return the value it
 ---replaced, or `false` when SchedulerKit is not loaded.
@@ -253,8 +329,47 @@ local function describeLoadedPackages()
   return rows
 end
 
----The facts of the client a run happened on: build, flavour, locale, date and
----the MoltenCodes packages loaded, taken when the run starts.
+---The apiKit flavour ID of the client, from `WOW_PROJECT_ID`, or `nil` for a
+---project the framework does not promise.
+---@return string|nil
+local function clientFlavour()
+  local projectId = readHost("WOW_PROJECT_ID")
+  if type(projectId) ~= "number" then
+    return nil
+  end
+  return FLAVOURS_BY_PROJECT_ID[projectId]
+end
+
+---The operating system the client reports, or `nil` when it has none of the
+---probes or none of them answers `true`.
+---@return string|nil
+local function clientOperatingSystem()
+  for _, probe in ipairs(OS_PROBES) do
+    local answer = readHost(probe.functionName)
+    if type(answer) == "function" and answer() == true then
+      return probe.name
+    end
+  end
+  return nil
+end
+
+---The installation facts Expected.lua carries, copied as plain values, or an
+---empty table when the file is missing or older than the facts.
+---@return table
+local function installationFacts()
+  local installation = type(private) == "table" and private.installation or nil
+  local facts = {}
+  if type(installation) ~= "table" then
+    return facts
+  end
+  for _, field in ipairs(INSTALLATION_FIELDS) do
+    facts[field] = plainValue(installation[field])
+  end
+  return facts
+end
+
+---The facts of the client a run happened on: build, flavour, operating system,
+---locale, date and the MoltenCodes packages loaded, taken when the run starts.
 ---@return table
 local function collectClientFacts()
   local facts = {}
@@ -269,6 +384,15 @@ local function collectClientFacts()
   end
 
   facts.projectId = plainValue(readHost("WOW_PROJECT_ID"))
+  facts.flavour = clientFlavour()
+  facts.os = clientOperatingSystem()
+
+  -- A test realm reports the project of its live flavour; the report tool
+  -- keeps its runs out of the matrix by this answer.
+  local isTestBuild = readHost("IsTestBuild")
+  if type(isTestBuild) == "function" then
+    facts.testBuild = plainValue(isTestBuild())
+  end
 
   local getLocale = readHost("GetLocale")
   if type(getLocale) == "function" then
@@ -400,13 +524,14 @@ local function printTestLines(packageReport)
   end
 end
 
----Print the totals line of one package.
----@param packageId string
+---Print the totals line of one package, or of one entry of the saved results
+---(a combat run's key carries `:combat`).
+---@param label string
 ---@param totals table
-local function printTotalsLine(packageId, totals)
+local function printTotalsLine(label, totals)
   say(
     ("%s: %d passed, %d failed, %d skipped, %d timed out (%d tests)"):format(
-      packageId,
+      label,
       totals.passed,
       totals.failed,
       totals.skipped,
@@ -414,6 +539,17 @@ local function printTotalsLine(packageId, totals)
       totals.tests
     )
   )
+end
+
+---The key of a package's entry in the saved results for a run mode.
+---@param packageId string
+---@param mode string
+---@return string
+local function resultsKey(packageId, mode)
+  if mode == COMBAT_MODE then
+    return packageId .. COMBAT_RESULTS_SUFFIX
+  end
+  return packageId
 end
 
 ---Print and save the results of the run `/mct run` started.
@@ -434,11 +570,14 @@ local function recordFinishedRun(report)
         suites = {},
         totals = { suites = 0, tests = 0, passed = 0, failed = 0, skipped = 0, timeout = 0 },
       }
+    local key = resultsKey(packageId, run.mode)
     printTestLines(packageReport)
-    printTotalsLine(packageId, packageReport.totals)
-    saved[packageId] = {
+    printTotalsLine(key, packageReport.totals)
+    saved[key] = {
       schema = RESULTS_SCHEMA,
       package = packageId,
+      mode = run.mode,
+      installation = run.installation,
       client = run.client,
       report = packageReport,
     }
@@ -455,15 +594,44 @@ local function hasSuites(packageId)
   return suiteNamesByPackage[packageId] ~= nil
 end
 
----Queue every suite of the given packages and remember the run.
----@param selectedIds string[]
-local function startRun(selectedIds)
+---Whether a run is started or waiting for combat; says so when it is.
+---@return boolean
+local function refuseWhileBusy()
   if activeRun ~= nil then
     say(
       "a run is still in progress ("
         .. joinNames(activeRun.packageIds)
         .. "); wait for its totals line."
     )
+    return true
+  end
+  if pendingCombatRun ~= nil then
+    say(
+      "a combat run of "
+        .. joinNames(pendingCombatRun.packageIds)
+        .. " is waiting for combat; enter combat or wait for it to give up."
+    )
+    return true
+  end
+  return false
+end
+
+---The suites a run of `packageId` queues in `mode`.
+---@param packageId string
+---@param mode string
+---@return string[]
+local function suitesForMode(packageId, mode)
+  if mode == COMBAT_MODE then
+    return combatSuiteNamesByPackage[packageId] or {}
+  end
+  return suiteNamesByPackage[packageId]
+end
+
+---Queue the suites of the given packages that `mode` runs and remember the run.
+---@param selectedIds string[]
+---@param mode string `DEFAULT_MODE` or `COMBAT_MODE`
+local function startRun(selectedIds, mode)
+  if refuseWhileBusy() then
     return
   end
 
@@ -471,13 +639,15 @@ local function startRun(selectedIds)
   TestKit:Reset()
   activeRun = {
     packageIds = selectedIds,
+    mode = mode,
     client = collectClientFacts(),
+    installation = installationFacts(),
     previousRunawayThreshold = relaxRunawayThreshold(),
   }
 
   local suiteCount = 0
   for _, packageId in ipairs(selectedIds) do
-    for _, suiteName in ipairs(suiteNamesByPackage[packageId]) do
+    for _, suiteName in ipairs(suitesForMode(packageId, mode)) do
       local queued = TestKit:Run(suiteName)
       if type(queued) == "number" then
         suiteCount = suiteCount + queued
@@ -492,29 +662,174 @@ local function startRun(selectedIds)
     return
   end
   say(
-    ("running %s: %d suites. Results follow when every test has finished."):format(
+    ("running %s%s: %d suites. Results follow when every test has finished."):format(
       joinNames(selectedIds),
+      mode == COMBAT_MODE and " (combat suites)" or "",
       suiteCount
     )
   )
 end
 
----`/mct run [package]`.
+---Whether the client reports combat lockdown right now.
+---@return boolean
+local function inCombatLockdown()
+  local probe = readHost("InCombatLockdown")
+  return type(probe) == "function" and probe() == true
+end
+
+---Stop waiting for combat: disconnect the event and cancel the timer.
+local function cancelPendingCombatRun()
+  local pending = pendingCombatRun
+  pendingCombatRun = nil
+  if pending == nil then
+    return
+  end
+  if pending.connection ~= nil then
+    pending.connection:Disconnect()
+  end
+  if pending.timer ~= nil then
+    pending.timer:Cancel()
+  end
+end
+
+---Call the `prepare` functions of the packages' combat suites, out of combat.
+---Returns `false` and says why when one raised; nothing is run then.
+---@param selectedIds string[]
+---@return boolean
+local function prepareCombatSuites(selectedIds)
+  for _, packageId in ipairs(selectedIds) do
+    for _, prepare in ipairs(combatPreparationsByPackage[packageId] or {}) do
+      local succeeded, problem = pcall(prepare)
+      if not succeeded then
+        say(
+          ("the combat preparation of %s raised, so nothing was run: %s"):format(
+            packageId,
+            tostring(problem)
+          )
+        )
+        return false
+      end
+    end
+  end
+  return true
+end
+
+---Start the combat suites of `selectedIds` now when the player is in combat,
+---otherwise prepare them and wait at most `COMBAT_WAIT_SECONDS` for
+---PLAYER_REGEN_DISABLED. The client raises that event before it applies the
+---lockdown; the suites run in later frames, when `InCombatLockdown()` answers
+---`true`. A wait that times out runs and saves nothing.
+---@param selectedIds string[]
+local function startCombatRun(selectedIds)
+  if refuseWhileBusy() then
+    return
+  end
+  if inCombatLockdown() then
+    startRun(selectedIds, COMBAT_MODE)
+    return
+  end
+  if type(EventKit) == "nil" or type(TimerKit) == "nil" then
+    say(
+      "a combat run needs EventKit API 1 and TimerKit API 1 in the MoltenCodes addon; reinstall it."
+    )
+    return
+  end
+  if not prepareCombatSuites(selectedIds) then
+    return
+  end
+
+  local pending = { packageIds = selectedIds }
+  pendingCombatRun = pending
+  pending.connection = EventKit:Once("PLAYER_REGEN_DISABLED", function()
+    if pendingCombatRun ~= pending then
+      return
+    end
+    cancelPendingCombatRun()
+    startRun(selectedIds, COMBAT_MODE)
+  end)
+  pending.timer = TimerKit:After(COMBAT_WAIT_SECONDS, function()
+    if pendingCombatRun ~= pending then
+      return
+    end
+    cancelPendingCombatRun()
+    say(
+      ("combat did not start within %d seconds; nothing was run or saved for %s."):format(
+        COMBAT_WAIT_SECONDS,
+        joinNames(selectedIds)
+      )
+    )
+  end)
+  say(
+    ("waiting up to %d seconds for combat: attack a training dummy now. The combat suites of %s start when combat begins."):format(
+      COMBAT_WAIT_SECONDS,
+      joinNames(selectedIds)
+    )
+  )
+end
+
+---The packages among `candidates` that registered at least one combat suite.
+---@param candidates string[]
+---@return string[]
+local function packagesWithCombatSuites(candidates)
+  local selected = {}
+  for _, packageId in ipairs(candidates) do
+    if combatSuiteNamesByPackage[packageId] ~= nil then
+      selected[#selected + 1] = packageId
+    end
+  end
+  return selected
+end
+
+---`/mct run combat` and `/mct run <package> combat`.
+---@param packageId string|nil `nil` for every loaded package.
+local function commandRunCombat(packageId)
+  local candidates = packageIds
+  if packageId ~= nil then
+    candidates = { packageId }
+  end
+  local selected = packagesWithCombatSuites(candidates)
+  if #selected == 0 then
+    local withCombat = packagesWithCombatSuites(packageIds)
+    say(
+      ("no combat suites for %s; loaded packages with combat suites: %s."):format(
+        packageId or "any loaded package",
+        #withCombat > 0 and joinNames(withCombat) or "none"
+      )
+    )
+    return
+  end
+  startCombatRun(selected)
+end
+
+---`/mct run [package] [combat]`.
 ---@param argument string
 local function commandRun(argument)
   if #packageIds == 0 then
     say("no package test addon is loaded, so there is nothing to run.")
     return
   end
-  if argument == "" then
-    startRun(packageIds)
+  local first, second = argument:match("^(%S*)%s*(%S*)")
+  if first == COMBAT_MODE and second == "" then
+    commandRunCombat(nil)
     return
   end
-  if not hasSuites(argument) then
-    say(('no test suites for package "%s"; loaded: %s.'):format(argument, joinNames(packageIds)))
+  if first == "" then
+    startRun(packageIds, DEFAULT_MODE)
     return
   end
-  startRun({ argument })
+  if not hasSuites(first) then
+    say(('no test suites for package "%s"; loaded: %s.'):format(first, joinNames(packageIds)))
+    return
+  end
+  if second == COMBAT_MODE then
+    commandRunCombat(first)
+    return
+  end
+  if second ~= "" then
+    say(('unknown run mode "%s"; the only mode is %s.'):format(second, COMBAT_MODE))
+    return
+  end
+  startRun({ first }, DEFAULT_MODE)
 end
 
 ---`/mct list`.
@@ -523,7 +838,12 @@ local function commandList()
     say("no package test addon is loaded.")
   end
   for _, packageId in ipairs(packageIds) do
-    say(packageId .. ": " .. joinNames(suiteNamesByPackage[packageId]))
+    local line = packageId .. ": " .. joinNames(suiteNamesByPackage[packageId])
+    local combatSuites = combatSuiteNamesByPackage[packageId]
+    if combatSuites ~= nil then
+      line = line .. "; combat suites: " .. joinNames(combatSuites)
+    end
+    say(line)
   end
   if expectedPackages() == nil then
     say("Expected.lua is missing; install with python3 -m tooling.client.install.")
@@ -572,6 +892,13 @@ local function commandHelp()
       .. SLASH_COMMAND
       .. " run registry"
   )
+  say(
+    SLASH_COMMAND
+      .. " run <package> combat -- wait up to "
+      .. COMBAT_WAIT_SECONDS
+      .. " seconds for combat, then run the package's combat suites"
+  )
+  say(SLASH_COMMAND .. " run combat -- the same for every loaded package with combat suites")
   say(SLASH_COMMAND .. " list -- the loaded packages and their suites")
   say(SLASH_COMMAND .. " report -- the saved totals and every test that did not pass")
   say(SLASH_COMMAND .. " clear -- forget every saved result")
@@ -607,11 +934,36 @@ end
 ---global after listing `## Dependencies: MoltenCodesTest` in its `.toc`.
 ---@class MoltenCodesTest.Harness
 ---@field RESULTS_SCHEMA integer Layout version of the saved results.
-local Harness = { RESULTS_SCHEMA = RESULTS_SCHEMA }
+---@field NO_SECRETS_REASON string The skip reason of a test that needs a secret value on a client that makes none.
+local Harness = {
+  RESULTS_SCHEMA = RESULTS_SCHEMA,
+  NO_SECRETS_REASON = "the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)",
+}
 
 ---Options a test addon may pass to `Harness:Suite`.
 ---@class MoltenCodesTest.SuiteOptions
 ---@field timeoutSeconds number|nil How long one test may take, forwarded to TestKit (10 seconds by default).
+---@field combat boolean|nil `true` for a combat suite: `/mct run <package> combat` runs it once the player is in combat; a default run runs it too.
+---@field prepare fun()|nil Only with `combat = true`: called out of combat when a combat run is requested, before the harness waits, for set-up the client allows only out of combat.
+
+---Check the harness's own options, `combat` and `prepare`, raising at the test
+---addon's line when they are malformed.
+---@param options MoltenCodesTest.SuiteOptions
+local function checkCombatOptions(options)
+  local combat = options.combat
+  if type(combat) ~= "nil" and type(combat) ~= "boolean" then
+    error("MoltenCodesTest:Suite options.combat must be a boolean or nil", 4)
+  end
+  local prepare = options.prepare
+  if type(prepare) ~= "nil" then
+    if type(prepare) ~= "function" then
+      error("MoltenCodesTest:Suite options.prepare must be a function or nil", 4)
+    end
+    if combat ~= true then
+      error("MoltenCodesTest:Suite options.prepare needs options.combat = true", 4)
+    end
+  end
+end
 
 ---Check the optional `options` of `Harness:Suite` and return the TestKit suite
 ---options they add up to, raising at the test addon's line otherwise.
@@ -631,6 +983,7 @@ local function suiteOptions(addonName, options)
       error("MoltenCodesTest:Suite options." .. tostring(name) .. " is not an option", 3)
     end
   end
+  checkCombatOptions(options)
   local timeoutSeconds = options.timeoutSeconds
   if type(timeoutSeconds) ~= "nil" then
     if
@@ -650,7 +1003,9 @@ end
 ---`addonName`, the calling test addon (`local addonName = ...`). `/mct run
 ---<packageId>` runs every suite registered for that package. `options` is
 ---optional; `timeoutSeconds` lengthens TestKit's 10-second limit per test for
----a suite whose test waits for the player (see tests/client/README.md).
+---a suite whose test waits for the player, and `combat = true` (with an
+---optional `prepare`) makes it a combat suite (see tests/client/README.md,
+---"Combat runs").
 ---@param packageId string The framework package the suite tests, for example `"registry"`.
 ---@param part string What part of it, for example `"lookup"`.
 ---@param addonName string The test addon's folder name.
@@ -688,6 +1043,17 @@ function Harness:Suite(packageId, part, addonName, options)
   local names = suiteNamesByPackage[packageId]
   names[#names + 1] = suiteName
   packageBySuiteName[suiteName] = packageId
+
+  if type(options) == "table" and options.combat == true then
+    local combatNames = combatSuiteNamesByPackage[packageId] or {}
+    combatSuiteNamesByPackage[packageId] = combatNames
+    combatNames[#combatNames + 1] = suiteName
+    if type(options.prepare) == "function" then
+      local preparations = combatPreparationsByPackage[packageId] or {}
+      combatPreparationsByPackage[packageId] = preparations
+      preparations[#preparations + 1] = options.prepare
+    end
+  end
   return suite
 end
 
@@ -709,6 +1075,60 @@ function Harness:SkipTest(ctx, reason)
     error("MoltenCodesTest:SkipTest reason must be a non-empty string", 2)
   end
   ctx:Fail(RUNTIME_SKIP_MARKER .. reason)
+end
+
+---The apiKit flavour ID of the running client, from `WOW_PROJECT_ID`:
+---`"retail"`, `"classic-era"` or `"classic-mop"`, or `nil` for a client the
+---framework does not promise. A test that skips on a flavour names the missing
+---capability in its reason; this is for the rare test whose expected value
+---differs by flavour.
+---@return string|nil
+function Harness:GetFlavour()
+  if self ~= Harness then
+    error("MoltenCodesTest:GetFlavour must be called on the MoltenCodesTest harness", 2)
+  end
+  return clientFlavour()
+end
+
+--- The answer of `Harness:CanMakeSecrets`, measured once, or `nil` before.
+---@type boolean|nil
+local canMakeSecretsAnswer = nil
+
+--- The plain value the secret probe wraps.
+local SECRET_PROBE_VALUE = true
+
+---Whether this client can make a secret value: it has `issecretvalue` and
+---`secretwrap`, and `issecretvalue` reports what `secretwrap` returns as
+---secret. Classic Era and Mists Classic document both functions too, so their
+---presence alone does not prove the client applies secrets; a suite that needs
+---a secret skips with `Harness.NO_SECRETS_REASON` when this answers `false`.
+---Measured on the first call and remembered for the session.
+---@return boolean
+function Harness:CanMakeSecrets()
+  if self ~= Harness then
+    error("MoltenCodesTest:CanMakeSecrets must be called on the MoltenCodesTest harness", 2)
+  end
+  if canMakeSecretsAnswer == nil then
+    local isSecretValue = readHost("issecretvalue")
+    local secretWrap = readHost("secretwrap")
+    local answer = false
+    if type(isSecretValue) == "function" and type(secretWrap) == "function" then
+      local succeeded, wrapped = pcall(secretWrap, SECRET_PROBE_VALUE)
+      -- issecretvalue answers a plain boolean for any value, secret or not.
+      answer = succeeded and isSecretValue(wrapped) == true
+    end
+    canMakeSecretsAnswer = answer
+  end
+  return canMakeSecretsAnswer
+end
+
+---Whether the running `/mct run` is a combat run.
+---@return boolean
+function Harness:IsCombatRun()
+  if self ~= Harness then
+    error("MoltenCodesTest:IsCombatRun must be called on the MoltenCodesTest harness", 2)
+  end
+  return activeRun ~= nil and activeRun.mode == COMBAT_MODE
 end
 
 ---The packages Expected.lua lists, or `nil` when it was not installed. The

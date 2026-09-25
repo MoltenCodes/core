@@ -2,8 +2,11 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package mediaKit`
-and nothing else from the MoltenCodes framework enabled in the client, and no
-other addon that loads LibSharedMedia-3.0. Run it out of combat.
+for Retail, with `--flavour-dir _classic_era_` added for Classic Era or
+`--flavour-dir _classic_` for Mists of Pandaria Classic, and nothing else from
+the MoltenCodes framework enabled in the client, and no other addon that loads
+LibSharedMedia-3.0. Run it out of combat. The lines below are Retail's; "Per
+flavour" says what differs on the two Classic clients.
 
 ## At login
 
@@ -124,6 +127,69 @@ built-in fonts are the `_CYR` files; on `zhCN`, `zhTW` and `koKR` no built-in
 font is offered without `anyScript`, and a consumer's font default is the first
 font that client can render.
 
+## Per flavour
+
+MediaKit makes the same promises on every flavour: its built-in media are
+"the client's own files, shipped with the game on every flavour"
+(`packages/mediaKit/docs/API.md`, "Built-in media"), and the host facilities
+it and this suite read are on all three clients. The client documentation of
+Retail, Classic Era and Mists Classic
+(`packages/apiKit/metadata/<flavour>/namespaces.json`) lists `GetLocale`,
+`GetFileIDFromPath`, `issecretvalue` and `secretwrap`, and its widget types
+(`packages/apiKit/types/<flavour>/objects.lua`) list `CreateTexture`,
+`CreateFontString`, `SetTexture`, `GetTexture`, `GetTextureFileID`, `SetFont`
+and `GetFont`. `CreateFrame` is a core client function the documentation does
+not list; it is on every flavour. `LibStub` and LibSharedMedia-3.0 are never
+the client's own. No test waits for an event and none needs combat.
+
+| Client | Totals line with no LibSharedMedia-3.0 | Tests that `SKIP` |
+|---|---|---|
+| Retail 12.1 | `MoltenCodes Test: mediaKit: 32 passed, 0 failed, 2 skipped, 0 timed out (34 tests)` | the sound FileDataID test and the real LibSharedMedia comparison, the two `SKIP` lines above |
+| Classic Era 1.15 | the same as Retail when `Harness:CanMakeSecrets()` is `true`; otherwise `27 passed, 0 failed, 7 skipped, 0 timed out (34 tests)` | the same as Retail, plus the five `mediaKit.secrets` lines below when the client makes no secrets |
+| Mists of Pandaria Classic 5.5 | the same as Retail when `Harness:CanMakeSecrets()` is `true`; otherwise `27 passed, 0 failed, 7 skipped, 0 timed out (34 tests)` | the same as Retail, plus the five `mediaKit.secrets` lines below when the client makes no secrets |
+
+With a real LibSharedMedia-3.0 loaded the totals line is
+`MoltenCodes Test: mediaKit: 29 passed, 0 failed, 5 skipped, 0 timed out (34 tests)`
+on all three, with the `SKIP` lines of that section. The sound FileDataID test
+is registered as skipped on every client, with the reason measured on Retail
+above.
+
+**The client's files on the Classic clients.** The file tests were measured on
+Retail 12.1.0 b69933 only. On the Classic clients they assert the same things
+(`SetFont` answers `true` for the four built-in fonts, `SetTexture` answers
+`true` and `GetTextureFileID` equals `GetFileIDFromPath` for the nine
+texture-backed built-ins, and `GetFileIDFromPath` resolves those nine paths),
+because docs/API.md promises the same files on every flavour. A failure there
+is a finding about docs/API.md's built-in table on that client, not a
+flavour difference to accept: send the log, which names the path and every
+answer.
+
+**Secret values on the Classic clients.** Both Classic clients publish
+`issecretvalue` and `secretwrap`, but whether `secretwrap` hands back a value
+that `issecretvalue` reports as secret there cannot be read from the
+documentation. The suite asks the harness once, at load:
+`Harness:CanMakeSecrets()` wraps one value with `secretwrap` and asks
+`issecretvalue` about it. When it answers `true`, the five `mediaKit.secrets`
+tests run and the run is the same as Retail's. When it answers `false`, they
+are registered as skipped and print these lines instead:
+
+```text
+MoltenCodes Test: SKIP mediaKit.secrets: Register refuses a secret type, name, data and script name at the calling line and registers nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP mediaKit.secrets: Fetch, Has and List refuse a secret name or a secret anyScript at the calling line, and OnRegistered a secret type -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP mediaKit.secrets: Defaults refuses a secret consumer name, defaults:Set a secret name and defaults:Get a secret type, at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP mediaKit.secrets: SetLimits refuses a secret maxConsumers at the calling line and the limits stay as they were, and IsFileDataID answers false for a secret FileDataID -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP mediaKit.secrets: with a stand-in LibSharedMedia, a secret entry is not adopted, a callback with a secret type and name raises nothing, a secret LOCALE_BIT_western gives way to 128 and a secret Register answer is not counted as mirrored -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+and the totals line reads
+`MoltenCodes Test: mediaKit: 27 passed, 0 failed, 7 skipped, 0 timed out (34 tests)`
+(no LibSharedMedia-3.0) or
+`MoltenCodes Test: mediaKit: 25 passed, 0 failed, 9 skipped, 0 timed out (34 tests)`
+(a real LibSharedMedia-3.0, whose four `SKIP` lines then stand beside these five).
+These skips say the client makes no secrets, so MediaKit has nothing to refuse
+there: it treats a value as secret only when `issecretvalue` says so. On
+Retail 12.1 these lines are unexpected.
+
 ## Visible side effects
 
 None. Nothing is drawn: the probe Frame is created hidden, at alpha 0, with no
@@ -211,7 +277,8 @@ What does not stay:
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line other than the ones above for
-  this client, or a totals line other than the ones above.
+  this client, or a totals line other than the ones above, apart from the
+  secrets skips "Per flavour" describes for the Classic clients.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -239,7 +306,8 @@ What does not stay:
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`,
+   where the folder is `_retail_`, `_classic_era_` or `_classic_`.
    It holds the full report, each test's logs (the locale and its script,
    whether LibStub and LibSharedMedia-3.0 are loaded, every `SetFont`,
    `SetTexture`, `GetTexture`, `GetTextureFileID` and `GetFileIDFromPath`

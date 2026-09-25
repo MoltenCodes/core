@@ -2,8 +2,14 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package compatKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat, on Retail 12.1.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package compatKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package compatKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. Run it out of combat. The lines below are Retail 12.1's;
+[Per flavour](#per-flavour) gives the two Classic clients. No test needs
+combat, so the suite has no combat run.
 
 ## At login
 
@@ -106,7 +112,12 @@ out of combat without side effects: the client's own API documentation
 (mirrored in `packages/apiKit/metadata/retail/namespaces.json`) lists it with
 no restriction, and it only converts the values handed to it. Retail 12.1 has
 both. A client without them prints these five lines instead, and the totals
-line reads `19 passed, 0 failed, 5 skipped, 0 timed out (24 tests)`:
+line reads `19 passed, 0 failed, 5 skipped, 0 timed out (24 tests)`. A client
+that has both functions but makes no secret with them (`issecretvalue` does not
+report what `secretwrap` returns as secret; `Harness:CanMakeSecrets` measures
+this once at load) skips the same five with the reason ` -- the client makes no
+secret values (issecretvalue does not report what secretwrap returns as
+secret)` in place of the one below, with the same totals:
 
 ```text
 MoltenCodes Test: SKIP compatKit.secrets: Shim refuses a secret name, version, description and flavour, SkipShim a secret name, Providers a secret kind and Apply a secret receiver, each at the calling line, registering nothing -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -128,6 +139,83 @@ MoltenCodes Test: SKIP compatKit.secrets: a probe answering secretwrap(true) cou
   again.
 - The shim tests of a fifth run in one session, as described above.
 
+## Per flavour
+
+What the suite reads from the client, per flavour, in the committed apiKit
+metadata (`packages/apiKit/metadata/<flavour>/namespaces.json`):
+
+- `seterrorhandler`, `geterrorhandler`, `UIParent`, `DEFAULT_CHAT_FRAME`,
+  `WOW_PROJECT_ID` and the frame method `IsShown` are core client globals the
+  documentation tables do not list; every flavour has them.
+- `C_Timer.NewTicker`, `C_Timer.After`, `GetMouseFoci`,
+  `C_AddOns.GetAddOnMetadata`, `C_AddOns.IsAddOnLoaded`,
+  `C_SettingsUtil.OpenSettingsPanel`, `C_UnitAuras.GetAuraDataByIndex` and
+  `InCombatLockdown`: documented on all three.
+- `C_TooltipInfo.GetUnit`: Retail only (the Classic flavours document
+  `C_TooltipInfo` without `GetUnit`). docs/EMBEDDING.md's catalogue lists
+  catalogue row 4's replacement for `beta`, `ptr` and `retail` only, so on
+  Classic the catalogue test expects the row's `flavours` to leave the running
+  flavour out, and only logs what the client holds; the `hasApi` test expects
+  `false` for it and `covers` to record it missing.
+- ClientKit's flavour: `"mainline"` for `WOW_PROJECT_ID` 1, `"classic"` for 2,
+  `"mists"` for 19 (docs/API.md of ClientKit, "Flavour"); ApiKit's flavour:
+  `"retail"`, `"classic-era"`, `"classic-mop"`. The bundle carries every
+  ApiKit flavour file. The facade and flavour-filtering tests name the running
+  client's ClientKit flavour.
+- `IsLoggedIn`: documented on Retail only. The two provider tests that probe
+  it read it at run time; CompatKit itself never reads it.
+- `issecretvalue` and `secretwrap`: documented on all three. Whether a Classic
+  client makes secrets with them is measured once at load
+  (`Harness:CanMakeSecrets`).
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: compatKit: 24 passed, 0 failed, 0 skipped, 0 timed out (24 tests)`,
+with no `SKIP` line.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line (8 suites) and every test line are Retail's, in the same
+order, except for four names. On Classic Era:
+
+```text
+MoltenCodes Test: PASS compatKit.facade: the bundle's ClientKit and ApiKit are found through Registry:Find: ClientKit answers 'classic' on WOW_PROJECT_CLASSIC, and ApiKit's flavour file for the running client is installed (flavour, metadata build and binding count logged)
+MoltenCodes Test: PASS compatKit.shims: Apply runs a shim for the running ClientKit flavour and one without flavours once each, filters one for every other flavour, and hands every shim context.flavour 'classic'
+MoltenCodes Test: PASS compatKit.context: context.hasApi answers by identity with the installed ApiKit surface: C_Timer.NewTicker and the three catalogue replacements Classic documents true, C_TooltipInfo.GetUnit, the legacy GetAddOnMetadata global and undocumented hooksecurefunc false, and covers records those three missing
+MoltenCodes Test: PASS compatKit.catalogue: CATALOGUE holds docs/EMBEDDING.md's nine rows in order; every replacementApi whose flavours list the running ApiKit flavour (C_AddOns.GetAddOnMetadata, C_SettingsUtil.OpenSettingsPanel, C_UnitAuras.GetAuraDataByIndex) is a function of this client, and C_TooltipInfo.GetUnit's leave it out (each logged)
+```
+
+On Mists of Pandaria Classic the last two are the same, and the first two
+read:
+
+```text
+MoltenCodes Test: PASS compatKit.facade: the bundle's ClientKit and ApiKit are found through Registry:Find: ClientKit answers 'mists' on WOW_PROJECT_MISTS_CLASSIC, and ApiKit's flavour file for the running client is installed (flavour, metadata build and binding count logged)
+MoltenCodes Test: PASS compatKit.shims: Apply runs a shim for the running ClientKit flavour and one without flavours once each, filters one for every other flavour, and hands every shim context.flavour 'mists'
+```
+
+- When the client makes secrets, the totals line is Retail's:
+  `MoltenCodes Test: compatKit: 24 passed, 0 failed, 0 skipped, 0 timed out (24 tests)`.
+- When it makes none, the five `compatKit.secrets` tests are skipped with
+  ` -- the client makes no secret values (issecretvalue does not report what
+  secretwrap returns as secret)` (the names are those of
+  [On a client without secret values](#on-a-client-without-secret-values)),
+  and the totals line is
+  `MoltenCodes Test: compatKit: 19 passed, 0 failed, 5 skipped, 0 timed out (24 tests)`.
+
+The Classic metadata does not document the global `IsLoggedIn` that two
+provider tests probe. The Classic client is expected to have it all the same;
+if one does not, those two tests fail, and the totals show 2 more failed and 2
+fewer passed:
+
+```text
+MoltenCodes Test: FAIL compatKit.providers: a registry whose probes read InCombatLockdown, IsLoggedIn and the chat frame's visibility resolves the highest-priority live provider, a live preferred one, and keeps its memo; List reports each probe's host answer -- the client has no InCombatLockdown or IsLoggedIn
+MoltenCodes Test: FAIL compatKit.providers: Resolve on a memo hit and with a live preferred provider, probed by the client's IsLoggedIn, allocates nothing over 10000 rounds (allocation guard) -- the client has no IsLoggedIn
+```
+
+That would be a finding about the test's choice of probe, not a CompatKit
+defect: CompatKit never reads `IsLoggedIn`.
+
 ## What each test proves
 
 | Test | Proves in the real client |
@@ -140,7 +228,7 @@ MoltenCodes Test: SKIP compatKit.secrets: a probe answering secretwrap(true) cou
 | `SkipShim before a shim is registered and after it is pending ...` | A skip that arrives before the registration and one that arrives after it both keep the shim from running, on two `Apply` calls, and each call counts them as skipped. |
 | `context.hasApi answers by identity with the installed ApiKit surface ...` | Inside a shim, `hasApi` answers exactly what this file's own walk of `MoltenCodes.wow.<flavour>.api` answers (the host function is bound there, compared by identity), and on Retail what the committed metadata says: `true` for `C_Timer.NewTicker`, `C_Timer.After`, `GetMouseFoci` and the four catalogue replacements; `false` for the legacy `GetAddOnMetadata` global (catalogue row 5, absent from the Retail metadata), `InterfaceOptionsFrame_OpenToCategory` (row 7), `hooksecurefunc` (on the host, not documented) and a function no client has. The shim's `covers` records `missing = { "GetAddOnMetadata", "hooksecurefunc" }`. The log gives each name's answer, the host type and whether the flavour file binds it; whether the client still has a legacy `GetAddOnMetadata` global and whether it is the same function as `C_AddOns.GetAddOnMetadata` (if it were, identity would answer `true`); and that `MoltenCodes.wow.retail.api.timer.newTicker` is `C_Timer.NewTicker`. |
 | `context.hasGlobal answers what raw reads of the client's global table answer ...` | Inside a shim, `hasGlobal` equals a raw walk of the global table for every path: `UIParent`, `DEFAULT_CHAT_FRAME` and `C_Timer.NewTicker` are present; a missing `C_Timer` field, `UIParent.GetName` (a frame's methods live in its metatable, which the documented raw read does not follow), a path through the number `WOW_PROJECT_ID` and an unknown global are absent. The legacy `GetAddOnMetadata`, `Menu`, `MenuUtil` and `Settings.OpenToCategory` are logged as the client has them. |
-| `CATALOGUE holds docs/EMBEDDING.md's nine rows in order ...` | The installed catalogue's subsystems are the document's, in order; each of the four rows with a `replacementApi` names a function this client has, and its `flavours` lists the running ApiKit flavour; the five FrameXML or own-frames rows list no flavour. Each row is logged. |
+| `CATALOGUE holds docs/EMBEDDING.md's nine rows in order ...` | The installed catalogue's subsystems are the document's, in order; each of the four rows with a `replacementApi` has exactly the `flavours` docs/EMBEDDING.md names for it; each row whose `flavours` lists the running ApiKit flavour (all four on Retail, all but `C_TooltipInfo.GetUnit` on Classic) names a function this client has, and the others only log what the client holds; the five FrameXML or own-frames rows list no flavour. Each row is logged. |
 | `the FrameXML replacements the catalogue names ...` | Logs, without asserting, what 12.1 has for `Menu`, `MenuUtil`, `MenuUtil.CreateContextMenu`, `Settings`, `Settings.OpenToCategory`, `TooltipDataProcessor`, `TooltipDataProcessor.AddTooltipPostCall`, `UISpecialFrames` and `hooksecurefunc`, for the legacy subsystems (`UIDropDownMenu_Initialize`, `EasyMenu`, `UIDROPDOWNMENU_OPEN_MENU`, `StaticPopup_Show`, `ActionButton_ShowOverlayGlow`/`HideOverlayGlow`, `GetAddOnMetadata`, `ShowUIPanel`/`HideUIPanel`, `InterfaceOptionsFrame_OpenToCategory`, `SetOverrideBindingClick`, `CompactUnitFrame_UpdateAll`), and whether `Blizzard_Menu`, `Blizzard_Settings` and `Blizzard_Deprecated` are loaded. These are the facts docs/EMBEDDING.md's catalogue rests on. |
 | `a raising shim is reported once, unchanged, ...` | `Apply` hands the failure to the handler `seterrorhandler` installed exactly once, as the string the shim raised (naming `CompatKitSuite.lua` at the `error` line), stores the same string as the shim's `failed`, still runs the shim after it (name order), and does not retry the failed one on the next `Apply`. |
 | `a shim that calls Apply fails with ...` | Re-entering `Apply` from a shim raises at the shim's own line with the documented message, is reported and recorded as failed, and the guard is cleared: `Apply` works again right after. |
@@ -160,8 +248,9 @@ MoltenCodes Test: SKIP compatKit.secrets: a probe answering secretwrap(true) cou
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line on Retail 12.1 in one of the
-  first four runs of a session, or a totals line other than
-  `24 passed, 0 failed, 0 skipped, 0 timed out (24 tests)`.
+  first four runs of a session (on Classic, any but the five secret ones when
+  the client makes no secrets), or a totals line other than the one
+  [Per flavour](#per-flavour) gives for the client.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -194,7 +283,9 @@ MoltenCodes Test: SKIP compatKit.secrets: a probe answering secretwrap(true) cou
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`
+   (`_classic_era_` or `_classic_` in place of `_retail_` on the Classic
+   clients).
    It holds the full report, each test's logs (every `hasApi` and `hasGlobal`
    answer beside the host's, each catalogue row, the FrameXML and legacy
    globals of 12.1, each probe's host answer, the memory delta, the client's

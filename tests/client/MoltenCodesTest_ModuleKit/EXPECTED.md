@@ -2,7 +2,13 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package moduleKit`
-and nothing else from the MoltenCodes framework enabled in the client.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package moduleKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package moduleKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 Run it out of combat, solo, outside any instance (a capital city is ideal). No
 test needs combat, a group or an instance, and nothing is typed or clicked
@@ -89,10 +95,71 @@ its modules and providers with a prefix no earlier test used.
 ### On a client without secret values
 
 The seven `moduleKit.secrets` tests need the client's `issecretvalue` and
-`secretwrap`, which Retail 12.1 has. A client without them prints each of the
-seven with `SKIP` and ` -- the client has no issecretvalue and secretwrap; the
-secret path was not exercised`, and the totals line reads
-`29 passed, 0 failed, 10 skipped, 0 timed out (39 tests)`.
+`secretwrap`, which Retail 12.1 has, and a `secretwrap` that makes a value
+`issecretvalue` reports as secret; the suite asks the harness's
+`CanMakeSecrets` once, when it loads. A client without the two functions
+prints each of the seven with `SKIP` and
+` -- the client has no issecretvalue and secretwrap; the secret path was not
+exercised`, and the totals line reads
+`29 passed, 0 failed, 10 skipped, 0 timed out (39 tests)`. A client that has
+both but whose `secretwrap` makes no secret (secrets are not active there)
+prints these seven lines in their place, with the same totals line:
+
+```text
+MoltenCodes Test: SKIP moduleKit.secrets: ForAddon with a secret addon name is refused at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP moduleKit.secrets: CreateModule with a secret name is refused at the calling line and creates nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP moduleKit.secrets: DependsOn with a secret module name is refused at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP moduleKit.secrets: ProvideValue with a secret implements entry is refused at the calling line and leaves the name free -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP moduleKit.secrets: ProvideValue accepts a secret value, which is never compared, and Resolve and injection hand back that secret -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP moduleKit.secrets: SetLimits with a secret maxRequiredAddons is refused at the calling line and changes nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP moduleKit.secrets: SetDependencyPolicy with a secret policy is refused at the calling line and keeps the policy -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+### On a client without `GetFramesRegisteredForEvent`
+
+The `scope.Events` test reads the client's `GetFramesRegisteredForEvent`, a
+core client function the apiKit metadata does not document for any flavour;
+the suite asks for it once, when it loads. Retail 12.1 has it. A client
+without it prints
+`MoltenCodes Test: SKIP moduleKit.scopes: scope.Events delivers the CVAR_UPDATE of a chatBubbles change while enabled; after Disable its frame is gone from GetFramesRegisteredForEvent and a second change reaches nothing -- the client has no GetFramesRegisteredForEvent; the host registration was not read back`
+and one more skipped test in the totals line (`35 passed, 0 failed, 4
+skipped` on Retail's numbers).
+
+## Per flavour
+
+Everything else the suite reads from the client is documented for `retail`,
+`classic-era` and `classic-mop` alike in the committed apiKit metadata
+(`packages/apiKit/metadata/<flavour>/`): `C_Timer` (TimerKit's timers),
+`C_CVar.GetCVar` and `C_CVar.SetCVar`, the `chatBubbles` CVar, the event
+`CVAR_UPDATE` (payload `eventName, value`, synchronous, on all three),
+`C_ChatInfo.SendAddonMessage` and the prefix functions and events CommKit's
+scope looks up, `C_AddOns.IsAddOnLoaded`, `InCombatLockdown`, and
+`issecretvalue` and `secretwrap`. `CreateFrame`, frame `IsEventRegistered`,
+`geterrorhandler`, `collectgarbage` and the error positions are core client
+facilities every flavour has. ModuleKit and the Kits behind `module.scope`
+document no flavour difference. So no test is skipped by flavour, and nothing
+the suite reads at load is missing on a Classic client.
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: moduleKit: 36 passed, 0 failed, 3 skipped, 0 timed out (39 tests)`,
+with the three `SKIP` lines listed under them.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line (8 suites) and every test line are the same as Retail's,
+in the same order, the three expected `SKIP` lines included. Whether the seven
+`moduleKit.secrets` tests run depends on one answer only the running client
+gives, read when the suite loads: whether `secretwrap` makes a value
+`issecretvalue` reports as secret (both Classic flavours document the two
+functions).
+
+- Secrets made: the totals line is Retail's,
+  `MoltenCodes Test: moduleKit: 36 passed, 0 failed, 3 skipped, 0 timed out (39 tests)`.
+- No secrets made: the seven `SKIP` lines above replace the seven `PASS`
+  lines of `moduleKit.secrets`, and the totals line is
+  `MoltenCodes Test: moduleKit: 29 passed, 0 failed, 10 skipped, 0 timed out (39 tests)`.
 
 ## Visible side effects
 
@@ -162,7 +229,9 @@ variable.
 ## What counts as unexpected
 
 - Any `FAIL` or `TIMEOUT` line, any `SKIP` other than the three listed, or a
-  totals line other than `36 passed, 0 failed, 3 skipped, 0 timed out (39 tests)`.
+  totals line other than `36 passed, 0 failed, 3 skipped, 0 timed out (39 tests)`
+  (on a Classic client, other than the two totals lines under
+  [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer did
   not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -185,7 +254,8 @@ variable.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`
+   (`_classic_era_` or `_classic_` instead of `_retail_` on a Classic client).
    It holds the full report, each test's logs (the client's messages with their
    paths, the CVAR_UPDATE facts, the frame count, the allocation delta) and the client
    facts. Lua shortens

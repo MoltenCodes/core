@@ -2,7 +2,13 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package commKit`
-and nothing else from the MoltenCodes framework enabled in the client.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package commKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package commKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 **What this test sends.** The test whispers addon messages to your own
 character only. Every message it sends is a `WHISPER` addon message
@@ -152,6 +158,64 @@ MoltenCodes Test: SKIP commKit.secrets: a secret facade receiver, a secret ForAd
 MoltenCodes Test: SKIP commKit.secrets: SyncSet:Set refuses a secret value and a table holding one at the calling line -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
+## Per flavour
+
+Every client capability the suite reads is documented for `retail`,
+`classic-era` and `classic-mop` alike in the committed apiKit metadata
+(`packages/apiKit/metadata/<flavour>/`): the four `C_ChatInfo` functions
+CommKit calls and `GetRegisteredAddonMessagePrefixes`, with the same
+arguments and the same enum results; `Enum.SendAddonMessageResult` and
+`Enum.RegisterAddonMessagePrefixResult` with the same keys and values
+(`Success` 0 to `TargetOffline` 12, and `Success` 0 to `MaxPrefixes` 3);
+`GetTimePreciseSec`, `UnitName`, `GetNormalizedRealmName`, `UnitInParty`,
+`UnitInRaid`, `GetFramerate`, `issecretvalue` and `secretwrap`; and the
+events `CHAT_MSG_ADDON`, `CHAT_MSG_ADDON_LOGGED`, `GROUP_ROSTER_UPDATE` and
+`PLAYER_ENTERING_WORLD`. `geterrorhandler` and `securecallfunction` are core
+globals every client provides. So no test is skipped by flavour, and nothing
+the suite reads at load is missing on a Classic client.
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: commKit: 26 passed, 0 failed, 4 skipped, 0 timed out (30 tests)`,
+with the four `SKIP` lines listed under them.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line (8 suites) and every test line are the same as Retail's,
+in the same order, with the same four `SKIP` lines. Two answers only the
+running client gives decide the totals:
+
+- **Secret values.** Both Classic flavours document the global functions
+  `issecretvalue` and `secretwrap`; the suite reads them at load. With both,
+  and secrets made with them, the four `commKit.secrets` tests run and the
+  totals line is Retail's:
+  `MoltenCodes Test: commKit: 26 passed, 0 failed, 4 skipped, 0 timed out (30 tests)`.
+  Without them, the four lines under
+  [On a client without secret values](#on-a-client-without-secret-values)
+  are `SKIP` and the totals line is
+  `MoltenCodes Test: commKit: 22 passed, 0 failed, 8 skipped, 0 timed out (30 tests)`.
+  A client that has both but makes no secret with them (`issecretvalue`
+  does not report what `secretwrap` returns as secret;
+  `Harness:CanMakeSecrets` measures this once at load) skips the same four
+  tests with the reason below, and the totals line is again
+  `MoltenCodes Test: commKit: 22 passed, 0 failed, 8 skipped, 0 timed out (30 tests)`.
+
+  ```text
+  MoltenCodes Test: SKIP commKit.secrets: Send refuses a secret prefix, text, distribution, target and priority at the calling line, before comparing them, and queues nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+  MoltenCodes Test: SKIP commKit.secrets: Register refuses a secret prefix and SetLimits a secret limit at the calling line, changing nothing -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+  MoltenCodes Test: SKIP commKit.secrets: a secret facade receiver, a secret ForAddon name and a secret maxRegistrations are refused at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+  MoltenCodes Test: SKIP commKit.secrets: SyncSet:Set refuses a secret value and a table holding one at the calling line -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+  ```
+
+- **The whisper to your own character.** No Classic client has been measured
+  yet. If it refuses or never returns the whisper, the seven tests named under
+  [When the whisper to your own character does not come back](#when-the-whisper-to-your-own-character-does-not-come-back)
+  end as `SKIP` with the client's answer, and the totals line reads
+  `19 passed, 0 failed, 11 skipped, 0 timed out (30 tests)` (with secret
+  values; without them `15 passed, 0 failed, 15 skipped`). Send that answer
+  back.
+
 ## Visible side effects
 
 None. No window opens, nothing is printed besides the harness lines, no
@@ -217,7 +281,8 @@ results.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` other than the four above on Retail
   12.1 (or the whisper-to-self skips described above), or a totals line other
-  than `26 passed, 0 failed, 4 skipped, 0 timed out (30 tests)`.
+  than `26 passed, 0 failed, 4 skipped, 0 timed out (30 tests)` (on a Classic
+  client, other than the totals lines under [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -245,7 +310,8 @@ results.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/<flavour folder>/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`,
+   where the flavour folder is `_retail_`, `_classic_era_` or `_classic_`.
    It holds the full report, each test's logs (both result enums, the prefix
    registration answers and count, the round-trip times and the sender as the
    server wrote it, every chunk's departure and arrival time with its header

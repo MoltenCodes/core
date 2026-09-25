@@ -2,8 +2,13 @@
 
 Installed with
 `python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --package profileKit`
-and nothing else from the MoltenCodes framework enabled in the client. Run it
-out of combat.
+on Retail, with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_era_ --package profileKit`
+on Classic Era, or with
+`python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --flavour-dir _classic_ --package profileKit`
+on Mists of Pandaria Classic, and nothing else from the MoltenCodes framework
+enabled in the client. Run it out of combat. The lines below are Retail's;
+[Per flavour](#per-flavour) gives the two Classic clients.
 
 ## At login
 
@@ -88,14 +93,58 @@ The Busted specs under `packages/profileKit/tests/` prove both paths.
 ### On a client without secret values
 
 The two `profileKit.secrets` tests need the client's `issecretvalue` and
-`secretwrap`. Retail 12.1 has both. A client without them prints these two
-lines instead, and the totals line reads
-`38 passed, 0 failed, 4 skipped, 0 timed out (42 tests)`:
+`secretwrap`, and a `secretwrap` that makes a value `issecretvalue` reports as
+secret; the suite asks the harness's `CanMakeSecrets` once, when it loads.
+Retail 12.1 has both. A client without the two functions prints these two
+lines instead, and the totals line reads `38 passed, 0 failed, 4 skipped, 0 timed out (42 tests)`:
 
 ```text
 MoltenCodes Test: SKIP profileKit.secrets: a secret maxSections is refused at the calling line with the documented message and the limit is unchanged -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP profileKit.secrets: an enabled Measure hands a secret argument to fn and fn's secret result back still secret, and records the span -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
+
+A client that has both functions but whose `secretwrap` makes no secret
+(secrets are not active there) prints these two lines instead, with the same
+totals line:
+
+```text
+MoltenCodes Test: SKIP profileKit.secrets: a secret maxSections is refused at the calling line with the documented message and the limit is unchanged -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+MoltenCodes Test: SKIP profileKit.secrets: an enabled Measure hands a secret argument to fn and fn's secret result back still secret, and records the span -- the client makes no secret values (issecretvalue does not report what secretwrap returns as secret)
+```
+
+## Per flavour
+
+Everything the suite reads from the client is documented for `retail`,
+`classic-era` and `classic-mop` alike in the committed apiKit metadata
+(`packages/apiKit/metadata/<flavour>/`): `debugprofilestop`, the one clock
+ProfileKit reads, and `issecretvalue` and `secretwrap`. `collectgarbage`,
+`select`, `pcall` and the error positions are core Lua and client
+facilities every flavour has. ProfileKit documents no flavour difference, and
+the two `profileKit.host` skips are the same on every client. So no test is
+skipped by flavour, and nothing the suite reads at load is missing on a
+Classic client.
+
+### Retail (12.1)
+
+The lines above:
+`MoltenCodes Test: profileKit: 40 passed, 0 failed, 2 skipped, 0 timed out (42 tests)`,
+with the two `profileKit.host` `SKIP` lines.
+
+### Classic Era (1.15) and Mists of Pandaria Classic (5.5)
+
+The `running` line (10 suites) and every test line are the same as Retail's,
+in the same order, the two `profileKit.host` `SKIP` lines included. Whether
+the two `profileKit.secrets` tests run depends on one answer only the running
+client gives, read when the suite loads: whether `secretwrap` makes a value
+`issecretvalue` reports as secret (both Classic flavours document the two
+functions).
+
+- Secrets made: the totals line is Retail's,
+  `MoltenCodes Test: profileKit: 40 passed, 0 failed, 2 skipped, 0 timed out (42 tests)`.
+- No secrets made: the second pair of `SKIP` lines under
+  [On a client without secret values](#on-a-client-without-secret-values)
+  replaces the two `PASS` lines of `profileKit.secrets`, and the totals line is
+  `MoltenCodes Test: profileKit: 38 passed, 0 failed, 4 skipped, 0 timed out (42 tests)`.
 
 ## Visible side effects
 
@@ -167,7 +216,8 @@ collections.
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line other than the two
   `profileKit.host` ones on Retail 12.1, or a totals line other than
-  `40 passed, 0 failed, 2 skipped, 0 timed out (42 tests)`.
+  `40 passed, 0 failed, 2 skipped, 0 timed out (42 tests)` (on a Classic
+  client, other than the two totals lines under [Per flavour](#per-flavour)).
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,
@@ -194,7 +244,8 @@ collections.
 1. The chat lines above as they appeared (a screenshot, or a copy of the chat
    log), including any line that differs.
 2. After `/reload` or a logout, the file
-   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`.
+   `/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/MoltenCodesTest.lua`
+   (`_classic_era_` or `_classic_` instead of `_retail_` on a Classic client).
    It holds the full report, each test's logs (every measured span in
    milliseconds, the cost per call of the disabled paths beside a direct call,
    the four memory deltas, the number of sections in the session, the
