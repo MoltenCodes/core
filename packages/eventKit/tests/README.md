@@ -1,6 +1,6 @@
 # EventKit Tests
 
-The EventKit suite treats WoW registration lifetime and SignalKit-backed dispatch semantics as public contract.
+The EventKit suite treats WoW registration lifetime and SignalKit's dispatch semantics, which EventKit applies to its own listener arrays, as public contract.
 
 Coverage includes dependency/bootstrap behavior, lazy registration, final-listener unregistration, payload forwarding, listener mutation, one-shot subscriptions, unit-filter normalization, host registration failures, embedded-copy reconciliation, and manifest/runtime metadata consistency.
 
@@ -54,10 +54,20 @@ It also covers:
   EventKit's own `PLAYER_LOGOUT` one-shot, with scoped logout listeners still
   delivered, a refused registration retried, and routes given to or carried
   from an older copy;
-- in-place upgrade from implementation revisions 1, 4, 5, 6, 8, 9, 10, 11, 12
-  and the previous revision (which gains `IsCombatLogAvailable` and name checks),
-  set limits and the sentinel carried to a newer revision, and the refusal to
-  downgrade a newer copy.
+- listener storage: one handle per connection holding the callback itself, the
+  tail dropped and compaction in place outside a dispatch, replacement during
+  one, a `Once` tombstone settled later, a connect behind a tail tombstone
+  deferred, the depth restored after a listener error, a scope's deferred sweep
+  settling in place; the channel pool (a record reused for the next event,
+  sixteen records at most holding no reference, nothing pooled during a
+  dispatch, unit channels pooled with their Frame freed); and allocation
+  guards for connect and disconnect beside other listeners and of the only
+  listener (the handle only) and for a one-by-one teardown (nothing);
+- in-place upgrade from implementation revisions 1, 4, 5, 6, 8, 9, 10, 11, 12,
+  14, 15 and 16 (signal-backed channels, routes and router emulated: their
+  connections delivered first and released on their own path) and the previous
+  revision, set limits and the sentinel carried to a newer revision, and the
+  refusal to downgrade a newer copy.
 
 ## Spec files
 
@@ -79,6 +89,7 @@ It also covers:
 | `Coalesce_spec.lua` | `Coalesce`, with and without SchedulerKit. |
 | `Derive_spec.lua` | `Derive`, with and without SchedulerKit. |
 | `Limits_spec.lua` | `SetLimits`, `GetLimits`, `EventKit.UNBOUNDED` and the `maxUnitFrames` limit. |
+| `ListenerStorage_spec.lua` | Listener arrays in and out of a dispatch, the channel pool, handle-only allocation guards. |
 
 `EventKitTestEnv.LoadSourceAtRevision(revision)` runs the EventKit source again
 with only its revision changed, standing in for another embedded copy whose

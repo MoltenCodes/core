@@ -1,13 +1,13 @@
 # EventKit
 
-EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent` notifications into deterministic SignalKit-backed subscriptions while keeping Frame registration lazy and scoped to active listeners.
+EventKit is MoltenCodes' World of Warcraft event bridge. It turns Frame `OnEvent` notifications into deterministic subscriptions with SignalKit's dispatch semantics while keeping Frame registration lazy and scoped to active listeners.
 
 ## Package contract
 
 - Package: `eventKit`
-- Version: `0.9.3`
+- Version: `0.9.4`
 - API generation: `1`
-- Implementation revision: `16`
+- Implementation revision: `17`
 - Runtime dependencies: Registry API 2, SignalKit API 1
 - Optional partners: SchedulerKit API 1, found at call time by `Coalesce` and `Derive`;
   LifecycleKit API 1, found by the first `ForAddon` to close addon scopes at logout
@@ -115,7 +115,9 @@ event. See [Coalescing events](docs/API.md#coalescing-events).
 See [`docs/API.md`](docs/API.md) for the full public contract and edge-case
 semantics, including the two ways to listen to the payload-free combat-log
 event, the taint consequences of a shared bus, and the measured cost of
-listener isolation.
+listener isolation and of a connection. See [`docs/INTERNALS.md`](docs/INTERNALS.md)
+for the listener storage, the channel pool and the upgrade from signal-backed
+channels.
 
 ## Embedding
 

@@ -2,7 +2,7 @@ local TestEnv = require("EventKitTestEnv")
 
 ---The implementation revision `src/EventKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 16
+local CURRENT_REVISION = 17
 
 local function expectErrorContaining(expected, callback)
   local ok, message = pcall(callback)
@@ -70,6 +70,73 @@ local function emulateSchemaSevenCopy(legacy)
   rawset(legacyState, "dispatchCombatLog", nil)
   rawset(legacy, "ConnectCombatLog", nil)
   rawset(rawget(legacy, "Scope"), "ConnectCombatLog", nil)
+end
+
+---Turn one fan-out (a channel or a combat-log route) into the shape revisions
+---before 17 left: a SignalKit signal carrying one isolating wrapper closure
+---per connection, each handle holding that signal connection in `_inner`.
+---@param SignalKit table
+---@param legacyState table
+---@param fanOut table
+---@param fanOutField "_channel"|"_route"
+---@param router table|nil the combat-log router's own handle, when it is on this fan-out
+local function emulateLegacyFanOut(SignalKit, legacyState, fanOut, fanOutField, router)
+  local signal = SignalKit:New()
+  for _, connection in ipairs(rawget(fanOut, "listeners")) do
+    if rawget(connection, "_connected") == true then
+      local callback = rawget(connection, "_callback")
+      if connection == router then
+        -- Revision 16 attached the router with a bare signal connection.
+        rawset(
+          rawget(legacyState, "combatLog"),
+          "inner",
+          signal:Connect(function(...)
+            return rawget(legacyState, "isolate")(callback, ...)
+          end)
+        )
+      else
+        local wrapper
+        if rawget(connection, "_once") == true then
+          wrapper = function(...)
+            connection:Disconnect()
+            return rawget(legacyState, "isolate")(callback, ...)
+          end
+        else
+          wrapper = function(...)
+            return rawget(legacyState, "isolate")(callback, ...)
+          end
+        end
+        rawset(connection, "_inner", signal:Connect(wrapper))
+        rawset(connection, "_channel", fanOutField == "_channel" and fanOut or false)
+        rawset(connection, "_route", fanOutField == "_route" and fanOut or false)
+        rawset(connection, "_callback", nil)
+        rawset(connection, "_once", nil)
+      end
+    end
+  end
+  rawset(fanOut, "signal", signal)
+  rawset(fanOut, "listeners", nil)
+  rawset(fanOut, "tombstones", nil)
+end
+
+---Reduce a copy loaded from the current source to the schema-8 state
+---revision 16 left behind: channels and routes fanned out through signals,
+---regular channels without a `group`, and no channel pool.
+---@param legacy table
+---@param SignalKit table
+local function emulateSchemaEightCopy(legacy, SignalKit)
+  local legacyState = rawget(legacy, "_state")
+  local combatLog = rawget(legacyState, "combatLog")
+  local router = rawget(combatLog, "inner")
+  for _, channel in pairs(rawget(legacyState, "regularChannels")) do
+    emulateLegacyFanOut(SignalKit, legacyState, channel, "_channel", router)
+    rawset(channel, "group", nil)
+  end
+  for _, route in pairs(rawget(combatLog, "routes")) do
+    emulateLegacyFanOut(SignalKit, legacyState, route, "_route", nil)
+  end
+  rawset(legacyState, "channelPool", nil)
+  rawset(legacyState, "schema", 8)
 end
 
 describe("EventKit package bootstrap", function()
@@ -184,7 +251,7 @@ describe("EventKit package bootstrap", function()
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
     assert.are.equal(legacyConnectionMethods, EventKit.Connection)
-    assert.are.equal(8, state.schema)
+    assert.are.equal(9, state.schema)
     assert.are.equal(legacyGroup, state.unitGroups["6:player"])
     assert.are.equal("6:player", legacyGroup.key)
     assert.are.equal(1, state.unitFrameCount)
@@ -231,7 +298,7 @@ describe("EventKit package bootstrap", function()
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
     assert.are.equal(legacyConnectionMethods, EventKit.Connection)
-    assert.are.equal(8, state.schema)
+    assert.are.equal(9, state.schema)
     assert.are.equal("table", type(state.addonScopes))
     assert.are.equal("table", type(EventKit.Scope))
 
@@ -282,7 +349,7 @@ describe("EventKit package bootstrap", function()
 
     assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
     assert.are.equal(legacyScopePrototype, EventKit.Scope)
-    assert.are.equal(8, state.schema)
+    assert.are.equal(9, state.schema)
     assert.are.equal(0, state.dispatchDepth)
     assert.are.equal(0, state.pendingScopeCount)
 
@@ -343,7 +410,7 @@ describe("EventKit package bootstrap", function()
     local EventKit = require("EventKit")
     local state = EventKit._state
     assert.are.equal(CURRENT_REVISION, EventKit.REVISION)
-    assert.are.equal(8, state.schema)
+    assert.are.equal(9, state.schema)
     assert.is_function(state.composites.onEvent)
     assert.is_table(state.compositeMetatables.coalesce)
     assert.is_table(state.compositeMetatables.derive)
@@ -380,7 +447,7 @@ describe("EventKit package bootstrap", function()
     local _, revision = Registry:Get("eventKit", 1)
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, revision)
-    assert.are.equal(8, EventKit._state.schema)
+    assert.are.equal(9, EventKit._state.schema)
 
     -- Closing a handle revision 8 created now disconnects its listeners.
     EventKit:CloseAddonScopes("MyAddon")
@@ -404,7 +471,7 @@ describe("EventKit package bootstrap", function()
     local state = EventKit._state
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, revision)
-    assert.are.equal(8, state.schema)
+    assert.are.equal(9, state.schema)
     assert.are.equal("table", type(EventKit.UNBOUNDED))
     assert.are.equal(state.unbounded, EventKit.UNBOUNDED)
     assert.are.same({ maxUnitFrames = 64 }, EventKit:GetLimits())
@@ -436,7 +503,7 @@ describe("EventKit package bootstrap", function()
     local state = EventKit._state
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, revision)
-    assert.are.equal(8, state.schema)
+    assert.are.equal(9, state.schema)
     assert.is_table(state.combatLog)
     assert.is_function(state.dispatchCombatLog)
     assert.is_function(EventKit.ConnectCombatLog)
@@ -490,7 +557,7 @@ describe("EventKit package bootstrap", function()
     local _, revision = Registry:Get("eventKit", 1)
     assert.are.equal(legacy, EventKit)
     assert.are.equal(CURRENT_REVISION, revision)
-    assert.are.equal(8, EventKit._state.schema)
+    assert.are.equal(9, EventKit._state.schema)
 
     TestEnv.EmitCombatLogEvent(1, "SPELL_DAMAGE")
     assert.are.equal(1, calls)
@@ -502,6 +569,68 @@ describe("EventKit package bootstrap", function()
     assert.is_false(EventKit._state.combatLog.channel)
     assert.are.same({ "COMBAT_LOG_EVENT_UNFILTERED" }, TestEnv.Frames()[1].unregisterEventCalls)
   end)
+
+  it(
+    "upgrades revision-16 package state in place, delivering its signal connections first",
+    function()
+      TestEnv.Reset()
+      TestEnv.InstallWowApi()
+      local Registry = require("Registry")
+      local SignalKit = require("SignalKit")
+
+      local legacy = TestEnv.LoadSourceAtRevision(16)
+      local order = {}
+      local plain = legacy:Connect("CUSTOM_EVENT", function()
+        order[#order + 1] = "legacy"
+      end)
+      legacy:Once("CUSTOM_EVENT", function()
+        order[#order + 1] = "legacy once"
+      end)
+      local routed = 0
+      local combat = legacy:ConnectCombatLog("SPELL_DAMAGE", function()
+        routed = routed + 1
+      end)
+      emulateSchemaEightCopy(legacy, SignalKit)
+      local legacyState = rawget(legacy, "_state")
+      local channel = legacyState.regularChannels.CUSTOM_EVENT
+      assert.is_table(rawget(channel, "signal"))
+      assert.is_nil(rawget(channel, "listeners"))
+
+      local EventKit = require("EventKit")
+      local _, revision = Registry:Get("eventKit", 1)
+      assert.are.equal(legacy, EventKit)
+      assert.are.equal(CURRENT_REVISION, revision)
+      assert.are.equal(9, legacyState.schema)
+      assert.are.same({}, legacyState.channelPool)
+      assert.are.same({}, channel.listeners)
+
+      -- The older copy's connections are older than any the newer copy
+      -- adds, so they are delivered first; its Once runs once.
+      local added = EventKit:Connect("CUSTOM_EVENT", function()
+        order[#order + 1] = "added"
+      end)
+      TestEnv.Emit("CUSTOM_EVENT")
+      TestEnv.Emit("CUSTOM_EVENT")
+      assert.are.same({ "legacy", "legacy once", "added", "legacy", "added" }, order)
+
+      -- Both kinds release their share of the registration; the event is
+      -- unregistered with the last, and a channel with a signal is not pooled.
+      local frame = TestEnv.Frames()[1]
+      assert.is_true(plain:Disconnect())
+      assert.are.equal(0, #frame.unregisterEventCalls)
+      assert.is_true(added:Disconnect())
+      assert.are.same({ "CUSTOM_EVENT" }, frame.unregisterEventCalls)
+      assert.are.equal(0, #legacyState.channelPool)
+
+      -- The router revision 16 attached still routes, and detaches through
+      -- its signal connection with the last combat-log listener.
+      TestEnv.EmitCombatLogEvent(1, "SPELL_DAMAGE")
+      assert.are.equal(1, routed)
+      assert.is_true(combat:Disconnect())
+      assert.is_false(legacyState.combatLog.channel)
+      assert.are.same({ "CUSTOM_EVENT", "COMBAT_LOG_EVENT_UNFILTERED" }, frame.unregisterEventCalls)
+    end
+  )
 
   it("upgrades the previous revision in place, keeping facade, state and listeners", function()
     TestEnv.Reset()
@@ -553,7 +682,7 @@ describe("EventKit package bootstrap", function()
       local _, revision = Registry:Get("eventKit", 1)
       assert.are.equal(legacy, EventKit)
       assert.are.equal(CURRENT_REVISION, revision)
-      assert.are.equal(8, EventKit._state.schema)
+      assert.are.equal(9, EventKit._state.schema)
       assert.is_true(EventKit:IsCombatLogAvailable())
 
       -- The listener the older copy connected keeps delivering, although

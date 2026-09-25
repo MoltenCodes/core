@@ -1,6 +1,11 @@
 -- MoltenCodes EventKit
 --
--- Lazy World of Warcraft event subscriptions built on MoltenCodes SignalKit.
+-- Lazy World of Warcraft event subscriptions with MoltenCodes SignalKit's
+-- dispatch semantics: listeners run in connection order, a disconnect takes
+-- effect at once and a connection made during a dispatch waits for the next.
+-- EventKit keeps each event's listeners in an array of its own that applies
+-- those rules, so a connection is one handle and a delivery one isolated call
+-- (docs/INTERNALS.md); SignalKit backs `Derive`'s change listeners.
 -- Regular events share one Frame. Unit-event registrations share a Frame per
 -- normalized unit-filter set because RegisterUnitEvent replaces a same-event
 -- registration on the same Frame.
@@ -41,7 +46,10 @@
 --                           client's verdict on an event name
 --   WoW Frame boundary .... CreateFrame and Frame method access
 --   Unit-group Frames ..... bounded, reused unit-filter Frames
---   Channels .............. per-event host registration and fan-out
+--   Channels .............. per-event host registration and fan-out,
+--                           released records kept in a bounded pool
+--   Listener storage ...... in-place settling outside a dispatch,
+--                           compaction by copy during one
 --   Listener isolation .... allocation-free protected dispatch
 --   Combat log routing .... the client's reader, one read per event,
 --                           fanned out by sub-event
@@ -59,10 +67,10 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 16
+local IMPLEMENTATION_REVISION = 17
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
-local STATE_SCHEMA = 8
+local STATE_SCHEMA = 9
 
 -- Coalesce and Derive find SchedulerKit through `Registry:Find` when they are
 -- called. EventKit never depends on SchedulerKit: SchedulerKit depends on
@@ -98,6 +106,13 @@ local MAXIMUM_COMPOSITE_EVENTS = 32
 
 -- `Frame:RegisterUnitEvent(event, unit1, unit2)` has exactly two filter slots.
 local MAXIMUM_UNIT_TOKENS = 2
+
+-- Channel records whose last connection went are kept for the next channel,
+-- up to this many, so an event connected and disconnected in turn (the first
+-- listener and the last) reuses one record and its listener array instead of
+-- allocating both every time. The pool is package state shared by every
+-- addon, so it is small and fixed.
+local CHANNEL_POOL_SIZE = 16
 
 -- WoW Frames cannot be destroyed, so the only real bound is on how many EventKit
 -- ever creates. Released groups return their Frame to a free list that is
@@ -258,6 +273,7 @@ local function validateCurrentState(implementation)
     and rawget(currentState, "logoutConnection") ~= nil
     and type(rawget(currentState, "closeOnLogout")) == "function"
     and type(rawget(currentState, "closeOnShutdown")) == "function"
+    and type(rawget(currentState, "channelPool")) == "table"
 end
 
 -- Bootstrap -----------------------------------------------------------------
@@ -304,6 +320,15 @@ end
 ---@class EventKit.Connection
 ---@field Disconnect fun(self: EventKit.Connection): boolean
 ---@field IsConnected fun(self: EventKit.Connection): boolean
+---@field package _connected boolean Whether the connection still delivers; private to this file.
+---@field package _callback function? The listener, `nil` once disconnected.
+---@field package _once boolean? Whether it disconnects before its first call.
+---@field package _channel EventKit.Channel|false|nil The channel it is on, `nil` once disconnected.
+---@field package _route EventKit.CombatLogRoute|false|nil The combat-log route it is on instead.
+---@field package _inner SignalKit.Connection? Only on a handle a revision before 17 made.
+---@field package _scope EventKit.Scope|false|nil The owning scope; absent on an unscoped handle.
+---@field package _scopePrevious EventKit.Connection|false|nil
+---@field package _scopeNext EventKit.Connection|false|nil
 
 ---An ownership scope for connections, closed by its owner or, for an addon
 ---scope, through `EventKit:CloseAddonScopes`.
@@ -350,14 +375,17 @@ end
 ---@field Close fun(self: EventKit.DeriveHandle): boolean
 ---@field IsClosed fun(self: EventKit.DeriveHandle): boolean
 
----One event name's fan-out: a host registration plus the signal behind it.
+---One event name's fan-out: a host registration plus the listeners behind it.
+---A released record waits in `channelPool` with `false` in its references.
 ---@class EventKit.Channel
----@field eventName string
----@field frame WowFrame Frame holding the host registration.
----@field signal SignalKit.Signal Listener fan-out for this event.
+---@field eventName string|false `false` while the record waits in the pool.
+---@field frame WowFrame|false Frame holding the host registration.
+---@field listeners EventKit.Connection[] Connections in connection order, tombstones included (see "Listener storage").
+---@field tombstones integer Disconnected connections still in `listeners`.
+---@field signal SignalKit.Signal? Only on a channel a revision before 17 created: the fan-out of the connections it made, delivered before `listeners`.
 ---@field count integer Live EventKit connections sharing the registration.
----@field channels table<string, EventKit.Channel> Owning channel map.
----@field group EventKit.UnitGroup? `nil` for a regular, unfiltered event.
+---@field channels table<string, EventKit.Channel>|false Owning channel map.
+---@field group EventKit.UnitGroup|false|nil `false` (or `nil`, from a revision before 17) for a regular, unfiltered event.
 
 ---The channels registered against one normalized unit-token set.
 ---@class EventKit.UnitGroup
@@ -369,14 +397,16 @@ end
 ---One combat-log sub-event's fan-out: the listeners that asked for it.
 ---@class EventKit.CombatLogRoute
 ---@field subEvent string The sub-event routed here, or `"*"` for the wildcard route.
----@field signal SignalKit.Signal Listener fan-out for this sub-event.
+---@field listeners EventKit.Connection[] Connections in connection order, tombstones included (see "Listener storage").
+---@field tombstones integer Disconnected connections still in `listeners`.
+---@field signal SignalKit.Signal? Only on a route a revision before 17 created, as on a channel.
 ---@field count integer Live connections on this route; it leaves the router at zero.
 
 ---The combat-log router: the package's one share of the
 ---`COMBAT_LOG_EVENT_UNFILTERED` registration and the routes behind it.
 ---@class EventKit.CombatLogRouter
 ---@field channel EventKit.Channel|false The event's channel while at least one combat-log listener exists.
----@field inner SignalKit.Connection|false The router's connection on that channel's signal.
+---@field inner EventKit.Connection|SignalKit.Connection|false The router's connection on that channel: an EventKit connection, or, when a revision before 17 attached the router, a connection on the channel's signal.
 ---@field readEventInfo function|false `CombatLogGetCurrentEventInfo`, or `C_CombatLog.GetCurrentEventInfo` without it, resolved each time the router attaches.
 ---@field routes table<string, EventKit.CombatLogRoute> Routes by sub-event name.
 ---@field anyRoute EventKit.CombatLogRoute|false The wildcard route, delivered after the sub-event's own.
@@ -461,6 +491,8 @@ if type(previousRevision) == "nil" then
     -- logout routes resolve when they run (`closeOnLogout`,
     -- `closeOnShutdown`) are installed at commit, like `isolate`.
     logoutConnection = false,
+    -- Released channel records kept for reuse (see `CHANNEL_POOL_SIZE`).
+    channelPool = {},
   }
 
   rawset(EventKit, "Connection", Connection)
@@ -555,6 +587,41 @@ else
       anyRoute = false,
       listenerCount = 0,
     })
+    rawset(state, "schema", 8)
+    schema = 8
+  end
+
+  if schema == 8 then
+    -- Revisions before 17 fanned every channel and combat-log route out
+    -- through a SignalKit signal, with one wrapper closure per connection.
+    -- A channel or route they made keeps its signal for the connections
+    -- already on it; those are older than any connection this revision
+    -- adds, so dispatch delivers the signal first and connection order
+    -- holds. New connections go to the `listeners` array given here.
+    local function adoptFanOut(fanOut)
+      if type(fanOut) == "table" and type(rawget(fanOut, "listeners")) ~= "table" then
+        rawset(fanOut, "listeners", {})
+        rawset(fanOut, "tombstones", 0)
+      end
+    end
+    for _, channel in pairs(rawget(state, "regularChannels")) do
+      adoptFanOut(channel)
+    end
+    for _, group in pairs(rawget(state, "unitGroups")) do
+      if type(group) == "table" and type(rawget(group, "channels")) == "table" then
+        for _, channel in pairs(rawget(group, "channels")) do
+          adoptFanOut(channel)
+        end
+      end
+    end
+    local combatLog = rawget(state, "combatLog")
+    for _, route in pairs(rawget(combatLog, "routes")) do
+      adoptFanOut(route)
+    end
+    adoptFanOut(rawget(combatLog, "anyRoute"))
+    if type(rawget(state, "channelPool")) ~= "table" then
+      rawset(state, "channelPool", {})
+    end
     rawset(state, "schema", STATE_SCHEMA)
     schema = STATE_SCHEMA
   end
@@ -866,7 +933,7 @@ local function onRegularFrameEvent(_, eventName, ...)
   -- per-event path is a single table read instead of a read plus a type check.
   -- Reading it through `state` rather than capturing it keeps upgrade-in-place
   -- working: a newer revision replaces the slot and existing Frames follow.
-  return rawget(state, "dispatchRegular")(EventKit, eventName, ...)
+  return state.dispatchRegular(EventKit, eventName, ...)
 end
 
 ---Return the single Frame that carries every unfiltered registration.
@@ -889,7 +956,7 @@ end
 ---@return WowFrame
 local function acquireUnitFrame(group)
   local function onUnitFrameEvent(_, eventName, ...)
-    return rawget(state, "dispatchUnit")(EventKit, group, eventName, ...)
+    return state.dispatchUnit(EventKit, group, eventName, ...)
   end
 
   local freeFrames = rawget(state, "unitFrames")
@@ -964,6 +1031,44 @@ local function ensureUnitGroup(units, key)
 end
 
 -- Channels ------------------------------------------------------------------
+--
+-- A channel is one event name's host registration and the listeners behind
+-- it. When its last connection goes, the registration is released and, when
+-- no dispatch is running, the record itself waits in the bounded
+-- `channelPool` for the next channel, with its emptied listener array. A
+-- record reached by a dispatch in flight is left to the collector instead,
+-- because that dispatch may still read it.
+
+---Return a channel record for `eventName`: a pooled one, reset, or a new one.
+---@param eventName string
+---@param frame WowFrame
+---@param channels table<string, EventKit.Channel> the map the channel joins
+---@param group EventKit.UnitGroup|false
+---@return EventKit.Channel
+local function newChannel(eventName, frame, channels, group)
+  local pool = state.channelPool
+  local pooled = #pool
+  if pooled == 0 then
+    return {
+      eventName = eventName,
+      frame = frame,
+      listeners = {},
+      tombstones = 0,
+      count = 0,
+      channels = channels,
+      group = group,
+    }
+  end
+
+  local channel = pool[pooled]
+  pool[pooled] = nil
+  channel.eventName = eventName
+  channel.frame = frame
+  channel.count = 0
+  channel.channels = channels
+  channel.group = group
+  return channel
+end
 
 ---Return the unfiltered channel for `eventName`, registering it on demand.
 ---@param eventName string
@@ -971,29 +1076,26 @@ end
 ---@param level integer stack level the failure is reported at
 ---@return EventKit.Channel
 local function createRegularChannel(eventName, label, level)
-  local channels = rawget(state, "regularChannels")
-  local existingChannel = rawget(channels, eventName)
+  local channels = state.regularChannels
+  local existingChannel = channels[eventName]
   if existingChannel ~= nil then
     return existingChannel
   end
 
-  local frame = ensureRegularFrame()
-  local signal = SignalKit:New()
-  local registerEvent = requireFrameMethod(frame, "RegisterEvent")
+  -- The Frame and its method are read inline; the helpers, which create the
+  -- Frame or name a missing method, run only when a read comes back empty.
+  local frame = state.regularFrame or ensureRegularFrame()
+  local registerEvent = frame.RegisterEvent
+  if type(registerEvent) ~= "function" then
+    registerEvent = requireFrameMethod(frame, "RegisterEvent")
+  end
   local registered = registerEvent(frame, eventName)
   if registered == false then
     error(label .. " could not register event " .. eventName, level)
   end
 
-  local channel = {
-    eventName = eventName,
-    frame = frame,
-    signal = signal,
-    count = 0,
-    channels = channels,
-    group = nil,
-  }
-  rawset(channels, eventName, channel)
+  local channel = newChannel(eventName, frame, channels, false)
+  channels[eventName] = channel
   return channel
 end
 
@@ -1013,7 +1115,6 @@ local function createUnitChannel(eventName, units, key, label, level)
   end
 
   local frame = rawget(group, "frame")
-  local signal = SignalKit:New()
   local registerUnitEvent = requireFrameMethod(frame, "RegisterUnitEvent")
   local registered = registerUnitEvent(frame, eventName, unpackValues(units, 1, #units))
   if registered == false then
@@ -1024,23 +1125,39 @@ local function createUnitChannel(eventName, units, key, label, level)
     error(label .. " could not register event " .. eventName, level)
   end
 
-  local channel = {
-    eventName = eventName,
-    frame = frame,
-    signal = signal,
-    count = 0,
-    channels = channels,
-    group = group,
-  }
+  local channel = newChannel(eventName, frame, channels, group)
   rawset(channels, eventName, channel)
   return channel
+end
+
+---Put a released channel record into the pool when that is safe: no dispatch
+---is running, no older revision's signal hangs off it, and its listener array
+---is empty. Every reference it holds is dropped, so a pooled record keeps
+---nothing alive.
+---@param channel EventKit.Channel
+local function poolChannel(channel)
+  local pool = state.channelPool
+  if
+    state.dispatchDepth > 0
+    or channel.signal ~= nil
+    or #channel.listeners ~= 0
+    or #pool >= CHANNEL_POOL_SIZE
+  then
+    return
+  end
+  channel.eventName = false
+  channel.frame = false
+  channel.channels = false
+  channel.group = false
+  channel.tombstones = 0
+  pool[#pool + 1] = channel
 end
 
 ---Drop one connection from `channel`, unregistering it once the last one goes.
 ---@param channel EventKit.Channel
 local function releaseChannel(channel)
-  local count = rawget(channel, "count") - 1
-  rawset(channel, "count", count)
+  local count = channel.count - 1
+  channel.count = count
 
   -- The count is decremented once per connection and a connection disconnects
   -- at most once, so it can only ever reach zero. Treating any non-positive
@@ -1050,22 +1167,127 @@ local function releaseChannel(channel)
     return
   end
 
-  local eventName = rawget(channel, "eventName")
-  local channels = rawget(channel, "channels")
-  local frame = rawget(channel, "frame")
+  -- A record already released and pooled holds `false` here; a slip that
+  -- releases it twice must not touch whichever channel reuses it.
+  local eventName = channel.eventName
+  if eventName == false then
+    return
+  end
+  local channels = channel.channels --[[@as table<string, EventKit.Channel>]]
+  local frame = channel.frame --[[@as WowFrame]]
+  if channels[eventName] ~= channel then
+    return
+  end
 
   -- Remove dispatch visibility before touching the host API. Even if an
   -- unexpected host-side UnregisterEvent error occurs, stale callbacks can no
   -- longer be delivered through this package state.
-  rawset(channels, eventName, nil)
+  channels[eventName] = nil
 
-  local unregisterEvent = requireFrameMethod(frame, "UnregisterEvent")
+  local unregisterEvent = frame.UnregisterEvent
+  if type(unregisterEvent) ~= "function" then
+    unregisterEvent = requireFrameMethod(frame, "UnregisterEvent")
+  end
   unregisterEvent(frame, eventName)
 
-  local group = rawget(channel, "group")
-  if group ~= nil and rawget(group, "frame") ~= nil and next(channels) == nil then
+  -- A regular channel holds `false`, one from a revision before 17 `nil`.
+  local group = channel.group
+  if type(group) == "table" and rawget(group, "frame") ~= nil and next(channels) == nil then
     releaseUnitGroup(group)
   end
+
+  poolChannel(channel)
+end
+
+-- Listener storage ----------------------------------------------------------
+--
+-- Channels and combat-log routes keep their connections in a `listeners`
+-- array in connection order, with SignalKit's rules for a signal (see
+-- SignalKit's docs/API.md, "Mutation semantics"): a dispatch walks the array
+-- up to the length it read when it started, so a connection made during it
+-- waits for the next dispatch; a disconnect marks the connection, so a
+-- dispatch skips it at once; and a disconnected connection stays in the
+-- array as a tombstone until the array is settled.
+--
+-- While no EventKit dispatch runs (`dispatchDepth` is zero), nothing holds a
+-- position in any array, so a disconnect edits the array in place and
+-- allocates nothing: tombstones at the tail are dropped at once, which is
+-- where connect-then-disconnect churn leaves them, and once at least half of
+-- the array is tombstones the live entries are shifted down. During a
+-- dispatch the array is instead replaced by a compacted copy at that
+-- threshold, so the dispatch keeps walking the array it started with.
+-- Connection objects are shared, so a disconnect is visible in both. Either
+-- way disconnecting is amortized O(1) and an array holds at most twice its
+-- live connections.
+--
+-- The depth is package-wide rather than per array, and revisions before 17
+-- raise the same counter around their dispatches, so an older copy's
+-- dispatch still on the stack below an in-place upgrade is seen too.
+
+---Drop the tombstones of an array no dispatch is walking: first those at the
+---tail, then, past the threshold, every other one by shifting the live
+---entries down in order.
+---@param listeners EventKit.Connection[]
+---@param total integer the array length
+---@param tombstones integer the tombstones in the array
+---@return integer tombstones the tombstones left
+local function settleInPlace(listeners, total, tombstones)
+  while total > 0 and listeners[total]._connected ~= true do
+    listeners[total] = nil
+    total = total - 1
+    tombstones = tombstones - 1
+  end
+  if tombstones == 0 or tombstones * 2 < total then
+    return tombstones
+  end
+
+  local live = 0
+  for index = 1, total do
+    local connection = listeners[index]
+    if connection._connected == true then
+      live = live + 1
+      listeners[live] = connection
+    end
+  end
+  for index = live + 1, total do
+    listeners[index] = nil
+  end
+  return 0
+end
+
+---Account for `connection`, just marked disconnected, in the array of
+---`fanOut` (a channel or a combat-log route).
+---@param fanOut EventKit.Channel|EventKit.CombatLogRoute
+---@param connection EventKit.Connection
+local function dropListener(fanOut, connection)
+  local listeners = fanOut.listeners
+  local total = #listeners
+  local tombstones = fanOut.tombstones + 1
+
+  if state.dispatchDepth > 0 then
+    if tombstones * 2 >= total then
+      local compacted = {}
+      local live = 0
+      for index = 1, total do
+        local entry = listeners[index]
+        if entry._connected == true then
+          live = live + 1
+          compacted[live] = entry
+        end
+      end
+      fanOut.listeners = compacted
+      tombstones = 0
+    end
+  elseif tombstones == 1 and listeners[total] == connection then
+    -- The churn case: the only tombstone is the tail, so settling is one
+    -- removal.
+    listeners[total] = nil
+    tombstones = 0
+  else
+    tombstones = settleInPlace(listeners, total, tombstones)
+  end
+
+  fanOut.tombstones = tombstones
 end
 
 -- Listener isolation ----------------------------------------------------------
@@ -1186,18 +1408,6 @@ if type(secureCallFunction) == "function" then
   isolate = secureCallFunction
 end
 
----Build the one wrapper closure a connection (or the combat-log router) hands
----SignalKit: one per connection, never per event. The isolation function is
----read from shared state so a compatible newer revision can replace it for
----connections that already exist.
----@param callback function
----@return fun(...: any): any
-local function newIsolatedListener(callback)
-  return function(...)
-    return rawget(state, "isolate")(callback, ...)
-  end
-end
-
 -- Combat log routing ----------------------------------------------------------
 --
 -- `COMBAT_LOG_EVENT_UNFILTERED` is the highest-frequency event in the client
@@ -1214,6 +1424,19 @@ end
 -- the router on the channel still receive the event. Each route listener is
 -- then isolated individually, exactly as a `Connect` listener is. The extra
 -- isolated call stages no arguments and allocates nothing per event.
+--
+-- A route keeps its connections exactly as a channel does (see "Listener
+-- storage"), and is delivered by the same walk.
+
+-- Assigned in the dispatch section: the walk that delivers a channel's or a
+-- route's listeners.
+local deliverListeners
+
+-- Assigned in the connections section. The router attaches and detaches as
+-- an ordinary connection on the combat-log channel, and releasing a
+-- connection releases its route, so the two sections refer to each other.
+local connectToChannel
+local disconnectEventConnection
 
 ---The one listener the router connects to the combat-log channel. It resolves
 ---the dispatcher through shared state so a newer revision replaces it while
@@ -1236,17 +1459,17 @@ local function routeCombatLogEvent(combatLog, ...)
   if not isSecret(subEvent) then
     route = rawget(rawget(combatLog, "routes"), subEvent)
   end
-  -- Both routes are read before either fires: a wildcard listener connected
-  -- by a sub-event listener must not receive the event being dispatched,
-  -- as a listener connected during a `Connect` dispatch does not. A wildcard
-  -- route dropped during the first fire is harmless, because SignalKit has
-  -- marked its connections disconnected.
+  -- Both routes are read before either is delivered: a wildcard listener
+  -- connected by a sub-event listener must not receive the event being
+  -- dispatched, as a listener connected during a `Connect` dispatch does
+  -- not. A wildcard route dropped during the first delivery is harmless,
+  -- because its connections are already marked disconnected.
   local anyRoute = rawget(combatLog, "anyRoute")
   if route ~= nil then
-    rawget(route, "signal"):Fire(...)
+    deliverListeners(route, ...)
   end
   if anyRoute ~= false then
-    rawget(anyRoute, "signal"):Fire(...)
+    deliverListeners(anyRoute, ...)
   end
 end
 
@@ -1309,8 +1532,7 @@ local function attachCombatLogRouter(combatLog, label, level)
   end
 
   local channel = createRegularChannel(COMBAT_LOG_EVENT, label, level + 1)
-  local inner = rawget(channel, "signal"):Connect(newIsolatedListener(onCombatLogEvent))
-  rawset(channel, "count", rawget(channel, "count") + 1)
+  local inner = connectToChannel(channel, onCombatLogEvent, false, false)
 
   rawset(combatLog, "channel", channel)
   rawset(combatLog, "inner", inner)
@@ -1327,8 +1549,15 @@ local function detachCombatLogRouter(combatLog)
   rawset(combatLog, "inner", false)
   rawset(combatLog, "readEventInfo", false)
 
-  inner:Disconnect()
-  releaseChannel(channel)
+  -- The router's own connection releases its share of the channel. One a
+  -- revision before 17 attached is a connection on the channel's signal,
+  -- which holds no share, so the share is released here.
+  if rawget(inner, "_channel") == channel then
+    disconnectEventConnection(inner)
+  else
+    inner:Disconnect()
+    releaseChannel(channel)
+  end
 end
 
 ---Return the route for `subEvent`, attaching the router and creating the route
@@ -1360,7 +1589,8 @@ local function acquireCombatLogRoute(subEvent, label, level)
 
   route = {
     subEvent = subEvent,
-    signal = SignalKit:New(),
+    listeners = {},
+    tombstones = 0,
     count = 0,
   }
   if isWildcard then
@@ -1451,14 +1681,25 @@ local function unlinkFromScope(connection)
 end
 
 -- Connections ---------------------------------------------------------------
+--
+-- A connection handle is also the record in its channel's or route's
+-- listener array, so connecting allocates the handle and nothing else: no
+-- wrapper closure and no second record. An unscoped handle carries the four
+-- fields every connection needs (`_connected`, `_channel` or `_route`,
+-- `_callback`, `_once`), which fill a four-slot hash part; a scoped handle
+-- adds the three scope links. Fields are only ever written when they exist,
+-- because in Lua 5.1 assigning even `nil` to a missing key inserts it, which
+-- can grow a full table.
+--
+-- Handles revisions before 17 made hold `_inner`, their connection on the
+-- channel's or route's signal, and are released the way those revisions
+-- released them.
 
+---Release a connection a revision before 17 made: it is delivered through
+---`_inner`, its connection on the channel's or route's signal.
 ---@param connection EventKit.Connection
----@return boolean disconnected `true` only for the call that transitioned the state.
-local function disconnectEventConnection(connection)
-  if rawget(connection, "_connected") ~= true then
-    return false
-  end
-
+---@return boolean disconnected
+local function disconnectLegacyConnection(connection)
   local inner = rawget(connection, "_inner")
   local channel = rawget(connection, "_channel")
   local route = rawget(connection, "_route")
@@ -1485,43 +1726,111 @@ local function disconnectEventConnection(connection)
   return true
 end
 
----Wrap `callback` in one isolation closure and attach it to `channel`.
+---@param connection EventKit.Connection
+---@return boolean disconnected `true` only for the call that transitioned the state.
+function disconnectEventConnection(connection)
+  if connection._connected ~= true then
+    return false
+  end
+  -- Absent on this revision's handles, so the read falls through to the
+  -- prototype, which has no such field.
+  if connection._inner ~= nil then
+    return disconnectLegacyConnection(connection)
+  end
+
+  -- A connection holds a channel or, for a combat-log listener, a route;
+  -- the other field is absent and reads `nil` through the prototype.
+  local channel = connection._channel
+  local route = connection._route
+  connection._connected = false
+  connection._callback = nil
+  if channel ~= nil then
+    connection._channel = nil
+  else
+    connection._route = nil
+  end
+
+  -- Leave the scope before touching the host, which can raise. Bulk
+  -- teardown relies on every attempted connection leaving the list,
+  -- whatever happens after this line. An unscoped handle has no `_scope`.
+  if connection._scope then
+    unlinkFromScope(connection)
+  end
+
+  if channel == nil then
+    -- Without a channel the handle held a route.
+    local owner = route --[[@as EventKit.CombatLogRoute]]
+    dropListener(owner, connection)
+    releaseCombatLogRoute(owner)
+    return true
+  end
+
+  -- The churn case inline: no dispatch running and this connection the
+  -- tail of an array without tombstones is one removal (see
+  -- `dropListener`), and a channel other connections still share needs
+  -- only its count.
+  local listeners = channel.listeners
+  local total = #listeners
+  if channel.tombstones == 0 and listeners[total] == connection and state.dispatchDepth <= 0 then
+    listeners[total] = nil
+  else
+    dropListener(channel, connection)
+  end
+  local count = channel.count
+  if count > 1 then
+    channel.count = count - 1
+  else
+    releaseChannel(channel)
+  end
+  return true
+end
+
+---Build a connection handle for `callback`, owned by `scope` when it is one.
+---@param fanOutField "_channel"|"_route" which field holds `fanOut`
+---@param fanOut EventKit.Channel|EventKit.CombatLogRoute
+---@param callback function
+---@param once boolean whether the connection disconnects before its first call
+---@param scope EventKit.Scope|false owning scope, or `false` for none
+---@return EventKit.Connection
+local function newConnection(fanOutField, fanOut, callback, once, scope)
+  -- Separate constructors, because a constructor sizes the hash part by the
+  -- fields it names: naming the scope links on every handle would double
+  -- the handles that have no scope.
+  local connection ---@type table<string, any>
+  if scope == false then
+    connection = { _connected = true, _callback = callback, _once = once }
+  else
+    connection = {
+      _connected = true,
+      _callback = callback,
+      _once = once,
+      _scope = false,
+      _scopePrevious = false,
+      _scopeNext = false,
+    }
+  end
+  -- The fan-out field fills the fourth (or seventh) slot the constructor
+  -- sized for, so writing it grows nothing.
+  connection[fanOutField] = fanOut
+  setmetatable(connection, CONNECTION_METATABLE)
+
+  local listeners = fanOut.listeners
+  listeners[#listeners + 1] = connection
+  fanOut.count = fanOut.count + 1
+  if scope ~= false then
+    linkToScope(scope --[[@as EventKit.Scope]], connection)
+  end
+  return connection
+end
+
+---Attach `callback` to `channel`.
 ---@param channel EventKit.Channel
 ---@param callback EventKit.Listener
 ---@param once boolean whether the connection disconnects before its first call
 ---@param scope EventKit.Scope|false owning scope, or `false` for none
 ---@return EventKit.Connection
-local function connectToChannel(channel, callback, once, scope)
-  local connection = setmetatable({
-    _connected = true,
-    _inner = nil,
-    _channel = channel,
-    _route = false,
-    _scope = false,
-    _scopePrevious = false,
-    _scopeNext = false,
-  }, CONNECTION_METATABLE)
-
-  local signal = rawget(channel, "signal")
-  local inner
-
-  -- A one-shot disconnects itself before the isolated call, so it needs its
-  -- own wrapper; every other connection shares the plain one.
-  if once then
-    inner = signal:Connect(function(...)
-      disconnectEventConnection(connection)
-      return rawget(state, "isolate")(callback, ...)
-    end)
-  else
-    inner = signal:Connect(newIsolatedListener(callback))
-  end
-
-  rawset(connection, "_inner", inner)
-  rawset(channel, "count", rawget(channel, "count") + 1)
-  if scope ~= false then
-    linkToScope(scope, connection)
-  end
-  return connection
+function connectToChannel(channel, callback, once, scope)
+  return newConnection("_channel", channel, callback, once, scope)
 end
 
 ---Attach `callback` to a combat-log route as an ordinary connection handle.
@@ -1530,25 +1839,9 @@ end
 ---@param scope EventKit.Scope|false owning scope, or `false` for none
 ---@return EventKit.Connection
 local function connectToRoute(route, callback, scope)
-  local connection = setmetatable({
-    _connected = true,
-    _inner = nil,
-    _channel = false,
-    _route = route,
-    _scope = false,
-    _scopePrevious = false,
-    _scopeNext = false,
-  }, CONNECTION_METATABLE)
-
-  local inner = rawget(route, "signal"):Connect(newIsolatedListener(callback))
-  rawset(connection, "_inner", inner)
-  rawset(route, "count", rawget(route, "count") + 1)
-
+  local connection = newConnection("_route", route, callback, false, scope)
   local combatLog = rawget(state, "combatLog")
   rawset(combatLog, "listenerCount", rawget(combatLog, "listenerCount") + 1)
-  if scope ~= false then
-    linkToScope(scope, connection)
-  end
   return connection
 end
 
@@ -1556,7 +1849,9 @@ end
 ---@param self EventKit.Connection
 ---@return boolean disconnected `true` only for the call that transitioned the state.
 local function disconnect(self)
-  if not isConnectionHandle(self) then
+  -- `isConnectionHandle`, inlined: this is half of every connect-disconnect
+  -- pair, and the call frame would cost more than the test.
+  if type(self) ~= "table" or type(rawget(self, "_connected")) ~= "boolean" then
     error(DISCONNECT_RECEIVER_MESSAGE, 2)
   end
 
@@ -1579,26 +1874,64 @@ end
 -- EventKit counts the dispatches on the stack so that closing a scope from
 -- inside a listener never cuts short the delivery already in flight: the
 -- scope refuses new connections at once, and its connections are swept when
--- the outermost dispatch returns. The count is two field writes per event and
--- the sweep check one comparison, so the per-event path stays allocation-free.
+-- the outermost dispatch returns. The same count tells a disconnect whether it
+-- may edit a listener array in place (see "Listener storage"). The count is
+-- two field writes per event and the sweep check one comparison, so the
+-- per-event path stays allocation-free.
+--
+-- The per-event path reads EventKit's own tables with plain indexing, a VM
+-- instruction, rather than `rawget`, a C call: every table read here is one
+-- EventKit created and fills completely.
 
 -- Assigned in the subscription section, once bulk disconnection exists.
 local sweepPendingScopes
 
----Fire `channel`'s signal with the dispatch depth raised around it.
+---Deliver `...` to every eligible listener of `fanOut`, a channel or a
+---combat-log route, in connection order, each call isolated.
+---@param fanOut EventKit.Channel|EventKit.CombatLogRoute
+---@param ... any what each listener receives
+function deliverListeners(fanOut, ...)
+  -- A revision before 17 left its connections on a signal. They are older
+  -- than every connection in `listeners`, so they go first; each already
+  -- isolates itself.
+  local legacySignal = fanOut.signal
+  if legacySignal ~= nil then
+    legacySignal:Fire(...)
+  end
+
+  local listeners = fanOut.listeners
+  -- Read once per event, so a newer revision replaces the isolation for
+  -- the connections that already exist.
+  local isolateCall = state.isolate --[[@as function]]
+  for index = 1, #listeners do
+    local connection = listeners[index]
+    if connection._connected == true then
+      local callback = connection._callback
+      if connection._once == true then
+        -- Disconnected before the call, so a nested dispatch the callback
+        -- starts cannot deliver to it a second time.
+        disconnectEventConnection(connection)
+      end
+      isolateCall(callback, ...)
+    end
+  end
+end
+
+---Deliver one event to `channel`'s listeners with the dispatch depth raised
+---around it.
 ---@param channel EventKit.Channel
 ---@param eventName string
 ---@param ... any client payload
 local function fireChannel(channel, eventName, ...)
-  local signal = rawget(channel, "signal")
-  rawset(state, "dispatchDepth", rawget(state, "dispatchDepth") + 1)
-  -- Listeners are isolated and never raise; SignalKit itself could only
-  -- raise on a bug. `pcall` still guarantees the depth is restored, because a
+  state.dispatchDepth = state.dispatchDepth + 1
+  -- Listeners are isolated and never raise; the walk itself could only
+  -- raise on a bug or a host failure while a one-shot releases its
+  -- registration. `pcall` still guarantees the depth is restored, because a
   -- stuck depth would defer every later scope close for the whole session.
-  local ok, failure = pcall(signal.Fire, signal, eventName, ...)
-  local depth = rawget(state, "dispatchDepth") - 1
-  rawset(state, "dispatchDepth", depth)
-  if depth <= 0 and rawget(state, "pendingScopeCount") > 0 then
+  local ok, failure = pcall(deliverListeners, channel, eventName, ...)
+  local depth = state.dispatchDepth - 1
+  state.dispatchDepth = depth
+  if depth <= 0 and state.pendingScopeCount > 0 then
     sweepPendingScopes()
   end
   if not ok then
@@ -1611,8 +1944,7 @@ end
 ---@param eventName string
 ---@param ... any client payload
 local function dispatchRegular(_, eventName, ...)
-  local channels = rawget(state, "regularChannels")
-  local channel = rawget(channels, eventName)
+  local channel = state.regularChannels[eventName]
   if channel ~= nil then
     fireChannel(channel, eventName, ...)
   end
@@ -1624,8 +1956,7 @@ end
 ---@param eventName string
 ---@param ... any client payload
 local function dispatchUnit(_, group, eventName, ...)
-  local channels = rawget(group, "channels")
-  local channel = rawget(channels, eventName)
+  local channel = group.channels[eventName]
   if channel ~= nil then
     fireChannel(channel, eventName, ...)
   end
@@ -1647,10 +1978,29 @@ end
 ---@param once boolean
 ---@return EventKit.Connection
 local function subscribeRegular(scope, label, level, eventName, callback, once)
-  validateEventName(eventName, label, level + 1)
-  validateCallback(callback, label, level + 1)
-  local channel = createRegularChannel(eventName, label, level + 1)
-  local connection = connectToChannel(channel, callback, once, scope)
+  -- `Connect` is half of every connect-disconnect pair, so the common valid
+  -- call is recognised inline and the validators, which raise at the
+  -- caller's line, run in full only otherwise: for a secret or malformed
+  -- name, a non-function callback, or on a client that can judge the name
+  -- (`C_EventUtils.IsEventValid`). The secret test comes first, because
+  -- comparing a secret with `""` would raise here instead of at the caller.
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local isSecretValue = rawget(_G, "issecretvalue")
+  if
+    (type(isSecretValue) == "function" and isSecretValue(eventName) == true)
+    or type(eventName) ~= "string"
+    or eventName == ""
+    or hostIsEventValid ~= false
+  then
+    validateEventName(eventName, label, level + 1)
+  end
+  if type(callback) ~= "function" then
+    validateCallback(callback, label, level + 1)
+  end
+  local channel = state.regularChannels[eventName]
+    or createRegularChannel(eventName, label, level + 1)
+  local connection = newConnection("_channel", channel, callback, once, scope)
   return connection
 end
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.4 — 2026-09-25
+
+- Performance round against AceEvent-3.0 (host benchmark, `docs/BENCHMARKS.md`). Before, a connection was three allocations (the EventKit handle, a wrapper closure that isolated the callback, and a SignalKit connection on the channel's signal), a disconnect could allocate a compacted listener array, releasing an event's last listener dropped its channel record and signal, and an event crossed four call layers before reaching a listener.
+- Each channel and combat-log route now keeps its connections in a listener array of its own, with SignalKit's rules unchanged: connection order, a disconnect taking effect at once (also during a dispatch), a connection made during a dispatch waiting for the next event, `Once` disconnected before its call. The connection handle is the array's record, so connecting allocates only the handle (224 bytes unscoped, 384 scoped), and dispatch calls the isolation function around each listener's own callback, with no wrapper call in between.
+- Outside a dispatch a disconnect edits the array in place and allocates nothing: a tombstone at the tail is dropped at once and compaction shifts the live entries down. During a dispatch the array is compacted into a copy as before, so the running dispatch keeps its own. The package-wide `dispatchDepth` decides, and is restored under `pcall` as before.
+- A channel record whose last listener went is kept, with its emptied array, in a pool of at most 16 records holding no references, and reused by the next channel; never while a dispatch runs.
+- The per-event and per-connection paths read EventKit's own tables with plain indexing instead of `rawget` C calls, and recognise the common valid `Connect` inline, running the validators (which still raise at the caller's line, in the same order) only for a call that fails a test or on a client with `C_EventUtils.IsEventValid`.
+- Host benchmark, same run for both sides; before on 2026-09-25 under load average 5.7 (other agents benchmarking), after under load average 2.0. The ratio against Ace3 is the comparable figure:
+
+  | Case | Before | After | Before B/op | After B/op | Ace3 B/op |
+  |---|---:|---:|---:|---:|---:|
+  | dispatch to 1 listener | 525 ns, 2.29× | 228 ns, 1.08× | 0 | 0 | 0 |
+  | dispatch to 10 listeners | 1,908 ns, 1.82× | 920 ns, 0.95× | 0 | 0 | 0 |
+  | dispatch to 100 listeners | 15,602 ns, 1.81× | 7,773 ns, 0.99× | 0 | 0 | 0 |
+  | connect and disconnect beside 10 others | 1,940 ns, 5.01× | 492 ns, 1.30× | 922 | 224 | 0 |
+  | connect and disconnect the only listener | 2,884 ns, 3.94× | 1,035 ns, 1.52× | 1,880 | 328 | 104 |
+
+  The cold case includes the fake client's 104-byte registration record on both sides. What remains is the handle (the contract keeps it valid after `Disconnect`, so it cannot be reused) and the ordering, scope, isolation and secret-value work the contract promises.
+- Implementation revision 17, package state schema 9: `listeners` and `tombstones` on every channel and route, and `channelPool`. An upgrade over revision 16 or older gives the channels and routes it inherits an empty array and keeps their SignalKit signal for the connections already on it; those are delivered first, so connection order holds, and keep their wrapper closure and their release path. A router an older copy attached detaches through its signal connection. A channel with a signal is never pooled. `docs/INTERNALS.md` is new and describes the storage, the pool and the upgrade; `docs/API.md` states the cost of a connection and the revision-17 upgrade.
+- 232 specs (18 new): `ListenerStorage_spec.lua` covers the arrays in and out of a dispatch, `Once` tombstones, a connect behind a tail tombstone, the depth after a listener error, a scope's deferred sweep, the pool (reuse for the next event, the bound of 16, nothing pooled during a dispatch, unit channels) and allocation guards (only the handle per connect and disconnect beside other listeners and of the only listener; nothing for a one-by-one teardown); `Bootstrap_spec.lua` upgrades emulated revision-16 state (signal-backed channels, a `Once`, a combat-log route and router) in place. `EventKit` API generation 1 is unchanged; SignalKit API 1 is still required (for `Derive`'s `OnChange`).
+
 ## 0.9.3 — 2026-09-24
 
 - A secret value is never tested as a boolean inside EventKit (measured on Retail 12.1.0 b69933: `if x`, `x and y`, `x or y` and `not x` on a secret raise inside the Kit). A `Derive` `equals` function that answers with a secret value now counts as a change, as a secret value on either side already did, instead of raising while its answer was tested.

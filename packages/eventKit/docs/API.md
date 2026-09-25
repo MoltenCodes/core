@@ -1,6 +1,6 @@
 # EventKit API
 
-EventKit API generation 1 provides lazy World of Warcraft event subscriptions backed by SignalKit API 1.
+EventKit API generation 1 provides lazy World of Warcraft event subscriptions with SignalKit API 1's dispatch semantics.
 
 Implementation revision: **16**.
 
@@ -170,7 +170,7 @@ Nothing is allocated per event; a spec guards that with
 together. The last combat-log listener disconnecting and reconnecting inside
 its own callback works, at the price of unregistering and re-registering the
 host event within that one dispatch. Per sub-event in use, EventKit keeps one route (a
-SignalKit signal and a count) that leaves with the sub-event's last listener,
+listener array and two counts, like a channel) that leaves with the sub-event's last listener,
 so routes are bounded by the live subscriptions, like event channels, and need
 no limit of their own.
 
@@ -364,10 +364,10 @@ Manual scopes are never closed by `CloseAddonScopes`.
 
 ### Cost
 
-Each connection carries three link fields, created with the connection.
-Joining a scope and leaving it are a handful of field writes on an intrusive
-doubly linked list: nothing is allocated, and a disconnect unlinks in constant
-time. Dispatch is unchanged; a scoped listener costs exactly what a
+A scoped connection carries three link fields, created with it; an unscoped
+one carries none. Joining a scope and leaving it are a handful of field writes
+on an intrusive doubly linked list: nothing is allocated beyond the handle,
+and a disconnect unlinks in constant time. Dispatch is unchanged; a scoped listener costs exactly what a
 package-level one does, and a spec guards that it allocates nothing per event.
 
 ## Coalescing events
@@ -603,7 +603,7 @@ limit either (see [`ConnectCombatLog`](#eventkitconnectcombatlogsubevent-callbac
 
 ## Dispatch semantics
 
-Listener ordering, mutation safety, and recursive dispatch follow SignalKit API 1 semantics within one registration channel:
+Listener ordering, mutation safety, and recursive dispatch follow SignalKit API 1 semantics within one registration channel. Since revision 17 EventKit keeps each channel's (and each combat-log route's) connections in an array of its own that applies those rules, rather than on a SignalKit signal, so that a connection is one handle and a delivery one isolated call:
 
 - listeners run in connection order;
 - disconnecting a later listener prevents it from running in the current dispatch;
@@ -633,9 +633,10 @@ This reverses revision 1, where an error propagated out through `OnEvent` and
 every listener behind the failing one lost the event — including listeners
 belonging to completely unrelated addons.
 
-Isolation is per listener and happens at EventKit's boundary, not SignalKit's.
-SignalKit still propagates listener errors; EventKit wraps each subscription so
-the callback it hands SignalKit cannot raise.
+Isolation is per listener: EventKit's dispatch calls every listener through
+the isolation function below. (Before revision 17 each subscription carried a
+wrapper closure that isolated it, handed to a SignalKit signal, since
+SignalKit propagates listener errors.)
 
 The mechanism depends on the client:
 
@@ -672,9 +673,50 @@ Errors are reported once per failing listener per dispatch, so a listener that
 fails on every event will spam the host error handler exactly as a non-isolated
 one would.
 
+### Cost of a connection
+
+A connection is one table, the handle, which is also the channel's record of
+the listener: 224 bytes on a 64-bit Lua 5.1 for an unscoped connection (four
+fields) and 384 for a scoped one (seven). The handle is inherent to the
+contract: it stays valid after `Disconnect` and keeps answering
+`IsConnected` with `false`, so EventKit cannot take it back and reuse it.
+
+Outside a dispatch a disconnect edits the channel's array in place and
+allocates nothing; during one, a disconnect leaves a tombstone and the array
+is compacted into a copy at half tombstones, so the running dispatch keeps its
+own (see [`docs/INTERNALS.md`](INTERNALS.md)). When an event's last listener
+goes, its channel record and array are kept for the next channel in a pool of
+at most 16, so connecting the only listener of an event again allocates the
+handle and nothing of EventKit's own; the host's `RegisterEvent` is the
+client's cost. Specs guard both (`ListenerStorage_spec.lua`).
+
+Measured with the host benchmark (`docs/BENCHMARKS.md`, Lua 5.1.5, both sides
+in the same run, 2026-09-25) against AceEvent-3.0: dispatch to 1, 10 and 100
+listeners takes 1.08×, 0.95× and 0.99× of AceEvent's time; connecting and
+disconnecting one listener beside ten others 1.30×, with 224 bytes against
+none; the only listener 1.52×, with 328 bytes against 104 (both sides pay the
+fake client's 104-byte registration record). The remaining difference is the
+handle, and the ordering, scope and isolation bookkeeping the contract
+promises.
+
 ## Embedded copies and upgrades
 
 Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
+
+Revision 17 moves `_state` to schema 9. Channels and combat-log routes keep
+their connections in a `listeners` array of their own, with a `tombstones`
+count, instead of a SignalKit signal, and a connection handle is the array's
+record: no wrapper closure and no second connection per subscription. Released
+channel records wait in `channelPool` (at most 16). A copy loading over
+revision 16 or older gives every channel and route it inherits an empty
+`listeners` array and keeps its `signal` for the connections already on it.
+Those connections are older than any the newer copy makes, so a dispatch
+delivers the signal first and connection order holds; each keeps its wrapper
+closure, its `_inner` signal connection and the release path of its revision.
+A router attached before the upgrade detaches through its signal connection.
+A channel that still carries a signal is never pooled. The dispatch depth is
+the same `dispatchDepth` counter older revisions raise, so an older copy's
+dispatch still on the stack below the upgrade prevents in-place editing too.
 
 Revision 15 keeps `_state` at schema 8 and adopts the state of revision 14
 as it is, adding `IsCombatLogAvailable` to the facade. The loading copy probes
