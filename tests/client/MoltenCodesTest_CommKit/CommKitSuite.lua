@@ -20,7 +20,9 @@
 --     after its first chunk (the abort chunk on the wire), a raw
 --     `SendAddonMessage` call (its `Enum.SendAddonMessageResult` logged and
 --     charged to the budget as outside traffic), and a send cancelled before
---     it left;
+--     it left. Tests that need a message to wait in the queue send it from a
+--     callback CommKit makes while its driver runs (`whileDriverRuns`),
+--     because an idle driver sends a message inside `Send`;
 --   * a SyncSet that requests its own fields from the player's own character
 --     and answers itself: a delivery, then an ack a second later;
 --   * `ForAddon` and `CloseAddonScopes`, and the documented allocation guards
@@ -31,7 +33,7 @@
 -- What leaves the client. Every message a run sends is a WHISPER addon message
 -- to the player's own character; nothing is ever sent to GUILD, PARTY, RAID,
 -- INSTANCE_CHAT, SAY, YELL or a channel, and no other player can receive it. A
--- run sends at most 20 addon messages in all, over a few seconds, far below
+-- run sends at most 25 addon messages in all, over a few seconds, far below
 -- any server limit. When the client refuses the whisper to self, or never
 -- delivers it back, the round-trip tests are reported as skipped with the
 -- reason instead of passing or failing.
@@ -732,6 +734,50 @@ local function whisperToSelf(prefix, text, fullName)
   return { prefix = prefix, text = text, distribution = "WHISPER", target = fullName }
 end
 
+---Run `work` while CommKit's driver runs, where a `Send` queues its message
+---instead of sending it, so a message `work` sends and cancels before
+---returning never reaches the client.
+---
+---CommKit sends a message inside `Send` when its driver is idle and the
+---bandwidth budget pays, and holds the message's callbacks for its next driver
+---run, which makes them before it sends anything (packages/commKit/docs/API.md,
+---"The driver"). `work` runs in such a callback: the completion of one short
+---whisper to the player's own character on the registration test's prefix,
+---which no test watches on the wire. That whisper is the one addon message
+---this costs. CommKit runs `work` isolated, as every callback, so `work` only
+---records what it saw and the caller checks it afterwards.
+---@param ctx TestKit.Context
+---@param scope any
+---@param fullName string
+---@param work fun()
+local function whileDriverRuns(ctx, scope, fullName, work)
+  local ran, abandoned = false, false
+  local request = whisperToSelf(PREFIX.registration, "hold", fullName)
+  request.onComplete = function()
+    if not abandoned then
+      work()
+      ran = true
+    end
+  end
+  local handle, reason = scope:Send(request)
+  if type(handle) == "nil" then
+    ctx:Fail("Send was refused: " .. tostring(reason))
+    return
+  end
+  if not waitUntil(ctx, function()
+    return ran
+  end, SEND_TIMEOUT_SECONDS) then
+    abandoned = true
+    handle:Cancel()
+    Harness:SkipTest(
+      ctx,
+      ("the client did not accept the whisper to self within %d s; cancelled"):format(
+        SEND_TIMEOUT_SECONDS
+      )
+    )
+  end
+end
+
 -- Client enums ----------------------------------------------------------------------
 
 ---The client's `Enum[enumName]` table, or `nil`.
@@ -857,15 +903,20 @@ facade:Test(
     ctx:Expect(scope:GetMaxRegistrations()):ToBe(32)
     ctx:Expect(scope:GetAddonName()):ToBeNil()
 
-    -- A handle of a send cancelled before CommKit's driver ran, so nothing
-    -- leaves; it is addressed to the player's own character all the same.
+    -- A handle of a send cancelled while it was still queued, so nothing
+    -- of it leaves; it is addressed to the player's own character all the
+    -- same.
     local fullName = playerNames()
     if type(fullName) ~= "nil" then
-      local handle = scope:Send(whisperToSelf(PREFIX.short, "facade probe", fullName))
+      local handle, cancelled
+      whileDriverRuns(ctx, scope, fullName, function()
+        handle = scope:Send(whisperToSelf(PREFIX.short, "facade probe", fullName))
+        cancelled = handle:Cancel()
+      end)
       for _, method in ipairs(HANDLE_METHODS) do
         ctx:Expect(type(handle[method])):ToBe("function")
       end
-      ctx:Expect(handle:Cancel()):ToBe(true)
+      ctx:Expect(cancelled):ToBe(true)
       ctx:Expect(handle:GetState()):ToBe("cancelled")
     end
   end
@@ -992,14 +1043,20 @@ prefixes:Skip(
 local roundTrip = newSuite("roundTrip", { timeoutSeconds = ROUND_TRIP_SUITE_TIMEOUT_SECONDS })
 
 roundTrip:Test(
-  "a short message whispered to the player's own character arrives once through CHAT_MSG_ADDON with its prefix, its text, WHISPER and the player as sender, and completes as sent (round trip logged)",
+  "a short message whispered to the player's own character leaves inside Send, arrives once through CHAT_MSG_ADDON with its prefix, its text, WHISPER and the player as sender, and completes as sent after Send returned (round trip logged)",
   function(ctx)
     local fullName, shortName = requirePlayerNames(ctx)
     local scope = newCommScope()
     local deliveries = collectDeliveries(ctx, scope, PREFIX.short)
     local text = "hello from MoltenCodes CommKit"
+    local throttledBefore = CommKit:GetStatistics().throttled
 
     local record = send(ctx, scope, whisperToSelf(PREFIX.short, text, fullName))
+    -- Read before anything else runs: the driver was idle and the budget
+    -- full, so the message left inside `Send`, and its callbacks wait.
+    local stateAfterSend = record.handle:GetState()
+    local completionsAfterSend = #record.completions
+    local throttledAtSend = CommKit:GetStatistics().throttled - throttledBefore
     ctx:Expect(record.handle:GetBytesTotal()):ToBe(#text)
     awaitSent(ctx, record)
     awaitDeliveries(ctx, deliveries, 1)
@@ -1008,13 +1065,21 @@ roundTrip:Test(
 
     local delivery = deliveries[1]
     ctx:Log(
-      ("sent after %s, delivered after %s; sender %q, distribution %q"):format(
+      ("state when Send returned %s (throttles %+d); onComplete after %s, delivered after %s; sender %q, distribution %q"):format(
+        stateAfterSend,
+        throttledAtSend,
         milliseconds(record.completions[1].at - record.startedAt),
         milliseconds(delivery.at - record.startedAt),
         tostring(delivery.sender),
         tostring(delivery.distribution)
       )
     )
+    -- A throttle answered inside `Send` leaves the message queued for a
+    -- retry; that is the client's doing, and the test then only logs it.
+    if throttledAtSend == 0 then
+      ctx:Expect(stateAfterSend):ToBe("sent")
+    end
+    ctx:Expect(completionsAfterSend):ToBe(0)
     ctx:Expect(#deliveries):ToBe(1)
     ctx:Expect(delivery.prefix):ToBe(PREFIX.short)
     ctx:Expect(delivery.text):ToBe(text)
@@ -1173,7 +1238,7 @@ roundTrip:Test(
     ctx:Log("budget before: " .. budgetBefore .. "; after the last chunk: " .. budgetAfter)
     for index, progress in ipairs(record.progress) do
       ctx:Log(
-        ("chunk %d left at +%s: %d of %d bytes, state %s"):format(
+        ("onProgress %d ran at +%s: %d of %d bytes, state %s"):format(
           index,
           milliseconds(progress.at - record.startedAt),
           progress.bytesSent,
@@ -1260,14 +1325,20 @@ roundTrip:Test(
     local openStreamsBefore = statisticsBefore.openStreams
     local cancelAnswer = nil
 
-    local record = send(
-      ctx,
-      scope,
-      whisperToSelf(PREFIX.abort, cyclingPayload(ABORTED_MESSAGE_BYTES), fullName),
-      function(handle)
-        cancelAnswer = handle:Cancel()
-      end
-    )
+    -- Sent while the driver runs, so the message is queued and the driver
+    -- sends its first chunk and calls `onProgress` before the second: sent
+    -- inside `Send`, all three chunks would leave before any callback ran.
+    local record
+    whileDriverRuns(ctx, scope, fullName, function()
+      record = send(
+        ctx,
+        scope,
+        whisperToSelf(PREFIX.abort, cyclingPayload(ABORTED_MESSAGE_BYTES), fullName),
+        function(handle)
+          cancelAnswer = handle:Cancel()
+        end
+      )
+    end)
     awaitSent(ctx, record)
     waitUntil(ctx, function()
       return #wire >= 2
@@ -1387,27 +1458,40 @@ roundTrip:Test(
 )
 
 roundTrip:Test(
-  "a send cancelled before CommKit's driver ran never reaches the client, and completes once as cancelled",
+  "a send queued while CommKit's driver runs and cancelled before it was sent never reaches the client, and completes once as cancelled",
   function(ctx)
     local fullName, shortName = requirePlayerNames(ctx)
     local scope = newCommScope()
     local deliveries = collectDeliveries(ctx, scope, PREFIX.short)
     local wire = observeWire(PREFIX.short, fullName, shortName)
-    local statisticsBefore = CommKit:GetStatistics()
-    local messagesBefore = CommKit:GetQueueDepth()
+    local seen = {}
 
-    local record = send(ctx, scope, whisperToSelf(PREFIX.short, "never leaves", fullName))
-    ctx:Expect(record.handle:GetState()):ToBe("queued")
-    ctx:Expect(scope:GetPendingCount()):ToBe(1)
-    ctx:Expect((CommKit:GetQueueDepth())):ToBe(messagesBefore + 1)
-    ctx:Expect(record.handle:Cancel()):ToBe(true)
-    ctx:Expect(record.handle:Cancel()):ToBe(false)
+    local record, statisticsBefore
+    whileDriverRuns(ctx, scope, fullName, function()
+      statisticsBefore = CommKit:GetStatistics()
+      local messagesBefore = CommKit:GetQueueDepth()
+      local pendingBefore = scope:GetPendingCount()
+      record = send(ctx, scope, whisperToSelf(PREFIX.short, "never leaves", fullName))
+      seen.state = record.handle:GetState()
+      seen.pendingAdded = scope:GetPendingCount() - pendingBefore
+      seen.queuedAdded = CommKit:GetQueueDepth() - messagesBefore
+      seen.firstCancel = record.handle:Cancel()
+      seen.secondCancel = record.handle:Cancel()
+      seen.completions = #record.completions
+      seen.pendingAfter = scope:GetPendingCount() - pendingBefore
+      seen.queuedAfter = CommKit:GetQueueDepth() - messagesBefore
+    end)
+    ctx:Expect(seen.state):ToBe("queued")
+    ctx:Expect(seen.pendingAdded):ToBe(1)
+    ctx:Expect(seen.queuedAdded):ToBe(1)
+    ctx:Expect(seen.firstCancel):ToBe(true)
+    ctx:Expect(seen.secondCancel):ToBe(false)
 
-    ctx:Expect(#record.completions):ToBe(1)
+    ctx:Expect(seen.completions):ToBe(1)
     ctx:Expect(record.completions[1].state):ToBe("cancelled")
     ctx:Expect(record.completions[1].reason):ToBe("cancelled")
-    ctx:Expect(scope:GetPendingCount()):ToBe(0)
-    ctx:Expect((CommKit:GetQueueDepth())):ToBe(messagesBefore)
+    ctx:Expect(seen.pendingAfter):ToBe(0)
+    ctx:Expect(seen.queuedAfter):ToBe(0)
 
     pause(ctx, QUIET_WAIT_SECONDS)
     local delta = statisticsDelta(statisticsBefore, CommKit:GetStatistics(), { "chunksSent" })
@@ -1570,10 +1654,19 @@ scopes:Test(
     ctx:Expect(CommKit:CloseAddonScopes(probeName)):ToBe(false)
 
     local scope = CommKit:ForAddon(probeName)
-    local statisticsBefore = CommKit:GetStatistics()
-    local record = send(ctx, scope, whisperToSelf(PREFIX.short, "closed before it left", fullName))
-    ctx:Expect(CommKit:CloseAddonScopes(probeName)):ToBe(true)
-    ctx:Expect(CommKit:CloseAddonScopes(probeName)):ToBe(false)
+    local statisticsBefore, record, firstClose, secondClose, completionsAtClose
+    -- Queued while the driver runs, so the send is still waiting when the
+    -- scope closes.
+    whileDriverRuns(ctx, newCommScope(), fullName, function()
+      statisticsBefore = CommKit:GetStatistics()
+      record = send(ctx, scope, whisperToSelf(PREFIX.short, "closed before it left", fullName))
+      firstClose = CommKit:CloseAddonScopes(probeName)
+      secondClose = CommKit:CloseAddonScopes(probeName)
+      completionsAtClose = #record.completions
+    end)
+    ctx:Expect(firstClose):ToBe(true)
+    ctx:Expect(secondClose):ToBe(false)
+    ctx:Expect(completionsAtClose):ToBe(1)
 
     ctx:Expect(#record.completions):ToBe(1)
     ctx:Expect(record.completions[1].state):ToBe("cancelled")
@@ -1627,8 +1720,12 @@ allocation:Test(
   function(ctx)
     local fullName = requirePlayerNames(ctx)
     local scope = newCommScope()
-    local handle = scope:Send(whisperToSelf(PREFIX.short, "never leaves", fullName))
-    ctx:Expect(handle:Cancel()):ToBe(true)
+    local handle, cancelled
+    whileDriverRuns(ctx, scope, fullName, function()
+      handle = scope:Send(whisperToSelf(PREFIX.short, "never leaves", fullName))
+      cancelled = handle:Cancel()
+    end)
+    ctx:Expect(cancelled):ToBe(true)
     local bulk = CommKit.Priority.BULK
     collectBeforeMeasuring(ctx)
 

@@ -20,8 +20,11 @@
 --                  the hashes the requester holds and the answer carries only
 --                  the fields that differ.
 --
--- The send driver is a SchedulerKit job that exists only while something is
--- queued, so an idle CommKit costs no per-frame handler.
+-- A send made while the driver is idle runs it once inside `Send`, so a
+-- message the budget pays for leaves before `Send` returns; its callbacks are
+-- held for the next driver run. That run, and every later one, is a
+-- SchedulerKit job that exists only while something is queued or callbacks
+-- are held, so an idle CommKit costs no per-frame handler.
 --
 -- CommKit needs Registry API 2, SignalKit API 1, EventKit API 1, TimerKit
 -- API 1, SchedulerKit API 1 and PoolKit API 1. CodecKit API 1 (SyncSet
@@ -69,7 +72,7 @@
 
 local PACKAGE_NAME = "commKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 
 -- The API generation of every package CommKit uses: required (Registry,
 -- SignalKit, EventKit, TimerKit, SchedulerKit, PoolKit) and optional
@@ -354,78 +357,83 @@ local LIMIT_NAMES = {
   "maxSyncPeers",
   "maxSyncReplyBytes",
 }
-local SHARED_QUEUE = "every addon in the session shares the queue"
-local GROWN_BY_PEERS = "other players' messages grow it"
-local NOT_RETENTION = "it is a rate, not a retention bound"
-local LIMIT_RANGES = {
-  maxQueuedBytes = {
-    minimum = 1,
-    maximum = 1048576,
-    integer = true,
-    unboundedRefusal = SHARED_QUEUE .. " and the chunk header numbers at most 5624 chunks",
-  },
-  maxQueuedMessages = {
-    minimum = 1,
-    maximum = 4096,
-    integer = true,
-    unboundedRefusal = SHARED_QUEUE,
-  },
-  maxReassemblyStreams = {
-    minimum = 1,
-    maximum = 1024,
-    integer = true,
-    unboundedRefusal = GROWN_BY_PEERS,
-  },
-  maxReassemblyBytesPerSender = {
-    minimum = 1,
-    maximum = 1048576,
-    integer = true,
-    unboundedRefusal = GROWN_BY_PEERS,
-  },
-  maxInFlightPerSender = {
-    minimum = 1,
-    maximum = 64,
-    integer = true,
-    unboundedRefusal = GROWN_BY_PEERS .. " and stream ids must stay below the radix",
-  },
-  reassemblyTimeout = {
-    minimum = 1,
-    maximum = 600,
-    integer = false,
-    unboundedRefusal = GROWN_BY_PEERS,
-  },
-  maxCps = { minimum = 1, maximum = 100000, integer = true, unboundedRefusal = NOT_RETENTION },
-  burst = {
-    minimum = WIRE.maxMessageBytes,
-    maximum = 1000000,
-    integer = true,
-    unboundedRefusal = NOT_RETENTION,
-  },
-  messageOverhead = {
-    minimum = 0,
-    maximum = 255,
-    integer = true,
-    unboundedRefusal = NOT_RETENTION,
-  },
-  maxDropReportSenders = {
-    minimum = 1,
-    maximum = 1024,
-    integer = true,
-    unboundedRefusal = GROWN_BY_PEERS,
-  },
-  maxSyncPeers = {
-    minimum = 1,
-    maximum = 1024,
-    integer = true,
-    unboundedRefusal = GROWN_BY_PEERS,
-  },
-  maxSyncReplyBytes = {
-    minimum = 1,
-    maximum = 1048576,
-    integer = true,
-    unboundedRefusal = GROWN_BY_PEERS,
-  },
-}
+-- The three refusal texts are shared by several ranges; the block keeps them
+-- out of the main chunk's locals, which Lua 5.1 caps at 200.
+local LIMIT_RANGES
+do
+  local SHARED_QUEUE = "every addon in the session shares the queue"
+  local GROWN_BY_PEERS = "other players' messages grow it"
+  local NOT_RETENTION = "it is a rate, not a retention bound"
+  LIMIT_RANGES = {
+    maxQueuedBytes = {
+      minimum = 1,
+      maximum = 1048576,
+      integer = true,
+      unboundedRefusal = SHARED_QUEUE .. " and the chunk header numbers at most 5624 chunks",
+    },
+    maxQueuedMessages = {
+      minimum = 1,
+      maximum = 4096,
+      integer = true,
+      unboundedRefusal = SHARED_QUEUE,
+    },
+    maxReassemblyStreams = {
+      minimum = 1,
+      maximum = 1024,
+      integer = true,
+      unboundedRefusal = GROWN_BY_PEERS,
+    },
+    maxReassemblyBytesPerSender = {
+      minimum = 1,
+      maximum = 1048576,
+      integer = true,
+      unboundedRefusal = GROWN_BY_PEERS,
+    },
+    maxInFlightPerSender = {
+      minimum = 1,
+      maximum = 64,
+      integer = true,
+      unboundedRefusal = GROWN_BY_PEERS .. " and stream ids must stay below the radix",
+    },
+    reassemblyTimeout = {
+      minimum = 1,
+      maximum = 600,
+      integer = false,
+      unboundedRefusal = GROWN_BY_PEERS,
+    },
+    maxCps = { minimum = 1, maximum = 100000, integer = true, unboundedRefusal = NOT_RETENTION },
+    burst = {
+      minimum = WIRE.maxMessageBytes,
+      maximum = 1000000,
+      integer = true,
+      unboundedRefusal = NOT_RETENTION,
+    },
+    messageOverhead = {
+      minimum = 0,
+      maximum = 255,
+      integer = true,
+      unboundedRefusal = NOT_RETENTION,
+    },
+    maxDropReportSenders = {
+      minimum = 1,
+      maximum = 1024,
+      integer = true,
+      unboundedRefusal = GROWN_BY_PEERS,
+    },
+    maxSyncPeers = {
+      minimum = 1,
+      maximum = 1024,
+      integer = true,
+      unboundedRefusal = GROWN_BY_PEERS,
+    },
+    maxSyncReplyBytes = {
+      minimum = 1,
+      maximum = 1048576,
+      integer = true,
+      unboundedRefusal = GROWN_BY_PEERS,
+    },
+  }
+end
 
 -- Statistics counters, in the order GetStatistics copies them.
 local STATISTIC_NAMES = {
@@ -511,8 +519,10 @@ local OPTION_KEYS = {
 }
 
 -- Table pool retention. Pools hold records between uses, never more.
--- `spares` bounds each of CommKit's own free lists (`state.spares`): idle
--- pipes and per-sender reassembly records.
+-- `records` bounds CommKit's free list of queue records (`state.spares`,
+-- revision 6) and `streams` the PoolKit pool of reassembly streams; `spares`
+-- bounds each of the other free lists: idle pipes and per-sender reassembly
+-- records.
 local POOL_RETAINED = { records = 64, streams = 32, spares = 16 }
 
 -- Options every send driver job is created with.
@@ -567,10 +577,12 @@ local SURFACE = {
 ---Receives one whole message.
 ---@alias CommKit.ReceiveCallback fun(prefix: string, text: string, distribution: string, sender: string)
 
----Called after every chunk of a send leaves.
+---Called after every chunk of a send leaves; for chunks that left inside
+---`Send`, on the driver's next run, never before `Send` returns.
 ---@alias CommKit.ProgressCallback fun(handle: CommKit.SendHandle, bytesSent: integer, bytesTotal: integer)
 
----Called once when a send reaches a terminal state.
+---Called once when a send reaches a terminal state; never before `Send`
+---returns.
 ---@alias CommKit.CompleteCallback fun(handle: CommKit.SendHandle, state: CommKit.SendState, reason: string?)
 
 ---Called when a peer's field changes.
@@ -684,18 +696,20 @@ local SURFACE = {
 
 -- Dependencies ---------------------------------------------------------------
 
--- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
--- selene: allow(global_usage)
-local namespace = rawget(_G, "MoltenCodes")
-local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
-
 -- Ask for Registry by generation and fall back to the alias. A future Registry
 -- API generation takes over `MoltenCodes.Registry`, so reading the alias first
 -- would hand this file a facade whose contract it was not written against.
-local Registry = type(generations) == "table" and rawget(generations, DEPENDENCY_API.registry)
-  or nil
-if Registry == nil and type(namespace) == "table" then
-  Registry = rawget(namespace, "Registry")
+-- The block keeps the namespace lookups out of the main chunk's locals.
+local Registry
+do
+  -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
+  -- selene: allow(global_usage)
+  local namespace = rawget(_G, "MoltenCodes")
+  local generations = type(namespace) == "table" and rawget(namespace, "Registries") or nil
+  Registry = type(generations) == "table" and rawget(generations, DEPENDENCY_API.registry) or nil
+  if Registry == nil and type(namespace) == "table" then
+    Registry = rawget(namespace, "Registry")
+  end
 end
 if type(Registry) ~= "table" or rawget(Registry, "API") ~= DEPENDENCY_API.registry then
   error("MoltenCodes CommKit requires Registry API 2 to be loaded first", 2)
@@ -807,41 +821,46 @@ end
 
 -- Validation -----------------------------------------------------------------
 
----Whether every name in `methodNames` is a function field of `prototype`.
----@param prototype any
----@param methodNames string[]
----@return boolean
-local function hasMethods(prototype, methodNames)
-  if type(prototype) ~= "table" then
-    return false
-  end
-  for index = 1, #methodNames do
-    if type(rawget(prototype, methodNames[index])) ~= "function" then
+-- Only `validatePublicSurface` is used outside this block.
+local validatePublicSurface
+
+do
+  ---Whether every name in `methodNames` is a function field of `prototype`.
+  ---@param prototype any
+  ---@param methodNames string[]
+  ---@return boolean
+  local function hasMethods(prototype, methodNames)
+    if type(prototype) ~= "table" then
       return false
     end
-  end
-  return true
-end
-
----Whether `implementation` exposes the complete CommKit API 1 surface.
----@param implementation any shared package table handed back by Registry
----@return boolean
-local function validatePublicSurface(implementation)
-  if
-    type(implementation) ~= "table"
-    or rawget(implementation, "API") ~= API_GENERATION
-    or type(rawget(implementation, "REVISION")) ~= "number"
-    or type(rawget(implementation, "Priority")) ~= "table"
-    or type(rawget(implementation, "UNBOUNDED")) ~= "table"
-  then
-    return false
+    for index = 1, #methodNames do
+      if type(rawget(prototype, methodNames[index])) ~= "function" then
+        return false
+      end
+    end
+    return true
   end
 
-  return hasMethods(implementation, SURFACE.facade)
-    and hasMethods(rawget(implementation, "Scope"), SURFACE.scope)
-    and hasMethods(rawget(implementation, "Connection"), SURFACE.connection)
-    and hasMethods(rawget(implementation, "SendHandle"), SURFACE.handle)
-    and hasMethods(rawget(implementation, "SyncSet"), SURFACE.syncSet)
+  ---Whether `implementation` exposes the complete CommKit API 1 surface.
+  ---@param implementation any shared package table handed back by Registry
+  ---@return boolean
+  function validatePublicSurface(implementation)
+    if
+      type(implementation) ~= "table"
+      or rawget(implementation, "API") ~= API_GENERATION
+      or type(rawget(implementation, "REVISION")) ~= "number"
+      or type(rawget(implementation, "Priority")) ~= "table"
+      or type(rawget(implementation, "UNBOUNDED")) ~= "table"
+    then
+      return false
+    end
+
+    return hasMethods(implementation, SURFACE.facade)
+      and hasMethods(rawget(implementation, "Scope"), SURFACE.scope)
+      and hasMethods(rawget(implementation, "Connection"), SURFACE.connection)
+      and hasMethods(rawget(implementation, "SendHandle"), SURFACE.handle)
+      and hasMethods(rawget(implementation, "SyncSet"), SURFACE.syncSet)
+  end
 end
 
 -- The table fields every API 1 revision keeps in package state.
@@ -916,16 +935,16 @@ if CommKit == nil then
   return selected
 end
 
----A fresh priority queue: its ring of pipes, a cursor into the ring, and
----the messages and text bytes it holds.
----@return table
-local function newQueue()
-  return { ring = {}, cursor = 1, pipes = {}, messages = 0, bytes = 0 }
-end
-
 ---Build the package state of a first load.
 ---@return table
 local function newState()
+  ---A fresh priority queue: its ring of pipes, a cursor into the ring, and
+  ---the messages and text bytes it holds.
+  ---@return table
+  local function newQueue()
+    return { ring = {}, cursor = 1, pipes = {}, messages = 0, bytes = 0 }
+  end
+
   local limits = {}
   for index = 1, #LIMIT_NAMES do
     local name = LIMIT_NAMES[index]
@@ -973,16 +992,24 @@ local function newState()
       lastRefill = false,
       zoningUntil = 0,
       framesPerSecond = false,
+      -- When `framesPerSecond` was last sampled, or `false` (revision 6).
+      sampledAt = false,
     },
     -- `running` is true while a run is on the stack; a send made by one of
     -- its callbacks then schedules nothing, so there is never a second
-    -- job.
+    -- job. `inline` is true while that run is one `Send` makes on its
+    -- caller's stack (revision 6).
     driver = {
       job = false,
       delayed = false,
       sampler = false,
       running = false,
+      inline = false,
     },
+    -- Progress and completion callbacks a run inside `Send` produced, held
+    -- until the next driver run so none runs before `Send` returns
+    -- (revision 6). Four array slots per call; see `deferCallback`.
+    deferred = { count = 0, cursor = 0, flushing = 0 },
     -- True while CommKit itself is inside the client's send function, so
     -- the outside-traffic hook does not charge the same bytes twice.
     sendingOwnTraffic = false,
@@ -997,8 +1024,9 @@ local function newState()
     -- case of arming a full reassembly timeout (revision 5).
     expiry = { timer = false, due = false, idleTimer = false },
     -- Emptied pipes and per-sender records kept for reuse, each list at
-    -- most `POOL_RETAINED.spares` long (revision 5).
-    spares = { pipes = {}, senders = {} },
+    -- most `POOL_RETAINED.spares` long (revision 5), and released queue
+    -- records, at most `POOL_RETAINED.records` (revision 6).
+    spares = { pipes = {}, senders = {}, records = {} },
     -- Sender to { reportedAt, pending, reasons }: the aggregated drop
     -- reports, and the one timer that flushes them.
     dropReports = { bySender = {}, count = 0, timer = false, due = false },
@@ -1017,7 +1045,9 @@ local function newState()
       logout = false,
     },
     pools = {
-      records = PoolKit:NewTablePool({ maxRetained = POOL_RETAINED.records }),
+      -- No `records`: revision 5 and earlier leased queue records from a
+      -- PoolKit pool, which an inherited state still holds and
+      -- `releaseRecord` returns the records it leased to.
       streams = PoolKit:NewTablePool({ maxRetained = POOL_RETAINED.streams }),
       -- No `parts`: revision 4 and earlier leased each stream's chunk list
       -- from a third pool, which an inherited state still holds and
@@ -1114,9 +1144,28 @@ end
 if rawget(state, "spares") == nil then
   rawset(state, "spares", { pipes = {}, senders = {} })
 end
+-- Revision 6 keeps queue records on a free list of its own instead of a
+-- PoolKit pool. Records a revision 5 copy leased stay in use and go back to
+-- that pool when their message ends (`releaseRecord`).
+if rawget(rawget(state, "spares"), "records") == nil then
+  rawset(rawget(state, "spares"), "records", {})
+end
 if rawget(expiry, "idleTimer") == nil then
   rawset(expiry, "idleTimer", false)
 end
+-- Revision 6 runs the driver inside `Send` when it is idle, and holds that
+-- run's callbacks for the next driver run. An older state has neither field;
+-- its driver, idle or scheduled, carries on under this code.
+if rawget(driver, "inline") == nil then
+  rawset(driver, "inline", false)
+end
+if rawget(budget, "sampledAt") == nil then
+  rawset(budget, "sampledAt", false)
+end
+if rawget(state, "deferred") == nil then
+  rawset(state, "deferred", { count = 0, cursor = 0, flushing = 0 })
+end
+local deferred = rawget(state, "deferred")
 for _, addonScope in next, addonScopes do
   if rawget(addonScope, "_schema") == 1 then
     rawset(addonScope, "_logoutCloser", LOGOUT.byNobody)
@@ -1512,10 +1561,24 @@ local function secondsUntilAffordable(cost, currentTime)
   return missing / rate
 end
 
----Sample the frame rate: once when the driver wakes from idle, then on a
----TimerKit ticker while something is queued, never on the send path:
----`GetFramerate` is not free.
-local function sampleFrameRate()
+---Sample the frame rate: when the driver wakes from idle, then on a TimerKit
+---ticker while something is queued, never once per send: `GetFramerate` is
+---not free. `onWake` is true for a wake from idle, which samples only when no
+---ticker runs and the last sample is at least a ticker interval old, so sends
+---that each leave inside `Send` sample at most once a second between them.
+---@param onWake boolean?
+local function sampleFrameRate(onWake)
+  local currentTime = now()
+  if onWake == true then
+    local sampledAt = budget.sampledAt
+    if
+      driver.sampler ~= false
+      or (sampledAt ~= false and currentTime - sampledAt < POLICY.frameRateSampleSeconds)
+    then
+      return
+    end
+  end
+  budget.sampledAt = currentTime
   local getFramerate = readHostFunction("GetFramerate")
   if getFramerate == nil then
     rawset(budget, "framesPerSecond", false)
@@ -1542,10 +1605,12 @@ local function startSampler()
 end
 
 ---Cancel any scheduled driver run and stop the frame-rate sampler: nothing is
----queued, so nothing may stay armed.
+---queued, so nothing may stay armed. A run scheduled while callbacks a run
+---inside `Send` held back still wait is kept: it is the run that makes them
+---(see `deferCallback`).
 local function stopDriver()
   local job = driver.job
-  if job ~= false then
+  if job ~= false and deferred.cursor >= deferred.count then
     driver.job = false
     driver.delayed = false
     job:Cancel()
@@ -1676,6 +1741,43 @@ local function obtainPipe(priority, key)
   return pipe
 end
 
+---A queue record for a message or an abort: from the free list, or a new
+---table marked as belonging to it. The caller sets every field it reads.
+---@return table
+local function acquireRecord()
+  local spareRecords = state.spares.records
+  local spareCount = #spareRecords
+  if spareCount > 0 then
+    local record = spareRecords[spareCount]
+    spareRecords[spareCount] = nil
+    return record
+  end
+  return { freeListed = true }
+end
+
+---Return a finished queue record. What it referenced (text, handle, scope,
+---callbacks, pipe) is let go at once, so a record kept for reuse never keeps
+---a message alive; the list keeps at most `POOL_RETAINED.records`. A record
+---a revision 5 copy leased from its PoolKit pool goes back there.
+---@param record table
+local function releaseRecord(record)
+  if record.freeListed ~= true then
+    rawget(pools, "records"):Release(record)
+    return
+  end
+  record.text = false
+  record.handle = false
+  record.scope = false
+  record.onProgress = false
+  record.onComplete = false
+  record.pipe = false
+  local spareRecords = state.spares.records
+  local spareCount = #spareRecords
+  if spareCount < POOL_RETAINED.records then
+    spareRecords[spareCount + 1] = record
+  end
+end
+
 ---Append a message record to its pipe and count it.
 ---@param record table
 local function enqueueRecord(record)
@@ -1770,7 +1872,7 @@ end
 ---scope, text or callbacks: only what `transmit` and the queue read.
 ---@param record table the cancelled or failed message
 local function queueAbort(record)
-  local abort = rawget(pools, "records"):Acquire()
+  local abort = acquireRecord()
   abort.kind = "abort"
   abort.inFlight = true
   abort.prefix = record.prefix
@@ -1801,6 +1903,74 @@ local function releaseInFlight(record)
   state.inFlightBytes = state.inFlightBytes - declaredBytes(record.totalChunks)
 end
 
+---Run every callback held back, oldest first. A callback may cancel or close,
+---which makes more calls: those join the end and run in this same pass, after
+---the ones before them. `flushing` keeps `Send` from running the driver on
+---its caller's stack meanwhile, so a pass can only grow by what the queue
+---already holds and never chains send after send.
+local function flushDeferred()
+  deferred.flushing = deferred.flushing + 1
+  while deferred.cursor < deferred.count do
+    local base = deferred.cursor * 4
+    deferred.cursor = deferred.cursor + 1
+    local callback, handle, first, second =
+      deferred[base + 1], deferred[base + 2], deferred[base + 3], deferred[base + 4]
+    deferred[base + 1], deferred[base + 2], deferred[base + 3], deferred[base + 4] =
+      nil, nil, nil, nil
+    -- `false` stands for a `nil` reason, which a slot could not hold without
+    -- leaving a hole in the array.
+    if second == false then
+      second = nil
+    end
+    -- `isolatedCall` never raises where the client has
+    -- `securecallfunction`; the `pcall` keeps a host whose version lets an
+    -- error escape from leaving `flushing` raised, which would stop `Send`
+    -- from ever sending at once again.
+    local ok, failure = pcall(isolatedCall, callback, handle, first, second)
+    if not ok then
+      reportError(failure)
+    end
+  end
+  deferred.count = 0
+  deferred.cursor = 0
+  deferred.flushing = deferred.flushing - 1
+end
+
+---Call a send's progress or completion callback. During a run inside `Send`
+---the call is held back instead, because no callback may run before `Send`
+---returns; the next driver run makes it. Outside such a run, calls still
+---held back are made first, so each handle's callbacks keep their order:
+---progress in chunk order, completion last.
+---
+---The held calls live in the array part of one table kept in the state, four
+---slots each, and are cleared as they run, so holding a call allocates
+---nothing once the array has grown. A run inside `Send` starts only while
+---the queue was empty, so it holds at most the callbacks of the chunks one run
+---sends (32) and one completion; a cancel or close while calls are held runs
+---them first.
+---@param callback function
+---@param handle CommKit.SendHandle
+---@param first any
+---@param second any
+local function deferCallback(callback, handle, first, second)
+  if driver.inline then
+    local base = deferred.count * 4
+    deferred[base + 1] = callback
+    deferred[base + 2] = handle
+    deferred[base + 3] = first
+    if second == nil then
+      second = false
+    end
+    deferred[base + 4] = second
+    deferred.count = deferred.count + 1
+    return
+  end
+  if deferred.cursor < deferred.count then
+    flushDeferred()
+  end
+  isolatedCall(callback, handle, first, second)
+end
+
 ---Move a queued message to a terminal state, release its record and tell the
 ---caller. The callback runs last, isolated, when CommKit's state is settled.
 ---A message cancelled, or failed, after its first chunk left queues an abort.
@@ -1823,13 +1993,13 @@ local function completeSend(record, terminalState, reason)
   rawset(handle, "_record", false)
   removeFromList(rawget(record.scope, "_pending"), handle)
   count(STATISTIC_FOR.terminal[terminalState])
-  rawget(pools, "records"):Release(record)
+  releaseRecord(record)
   if state.queuedMessages == 0 and not driver.running then
     stopDriver()
   end
 
   if onComplete ~= false then
-    isolatedCall(onComplete, handle, terminalState, reason)
+    deferCallback(onComplete, handle, terminalState, reason)
   end
 end
 
@@ -1839,24 +2009,27 @@ end
 local function finishAbort(record)
   dequeueRecord(record)
   releaseInFlight(record)
-  rawget(pools, "records"):Release(record)
+  releaseRecord(record)
 end
 
 -- Driver ---------------------------------------------------------------------
 --
--- One SchedulerKit job at a time, and only while something is queued. A run
--- refills the bucket, reinstates pipes whose backoff has passed, and sends
--- chunks in rotation until the bucket, the queue or the per-run cap runs out;
--- then it arranges the next run: after the time the bucket needs, after the
--- earliest reinstatement, or on the next frame. While a run is on the stack a
--- send made by one of its callbacks schedules nothing: the run sees the new
--- message on its next chunk, or arranges the run after it when it ends.
+-- One SchedulerKit job at a time, and only while something is queued or
+-- callbacks are held; a send made while the driver is idle runs it once
+-- inside `Send` instead (`runInline`). A run refills the bucket, reinstates
+-- pipes whose backoff has passed, and sends chunks in rotation until the
+-- bucket, the queue or the per-run cap runs out; then it arranges the next
+-- run: after the time the bucket needs, after the earliest reinstatement, or
+-- on the next frame. While a run is on the stack a send made by one of its
+-- callbacks schedules nothing: the run sees the new message on its next
+-- chunk, or arranges the run after it when it ends.
 
 ---Arrange the next driver run, replacing any run already scheduled. `why`
 ---records what it waits for, so a new send knows whether waking the driver
 ---early can help.
 ---@param delay number seconds; 0 means the next frame
----@param why string `"budget"`, `"blocked"`, `"frame"` or `"retry"`
+---@param why string `"budget"`, `"blocked"`, `"frame"`, `"retry"` or `"callbacks"` (only
+---held callbacks wait; see `runInline`)
 local function scheduleDriver(delay, why)
   local existing = driver.job
   if existing ~= false then
@@ -2185,7 +2358,7 @@ local function acceptChunk(record, pipe, cost, chunkBytes, payloadBytes)
 
   local onProgress = record.onProgress
   if onProgress ~= false then
-    isolatedCall(onProgress, handle, bytesSent, record.textLength)
+    deferCallback(onProgress, handle, bytesSent, record.textLength)
   end
   -- The progress callback may have cancelled the message.
   if finished and rawget(handle, "_record") == record then
@@ -2263,14 +2436,21 @@ local function driveChunks()
 end
 
 ---One driver run. Called by the SchedulerKit job through the dispatch table.
----An internal error is reported and the driver retried a second later, or
+---It first makes the callbacks a run inside `Send` held back, then sends. An
+---internal error is reported and the driver retried a second later, or
 ---disarmed when nothing is queued, rather than left marked as running for the
 ---session.
 local function runDriver()
   driver.job = false
   driver.delayed = false
   driver.running = true
-  local ok, failure = pcall(driveChunks)
+  local ok, failure = true, nil
+  if deferred.cursor < deferred.count then
+    ok, failure = pcall(flushDeferred)
+  end
+  if ok then
+    ok, failure = pcall(driveChunks)
+  end
   driver.running = false
   if not ok then
     reportError(failure)
@@ -2384,10 +2564,68 @@ local function wakeDriver()
   driver.delayed = false
   -- Waking from idle samples once; the ticker, once a run left work behind,
   -- samples from then on (`startSampler`).
-  if driver.sampler == false then
-    sampleFrameRate()
-  end
+  sampleFrameRate(true)
   installOutsideHooks()
+end
+
+---Send from `Send` itself when the driver is idle: one driver run on the
+---caller's stack, as ChatThrottleLib sends at once while bandwidth is left.
+---The run sends until the bucket, the queue or the per-run cap runs out, like
+---any run, and arranges its successor the same way; a message that fits
+---leaves before `Send` returns and no job is built. Its callbacks are held
+---back (`deferCallback`) and a next-frame run is arranged to make them.
+---
+---Idle means no run on the stack, no pass over held callbacks, and no run
+---scheduled other than one that only makes held callbacks: then the queue
+---held nothing but the new message.
+---@return boolean ran `false` when the driver was not idle and nothing ran
+local function runInline()
+  if driver.running or deferred.flushing > 0 then
+    return false
+  end
+  local job = driver.job
+  if job ~= false and driver.delayed ~= "callbacks" then
+    return false
+  end
+  -- What waking from idle does (`wakeDriver`).
+  sampleFrameRate(true)
+  installOutsideHooks()
+
+  driver.running = true
+  driver.inline = true
+  local ok, failure = pcall(driveChunks)
+  driver.inline = false
+  driver.running = false
+  if not ok then
+    reportError(failure)
+    if state.queuedMessages > 0 then
+      scheduleDriver(1, "retry")
+    else
+      stopDriver()
+    end
+  end
+  if state.queuedMessages > 0 then
+    startSampler()
+  end
+  -- Held callbacks run in the scheduler's next pass, not after a bucket or
+  -- backoff wait: that run makes them, then sends what the bucket allows
+  -- again. A run already due on the next frame (the run cap) makes them
+  -- there.
+  if deferred.cursor < deferred.count then
+    local delayed = driver.delayed
+    local dueSoon = driver.job ~= false and (delayed == "frame" or delayed == "callbacks")
+    if not dueSoon then
+      local successor = driver.job
+      if successor ~= false then
+        successor:Cancel()
+      end
+      driver.job = getSchedulerScope():Schedule(trampolines.driver, DRIVER_JOB_OPTIONS)
+      -- "callbacks" only while the queue is empty, so a later `Send` may
+      -- still send at once; otherwise an ordinary wake.
+      driver.delayed = state.queuedMessages == 0 and "callbacks" or false
+    end
+  end
+  return true
 end
 
 -- Reassembly -----------------------------------------------------------------
@@ -3615,8 +3853,9 @@ local function targetFits(distribution, target)
   return true
 end
 
----Queue a message after its arguments were validated. Returns the handle, or
----`nil` and the refusal. Shared by `scope:Send` and the SyncSet replies.
+---Queue a message after its arguments were validated, and send it at once
+---when the driver is idle (`runInline`). Returns the handle, or `nil` and the
+---refusal. Shared by `scope:Send` and the SyncSet replies.
 ---@param scope CommKit.Scope
 ---@param prefix string
 ---@param text string
@@ -3684,7 +3923,7 @@ enqueueSend = function(
     _bytesTotal = length,
     _record = false,
   }, HANDLE_METATABLE)
-  local record = rawget(pools, "records"):Acquire()
+  local record = acquireRecord()
   record.kind = "message"
   record.inFlight = false
   record.handle = handle
@@ -3710,7 +3949,9 @@ enqueueSend = function(
   local pending = rawget(scope, "_pending")
   pending[#pending + 1] = handle
   count("messagesQueued")
-  wakeDriver()
+  if not runInline() then
+    wakeDriver()
+  end
   return handle, nil
 end
 
@@ -4315,9 +4556,11 @@ function ScopeMethods.Register(self, prefix, callback)
   return connection, reason
 end
 
----Queue a message. Returns a send handle, or `nil` and `"closed"`,
----`"badDistribution"`, `"forbiddenByte"`, `"tooLarge"`, `"queueFull"` or
----`"unavailable"`.
+---Queue a message, and send it at once as far as the budget pays when the
+---driver is idle; the handle may come back `sending` or `sent`, and no
+---callback runs before this returns. Returns a send handle, or `nil` and
+---`"closed"`, `"badDistribution"`, `"forbiddenByte"`, `"tooLarge"`,
+---`"queueFull"` or `"unavailable"`.
 ---@param self CommKit.Scope
 ---@param request CommKit.SendRequest
 ---@return CommKit.SendHandle|nil handle

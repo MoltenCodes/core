@@ -2,6 +2,41 @@ local TestEnv = require("CommKitTestEnv")
 
 local PREFIX = "CKTest"
 
+---Put a state this file built back into revision 5's layout: queue records
+---leased from a PoolKit `records` pool (each queued record is replaced by a
+---leased copy its handle points to), and none of the revision 6 fields: no
+---record free list, no held callbacks, no inline flag, no sample time.
+---@param olderState table
+---@param PoolKit table
+---@return table pool the `records` pool
+local function rewindToRevision5(olderState, PoolKit)
+  local pool = PoolKit:NewTablePool({ maxRetained = 64 })
+  olderState.pools.records = pool
+  for _, queue in pairs(olderState.queues) do
+    for _, pipe in pairs(queue.pipes) do
+      local fifo = pipe.fifo
+      for index = 1, #fifo do
+        local record = fifo[index]
+        local leased = pool:Acquire()
+        for key, value in pairs(record) do
+          if key ~= "freeListed" then
+            leased[key] = value
+          end
+        end
+        fifo[index] = leased
+        if record.handle then
+          rawset(record.handle, "_record", leased)
+        end
+      end
+    end
+  end
+  olderState.spares.records = nil
+  olderState.deferred = nil
+  olderState.driver.inline = nil
+  olderState.budget.sampledAt = nil
+  return pool
+end
+
 describe("CommKit bootstrap", function()
   after_each(TestEnv.Reset)
 
@@ -208,6 +243,7 @@ describe("CommKit bootstrap", function()
     olderState.expiry.idleTimer:Cancel()
     olderState.expiry.timer = olderState.kitScopes.timer:After(30, olderState.trampolines.expire)
     olderState.expiry.idleTimer = nil
+    local records = rewindToRevision5(olderState, loaded.PoolKit)
     olderState.spares = nil
 
     package.loaded["CommKit"] = nil
@@ -215,7 +251,7 @@ describe("CommKit bootstrap", function()
     assert.are.equal(older, CommKit)
     assert.is_true(CommKit.REVISION > 4)
     assert.are.equal(olderState, rawget(CommKit, "_state"))
-    assert.are.same({ pipes = {}, senders = {} }, olderState.spares)
+    assert.are.same({ pipes = {}, senders = {}, records = {} }, olderState.spares)
     assert.is_false(olderState.expiry.idleTimer)
 
     TestEnv.Deliver(PREFIX, "\004\129\128\130" .. streamText:sub(252), "PARTY", "Peer-Realm")
@@ -230,6 +266,60 @@ describe("CommKit bootstrap", function()
     TestEnv.Loopback("Friend-Realm")
     assert.are.same({ streamText, text }, received)
     assert.are.equal(1, #olderState.spares.pipes)
+    -- The record revision 4 leased went back to its pool.
+    assert.are.equal(0, records:GetActiveCount())
+    assert.are.same({}, olderState.spares.records)
+  end)
+
+  it("upgrades a revision 5 state in place with a send in flight", function()
+    local older, loaded = TestEnv.Load({ commKitRevision = 5 })
+    assert.are.equal(5, older.REVISION)
+    local olderState = rawget(older, "_state")
+    older:SetLimits({ burst = 400, maxCps = 100 })
+    local scope = older:ForAddon("MyAddon")
+    local received = {}
+    scope:Register(PREFIX, function(_, text)
+      received[#received + 1] = text
+    end)
+    local text = TestEnv.Text(700)
+    local outcomes = {}
+    local handle = scope:Send({
+      prefix = PREFIX,
+      text = text,
+      distribution = "PARTY",
+      onComplete = function(_, state)
+        outcomes[#outcomes + 1] = state
+      end,
+    })
+    TestEnv.Advance(0)
+    assert.are.equal("sending", handle:GetState())
+    local records = rewindToRevision5(olderState, loaded.PoolKit)
+    assert.are.equal(1, records:GetActiveCount())
+
+    package.loaded["CommKit"] = nil
+    local CommKit = require("CommKit")
+    assert.are.equal(older, CommKit)
+    assert.is_true(CommKit.REVISION > 5)
+    assert.are.equal(olderState, rawget(CommKit, "_state"))
+    assert.are.same({}, olderState.spares.records)
+    assert.are.same({ count = 0, cursor = 0, flushing = 0 }, olderState.deferred)
+    assert.is_false(olderState.driver.inline)
+    assert.is_false(olderState.budget.sampledAt)
+
+    -- The inherited driver finishes the message, and its record goes back
+    -- to the pool it came from.
+    TestEnv.Advance(10)
+    assert.are.equal("sent", handle:GetState())
+    assert.are.same({ "sent" }, outcomes)
+    assert.are.equal(0, records:GetActiveCount())
+    TestEnv.Loopback("Friend-Realm")
+    assert.are.same({ text }, received)
+
+    -- With the driver idle, a new message leaves inside `Send`.
+    TestEnv.Advance(10)
+    local next = scope:Send({ prefix = PREFIX, text = "after", distribution = "PARTY" })
+    assert.are.equal("sent", next:GetState())
+    assert.are.equal(1, #olderState.spares.records)
   end)
 
   it("requires Registry", function()

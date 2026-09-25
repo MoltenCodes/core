@@ -29,11 +29,12 @@ describe("CommKit statistics", function()
 
   it("counts what was queued, sent, cancelled, failed and received", function()
     scope:Register(PREFIX, function() end)
+    TestEnv.HoldSends(CommKit)
     scope:Send({ prefix = PREFIX, text = TestEnv.Text(600), distribution = "PARTY" })
     scope:Send({ prefix = PREFIX, text = "short", distribution = "PARTY" })
     scope:Send({ prefix = PREFIX, text = "cancel me", distribution = "GUILD" }):Cancel()
     TestEnv.QueueSendResults(0, 0, 0, TestEnv.SEND_RESULT.AddonMessageThrottle)
-    TestEnv.Advance(0)
+    TestEnv.ReleaseSends(CommKit, 0)
     TestEnv.Advance(1)
     TestEnv.Loopback("Friend-Realm")
 

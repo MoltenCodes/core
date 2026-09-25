@@ -113,6 +113,9 @@ describe("CommKit send driver", function()
     for _ = 1, 40 do
       chain()
     end
+    -- Each left inside its own `Send`; the completions wait for the next
+    -- frame, whose run makes them and then sends what they queued.
+    assert.are.equal(40, #TestEnv.TakeOutbox())
     TestEnv.Tick()
     assert.are.equal(32, #TestEnv.TakeOutbox())
     assert.is_true(driverJobs() <= 1)
@@ -294,6 +297,9 @@ describe("CommKit sender-side stream bounds", function()
 
   it("keeps a cancelled stream's allowance until its abort leaves", function()
     CommKit:SetLimits({ maxInFlightPerSender = 1, burst = 1000000, maxCps = 100000 })
+    -- Held, so the progress callback cancels after the first chunk rather
+    -- than after all three left inside `Send`.
+    TestEnv.HoldSends(CommKit)
     local first = assert(scope:Send({
       prefix = PREFIX,
       text = TestEnv.Text(600),
@@ -306,7 +312,8 @@ describe("CommKit sender-side stream bounds", function()
     TestEnv.QueueSendResults(TestEnv.SEND_RESULT.Success, TestEnv.SEND_RESULT.AddonMessageThrottle)
     local second = string.rep("s", 600)
     assert(scope:Send({ prefix = PREFIX, text = second, distribution = "RAID" }))
-    TestEnv.Advance(0)
+    -- Short of the 0.35 s the throttled abort waits.
+    TestEnv.ReleaseSends(CommKit, 0.01)
     assert.are.equal("cancelled", first:GetState())
     local controls = {}
     for index, entry in ipairs(TestEnv.Chat().outbox) do
@@ -323,6 +330,8 @@ describe("CommKit sender-side stream bounds", function()
 
   it("aborts a stream whose send fails mid-message, holding its allowance", function()
     CommKit:SetLimits({ maxInFlightPerSender = 1, burst = 1000000, maxCps = 100000 })
+    -- Held, so the scripted results meet the chunks in the order below.
+    TestEnv.HoldSends(CommKit)
     local first =
       assert(scope:Send({ prefix = PREFIX, text = TestEnv.Text(600), distribution = "PARTY" }))
     -- The first chunk leaves, the second fails, and the abort is throttled;
@@ -334,7 +343,8 @@ describe("CommKit sender-side stream bounds", function()
     )
     local second = string.rep("s", 600)
     assert(scope:Send({ prefix = PREFIX, text = second, distribution = "RAID" }))
-    TestEnv.Advance(0)
+    -- Short of the 0.35 s the throttled abort waits.
+    TestEnv.ReleaseSends(CommKit, 0.01)
     assert.are.equal("failed", first:GetState())
     local controls = {}
     for index, entry in ipairs(TestEnv.Chat().outbox) do

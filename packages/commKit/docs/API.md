@@ -2,7 +2,7 @@
 
 CommKit API generation **1** sends and receives addon messages of any length: prefix registration, a chunk protocol with bounded reassembly, three priority queues that refuse rather than grow, a bandwidth budget shared with everything else in the session, and a `SyncSet` of named fields versioned by content hash.
 
-Implementation revision: **5**. Wire protocol: control bytes `0x01`–`0x05`, specified in [Wire protocol](#wire-protocol).
+Implementation revision: **6**. Wire protocol: control bytes `0x01`–`0x05`, specified in [Wire protocol](#wire-protocol).
 
 ## Loading
 
@@ -80,7 +80,7 @@ Events, through a Kit-owned EventKit scope: `CHAT_MSG_ADDON` and `CHAT_MSG_ADDON
 | Method | Returns | Purpose |
 |---|---|---|
 | `Register(prefix, callback)` | connection, or `nil, reason` | Receive whole messages on `prefix`. |
-| `Send(request)` | send handle, or `nil, reason` | Queue a message. |
+| `Send(request)` | send handle, or `nil, reason` | Queue a message, and send it at once as far as the budget pays when the [driver](#queues-and-priorities) is idle. |
 | `SyncSet(prefix, options)` | SyncSet, or `nil, reason` | Named fields synchronised over `prefix`. |
 | `UnregisterAll()` | integer | Close every SyncSet and disconnect every registration; the scope stays usable. |
 | `CancelAll()` | integer | Cancel every pending send; the scope stays usable. |
@@ -175,7 +175,9 @@ queued ──→ sending ──→ sent
    └──────────┴──→ cancelled | failed
 ```
 
-`sending` means at least one chunk of a multi-chunk message left. `onComplete(handle, state, reason)` is called exactly once:
+`sending` means at least one chunk of a multi-chunk message left. **`Send` may return a handle already `sending` or `sent`**: when the driver is idle, `Send` runs it once before returning (see [the driver](#queues-and-priorities)), so a message the bucket pays for leaves inside the call, as ChatThrottleLib sends at once while bandwidth is left. A message the bucket cannot pay for, or one sent while the driver is busy, is returned `queued`. A throttle or a refusal answered inside the call returns it `queued` (set aside for its retry) or `failed`.
+
+`onComplete(handle, state, reason)` is called exactly once:
 
 | State | Reason |
 |---|---|
@@ -186,6 +188,8 @@ queued ──→ sending ──→ sent
 A result the enum does not name — one a client newer than this file added — is treated like a throttle: the pipe is set aside and the chunk retried, rather than the message failed.
 
 Cancelling a message mid-send stops its remaining chunks and queues an [abort](#abort) at the head of its pipe, so receivers drop the incomplete stream at once and silently. A message that fails mid-send, because the client refused a later chunk, queues the same abort. Until the abort leaves, it counts as a stream in flight, as the message did. The abort is sent once: a throttled one waits for its pipe, and one the client refuses is dropped, leaving receivers to expire the stream. Callbacks run isolated, like receive callbacks, after CommKit's own state is settled, so a callback may send, cancel or close.
+
+**No callback runs before `Send` returns.** The `onProgress` and `onComplete` calls of chunks sent inside `Send` are held and made by the next driver run, a SchedulerKit job scheduled with `Schedule` (so it runs in SchedulerKit's next pass: on a later frame, or later in the current pass when `Send` was called from a SchedulerKit job), which makes them before it sends anything; a message a held callback sends is queued and leaves in that same run. Each handle's calls keep their order, progress in chunk order and completion last: a `Cancel`, `CancelAll`, `Close` or `CloseAddonScopes` that completes a message while calls are held makes the held calls first, inside that call, then its own. Held calls cost no table each: they wait in one array CommKit keeps, at most one progress call per chunk and one completion per message sent inside `Send` since the last driver run, and none remains once that run began.
 
 ## Wire protocol
 
@@ -307,7 +311,7 @@ Priority is service preference, not ordering: a message in one priority may arri
 
 The queue is bounded across every scope by `maxQueuedMessages` (256) and `maxQueuedBytes` (65536 bytes of text), and a send that would pass either is refused. Lowering a bound drops nothing already queued; new sends are refused until the queue is below it. `GetQueueDepth(priority)` reports messages and text bytes.
 
-**The driver** is one SchedulerKit job, and it exists only while something is queued. A run sends chunks until the bucket, the queue or a cap of 32 chunks runs out, then schedules its successor: after the time the bucket needs, after the earliest throttled pipe is reinstated, or on the next frame. There is never more than one: a send made from a callback during a run is picked up by that run, and scheduling a successor replaces any job already scheduled. When the queue empties — sent, or cancelled while the driver waits — the job is cancelled, nothing is scheduled and no per-frame handler or ticker remains.
+**The driver** sends chunks in runs. A run sends until the bucket, the queue or a cap of 32 chunks runs out, then schedules its successor as one SchedulerKit job: after the time the bucket needs, after the earliest throttled pipe is reinstated, or on the next frame. **A `Send` made while the driver is idle runs it at once, on the caller's stack**: idle means no run on the stack and no job scheduled but one that only makes held callbacks, which is the case whenever the queue was empty. That run is an ordinary run: it serves the queue in rotation, stops at the bucket or the cap, and schedules its successor when anything is left, so a message the bucket pays for in full leaves before `Send` returns and builds no job, and one it pays for in part returns `sending` and continues from the job. A `Send` made while the driver is busy — a job waiting for the bucket, a backoff or the next frame, or a run on the stack, such as from a callback — queues and leaves on that run or its successor. There is never more than one job: scheduling a successor replaces any job already scheduled. The one job exists only while something is queued or callbacks are held (see [Send states](#send-states)); when the queue empties — sent, or cancelled while the driver waits — and no callback is held, the job is cancelled, nothing is scheduled and no per-frame handler or ticker remains.
 
 ## Bandwidth
 
@@ -321,7 +325,7 @@ The bucket holds at most `burst` (4000) bytes and refills at `maxCps` (800) byte
 | `"lowFrameRate"` | the last sample was below 20 frames per second | half | `burst` |
 | `"zoning"` | for 5 s after `PLAYER_ENTERING_WORLD` | a tenth | the smaller of `burst` and half a second of `maxCps` |
 
-The frame rate is sampled from `GetFramerate` once when the driver wakes from idle and then once a second on a TimerKit ticker, started by the first driver run that leaves anything queued and stopped when the queue empties — never on the send path, and never while idle. A message the first run sends in full never starts the ticker.
+The frame rate is sampled from `GetFramerate` when the driver wakes from idle, at most once a second between wakes (sends that each leave inside `Send` sample once between them), and then once a second on a TimerKit ticker, started by the first driver run that leaves anything queued and stopped when the queue empties — never once per send, and never while idle. A message the first run sends in full never starts the ticker.
 
 **Traffic CommKit did not send.** When HookKit is loaded, CommKit secure-hooks `C_ChatInfo.SendAddonMessage`, `SendAddonMessageLogged` and `SendChatMessage` (the legacy globals where `C_ChatInfo` lacks one) with `HookKit:CreateScope():SecureHook`, the first time the driver wakes after HookKit is found. Every message another addon sends through them is charged to the bucket — prefix, text and overhead, or the most one message can cost when an argument is secret — and may drive the bucket down to two seconds of debt (−1600 bytes by default), which is repaid before CommKit sends again. A flag set around CommKit's own calls keeps its chunks from being charged twice. Secure hooks cannot be removed; they stay installed for the session.
 
@@ -494,7 +498,7 @@ A received message is whatever the sender chose to send, and a sender may be hos
 
 - **Receiving a single chunk allocates no table**: the payload is one `string.sub`, and the lookup, the counters and the dispatch allocate nothing. Specs guard this with `collectgarbage("count")`.
 - A multi-chunk stream leases one stream record from a PoolKit table pool, holding the chunks in its array part, and returns it when the stream completes or is dropped; the key is one string per chunk and the message one `table.concat`. Per-sender accounting records are recycled through a free list of at most 16, and arming the expiry timer for a full timeout, as the first stream to open does, restarts one kept TimerKit timer instead of building a timer handle: a two-chunk message from a new sender allocates its three strings and what TimerKit's start allocates. Specs guard this.
-- A send allocates its handle, its pipe key string and one string per chunk, plus what one SchedulerKit job costs when the driver wakes from idle; the queue record is leased from a pool, and the pipe of a destination with nothing queued comes from a free list of at most 16 emptied pipes, built only when that list is empty.
+- A send allocates its handle, its pipe key string and one string per chunk. A message sent in full inside `Send` builds no SchedulerKit job; one that leaves anything queued, or whose callbacks are held, costs what one job costs until the driver is idle again. The queue record comes from CommKit's own free list of at most 64 records, which lets go of the message's text, handle and callbacks when it ends, and the pipe of a destination with nothing queued from a free list of at most 16 emptied pipes; each is built only when its list is empty. A spec guards that a send the bucket pays for at once allocates only its handle and its chunk string.
 - An idle CommKit runs nothing: no job, no per-frame handler, no ticker. The frame-rate ticker runs only while something is queued, the expiry timer only while a stream is open, and the drop-report timer only while a sender's report minute is running.
 
 ## Deviations from the planned contract
@@ -511,7 +515,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`SyncSet` additions**: `Get`, `GetHash`, `GetRemote`, `Close` and `IsClosed`; a reply interval of one second per peer; a peer cache of 64; `OnChanged` receives `nil` for a cleared field. `schema` maps each field to its own sealed schema, because a delivery carries only the fields that changed.
 - **Scope additions**: `UnregisterAll`, `CancelAll`, `GetRegistrationCount`, `GetPendingCount`; **facade additions**: `CloseAddonScopes`, `MAX_MESSAGE_BYTES`, `MAX_REGISTRATIONS`.
 - **Every message carries a control byte**, including single chunks, so no message is ever escaped and a receiver can tell CommKit traffic from anything else on the prefix.
-- **The driver is a chain of plain SchedulerKit jobs, not a lane.** The plan names a lane; a lane rations concurrent work and spacing between starts, while the driver is a single consumer whose pacing comes from the byte bucket, so one job at a time — scheduled with `Schedule`, `After` for a bucket or backoff wait, or `NextFrame` after the per-run cap — gives the same "exists only while something is queued" with no lane registered in the session-wide lane table.
+- **The driver is a chain of plain SchedulerKit jobs, not a lane.** The plan names a lane; a lane rations concurrent work and spacing between starts, while the driver is a single consumer whose pacing comes from the byte bucket, so one job at a time — scheduled with `Schedule`, `After` for a bucket or backoff wait, or `NextFrame` after the per-run cap — gives the same "exists only while something is queued" with no lane registered in the session-wide lane table. From revision 6 a `Send` made while the driver is idle also runs it once on the caller's stack, which no lane could do.
 - **Additions to the protocol**: the abort chunk (`05`), and a printable digit scheme for the logged channel.
 - **The sender keeps within the receiver's stream bounds**, counted across all destinations rather than per destination, because one receiver can be in the party, the raid and the guild at once.
 - **A send result the client's enum does not name is retried like a throttle**, not failed.
@@ -521,4 +525,4 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 The package state (`_state`) holds the queues, the bucket, the limits, the statistics, the reassembly streams, the prefix signals, the Kit-owned scopes and the pools, and all of it is kept across an in-place upgrade: a newer compatible revision replaces the functions on the shared prototypes and in the dispatch table, and every callback CommKit handed to EventKit, TimerKit, SchedulerKit and HookKit calls through that table, so queued sends, open streams, registrations and SyncSets keep working under the new code.
 
-Revisions 3 and 4 inherit revision 2's state unchanged. Revision 5 adds the free lists (`spares`) and the reusable expiry timer to an inherited state; streams a revision 4 copy opened keep their separate chunk list until they close. Revision 2 and later upgrade the addon scopes revision 1 built in place and arrange their [logout close](#at-logout) while it loads, for every open one. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: the subscription calls the facade and the watcher calls through the `logout` trampoline, so both run the newest code, and nothing is subscribed twice. The wire protocol belongs to API generation 1, not to the revision.
+Revisions 3 and 4 inherit revision 2's state unchanged. Revision 5 adds the free lists (`spares`) and the reusable expiry timer to an inherited state; streams a revision 4 copy opened keep their separate chunk list until they close. Revision 6 adds the record free list (`spares.records`), the held-callback array (`deferred`), the driver's `inline` flag and the time of the last frame-rate sample to an inherited state; a queue record an older copy leased from its PoolKit pool goes back to that pool when its message ends, and a driver job an older copy scheduled runs the new code. Revision 2 and later upgrade the addon scopes revision 1 built in place and arrange their [logout close](#at-logout) while it loads, for every open one. A later revision keeps the `OnShutdown` subscriptions and the `PLAYER_LOGOUT` watcher it inherits: the subscription calls the facade and the watcher calls through the `logout` trampoline, so both run the newest code, and nothing is subscribed twice. The wire protocol belongs to API generation 1, not to the revision.

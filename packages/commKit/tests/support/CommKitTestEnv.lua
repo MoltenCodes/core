@@ -380,6 +380,29 @@ function CommKitTestEnv.TakeOutbox()
   return taken
 end
 
+---Empty CommKit's bandwidth bucket, so sends queue instead of leaving inside
+---`Send`. The next send finds a bucket that cannot pay, queues and arms the
+---driver for when it could; every later send then queues behind that run, as
+---sends made while the budget is spent do in the client. Specs of queue order,
+---bounds and depth use this to hold several messages at once.
+---@param CommKit table
+function CommKitTestEnv.HoldSends(CommKit)
+  local budget = rawget(CommKit, "_state").budget
+  budget.tokens = 0
+  budget.lastRefill = getGlobal("GetTimePreciseSec")()
+end
+
+---Refill the bucket `HoldSends` emptied and advance the clock by `seconds`
+---(1 by default), which runs the waiting driver: every held message whose
+---chunks a full bucket pays for leaves in queue order.
+---@param CommKit table
+---@param seconds number?
+function CommKitTestEnv.ReleaseSends(CommKit, seconds)
+  local state = rawget(CommKit, "_state")
+  state.budget.tokens = state.limits.burst
+  CommKitTestEnv.Advance(seconds or 1)
+end
+
 ---@param framesPerSecond number
 function CommKitTestEnv.SetFramerate(framesPerSecond)
   chat.framerate = framesPerSecond

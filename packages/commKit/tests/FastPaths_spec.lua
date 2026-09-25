@@ -79,6 +79,8 @@ describe("CommKit fast paths", function()
       handle:Cancel()
       assert.are.same({ pipe }, state.spares.pipes)
 
+      -- Held, so the pipe is still in use when inspected.
+      TestEnv.HoldSends(CommKit)
       local next = scope:Send({
         prefix = PREFIX,
         text = "second",
@@ -101,13 +103,15 @@ describe("CommKit fast paths", function()
         blockedUntil = pipe.blockedUntil,
         backoff = pipe.backoff,
       })
-      TestEnv.Advance(0)
+      TestEnv.ReleaseSends(CommKit)
       assert.are.equal("sent", next:GetState())
       local outbox = TestEnv.TakeOutbox()
       assert.are.equal("Beta", outbox[#outbox].target)
     end)
 
     it("keeps at most 16 emptied pipes", function()
+      -- Held, so the twenty pipes exist at once.
+      TestEnv.HoldSends(CommKit)
       for index = 1, 20 do
         scope:Send({
           prefix = PREFIX,
@@ -116,20 +120,21 @@ describe("CommKit fast paths", function()
           target = "Player" .. index,
         })
       end
-      TestEnv.Advance(0)
+      TestEnv.ReleaseSends(CommKit)
       assert.are.equal(0, (CommKit:GetQueueDepth()))
       assert.are.equal(16, #state.spares.pipes)
       assert.are.equal(20, #TestEnv.TakeOutbox())
     end)
 
     it("keeps order inside a pipe when a message behind the head is cancelled", function()
+      TestEnv.HoldSends(CommKit)
       local handles = {}
       for index = 1, 3 do
         handles[index] =
           scope:Send({ prefix = PREFIX, text = "m" .. index, distribution = "PARTY" })
       end
       handles[2]:Cancel()
-      TestEnv.Advance(0)
+      TestEnv.ReleaseSends(CommKit)
       local texts = {}
       for _, entry in ipairs(TestEnv.TakeOutbox()) do
         texts[#texts + 1] = entry.text
@@ -158,8 +163,8 @@ describe("CommKit fast paths", function()
     it("samples once and starts no ticker for a message the first run sends", function()
       scope:Send({ prefix = PREFIX, text = TestEnv.Text(600), distribution = "PARTY" })
       assert.are.equal(1, calls)
-      TestEnv.Advance(0)
       assert.are.equal(3, #TestEnv.TakeOutbox())
+      TestEnv.Advance(0)
       assert.are.equal(0, repeatingTimers())
       assert.is_false(state.driver.sampler)
       TestEnv.Advance(5)
@@ -168,8 +173,9 @@ describe("CommKit fast paths", function()
 
     it("starts the ticker when a run leaves work queued, and stops it when idle", function()
       CommKit:SetLimits({ burst = 300, maxCps = 100 })
+      -- The run inside `Send` sends one chunk and leaves two queued.
       scope:Send({ prefix = PREFIX, text = TestEnv.Text(600), distribution = "PARTY" })
-      assert.are.equal(0, repeatingTimers())
+      assert.are.equal(1, repeatingTimers())
       TestEnv.Advance(0)
       assert.are.equal(1, repeatingTimers())
       assert.is_true(state.driver.sampler ~= false)

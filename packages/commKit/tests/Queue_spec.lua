@@ -28,6 +28,7 @@ describe("CommKit queue bounds and refusals", function()
 
   it("refuses with queueFull when the queued bytes would pass the bound", function()
     CommKit:SetLimits({ maxQueuedBytes = 1000 })
+    TestEnv.HoldSends(CommKit)
     assert.is_truthy(scope:Send(request({ text = TestEnv.Text(600) })))
     assert.are.same({ nil, "queueFull" }, { scope:Send(request({ text = TestEnv.Text(600) })) })
     assert.are.same({ 1, 600 }, { CommKit:GetQueueDepth() })
@@ -35,27 +36,30 @@ describe("CommKit queue bounds and refusals", function()
 
   it("refuses with queueFull when the queued messages would pass the bound", function()
     CommKit:SetLimits({ maxQueuedMessages = 3 })
+    TestEnv.HoldSends(CommKit)
     for _ = 1, 3 do
       assert.is_truthy(scope:Send(request({})))
     end
     assert.are.same({ nil, "queueFull" }, { scope:Send(request({})) })
-    TestEnv.Advance(0)
+    TestEnv.ReleaseSends(CommKit)
     assert.is_truthy(scope:Send(request({})))
   end)
 
   it("drops nothing already queued when a bound is lowered", function()
+    TestEnv.HoldSends(CommKit)
     for _ = 1, 4 do
       assert.is_truthy(scope:Send(request({})))
     end
     CommKit:SetLimits({ maxQueuedMessages = 2 })
     assert.are.same({ 4, 20 }, { CommKit:GetQueueDepth() })
     assert.are.same({ nil, "queueFull" }, { scope:Send(request({})) })
-    TestEnv.Advance(0)
+    TestEnv.ReleaseSends(CommKit)
     assert.are.equal(4, #TestEnv.TakeOutbox())
   end)
 
   it("fails a queued message that no longer fits a lowered reassembly bound", function()
     local outcome
+    TestEnv.HoldSends(CommKit)
     local handle = assert(scope:Send(request({
       text = TestEnv.Text(600),
       onComplete = function(_, state, reason)
@@ -67,7 +71,7 @@ describe("CommKit queue bounds and refusals", function()
     assert.are.same({ "failed", "tooLarge" }, outcome)
     assert.are.equal("failed", handle:GetState())
     assert.are.equal("queued", short:GetState())
-    TestEnv.Advance(0)
+    TestEnv.ReleaseSends(CommKit)
     assert.are.equal("sent", short:GetState())
     assert.are.same({ 0, 0 }, { CommKit:GetQueueDepth() })
     assert.are.equal(0, TestEnv.ActiveOnUpdateCount())
@@ -131,6 +135,7 @@ describe("CommKit queue bounds and refusals", function()
   end)
 
   it("reports depth per priority and drains to zero", function()
+    TestEnv.HoldSends(CommKit)
     assert.is_truthy(scope:Send(request({ priority = CommKit.Priority.ALERT })))
     assert.is_truthy(scope:Send(request({ priority = CommKit.Priority.BULK, text = "abc" })))
     assert.is_truthy(scope:Send(request({})))
@@ -138,12 +143,13 @@ describe("CommKit queue bounds and refusals", function()
     assert.are.same({ 1, 5 }, { CommKit:GetQueueDepth(CommKit.Priority.NORMAL) })
     assert.are.same({ 1, 3 }, { CommKit:GetQueueDepth(CommKit.Priority.BULK) })
     assert.are.same({ 3, 13 }, { CommKit:GetQueueDepth() })
-    TestEnv.Advance(0)
+    TestEnv.ReleaseSends(CommKit)
     assert.are.same({ 0, 0 }, { CommKit:GetQueueDepth() })
   end)
 
   it("counts every refusal by reason", function()
     CommKit:SetLimits({ maxQueuedMessages = 1 })
+    TestEnv.HoldSends(CommKit)
     scope:Send(request({}))
     scope:Send(request({}))
     scope:Send(request({ text = "|" }))
@@ -155,20 +161,38 @@ describe("CommKit queue bounds and refusals", function()
     assert.are.equal(1, statistics.refusedBadDistribution)
   end)
 
-  it("leaves no per-frame handler, job or timer once the queue is empty", function()
-    for _ = 1, 3 do
-      scope:Send(request({}))
-    end
-    assert.are.equal(1, TestEnv.ActiveOnUpdateCount())
-    TestEnv.Advance(0)
-    assert.are.equal(0, TestEnv.ActiveOnUpdateCount())
+  ---Native timers still armed: not cancelled and not yet fired, or repeating.
+  ---@return integer
+  local function liveTimers()
     local live = 0
     for _, native in ipairs(TestEnv.NativeTimers()) do
       if not native.cancelled and (native.repeating or not native.fired) then
         live = live + 1
       end
     end
-    assert.are.equal(0, live)
+    return live
+  end
+
+  it("builds no per-frame handler, job or timer for sends the bucket pays at once", function()
+    for _ = 1, 3 do
+      local handle = scope:Send(request({}))
+      assert.are.equal("sent", handle:GetState())
+    end
+    assert.are.equal(3, #TestEnv.TakeOutbox())
+    assert.are.equal(0, TestEnv.ActiveOnUpdateCount())
+    assert.are.equal(0, liveTimers())
+  end)
+
+  it("leaves no per-frame handler, job or timer once a held queue is empty", function()
+    TestEnv.HoldSends(CommKit)
+    for _ = 1, 3 do
+      scope:Send(request({}))
+    end
+    assert.are.same({ 3, 15 }, { CommKit:GetQueueDepth() })
+    TestEnv.ReleaseSends(CommKit)
+    assert.are.equal(3, #TestEnv.TakeOutbox())
+    assert.are.equal(0, TestEnv.ActiveOnUpdateCount())
+    assert.are.equal(0, liveTimers())
   end)
 end)
 
@@ -179,6 +203,9 @@ describe("CommKit priorities", function()
     scope = CommKit:CreateScope()
   end)
   after_each(TestEnv.Reset)
+
+  -- Each case queues its messages behind an empty bucket, so the rotation
+  -- serves them together instead of each leaving inside its own `Send`.
 
   ---The texts the stub accepted, in order.
   ---@return string[]
@@ -191,6 +218,7 @@ describe("CommKit priorities", function()
   end
 
   it("serves ALERT four times, NORMAL twice and BULK once per turn", function()
+    TestEnv.HoldSends(CommKit)
     for index = 1, 5 do
       scope:Send({
         prefix = PREFIX,
@@ -210,7 +238,7 @@ describe("CommKit priorities", function()
     for index = 1, 3 do
       scope:Send({ prefix = PREFIX, text = "N" .. index, distribution = "PARTY" })
     end
-    TestEnv.Advance(0)
+    TestEnv.ReleaseSends(CommKit)
     assert.are.same(
       { "A1", "A2", "A3", "A4", "N1", "N2", "B1", "A5", "N3", "B2", "B3" },
       sentTexts()
@@ -219,6 +247,7 @@ describe("CommKit priorities", function()
 
   it("never starves BULK behind a steady stream of ALERT", function()
     CommKit:SetLimits({ maxQueuedMessages = 64 })
+    TestEnv.HoldSends(CommKit)
     for index = 1, 40 do
       scope:Send({
         prefix = PREFIX,
@@ -233,12 +262,13 @@ describe("CommKit priorities", function()
       distribution = "PARTY",
       priority = CommKit.Priority.BULK,
     })
-    TestEnv.Advance(0)
+    TestEnv.ReleaseSends(CommKit)
     local texts = sentTexts()
     assert.are.equal("B", texts[5])
   end)
 
   it("rotates destinations inside one priority", function()
+    TestEnv.HoldSends(CommKit)
     for _, name in ipairs({ "X", "Y", "Z" }) do
       for index = 1, 2 do
         scope:Send({
@@ -249,11 +279,12 @@ describe("CommKit priorities", function()
         })
       end
     end
-    TestEnv.Advance(0)
+    TestEnv.ReleaseSends(CommKit)
     assert.are.same({ "X1", "Y1", "Z1", "X2", "Y2", "Z2" }, sentTexts())
   end)
 
   it("interleaves the chunks of a long message with other destinations", function()
+    TestEnv.HoldSends(CommKit)
     scope:Send({
       prefix = PREFIX,
       text = TestEnv.Text(600),
@@ -261,7 +292,7 @@ describe("CommKit priorities", function()
       target = "Long-Realm",
     })
     scope:Send({ prefix = PREFIX, text = "short", distribution = "WHISPER", target = "S-Realm" })
-    TestEnv.Advance(0)
+    TestEnv.ReleaseSends(CommKit)
     local sent = TestEnv.TakeOutbox()
     local targets = {}
     for index, entry in ipairs(sent) do
@@ -271,10 +302,11 @@ describe("CommKit priorities", function()
   end)
 
   it("keeps one destination's messages in order", function()
+    TestEnv.HoldSends(CommKit)
     for index = 1, 4 do
       scope:Send({ prefix = PREFIX, text = "m" .. index, distribution = "GUILD" })
     end
-    TestEnv.Advance(0)
+    TestEnv.ReleaseSends(CommKit)
     assert.are.same({ "m1", "m2", "m3", "m4" }, sentTexts())
   end)
 end)

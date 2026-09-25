@@ -40,7 +40,7 @@ What each piece promises:
 - **Queues that say no.** Sends are bounded at 256 messages and 64 KB, across every addon; a send that would pass a bound returns `nil, "queueFull"` instead of growing the queue.
 - **Fair.** ALERT, NORMAL and BULK are served four, two and one chunks per turn, and destinations inside a priority take turns, so neither a busy priority nor a busy destination starves the rest.
 - **One budget for the session.** A token bucket (800 bytes per second, burst 4000, 40 bytes per message) paces every scope, halves below 20 frames per second, drops to a tenth for five seconds after zoning, sets a throttled destination aside with backoff, and charges traffic other code sends when HookKit is loaded.
-- **Idle means idle.** The send driver is a SchedulerKit job that exists only while something is queued.
+- **Idle means idle.** A message sent while nothing waits leaves inside `Send` as far as the budget pays, with its callbacks made by the driver's next run, after `Send` returned; the send driver's SchedulerKit job exists only while something is queued or callbacks wait.
 - **Delta sync.** `scope:SyncSet(prefix, { fields, schema })` exchanges named fields versioned by a 32-bit FNV-1a hash; a request carries the hashes the requester holds and the answer only the fields that differ.
 
 Every bound is documented under *Limits* in the API: a scope's `maxRegistrations` and a SyncSet's `maxListeners` accept `CommKit.UNBOUNDED`, and the session-shared limits are raised through `SetLimits`.

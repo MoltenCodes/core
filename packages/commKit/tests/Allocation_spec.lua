@@ -86,6 +86,59 @@ describe("CommKit allocation #allocation", function()
     assert.are.equal(#keptAlive, count + 1)
   end)
 
+  it("sends at once with nothing but the handle and the chunk string", function()
+    CommKit:SetLimits({ maxCps = 100000, burst = 1000000 })
+    local scope = CommKit:CreateScope()
+    local count = 500
+    local texts, chunks, handles = {}, {}, {}
+    for index = 1, count + 1 do
+      texts[index] = TestEnv.Text(200) .. index
+      handles[index] = false
+    end
+    -- One send outside the measurement starts the bucket's clock, which the
+    -- advance then fills, and grows the lists CommKit reuses.
+    scope:Send({ prefix = "CKTest", text = texts[count + 1], distribution = "PARTY" })
+    TestEnv.Advance(20)
+    TestEnv.TakeOutbox()
+    local request = { prefix = "CKTest", text = "", distribution = "PARTY" }
+
+    local allocated = TestEnv.AllocatedKilobytes(function()
+      for index = 1, count do
+        request.text = texts[index]
+        handles[index] = scope:Send(request)
+      end
+    end)
+    assert.are.equal("sent", handles[count]:GetState())
+    local sent = TestEnv.TakeOutbox()
+    assert.are.equal(count, #sent)
+
+    -- What the chat stub itself allocates to record a send, measured with
+    -- chunk strings that already exist.
+    for index = 1, count do
+      chunks[index] = sent[index].text
+    end
+    -- selene: allow(global_usage)
+    local sendAddonMessage = rawget(_G, "C_ChatInfo").SendAddonMessage
+    local stub = TestEnv.AllocatedKilobytes(function()
+      for index = 1, count do
+        sendAddonMessage("CKTest", chunks[index], "PARTY")
+      end
+    end)
+    TestEnv.TakeOutbox()
+
+    -- Per send: the chunk string (the text, its control byte, a 24-byte
+    -- string header on a 64-bit build and the terminator) and the handle, a
+    -- table of five fields (384 bytes on a 64-bit build). The margin is well
+    -- below what a driver job (about 4 KB), a timer or a pooled lease would
+    -- add, and a second table per send would pass it.
+    local chunkString = 204 + 26
+    local perSend = (allocated - stub) * 1024 / count
+    assert.is_true(
+      perSend < chunkString + 384 + 64,
+      "a send that leaves at once allocated " .. perSend .. " bytes"
+    )
+  end)
+
   it("allocates nothing for the handle and queue queries", function()
     local handle = CommKit:CreateScope():Send({
       prefix = "CKTest",

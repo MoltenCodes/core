@@ -28,13 +28,18 @@ describe("CommKit send handles", function()
     }
   end
 
-  it("reports progress per chunk, then completion once", function()
+  it("reports progress per chunk, then completion once, after Send returned", function()
     local handle = assert(scope:Send(tracked(TestEnv.Text(600))))
-    assert.are.same({ "queued", 0, 600 }, {
+    -- The bucket paid for all three chunks inside `Send`; the callbacks wait
+    -- for the next frame.
+    assert.are.same({ "sent", 600, 600 }, {
       handle:GetState(),
       handle:GetBytesSent(),
       handle:GetBytesTotal(),
     })
+    assert.are.equal(3, #TestEnv.TakeOutbox())
+    assert.are.same({}, progress)
+    assert.are.same({}, outcomes)
     TestEnv.Advance(0)
     assert.are.same({ { 251, 600 }, { 502, 600 }, { 600, 600 } }, progress)
     assert.are.same({ { handle, "sent" } }, outcomes)
@@ -43,6 +48,7 @@ describe("CommKit send handles", function()
   end)
 
   it("cancels a queued message before any chunk leaves", function()
+    TestEnv.HoldSends(CommKit)
     local handle = assert(scope:Send(tracked("queued")))
     assert.is_true(handle:Cancel())
     assert.is_false(handle:Cancel())
@@ -79,6 +85,9 @@ describe("CommKit send handles", function()
     request.onProgress = function(own)
       own:Cancel()
     end
+    -- The bucket pays for one 301-byte chunk inside `Send`; the progress
+    -- callback runs on the next frame, before the driver sends more.
+    CommKit:SetLimits({ burst = 400, maxCps = 100 })
     handle = assert(scope:Send(request))
     TestEnv.Advance(0)
     local sent = TestEnv.TakeOutbox()
@@ -104,6 +113,7 @@ describe("CommKit send handles", function()
   end)
 
   it("cancels only the sends pending when CancelAll began", function()
+    TestEnv.HoldSends(CommKit)
     local resent = 0
     scope:Send({
       prefix = PREFIX,
@@ -120,12 +130,13 @@ describe("CommKit send handles", function()
   end)
 
   it("cancels every pending send with CancelAll and stays usable", function()
+    TestEnv.HoldSends(CommKit)
     scope:Send(tracked("a"))
     scope:Send(tracked("b"))
     assert.are.equal(2, scope:CancelAll())
     assert.are.equal(2, #outcomes)
     assert.is_truthy(scope:Send(tracked("c")))
-    TestEnv.Advance(0)
+    TestEnv.ReleaseSends(CommKit)
     assert.are.equal(1, #TestEnv.TakeOutbox())
   end)
 end)
