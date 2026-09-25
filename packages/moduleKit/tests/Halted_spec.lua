@@ -227,6 +227,40 @@ describe("ModuleKit when a required addon halts", function()
     assert.is_true(core:IsEnabled())
   end)
 
+  it("subscribes to dependency halts only once a module requires an addon", function()
+    local addon = ModuleKit:ForAddon("MyAddon")
+    local log = {}
+    createLoggedModule(addon, "Core", log)
+    local subscriptions = rawget(addon, "_subscriptions")
+    assert.is_nil(subscriptions.dependencyHalted)
+
+    local bridge = createLoggedModule(addon, "Bridge", log, { requiresAddons = { "Other" } })
+    local handle = subscriptions.dependencyHalted
+    assert.is_table(handle)
+    createLoggedModule(addon, "Second", log, { requiresAddons = { "Third" } })
+    assert.are.equal(handle, subscriptions.dependencyHalted)
+
+    TestEnv.LoadAddon("MyAddon")
+    TestEnv.Login()
+    LifecycleKit:ForAddon("Other"):Halt("broken")
+
+    assert.are.same({ wanted = true, actual = false, blockedBy = "Other" }, bridge:GetEnableState())
+  end)
+
+  it("blocks a module that requires an addon which halted before the subscription", function()
+    local addon = ModuleKit:ForAddon("MyAddon")
+    local log = {}
+    createLoggedModule(addon, "Core", log)
+    LifecycleKit:ForAddon("Other"):Halt("broken")
+
+    local bridge = createLoggedModule(addon, "Bridge", log, { requiresAddons = { "Other" } })
+    TestEnv.LoadAddon("MyAddon")
+    TestEnv.Login()
+
+    assert.are.same({ "enable Core" }, log)
+    assert.are.same({ wanted = true, actual = false, blockedBy = "Other" }, bridge:GetEnableState())
+  end)
+
   it("re-raises a failing OnDisable after the other modules were taken down", function()
     local addon = ModuleKit:ForAddon("MyAddon")
     local first = addon:CreateModule("First", { requiresAddons = { "Other" } })
@@ -443,7 +477,7 @@ end)
 describe("ModuleKit halted state across an in-place upgrade", function()
   after_each(TestEnv.Reset)
 
-  it("gives modules of an older revision an empty requiresAddons", function()
+  it("treats a module of an older revision without requiresAddons as requiring none", function()
     local ModuleKit = TestEnv.NewPackage()
     local addon = ModuleKit:ForAddon("MyAddon")
     local module = addon:CreateModule("Old")
@@ -454,8 +488,29 @@ describe("ModuleKit halted state across an in-place upgrade", function()
     TestEnv.LoadAddon("MyAddon")
     TestEnv.Login()
 
-    assert.are.same({}, rawget(module, "_requiredAddons"))
+    -- Since revision 19 an absent field reads as no required addons, so
+    -- the upgrade leaves it absent rather than writing an empty list.
+    assert.is_nil(rawget(module, "_requiredAddons"))
     assert.is_true(module:IsEnabled())
+  end)
+
+  it("subscribes a carried-over container to dependency halts only when it needs them", function()
+    local ModuleKit, _, _, _, LifecycleKit = TestEnv.NewPackage()
+    local plain = ModuleKit:ForAddon("Plain")
+    plain:CreateModule("Core")
+    local requiring = ModuleKit:ForAddon("Requiring")
+    local bridge = requiring:CreateModule("Bridge", { requiresAddons = { "Other" } })
+    TestEnv.LoadAddon("Plain")
+    TestEnv.LoadAddon("Requiring")
+    TestEnv.Login()
+    rawset(rawget(ModuleKit, "_state"), "runtimeRevision", ModuleKit.REVISION - 1)
+
+    TestEnv.ReloadPackage()
+
+    assert.is_nil(rawget(plain, "_subscriptions").dependencyHalted)
+    assert.is_table(rawget(requiring, "_subscriptions").dependencyHalted)
+    LifecycleKit:ForAddon("Other"):Halt("broken")
+    assert.are.same({ wanted = true, actual = false, blockedBy = "Other" }, bridge:GetEnableState())
   end)
 
   it("runs no module hook when the addon halted before the upgrade", function()

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.5 — 2026-09-25
+
+- Performance, no contract change. Host benchmark `addonModules` (Lua 5.1, 3 rounds, ModuleKit ÷ AceAddon-3.0 from the same interleaved run; other agents were benchmarking concurrently, load average about 2 before and 5.8 after, so compare the ratios and the byte counts, not the absolute times):
+
+  | Case | Before (rev 18) | After (rev 19) | Bytes per operation, before → after | Ace3 |
+  |---|---:|---:|---:|---:|
+  | create an addon with 10 modules | 1.10× | 0.77× | 29,650 → 17,658 | 19,881 |
+  | create and load it (initialise and enable all) | 2.17× | 1.01× | 50,986 → 21,746 | 20,565 |
+  | disable and enable all 10 modules | 7.94× | 1.38× | 18,656 → 0 | 0 |
+  | disable and enable one module | 4.42× | 1.49× | 392 → 0 | 0 |
+  | the same with one event listener per module | 5.16× | 2.19× | 26,440 → 7,784 | 104 |
+  | retained per addon of 10 modules | | | 28,714 → 16,786 | 19,447 |
+
+- The validated graph order is cached on the container and reused by every whole-container pass, `ValidateGraph` and `GetActivationOrder`, beside each module's hard dependents; it is dropped whenever the graph can change (a module is created, or a `created` module declares `DependsOn`, `OptionalDependency`, `Before` or `After`). Each module keeps its resolved hard-dependency list until it declares another dependency. An invalid graph is never cached, so its diagnostic is raised, at the same line, on every call. Dependency-first enable, reverse-order disable, the blocking of dependents behind a failed module, scope cleanup and every error level are unchanged; the new `GraphCache_spec.lua` pins that each graph change is seen.
+- A module stores only what it uses: its four constraint sets, injection specification, `requiresAddons`, failure record and scope flag are created when first written and read as empty or `false` until then, and the module table is built at its final size. The passes create their failed-module set on the first failure, the `automatic` policy its recursion guard only for a module with hard dependencies, and optional fields are cleared only when set. Whole-container cycles and targeted `Enable` / `Disable` now allocate nothing; `Allocation_spec.lua` pins them `#allocation`.
+- A container subscribes to `OnDependencyHalted` only once one of its modules declares `requiresAddons` (before that module's first `DependsOn`), which saves a LifecycleKit handle and a SignalKit listener per addon; an upgrade subscribes a carried-over container that has such a module. `Halted_spec.lua` covers the new timing.
+- The lifecycle paths read ModuleKit's own container and module fields by plain indexing instead of `rawget`, and the hot helpers make fewer calls (`type`, `next`, LifecycleKit's `IsHalted`). The fields are declared `package` in the LuaCATS classes. `docs/INTERNALS.md` gained *Graph cache* and *Field access* and a rewritten *Allocation policy*; `docs/API.md`'s cost section states what the cache means for callers.
+- Implementation revision 19. Package state is unchanged. A module an older revision created keeps its eagerly created fields and works as before (a new upgrade spec models revision 18's layout); a cached graph is never trusted across an upgrade. The `Halted_spec` upgrade spec now expects an absent `requiresAddons` field to stay absent. `ModuleKit` API generation 1 is unchanged.
+- Measured with LifecycleKit 0.6.5, which creates its repeating-notice signals on first subscription.
+
 ## 0.8.4 — 2026-09-24
 
 - Secret values: INTERNALS.md (*Absent and secret values*) no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Documentation only; the implementation revision is unchanged.

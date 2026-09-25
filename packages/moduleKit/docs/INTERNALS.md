@@ -13,14 +13,14 @@ ModuleKit keeps its bootstrap and implementation in `src/ModuleKit.lua`, like ev
 | Dependencies | Reads `MoltenCodes.Registry`, validates Registry API 2 and the LifecycleKit API 1 facade. Nothing below runs if this fails. |
 | Bootstrap | Reconciles embedded revisions, decides whether this copy owns the package, and installs or adopts the shared `Addon` / `Module` prototypes and `_state`. |
 | Validation helpers | Argument checks, definition-mutability rules (`created` state only), post-shutdown rejection, and the late-module ordering guard. |
-| Graph | Edge construction from the four constraint kinds, cycle reporting, and the topological sort. |
+| Graph | Edge construction from the four constraint kinds, cycle reporting, the topological sort, and the graph cache with its invalidation. |
 | Optional packages | The silent `Registry:Find` lookup (with `Get` as the fallback on an older Registry) that the `implements` schema form and the module scopes share. |
 | Dependency injection | Provider registration, `implements` contracts, the four provider scopes, cycle-checked resolution, and injection-table assembly. |
 | Module scopes | The per-module scope object, its lazy fields resolved through `findOptionalPackage`, and closing them. |
-| Lifecycle operations | Single-module transitions, the two dependency policies, intent versus fact and recovery of blocked dependents, halted addons, whole-container passes, deferred catch-up, and the two halt passes. |
+| Lifecycle operations | Single-module transitions, the two dependency policies, intent versus fact and recovery of blocked dependents, halted addons, whole-container passes, deferred catch-up, the two halt passes, shared runtime dispatch (`invokeDispatch`) and the on-demand `OnDependencyHalted` subscription. |
 | Module public API | The functions installed on the shared `Module` prototype. |
 | Addon public API | The functions installed on the shared `Addon` prototype. |
-| Addon creation | Container identity, the dispatched-phase set, and LifecycleKit subscriptions, including the halted notices. |
+| Addon creation | Container identity, the dispatched-phase set, and LifecycleKit subscriptions, including the addon's own halted notice. |
 | Package-wide limits | `SetLimits` / `GetLimits` and the call-time coupling to LifecycleKit's `maxDependencies`. |
 | Commit | Publishes the public surface, installs shared runtime dispatch, and runs the in-place upgrade. |
 
@@ -73,7 +73,10 @@ nothing, so a later read tries again.
 
 `_scopeOpen` is set immediately before `OnEnable` is invoked and cleared by
 `closeModuleScope`, which runs after a successful `OnDisable`, after a failed
-`OnEnable`, and at shutdown or halt whatever `OnDisable` did. Closing walks the
+`OnEnable`, and at shutdown or halt whatever `OnDisable` did; a module that
+never enabled has none, which reads as closed. A scope whose only key is
+`_module` holds nothing to close, and `closeModuleScope` returns after one or
+two `next` calls in that usual case. Otherwise closing walks the
 fields in a fixed, alphabetical order (comm, commands, events, hooks, jobs, messages, timers;
 they are independent, so any fixed order would do), closes each one even when an earlier
 `Close` raised, and hands back the first failure; `disableOne` re-raises it only
@@ -114,15 +117,18 @@ is skipped inside a whole-container pass (the pass owns blocking), after
 shutdown, and when the graph is invalid, which targeted operations tolerate but
 a graph-ordered walk cannot.
 
-`ensureModuleRuntimeFields` backfills these fields, and `_requiredAddons`, on
-modules an older revision created and leaves present ones alone, so an upgrade
-carries intent and blocking across unchanged.
+`ensureModuleRuntimeFields` backfills `_wantedEnabled`, marks the scope of an
+enabled module from before revision 6 open, and creates a missing scope, on
+modules an older revision created; it leaves present fields alone, so an
+upgrade carries intent and blocking across unchanged. Absent optional fields
+need no backfill, because they read as empty (see *Allocation policy*).
 
 ## Halted addons
 
 `_requiredAddons` holds a module's `requiresAddons`, deduplicated, in
-declaration order. Modules that declare none share one empty array that is
-never written (`NO_REQUIRED_ADDONS`), so the field costs nothing for them.
+declaration order. A module that declares none has no such field;
+`moduleRequiredAddons` reads it as the shared empty array `NO_REQUIRED_ADDONS`,
+which is never written and which modules of revisions 8 to 18 may still carry.
 
 `haltBlocker(module)` is the single question every enable path asks: `"halted"`
 when the container's own lifecycle reports `IsHalted()`, else the first
@@ -154,7 +160,15 @@ the authority. Where it is asked:
 every required addon, before publishing, so a `"full"` refusal leaves the
 container without the module.
 
-Two notices drive the transitions, through shared dispatch like the phases:
+Two notices drive the transitions, through shared dispatch like the phases.
+`halted` is subscribed when the container is created. `dependencyHalted` is
+subscribed by `subscribeToDependencyHalts` only once a module declares
+`requiresAddons` (from `declareRequiredAddons`, before the first `DependsOn`,
+which is when LifecycleKit could first announce a halt that concerns it), or
+by an upgrade for a carried-over container that already has such a module.
+Its handler acts only on modules that require the halted addon, so a
+container without one would receive every notice for nothing, at the cost of
+a LifecycleKit handle and a SignalKit listener for the session:
 
 - `halted` (`OnHalted`) runs `haltAllInternal`: it marks every wanted module
   `"halted"` and runs `runDisableAllPass` in terminal mode, because
@@ -174,8 +188,9 @@ no modules, so the replay just records it; during an upgrade the halt is
 recorded in `_dispatched.halted` without running, and the enable paths refuse
 every module anyway. `OnDependencyHalted` replays every halted declared
 dependency; its listener ignores deliveries while the subscription call is
-still running, because a new container has no modules and an upgrade must not
-run `OnDisable` from package bootstrap. `disconnectAddonSubscriptions` releases
+still running, because the module being created is not published yet (it is
+blocked by `haltBlocker` once it is) and an upgrade must not run `OnDisable`
+from package bootstrap. `disconnectAddonSubscriptions` releases
 both handles with the phase handles.
 
 ## The dependency graph
@@ -195,7 +210,7 @@ Only `DependsOn` is an activation requirement. The other three are ordering cons
 
 `topologicalSort` is Kahn's algorithm with module **creation order** as the tie-break between modules that become ready at the same time. Creation order is unique inside a container, so the tie-break is a total order and the result is fully deterministic: the same declarations always produce the same activation order, regardless of load order or `pairs` iteration order.
 
-The ready set is kept sorted by *descending* creation order and consumed from its end:
+The ready set is kept sorted by *descending* creation order and consumed from its end. Both callers pass the modules in creation order, so the initial set is filled by walking them backwards and needs no sort:
 
 - emitting a module is `ready[#ready] = nil`, which is O(1);
 - a module that becomes ready is placed by binary search, which is O(log n) comparisons plus one array shift.
@@ -206,7 +221,24 @@ Successors of an emitted module are visited in ascending creation order, so `pai
 
 When the sort cannot emit every module, `findCycle` walks the graph again to produce a readable `A -> B -> C -> A` diagnostic. That second walk only runs on the failure path.
 
-`buildEnabledHardOrder` is the degraded variant used by terminal shutdown: it orders only enabled modules, using only their hard-dependency edges, so cleanup has a safe order even when an inactive late definition has made the full graph invalid.
+`buildEnabledHardOrder` is the degraded variant used by terminal shutdown: it orders only enabled modules, using only their hard-dependency edges, so cleanup has a safe order even when an inactive late definition has made the full graph invalid. It is never cached.
+
+### Graph cache
+
+Every whole-container pass needs the validated order, and before revision 19 each one rebuilt it: `InitializeAll` and `EnableAll` at load, and both halves of every `DisableAll` / `EnableAll` cycle. The graph only changes in two ways, because modules are never removed and a constraint can only be declared while its module is still `created`:
+
+- `CreateModule` publishes a module (a missing dependency may now resolve, and an ordering constraint may now have a target);
+- `addNameConstraint` records a `DependsOn`, `OptionalDependency`, `Before` or `After` edge, from a method or a definition list.
+
+Both call `invalidateGraph`, which drops the container's `_graphOrder` and `_graphDependents`. `buildGraph` returns `_graphOrder` when it is present; otherwise it builds, validates and sorts the graph, and on success stores the order and, beside it, `_graphDependents`: for each module that something hard-depends on, the dependents in descending creation order. An invalid graph raises before anything is stored, so its diagnostic is raised, at the caller's level, on every call.
+
+The cached arrays are shared and never written. A rebuild replaces them, so a pass still walking an older array, while one of its hooks created a module, keeps a consistent order; the new module is caught up after the pass, as before (`GraphCache_spec` pins it).
+
+Per module, `hardDependencies` keeps the resolved, creation-ordered list of its `DependsOn` modules in `_hardDependencyList`, the shared `NO_MODULES` when it has none. Once every name resolves the list cannot go stale, since modules are never removed; `addNameConstraint` clears it when the module declares another dependency. A missing dependency raises and stores nothing. The passes read `_hardDependencyList` directly and call `hardDependencies` only when it is absent.
+
+`firstEnabledHardDependent` and `enabledHardDependents` read `_graphDependents` when it is present. Without it (never built, invalidated, or invalid, which targeted operations tolerate) they scan the container, which allocates only when a dependent exists.
+
+The cache is container state that no older revision knows, so an in-place upgrade drops it (`ensureContainerRuntimeFields` calls `invalidateGraph`) and the new copy rebuilds it on first use.
 
 ## Failure model
 
@@ -220,7 +252,7 @@ Because an error object may be `nil` or `false`, errors are carried between laye
 
 A whole-container pass therefore behaves like this:
 
-1. build the graph, which fails loudly if the declarations are invalid;
+1. take the graph order, cached or built (which fails loudly if the declarations are invalid);
 2. walk it in order, attempting each module whose hard dependencies are satisfied;
 3. record a module as blocked, without attempting it, when a hard dependency failed or is not in the required state;
 4. after the walk, re-raise the first real callback or provider error.
@@ -327,6 +359,22 @@ Injection aliases are resolved in sorted alias order, so factories with side eff
 
 ## Allocation policy
 
-The per-module steady state is one module table, its four constraint sets, its injection specification, its resolved injection table and its scope table, plus a `requiresAddons` array only for a module that declares one. A provider that declares `implements` keeps one contract record and, for the list form, one copy of its names; a module's `implements` is checked at creation and keeps nothing. The scope's Kit scopes are created only when read, so a module that never uses them allocates nothing more; `GetEnableState()` allocates its snapshot. Graph operations allocate per call: the adjacency and indegree maps, the ready set, and the result array. That cost is paid by `ValidateGraph`, `GetActivationOrder`, the whole-container passes, and a targeted `Enable` or `Activate` while some module is blocked by a dependency (recovery walks the graph); a targeted `Enable` with nothing blocked pays only a linear scan. All of these are lifecycle-scale operations rather than per-frame work.
+The per-module steady state is one module table, its resolved injection table and its scope table. Everything a module may not need is absent until something writes it, and reads as empty or `false`:
+
+| Field | Created by | Absent reads as |
+|---|---|---|
+| `_hardDependencies`, `_optionalDependencies`, `_before`, `_after` | the first constraint of that kind | the shared `EMPTY_NAME_SET` (`moduleNameSet`) |
+| `_injectSpec` | the first `Inject` | the shared `EMPTY_NAME_SET` |
+| `_requiredAddons` | the first `requiresAddons` entry | the shared `NO_REQUIRED_ADDONS` (`moduleRequiredAddons`) |
+| `_lastError`, `_hasLastError`, `_blockedBy`, `_enableBlockedBy` | a recorded failure or block | no failure, no block |
+| `_scopeOpen` | the first enable | closed |
+
+The shared tables are never written; a writer gives the module its own table first. `clearFailure` and the other clears remove a field only when it is set, because Lua 5.1 stores a key even when `nil` is assigned to it while absent. The module constructor lists the fields almost every module receives next (its scope, its three hooks, `_injections`, `_scopeOpen`) as `nil` entries: Lua 5.1 sizes a table's hash part from its constructor, so the module is built with the sixteen slots it keeps instead of being rehashed into them. Before revision 19 every module carried five empty tables and a thirty-two-slot hash part; the `addonModules` host benchmark's ten-module addon went from 28.7 KB to 16.8 KB retained, container and LifecycleKit instance included.
+
+A provider that declares `implements` keeps one contract record and, for the list form, one copy of its names; a module's `implements` is checked at creation and keeps nothing. The scope's Kit scopes are created only when read, so a module that never uses them allocates nothing more; `GetEnableState()` allocates its snapshot. Building the graph allocates the adjacency and indegree maps, the ready set, the result array and the dependent lists, once per change of the graph (see *Graph cache*). With the graph cached, a whole-container pass, `ValidateGraph` and a targeted `Enable` or `Disable` allocate nothing when every hook succeeds: the passes create their failed-module set on the first failure, and the `automatic` policy creates its recursion guard only for a module with hard dependencies. `Allocation_spec` pins these. All of these are lifecycle-scale operations rather than per-frame work.
+
+## Field access
+
+ModuleKit reads and writes its own fields on containers and modules with plain indexing on the lifecycle paths (`module._state`, `addon._moduleOrder`). Their metatables only point `__index` at the method prototypes, so a present field is a plain table read and an absent one costs one more read of the prototype, which is cheaper than a call to `rawget`; a whole-container pass makes several hundred of these reads. The fields are declared `package` in the LuaCATS classes, so the language server checks them without offering them to consumers. `rawget` stays where it matters: on module scopes, whose `__index` creates Kit scopes, and on tables the caller owns (definitions, options, alias maps, `implements` values).
 
 `GetModules()` and `GetInjections()` return fresh snapshots, so a consumer mutating the returned table cannot corrupt ModuleKit's own collection.

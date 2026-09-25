@@ -35,7 +35,7 @@
 
 local PACKAGE_NAME = "moduleKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 18
+local IMPLEMENTATION_REVISION = 19
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_LIFECYCLE_API = 1
 local STATE_SCHEMA = 1
@@ -124,6 +124,25 @@ local OWN_ADDON_HALTED = "halted"
 ---@field Disable fun(self: ModuleKit.Module): ModuleKit.Module
 ---@field Activate fun(self: ModuleKit.Module): ModuleKit.Module
 ---@field Resolve fun(self: ModuleKit.Module, providerName: string): any
+---@field package _addon ModuleKit.Addon the owning container
+---@field package _name string
+---@field package _order integer creation order inside the container, from 1
+---@field package _state ModuleKit.ModuleState
+---@field package _wantedEnabled boolean intent: whether the module is meant to be enabled
+---@field package _enableBlockedBy string|nil what keeps a wanted module off
+---@field package _scope ModuleKit.Scope
+---@field package _scopeOpen boolean|nil whether scope fields may be created; absent reads as closed
+---@field package _injections table<string, any>|nil resolved at initialization
+---@field package _lastError any the last failure's error object, which may be `nil` or `false`
+---@field package _hasLastError boolean|nil `true` when `_lastError` holds a real error; absent reads as `false`
+---@field package _blockedBy string|nil the module that blocked the last operation
+---@field package _requiredAddons string[]|nil `requiresAddons`; absent reads as none
+---@field package _hardDependencies table<string, boolean>|nil `DependsOn` names; absent reads as none
+---@field package _optionalDependencies table<string, boolean>|nil absent reads as none
+---@field package _before table<string, boolean>|nil absent reads as none
+---@field package _after table<string, boolean>|nil absent reads as none
+---@field package _injectSpec table<string, string>|nil alias to provider name; absent reads as none
+---@field package _hardDependencyList ModuleKit.Module[]|nil resolved `_hardDependencies`, oldest first; see `hardDependencies`
 
 ---One addon's module container, bound to that addon's LifecycleKit instance.
 ---@class ModuleKit.Addon
@@ -144,6 +163,21 @@ local OWN_ADDON_HALTED = "halted"
 ---@field ProvideModule fun(self: ModuleKit.Addon, name: string, factory: (fun(addon: ModuleKit.Addon, module: ModuleKit.Module): any), options: ModuleKit.ProvideOptions?): ModuleKit.Addon
 ---@field ProvideTransient fun(self: ModuleKit.Addon, name: string, factory: (fun(addon: ModuleKit.Addon, module: ModuleKit.Module|nil): any), options: ModuleKit.ProvideOptions?): ModuleKit.Addon
 ---@field Resolve fun(self: ModuleKit.Addon, name: string, requestingModule: ModuleKit.Module|nil): any
+---@field package _name string the addon folder name
+---@field package _lifecycle LifecycleKit.Instance
+---@field package _dependencyPolicy ModuleKit.DependencyPolicy
+---@field package _modules table<string, ModuleKit.Module>
+---@field package _moduleOrder ModuleKit.Module[] every module, in creation order
+---@field package _providers table<string, table>
+---@field package _resolutionStack table[]
+---@field package _shutdown boolean
+---@field package _subscriptions table<string, table> LifecycleKit handles by phase or notice
+---@field package _dispatched table<string, boolean> phases and notices already delivered
+---@field package _passDepth integer whole-container passes currently running
+---@field package _pendingCatchUp ModuleKit.Module[] catch-up deferred until the outermost pass ends
+---@field package _flushingCatchUp boolean|nil
+---@field package _graphOrder ModuleKit.Module[]|nil the cached, validated activation order; see `buildGraph`
+---@field package _graphDependents table<ModuleKit.Module, ModuleKit.Module[]>|nil cached hard dependents, newest first
 
 ---Per-module owner of framework registrations, released when the module is
 ---disabled. Each field is created on first read, only while the module is
@@ -182,6 +216,14 @@ local OWN_ADDON_HALTED = "halted"
 ---@field ForAddon fun(self: ModuleKit, addonName: string): ModuleKit.Addon
 ---@field SetLimits fun(self: ModuleKit, limits: ModuleKit.Limits|table)
 ---@field GetLimits fun(self: ModuleKit): ModuleKit.Limits
+
+-- Standard functions every lifecycle path calls, read once: a global read is a
+-- hash lookup in `_G` on every call, a local is not. A whole-container pass
+-- makes several hundred of these calls.
+local rawget = rawget
+local rawset = rawset
+local type = type
+local next = next
 
 -- Dependencies --------------------------------------------------------------
 
@@ -479,9 +521,48 @@ local SCOPE_METATABLE = rawget(state, "scopeMetatable")
 local ADDON_METATABLE = { __index = Addon }
 local MODULE_METATABLE = { __index = Module }
 
--- The `_requiredAddons` of every module that declares none. It is never
+-- The `requiresAddons` list of every module that declares none. It is never
 -- written: declaring a first required addon gives the module its own array.
+-- A module this revision creates carries no `_requiredAddons` field until
+-- then; a module an older revision created may carry this shared array or an
+-- empty one of its own.
 local NO_REQUIRED_ADDONS = {}
+
+-- The name set a module reads for a constraint kind it never declared
+-- (`_hardDependencies`, `_optionalDependencies`, `_before`, `_after`) and the
+-- injection specification of a module that never called `Inject`. It is never
+-- written: the first declaration gives the module its own table. Leaving the
+-- fields absent keeps a module that declares nothing at a quarter of the table
+-- slots it would otherwise need; see `docs/INTERNALS.md` (Allocation policy).
+local EMPTY_NAME_SET = {}
+
+-- The module list `hardDependencies` and the dependent lookups answer when
+-- there is nothing to list. It is never written, and every caller only reads
+-- the lists it is handed.
+local NO_MODULES = {}
+
+---Return one of `module`'s constraint name sets, or the shared empty set.
+---@param module ModuleKit.Module
+---@param field "_hardDependencies"|"_optionalDependencies"|"_before"|"_after"|"_injectSpec"
+---@return table<string, any>
+local function moduleNameSet(module, field)
+  local set = module[field]
+  if set == nil then
+    return EMPTY_NAME_SET
+  end
+  return set
+end
+
+---Return `module`'s required addons, in declaration order.
+---@param module ModuleKit.Module
+---@return string[]
+local function moduleRequiredAddons(module)
+  local required = module._requiredAddons
+  if required == nil then
+    return NO_REQUIRED_ADDONS
+  end
+  return required
+end
 
 -- Validation helpers --------------------------------------------------------
 
@@ -536,8 +617,22 @@ end
 ---@param methodLabel string the public method in full, `ModuleKit.Addon:CreateModule` or `ModuleKit.Module:Enable`
 ---@param level integer stack level the failure is reported at, counted from this function
 local function ensureNotShutdown(addon, methodLabel, level)
-  if rawget(addon, "_shutdown") == true then
+  if addon._shutdown == true then
     error(methodLabel .. " cannot run after addon shutdown", level)
+  end
+end
+
+---Forget the container's cached graph order and dependent lists.
+---
+---Called wherever the graph can change: a module is added, or a module in
+---`created` state gains a constraint. Modules are never removed, and a
+---constraint can only be added before its module initializes, so nothing else
+---can make the cache wrong. See `buildGraph`.
+---@param addon ModuleKit.Addon
+local function invalidateGraph(addon)
+  if addon._graphOrder ~= nil then
+    addon._graphOrder = nil
+    addon._graphDependents = nil
   end
 end
 
@@ -575,7 +670,19 @@ local function addNameConstraint(module, field, targetName, methodName, level)
     end
   end
 
-  rawset(rawget(module, field), targetName, true)
+  local names = rawget(module, field)
+  if names == nil then
+    names = {}
+    rawset(module, field, names)
+  end
+  rawset(names, targetName, true)
+
+  -- The container's validated order, and this module's resolved dependency
+  -- list, were computed without this edge.
+  invalidateGraph(rawget(module, "_addon"))
+  if field == "_hardDependencies" and module._hardDependencyList ~= nil then
+    module._hardDependencyList = nil
+  end
   return module
 end
 
@@ -583,17 +690,17 @@ end
 ---@param addon ModuleKit.Addon
 ---@param newModule ModuleKit.Module
 local function validateLateModuleOrdering(addon, newModule)
-  local order = rawget(addon, "_moduleOrder")
-  local newName = rawget(newModule, "_name")
-  local newBefore = rawget(newModule, "_before")
+  local order = addon._moduleOrder
+  local newName = newModule._name
+  local newBefore = moduleNameSet(newModule, "_before")
 
   for index = 1, #order do
     local existingModule = order[index]
-    if rawget(existingModule, "_state") ~= "created" then
-      local existingName = rawget(existingModule, "_name")
-      local existingOptional = rawget(existingModule, "_optionalDependencies")
-      local existingAfter = rawget(existingModule, "_after")
-      local existingHard = rawget(existingModule, "_hardDependencies")
+    if existingModule._state ~= "created" then
+      local existingName = existingModule._name
+      local existingOptional = moduleNameSet(existingModule, "_optionalDependencies")
+      local existingAfter = moduleNameSet(existingModule, "_after")
+      local existingHard = moduleNameSet(existingModule, "_hardDependencies")
 
       if
         rawget(newBefore, existingName) == true
@@ -621,6 +728,42 @@ end
 ---@return integer
 local function moduleSortKey(module)
   return rawget(module, "_order")
+end
+
+-- The sort comparators are shared functions rather than closures written at
+-- each call, so sorting allocates nothing of its own.
+
+---`table.sort` comparator: older modules first.
+---@param left ModuleKit.Module
+---@param right ModuleKit.Module
+---@return boolean
+local function createdEarlier(left, right)
+  return moduleSortKey(left) < moduleSortKey(right)
+end
+
+---`table.sort` comparator: newer modules first.
+---@param left ModuleKit.Module
+---@param right ModuleKit.Module
+---@return boolean
+local function createdLater(left, right)
+  return moduleSortKey(left) > moduleSortKey(right)
+end
+
+---`table.sort` comparator: older modules first, by name for equal positions.
+---
+---Creation order is unique inside a container, so the name only decides for
+---state an external writer corrupted; it keeps the order deterministic even
+---then.
+---@param left ModuleKit.Module
+---@param right ModuleKit.Module
+---@return boolean
+local function createdEarlierThenName(left, right)
+  local leftOrder = moduleSortKey(left)
+  local rightOrder = moduleSortKey(right)
+  if leftOrder == rightOrder then
+    return rawget(left, "_name") < rawget(right, "_name")
+  end
+  return leftOrder < rightOrder
 end
 
 ---Return the keys of a name set as a sorted array.
@@ -652,28 +795,56 @@ local function addEdge(adjacency, indegree, fromModule, toModule)
   end
 end
 
----Resolve a name set to the modules that exist, in deterministic order.
+---Add an edge between `module` and every existing module a name set names.
+---
+---The targets are visited in creation order, so `pairs` order over the set
+---cannot leak into the edges. A name with no module behind it adds nothing:
+---these are ordering constraints, not requirements.
 ---@param addon ModuleKit.Addon
+---@param adjacency table<ModuleKit.Module, table<ModuleKit.Module, boolean>>
+---@param indegree table<ModuleKit.Module, integer>
+---@param module ModuleKit.Module
 ---@param names table<string, boolean>
----@return ModuleKit.Module[]
-local function orderedTargets(addon, names)
+---@param moduleFirst boolean `true` when `module` precedes the targets (`Before`)
+local function addOrderingEdges(addon, adjacency, indegree, module, names, moduleFirst)
+  if next(names) == nil then
+    return
+  end
+
   local modules = rawget(addon, "_modules")
-  local result = {}
+  local targets = {}
   for name in pairs(names) do
     local target = rawget(modules, name)
     if target ~= nil then
-      result[#result + 1] = target
+      targets[#targets + 1] = target
     end
   end
-  table.sort(result, function(left, right)
-    local leftOrder = moduleSortKey(left)
-    local rightOrder = moduleSortKey(right)
-    if leftOrder == rightOrder then
-      return rawget(left, "_name") < rawget(right, "_name")
+  table.sort(targets, createdEarlierThenName)
+
+  for index = 1, #targets do
+    if moduleFirst then
+      addEdge(adjacency, indegree, module, targets[index])
+    else
+      addEdge(adjacency, indegree, targets[index], module)
     end
-    return leftOrder < rightOrder
-  end)
-  return result
+  end
+end
+
+---Return the successors of `module` in creation order.
+---@param adjacency table<ModuleKit.Module, table<ModuleKit.Module, boolean>>
+---@param module ModuleKit.Module
+---@return ModuleKit.Module[]
+local function orderedSuccessors(adjacency, module)
+  local edges = adjacency[module]
+  if next(edges) == nil then
+    return NO_MODULES
+  end
+  local targets = {}
+  for target in pairs(edges) do
+    targets[#targets + 1] = target
+  end
+  table.sort(targets, createdEarlier)
+  return targets
 end
 
 ---Return the names on one cycle of the graph, for the diagnostic message.
@@ -709,14 +880,7 @@ local function findCycle(order, adjacency)
     visiting[module] = true
     stack[#stack + 1] = module
 
-    local targets = {}
-    for target in pairs(adjacency[module]) do
-      targets[#targets + 1] = target
-    end
-    table.sort(targets, function(left, right)
-      return moduleSortKey(left) < moduleSortKey(right)
-    end)
-
+    local targets = orderedSuccessors(adjacency, module)
     for index = 1, #targets do
       local cycle = visit(targets[index])
       if cycle ~= nil then
@@ -779,17 +943,15 @@ end
 ---@param indegree table<ModuleKit.Module, integer> remaining unsatisfied predecessors
 ---@return ModuleKit.Module[]|nil order `nil` when the graph contains a cycle
 local function topologicalSort(order, adjacency, indegree)
+  -- `order` is in creation order, so walking it backwards fills the ready
+  -- set already sorted newest first, as `insertReady` keeps it.
   local ready = {}
-  for index = 1, #order do
+  for index = #order, 1, -1 do
     local module = order[index]
     if indegree[module] == 0 then
       ready[#ready + 1] = module
     end
   end
-
-  table.sort(ready, function(left, right)
-    return moduleSortKey(left) > moduleSortKey(right)
-  end)
 
   local result = {}
   while #ready > 0 do
@@ -798,14 +960,7 @@ local function topologicalSort(order, adjacency, indegree)
     ready[last] = nil
     result[#result + 1] = module
 
-    local targets = {}
-    for target in pairs(adjacency[module]) do
-      targets[#targets + 1] = target
-    end
-    table.sort(targets, function(left, right)
-      return moduleSortKey(left) < moduleSortKey(right)
-    end)
-
+    local targets = orderedSuccessors(adjacency, module)
     for index = 1, #targets do
       local target = targets[index]
       indegree[target] = indegree[target] - 1
@@ -821,20 +976,84 @@ local function topologicalSort(order, adjacency, indegree)
   return result
 end
 
----Build and topologically sort the container's complete module graph.
+---Return the modules `module` requires, oldest first.
+---
+---The list is resolved once and kept on the module as `_hardDependencyList`:
+---modules are never removed, so once every name resolves the list stays right
+---until the module declares another dependency, which clears it (see
+---`addNameConstraint`). A module that requires nothing keeps the shared empty
+---list, so the common case allocates nothing. A missing dependency raises and
+---caches nothing, so it is reported every time.
+---
+---The whole-container passes read `_hardDependencyList` directly and call
+---this only when it is absent, since they ask once per module per pass.
+---@param module ModuleKit.Module
+---@param level integer|nil error level of a missing dependency, counted from this function; `3` when omitted
+---@return ModuleKit.Module[] dependencies read-only
+local function hardDependencies(module, level)
+  local cached = module._hardDependencyList
+  if cached ~= nil then
+    return cached
+  end
+
+  local names = moduleNameSet(module, "_hardDependencies")
+  if next(names) == nil then
+    module._hardDependencyList = NO_MODULES
+    return NO_MODULES
+  end
+
+  local modules = module._addon._modules
+  local sortedNames = sortedNameKeys(names)
+  local result = {}
+  for index = 1, #sortedNames do
+    local dependencyName = sortedNames[index]
+    local dependency = rawget(modules, dependencyName)
+    if dependency == nil then
+      error(
+        'ModuleKit module "'
+          .. module._name
+          .. '" requires missing dependency "'
+          .. dependencyName
+          .. '"',
+        level or 3
+      )
+    end
+    result[#result + 1] = dependency
+  end
+  table.sort(result, createdEarlier)
+
+  module._hardDependencyList = result
+  return result
+end
+
+---Build, topologically sort and cache the container's complete module graph.
+---
+---The validated order is kept on the container as `_graphOrder`, beside
+---`_graphDependents` (each module's hard dependents, newest first), and
+---`invalidateGraph` drops both whenever the graph can change. Every later
+---whole-container pass, `ValidateGraph` and `GetActivationOrder` then reuse it
+---without allocating. An invalid graph is never cached, so its diagnostic is
+---raised on every call. The cached array is shared by every caller and must
+---never be written; a rebuild replaces it rather than editing it, so a pass
+---still walking an older array is unaffected.
 ---
 ---`level` is the error level of a missing dependency or a cycle, counted from
 ---this function: `3` names the caller of a public method that calls it
 ---directly, and the whole-container passes pass one more for their own frame.
 ---@param addon ModuleKit.Addon
 ---@param level integer|nil error level; `3` when omitted
----@return ModuleKit.Module[] order activation order for the whole container
+---@return ModuleKit.Module[] order activation order for the whole container; read-only
 local function buildGraph(addon, level)
+  local cached = rawget(addon, "_graphOrder")
+  if cached ~= nil then
+    return cached
+  end
+
   level = level or 3
   local order = rawget(addon, "_moduleOrder")
-  local modules = rawget(addon, "_modules")
   local adjacency = {}
   local indegree = {}
+  local dependents = {}
 
   for index = 1, #order do
     local module = order[index]
@@ -844,39 +1063,31 @@ local function buildGraph(addon, level)
 
   for index = 1, #order do
     local module = order[index]
-    local moduleName = rawget(module, "_name")
-    local hard = rawget(module, "_hardDependencies")
-    local hardNames = sortedNameKeys(hard)
-
-    for hardIndex = 1, #hardNames do
-      local dependencyName = hardNames[hardIndex]
-      local dependency = rawget(modules, dependencyName)
-      if dependency == nil then
-        error(
-          'ModuleKit module "'
-            .. moduleName
-            .. '" requires missing dependency "'
-            .. dependencyName
-            .. '"',
-          level
-        )
-      end
+    local dependencies = hardDependencies(module, level + 1)
+    for dependencyIndex = 1, #dependencies do
+      local dependency = dependencies[dependencyIndex]
       addEdge(adjacency, indegree, dependency, module)
+      local list = dependents[dependency]
+      if list == nil then
+        list = {}
+        dependents[dependency] = list
+      end
+      list[#list + 1] = module
     end
 
-    local optionalTargets = orderedTargets(addon, rawget(module, "_optionalDependencies"))
-    for targetIndex = 1, #optionalTargets do
-      addEdge(adjacency, indegree, optionalTargets[targetIndex], module)
+    -- Most modules declare no ordering constraint at all, and an absent set
+    -- adds nothing.
+    local optional = module._optionalDependencies
+    if optional ~= nil then
+      addOrderingEdges(addon, adjacency, indegree, module, optional, false)
     end
-
-    local afterTargets = orderedTargets(addon, rawget(module, "_after"))
-    for targetIndex = 1, #afterTargets do
-      addEdge(adjacency, indegree, afterTargets[targetIndex], module)
+    local after = module._after
+    if after ~= nil then
+      addOrderingEdges(addon, adjacency, indegree, module, after, false)
     end
-
-    local beforeTargets = orderedTargets(addon, rawget(module, "_before"))
-    for targetIndex = 1, #beforeTargets do
-      addEdge(adjacency, indegree, module, beforeTargets[targetIndex])
+    local before = module._before
+    if before ~= nil then
+      addOrderingEdges(addon, adjacency, indegree, module, before, true)
     end
   end
 
@@ -887,64 +1098,92 @@ local function buildGraph(addon, level)
     error("ModuleKit dependency cycle detected: " .. description, level)
   end
 
-  return result
-end
-
----Return the modules `module` requires, in deterministic order.
----@param module ModuleKit.Module
----@param level integer|nil error level of a missing dependency, counted from this function; `3` when omitted
----@return ModuleKit.Module[]
-local function hardDependencies(module, level)
-  local addon = rawget(module, "_addon")
-  local modules = rawget(addon, "_modules")
-  local moduleName = rawget(module, "_name")
-  local result = {}
-  local names = sortedNameKeys(rawget(module, "_hardDependencies"))
-  for index = 1, #names do
-    local dependencyName = names[index]
-    local dependency = rawget(modules, dependencyName)
-    if dependency == nil then
-      error(
-        'ModuleKit module "'
-          .. moduleName
-          .. '" requires missing dependency "'
-          .. dependencyName
-          .. '"',
-        level or 3
-      )
-    end
-    result[#result + 1] = dependency
+  -- Modules were visited in creation order, so each dependent list is
+  -- already oldest first; the lookups want the newest first.
+  for _, list in pairs(dependents) do
+    table.sort(list, createdLater)
   end
-  table.sort(result, function(left, right)
-    return moduleSortKey(left) < moduleSortKey(right)
-  end)
+
+  rawset(addon, "_graphOrder", result)
+  rawset(addon, "_graphDependents", dependents)
   return result
 end
 
----Return the enabled modules that require `module`, newest first.
+---Return the modules that require `module`, newest first, without checking
+---their state.
+---
+---Read from the cached graph when there is one. Without it (the graph was
+---never built, has changed since, or is invalid, which targeted operations
+---tolerate) the container is scanned instead, which allocates.
 ---@param module ModuleKit.Module
----@return ModuleKit.Module[]
-local function enabledHardDependents(module)
-  local addon = rawget(module, "_addon")
-  local order = rawget(addon, "_moduleOrder")
-  local moduleName = rawget(module, "_name")
-  local result = {}
+---@return ModuleKit.Module[] dependents read-only
+local function hardDependentsOf(module)
+  local addon = module._addon
+  local cachedDependents = addon._graphDependents
+  if cachedDependents ~= nil then
+    return cachedDependents[module] or NO_MODULES
+  end
 
-  for index = 1, #order do
+  local order = addon._moduleOrder
+  local moduleName = module._name
+  local result
+  for index = #order, 1, -1 do
     local candidate = order[index]
     if
       candidate ~= module
-      and rawget(candidate, "_state") == "enabled"
-      and rawget(rawget(candidate, "_hardDependencies"), moduleName) == true
+      and rawget(moduleNameSet(candidate, "_hardDependencies"), moduleName) == true
     then
+      result = result or {}
       result[#result + 1] = candidate
     end
   end
+  return result or NO_MODULES
+end
 
-  table.sort(result, function(left, right)
-    return moduleSortKey(left) > moduleSortKey(right)
-  end)
-  return result
+---Return the newest enabled module that requires `module`, if any.
+---
+---The disable paths ask only whether such a dependent exists and which one to
+---name, so this answers without building a list.
+---@param module ModuleKit.Module
+---@return ModuleKit.Module|nil dependent
+local function firstEnabledHardDependent(module)
+  -- The cached lookup is written out: the disable pass asks this for every
+  -- enabled module, and most have no dependents at all.
+  local cachedDependents = module._addon._graphDependents
+  local dependents
+  if cachedDependents ~= nil then
+    dependents = cachedDependents[module]
+    if dependents == nil then
+      return nil
+    end
+  else
+    dependents = hardDependentsOf(module)
+  end
+  for index = 1, #dependents do
+    local dependent = dependents[index]
+    if dependent._state == "enabled" then
+      return dependent
+    end
+  end
+  return nil
+end
+
+---Return the enabled modules that require `module`, newest first.
+---
+---Allocates a list only when there is at least one.
+---@param module ModuleKit.Module
+---@return ModuleKit.Module[] dependents read-only when empty
+local function enabledHardDependents(module)
+  local dependents = hardDependentsOf(module)
+  local result
+  for index = 1, #dependents do
+    local dependent = dependents[index]
+    if rawget(dependent, "_state") == "enabled" then
+      result = result or {}
+      result[#result + 1] = dependent
+    end
+  end
+  return result or NO_MODULES
 end
 
 ---Order the currently enabled modules by their hard dependencies alone.
@@ -974,7 +1213,7 @@ local function buildEnabledHardOrder(addon)
 
   for index = 1, #order do
     local module = order[index]
-    for dependencyName in pairs(rawget(module, "_hardDependencies")) do
+    for dependencyName in pairs(moduleNameSet(module, "_hardDependencies")) do
       local dependency = rawget(modulesByName, dependencyName)
       if dependency ~= nil and enabled[dependency] then
         addEdge(adjacency, indegree, dependency, module)
@@ -1409,9 +1648,16 @@ end
 ---@param module ModuleKit.Module
 ---@return table<string, any> injections
 local function resolveInjections(module)
-  local addon = rawget(module, "_addon")
-  local specification = rawget(module, "_injectSpec")
+  local addon = module._addon
+  local specification = moduleNameSet(module, "_injectSpec")
+  -- Every module gets a table of its own, even with nothing to inject: its
+  -- hooks receive it and may write into it.
   local resolved = {}
+  if next(specification) == nil then
+    module._injections = resolved
+    return resolved
+  end
+
   local aliases = {}
 
   for alias in pairs(specification) do
@@ -1424,7 +1670,7 @@ local function resolveInjections(module)
     resolved[alias] = resolveProvider(addon, rawget(specification, alias), module)
   end
 
-  rawset(module, "_injections", resolved)
+  module._injections = resolved
   return resolved
 end
 
@@ -1564,10 +1810,17 @@ end
 ---@param module ModuleKit.Module
 ---@return ModuleKit.ErrorRecord|nil firstError
 local function closeModuleScope(module)
-  rawset(module, "_scopeOpen", false)
+  module._scopeOpen = false
 
-  local scope = rawget(module, "_scope")
-  if type(scope) ~= "table" then
+  local scope = module._scope
+  if scope == nil then
+    return nil
+  end
+  -- A scope holds `_module` and whatever fields were read. When the only key
+  -- is `_module` there is nothing to close, which is the usual case and
+  -- costs one or two `next` calls instead of a read per field.
+  local firstKey = next(scope)
+  if firstKey == "_module" and next(scope, firstKey) == nil then
     return nil
   end
 
@@ -1607,7 +1860,7 @@ end
 ---@param record ModuleKit.ErrorRecord|nil
 local function raiseCaptured(record)
   if record ~= nil then
-    error(rawget(record, "value"), 0)
+    error(record.value, 0)
   end
 end
 
@@ -1617,17 +1870,37 @@ end
 ---@param blockedBy string|nil dependency or dependent name that blocked it
 ---@param hasError boolean whether `value` is a real error object
 local function recordFailure(module, value, blockedBy, hasError)
-  rawset(module, "_lastError", value)
-  rawset(module, "_hasLastError", hasError == true)
-  rawset(module, "_blockedBy", blockedBy)
+  module._lastError = value
+  if hasError == true then
+    module._hasLastError = true
+  elseif module._hasLastError ~= nil then
+    module._hasLastError = nil
+  end
+  module._blockedBy = blockedBy
 end
 
 ---Clear the failure record after a successful transition.
+---
+---An absent `_hasLastError` reads as `false`, so a module that never failed
+---carries none of the three fields. Only `recordFailure(..., true)` stores an
+---error object, and it always stores `_hasLastError` beside it (every other
+---failure records `nil`), so testing the flag covers `_lastError` without
+---reading the consumer's error object.
+---
+---Each field is cleared only when set. Lua 5.1 stores a key even when `nil` is
+---assigned to it while it is absent, so an unconditional clear would spend a
+---table slot on every field and eventually force a rehash; ModuleKit clears
+---its own optional fields this way throughout. This runs on every successful
+---transition, and two reads are all it costs a module that has not failed.
 ---@param module ModuleKit.Module
 local function clearFailure(module)
-  rawset(module, "_lastError", nil)
-  rawset(module, "_hasLastError", false)
-  rawset(module, "_blockedBy", nil)
+  if module._hasLastError ~= nil then
+    module._hasLastError = nil
+    module._lastError = nil
+  end
+  if module._blockedBy ~= nil then
+    module._blockedBy = nil
+  end
 end
 
 ---Call one consumer lifecycle hook, if the module defines it.
@@ -1637,22 +1910,21 @@ end
 ---@return any errorValue
 local function invokeHook(module, name)
   local callback = rawget(module, name)
-  if type(callback) == "nil" then
+  local kind = type(callback)
+  if kind == "function" then
+    return pcall(callback, module, module._injections)
+  end
+  if kind == "nil" then
     return true, nil
   end
-  if type(callback) ~= "function" then
-    return false,
-      'ModuleKit module "' .. rawget(module, "_name") .. '" ' .. name .. " must be a function"
-  end
-
-  return pcall(callback, module, rawget(module, "_injections"))
+  return false, 'ModuleKit module "' .. module._name .. '" ' .. name .. " must be a function"
 end
 
 ---Initialize exactly `module`, ignoring dependency policy.
 ---@param module ModuleKit.Module
 ---@return ModuleKit.Module module
 local function initializeOne(module)
-  local current = rawget(module, "_state")
+  local current = module._state
   if current ~= "created" then
     return module
   end
@@ -1665,12 +1937,12 @@ local function initializeOne(module)
 
   local hookOk, hookError = invokeHook(module, "OnInitialize")
   if not hookOk then
-    rawset(module, "_injections", nil)
+    module._injections = nil
     recordFailure(module, hookError, nil, true)
     error(hookError, 0)
   end
 
-  rawset(module, "_state", "initialized")
+  module._state = "initialized"
   clearFailure(module)
   return module
 end
@@ -1690,7 +1962,7 @@ end
 ---@param addon ModuleKit.Addon
 ---@return boolean
 local function isContainerHalted(addon)
-  local lifecycle = rawget(addon, "_lifecycle")
+  local lifecycle = addon._lifecycle
   local isHalted = type(lifecycle) == "table" and lifecycle.IsHalted or nil
   return type(isHalted) == "function" and isHalted(lifecycle) == true
 end
@@ -1709,7 +1981,7 @@ end
 ---@param addonName string
 ---@return boolean
 local function requiresAddon(module, addonName)
-  local required = rawget(module, "_requiredAddons")
+  local required = moduleRequiredAddons(module)
   for index = 1, #required do
     if required[index] == addonName then
       return true
@@ -1722,11 +1994,20 @@ end
 ---@param module ModuleKit.Module
 ---@return string|nil blocker `"halted"` when its own addon halted, the first halted addon of `requiresAddons`, or `nil`
 local function haltBlocker(module)
-  if isContainerHalted(rawget(module, "_addon")) then
+  -- `isContainerHalted` written out: every enable asks this twice, before
+  -- and after `OnEnable`, so it is kept to one call into LifecycleKit.
+  -- `_lifecycle` is always the instance `LifecycleKit:ForAddon` returned
+  -- (`installAddonSubscriptions` refuses a container without one).
+  local lifecycle = module._addon._lifecycle
+  local isHalted = lifecycle.IsHalted
+  if type(isHalted) == "function" and isHalted(lifecycle) == true then
     return OWN_ADDON_HALTED
   end
 
-  local required = rawget(module, "_requiredAddons")
+  local required = module._requiredAddons
+  if required == nil then
+    return nil
+  end
   for index = 1, #required do
     local addonName = required[index]
     if isOtherAddonHalted(addonName) then
@@ -1741,8 +2022,8 @@ end
 ---@param blocker string what `haltBlocker` returned
 local function recordHaltRefusal(module, blocker)
   recordFailure(module, nil, blocker, false)
-  if rawget(module, "_wantedEnabled") == true then
-    rawset(module, "_enableBlockedBy", blocker)
+  if module._wantedEnabled == true then
+    module._enableBlockedBy = blocker
   end
 end
 
@@ -1751,9 +2032,9 @@ end
 ---@param blocker string what `haltBlocker` returned
 ---@return string
 local function haltRefusalMessage(module, blocker)
-  local prefix = 'ModuleKit module "' .. rawget(module, "_name") .. '" cannot be enabled because '
+  local prefix = 'ModuleKit module "' .. module._name .. '" cannot be enabled because '
   if blocker == OWN_ADDON_HALTED then
-    return prefix .. 'its addon "' .. rawget(rawget(module, "_addon"), "_name") .. '" has halted'
+    return prefix .. 'its addon "' .. module._addon._name .. '" has halted'
   end
   return prefix .. 'required addon "' .. blocker .. '" has halted'
 end
@@ -1762,7 +2043,7 @@ end
 ---@param module ModuleKit.Module
 ---@return ModuleKit.Module module
 local function disableOne(module)
-  if rawget(module, "_state") ~= "enabled" then
+  if module._state ~= "enabled" then
     return module
   end
 
@@ -1772,12 +2053,15 @@ local function disableOne(module)
     error(value, 0)
   end
 
-  rawset(module, "_state", "disabled")
+  module._state = "disabled"
   clearFailure(module)
 
   -- The module is disabled either way; a scope that failed to close is
   -- reported after the transition rather than leaving the module enabled.
-  raiseCaptured(closeModuleScope(module))
+  local scopeFailure = closeModuleScope(module)
+  if scopeFailure ~= nil then
+    raiseCaptured(scopeFailure)
+  end
   return module
 end
 
@@ -1786,18 +2070,18 @@ end
 ---@param level integer error level of an unexpected-state refusal, counted from this function
 ---@return ModuleKit.Module module
 local function enableOne(module, level)
-  local current = rawget(module, "_state")
+  local current = module._state
   if current == "enabled" then
     return module
   end
   if current == "created" then
     initializeOne(module)
-    current = rawget(module, "_state")
+    current = module._state
   end
   if current ~= "initialized" and current ~= "disabled" then
     error(
       'ModuleKit module "'
-        .. rawget(module, "_name")
+        .. module._name
         .. '" cannot be enabled from state "'
         .. tostring(current)
         .. '"',
@@ -1808,7 +2092,7 @@ local function enableOne(module, level)
   -- The scope is usable from `OnEnable` on, so a hook can register the
   -- work it owns. A failed `OnEnable` leaves the module where it was, so
   -- whatever it registered before failing is released with it.
-  rawset(module, "_scopeOpen", true)
+  module._scopeOpen = true
   local ok, value = invokeHook(module, "OnEnable")
   if not ok then
     closeModuleScope(module)
@@ -1816,9 +2100,11 @@ local function enableOne(module, level)
     error(value, 0)
   end
 
-  rawset(module, "_state", "enabled")
-  rawset(module, "_wantedEnabled", true)
-  rawset(module, "_enableBlockedBy", nil)
+  module._state = "enabled"
+  module._wantedEnabled = true
+  if module._enableBlockedBy ~= nil then
+    module._enableBlockedBy = nil
+  end
   clearFailure(module)
 
   -- `OnEnable` may itself halt the addon or a required addon, typically on
@@ -1829,14 +2115,14 @@ local function enableOne(module, level)
   if blocker == OWN_ADDON_HALTED then
     -- Terminal cleanup, like the halt pass: the scope is released even
     -- when `OnDisable` fails.
-    rawset(module, "_enableBlockedBy", blocker)
+    module._enableBlockedBy = blocker
     local disabled, failure = pcall(disableOne, module)
     if not disabled then
       closeModuleScope(module)
       error(failure, 0)
     end
   elseif blocker ~= nil then
-    rawset(module, "_enableBlockedBy", blocker)
+    module._enableBlockedBy = blocker
     disableOne(module)
   end
   return module
@@ -1846,8 +2132,10 @@ end
 ---for a dependency to recover.
 ---@param module ModuleKit.Module
 local function markWantedDisabled(module)
-  rawset(module, "_wantedEnabled", false)
-  rawset(module, "_enableBlockedBy", nil)
+  module._wantedEnabled = false
+  if module._enableBlockedBy ~= nil then
+    module._enableBlockedBy = nil
+  end
 end
 
 ---Initialize `module` under the container's dependency policy.
@@ -1872,18 +2160,24 @@ local function initializeWithPolicy(module, visiting, depth)
   local policy = rawget(addon, "_dependencyPolicy")
 
   if policy == "automatic" then
-    visiting = visiting or {}
-    if visiting[module] then
-      error(
-        'ModuleKit dependency cycle detected while initializing "' .. rawget(module, "_name") .. '"',
-        3 + depth
-      )
+    -- A module that requires nothing cannot close a cycle, so it needs no
+    -- recursion guard and allocates none.
+    if #dependencies > 0 then
+      visiting = visiting or {}
+      if visiting[module] then
+        error(
+          'ModuleKit dependency cycle detected while initializing "'
+            .. rawget(module, "_name")
+            .. '"',
+          3 + depth
+        )
+      end
+      visiting[module] = true
+      for index = 1, #dependencies do
+        initializeWithPolicy(dependencies[index], visiting, depth + 1)
+      end
+      visiting[module] = nil
     end
-    visiting[module] = true
-    for index = 1, #dependencies do
-      initializeWithPolicy(dependencies[index], visiting, depth + 1)
-    end
-    visiting[module] = nil
   else
     for index = 1, #dependencies do
       local dependency = dependencies[index]
@@ -1916,11 +2210,11 @@ end
 ---@return ModuleKit.Module module
 local function enableWithPolicy(module, visiting, depth)
   depth = depth or 0
-  local addon = rawget(module, "_addon")
+  local addon = module._addon
   ensureNotShutdown(addon, "ModuleKit.Module:Enable", 4 + depth)
 
   -- A halt is terminal, so no dependency policy can satisfy it.
-  if rawget(module, "_state") ~= "enabled" then
+  if module._state ~= "enabled" then
     local blocker = haltBlocker(module)
     if blocker ~= nil then
       recordHaltRefusal(module, blocker)
@@ -1929,52 +2223,58 @@ local function enableWithPolicy(module, visiting, depth)
   end
 
   local dependencies = hardDependencies(module, 4 + depth)
-  local policy = rawget(addon, "_dependencyPolicy")
+  local policy = addon._dependencyPolicy
 
   if policy == "automatic" then
-    visiting = visiting or {}
-    if visiting[module] then
-      error(
-        'ModuleKit dependency cycle detected while enabling "' .. rawget(module, "_name") .. '"',
-        3 + depth
-      )
-    end
-    visiting[module] = true
-    for index = 1, #dependencies do
-      local dependency = dependencies[index]
-      if rawget(dependency, "_state") ~= "enabled" then
-        -- Stays recorded if enabling the dependency raises, which is
-        -- what lets the dependency's later recovery bring this module
-        -- back; see `recoverBlockedDependents`.
-        rawset(module, "_enableBlockedBy", rawget(dependency, "_name"))
+    -- A module that requires nothing cannot close a cycle, so it needs no
+    -- recursion guard and allocates none.
+    if #dependencies > 0 then
+      visiting = visiting or {}
+      if visiting[module] then
+        error(
+          'ModuleKit dependency cycle detected while enabling "' .. module._name .. '"',
+          3 + depth
+        )
       end
-      enableWithPolicy(dependency, visiting, depth + 1)
-      if rawget(dependency, "_state") ~= "enabled" then
-        -- A halt inside the dependency's own `OnEnable` took it down
-        -- again (see `enableOne`). This module stays off. When the
-        -- halt stops this module too (its own addon, or an addon it
-        -- requires), the halt is what blocks it, as a direct `Enable`
-        -- of it now records; otherwise the dependency does, exactly as
-        -- the `ready` pass would leave it.
-        local blocker = haltBlocker(module) or rawget(dependency, "_name")
-        recordFailure(module, nil, blocker, false)
-        rawset(module, "_enableBlockedBy", blocker)
-        visiting[module] = nil
-        return module
+      visiting[module] = true
+      for index = 1, #dependencies do
+        local dependency = dependencies[index]
+        if dependency._state ~= "enabled" then
+          -- Stays recorded if enabling the dependency raises, which is
+          -- what lets the dependency's later recovery bring this module
+          -- back; see `recoverBlockedDependents`.
+          module._enableBlockedBy = dependency._name
+        end
+        enableWithPolicy(dependency, visiting, depth + 1)
+        if dependency._state ~= "enabled" then
+          -- A halt inside the dependency's own `OnEnable` took it down
+          -- again (see `enableOne`). This module stays off. When the
+          -- halt stops this module too (its own addon, or an addon it
+          -- requires), the halt is what blocks it, as a direct `Enable`
+          -- of it now records; otherwise the dependency does, exactly as
+          -- the `ready` pass would leave it.
+          local blocker = haltBlocker(module) or dependency._name
+          recordFailure(module, nil, blocker, false)
+          module._enableBlockedBy = blocker
+          visiting[module] = nil
+          return module
+        end
       end
+      visiting[module] = nil
     end
-    rawset(module, "_enableBlockedBy", nil)
-    visiting[module] = nil
+    if module._enableBlockedBy ~= nil then
+      module._enableBlockedBy = nil
+    end
   else
     for index = 1, #dependencies do
       local dependency = dependencies[index]
-      if rawget(dependency, "_state") ~= "enabled" then
-        local name = rawget(dependency, "_name")
+      if dependency._state ~= "enabled" then
+        local name = dependency._name
         recordFailure(module, nil, name, false)
-        rawset(module, "_enableBlockedBy", name)
+        module._enableBlockedBy = name
         error(
           'ModuleKit strict policy: module "'
-            .. rawget(module, "_name")
+            .. module._name
             .. '" requires enabled dependency "'
             .. name
             .. '"',
@@ -1994,16 +2294,16 @@ end
 ---@param module ModuleKit.Module
 ---@return ModuleKit.Module module
 local function disableWithPolicy(module)
-  local addon = rawget(module, "_addon")
+  local addon = module._addon
   local dependents = enabledHardDependents(module)
-  local policy = rawget(addon, "_dependencyPolicy")
+  local policy = addon._dependencyPolicy
 
   if policy == "strict" and #dependents > 0 then
     error(
       'ModuleKit strict policy: cannot disable module "'
-        .. rawget(module, "_name")
+        .. module._name
         .. '" while dependent "'
-        .. rawget(dependents[1], "_name")
+        .. dependents[1]._name
         .. '" is enabled',
       3
     )
@@ -2016,7 +2316,7 @@ local function disableWithPolicy(module)
       -- recovers when this module is enabled again.
       local dependent = dependents[index]
       disableWithPolicy(dependent)
-      rawset(dependent, "_enableBlockedBy", rawget(module, "_name"))
+      dependent._enableBlockedBy = module._name
     end
   end
 
@@ -2036,25 +2336,26 @@ end
 ---@param addon ModuleKit.Addon
 ---@return ModuleKit.ErrorRecord|nil firstError
 local function recoverBlockedDependents(addon)
-  if rawget(addon, "_shutdown") == true or rawget(addon, "_passDepth") > 0 then
-    return nil
-  end
-  if isContainerHalted(addon) then
-    -- Halted is terminal: nothing in this container can recover.
+  if addon._shutdown == true or addon._passDepth > 0 then
     return nil
   end
 
   -- Every targeted `Enable` ends here, and almost always nothing is blocked:
-  -- a linear scan is enough to skip building the graph.
-  local modules = rawget(addon, "_moduleOrder")
+  -- a linear scan is enough to skip building the graph, and to skip asking
+  -- LifecycleKit about a halt.
+  local modules = addon._moduleOrder
   local anyBlocked = false
   for index = 1, #modules do
-    if rawget(modules[index], "_enableBlockedBy") ~= nil then
+    if modules[index]._enableBlockedBy ~= nil then
       anyBlocked = true
       break
     end
   end
   if not anyBlocked then
+    return nil
+  end
+  if isContainerHalted(addon) then
+    -- Halted is terminal: nothing in this container can recover.
     return nil
   end
 
@@ -2067,14 +2368,14 @@ local function recoverBlockedDependents(addon)
   for index = 1, #order do
     local module = order[index]
     if
-      rawget(module, "_wantedEnabled") == true
-      and rawget(module, "_enableBlockedBy") ~= nil
-      and rawget(module, "_state") ~= "enabled"
+      module._wantedEnabled == true
+      and module._enableBlockedBy ~= nil
+      and module._state ~= "enabled"
     then
       local ready = true
       local dependencies = hardDependencies(module)
       for dependencyIndex = 1, #dependencies do
-        if rawget(dependencies[dependencyIndex], "_state") ~= "enabled" then
+        if dependencies[dependencyIndex]._state ~= "enabled" then
           ready = false
           break
         end
@@ -2082,11 +2383,11 @@ local function recoverBlockedDependents(addon)
       -- A required addon that halted keeps the module blocked on it.
       local blocker = ready and haltBlocker(module) or nil
       if blocker ~= nil then
-        rawset(module, "_enableBlockedBy", blocker)
+        module._enableBlockedBy = blocker
       elseif ready then
         -- From here a failure is the module's own, not its
         -- dependency's, so it is not retried by the next recovery.
-        rawset(module, "_enableBlockedBy", nil)
+        module._enableBlockedBy = nil
         local ok, value = pcall(enableOne, module)
         firstError = captureFirstError(firstError, ok, value)
       end
@@ -2105,14 +2406,14 @@ end
 ---@param addon ModuleKit.Addon
 ---@param module ModuleKit.Module
 local function catchUpModule(addon, module)
-  local lifecycle = rawget(addon, "_lifecycle")
+  local lifecycle = addon._lifecycle
   if lifecycle:IsLoaded() then
     initializeWithPolicy(module, nil, 2)
   end
   if lifecycle:IsReady() then
     -- Catch-up is implicit, so a halt blocks it quietly instead of
     -- raising out of `CreateModule`; an explicit `Enable` still raises.
-    local blocker = rawget(module, "_state") ~= "enabled" and haltBlocker(module) or nil
+    local blocker = module._state ~= "enabled" and haltBlocker(module) or nil
     if blocker ~= nil then
       recordHaltRefusal(module, blocker)
     else
@@ -2131,8 +2432,8 @@ end
 ---@param addon ModuleKit.Addon
 ---@param module ModuleKit.Module
 local function scheduleCatchUp(addon, module)
-  if rawget(addon, "_passDepth") > 0 then
-    local pending = rawget(addon, "_pendingCatchUp")
+  if addon._passDepth > 0 then
+    local pending = addon._pendingCatchUp
     pending[#pending + 1] = module
     return
   end
@@ -2148,17 +2449,17 @@ end
 ---@param firstError ModuleKit.ErrorRecord|nil error record captured so far
 ---@return ModuleKit.ErrorRecord|nil firstError
 local function flushPendingCatchUp(addon, firstError)
-  if rawget(addon, "_flushingCatchUp") == true then
+  if addon._flushingCatchUp == true then
     return firstError
   end
-  rawset(addon, "_flushingCatchUp", true)
+  addon._flushingCatchUp = true
 
   -- The queue is drained with a cursor rather than `table.remove(pending, 1)`,
   -- which shifted every remaining entry down one slot per module and made a
   -- flush quadratic in the number of modules waiting. Entries appended while
   -- the loop runs — catching one module up can queue another — are picked up
   -- by the same pass, so the order modules are caught up in is unchanged.
-  local pending = rawget(addon, "_pendingCatchUp")
+  local pending = addon._pendingCatchUp
   local cursor = 1
   while cursor <= #pending do
     local module = pending[cursor]
@@ -2174,7 +2475,7 @@ local function flushPendingCatchUp(addon, firstError)
     pending[index] = nil
   end
 
-  rawset(addon, "_flushingCatchUp", false)
+  addon._flushingCatchUp = false
   return firstError
 end
 
@@ -2190,10 +2491,10 @@ end
 ---@param seedError ModuleKit.ErrorRecord|nil error captured before the pass could start
 ---@return ModuleKit.Addon addon
 local function runContainerPass(addon, pass, order, shutdown, seedError)
-  rawset(addon, "_passDepth", rawget(addon, "_passDepth") + 1)
+  addon._passDepth = addon._passDepth + 1
   local ok, result = pcall(pass, order, shutdown)
-  local depth = rawget(addon, "_passDepth") - 1
-  rawset(addon, "_passDepth", depth)
+  local depth = addon._passDepth - 1
+  addon._passDepth = depth
 
   local firstError = seedError
   if ok then
@@ -2220,26 +2521,30 @@ end
 ---@return ModuleKit.ErrorRecord|nil firstError
 local function runInitializeAllPass(order)
   local firstError
-  local failed = {}
+  -- Created on the first failure, so a pass where everything succeeds
+  -- allocates nothing.
+  local failed
 
   for index = 1, #order do
     local module = order[index]
     local blockedBy
-    local dependencies = hardDependencies(module)
+    local dependencies = module._hardDependencyList or hardDependencies(module)
     for depIndex = 1, #dependencies do
       local dependency = dependencies[depIndex]
-      if failed[dependency] or rawget(dependency, "_state") == "created" then
-        blockedBy = rawget(dependency, "_name")
+      if (failed ~= nil and failed[dependency]) or dependency._state == "created" then
+        blockedBy = dependency._name
         break
       end
     end
 
     if blockedBy ~= nil then
+      failed = failed or {}
       failed[module] = true
       recordFailure(module, nil, blockedBy, false)
-    elseif rawget(module, "_state") == "created" then
+    elseif module._state == "created" then
       local ok, value = pcall(initializeOne, module)
       if not ok then
+        failed = failed or {}
         failed[module] = true
         firstError = captureFirstError(firstError, ok, value)
       end
@@ -2270,39 +2575,42 @@ end
 ---@return ModuleKit.ErrorRecord|nil firstError
 local function runEnableAllPass(order, lifecycleDriven)
   local firstError
-  local failed = {}
+  -- Created on the first failure or block, so a clean pass allocates nothing.
+  local failed
 
   for index = 1, #order do
     local module = order[index]
     -- A module that is not wanted is left alone: not failed, not blocked.
     local wanted = not lifecycleDriven
-      or rawget(module, "_wantedEnabled") ~= false
-      or rawget(module, "_state") == "enabled"
+      or module._wantedEnabled ~= false
+      or module._state == "enabled"
     if wanted then
       -- A halt blocks the module like a failed dependency, and so blocks
       -- its dependents behind it.
       local blockedBy
-      if rawget(module, "_state") ~= "enabled" then
+      if module._state ~= "enabled" then
         blockedBy = haltBlocker(module)
       end
-      local dependencies = hardDependencies(module)
+      local dependencies = module._hardDependencyList or hardDependencies(module)
       for depIndex = 1, #dependencies do
         if blockedBy ~= nil then
           break
         end
         local dependency = dependencies[depIndex]
-        if failed[dependency] or rawget(dependency, "_state") ~= "enabled" then
-          blockedBy = rawget(dependency, "_name")
+        if (failed ~= nil and failed[dependency]) or dependency._state ~= "enabled" then
+          blockedBy = dependency._name
         end
       end
 
       if blockedBy ~= nil then
+        failed = failed or {}
         failed[module] = true
         recordFailure(module, nil, blockedBy, false)
-        rawset(module, "_enableBlockedBy", blockedBy)
+        module._enableBlockedBy = blockedBy
       else
         local ok, value = pcall(enableOne, module)
         if not ok then
+          failed = failed or {}
           failed[module] = true
           firstError = captureFirstError(firstError, ok, value)
         end
@@ -2333,8 +2641,11 @@ local function enableAllInternal(addon, lifecycleDriven, level)
     -- The whole container is meant to be enabled; the pass records which
     -- modules a failed dependency blocks.
     for index = 1, #order do
-      rawset(order[index], "_wantedEnabled", true)
-      rawset(order[index], "_enableBlockedBy", nil)
+      local module = order[index]
+      module._wantedEnabled = true
+      if module._enableBlockedBy ~= nil then
+        module._enableBlockedBy = nil
+      end
     end
   end
 
@@ -2350,14 +2661,14 @@ local function runDisableAllPass(order, shutdown)
 
   for index = #order, 1, -1 do
     local module = order[index]
-    if rawget(module, "_state") == "enabled" then
+    if module._state == "enabled" then
       if not shutdown then
-        local dependents = enabledHardDependents(module)
-        if #dependents > 0 then
+        local dependent = firstEnabledHardDependent(module)
+        if dependent ~= nil then
           -- A previously attempted dependent failed to disable. Do
           -- not break the hard-dependency invariant in a reusable
           -- (non-terminal) container by disabling its dependency.
-          recordFailure(module, nil, rawget(dependents[1], "_name"), false)
+          recordFailure(module, nil, dependent._name, false)
         else
           local ok, value = pcall(disableOne, module)
           if not ok then
@@ -2406,7 +2717,7 @@ local function disableAllInternal(addon, shutdown, level)
   end
 
   if shutdown then
-    rawset(addon, "_shutdown", true)
+    addon._shutdown = true
   else
     for index = 1, #order do
       markWantedDisabled(order[index])
@@ -2501,6 +2812,60 @@ local function dependencyHaltedInternal(addon, haltedAddonName)
 
   raiseCaptured(firstError)
   return addon
+end
+
+---Call one whole-container pass through shared runtime dispatch.
+---
+---Going through shared state rather than a captured local is what lets a newer
+---compatible revision upgrade containers an older copy created.
+---@param name "initializeAll"|"enableAll"|"shutdown"|"halted"|"dependencyHalted"
+---@param addon ModuleKit.Addon
+---@param argument any passed on after `addon`: the halted addon's name for `dependencyHalted`
+---@return ModuleKit.Addon addon
+local function invokeDispatch(name, addon, argument)
+  local dispatch = rawget(state, "dispatch")
+  local callback = type(dispatch) == "table" and rawget(dispatch, name) or nil
+  if type(callback) ~= "function" then
+    error("MoltenCodes ModuleKit runtime dispatch is corrupted or incomplete", 2)
+  end
+  return callback(addon, argument)
+end
+
+---Subscribe the container to the halts of the addons its modules require,
+---unless it already is.
+---
+---Only a container with a module that declares `requiresAddons` subscribes:
+---`dependencyHaltedInternal` acts on such modules alone, so a container
+---without one would receive every notice for nothing, and each subscription
+---costs a LifecycleKit handle and a SignalKit listener for the session.
+---`declareRequiredAddons` subscribes before the module's first `DependsOn`,
+---which is when LifecycleKit could first announce a halt that matters, and an
+---upgrade subscribes a carried-over container that already has such a module.
+---
+---The subscription replays every declared dependency that has already halted.
+---The replay is ignored: a module that requires a halted addon is blocked
+---when it is created (see `addonCreateModule`), and an upgrade must not
+---disable modules from package bootstrap. A LifecycleKit revision older than
+---the halted state offers no notice, and its addons never halt.
+---@param addon ModuleKit.Addon
+local function subscribeToDependencyHalts(addon)
+  if rawget(addon, "_subscriptions").dependencyHalted ~= nil then
+    return
+  end
+  local lifecycle = rawget(addon, "_lifecycle")
+  local onDependencyHalted = lifecycle.OnDependencyHalted
+  if type(onDependencyHalted) ~= "function" then
+    return
+  end
+
+  local replaying = true
+  local handle = onDependencyHalted(lifecycle, function(_, haltedAddonName)
+    if not replaying then
+      invokeDispatch("dependencyHalted", addon, haltedAddonName)
+    end
+  end)
+  replaying = false
+  rawget(addon, "_subscriptions").dependencyHalted = handle
 end
 
 -- Module public API ---------------------------------------------------------
@@ -2630,7 +2995,13 @@ local function addInjections(module, aliasOrMap, target, level)
   ensureDefinitionMutable(module, "Inject", level + 1)
   ensureNotShutdown(rawget(module, "_addon"), "ModuleKit.Module:Inject", level + 1)
 
+  -- The first alias gives the module its own specification table; until
+  -- then it reads the shared empty set.
   local specification = rawget(module, "_injectSpec")
+  if specification == nil then
+    specification = {}
+    rawset(module, "_injectSpec", specification)
+  end
   if type(aliasOrMap) == "table" and type(target) == "nil" then
     local aliases = {}
     for alias in next, aliasOrMap do
@@ -2687,9 +3058,9 @@ end
 ---@param self ModuleKit.Module
 ---@return ModuleKit.Module self
 local function moduleEnable(self)
-  rawset(self, "_wantedEnabled", true)
+  self._wantedEnabled = true
   enableWithPolicy(self)
-  raiseCaptured(recoverBlockedDependents(rawget(self, "_addon")))
+  raiseCaptured(recoverBlockedDependents(self._addon))
   return self
 end
 
@@ -2806,7 +3177,7 @@ local function addRequiredAddon(module, addonName)
     return module
   end
 
-  local required = rawget(module, "_requiredAddons")
+  local required = moduleRequiredAddons(module)
   local maxRequiredAddons = rawget(sharedLimits, "maxRequiredAddons")
   if maxRequiredAddons ~= UNBOUNDED and #required >= maxRequiredAddons then
     error(
@@ -2952,7 +3323,7 @@ end
 ---@param addon ModuleKit.Addon
 ---@param module ModuleKit.Module
 local function declareRequiredAddons(addon, module)
-  local required = rawget(module, "_requiredAddons")
+  local required = moduleRequiredAddons(module)
   if #required == 0 then
     return
   end
@@ -2962,6 +3333,10 @@ local function declareRequiredAddons(addon, module)
   if type(dependsOn) ~= "function" then
     return
   end
+
+  -- Before the first `DependsOn`: declaring an addon that already halted
+  -- announces it at once.
+  subscribeToDependencyHalts(addon)
 
   for index = 1, #required do
     local recorded, reason = dependsOn(lifecycle, required[index])
@@ -2992,36 +3367,42 @@ local function addonCreateModule(self, name, definition)
   ensureNotShutdown(self, "ModuleKit.Addon:CreateModule", 3)
   validateNonEmptyString(name, "ModuleKit.Addon:CreateModule name", 3)
 
-  local modules = rawget(self, "_modules")
-  if rawget(modules, name) ~= nil or rawget(rawget(self, "_providers"), name) ~= nil then
+  local modules = self._modules
+  if rawget(modules, name) ~= nil or rawget(self._providers, name) ~= nil then
     error('ModuleKit.Addon:CreateModule name "' .. name .. '" is already in use', 2)
   end
 
-  local order = rawget(self, "_moduleOrder")
+  local order = self._moduleOrder
+  -- Only what every module needs is stored. The constraint sets, the
+  -- injection specification, `requiresAddons` and the failure record are
+  -- absent until something writes them, and read as empty or `false` (see
+  -- `moduleNameSet`, `moduleRequiredAddons`, `clearFailure`).
+  --
+  -- The entries written as `nil` reserve room: Lua 5.1 sizes a table's hash
+  -- part from the number of fields in its constructor, and these are the
+  -- fields almost every module receives next (its scope here, its hooks
+  -- from the addon, its injections and scope flag when it enables). The
+  -- module is then built with the sixteen slots it keeps, instead of being
+  -- rehashed into them as fields arrive.
   local module = setmetatable({
     _addon = self,
     _name = name,
     _order = #order + 1,
     _state = "created",
-    _hardDependencies = {},
-    _optionalDependencies = {},
-    _before = {},
-    _after = {},
-    _requiredAddons = NO_REQUIRED_ADDONS,
-    _injectSpec = {},
-    _injections = nil,
-    _lastError = nil,
-    _hasLastError = false,
-    _blockedBy = nil,
     -- Every module is meant to be enabled once its addon is ready, until
     -- an explicit `Disable` says otherwise.
     _wantedEnabled = true,
-    _enableBlockedBy = nil,
-    _scopeOpen = false,
+    _scope = nil,
+    scope = nil,
+    OnInitialize = nil,
+    OnEnable = nil,
+    OnDisable = nil,
+    _injections = nil,
+    _scopeOpen = nil,
   }, MODULE_METATABLE)
   local scope = newModuleScope(module)
-  rawset(module, "_scope", scope)
-  rawset(module, "scope", scope)
+  module._scope = scope
+  module.scope = scope
 
   applyDefinition(module, definition)
   -- The definition is atomic, so what the module carries when this returns
@@ -3041,13 +3422,14 @@ local function addonCreateModule(self, name, definition)
 
   rawset(modules, name, module)
   order[#order + 1] = module
+  invalidateGraph(self)
 
   -- A required addon may have halted before this module existed, or the
   -- container's own addon may have: record the block now, so the enable
   -- state shows it before anything tries to enable the module.
   local blocker = haltBlocker(module)
-  if blocker ~= nil and rawget(module, "_wantedEnabled") == true then
-    rawset(module, "_enableBlockedBy", blocker)
+  if blocker ~= nil and module._wantedEnabled == true then
+    module._enableBlockedBy = blocker
   end
 
   -- A fully specified late-created module can catch up immediately. For the
@@ -3289,23 +3671,6 @@ local PHASE_DISPATCH = {
 ---keys of `_subscriptions`.
 local HALT_NOTICES = { "halted", "dependencyHalted" }
 
----Call one whole-container pass through shared runtime dispatch.
----
----Going through shared state rather than a captured local is what lets a newer
----compatible revision upgrade containers an older copy created.
----@param name "initializeAll"|"enableAll"|"shutdown"|"halted"|"dependencyHalted"
----@param addon ModuleKit.Addon
----@param argument any passed on after `addon`: the halted addon's name for `dependencyHalted`
----@return ModuleKit.Addon addon
-local function invokeDispatch(name, addon, argument)
-  local dispatch = rawget(state, "dispatch")
-  local callback = type(dispatch) == "table" and rawget(dispatch, name) or nil
-  if type(callback) ~= "function" then
-    error("MoltenCodes ModuleKit runtime dispatch is corrupted or incomplete", 2)
-  end
-  return callback(addon, argument)
-end
-
 ---Report whether LifecycleKit has already reached `phase` for `lifecycle`.
 ---@param lifecycle LifecycleKit.Instance
 ---@param phase "loaded"|"ready"|"shutdown"
@@ -3328,12 +3693,12 @@ local function ensureModuleRuntimeFields(module)
   if type(rawget(module, "_wantedEnabled")) ~= "boolean" then
     rawset(module, "_wantedEnabled", moduleState ~= "disabled")
   end
-  if type(rawget(module, "_scopeOpen")) ~= "boolean" then
-    rawset(module, "_scopeOpen", moduleState == "enabled")
-  end
-  if type(rawget(module, "_requiredAddons")) ~= "table" then
-    -- Revision 8 added `requiresAddons`; an older module declared none.
-    rawset(module, "_requiredAddons", NO_REQUIRED_ADDONS)
+  -- An absent `_scopeOpen` reads as closed, and so does an absent
+  -- `_requiredAddons` as none (revision 8 added `requiresAddons`; revision 19
+  -- stopped storing either field before it is needed). Only an enabled
+  -- module from before revision 6 needs its scope marked open.
+  if rawget(module, "_scopeOpen") == nil and moduleState == "enabled" then
+    rawset(module, "_scopeOpen", true)
   end
   if type(rawget(module, "_scope")) ~= "table" then
     local scope = newModuleScope(module)
@@ -3375,6 +3740,9 @@ local function ensureContainerRuntimeFields(addon, lifecycle)
   if type(rawget(addon, "_pendingCatchUp")) ~= "table" then
     rawset(addon, "_pendingCatchUp", {})
   end
+  -- A cached graph is rebuilt by the revision that walks it, never trusted
+  -- across an upgrade.
+  invalidateGraph(addon)
 
   local order = rawget(addon, "_moduleOrder")
   for index = 1, #order do
@@ -3429,10 +3797,9 @@ end
 ---  upgrade the halt is recorded as dispatched without running, so no module
 ---  hook can run out of package bootstrap; enabling still refuses every
 ---  module, because each enable path asks LifecycleKit directly.
----- `OnDependencyHalted` replays every declared dependency that has already
----  halted. The replay is ignored: a module that requires a halted addon is
----  blocked when it is created (see `addonCreateModule`), and an upgrade must
----  not disable modules from package bootstrap.
+---- `OnDependencyHalted` is subscribed only for a container with a module that
+---  declares `requiresAddons`; see `subscribeToDependencyHalts`, which also
+---  covers its replay.
 ---@param addon ModuleKit.Addon
 ---@param lifecycle LifecycleKit.Instance
 ---@param duringUpgrade boolean|nil `true` while migrating a carried-over container
@@ -3458,14 +3825,13 @@ local function installHaltSubscriptions(addon, lifecycle, duringUpgrade)
     end
   end
 
-  local replaying = true
-  local handle = onDependencyHalted(lifecycle, function(_, haltedAddonName)
-    if not replaying then
-      invokeDispatch("dependencyHalted", addon, haltedAddonName)
+  local modules = rawget(addon, "_moduleOrder")
+  for index = 1, #modules do
+    if #moduleRequiredAddons(modules[index]) > 0 then
+      subscribeToDependencyHalts(addon)
+      return
     end
-  end)
-  replaying = false
-  rawget(addon, "_subscriptions").dependencyHalted = handle
+  end
 end
 
 ---Subscribe the container to the LifecycleKit phases it has not received yet.
@@ -3498,7 +3864,12 @@ local function installAddonSubscriptions(addon, duringUpgrade)
 
   ensureContainerRuntimeFields(addon, lifecycle)
 
-  rawset(addon, "_subscriptions", {})
+  -- A new container, and one `disconnectAddonSubscriptions` just emptied,
+  -- already holds an empty table.
+  local subscriptions = rawget(addon, "_subscriptions")
+  if type(subscriptions) ~= "table" or next(subscriptions) ~= nil then
+    rawset(addon, "_subscriptions", {})
+  end
 
   if rawget(addon, "_shutdown") == true then
     return

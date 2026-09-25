@@ -679,11 +679,31 @@ are table reads and allocate nothing. `GetModules`, `GetInjections`,
 a value, or a singleton or module-scoped provider already cached for the
 requester, allocates nothing; a factory run allocates one resolution-stack
 entry, and the `implements` list form adds one `value[name]` lookup per
-declared name. Graph operations (`ValidateGraph`, `GetActivationOrder`, the
-whole-container passes, and a targeted `Enable` or `Activate` while some
-module is blocked by a dependency) build the graph afresh on every call and
-allocate in proportion to modules and edges. All of these are lifecycle-scale
-operations; none is meant to run per frame.
+declared name.
+
+Graph operations (`ValidateGraph`, `GetActivationOrder`, the whole-container
+passes, and a targeted `Enable` or `Activate` while some module is blocked by a
+dependency) validate and order the graph once and reuse that order until the
+graph can change: a module is created, or a module declares `DependsOn`,
+`OptionalDependency`, `Before` or `After`, which it can only do before it
+initializes. Building the order allocates in proportion to modules and edges;
+an invalid graph is never kept, so its diagnostic is raised on every call.
+Once the order is built, `ValidateGraph`, `EnableAll`, `DisableAll` and a
+targeted `Enable` or `Disable` of an initialized module allocate nothing of
+their own when every hook succeeds; initializing a module allocates its
+injection table, and `GetActivationOrder` returns a new array of names.
+A targeted `Enable` or `Initialize` under the `automatic` policy allocates one
+recursion guard when the module has hard dependencies, and a failure allocates
+what it records. What a module creates through `module.scope` is the Kit's own
+cost: a scope field is created on first read in each enable and closed when
+the module disables.
+
+A module that declares nothing beyond its hooks keeps only the fields it uses;
+constraint sets, injection aliases, `requiresAddons` and failure records are
+stored once declared or recorded. A container subscribes to
+`OnDependencyHalted` only once one of its modules declares `requiresAddons`.
+
+All of these are lifecycle-scale operations; none is meant to run per frame.
 
 ## LifecycleKit integration
 

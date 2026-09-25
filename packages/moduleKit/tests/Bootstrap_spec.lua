@@ -497,6 +497,9 @@ end)
 -- Revisions 17 and 18 changed only how arguments are checked (the nil rule and
 -- the secret checks), nothing in package state, on a container, on a module or
 -- on a provider record, so what the previous revision created keeps working.
+-- Revision 19 stops storing a module's empty and false fields and caches the
+-- graph on the container; it reads the fields an older module still carries,
+-- and never trusts a cache across an upgrade.
 describe("ModuleKit upgrade from the previous revision", function()
   after_each(TestEnv.Reset)
 
@@ -516,6 +519,54 @@ describe("ModuleKit upgrade from the previous revision", function()
     assert.are.equal(addon, upgraded:ForAddon("MyAddon"))
     assert.are.equal(module, addon:GetModule("UI"))
     assert.are.same({ scale = 1 }, addon:Resolve("Settings"))
+  end)
+
+  it("keeps modules that carry revision 18's eagerly created fields working", function()
+    TestEnv.LoadDependencies()
+    local previous = TestEnv.LoadRevision(CURRENT_REVISION - 1)
+    local addon = previous:ForAddon("MyAddon")
+    local log = {}
+    local function record(prefix)
+      return function(self)
+        log[#log + 1] = prefix .. " " .. self:GetName()
+      end
+    end
+    local base = addon:CreateModule("Base")
+    local consumer = addon:CreateModule("Consumer")
+    -- Revision 18 gave every module empty constraint sets, an empty injection
+    -- specification, a `requiresAddons` array and both flags as booleans at
+    -- creation. Model that layout, with one dependency declared inside it.
+    for _, module in ipairs({ base, consumer }) do
+      rawset(module, "_hardDependencies", {})
+      rawset(module, "_optionalDependencies", {})
+      rawset(module, "_before", {})
+      rawset(module, "_after", {})
+      rawset(module, "_injectSpec", {})
+      rawset(module, "_requiredAddons", {})
+      rawset(module, "_hasLastError", false)
+      rawset(module, "_scopeOpen", false)
+      module.OnEnable = record("enable")
+      module.OnDisable = record("disable")
+    end
+    rawget(consumer, "_hardDependencies").Base = true
+
+    local upgraded = require("ModuleKit")
+    TestEnv.LoadAddon("MyAddon")
+    TestEnv.Login()
+    addon:CreateModule("Late", { dependsOn = { "Consumer" }, onEnable = record("enable") })
+    addon:DisableAll()
+
+    assert.are.equal(CURRENT_REVISION, upgraded.REVISION)
+    assert.are.same({ "Base", "Consumer", "Late" }, addon:GetActivationOrder())
+    assert.are.same({
+      "enable Base",
+      "enable Consumer",
+      "enable Late",
+      "disable Consumer",
+      "disable Base",
+    }, log)
+    assert.is_false(consumer:HasLastError())
+    assert.is_nil(consumer:GetBlockedBy())
   end)
 
   it("keeps the dependency policy and the limits the previous revision set", function()

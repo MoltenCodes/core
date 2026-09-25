@@ -32,6 +32,8 @@ Spec files:
 |---|---|
 | `ModuleKit_spec.lua` | per-addon containers, policies, module creation and lookup, idempotent transitions |
 | `Graph_spec.lua` | hard, optional and ordering-only edges, topological order, cycle detection |
+| `GraphCache_spec.lua` | the cached graph order, dependency lists and dependents seeing every graph change, an invalid graph reported on every call, a pass keeping its order when a hook creates a module, and a module that declares nothing storing no constraint tables |
+| `Allocation_spec.lua` | `#allocation`: whole-container cycles (with and without a dependency chain), a targeted disable and enable, and `ValidateGraph` on a cached graph allocate nothing |
 | `Cycle_spec.lua` | a two-module cycle reported at the calling line from `InitializeAll`, `EnableAll`, `Initialize`, `Enable` and `Activate`, and an enable from an unexpected state |
 | `DependencyPolicy_spec.lua` | `automatic` and `strict` enable and disable |
 | `Injection_spec.lua` | values, singletons, module-scoped and transient providers, collisions and cycles |
@@ -39,10 +41,10 @@ Spec files:
 | `Errors_spec.lua` | hook failures, retries, blocked dependents, `nil` error objects, `DisableAll` invariants |
 | `EnableState_spec.lua` | intent versus fact: `wanted`, `actual`, `blockedBy` and recovery |
 | `Scope_spec.lua` | module scopes over fakes and the real EventKit, HookKit, SignalKit bus, CommandKit and CommKit |
-| `Halted_spec.lua` | the addon's own halt, a required addon's halt, halts raised inside `OnEnable`, `requiresAddons`, upgrades |
+| `Halted_spec.lua` | the addon's own halt, a required addon's halt, halts raised inside `OnEnable`, `requiresAddons`, the on-demand `OnDependencyHalted` subscription, upgrades |
 | `Limits_spec.lua` | `SetLimits` / `GetLimits`, `maxRequiredAddons`, `ModuleKit.UNBOUNDED` and the LifecycleKit coupling |
 | `Implements_spec.lua` | the `implements` option on every provider kind and on module definitions, in its list and schema forms, with and without SchemaKit |
 | `ErrorLevels_spec.lua` | argument and state refusals at the caller's line, from every public entry and from definition tables |
-| `Bootstrap_spec.lua` | duplicate loading, Registry publication, dispatch repair, in-place upgrades, the manifest revision, limits and the sentinel carried across upgrades from revision 13 and to a newer revision, a revision-14 provider resolving unchecked, a contract kept under a newer revision, the upgrade from revision 15, and the upgrade from the previous revision, keeping containers, modules, providers, the dependency policy and the limits |
+| `Bootstrap_spec.lua` | duplicate loading, Registry publication, dispatch repair, in-place upgrades, the manifest revision, limits and the sentinel carried across upgrades from revision 13 and to a newer revision, a revision-14 provider resolving unchecked, a contract kept under a newer revision, the upgrade from revision 15, and the upgrade from the previous revision, keeping containers, modules (including revision 18's eagerly created fields), providers, the dependency policy and the limits |
 | `SecretValues_spec.lua` | secret arguments, policies and table keys refused at the caller's line, secret provided values accepted |
 | `Manifest_spec.lua` | runtime API and revision against `package.manifest.json` |
