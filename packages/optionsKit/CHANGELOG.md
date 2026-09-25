@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.0 — 2026-09-25
+
+- **New: `tree:DescribeOption(path)`**, the node `Describe` would build for one option, or for a group and everything below it (`""` is the root, as `Describe`). Only that part's callbacks run (getter, `desc`, values function, predicates). `nil` for a path the tree does not have; a non-string or secret path raises at the caller. Additive: API generation 1 is kept, hence the minor version. CommandKit 0.2.6's `BindOptions` uses it to describe the one option a typed command names instead of the whole tree.
+- `Define` allocates a quarter of what it did and is no longer slower than AceConfigRegistry's validation. Options of one kind with the same inputs (`tristate`; `min` and `max`; `pattern`; `hasAlpha`; the keys of a `values` table) share one sealed schema for the session, instead of one SchemaKit node and sealed record per value option; a `select` or `multiselect` over a values function keeps a schema of its own. Options of one `Define` that name the same `values` table share its checked copy. An option's `info` is built the first time one of its callbacks runs and then reused, as before. A value option's record leaves absent fields out and keeps no prebuilt `Set` label (`Set` runs `Check` and builds the label only to raise), so it stays within the 16 hash slots its constructor sizes. Hints that set nothing share one empty table.
+- `ProfileOptions` shares one read-only predicate between its five changing options and one values function between the copy and delete selects (6,460 to 6,020 bytes per group). Everything else it allocates is the group the caller receives: a group per call, with its own link, is the documented contract (see below).
+- Host benchmark (`python3 -m tooling.bench.run --workload options --rounds 3`, against AceConfigRegistry-3.0, AceConfigCmd-3.0 and AceDBOptions-3.0; ratios from one run each, sides interleaved; the after-run under a load average of about 4.4 from other agents' work, the before-run about 2.2):
+
+  | Case | Before: ratio, bytes | After: ratio, bytes |
+  |---|---|---|
+  | `define-50` | 1.62×, 176,649 B | 0.85×, 46,180 B |
+  | `define-200` | 1.66×, 698,647 B | 0.90×, 174,203 B |
+  | `cmd-set-range` (with CommandKit) | 21.05×, 53,305 B | 1.64×, 1,033 B |
+  | `cmd-set-toggle` | 25.69×, 53,200 B | 1.94×, 808 B |
+  | `cmd-set-select` | 16.70×, 53,280 B | 1.57×, 1,280 B |
+  | `cmd-refused` | 15.49×, 53,641 B | 1.32×, 1,641 B |
+  | `profile-options-build` | 20.35×, 6,460 B | 17.16×, 6,020 B |
+  | `profile-choose-cmd` | 6.22×, 11,314 B | 2.56×, 2,297 B |
+  | `tree-set` (OptionsKit only) | 1,244 ns | 1,017 ns |
+
+- Implementation revision 7. The record layout changed (above) without a migration: every reader accepts a record an older revision built, with its `info`, its `Set` label and `false` in absent fields, so trees defined before the upgrade keep working. The shared schemas are a file-level cache: a newer revision starts empty.
+- `docs/API.md` documents `DescribeOption` and the new `Define` cost; `docs/INTERNALS.md` the record layout, the shared schemas and `info` on first use.
+- 178 specs (160 before): `DescribeOption` (a value option, a group, the root, callbacks of that part only, flags and copies, unknown and refused paths, its error messages, an undefined tree), the shared schemas and values copies, `info` on first use, the `Set` refusal without a prebuilt label, an allocation guard on `Define`, and the upgrade of a revision 6 record layout. The real-client suite checks the new method on the prototype.
+
 ## 0.2.5 — 2026-09-25
 
 - `ProfileOptions` over a read-only SettingsKit database: SettingsKit 0.2.0 (revision 5) opens data a newer version of the addon saved read-only and adds `db:IsReadOnly()`. The group's `current`, `new`, `copySource`, `copy`, `reset`, `deleteTarget` and `delete` options now answer `disabled` with `true` while `db:IsReadOnly()` does, so a renderer greys out every change SettingsKit would refuse; the group still reads the current profile and lists the profiles. `Set` and `Execute` still run on a disabled option, as for every option, and SettingsKit then refuses the change at the caller. A database without `IsReadOnly` (an older SettingsKit) or answering with a secret counts as writable.

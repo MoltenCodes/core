@@ -28,11 +28,13 @@
 --   Bootstrap ............. Registry registration and inherited state
 --   Argument checks ....... receivers, names, paths, option tables
 --   Definition checks ..... one function per field family of an option
---   Schemas ............... the SchemaKit schema of each value kind
+--   Info tables ........... each option's `info`, built on first use
+--   Schemas ............... the SchemaKit schemas, shared per kind and inputs
 --   Building .............. option records, the path index, sorted children
 --   Bound values .......... reading and writing a SettingsKit database path
 --   Tree methods .......... the handle `Define` returns
 --   Describe .............. the plain, allocating snapshot for renderers
+--                            (`DescribeOption`: one option or group of it)
 --   Profile options ....... the ready-made group over a database's profiles
 --   Package public API .... the facade published through Registry
 --   Commit ................ prototype/facade assignment and self-check
@@ -43,7 +45,7 @@
 
 local PACKAGE_NAME = "optionsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -171,6 +173,7 @@ local TREE_METHODS = {
   "IsHidden",
   "Walk",
   "Describe",
+  "DescribeOption",
   "OnChange",
 }
 
@@ -281,6 +284,7 @@ local TREE_METHODS = {
 ---@field IsHidden fun(self: OptionsKit.Tree, path: string): boolean
 ---@field Walk fun(self: OptionsKit.Tree, visitor: fun(path: string, kind: OptionsKit.Kind, depth: integer)): integer
 ---@field Describe fun(self: OptionsKit.Tree): OptionsKit.Description
+---@field DescribeOption fun(self: OptionsKit.Tree, path: string): OptionsKit.Description|nil
 ---@field OnChange fun(self: OptionsKit.Tree, callback: OptionsKit.ChangeCallback): table
 
 ---The OptionsKit package facade published through Registry.
@@ -717,6 +721,17 @@ local function checkRangeFields(spec, label, level)
   checkOptionalBoolean(spec.isPercent, label .. ".isPercent", level + 1)
 end
 
+---Orders the keys of a `values` table: numbers first, each type ascending.
+---@param left string|number
+---@param right string|number
+---@return boolean
+local function compareValueKeys(left, right)
+  if type(left) == type(right) then
+    return left < right
+  end
+  return type(left) == "number"
+end
+
 ---Check and copy a `values` table: keys are strings or numbers, labels
 ---strings. Returns the copy and its keys, sorted for a deterministic schema.
 ---@param values table
@@ -818,91 +833,230 @@ local function parseBind(bind, label, level)
   return scope, keys
 end
 
+-- Info tables ----------------------------------------------------------------
+--
+-- Every callback of an option receives the option's `info`: its key path as an
+-- array, its dotted `path`, its `kind` and its `tree`. One per option, kept for
+-- the tree's lifetime, but built on first use rather than at `Define`: a tree
+-- whose options are never read or shown (an options screen never opened)
+-- never pays for them. A record built by an older revision already has one.
+
+---The `info` of `record`, built the first time it is asked for.
+---@param record table
+---@return OptionsKit.Info
+local function infoOf(record)
+  local info = rawget(record, "_info")
+  if info ~= nil then
+    return info
+  end
+  -- The keys from the root down: collect them up the parent chain, then
+  -- reverse them into the array part.
+  local depth = rawget(record, "_depth")
+  info = { path = rawget(record, "_path"), kind = rawget(record, "_kind") }
+  local node = record
+  for index = depth, 1, -1 do
+    info[index] = rawget(node, "_key")
+    node = rawget(node, "_parent")
+  end
+  -- `node` is now the root, which alone keeps the tree.
+  info.tree = rawget(node, "_tree")
+  rawset(record, "_info", info)
+  return info
+end
+
 -- Schemas --------------------------------------------------------------------
 
 local UNIT_INTERVAL = SchemaKit.number({ min = 0, max = 1 })
 
+-- Shared schemas. A value option's schema depends only on its kind and a few
+-- plain fields (`tristate`, `min`/`max`, `pattern`, `hasAlpha`, the keys of a
+-- `values` table), and a sealed schema is immutable, so every option with the
+-- same inputs shares one: `Define` builds a schema only for inputs it has not
+-- seen yet in this session, instead of one node and one sealed record per
+-- option. A select or multiselect over a values function is the exception: its
+-- check calls that option's function, so it keeps a schema of its own. Keys of
+-- a `values` table are cached in a trie (one level per sorted key), so a hit
+-- builds no key string. A file-level cache, not package state: a newer revision
+-- starts empty, and the trees an older one built keep their own schemas.
+local SharedSchemas = {
+  -- Fixed schemas by name, built on first use.
+  fixed = {},
+  -- `min` to `max` to the range schema.
+  ranges = {},
+  -- `pattern` to the input schema.
+  patterns = {},
+  -- The trie roots of select and multiselect key sets; a set's schema sits
+  -- under the `SharedSchemas.LEAF` key of its last key's node.
+  selects = {},
+  multiselects = {},
+  -- The trie key of a leaf: a table, so it never equals an option key.
+  LEAF = {},
+}
+
+---The shared schema `name`, built by `build` the first time.
+---@param name string
+---@param build fun(): table the unsealed node
+---@return table schema
+function SharedSchemas.fixedSchema(name, build)
+  local schema = SharedSchemas.fixed[name]
+  if schema == nil then
+    schema = SchemaKit:Seal(build())
+    SharedSchemas.fixed[name] = schema
+  end
+  return schema
+end
+
+---The trie node of a sorted key list under `root`, created as needed.
+---@param root table
+---@param keys (string|number)[]
+---@return table node
+function SharedSchemas.keySetNode(root, keys)
+  local node = root
+  for index = 1, #keys do
+    local key = keys[index]
+    local child = node[key]
+    if child == nil then
+      child = {}
+      node[key] = child
+    end
+    node = child
+  end
+  return node
+end
+
+---The shared schema of a range's bounds. A NaN never reaches here: `Define`
+---refuses it first, and it could not be a table key.
+---@param min number
+---@param max number
+---@return table schema
+function SharedSchemas.range(min, max)
+  local byMax = SharedSchemas.ranges[min]
+  if byMax == nil then
+    byMax = {}
+    SharedSchemas.ranges[min] = byMax
+  end
+  local schema = byMax[max]
+  if schema == nil then
+    schema = SchemaKit:Seal(SchemaKit.number({ min = min, max = max }))
+    byMax[max] = schema
+  end
+  return schema
+end
+
+---The shared schema of an input's pattern. SchemaKit validates the pattern
+---and would report it at its own line; the protected call moves the report to
+---the caller of `Define`.
+---@param pattern string
+---@param label string
+---@param level integer
+---@return table schema
+function SharedSchemas.input(pattern, label, level)
+  local schema = SharedSchemas.patterns[pattern]
+  if schema == nil then
+    local built, result = pcall(SchemaKit.string, { pattern = pattern })
+    if not built then
+      error(label .. ".pattern is not a valid Lua pattern", level)
+    end
+    schema = SchemaKit:Seal(result)
+    SharedSchemas.patterns[pattern] = schema
+  end
+  return schema
+end
+
+---The shared schema of a select or multiselect over a values table with
+---`keys` (sorted).
+---@param kind OptionsKit.Kind
+---@param keys (string|number)[]
+---@return table schema
+function SharedSchemas.keySet(kind, keys)
+  local root = kind == KIND_SELECT and SharedSchemas.selects or SharedSchemas.multiselects
+  local node = SharedSchemas.keySetNode(root, keys)
+  local schema = node[SharedSchemas.LEAF]
+  if schema == nil then
+    local keyNode = SchemaKit.enum(keys)
+    if kind == KIND_SELECT then
+      schema = SchemaKit:Seal(keyNode)
+    else
+      schema =
+        SchemaKit:Seal(SchemaKit.map({ keys = keyNode, values = SchemaKit.boolean(), max = #keys }))
+    end
+    node[SharedSchemas.LEAF] = schema
+  end
+  return schema
+end
+
 ---Build the check a `select` key must pass when the values come from a
 ---function: the key is a string or number the function's current table has.
+---The option's `info` is read when the check runs, since it is built on first
+---use (see `infoOf`).
 ---@param valuesFunction fun(info: OptionsKit.Info): table
----@param info OptionsKit.Info
+---@param record table the option's record
 ---@return fun(value: any): boolean
-local function newDynamicKeyCheck(valuesFunction, info)
+local function newDynamicKeyCheck(valuesFunction, record)
   return function(value)
     local valueType = type(value)
     if valueType ~= "string" and valueType ~= "number" then
       return false
     end
-    local values = valuesFunction(info)
+    local values = valuesFunction(infoOf(record))
     return type(values) == "table" and type(values[value]) ~= "nil"
   end
 end
 
----Build the SchemaKit node describing the keys of a `select` or `multiselect`.
----@param keys (string|number)[]|false
----@param valuesFunction function|false
----@param info OptionsKit.Info
----@return table node
-local function buildKeyNode(keys, valuesFunction, info)
-  if keys then
-    return SchemaKit.enum(keys)
-  end
-  ---@cast valuesFunction fun(info: OptionsKit.Info): table
-  return SchemaKit.custom(
-    newDynamicKeyCheck(valuesFunction, info),
-    "a key of the values of " .. info.path
-  )
-end
-
----Build the sealed schema of a value option.
+---Build the sealed schema of a value option: a shared one (above), or, over a
+---values function, one of its own.
 ---@param kind OptionsKit.Kind
 ---@param spec table
 ---@param keys (string|number)[]|false keys of a `select`/`multiselect` values table
 ---@param valuesFunction function|false a `select`/`multiselect` values function
----@param info OptionsKit.Info
+---@param record table the option's record
 ---@param dynamicMax integer the map bound of a multiselect over a values function
 ---@param label string
 ---@param level integer
 ---@return table schema
-local function buildSchema(kind, spec, keys, valuesFunction, info, dynamicMax, label, level)
-  local node
+local function buildSchema(kind, spec, keys, valuesFunction, record, dynamicMax, label, level)
   if kind == KIND_TOGGLE then
-    node = SchemaKit.boolean()
     if spec.tristate then
-      node = SchemaKit.optional(node)
+      return SharedSchemas.fixedSchema("tristate", function()
+        return SchemaKit.optional(SchemaKit.boolean())
+      end)
     end
+    return SharedSchemas.fixedSchema("toggle", SchemaKit.boolean)
   elseif kind == KIND_RANGE then
-    node = SchemaKit.number({ min = spec.min, max = spec.max })
-  elseif kind == KIND_SELECT then
-    node = buildKeyNode(keys, valuesFunction, info)
-  elseif kind == KIND_MULTISELECT then
-    node = SchemaKit.map({
-      keys = buildKeyNode(keys, valuesFunction, info),
-      values = SchemaKit.boolean(),
-      max = keys and #keys or dynamicMax,
-    })
-  elseif kind == KIND_INPUT then
-    if type(spec.pattern) == "nil" then
-      node = SchemaKit.string()
-    else
-      -- SchemaKit validates the pattern and would report it at this
-      -- line; the protected call moves the report to the caller.
-      local built, result = pcall(SchemaKit.string, { pattern = spec.pattern })
-      if not built then
-        error(label .. ".pattern is not a valid Lua pattern", level)
-      end
-      node = result
+    return SharedSchemas.range(spec.min, spec.max)
+  elseif kind == KIND_SELECT or kind == KIND_MULTISELECT then
+    if keys then
+      return SharedSchemas.keySet(kind, keys)
     end
+    ---@cast valuesFunction fun(info: OptionsKit.Info): table
+    local keyNode = SchemaKit.custom(
+      newDynamicKeyCheck(valuesFunction, record),
+      "a key of the values of " .. rawget(record, "_path")
+    )
+    if kind == KIND_SELECT then
+      return SchemaKit:Seal(keyNode)
+    end
+    return SchemaKit:Seal(
+      SchemaKit.map({ keys = keyNode, values = SchemaKit.boolean(), max = dynamicMax })
+    )
+  elseif kind == KIND_INPUT and type(spec.pattern) ~= "nil" then
+    return SharedSchemas.input(spec.pattern, label, level + 1)
   elseif kind == KIND_COLOR then
-    local fields = { r = UNIT_INTERVAL, g = UNIT_INTERVAL, b = UNIT_INTERVAL }
     if spec.hasAlpha then
-      fields.a = UNIT_INTERVAL
+      return SharedSchemas.fixedSchema("colorAlpha", function()
+        return SchemaKit.table({
+          fields = { r = UNIT_INTERVAL, g = UNIT_INTERVAL, b = UNIT_INTERVAL, a = UNIT_INTERVAL },
+        })
+      end)
     end
-    node = SchemaKit.table({ fields = fields })
-  else
-    node = SchemaKit.string()
+    return SharedSchemas.fixedSchema("color", function()
+      return SchemaKit.table({
+        fields = { r = UNIT_INTERVAL, g = UNIT_INTERVAL, b = UNIT_INTERVAL },
+      })
+    end)
   end
-  return SchemaKit:Seal(node)
+  -- An input without a pattern, and a keybinding.
+  return SharedSchemas.fixedSchema("string", SchemaKit.string)
 end
 
 -- Building -------------------------------------------------------------------
@@ -926,25 +1080,6 @@ local function compareRecords(left, right)
   return rawget(left, "_key") < rawget(right, "_key")
 end
 
----Build the info table of an option: its key path, dotted path, kind and tree.
----@param parent table|false parent record
----@param key string|false
----@param path string
----@param kind OptionsKit.Kind
----@param tree OptionsKit.Tree
----@return OptionsKit.Info
-local function newInfo(parent, key, path, kind, tree)
-  local info = { path = path, kind = kind, tree = tree }
-  if parent then
-    local parentInfo = rawget(parent, "_info")
-    for index = 1, #parentInfo do
-      info[index] = parentInfo[index]
-    end
-    info[#parentInfo + 1] = key
-  end
-  return info
-end
-
 ---Fill the value fields of a record: schema, reader and writer, validator.
 ---@param context table build context
 ---@param record table
@@ -953,7 +1088,6 @@ end
 ---@param level integer
 local function buildValueFields(context, record, spec, label, level)
   local kind = rawget(record, "_kind")
-  local info = rawget(record, "_info")
 
   if type(spec.bind) ~= "nil" then
     if type(spec.get) ~= "nil" or type(spec.set) ~= "nil" then
@@ -982,7 +1116,9 @@ local function buildValueFields(context, record, spec, label, level)
   end
 
   checkOptionalFunction(spec.validate, label .. ".validate", level + 1)
-  rawset(record, "_validate", spec.validate or false)
+  -- Absent fields stay `nil` rather than `false`: a value record then fits
+  -- the 16 hash slots its constructor sized, instead of growing to 32.
+  rawset(record, "_validate", spec.validate)
 
   local keys = false ---@type (string|number)[]|false
   local valuesFunction = false ---@type function|false
@@ -996,18 +1132,26 @@ local function buildValueFields(context, record, spec, label, level)
     if type(values) == "function" then
       valuesFunction = values
     elseif type(values) == "table" then
-      copied, keys = copyValues(values, context.maxDynamicEntries, label .. ".values", level + 1)
-      table.sort(keys, function(left, right)
-        if type(left) == type(right) then
-          return left < right
-        end
-        return type(left) == "number"
-      end)
+      -- One checked copy per values table and `Define`: options that share
+      -- a table share its copy and sorted keys, which nothing modifies.
+      local shared = context.valueCopies[values]
+      if shared == nil then
+        local copy, sortedKeys =
+          copyValues(values, context.maxDynamicEntries, label .. ".values", level + 1)
+        table.sort(sortedKeys, compareValueKeys)
+        shared = { copy = copy, keys = sortedKeys }
+        context.valueCopies[values] = shared
+      end
+      copied, keys = shared.copy, shared.keys
     else
       error(label .. ".values must be a table or a function", level)
     end
     rawset(record, "_values", copied or valuesFunction)
-    rawset(record, "_sorting", copySorting(spec.sorting, copied, label .. ".sorting", level + 1))
+    rawset(
+      record,
+      "_sorting",
+      copySorting(spec.sorting, copied, label .. ".sorting", level + 1) or nil
+    )
   elseif kind == KIND_INPUT then
     checkOptionalString(spec.pattern, label .. ".pattern", level + 1)
     checkOptionalBoolean(spec.multiline, label .. ".multiline", level + 1)
@@ -1023,28 +1167,33 @@ local function buildValueFields(context, record, spec, label, level)
   rawset(
     record,
     "_schema",
-    buildSchema(kind, spec, keys, valuesFunction, info, dynamicMax, label, level + 1)
+    buildSchema(kind, spec, keys, valuesFunction, record, dynamicMax, label, level + 1)
   )
-  -- Prebuilt so a failing `Set` names the option without building a string
-  -- on the valid path.
-  rawset(record, "_setArgument", "OptionsKit.Tree:Set " .. rawget(record, "_path"))
 end
+
+-- The hints of every option that sets none: one shared empty table, which
+-- nothing writes to (`Describe` only reads the hints).
+local NO_HINTS = {}
 
 ---Copy the renderer hints of a kind into the record, for `Describe`.
 ---@param record table
 ---@param spec table
 local function copyHints(record, spec)
   local kind = rawget(record, "_kind")
-  local hints = {}
+  local hints = nil
   local fields = KIND_FIELDS[kind]
   for field in pairs(fields) do
     -- `args` becomes the children, and `values`/`sorting` are copied on
     -- their own; everything else is a plain value.
     if field ~= "args" and field ~= "values" and field ~= "sorting" and field ~= "func" then
-      hints[field] = spec[field]
+      local value = spec[field]
+      if type(value) ~= "nil" then
+        hints = hints or {}
+        hints[field] = value
+      end
     end
   end
-  rawset(record, "_hints", hints)
+  rawset(record, "_hints", hints or NO_HINTS)
 end
 
 ---When `spec` is a group `ProfileOptions` returned, remember its link and
@@ -1147,19 +1296,24 @@ buildOption = function(context, spec, parent, key, label, level)
     path = parentPath == "" and key or parentPath .. "." .. key
   end
 
+  -- `_desc`, `_disabled` and `_hidden` stay `nil` when absent, and `_info`
+  -- is built on first use (`infoOf`), so a value option's record keeps to
+  -- the 16 hash slots this constructor sizes. Only the root keeps the tree.
   local record = {
     _kind = kind,
     _key = key,
     _path = path,
     _depth = depth,
     _parent = parent,
-    _info = newInfo(parent, key, path, kind, context.tree),
     _name = spec.name or context.addonName,
-    _desc = spec.desc or false,
+    _desc = spec.desc,
     _order = spec.order or DEFAULT_ORDER,
-    _disabled = spec.disabled or false,
-    _hidden = spec.hidden or false,
+    _disabled = spec.disabled,
+    _hidden = spec.hidden,
   }
+  if isRoot then
+    rawset(record, "_tree", context.tree)
+  end
   copyHints(record, spec)
 
   if kind == KIND_GROUP then
@@ -1306,7 +1460,7 @@ local function readValue(tree, record, methodName, level)
     end
     return container[rawget(record, "_bindKeys")[count]]
   end
-  return rawget(record, "_get")(rawget(record, "_info"))
+  return rawget(record, "_get")(infoOf(record))
 end
 
 ---Write a bound value through the database's views. A missing intermediate
@@ -1366,7 +1520,7 @@ local function writeValue(tree, record, value, methodName, level)
     writeBound(tree, record, value, methodName, level + 1)
     return
   end
-  rawget(record, "_set")(rawget(record, "_info"), value)
+  rawget(record, "_set")(infoOf(record), value)
 end
 
 ---Run the option's own `validate`. Returns `true`, or `false` and a message.
@@ -1379,7 +1533,7 @@ local function runValidate(record, value)
   if not validate then
     return true, nil
   end
-  local accepted, message = validate(rawget(record, "_info"), value)
+  local accepted, message = validate(infoOf(record), value)
   if not isSecret(accepted) and accepted == true then
     return true, nil
   end
@@ -1403,7 +1557,7 @@ local function effectiveFlag(record, field)
     -- 12.x); testing a secret for truth raises, so a secret answer counts
     -- as "no", the answer that keeps the option usable.
     if flag then
-      local answer = flag(rawget(record, "_info"))
+      local answer = flag(infoOf(record))
       if not isSecret(answer) and answer then
         return true
       end
@@ -1473,7 +1627,12 @@ local function treeSet(self, path, value)
   if isSecret(value) then
     error("OptionsKit.Tree:Set value must not be a secret value", 2)
   end
-  rawget(record, "_schema"):Assert(value, rawget(record, "_setArgument"), 2)
+  local schema = rawget(record, "_schema")
+  -- `Check` first, so the valid path builds no label: `Assert` runs only to
+  -- raise the refusal at the caller's line, naming the option.
+  if not schema:Check(value) then
+    schema:Assert(value, "OptionsKit.Tree:Set " .. rawget(record, "_path"), 2)
+  end
   local accepted, message = runValidate(record, value)
   if not accepted then
     return false, message
@@ -1540,7 +1699,7 @@ local function treeExecute(self, path)
   if rawget(record, "_kind") ~= KIND_EXECUTE then
     error('OptionsKit.Tree:Execute path "' .. path .. '" is not an execute option', 2)
   end
-  rawget(record, "_func")(rawget(record, "_info"))
+  rawget(record, "_func")(infoOf(record))
 end
 
 ---Whether the option at `path`, or a group above it, is disabled; a bound
@@ -1648,17 +1807,16 @@ end
 
 ---Copy a `values` table, calling the function first when the values are one.
 ---@param record table
+---@param methodName string the public method describing, named in its errors
 ---@param level integer
 ---@return table
-local function describeValues(record, level)
+local function describeValues(record, methodName, level)
   local values = rawget(record, "_values")
   if type(values) == "function" then
-    values = values(rawget(record, "_info"))
+    values = values(infoOf(record))
     if type(values) ~= "table" then
       error(
-        'OptionsKit.Tree:Describe values function of "'
-          .. rawget(record, "_path")
-          .. '" returned no table',
+        methodName .. ' values function of "' .. rawget(record, "_path") .. '" returned no table',
         level
       )
     end
@@ -1673,9 +1831,10 @@ end
 ---Build the description of `record` and everything below it.
 ---@param tree OptionsKit.Tree
 ---@param record table
+---@param methodName string the public method describing, named in its errors
 ---@param level integer
 ---@return OptionsKit.Description
-local function describeRecord(tree, record, level)
+local function describeRecord(tree, record, methodName, level)
   local kind = rawget(record, "_kind")
   local node = {
     kind = kind,
@@ -1692,12 +1851,10 @@ local function describeRecord(tree, record, level)
   end
   local desc = rawget(record, "_desc")
   if type(desc) == "function" then
-    desc = desc(rawget(record, "_info"))
+    desc = desc(infoOf(record))
     if type(desc) ~= "string" then
       error(
-        'OptionsKit.Tree:Describe desc function of "'
-          .. rawget(record, "_path")
-          .. '" returned no string',
+        methodName .. ' desc function of "' .. rawget(record, "_path") .. '" returned no string',
         level
       )
     end
@@ -1715,20 +1872,19 @@ local function describeRecord(tree, record, level)
     local children = rawget(record, "_children")
     local described = {}
     for index = 1, #children do
-      described[index] = describeRecord(tree, children[index], level + 1)
+      described[index] = describeRecord(tree, children[index], methodName, level + 1)
     end
     node.children = described
   elseif VALUE_KINDS[kind] then
     local bound = rawget(record, "_bindScope") and rawget(tree, "_db") or false
-    node.value =
-      snapshotValue(readValue(tree, record, "OptionsKit.Tree:Describe", level + 1), bound, 1, nil)
+    node.value = snapshotValue(readValue(tree, record, methodName, level + 1), bound, 1, nil)
     node.schema = rawget(record, "_schema"):Describe()
     local bind = rawget(record, "_bind")
     if bind then
       node.bind = bind
     end
     if kind == KIND_SELECT or kind == KIND_MULTISELECT then
-      node.values = describeValues(record, level + 1)
+      node.values = describeValues(record, methodName, level + 1)
       local sorting = rawget(record, "_sorting")
       if sorting then
         local copy = {}
@@ -1749,9 +1905,39 @@ end
 ---@return OptionsKit.Description root
 local function treeDescribe(self)
   validateTree(self, "OptionsKit.Tree:Describe", 3)
-  local root = describeRecord(self, rawget(self, "_root"), 3)
+  local root = describeRecord(self, rawget(self, "_root"), "OptionsKit.Tree:Describe", 3)
   root.addonName = rawget(self, "_addonName")
   return root
+end
+
+---A fresh plain description of the option at `path` and everything below it:
+---exactly the node `Describe` would build for it, so only that option's (or
+---group's) getters, predicates, `desc` and values functions run. `""` names
+---the root and answers what `Describe` answers. `nil` when the tree has no
+---option at `path`; a path that is not a string, or is secret, raises.
+---A command line or a renderer that refreshes one widget calls this instead
+---of describing the whole tree.
+---@param self OptionsKit.Tree
+---@param path string
+---@return OptionsKit.Description|nil node
+local function treeDescribeOption(self, path)
+  validateTree(self, "OptionsKit.Tree:DescribeOption", 3)
+  if isSecret(path) then
+    error("OptionsKit.Tree:DescribeOption path must not be a secret value", 2)
+  end
+  if type(path) ~= "string" then
+    error("OptionsKit.Tree:DescribeOption path must be a string", 2)
+  end
+  if path == "" then
+    local root = describeRecord(self, rawget(self, "_root"), "OptionsKit.Tree:DescribeOption", 3)
+    root.addonName = rawget(self, "_addonName")
+    return root
+  end
+  local record = rawget(rawget(self, "_records"), path)
+  if record == nil then
+    return nil
+  end
+  return describeRecord(self, record, "OptionsKit.Tree:DescribeOption", 3)
 end
 
 -- Profile options ------------------------------------------------------------
@@ -2109,6 +2295,12 @@ end
 ---@return table<string, OptionsKit.Option> args
 local function buildProfileArgs(link)
   local db = link.db
+  -- One predicate for the five options that change the database.
+  local whileReadOnly = disabledWhileReadOnly(link)
+  -- One values function for the copy and delete selects.
+  local function otherProfiles()
+    return otherChoices(link)
+  end
   return {
     intro = {
       type = KIND_DESCRIPTION,
@@ -2123,7 +2315,7 @@ local function buildProfileArgs(link)
         return withCurrentProfile(link, "current.desc")
       end,
       order = 2,
-      disabled = disabledWhileReadOnly(link),
+      disabled = whileReadOnly,
       values = function()
         return currentChoices(link)
       end,
@@ -2140,7 +2332,7 @@ local function buildProfileArgs(link)
       desc = translate(link, "new.desc"),
       usage = translate(link, "new.usage"),
       order = 3,
-      disabled = disabledWhileReadOnly(link),
+      disabled = whileReadOnly,
       get = function()
         return ""
       end,
@@ -2160,10 +2352,8 @@ local function buildProfileArgs(link)
         return withCurrentProfile(link, "copySource.desc")
       end,
       order = 4,
-      disabled = disabledWhileReadOnly(link),
-      values = function()
-        return otherChoices(link)
-      end,
+      disabled = whileReadOnly,
+      values = otherProfiles,
       get = function()
         return isOtherProfile(link, link.copySource) and link.copySource or nil
       end,
@@ -2198,7 +2388,7 @@ local function buildProfileArgs(link)
       end,
       confirm = translate(link, "reset.confirm"),
       order = 6,
-      disabled = disabledWhileReadOnly(link),
+      disabled = whileReadOnly,
       func = function()
         db:ResetProfile()
       end,
@@ -2210,10 +2400,8 @@ local function buildProfileArgs(link)
         return withCurrentProfile(link, "deleteTarget.desc")
       end,
       order = 7,
-      disabled = disabledWhileReadOnly(link),
-      values = function()
-        return otherChoices(link)
-      end,
+      disabled = whileReadOnly,
+      values = otherProfiles,
       get = function()
         return isOtherProfile(link, link.deleteTarget) and link.deleteTarget or nil
       end,
@@ -2491,6 +2679,9 @@ local function define(_, addonName, spec, options)
     label = "OptionsKit:Define tree",
     count = 0,
     records = {},
+    -- A values table to its checked copy and sorted keys, `{ copy, keys }`,
+    -- so the options sharing one table share them.
+    valueCopies = {},
     -- The profile groups met while building, and the path of each.
     profileLinks = {},
     profilePaths = {},
@@ -2584,6 +2775,7 @@ rawset(Tree, "IsDisabled", treeIsDisabled)
 rawset(Tree, "IsHidden", treeIsHidden)
 rawset(Tree, "Walk", treeWalk)
 rawset(Tree, "Describe", treeDescribe)
+rawset(Tree, "DescribeOption", treeDescribeOption)
 rawset(Tree, "OnChange", treeOnChange)
 
 rawset(OptionsKit, "API", API_GENERATION)

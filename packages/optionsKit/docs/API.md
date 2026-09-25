@@ -2,7 +2,7 @@
 
 OptionsKit API generation **1** provides a typed, validated, introspectable options tree with no renderer: what an addon exposes as configurable, how each option is read and written, and what a dialog or a command line needs to present it.
 
-Implementation revision: **6**.
+Implementation revision: **7**.
 
 ## Loading
 
@@ -60,6 +60,7 @@ Tree handle:
 | `IsDisabled(path)`, `IsHidden(path)` | The effective flag, a group's included. | no |
 | `Walk(visitor)` | Visit every option in order. Returns the count. | no |
 | `Describe()` | A fresh plain description of the whole tree. | yes, by design |
+| `DescribeOption(path)` | A fresh plain description of one option, or of a group and everything below it; `nil` when the tree has no such path. Revision 7. | yes, that option's part |
 | `OnChange(callback)` | Connect `callback(tree, path, value)` to every `Set`, `Reset` and, while the tree holds a profile group, its database's profile signals; return a SignalKit connection. | one connection |
 
 The options of a [profile group](#profile-options-optionskitprofileoptionsdb-options) are the exception to the "no" column: their getters, predicates and values functions call `db:GetProfiles()`, which allocates (see [Performance](#performance)).
@@ -402,6 +403,10 @@ A fresh plain table describing the whole tree, built on every call and safe to e
 
 Functions never appear in a description. Everything a renderer does goes back through the tree by `path`.
 
+## `tree:DescribeOption(path)`
+
+The node `Describe` would build for the option at `path`, built alone: the same fields, a `group` with its `children`, and `path` `""` answering exactly what `Describe` answers (the root, with `addonName`). Only the callbacks of that option, or of that group and everything below it, run: its getter, `desc`, values function, and the `disabled` and `hidden` predicates of it and its ancestors. A path the tree does not have answers `nil`; a path that is not a string, or is secret, raises at your line (`OptionsKit.Tree:DescribeOption path must be a string`). A `desc` function that returns no string and a values function that returns no table raise as they do in `Describe`, naming `OptionsKit.Tree:DescribeOption`. Added in revision 7 (version 0.3.0) for a command line that works on one option and for a renderer that refreshes one widget; a caller that must also work with an older OptionsKit tests `type(tree.DescribeOption) == "function"` and falls back to `Describe`, as CommandKit's `BindOptions` does.
+
 ### How a renderer consumes `Describe`
 
 This is the contract WidgetKit's `RenderOptions` and CommandKit's `BindOptions` build on.
@@ -409,9 +414,9 @@ This is the contract WidgetKit's `RenderOptions` and CommandKit's `BindOptions` 
 1. **Build** the screen from `tree:Describe()`: one widget per node, chosen by `kind`; a `group` becomes a page, a tab or — with `inline` — a box inside its parent; children are already in display order. Skip nodes whose `hidden` is `true`; grey out nodes whose `disabled` is `true`.
 2. **Configure** each widget from the node's hints: a slider from `min`/`max`/`step`/`softMin`/`softMax`/`isPercent`; a dropdown over `values` in `sorting` order (or sorted by label when there is none); an edit box that is multi-line for `multiline`; a colour swatch with an alpha slider for `hasAlpha`; a confirmation dialog before `Execute` for `confirm`. `schema` carries the same bounds in SchemaKit's vocabulary for a generic widget.
 3. **Write** through `tree:Set(node.path, value)`. For typed text, call `tree:Validate(node.path, value)` first and show its message; call `Set` only when it returns `true`, and show the message `Set` returns when `validate` refuses. Run buttons with `tree:Execute(node.path)`.
-4. **Refresh** by connecting `tree:OnChange` (and, for bound options, the database's `OnChange`, and `OnProfileChanged` unless the tree holds a profile group), then calling `Describe` again — or, for one widget, `tree:Get(path)`, `tree:IsDisabled(path)` and `tree:IsHidden(path)`, which allocate nothing. Coalesce a burst of changes into one rebuild; `Describe` allocates the whole description each time.
+4. **Refresh** by connecting `tree:OnChange` (and, for bound options, the database's `OnChange`, and `OnProfileChanged` unless the tree holds a profile group), then calling `Describe` again — or, for one widget, `tree:DescribeOption(path)`, or `tree:Get(path)`, `tree:IsDisabled(path)` and `tree:IsHidden(path)`, which allocate nothing. Coalesce a burst of changes into one rebuild; `Describe` allocates the whole description each time.
 
-A command line needs no widgets: `Walk` lists the paths, `Describe` gives each one's help (`name`, `desc`, `usage`, `values`), `Validate` answers a typed value and `Set` stores it.
+A command line needs no widgets: `Walk` lists the paths, `DescribeOption` gives the typed path's help (`name`, `desc`, `usage`, `values`), `Validate` answers a typed value and `Set` stores it.
 
 ## Profile options: `OptionsKit:ProfileOptions(db, options?)`
 
@@ -534,11 +539,12 @@ Every argument failure, schema refusal and bind-path failure reports the line th
 
 | Operation | Cost |
 |---|---|
-| `Define` | Proportional to the tree; allocates the records, the index, the sorted arrays, one `info` per option and one schema per value option. |
+| `Define` | Proportional to the tree; allocates the records, the index and the sorted arrays, and one checked copy per `values` table (options naming the same table share it). Schemas are shared: options of one kind with the same inputs (`tristate`; `min` and `max`; `pattern`; `hasAlpha`; the keys of a `values` table) share one sealed schema for the session, so only inputs not seen before build one; a `select` or `multiselect` over a values function has its own. An option's `info` is built the first time a callback of it runs, then kept. |
 | `Get`, `Set` of a valid value | One map read, one secret probe, the schema check and your callbacks; no allocation by OptionsKit. A bound option adds one table read per path key and one protected call around the write; a `Set` that must create a missing record allocates that nested table. |
 | `Walk` | One pass over a pre-sorted array; no allocation. |
 | `IsDisabled`, `IsHidden` | One check per ancestor; no allocation. |
 | `Describe` | Allocates the whole description; a `desc` function runs per node that has one. |
+| `DescribeOption` | As `Describe`, for that option or group only. |
 | The profile group's callbacks | Allocate: they call `db:GetProfiles()`. An options screen, not a hot path. |
 
 ## Deviations from the planned contract
@@ -549,11 +555,11 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 - **`Set` returns `false, message` when `validate` refuses** instead of raising. A schema refusal is a caller's mistake and raises at the caller's line as planned; a `validate` refusal is a message for the user, and a renderer should not need `pcall` to show it.
 - **`Reset` clears the stored value** instead of writing a default read from the SettingsKit schema. The SettingsKit database surface does not expose its schema, and a cleared value is exactly what SettingsKit's default fallback answers for — without ever writing the default into the saved variables. `Reset` on an option with `get`/`set` raises, since no default exists for OptionsKit to restore.
 - **`options.db` is checked structurally**: `Registry:Find("settingsKit", 1)` must find SettingsKit, and the database must be a table with `OnChange` and `Validate` methods whose bound scopes are tables. SettingsKit API 1 publishes no predicate that recognises its databases.
-- **Additions:** `tree:Validate`, `tree:Execute`, `tree:IsDisabled` and `tree:IsHidden` — a renderer and a command line need to check typed input, run a button and re-evaluate predicates without rebuilding the whole description — and `OptionsKit:Undefine`, `OptionsKit.MAX_OPTIONS`, `OptionsKit.MAX_DEPTH`, `OptionsKit.UNBOUNDED` and the `maxOptions`, `maxDepth` and `maxDynamicEntries` options of `Define`; `OptionsKit:ProfileOptions` (revision 2) and, for it, `desc` as a function evaluated by `Describe`.
+- **Additions:** `tree:Validate`, `tree:Execute`, `tree:IsDisabled`, `tree:IsHidden` and `tree:DescribeOption` (revision 7) — a renderer and a command line need to check typed input, run a button, re-evaluate predicates and describe one option without rebuilding the whole description — and `OptionsKit:Undefine`, `OptionsKit.MAX_OPTIONS`, `OptionsKit.MAX_DEPTH`, `OptionsKit.UNBOUNDED` and the `maxOptions`, `maxDepth` and `maxDynamicEntries` options of `Define`; `OptionsKit:ProfileOptions` (revision 2) and, for it, `desc` as a function evaluated by `Describe`.
 - **Not carried over from AceConfig:** `order` and `name` as functions (no user code inside a sort), inherited `get`/`set`/`handler` (each value option names its own reader and writer or `bind`), `width`, `arg`, and validation at render time (everything is checked once at `Define`). `desc` is the one text a function may supply, because it is read by `Describe` alone.
 
 ## Embedded copies and upgrades
 
-Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 6 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads.
+Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 6 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. Revision 7 builds lighter records (no prebuilt `Set` label, absent fields left out, `info` built on first use, shared schemas and hints) and reads an older record's layout as it is: its `info` table and schema stay the ones it was built with. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads.
 
 Nothing survives `/reload`: trees are defined again when the addon loads.

@@ -81,12 +81,12 @@ What each piece promises:
 - **Checked once, at your line.** `Define` checks the whole tree — every kind's fields, unknown fields, bind paths, bounds — and raises at the line that called it, naming the field (`OptionsKit:Define tree.args.general.args.scale.min must be a number`). The tree is copied: later edits to your tables have no effect.
 - **Typed values.** Every value option gets a SchemaKit schema at `Define`: `toggle` a boolean, `range` a bounded number, `select` one of its keys, `multiselect` a map of keys to booleans, `input` a string matching its pattern, `color` `{ r, g, b[, a] }` in `0..1`, `keybinding` a string. `Set` asserts it at your line, then runs your `validate`, then writes, then fires `OnChange`.
 - **Two ways to store a value.** Your own `get(info)` / `set(info, value)`, or `bind = "profile.path"` into a SettingsKit database; `Reset` restores a bound option's default.
-- **Cheap where it is called often.** `Get`, `Set`, `Walk`, `IsDisabled` and `IsHidden` look paths up in a map built at `Define` and allocate nothing (the profile group's options aside, which ask the database for its profiles); `Describe` allocates by design.
+- **Cheap where it is called often.** `Get`, `Set`, `Walk`, `IsDisabled` and `IsHidden` look paths up in a map built at `Define` and allocate nothing (the profile group's options aside, which ask the database for its profiles); `Describe` allocates by design, and `DescribeOption(path)` describes one option or group when that is all a caller needs. Options of one kind with the same inputs share one schema.
 - **Bounded.** At most 1024 options per tree and 8 keys per path by default, refused at `Define`; `maxOptions`, `maxDepth` (up to 32) and `maxDynamicEntries` open them per tree, and `OptionsKit.UNBOUNDED` lifts the first and last (see *Limits* in the API).
 - **Secrets refused.** `Set` refuses a secret value at your line.
 - **Profiles, ready-made.** `ProfileOptions(db)` returns a group over a SettingsKit database's profiles — choose the current one (the existing profiles and this character's own), create one by name, copy another into it, reset it, delete one, with confirmations and the current profile's name in the descriptions — built from the kinds above, so every renderer shows it. The tree fires `OnChange` when the database's profile changes anywhere. Every string goes through a `localize(key, default)` hook.
 
-See [`docs/API.md`](docs/API.md) for every kind's fields and schema, the `Describe` shape and how a renderer consumes it, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the index, the sorted arrays and the reused `info` tables.
+See [`docs/API.md`](docs/API.md) for every kind's fields and schema, the `Describe` shape and how a renderer consumes it, and [`docs/INTERNALS.md`](docs/INTERNALS.md) for the index, the sorted arrays, the shared schemas and the reused `info` tables.
 
 ## Embedding
 

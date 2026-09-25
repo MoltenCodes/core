@@ -44,20 +44,22 @@ One record per option, created by `buildOption`:
 |---|---|---|
 | `_kind`, `_key`, `_path`, `_depth` | all | Identity. The root has `_key = false`, `_path = ""`, `_depth = 0`. |
 | `_parent` | all | The parent record, or `false` for the root. `IsDisabled` and `IsHidden` follow it. |
-| `_info` | all | The option's `info` table (below). |
-| `_name`, `_desc`, `_order` | all | Sort keys and labels; `_desc` is the string, the `desc` function, or `false` when absent. Only `Describe` reads `_desc`, which is why a function is allowed there and not for `_name`, which `compareRecords` reads. |
-| `_disabled`, `_hidden` | all | `false`, `true` or the predicate. |
-| `_hints` | all | A copy of the kind's plain fields for `Describe` (`min`, `pattern`, `confirm`, …). |
+| `_tree` | the root | The tree, which `infoOf` reads when it builds an `info` (below). |
+| `_info` | all, once used | The option's `info` table (below), built on first use; absent until then. |
+| `_name`, `_desc`, `_order` | all | Sort keys and labels; `_desc` is the string, the `desc` function, or absent. Only `Describe` reads `_desc`, which is why a function is allowed there and not for `_name`, which `compareRecords` reads. |
+| `_disabled`, `_hidden` | all | Absent, `false`, `true` or the predicate. |
+| `_hints` | all | The kind's plain fields that are set, for `Describe` (`min`, `pattern`, `confirm`, …); an option that sets none holds the shared empty `NO_HINTS`. |
 | `_children` | `group` | Child records, sorted. |
-| `_schema` | value kinds | The sealed SchemaKit schema. |
-| `_setArgument` | value kinds | `"OptionsKit.Tree:Set <path>"`, the argument name `Assert` reports, built once so a valid `Set` builds no string. |
-| `_validate` | value kinds | The `validate` function, or `false`. |
+| `_schema` | value kinds | The sealed SchemaKit schema, shared (see [Shared schemas](#shared-schemas)). |
+| `_validate` | value kinds | The `validate` function, or absent. |
 | `_get`, `_set` | unbound value kinds | The accessors. |
 | `_bind`, `_bindScope`, `_bindKeys`, `_bindCount` | bound value kinds | The bind path as written, its scope, its remaining keys as an array, and their count. |
-| `_values`, `_sorting` | `select`, `multiselect` | The copied values table or the values function; the copied sorting array or `false`. |
+| `_values`, `_sorting` | `select`, `multiselect` | The copied values table (shared by the options of one `Define` that name the same table) or the values function; the copied sorting array, or absent. |
 | `_func` | `execute` | The function `Execute` calls. |
 
-Records are never modified after `Define`, which is what "the tree is sealed at Define" means here: the consumer's tables are read once and nothing refers back to them except the functions they contained.
+A field is absent rather than `false` when the option does not set it, and there is no prebuilt `Set` label (revision 6 kept `"OptionsKit.Tree:Set <path>"` in `_setArgument`; `Set` now runs `Check` and builds the label only to raise a refusal): a value option's record then keeps to the 16 hash slots its constructor sizes instead of growing to 32 (about 370 bytes less per value option). Every reader tests these fields with `type` or for truth, so a record an older revision built, with `false` in them, reads the same.
+
+Records are never modified after `Define`, except for `_info`, written once on first use, which is what "the tree is sealed at Define" means here: the consumer's tables are read once and nothing refers back to them except the functions they contained.
 
 ## The path index
 
@@ -77,13 +79,17 @@ Siblings are sorted once, at `Define`, by `compareRecords`: `_order`, then `_nam
 
 `select` keys are sorted (numbers before strings) before they become an `enum`, so the schema and its `Describe` do not depend on hash order either.
 
+## Shared schemas
+
+A value option's schema depends only on its kind and a few plain fields, and a sealed schema is immutable, so `buildSchema` hands out one per distinct input from the file-level `SharedSchemas` cache: `fixed` (toggle, tristate toggle, colour with and without alpha, plain string), `ranges[min][max]`, `patterns[pattern]`, and for a `select` or `multiselect` over a values table a trie over its sorted keys (`selects`, `multiselects`; one level per key, the schema under the `LEAF` key of the last node), so a lookup builds no key string. A `select` or `multiselect` over a values function gets its own schema, because its `SchemaKit.custom` check calls that option's function. A shared schema's failure record is reused by every option holding it, which is safe because OptionsKit reads a failure at once, before any other check can run. The cache is not package state: a newer revision starts empty, and trees an older revision built keep their own schemas.
+
 ## `info` reuse
 
-`newInfo` builds one `info` table per record at `Define`: the parent's key array plus the record's key, and `path`, `kind` and `tree`. Every callback for that option receives this same table, which is why `Get` and `Set` allocate nothing. The price is the documented rule that a consumer must neither keep nor modify it. OptionsKit never writes to an `info` after `Define`; a consumer that does corrupts only its own option's later calls.
+`infoOf` builds one `info` table per record the first time a callback of the option runs: the keys from the root down (read up the `_parent` chain), and `path`, `kind` and `tree` (the root's `_tree`). It stores it in `_info`, so every later callback for that option receives this same table, which is why `Get` and `Set` allocate nothing after the first call. A tree whose options are never read or shown pays nothing for them. A record an older revision built already holds its `info`. The price is the documented rule that a consumer must neither keep nor modify it. OptionsKit never writes to an `info` after `Define`; a consumer that does corrupts only its own option's later calls.
 
 Per-option tables were chosen over one table rewritten per call because callbacks re-enter: a `get` that calls `info.tree:Get(otherPath)` would otherwise have its own `info` rewritten under it.
 
-A `select` or `multiselect` whose values are a function gets a `SchemaKit.custom` check created at `Define`, closing over the values function and the option's `info`; it is the only closure OptionsKit creates per option.
+A `select` or `multiselect` whose values are a function gets a `SchemaKit.custom` check created at `Define`, closing over the values function and the option's record, whose `info` it asks `infoOf` for when it runs; it is the only closure OptionsKit creates per option.
 
 ## Level bookkeeping
 
@@ -91,7 +97,7 @@ A `select` or `multiselect` whose values are a function gets a `SchemaKit.custom
 
 ## Describe
 
-`describeRecord` builds a fresh node per record. A value option's current value goes through `snapshotValue`, which first passes a secret through untouched (at every level, before `type`, `getmetatable` or `pairs` sees it: a copy would touch the secret and hide it from a consumer's own secret check), then copies a table, replacing a table deeper than `MAX_DEPTH` (always 8, whatever the tree's `maxDepth`) with `"<depth exceeded>"` and a table already being copied above it with `"<cycle>"`, so no original table reaches the description, and, for a bound option whose value is a SettingsKit view (`getmetatable` answers `"SettingsKit.View"`), iterates it with `db:Pairs` so the copy holds the view's defaults as well as its saved keys. A view is an empty proxy to `pairs` and writes through to the saved variable, so handing one out would break both "plain" and "safe to edit".
+`describeRecord` builds a fresh node per record. `Describe` starts it at the root; `DescribeOption` at the record the path index names (the root for `""`), so only that subtree's callbacks run. Both pass their method name down for the errors a `desc` or values function causes. A value option's current value goes through `snapshotValue`, which first passes a secret through untouched (at every level, before `type`, `getmetatable` or `pairs` sees it: a copy would touch the secret and hide it from a consumer's own secret check), then copies a table, replacing a table deeper than `MAX_DEPTH` (always 8, whatever the tree's `maxDepth`) with `"<depth exceeded>"` and a table already being copied above it with `"<cycle>"`, so no original table reaches the description, and, for a bound option whose value is a SettingsKit view (`getmetatable` answers `"SettingsKit.View"`), iterates it with `db:Pairs` so the copy holds the view's defaults as well as its saved keys. A view is an empty proxy to `pairs` and writes through to the saved variable, so handing one out would break both "plain" and "safe to edit".
 
 ## Profile groups
 
@@ -111,4 +117,4 @@ The `desc` fields of the group are functions, evaluated by `describeRecord`, and
 
 ## Upgrades
 
-A newer revision inherits `state` as it is: the tree metatable, the prototype and every tree. It rewrites the prototype's methods and `runtimeRevision`. Records carry no methods and no behaviour of their own beyond the consumer's functions and the schema closures, so nothing else needs migrating. A revision that changes the record or tree layout reads `_schema` to upgrade old trees: revision 2 and later add `state.profileGroups` when it is missing and give every layout 1 tree an empty `_profileLinks` (a revision 1 tree cannot hold a profile group), then stamp it layout 2. Revisions 3 to 6 changed no layout. `validateStateBase` checks the fields every revision shares; `validateCurrentState` also requires `profileGroups`, which is what tells a finished revision 2 or later state from one still being committed.
+A newer revision inherits `state` as it is: the tree metatable, the prototype and every tree. It rewrites the prototype's methods and `runtimeRevision`. Records carry no methods and no behaviour of their own beyond the consumer's functions and the schema closures, so nothing else needs migrating. A revision that changes the record or tree layout reads `_schema` to upgrade old trees: revision 2 and later add `state.profileGroups` when it is missing and give every layout 1 tree an empty `_profileLinks` (a revision 1 tree cannot hold a profile group), then stamp it layout 2. Revisions 3 to 6 changed no layout. Revision 7 changes the record layout without migrating old records (above): every reader accepts both. `validateStateBase` checks the fields every revision shares; `validateCurrentState` also requires `profileGroups`, which is what tells a finished revision 2 or later state from one still being committed.

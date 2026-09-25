@@ -594,6 +594,7 @@ facade:Test(
       "IsHidden",
       "Walk",
       "Describe",
+      "DescribeOption",
       "OnChange",
     }) do
       ctx:Expect(type(rawget(prototype, methodName))):ToBe("function")

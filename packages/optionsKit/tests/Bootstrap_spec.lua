@@ -232,6 +232,51 @@ describe("OptionsKit bootstrap", function()
     assert.is_true(store.enabled)
   end)
 
+  it("upgrades a revision 6 state in place and serves its record layout", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    require("SignalKit")
+    require("SchemaKit")
+    local OptionsKit = TestEnv.LoadRevision(6)
+    local store = { enabled = false }
+    local tree = OptionsKit:Define("Addon", toggleTree(store))
+    -- Revision 6 built every record with its `info`, a prebuilt `Set`
+    -- label, `false` for absent fields and hints of its own, and kept the
+    -- tree on no record. The working file loaded as revision 6 builds the
+    -- new layout, so the old one is laid over it here.
+    local oldInfo = { path = "enabled", kind = "toggle", tree = tree }
+    oldInfo[1] = "enabled"
+    local record = rawget(rawget(tree, "_records"), "enabled")
+    rawset(record, "_info", oldInfo)
+    rawset(record, "_setArgument", "OptionsKit.Tree:Set enabled")
+    rawset(record, "_validate", false)
+    rawset(record, "_desc", false)
+    rawset(record, "_disabled", false)
+    rawset(record, "_hidden", false)
+    rawset(record, "_hints", {})
+    local root = rawget(tree, "_root")
+    rawset(root, "_tree", nil)
+    rawset(root, "_info", { path = "", kind = "group", tree = tree })
+
+    -- The shipped file, at its own revision, loads over revision 6.
+    local upgraded = require("OptionsKit")
+    assert.are.equal(OptionsKit, upgraded)
+    assert.is_true(upgraded.REVISION > 6)
+    assert.are.equal(tree, upgraded:Get("Addon"))
+    assert.is_true(tree:Set("enabled", true))
+    assert.is_true(store.enabled)
+    assert.is_false(tree:IsDisabled("enabled"))
+    assert.are.same(tree:Describe().children[1], tree:DescribeOption("enabled"))
+    assert.are.equal(oldInfo, rawget(record, "_info"))
+    TestEnv.expectErrorContaining(
+      "OptionsKit.Tree:Set enabled: expected boolean, found string",
+      function()
+        tree:Set("enabled", "yes")
+      end
+    )
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()
