@@ -48,7 +48,12 @@ tooling/
 │   └── coverage-floors.json       # each package's line-coverage floor, a whole percent
 ├── tests/                         # Python unit tests for repository tooling
 └── validation/
+    ├── flavour_api.py             # every client API a Kit uses exists on every promised flavour, or is guarded
+    ├── flavour_api_allowlist.json # reviewed exceptions to flavour_api, each with its guard and reason
+    ├── host_names.json            # Lua library, framework globals and undocumented client names, with evidence
     ├── interface_numbers.py       # reads the supported-client table, prints the .toc line
+    ├── lua_references.py          # finds host references in Lua and decides whether each use is guarded
+    ├── lua_syntax.py              # Lua 5.1 lexer and parser
     ├── supported_clients.json     # the supported `## Interface` numbers, by flavour
     ├── validate_manifests.py      # manifest schema and dependency graph checks
     └── validate_repository.py     # layout, indexes, packaging, editor configuration, Interface and link checks
@@ -276,6 +281,143 @@ To update the numbers after a patch:
 4. Run `python3 -m tooling.validation.validate_repository` until it passes.
 
 The update is one commit. [`RELEASES.md`](RELEASES.md) makes it a release step.
+
+## Client API availability per flavour
+
+`python3 -m tooling.validation.flavour_api` is the standing evidence that the
+Kits run on the clients the project promises but cannot play: for every runtime
+package and every promised flavour in
+[`supported_clients.json`](../tooling/validation/supported_clients.json), every
+client (host) name a Kit reaches must exist in that flavour's captured
+documentation under
+[`packages/apiKit/metadata/<flavour>/`](../packages/apiKit/metadata), or be used
+only behind a test that handles its absence. CI runs it in the `repository`
+job; it reads committed files only.
+
+```bash
+python3 -m tooling.validation.flavour_api                      # every package
+python3 -m tooling.validation.flavour_api --package clientKit  # one package
+python3 -m tooling.validation.flavour_api --verbose            # also list guarded names
+```
+
+Flavours come from the supported-client table: Retail, Mists of Pandaria
+Classic and Classic Era are promised and fail the gate; the captured PTR and
+beta flavours are reported and never fail; the Anniversary client has no
+captured metadata and is named as not checked. A promised client without
+captured metadata is an error, and so is a supported client the gate's
+`CLIENT_FLAVOURS` table does not map, so a new client cannot pass unchecked.
+
+### How references are found
+
+[`lua_syntax.py`](../tooling/validation/lua_syntax.py) parses each file of
+`packages/*/src/` as Lua 5.1 (comments and strings never produce a reference),
+and [`lua_references.py`](../tooling/validation/lua_references.py) finds every
+way a Kit reaches the client:
+
+- a free name (`pairs`, `string` in `string.format`);
+- a read through the global table: `rawget(_G, "CreateFrame")`, `_G.X`,
+  `_G["X"]` or a local alias of `_G`; a never-reassigned string constant counts
+  as the literal (`rawget(_G, PROJECT_ID_GLOBAL)`);
+- a call to a reader helper: any local function that performs such a read on
+  one of its parameters, directly or through another helper (`readGlobal`,
+  `readHostFunction`, `readNamespaceFunction`). Helpers are discovered by
+  analysing their bodies, so a new Kit's helper needs no configuration;
+- a field of such a value (`C_Timer.After`, `rawget(chatInfo, name)`,
+  `Enum.SendAddonMessageResult`);
+- a widget method: `x:Method()` or `x.Method` where `Method` is a script-object
+  method in any captured flavour;
+- an event: a string literal equal to a documented event, or any upper-case
+  name passed to `Connect`, `Once`, `ConnectUnit`, `OnceUnit`, `RegisterEvent`,
+  `RegisterUnitEvent`, `UnregisterEvent` or `IsEventRegistered`.
+
+A name computed at run time (`readGlobal("SLASH_" .. key)`) is a *dynamic*
+reference: it can never be looked up, so it passes only when guarded. The
+generated apiKit flavour files are not scanned: each is generated from its own
+flavour's metadata, loaded only on that flavour, and kept equal to the metadata
+by `tooling.api.generate --check`.
+
+### How a guard is recognised
+
+A value read from the client is *used* when it is called, indexed, operated on,
+or escapes (passed as an argument, returned, stored in a table). A use is
+guarded when a test that proves the value present dominates it within the same
+function:
+
+- `if type(x) == "function" then x() end`, `if x then`, `if x ~= nil then`,
+  and any `and` containing such a test; `x and x()`;
+- an early exit: `if type(x) ~= "function" then return end` (or `error`,
+  `break`, or an `or` containing such a test) guards what follows;
+- a test stored in a local assigned once:
+  `local setup = type(picker) == "table" and picker.Setup or nil` followed by
+  `if not setup then return end`;
+- assigning a certain value (`x = function() end`), and `pcall(x, ...)`;
+- a read that only ever appears inside a test is a probe and needs nothing more;
+- `a or b` makes `b` an alternative: the use is satisfied on a flavour that
+  provides either (`table.unpack or unpack`).
+
+Facts never cross into a nested function, die when their variable is
+reassigned, and do not survive into a loop that could invalidate them. The
+known limits: a table changed through a call is not seen to invalidate facts
+about it; method receivers are not typed, so a Kit object with a method named
+like a widget method is reported as that method; a guard in another function
+(a value stored in a table and tested by its reader) is not followed; and events
+built at run time are not seen. Each of those is resolved by an allow-list
+entry, never by weakening the check.
+
+### When a name is present
+
+A name is present on a flavour when that flavour's metadata documents it (a
+global function, a namespace table, a namespaced function, an `Enum` table or
+field, a script-object method, an event), or when
+[`host_names.json`](../tooling/validation/host_names.json) lists it for that
+flavour. That table holds the Lua standard library the client ships (from the
+Lua 5.1 manual and the client's documented library list, with the source
+recorded), the globals the framework itself creates (`MoltenCodes`, the
+Registry state key, `wow`; never reported), and client names the documentation
+leaves out, each with the file and line of the client's own interface code, at
+the commit the flavour's metadata was captured from, that proves it. An entry is
+added only for a name a Kit uses unguarded, and only with that evidence per
+flavour.
+
+### The allow-list
+
+[`flavour_api_allowlist.json`](../tooling/validation/flavour_api_allowlist.json)
+records the reviewed exceptions: a use the code does handle, in a way the
+analysis cannot prove. An entry names the package, the API exactly as the report
+prints it, the flavours it applies to, the guarding `path:line` inside that
+package's `src/`, and a one-line reason:
+
+```json
+{
+  "package": "clientKit",
+  "api": "GetSpellInfo",
+  "flavours": ["retail", "classic-mop", "classic-era", "ptr", "beta"],
+  "guard": "packages/clientKit/src/ClientKit.lua:831",
+  "reason": "bindHostFunctions stores the legacy global (or false) in the host table; its only reader returns nil before calling it when the entry is false."
+}
+```
+
+An entry is validated as strictly as the code: an unknown key, flavour or
+package, a guard outside the package or past the end of the file, a duplicate,
+an entry whose package no longer references the API, and an entry for a flavour
+where the API is now present or provably guarded all fail the gate. An entry
+can therefore only exist while it is needed.
+
+### Reading the report
+
+Each package lists, per flavour, how many host names are *present*, *guarded*
+(absent there, every use protected), *fallback* (absent, but every unguarded use
+has an `or` alternative the flavour provides), *allow-listed* and *missing*.
+Missing names are listed with every unguarded use as `file:line (why)`, and
+allow-listed ones with their guard and reason; `--verbose` adds the guarded and
+fallback names. The command exits 1 when a name is missing on a promised
+flavour or an input (a table, the metadata, a source file) is invalid.
+
+To fix a missing name: guard the use (a type or nil test, a ClientKit
+capability, a flavour branch); if the client does provide the name but its
+documentation does not, add it to `host_names.json` with evidence; only when the
+code handles the absence in a way this check cannot prove, add an allow-list
+entry.
 
 ## API metadata tooling
 
@@ -720,7 +862,7 @@ timeout:
 | `lint` | `python3 -m tooling.lint`, both scopes |
 | `package` | `tooling.package.build --all --verify`, then `sha256sum --check --strict`; on a push to `main`, the bundle is uploaded as the artefact `MoltenCodes-<commit>` |
 | `spell` | `python3 -m tooling.spell --require` and the cspell integration tests |
-| `repository` | repository validation, `tooling.api.generate --all --check`, the tooling unit tests, `compileall` |
+| `repository` | repository validation, `tooling.api.generate --all --check`, `python3 -m tooling.validation.flavour_api`, the tooling unit tests, `compileall` |
 | `commits` | pull requests only: `python3 -m tooling.ci.check_commits` over the new commits and the title |
 | `secrets` | gitleaks over the whole history, with found values redacted from the log |
 | `workflows` | actionlint (and the shellcheck it runs) over every workflow |

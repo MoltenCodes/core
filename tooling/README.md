@@ -51,6 +51,15 @@ Print the supported `## Interface` line from `validation/supported_clients.json`
 python3 -m tooling.validation.interface_numbers
 ```
 
+Check that every client API each runtime package uses exists on every promised
+client flavour, or is guarded against its absence (see `docs/TOOLING.md`,
+"Client API availability per flavour"):
+
+```bash
+python3 -m tooling.validation.flavour_api
+python3 -m tooling.validation.flavour_api --package clientKit --verbose
+```
+
 Run the `apiKit` metadata pipeline (see `docs/TOOLING.md`, "API metadata
 tooling"): print the flavour table, list a flavour's mirror branches, capture
 one flavour's API documentation tables outside the repository, normalise a

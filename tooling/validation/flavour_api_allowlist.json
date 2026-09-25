@@ -1,0 +1,11 @@
+{
+  "entries": [
+    {
+      "package": "clientKit",
+      "api": "GetSpellInfo",
+      "flavours": ["retail", "classic-mop", "classic-era", "ptr", "beta"],
+      "guard": "packages/clientKit/src/ClientKit.lua:831",
+      "reason": "bindHostFunctions stores the legacy global (or false) in the host table; its only reader returns nil before calling it when the entry is false."
+    }
+  ]
+}

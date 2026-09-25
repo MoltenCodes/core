@@ -378,6 +378,14 @@ jobs:
       - name: Check generated apiKit outputs are current
         run: python3 -m tooling.api.generate --all --check
 
+      # Every client API a runtime package uses must exist in the captured
+      # documentation of every promised flavour, or be guarded against its
+      # absence: the standing evidence for the Classic clients no one in the
+      # project can run. It reads only committed files; PTR and beta are
+      # reported and never fail.
+      - name: Check client API availability on every promised flavour
+        run: python3 -m tooling.validation.flavour_api
+
       - name: Run tooling unit tests
         run: python3 -m unittest discover -s tooling/tests -p "test_*.py"
 
