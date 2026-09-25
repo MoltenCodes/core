@@ -460,11 +460,15 @@ python3 -m tooling.client.install --wow-dir DIR [--flavour-dir _retail_] --remov
 - **Remove** deletes `MoltenCodes`, `MoltenCodesTest` and every
   `MoltenCodesTest_*` entry of `AddOns`, and every `MoltenCodesTest.lua`,
   `MoltenCodesTest_*.lua` and their `.bak` copies under `WTF/Account/*/SavedVariables/` and
-  `WTF/Account/*/*/*/SavedVariables/`, so no saved results stay behind.
+  `WTF/Account/*/*/*/SavedVariables/`, so no saved results stay behind. It
+  also drops the lines naming those addons from every `WTF/Account/*/AddOns.txt`
+  and `WTF/Account/*/*/*/AddOns.txt`, the client's addon list, which keeps a
+  line for an addon after its folder is gone; every other line, its order and
+  its line ending stay as the client wrote them.
 - **Safety.** Both refuse, with exit status 1, when the `AddOns` folder does
   not exist. A symbolic link is removed as a link and never followed; a
-  saved-variables folder reached through a link out of the game folder is
-  reported as skipped. `--dry-run` prints every path it would install or
+  saved-variables folder or `AddOns.txt` reached through a link out of the
+  game folder is reported as skipped. `--dry-run` prints every path it would install or
   remove and changes nothing.
 
 `tooling/tests/test_client_install.py` runs both against a fake game folder in

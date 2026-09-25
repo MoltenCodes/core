@@ -84,6 +84,15 @@ SAVED_VARIABLES_PATTERNS = (
     "WTF/Account/*/*/*/SavedVariables",
 )
 
+#: The client's per-character addon list (``<Name>: enabled`` or ``disabled``
+#: per line), relative to the flavour folder. The client keeps a line for an
+#: addon it once saw even after the folder is gone, so removing the addons
+#: also removes their lines here.
+ADDON_STATE_PATTERNS = (
+    "WTF/Account/*/AddOns.txt",
+    "WTF/Account/*/*/*/AddOns.txt",
+)
+
 
 class InstallError(Exception):
     """The command cannot proceed; the message says why and what to do."""
@@ -326,16 +335,14 @@ def install(
 # Removing -------------------------------------------------------------------------------
 
 
+def is_owned_addon(name: str) -> bool:
+    """Whether an addon of this name is one this command installs."""
+    return name in (FRAMEWORK_ADDON, HARNESS_ADDON) or name.startswith(TEST_ADDON_PREFIX)
+
+
 def addons_to_remove(layout: ClientLayout) -> list[Path]:
     """Every installed folder or link this command owns in ``AddOns``."""
-    found: list[Path] = []
-    for path in sorted(layout.addons_dir.iterdir()):
-        owned = path.name in (FRAMEWORK_ADDON, HARNESS_ADDON) or path.name.startswith(
-            TEST_ADDON_PREFIX
-        )
-        if owned:
-            found.append(path)
-    return found
+    return [path for path in sorted(layout.addons_dir.iterdir()) if is_owned_addon(path.name)]
 
 
 def saved_variables_to_remove(layout: ClientLayout) -> tuple[list[Path], list[Path]]:
@@ -362,23 +369,75 @@ def saved_variables_to_remove(layout: ClientLayout) -> tuple[list[Path], list[Pa
     return files, skipped
 
 
+def read_addon_state(path: Path) -> str:
+    """One ``AddOns.txt`` exactly as written: line endings untranslated, any bytes kept."""
+    with path.open(encoding="utf-8", errors="surrogateescape", newline="") as handle:
+        return handle.read()
+
+
+def owned_addon_state_lines(text: str) -> list[str]:
+    """The lines of an ``AddOns.txt`` that name an addon this command installs."""
+    return [
+        line
+        for line in text.splitlines(keepends=True)
+        if is_owned_addon(line.split(":", 1)[0].strip())
+    ]
+
+
+def addon_state_files_to_clean(layout: ClientLayout) -> tuple[list[Path], list[Path]]:
+    """The ``AddOns.txt`` files that list an owned addon, and the ones skipped as links out."""
+    files: list[Path] = []
+    skipped: list[Path] = []
+    for pattern in ADDON_STATE_PATTERNS:
+        for candidate in sorted(layout.flavour_dir.glob(pattern)):
+            if not is_inside(candidate, layout.wow_dir):
+                skipped.append(candidate)
+                continue
+            if owned_addon_state_lines(read_addon_state(candidate)):
+                files.append(candidate)
+    return files, skipped
+
+
+def drop_owned_addon_state_lines(path: Path) -> None:
+    """Rewrite one ``AddOns.txt`` without the lines of the addons this command installs.
+
+    Every other line, its order and its line ending stay as the client wrote
+    them; bytes that are not UTF-8 survive through ``surrogateescape``.
+    """
+    text = read_addon_state(path)
+    owned = set(owned_addon_state_lines(text))
+    kept = [line for line in text.splitlines(keepends=True) if line not in owned]
+    with path.open("w", encoding="utf-8", errors="surrogateescape", newline="") as handle:
+        handle.write("".join(kept))
+
+
 def remove(
     layout: ClientLayout,
     dry_run: bool = False,
     report: Callable[[str], None] = print,
 ) -> None:
-    """Delete the installed addons and the harness's saved variables."""
-    addons = addons_to_remove(layout)
-    saved_files, skipped = saved_variables_to_remove(layout)
-    verb = "would remove" if dry_run else "removed"
+    """Delete the installed addons and the harness's saved variables.
 
-    for folder in skipped:
-        report(f"skipped {folder}: it leaves {layout.wow_dir} through a symbolic link")
+    The lines the client keeps for those addons in each ``AddOns.txt`` go
+    too, so the game folder is left as it was before the first install.
+    """
+    addons = addons_to_remove(layout)
+    saved_files, skipped_folders = saved_variables_to_remove(layout)
+    state_files, skipped_state_files = addon_state_files_to_clean(layout)
+    verb = "would remove" if dry_run else "removed"
+    state_verb = f"{verb} the MoltenCodes lines from"
+
+    for path in [*skipped_folders, *skipped_state_files]:
+        report(f"skipped {path}: it leaves {layout.wow_dir} through a symbolic link")
     for path in [*addons, *saved_files]:
         if not dry_run:
             delete_entry(path)
         report(f"{verb} {path}")
-    if not addons and not saved_files:
+    for path in state_files:
+        if not dry_run:
+            drop_owned_addon_state_lines(path)
+        report(f"{state_verb} {path}")
+    if not addons and not saved_files and not state_files:
         report("nothing to remove")
 
 
@@ -418,7 +477,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     action.add_argument(
         "--remove",
         action="store_true",
-        help="remove every installed addon of this command and the harness's saved variables",
+        help=(
+            "remove every installed addon of this command, the harness's saved variables "
+            "and the addons' lines in AddOns.txt"
+        ),
     )
     parser.add_argument(
         "--dry-run",

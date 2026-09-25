@@ -82,8 +82,9 @@ python3 -m tooling.client.install --wow-dir "/Applications/World of Warcraft" --
 
 The first builds the release bundle and installs it with the harness, a fresh
 copy of TestKit, a generated `Expected.lua` (every package's committed API and
-revision) and the requested test addons; the second removes all of them and
-the harness's saved-variables files. Nothing runs at login: runs start only by
+revision) and the requested test addons; the second removes all of them, the
+harness's and test addons' saved-variables files and the addons' lines in the
+client's `AddOns.txt`. Nothing runs at login: runs start only by
 `/mct run`. Each test addon's `EXPECTED.md` lists the exact chat lines of a
 correct run and what to send back. The addons are runtime Lua for the gates:
 the runtime lint scope, StyLua, and

@@ -748,6 +748,43 @@ class RemoveTests(FakeClientTests):
             self.assertEqual(["SomeoneElsesAddon.lua"], [path.name for path in folder.iterdir()])
         self.assertEqual(12, output.count("removed "))
 
+    def test_removes_only_its_own_lines_from_every_addons_txt(self):
+        accounts = self.flavour / "WTF" / "Account"
+        account_list = accounts / "ACCOUNT" / "AddOns.txt"
+        character_list = accounts / "ACCOUNT" / "Realm" / "Character" / "AddOns.txt"
+        character_list.parent.mkdir(parents=True)
+        account_list.write_text("MoltenCodes: enabled\r\nSomeoneElsesAddon: enabled\r\n")
+        character_list.write_text(
+            "SomeoneElsesAddon: disabled\nMoltenCodes: enabled\nMoltenCodesTest_Registry: enabled\n"
+            "MoltenCodesTest: disabled\nMoltenCodesExtra: enabled\n"
+        )
+        untouched = accounts / "OTHER" / "AddOns.txt"
+        untouched.parent.mkdir(parents=True)
+        untouched.write_text("SomeoneElsesAddon: enabled\n")
+        before = untouched.stat().st_mtime_ns
+
+        status, output, errors = self.run_command("--remove")
+
+        self.assertEqual(0, status, errors)
+        self.assertEqual("SomeoneElsesAddon: enabled\r\n", account_list.read_bytes().decode())
+        # MoltenCodesExtra is not an addon of this command: only exact names and the test prefix go.
+        self.assertEqual(
+            "SomeoneElsesAddon: disabled\nMoltenCodesExtra: enabled\n", character_list.read_text()
+        )
+        self.assertEqual(before, untouched.stat().st_mtime_ns)
+        self.assertEqual(2, output.count("removed the MoltenCodes lines from"))
+
+    def test_dry_run_leaves_addons_txt_as_it_is(self):
+        account_list = self.flavour / "WTF" / "Account" / "ACCOUNT" / "AddOns.txt"
+        account_list.parent.mkdir(parents=True)
+        account_list.write_text("MoltenCodes: enabled\n")
+
+        status, output, _ = self.run_command("--remove", "--dry-run")
+
+        self.assertEqual(0, status)
+        self.assertIn(f"would remove the MoltenCodes lines from {account_list}", output)
+        self.assertEqual("MoltenCodes: enabled\n", account_list.read_text())
+
     def test_dry_run_prints_what_would_be_removed_and_removes_nothing(self):
         (self.addons / "MoltenCodes").mkdir()
         account = self.saved_variables("ACCOUNT")
@@ -771,6 +808,7 @@ class RemoveTests(FakeClientTests):
         outside_account = outside / "account"
         (outside_account / "SavedVariables").mkdir(parents=True)
         (outside_account / "SavedVariables" / "MoltenCodesTest.lua").write_text("x = 1\n")
+        (outside_account / "AddOns.txt").write_text("MoltenCodes: enabled\n")
         accounts = self.flavour / "WTF" / "Account"
         accounts.mkdir(parents=True)
         (accounts / "LINKED").symlink_to(outside_account, target_is_directory=True)
@@ -781,6 +819,7 @@ class RemoveTests(FakeClientTests):
         self.assertFalse((self.addons / "MoltenCodesTest_Linked").is_symlink())
         self.assertTrue((outside_addon / "keep.lua").is_file())
         self.assertTrue((outside_account / "SavedVariables" / "MoltenCodesTest.lua").is_file())
+        self.assertEqual("MoltenCodes: enabled\n", (outside_account / "AddOns.txt").read_text())
         self.assertIn("skipped", output)
         self.assert_neighbour_untouched()
 

@@ -79,7 +79,8 @@ python3 -m tooling.ci.check_commits origin/main..HEAD
 ```
 
 Install the bundle, the real-client test harness and a package's test addon
-into a game folder, and remove them (and the harness's saved variables) again;
+into a game folder, and remove them again with their saved variables and
+their lines in the client's `AddOns.txt`;
 see `tests/client/README.md`:
 
 ```bash

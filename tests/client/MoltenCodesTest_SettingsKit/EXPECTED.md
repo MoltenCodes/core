@@ -43,12 +43,10 @@ written by an earlier session.
 `/mct clear` empties only the harness results (`MoltenCodesTestResults`); it
 **does not** touch `MoltenCodesTest_SettingsKitDB` or
 `MoltenCodesTest_SettingsKitCharDB`. The `cleanup: ...` test of run 2 is what
-empties them. `python3 -m tooling.client.install --remove` deletes the
-`MoltenCodesTest.lua` result files but, as of this writing, not the two
-`MoltenCodesTest_SettingsKit.lua` files; if testing stops before run 2, close
-the game and delete those two files by hand (paths in the table above), or
-type `/run MoltenCodesTest_SettingsKitDB = nil MoltenCodesTest_SettingsKitCharDB = nil`
-followed by `/reload`.
+empties them. If testing stops before run 2, close the game and run
+`python3 -m tooling.client.install --remove`: it deletes the
+`MoltenCodesTest.lua` result files and both `MoltenCodesTest_SettingsKit.lua`
+files (account and character) with their `.bak` copies.
 
 ## At login
 
