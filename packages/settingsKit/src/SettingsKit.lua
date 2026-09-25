@@ -49,19 +49,27 @@
 
 local PACKAGE_NAME = "settingsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
 local OPTIONAL_EVENTKIT_API = 1
 local STATE_SCHEMA = 1
 
--- Every database and view node carries the layout it was built with, so a
--- later revision that changes a layout can upgrade old objects instead of
+-- Every database, view node and plan carries the layout it was built with, so
+-- a later revision that changes a layout can upgrade old objects instead of
 -- guessing from which fields exist. Database layout 2 (revision 5) added
--- `_readOnly` and `_newerVersion`.
-local DATABASE_SCHEMA = 2
-local NODE_SCHEMA = 1
+-- `_readOnly` and `_newerVersion`; layout 3 (revision 6) dropped
+-- `_unavailable`, whose messages are now built when a missing scope is read.
+-- Node layout 2 (revision 6) added what the read and write fast paths use
+-- (`depth`, `pathKeys`, `kinds`, `ownEntries`, `valuesProxied`, `verified`)
+-- and kept each node to at most 16 fields: `db`, `scope`, `dead` and
+-- `sectionKey` only on a scope root, no `displayPath`, `sectionName` or
+-- `probeSet`, and a keyed section's entry cache in `children`. Plan layout 2
+-- (revision 6) added `ownKinds`, `fastChecks` and `defaultKind`.
+local DATABASE_SCHEMA = 3
+local NODE_SCHEMA = 2
+local PLAN_SCHEMA = 2
 
 -- The profile every character shares unless the addon asks otherwise.
 local DEFAULT_PROFILE_NAME = "Default"
@@ -162,6 +170,39 @@ local DATABASE_METHODS = {
   "IsReadOnly",
 }
 
+-- How a record view answers a read of one declared field, decided once per
+-- view from its plan and defaults (`kinds`) so a read tests no default's type.
+-- The first three are plain values, the last two are record or keyed-section
+-- fields that read through a child view.
+local READ_DEFAULT = 1 -- the default value, which is not a table
+local READ_COPY = 2 -- a copy of a plain-table default, stored on first read
+local READ_NIL = 3 -- no default: `nil`
+local READ_VIEW = 4 -- the child view, which has defaults to read
+local READ_VIEW_OR_NIL = 5 -- the child view when something is saved, else `nil`
+
+-- The description fields a scalar field may carry for the write fast path to
+-- check it (`compileFastCheck`), by SchemaKit kind. A description with any
+-- other field describes a rule this file does not know, and is always left
+-- to SchemaKit.
+local FAST_CHECK_FIELDS = {
+  string = {
+    kind = true,
+    optional = true,
+    default = true,
+    min = true,
+    max = true,
+    pattern = true,
+    oneOf = true,
+  },
+  number = { kind = true, optional = true, default = true, min = true, max = true, integer = true },
+  boolean = { kind = true, optional = true, default = true },
+  enum = { kind = true, optional = true, default = true, values = true },
+}
+
+-- The `probeKey` of a view whose probe table holds nothing: a table no caller
+-- can ever write as a key, since it never leaves this file.
+local NO_PROBE_KEY = {}
+
 local WEAK_KEYS = { __mode = "k" }
 local WEAK_VALUES = { __mode = "v" }
 
@@ -259,16 +300,27 @@ local WEAK_VALUES = { __mode = "v" }
 
 ---What `Open` compiles once per scope from `schema:Describe()`. Private.
 ---@class SettingsKit.Plan
+---@field layout integer Plan layout number (`2`); plans revision 5 compiled have none.
 ---@field proxied "record"|"map"|false Whether reads of this value go through a view, and which kind.
 ---@field fieldNames string[]|false Record: declared field names, sorted.
 ---@field fields table<string, SettingsKit.Plan>|false Record: the plan of each field.
 ---@field ownDefaults table|false Record: every field default, filled.
+---@field ownKinds table<string, integer>|false Record: how each field reads with `ownDefaults` (`READ_*`).
+---@field fastChecks table<string, table>|false Record: the write fast path's check of each simple scalar field.
+---@field defaultKind integer How a read of the declared default answers: `READ_NIL`, `READ_COPY` or `READ_DEFAULT`.
 ---@field values SettingsKit.Plan|false Map: the plan of every value.
 ---@field max integer|false Map: the most entries it may hold.
 ---@field keyKind string|false Map: the SchemaKit kind of its keys, for converting a dotted path segment.
 ---@field default any The declared default, filled; for a map's values, the wildcard default.
 
 -- Dependencies ---------------------------------------------------------------
+
+-- The standard functions the read and write paths call most, read once into
+-- locals: a global read is a hash lookup in the environment on every call, an
+-- upvalue read is not. Lua 5.1 allows 200 locals in the main chunk, so only
+-- the ones every read or write calls are localised.
+local rawget = rawget
+local type = type
 
 -- The shared MoltenCodes namespace is the one documented global handoff point between independently embedded copies.
 -- selene: allow(global_usage)
@@ -462,6 +514,10 @@ if previousRevision == nil then
       maxProfileNameLength = MAX_PROFILE_NAME_LENGTH,
       pathKeyLimit = DEFAULT_PATH_KEY_LIMIT,
     },
+    -- Databases the one shared `PLAYER_LOGOUT` listener compacts, in the
+    -- order they were opened, and whether that listener is connected.
+    logoutDatabases = {},
+    logoutConnected = false,
   }
   rawset(SettingsKit, "Database", Database)
   rawset(SettingsKit, "_state", state)
@@ -479,6 +535,13 @@ local databases = rawget(state, "databases")
 local views = rawget(state, "views")
 local UNBOUNDED = rawget(state, "unbounded")
 local sharedLimits = rawget(state, "limits")
+
+-- Revision 6 added the shared logout list; state an older revision built gets
+-- an empty one, and its databases keep the listeners they connected.
+if type(rawget(state, "logoutDatabases")) ~= "table" then
+  rawset(state, "logoutDatabases", {})
+  rawset(state, "logoutConnected", false)
+end
 
 -- Host facilities ------------------------------------------------------------
 
@@ -499,8 +562,10 @@ end
 ---@param value any
 ---@return boolean
 local function isSecret(value)
-  local probe = readIsSecret()
-  return probe ~= nil and probe(value) == true
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local probe = rawget(_G, "issecretvalue")
+  return type(probe) == "function" and probe(value) == true
 end
 
 ---Hand a failure nobody called for (a logout compaction) to the host error
@@ -1142,6 +1207,113 @@ local function fillDefaults(description, value, depth, maxDepth)
   return value
 end
 
+---How a read of a field of plan `fieldPlan` answers when nothing usable is
+---saved, given the field's default `default`: one of the `READ_*` kinds.
+---
+---`default` comes from the consumer's schema, so it is tested with `type`.
+---@param fieldPlan SettingsKit.Plan
+---@param default any
+---@return integer kind
+local function readKindFor(fieldPlan, default)
+  local defaultType = type(default)
+  if fieldPlan.proxied ~= false then
+    if defaultType ~= "nil" then
+      return READ_VIEW
+    end
+    return READ_VIEW_OR_NIL
+  end
+  if defaultType == "table" then
+    return READ_COPY
+  end
+  if defaultType == "nil" then
+    return READ_NIL
+  end
+  return READ_DEFAULT
+end
+
+---The read kind of every declared field of a record plan read with
+---`defaults`. `defaults` other than a table (a keyed section declared without
+---a default hands down `false`) gives every field no default.
+---@param plan SettingsKit.Plan a record plan
+---@param defaults any
+---@return table<string, integer> kinds
+local function buildReadKinds(plan, defaults)
+  local kinds = {}
+  local fieldNames = plan.fieldNames --[[@as string[] ]]
+  local hasDefaults = type(defaults) == "table"
+  for index = 1, #fieldNames do
+    local name = fieldNames[index]
+    local default = nil
+    if hasDefaults then
+      default = rawget(defaults, name)
+    end
+    kinds[name] = readKindFor(plan.fields[name], default)
+  end
+  return kinds
+end
+
+---What the plan's own declared default is, as the plain-value `READ_*` kind a
+---read of it takes: `READ_NIL` (none), `READ_COPY` (a table) or
+---`READ_DEFAULT`. Decided when the plan is compiled, so a keyed-section read
+---of a missing entry tests no default's type.
+---@param plan SettingsKit.Plan
+---@return integer
+local function defaultKindOf(plan)
+  local defaultType = type(plan.default)
+  if defaultType == "nil" then
+    return READ_NIL
+  end
+  if defaultType == "table" then
+    return READ_COPY
+  end
+  return READ_DEFAULT
+end
+
+---Compile the check the write fast path runs for a scalar field, or `nil`
+---when the field is left to SchemaKit.
+---
+---The check reproduces SchemaKit's rules for a `string`, `number`, `boolean`
+---or `enum` exactly as `schema:Describe()` states them. A description with any
+---field `FAST_CHECK_FIELDS` does not list, or a list value this file could not
+---use as a key (a secret or NaN), gets no fast check, so a rule SchemaKit adds
+---later is never skipped: the write then runs SchemaKit's own check.
+---@param description SchemaKit.Description
+---@return table|nil check
+local function compileFastCheck(description)
+  local kind = description.kind
+  local allowed = FAST_CHECK_FIELDS[kind]
+  if allowed == nil or description.optional ~= true then
+    return nil
+  end
+  for name in next, description do
+    if allowed[name] ~= true then
+      return nil
+    end
+  end
+
+  ---@type table|false
+  local valueSet = false
+  local list = description.oneOf or description.values
+  if type(list) == "table" then
+    valueSet = {}
+    for index = 1, #list do
+      local literal = list[index]
+      if isSecret(literal) or literal ~= literal then
+        return nil
+      end
+      valueSet[literal] = true
+    end
+  end
+  return {
+    kind = kind,
+    min = description.min or false,
+    max = description.max or false,
+    integer = description.integer == true,
+    pattern = description.pattern or false,
+    valueSet = valueSet,
+  }
+end
+
 ---Compile a description into a plan.
 ---
 ---A record read through a view must accept a table holding any subset of its
@@ -1156,15 +1328,20 @@ end
 local function compilePlan(description, depth, label, maxDepth)
   ---@type SettingsKit.Plan
   local plan = {
+    layout = PLAN_SCHEMA,
     proxied = false,
     fieldNames = false,
     fields = false,
     ownDefaults = false,
+    ownKinds = false,
+    fastChecks = false,
     values = false,
     max = false,
     keyKind = false,
     default = fillDefaults(description, nil, depth, maxDepth),
+    defaultKind = READ_NIL,
   }
+  plan.defaultKind = defaultKindOf(plan)
   if depth > maxDepth then
     return plan
   end
@@ -1173,6 +1350,7 @@ local function compilePlan(description, depth, label, maxDepth)
     plan.proxied = KIND_RECORD
     plan.fieldNames = {}
     plan.fields = {}
+    local fastChecks = {}
     local fieldNames = description.fieldNames or {}
     for index = 1, #fieldNames do
       local name = fieldNames[index]
@@ -1187,8 +1365,11 @@ local function compilePlan(description, depth, label, maxDepth)
       end
       plan.fieldNames[index] = name
       plan.fields[name] = fieldPlan
+      fastChecks[name] = compileFastCheck(field)
     end
     plan.ownDefaults = fillDefaults(description, {}, depth, maxDepth)
+    plan.ownKinds = buildReadKinds(plan, plan.ownDefaults)
+    plan.fastChecks = fastChecks
   elseif description.kind == "map" then
     local valuesPlan, refusal = compilePlan(description.values, depth + 1, label .. "[*]", maxDepth)
     if valuesPlan == nil then
@@ -1202,6 +1383,53 @@ local function compilePlan(description, depth, label, maxDepth)
   return plan
 end
 
+-- What this copy compiled for a scope schema, by the schema node or sealed
+-- schema `Open` was given: SettingsKit's own seal of it and its plan. A node
+-- is immutable from birth (SchemaKit's contract), so both stay valid as long
+-- as SchemaKit's `maxDepth` and revision are the ones they were built under;
+-- another database opened with the same schema then skips `Seal`, `Describe`
+-- and the compilation. Sharing the seal between SettingsKit's databases keeps
+-- the promise that matters: it is never the consumer's own schema, whose
+-- failure table a write could overwrite. Weak-keyed, and an entry never
+-- refers to its node, so it goes when the consumer drops the schema. Kept per
+-- copy rather than in package state, so a newer copy compiles its own.
+local compiledScopes = setmetatable({}, WEAK_KEYS)
+
+---Return SettingsKit's seal of scope schema `node` and its plan, compiling
+---both unless they were compiled under the same limits already.
+---@param node table the schema node or sealed schema `Open` received
+---@param scopeName string
+---@param maxDepth integer SchemaKit's `maxDepth` as `Open` read it
+---@param level integer stack level the failures are reported at
+---@return SchemaKit.Schema sealed, SettingsKit.Plan plan
+local function compileScope(node, scopeName, maxDepth, level)
+  local schemaRevision = rawget(SchemaKit, "REVISION")
+  local cached = compiledScopes[node]
+  if cached ~= nil and cached.maxDepth == maxDepth and cached.schemaRevision == schemaRevision then
+    return cached.sealed, cached.plan
+  end
+
+  -- Sealing a sealed schema returns a new one with its own failure table,
+  -- so a consumer checking with the same schema can never see its failure
+  -- overwritten by a write here.
+  local sealed = SchemaKit:Seal(node)
+  local description = sealed:Describe()
+  if description.kind ~= "table" then
+    error("SettingsKit:Open schema." .. scopeName .. " must be a SchemaKit.table schema", level)
+  end
+  local plan, refusal = compilePlan(description, 1, "schema." .. scopeName, maxDepth)
+  if plan == nil then
+    error("SettingsKit:Open " .. tostring(refusal), level)
+  end
+  compiledScopes[node] = {
+    sealed = sealed,
+    plan = plan,
+    maxDepth = maxDepth,
+    schemaRevision = schemaRevision,
+  }
+  return sealed, plan
+end
+
 -- Views ----------------------------------------------------------------------
 --
 -- `db.profile` and the other scopes are empty proxy tables. Lua 5.1 calls
@@ -1212,39 +1440,62 @@ end
 -- the table behind it is resolved from the saved variable downwards. That keeps
 -- every view valid across `ResetProfile`, `CopyProfile` and `ResetDatabase`,
 -- which change the saved tables in place or replace them.
+--
+-- Reads and writes are the hot paths. They index SettingsKit's own tables
+-- (nodes, plans, defaults, probes) directly, reach saved tables only with
+-- `rawget` and `rawset`, and decide everything that depends only on the
+-- schema when a plan or view is built (`kinds`, `fastChecks`, `defaultKind`),
+-- so a read tests the type only of what it finds in the saved variable.
 
 ---Resolve the saved table behind `node`, or `nil` when it does not exist yet.
+---
+---Walks down from the saved variable: the root's section, its entry, then one
+---key per nesting level below the root (`pathKeys`), stopping at anything
+---missing or not a table. One `rawget` and one `type` per level, no
+---allocation.
 ---@param node table
 ---@return table|nil
 local function resolveContainer(node)
-  local parent = node.parent
-  if parent == false then
-    if node.dead then
-      return nil
-    end
-    local section = rawget(node.db._raw, node.sectionName)
-    if type(section) ~= "table" then
-      return nil
-    end
-    if node.sectionKey == false then
-      return section
-    end
-    local container = rawget(section, node.sectionKey)
-    if type(container) == "table" then
-      return container
-    end
+  local root = node.root
+  if root.dead then
     return nil
   end
-
-  local parentContainer = resolveContainer(parent)
-  if parentContainer == nil then
+  local container = rawget(root.db._raw, root.scope.sectionName)
+  if type(container) ~= "table" then
     return nil
   end
-  local container = rawget(parentContainer, node.key)
-  if type(container) == "table" then
+  local sectionKey = root.sectionKey
+  if sectionKey ~= false then
+    container = rawget(container, sectionKey)
+    if type(container) ~= "table" then
+      return nil
+    end
+  end
+  local pathKeys = node.pathKeys
+  if pathKeys == nil then
     return container
   end
-  return nil
+  for index = 1, #pathKeys do
+    container = rawget(container, pathKeys[index])
+    if type(container) ~= "table" then
+      return nil
+    end
+  end
+  return container
+end
+
+---Return the table at `container[key]`, creating it, or replacing a non-table
+---value in the way.
+---@param container table
+---@param key any
+---@return table
+local function descendForWrite(container, key)
+  local child = rawget(container, key)
+  if type(child) ~= "table" then
+    child = {}
+    rawset(container, key, child)
+  end
+  return child
 end
 
 ---Resolve the saved table behind `node`, creating it and every missing table
@@ -1252,30 +1503,17 @@ end
 ---@param node table
 ---@return table
 local function resolveForWrite(node)
-  local parent = node.parent
-  if parent == false then
-    local raw = node.db._raw
-    local section = rawget(raw, node.sectionName)
-    if type(section) ~= "table" then
-      section = {}
-      rawset(raw, node.sectionName, section)
-    end
-    if node.sectionKey == false then
-      return section
-    end
-    local container = rawget(section, node.sectionKey)
-    if type(container) ~= "table" then
-      container = {}
-      rawset(section, node.sectionKey, container)
-    end
-    return container
+  local root = node.root
+  local container = descendForWrite(root.db._raw, root.scope.sectionName)
+  local sectionKey = root.sectionKey
+  if sectionKey ~= false then
+    container = descendForWrite(container, sectionKey)
   end
-
-  local parentContainer = resolveForWrite(parent)
-  local container = rawget(parentContainer, node.key)
-  if type(container) ~= "table" then
-    container = {}
-    rawset(parentContainer, node.key, container)
+  local pathKeys = node.pathKeys
+  if pathKeys ~= nil then
+    for index = 1, #pathKeys do
+      container = descendForWrite(container, pathKeys[index])
+    end
   end
   return container
 end
@@ -1306,76 +1544,195 @@ local function viewDefaults(parentDefaults, key, plan)
   return defaults
 end
 
----Build a view: a proxy and its node, and for a record every child view.
----@param db table
----@param scope table the scope record
----@param plan SettingsKit.Plan
----@param parent table|false parent node, `false` for a scope root
----@param key any key in the parent's table
----@param defaults table|false the defaults this view reads from
----@param displayPath string where the view is, for messages (`profile.frame`)
----@param path string where the view is, relative to the scope (`frame`)
----@return table proxy, table node
-local function newView(db, scope, plan, parent, key, defaults, displayPath, path)
-  local node = {
-    layout = NODE_SCHEMA,
-    kind = plan.proxied,
-    plan = plan,
-    db = db,
-    scope = scope,
-    parent = parent,
-    key = key,
-    root = false,
-    dead = false,
-    sectionName = false,
-    sectionKey = false,
-    defaults = defaults,
-    displayPath = displayPath,
-    path = path,
-    -- The scratch table this view contributes to a write's probe, and the
-    -- one key currently set in it.
-    probe = {},
-    probeSet = false,
-    probeKey = false,
-    children = false,
-    entries = false,
-  }
-  if parent == false then
-    node.root = node
-  else
-    node.root = parent.root
+---The read kinds of a record view of `plan` reading `defaults`: the plan's
+---own `ownKinds` when every field answers the same way, which is the common
+---case and allocates nothing, else a table of its own.
+---@param plan SettingsKit.Plan a record plan
+---@param defaults any
+---@return table<string, integer> kinds
+local function readKindsOf(plan, defaults)
+  local ownKinds = plan.ownKinds --[[@as table]]
+  if defaults == plan.ownDefaults then
+    return ownKinds
   end
+  local hasDefaults = type(defaults) == "table"
+  local fieldNames = plan.fieldNames --[[@as string[] ]]
+  for index = 1, #fieldNames do
+    local name = fieldNames[index]
+    local default = nil
+    if hasDefaults then
+      default = rawget(defaults, name)
+    end
+    if readKindFor(plan.fields[name], default) ~= ownKinds[name] then
+      return buildReadKinds(plan, defaults)
+    end
+  end
+  return ownKinds
+end
 
+---The own default entries a keyed-section view reads before its wildcard, or
+---`false` when it has none, so a read of a missing entry skips the lookup.
+---@param defaults any
+---@return table|false
+local function ownEntriesOf(defaults)
+  if type(defaults) == "table" and type(next(defaults)) ~= "nil" then
+    return defaults
+  end
+  return false
+end
+
+---The keys from a scope root's saved table down to the table behind a view
+---at `key` below `parent`: the parent's keys (a root has none) and `key`.
+---@param parent table
+---@param key any
+---@return any[]
+local function extendPathKeys(parent, key)
+  local parentKeys = parent.pathKeys
+  local pathKeys = {}
+  local count = 0
+  if parentKeys ~= nil then
+    count = #parentKeys
+    for index = 1, count do
+      pathKeys[index] = parentKeys[index]
+    end
+  end
+  pathKeys[count + 1] = key
+  return pathKeys
+end
+
+-- The write fast path (`checkWrite`) skips SchemaKit's check of the whole
+-- probe chain, but that check also refuses any chain nested deeper than
+-- SchemaKit's `maxDepth`, which `SchemaKit:SetLimits` may lower at any time
+-- and `SchemaKit:GetLimits` reads only by allocating. `depthProbes[depth]`
+-- holds a sealed chain of `depth` nested closed tables with one optional
+-- field each, and a Kit-owned value of exactly that shape: checking it passes
+-- exactly when a probe chain of `depth` tables would pass SchemaKit's depth
+-- rule, and costs one small table check per level. Built once per depth and
+-- session, when the first view of that depth is built; never written after.
+local depthProbes = {}
+
+---Build the depth probe of `depth` unless it exists. Depth 1 needs none: the
+---smallest `maxDepth` SchemaKit accepts is 1.
+---@param depth integer
+local function ensureDepthProbe(depth)
+  if depth < 2 or depthProbes[depth] ~= nil then
+    return
+  end
+  local buildTable = rawget(SchemaKit, "table")
+  local buildOptional = rawget(SchemaKit, "optional")
+  local node = buildTable({ fields = {} })
+  local value = {}
+  for _ = 2, depth do
+    node = buildTable({ fields = { inner = buildOptional(node) } })
+    value = { inner = value }
+  end
+  depthProbes[depth] = { schema = SchemaKit:Seal(node), value = value }
+end
+
+---Whether a probe chain of `depth` tables is within SchemaKit's `maxDepth`
+---now. `depth` is `nil` for a scope root, whose chain is one table. `false`
+---when no probe of that depth was built, so the caller runs the full check
+---instead.
+---@param depth integer|nil
+---@return boolean
+local function depthAllows(depth)
+  if depth == nil then
+    return true
+  end
+  local probe = depthProbes[depth]
+  if probe == nil then
+    return false
+  end
+  return probe.schema:Check(probe.value) == true
+end
+
+local newChildView
+
+---Put `node` behind a new proxy and build what hangs below it: every child
+---view of a record, or the empty entry cache of a keyed section.
+---@param node table
+---@return table proxy
+local function attachView(node)
   local proxy = setmetatable({}, VIEW_METATABLE)
   views[proxy] = node
 
-  if plan.proxied == KIND_RECORD then
+  local plan = node.plan
+  if node.kind == KIND_RECORD then
     local children = {}
     local fieldNames = plan.fieldNames --[[@as string[] ]]
     for index = 1, #fieldNames do
       local name = fieldNames[index]
       local field = plan.fields[name]
       if field.proxied ~= false then
-        local segment = formatKey(name)
-        children[name] = newView(
-          db,
-          scope,
-          field,
-          node,
-          name,
-          viewDefaults(defaults, name, field),
-          displayPath .. segment,
-          joinRelative(path, segment)
-        )
+        children[name] = newChildView(node, name, field)
       end
     end
     node.children = children
   else
     -- Entry views are made on first access and cached while somebody
     -- holds them.
-    node.entries = setmetatable({}, WEAK_VALUES)
+    node.children = setmetatable({}, WEAK_VALUES)
   end
-  return proxy, node
+  return proxy
+end
+
+---Build the view of `plan` at `key` below the view of `parent`: a record
+---field's view, or a keyed-section entry's.
+---
+---A node has at most 16 fields, so Lua gives it a 16-slot table rather than a
+---32-slot one: what only a scope root needs (`db`, `scope`, `dead`,
+---`sectionKey`) lives on the root, reached through `root`, and the message
+---path is derived from `path` (`displayPathOf`).
+---@param parent table
+---@param key any
+---@param plan SettingsKit.Plan
+---@return table proxy
+newChildView = function(parent, key, plan)
+  local defaults = viewDefaults(parent.defaults, key, plan)
+  local path = joinRelative(parent.path, formatKey(key))
+  local depth = (parent.depth or 1) + 1
+  local pathKeys = extendPathKeys(parent, key)
+  local node
+  if plan.proxied == KIND_RECORD then
+    ensureDepthProbe(depth)
+    node = {
+      layout = NODE_SCHEMA,
+      kind = KIND_RECORD,
+      plan = plan,
+      parent = parent,
+      key = key,
+      root = parent.root,
+      defaults = defaults,
+      path = path,
+      depth = depth,
+      pathKeys = pathKeys,
+      verified = false,
+      probe = {},
+      probeKey = NO_PROBE_KEY,
+      children = false,
+      kinds = readKindsOf(plan, defaults),
+    }
+  else
+    node = {
+      layout = NODE_SCHEMA,
+      kind = KIND_MAP,
+      plan = plan,
+      parent = parent,
+      key = key,
+      root = parent.root,
+      defaults = defaults,
+      path = path,
+      depth = depth,
+      pathKeys = pathKeys,
+      verified = false,
+      probe = {},
+      probeKey = NO_PROBE_KEY,
+      children = false,
+      ownEntries = ownEntriesOf(defaults),
+      valuesProxied = plan.values.proxied ~= false,
+    }
+  end
+  return attachView(node)
 end
 
 ---Build the root view of a scope over `section[sectionKey]`.
@@ -1385,10 +1742,28 @@ end
 ---@return table proxy
 local function newRootView(db, scope, sectionKey)
   local plan = scope.plan
-  local proxy, node = newView(db, scope, plan, false, false, plan.ownDefaults, scope.name, "")
-  node.sectionName = scope.sectionName
-  node.sectionKey = sectionKey
-  return proxy
+  local node = {
+    layout = NODE_SCHEMA,
+    kind = KIND_RECORD,
+    plan = plan,
+    parent = false,
+    root = false,
+    defaults = plan.ownDefaults,
+    path = "",
+    -- Nothing is above a root, so its keys need no proving (`checkWrite`).
+    verified = true,
+    probe = {},
+    probeKey = NO_PROBE_KEY,
+    children = false,
+    kinds = readKindsOf(plan, plan.ownDefaults),
+    db = db,
+    scope = scope,
+    -- Set by `DeleteProfile` and `ResetDatabase`: the view is detached.
+    dead = false,
+    sectionKey = sectionKey,
+  }
+  node.root = node
+  return attachView(node)
 end
 
 ---Return the view of entry `key` of a keyed section, building it on first use.
@@ -1396,26 +1771,30 @@ end
 ---@param key any
 ---@return table proxy
 local function entryView(node, key)
-  local entries = node.entries
+  local entries = node.children
   local proxy = rawget(entries, key)
   if proxy ~= nil then
     return proxy
   end
-
-  local valuesPlan = node.plan.values --[[@as SettingsKit.Plan]]
-  local segment = formatKey(key)
-  proxy = newView(
-    node.db,
-    node.scope,
-    valuesPlan,
-    node,
-    key,
-    viewDefaults(node.defaults, key, valuesPlan),
-    node.displayPath .. segment,
-    joinRelative(node.path, segment)
-  )
+  proxy = newChildView(node, key, node.plan.values --[[@as SettingsKit.Plan]])
   rawset(entries, key, proxy)
   return proxy
+end
+
+---Where the view of `node` is, for messages: the scope name followed by its
+---`path` (`profile.frame`, `profile.auras[118]`).
+---@param node table
+---@return string
+local function displayPathOf(node)
+  local scopeName = node.root.scope.name
+  local path = node.path
+  if path == "" then
+    return scopeName
+  end
+  if path:sub(1, 1) == "[" then
+    return scopeName .. path
+  end
+  return scopeName .. "." .. path
 end
 
 ---Whether storing anything below `node` would create a keyed-section entry
@@ -1457,7 +1836,8 @@ end
 ---@return table
 local function materialise(node, key, default)
   local copy = copyPlain(default)
-  if node.root.dead or rawget(node.db, "_readOnly") == true or wouldCreateEntry(node) then
+  local root = node.root
+  if root.dead or root.db._readOnly == true or wouldCreateEntry(node) then
     return copy
   end
   local container = resolveForWrite(node)
@@ -1465,138 +1845,135 @@ local function materialise(node, key, default)
   return copy
 end
 
----Read `key` through a record view.
+---Raise the refusal of a read with a secret key at the reading line:
+---raiseSecretRead <- viewIndex <- the reading line.
 ---@param node table
----@param key any
----@return any
-local function readRecord(node, key)
-  if isSecret(key) then
-    -- readRecord <- viewIndex <- the reading line
-    error(
-      "SettingsKit ("
-        .. node.db._name
-        .. ") "
-        .. node.displayPath
-        .. " cannot be read with a secret key",
-      3
-    )
-  end
-  local container = resolveContainer(node)
-  local value = nil
-  if container ~= nil then
-    value = rawget(container, key)
-  end
-
-  local field = node.plan.fields[key]
-  if type(value) ~= "nil" then
-    if field == nil or field.proxied == false then
-      return value
-    end
-    if type(value) == "table" then
-      return node.children[key]
-    end
-    -- A record or keyed section is stored as something other than a table:
-    -- corrupted or hand-edited data. It reads as absent, so the view below
-    -- and its defaults stay usable, and the next write through that view
-    -- replaces it (`resolveForWrite`).
-  end
-  if field == nil then
-    return nil
-  end
-
-  local defaults = node.defaults
-  local default = nil
-  if defaults then
-    default = rawget(defaults, key)
-  end
-  if field.proxied ~= false then
-    if type(default) ~= "nil" then
-      return node.children[key]
-    end
-    return nil
-  end
-  if type(default) == "table" then
-    return materialise(node, key, default)
-  end
-  return default
+local function raiseSecretRead(node)
+  error(
+    "SettingsKit ("
+      .. node.root.db._name
+      .. ") "
+      .. displayPathOf(node)
+      .. " cannot be read with a secret key",
+    3
+  )
 end
 
 ---Read `key` through a keyed-section view, falling back to the section's own
----default entries and then to its wildcard default.
+---default entries and then to its wildcard default. The key was asked about
+---secrecy, and `container` is the resolved saved table (`nil` when absent).
 ---@param node table
 ---@param key any
+---@param container table|nil
 ---@return any
-local function readMap(node, key)
-  -- The secret probe comes first: the key is compared and used to index
-  -- below, and either raises on a secret.
-  if isSecret(key) then
-    -- readMap <- viewIndex <- the reading line
-    error(
-      "SettingsKit ("
-        .. node.db._name
-        .. ") "
-        .. node.displayPath
-        .. " cannot be read with a secret key",
-      3
-    )
-  end
+local function readMap(node, key, container)
   -- Without this, `view[nil]` would answer with the wildcard default.
   if type(key) == "nil" then
     return nil
   end
 
-  local container = resolveContainer(node)
-  local value = nil
+  local valuesProxied = node.valuesProxied
   if container ~= nil then
-    value = rawget(container, key)
+    local value = rawget(container, key)
+    local valueType = type(value)
+    if valueType ~= "nil" then
+      if not valuesProxied then
+        return value
+      end
+      if valueType == "table" then
+        return entryView(node, key)
+      end
+      -- An entry declared as a record or keyed section but stored as a
+      -- scalar reads as absent, as in a record read.
+    end
+  end
+
+  local ownEntries = node.ownEntries
+  if ownEntries ~= false then
+    local default = ownEntries[key]
+    local defaultType = type(default)
+    if defaultType ~= "nil" then
+      if valuesProxied then
+        return entryView(node, key)
+      end
+      if defaultType == "table" then
+        -- A missing entry is never stored by a read: the key may be one
+        -- the key schema refuses, and the section may be full.
+        return copyPlain(default)
+      end
+      return default
+    end
   end
 
   local valuesPlan = node.plan.values
-  if type(value) ~= "nil" then
-    if valuesPlan.proxied == false then
-      return value
-    end
-    if type(value) == "table" then
-      return entryView(node, key)
-    end
-    -- An entry declared as a record or keyed section but stored as a
-    -- scalar reads as absent, as in `readRecord`.
-  end
-
-  local default = nil
-  if node.defaults then
-    default = rawget(node.defaults, key)
-  end
-  if type(default) == "nil" then
-    default = valuesPlan.default
-  end
-  if type(default) == "nil" then
+  local defaultKind = valuesPlan.defaultKind
+  if defaultKind == READ_NIL then
     return nil
   end
-  if valuesPlan.proxied ~= false then
+  if valuesProxied then
     return entryView(node, key)
   end
-  if type(default) == "table" then
-    -- A missing entry is never stored by a read: the key may be one the
-    -- key schema refuses, and the section may be full.
-    return copyPlain(default)
+  if defaultKind == READ_COPY then
+    return copyPlain(valuesPlan.default)
   end
-  return default
+  return valuesPlan.default
 end
 
----The `__index` of every view.
+---The `__index` of every view: every read through a view is one call of it.
+---
+---The secret probe comes first: the key is compared and used to index below,
+---and either raises on a secret. A keyed-section read continues in
+---`readMap`; a record read, the common one, is answered here, so it costs
+---this call and `resolveContainer` only. `kinds` answers everything that
+---depends only on the schema: an undeclared key (`nil` there) returns what is
+---saved or `nil`, a record or keyed-section field returns its child view, and
+---a missing value its default.
 ---@param proxy table
 ---@param key any
 ---@return any
 local function viewIndex(proxy, key)
-  local node = rawget(views, proxy)
+  local node = views[proxy]
   if node == nil then
     return nil
   end
-  if node.kind == KIND_RECORD then
-    return readRecord(node, key)
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local isSecretValue = rawget(_G, "issecretvalue")
+  if type(isSecretValue) == "function" and isSecretValue(key) == true then
+    raiseSecretRead(node)
   end
-  return readMap(node, key)
+
+  local container = resolveContainer(node)
+  if node.kind ~= KIND_RECORD then
+    return readMap(node, key, container)
+  end
+
+  local kind = node.kinds[key]
+  if container ~= nil then
+    local value = rawget(container, key)
+    local valueType = type(value)
+    if valueType ~= "nil" then
+      if kind == nil or kind < READ_VIEW then
+        return value
+      end
+      if valueType == "table" then
+        return node.children[key]
+      end
+      -- A record or keyed section stored as something other than a table:
+      -- corrupted or hand-edited data. It reads as absent, so the view
+      -- below and its defaults stay usable, and the next write through that
+      -- view replaces it (`resolveForWrite`).
+    end
+  end
+
+  if kind == READ_DEFAULT then
+    return node.defaults[key]
+  elseif kind == READ_VIEW then
+    return node.children[key]
+  elseif kind == READ_COPY then
+    return materialise(node, key, node.defaults[key])
+  end
+  return nil
 end
 
 ---Set `key` in `node`'s probe table, clearing whatever key an earlier,
@@ -1606,35 +1983,101 @@ end
 ---@param value any
 local function setProbe(node, key, value)
   local probe = node.probe
-  if node.probeSet then
-    rawset(probe, node.probeKey, nil)
+  local previousKey = node.probeKey
+  if previousKey ~= NO_PROBE_KEY then
+    rawset(probe, previousKey, nil)
   end
   rawset(probe, key, value)
-  node.probeSet = true
   node.probeKey = key
 end
 
 ---@param node table
 local function clearProbe(node)
-  if node.probeSet then
-    rawset(node.probe, node.probeKey, nil)
-    node.probeSet = false
-    node.probeKey = false
+  local previousKey = node.probeKey
+  if previousKey ~= NO_PROBE_KEY then
+    rawset(node.probe, previousKey, nil)
+    node.probeKey = NO_PROBE_KEY
   end
+end
+
+---Whether a value SchemaKit would check against the scalar field described
+---by `check` passes, by exactly the rules SchemaKit applies to a `string`,
+---`number`, `boolean` or `enum` (see `compileFastCheck`). `value` was asked
+---about secrecy; `nil` passes because every field is optional.
+---@param check table
+---@param value any
+---@param valueType string `type(value)`
+---@return boolean
+local function passesFastCheck(check, value, valueType)
+  if valueType == "nil" then
+    return true
+  end
+  local kind = check.kind
+  if kind == "number" then
+    if valueType ~= "number" or value ~= value then
+      return false
+    end
+    if
+      check.integer
+      and (value == math.huge or value == -math.huge or math.floor(value) ~= value)
+    then
+      return false
+    end
+    local min, max = check.min, check.max
+    return (min == false or value >= min) and (max == false or value <= max)
+  elseif kind == "string" then
+    if valueType ~= "string" then
+      return false
+    end
+    local valueSet = check.valueSet
+    if valueSet ~= false and valueSet[value] == nil then
+      return false
+    end
+    local length = #value
+    local min, max, pattern = check.min, check.max, check.pattern
+    return (min == false or length >= min)
+      and (max == false or length <= max)
+      and (pattern == false or type(string.find(value, pattern)) ~= "nil")
+  elseif kind == "boolean" then
+    return valueType == "boolean"
+  end
+  return check.valueSet[value] ~= nil
 end
 
 ---Check the write `node[key] = value` against the scope's schema.
 ---
----The probe is a chain of scratch tables, one per view from the scope root down
----to `node`, holding only the path to the written key and the value. Every
----field of a record read through a view is optional (`compilePlan` refuses
----otherwise), so the chain is valid exactly when the written value is valid
----where it is written. A valid check allocates nothing.
+---**Full check.** The probe is a chain of scratch tables, one per view from
+---the scope root down to `node`, holding only the path to the written key and
+---the value. Every field of a record read through a view is optional
+---(`compilePlan` refuses otherwise), so the chain is valid exactly when the
+---written value is valid where it is written. A valid check allocates nothing.
+---
+---**Fast path.** For a value that is not a table, written to a declared
+---scalar field of a record view, the full check passes exactly when: the
+---value passes the field's own rules; the chain above the view passes, which
+---depends only on its keys (declared fields, and keyed-section keys the key
+---schema accepts, in sections whose `max` allows one entry), none of which
+---can change once a full check through the view passed (`verified`); and the
+---chain is within SchemaKit's `maxDepth` (`depthAllows`). When all three
+---hold, SchemaKit is not asked; otherwise it is, so every refusal and its
+---message come from SchemaKit.
 ---@param node table
 ---@param key any
 ---@param value any
+---@param valueType string `type(value)`
 ---@return boolean ok, SchemaKit.Failure|nil failure
-local function checkWrite(node, key, value)
+local function checkWrite(node, key, value, valueType)
+  if node.verified and valueType ~= "table" and node.kind == KIND_RECORD then
+    local fastCheck = node.plan.fastChecks[key]
+    if
+      fastCheck ~= nil
+      and passesFastCheck(fastCheck, value, valueType)
+      and depthAllows(node.depth)
+    then
+      return true, nil
+    end
+  end
+
   local child = node
   local parent = child.parent
   while parent ~= false do
@@ -1644,12 +2087,16 @@ local function checkWrite(node, key, value)
   end
   setProbe(node, key, value)
 
-  local ok, failure = node.scope.schema:Check(child.probe)
+  -- `child` is the scope root now.
+  local ok, failure = child.scope.schema:Check(child.probe)
 
   child = node
   while child ~= false do
     clearProbe(child)
     child = child.parent
+  end
+  if ok then
+    node.verified = true
   end
   return ok, failure
 end
@@ -1696,7 +2143,8 @@ end
 ---@return string
 local function failureMessage(node, failure)
   local path = failure.path
-  local where = node.scope.name
+  local root = node.root
+  local where = root.scope.name
   if path ~= "" then
     if path:sub(1, 1) == "[" then
       where = where .. path
@@ -1705,7 +2153,7 @@ local function failureMessage(node, failure)
     end
   end
   return "SettingsKit ("
-    .. node.db._name
+    .. root.db._name
     .. ") "
     .. where
     .. ": expected "
@@ -1718,7 +2166,7 @@ end
 ---@param node table
 ---@return string
 local function refusalLabel(node)
-  return "SettingsKit (" .. node.db._name .. ") "
+  return "SettingsKit (" .. node.root.db._name .. ") "
 end
 
 ---Why a read-only database refuses writes, and how to open it writable: the
@@ -1741,21 +2189,28 @@ end
 ---@param node table
 ---@param key any
 ---@param value any
+---@param valueType string `type(value)`
 ---@return string|nil refusal
-local function refuseWrite(node, key, value)
-  if rawget(node.db, "_readOnly") == true then
-    return refusalLabel(node) .. node.displayPath .. " is read-only: " .. readOnlyReason(node.db)
+local function refuseWrite(node, key, value, valueType)
+  local db = node.root.db
+  if db._readOnly == true then
+    return refusalLabel(node) .. displayPathOf(node) .. " is read-only: " .. readOnlyReason(db)
   end
   if node.root.dead then
     return refusalLabel(node)
-      .. node.displayPath
+      .. displayPathOf(node)
       .. " belongs to a profile that was deleted or reset away"
   end
 
-  local isSecretValue = readIsSecret()
-  if isSecretValue ~= nil and isSecretValue(key) then
+  -- issecretvalue is a World of Warcraft client API reachable only through the global table.
+  -- selene: allow(global_usage)
+  local isSecretValue = rawget(_G, "issecretvalue")
+  if type(isSecretValue) ~= "function" then
+    isSecretValue = nil
+  end
+  if isSecretValue ~= nil and isSecretValue(key) == true then
     return refusalLabel(node)
-      .. node.displayPath
+      .. displayPathOf(node)
       .. " refused a secret key: saved variables never hold secret values"
   end
   -- Every table is scanned, whether or not the host has secret values: a
@@ -1763,27 +2218,26 @@ local function refuseWrite(node, key, value)
   -- written through without validation, and a metatable never survives a
   -- save.
   local problem = nil
-  if isSecretValue ~= nil and isSecretValue(value) then
+  if isSecretValue ~= nil and isSecretValue(value) == true then
     problem = "secret"
-  elseif type(value) == "table" then
-    problem =
-      scanValue(value, isSecretValue, 1, readMaxDepth(), rawget(node.db, "_maxScannedEntries"))
+  elseif valueType == "table" then
+    problem = scanValue(value, isSecretValue, 1, readMaxDepth(), db._maxScannedEntries)
   end
   if problem ~= nil then
-    return refusalLabel(node) .. node.displayPath .. formatKey(key) .. VALUE_REFUSALS[problem]
+    return refusalLabel(node) .. displayPathOf(node) .. formatKey(key) .. VALUE_REFUSALS[problem]
   end
 
-  local ok, failure = checkWrite(node, key, value)
+  local ok, failure = checkWrite(node, key, value, valueType)
   if not ok then
     ---@cast failure SchemaKit.Failure
     return failureMessage(node, failure)
   end
 
-  if type(value) ~= "nil" then
+  if valueType ~= "nil" then
     local fullMap = findFullMap(node, key)
     if fullMap ~= nil then
       return refusalLabel(node)
-        .. fullMap.displayPath
+        .. displayPathOf(fullMap)
         .. ": expected at most "
         .. fullMap.plan.max
         .. " entries"
@@ -1792,9 +2246,10 @@ local function refuseWrite(node, key, value)
   return nil
 end
 
----Validate and store `node[key] = value`, then fire the scope's change signal.
----Every refusal is raised at the writing line: this function is called by
----`viewNewIndex`, which is called by the writer, so the level is 3.
+---Validate and store `node[key] = value`, then fire the scope's change signal
+---when anybody connected to it. Every refusal is raised at the writing line:
+---this function is called by `viewNewIndex`, which is called by the writer,
+---so the level is 3.
 ---
 ---A nil or NaN key never gets here: Lua 5.1 refuses it while looking for the
 ---slot, before it consults `__newindex`.
@@ -1802,13 +2257,14 @@ end
 ---@param key any
 ---@param value any
 local function writeView(node, key, value)
-  local refusal = refuseWrite(node, key, value)
+  local valueType = type(value)
+  local refusal = refuseWrite(node, key, value, valueType)
   if refusal ~= nil then
     error(refusal, 3)
   end
 
   local container
-  if type(value) == "nil" then
+  if valueType == "nil" then
     container = resolveContainer(node)
   else
     container = resolveForWrite(node)
@@ -1817,8 +2273,13 @@ local function writeView(node, key, value)
     rawset(container, key, value)
   end
 
-  local scope = node.scope
-  scope.signal:Fire(node.db, scope.name, key, value, node.path)
+  -- The signal is created by the first `OnChange` of the scope.
+  local root = node.root
+  local scope = root.scope
+  local signal = scope.signal
+  if signal ~= false then
+    signal:Fire(root.db, scope.name, key, value, node.path)
+  end
 end
 
 ---The `__newindex` of every view.
@@ -2021,17 +2482,6 @@ local function compactDatabase(db)
   return removed
 end
 
----Build the `PLAYER_LOGOUT` listener of one database. It calls through the
----shared dispatch table so an upgrade replaces its behaviour.
----@param db table
----@return fun()
-local function newLogoutListener(db)
-  return function()
-    local compactOnLogout = rawget(dispatch, "compactOnLogout")
-    compactOnLogout(db)
-  end
-end
-
 ---Compact at logout. A failure is reported, never raised into EventKit's
 ---dispatch, so one addon's database cannot stop another's compaction. A
 ---read-only database is skipped: compaction removes saved values, and the
@@ -2047,20 +2497,47 @@ local function compactOnLogout(db)
   end
 end
 
----Connect the logout compaction when EventKit is embedded. The connection is
----not kept: a database lives for the session and is never disconnected, and
----EventKit holds the listener.
+---Compact, at logout, every database that joined the shared logout list, in
+---the order they were opened, each on its own terms (`compactOnLogout`).
+local function compactAllOnLogout()
+  local logoutDatabases = rawget(state, "logoutDatabases")
+  for index = 1, #logoutDatabases do
+    compactOnLogout(logoutDatabases[index])
+  end
+end
+
+---The one `PLAYER_LOGOUT` listener every database opened by revision 6 or later
+---shares. It calls through the shared dispatch table, so an upgrade replaces
+---its behaviour.
+local function logoutListener()
+  local compactAll = rawget(dispatch, "compactAllOnLogout")
+  compactAll()
+end
+
+---Join the logout compaction when EventKit is embedded: add `db` to the shared
+---logout list, and connect the one shared listener the first time. A
+---database therefore costs EventKit no listener of its own. The connection is
+---not kept: databases live for the session and are never disconnected, and
+---EventKit holds the listener. Databases revisions 1 to 5 opened keep the
+---listener each connected for itself and are not on the list.
 ---@param db table
 local function connectLogout(db)
-  local findPackage = rawget(Registry, "Find")
-  if type(findPackage) ~= "function" then
-    return
+  -- Once the listener is connected, EventKit was registered, and a
+  -- registered package stays registered: no need to find it again.
+  if rawget(state, "logoutConnected") ~= true then
+    local findPackage = rawget(Registry, "Find")
+    if type(findPackage) ~= "function" then
+      return
+    end
+    local EventKit = findPackage(Registry, "eventKit", OPTIONAL_EVENTKIT_API)
+    if type(EventKit) ~= "table" or type(rawget(EventKit, "Connect")) ~= "function" then
+      return
+    end
+    EventKit:Connect("PLAYER_LOGOUT", logoutListener)
+    rawset(state, "logoutConnected", true)
   end
-  local EventKit = findPackage(Registry, "eventKit", OPTIONAL_EVENTKIT_API)
-  if type(EventKit) ~= "table" or type(rawget(EventKit, "Connect")) ~= "function" then
-    return
-  end
-  EventKit:Connect("PLAYER_LOGOUT", newLogoutListener(db))
+  local logoutDatabases = rawget(state, "logoutDatabases")
+  logoutDatabases[#logoutDatabases + 1] = db
 end
 
 -- Scope keys -----------------------------------------------------------------
@@ -2357,6 +2834,19 @@ end
 
 -- Database methods -----------------------------------------------------------
 
+---Fire the profile signal `signalName` of `db` with `...`, when anybody ever
+---connected to it: the signal is created by the first `OnProfile*` call, so a
+---database nobody listens to allocates none.
+---@param db table
+---@param signalName string
+---@param ... any
+local function fireProfileSignal(db, signalName, ...)
+  local signal = db._signals[signalName]
+  if signal ~= nil then
+    signal:Fire(...)
+  end
+end
+
 ---Refuse a method that changes the saved table when the database is
 ---read-only. Every changing method asks this right after its receiver check,
 ---so nothing is validated, created or signalled on a read-only database.
@@ -2420,7 +2910,7 @@ local function databaseSetProfile(self, name)
   end
   db._profile = name
   publishProfileView(db)
-  db._signals.profileChanged:Fire(self, name, previous)
+  fireProfileSignal(db, "profileChanged", self, name, previous)
   return true
 end
 
@@ -2480,7 +2970,7 @@ local function databaseCopyProfile(self, from)
   for key, value in next, source do
     rawset(target, key, copyPlain(value))
   end
-  db._signals.profileCopied:Fire(self, from, current)
+  fireProfileSignal(db, "profileCopied", self, from, current)
 end
 
 ---Remove every value of the current profile, so it reads its defaults again.
@@ -2492,7 +2982,7 @@ local function databaseResetProfile(self)
   local current = db._profile
   ensureProfile(db._raw, current)
   wipe(rawget(rawget(db._raw, "profiles"), current))
-  db._signals.profileReset:Fire(self, current)
+  fireProfileSignal(db, "profileReset", self, current)
 end
 
 ---Delete a profile that is not the current one. Characters that used it fall
@@ -2523,7 +3013,7 @@ local function databaseDeleteProfile(self, name)
     end
   end
   detachProfileView(db, name)
-  db._signals.profileDeleted:Fire(self, name)
+  fireProfileSignal(db, "profileDeleted", self, name)
 end
 
 ---Wipe the whole saved variable back to an empty layout. Every profile view
@@ -2564,9 +3054,9 @@ local function databaseResetDatabase(self)
   db._profile = name
   publishProfileView(db)
 
-  db._signals.profileReset:Fire(self, name)
+  fireProfileSignal(db, "profileReset", self, name)
   if name ~= previous then
-    db._signals.profileChanged:Fire(self, name, previous)
+    fireProfileSignal(db, "profileChanged", self, name, previous)
   end
 end
 
@@ -2584,6 +3074,11 @@ local function databaseOnChange(self, scopeName, callback)
     error("SettingsKit.Database:OnChange scope must name a declared, available scope", 2)
   end
   validateCallback(callback, "SettingsKit.Database:OnChange", 3)
+  -- Created on first use, so a scope nobody listens to costs no signal and
+  -- its writes skip the dispatch.
+  if scope.signal == false then
+    scope.signal = SignalKit:New()
+  end
   return scope.signal:Connect(callback)
 end
 
@@ -2597,7 +3092,14 @@ local function connectProfileSignal(db, signalName, methodName, callback)
   -- connectProfileSignal <- the public method <- the caller
   validateDatabase(db, methodName, 4)
   validateCallback(callback, methodName, 4)
-  return rawget(rawget(db, "_signals"), signalName):Connect(callback)
+  -- Created on first use; `fireProfileSignal` skips a signal never created.
+  local signals = rawget(db, "_signals")
+  local signal = rawget(signals, signalName)
+  if signal == nil then
+    signal = SignalKit:New()
+    rawset(signals, signalName, signal)
+  end
+  return signal:Connect(callback)
 end
 
 ---@param self SettingsKit.Database
@@ -2655,7 +3157,7 @@ end
 local function databasePairs(self, view)
   validateDatabase(self, "SettingsKit.Database:Pairs", 3)
   local node = type(view) == "table" and rawget(views, view) or nil
-  if node == nil or node.db ~= self then
+  if node == nil or node.root.db ~= self then
     error("SettingsKit.Database:Pairs view must be a view of this database", 2)
   end
   return pairsNext, view, nil
@@ -2670,11 +3172,11 @@ local function descendPath(node, key)
   if isSecret(key) then
     return nil,
       refusalLabel(node)
-        .. node.displayPath
+        .. displayPathOf(node)
         .. " refused a secret key: saved variables never hold secret values"
   end
   if type(key) == "nil" or key ~= key then
-    return nil, refusalLabel(node) .. node.displayPath .. " key must not be nil or NaN"
+    return nil, refusalLabel(node) .. displayPathOf(node) .. " key must not be nil or NaN"
   end
 
   local child = nil
@@ -2686,7 +3188,7 @@ local function descendPath(node, key)
   if child == nil then
     return nil,
       refusalLabel(node)
-        .. node.displayPath
+        .. displayPathOf(node)
         .. formatKey(key)
         .. " is not a record or keyed section"
   end
@@ -2782,9 +3284,9 @@ local function databaseValidate(self, scopeName, path, value)
   -- way a step on the path does.
   if not isSecret(key) and (type(key) == "nil" or key ~= key) then
     return false,
-      "SettingsKit (" .. db._name .. ") " .. node.displayPath .. " key must not be nil or NaN"
+      "SettingsKit (" .. db._name .. ") " .. displayPathOf(node) .. " key must not be nil or NaN"
   end
-  refusal = refuseWrite(node, key, value)
+  refusal = refuseWrite(node, key, value, type(value))
   if refusal ~= nil then
     return false, refusal
   end
@@ -2817,11 +3319,36 @@ local function databaseIndex(db, key)
   if method ~= nil then
     return method
   end
-  local unavailable = rawget(db, "_unavailable")
-  local reason = type(unavailable) == "table" and rawget(unavailable, key) or nil
-  if reason ~= nil then
-    -- databaseIndex <- the reading line
-    error(reason, 2)
+  -- A declared, available scope is a field of the database and never gets
+  -- here, so a scope name that does is undeclared or unavailable. The
+  -- message is built only now, so a database whose missing scopes nobody
+  -- reads builds none.
+  if SCOPE_SET[key] == true then
+    local scope = rawget(rawget(db, "_scopes"), key)
+    if scope == nil then
+      -- databaseIndex <- the reading line
+      error(
+        "SettingsKit ("
+          .. rawget(db, "_name")
+          .. ") db."
+          .. key
+          .. " is not declared; pass schema."
+          .. key
+          .. " to SettingsKit:Open",
+        2
+      )
+    elseif not scope.available then
+      error(
+        "SettingsKit ("
+          .. rawget(db, "_name")
+          .. ") db."
+          .. key
+          .. " is unavailable: "
+          .. UNAVAILABLE_REASONS[key]
+          .. " when the database was opened",
+        2
+      )
+    end
   end
   return nil
 end
@@ -2834,39 +3361,22 @@ end
 -- Package public API ---------------------------------------------------------
 
 ---Build the scope records of a database from the validated schema table.
+---A scope that is not declared gets no record; `databaseIndex` builds the
+---message a read of it raises from the record's absence, or from its
+---`available` flag.
 ---@param schema table
 ---@param keys table<string, string|false>
----@param name string saved-variable name, for messages
 ---@param level integer stack level the failures are reported at
----@return table scopes, table unavailable
-local function buildScopes(schema, keys, name, level)
+---@return table scopes
+local function buildScopes(schema, keys, level)
   local scopes = {}
-  local unavailable = {}
-  local sealSchema = rawget(SchemaKit, "Seal")
+  -- Read once for every scope: `GetLimits` allocates its answer.
+  local maxDepth = readMaxDepth()
   for index = 1, #SCOPE_NAMES do
     local scopeName = SCOPE_NAMES[index]
     local node = rawget(schema, scopeName)
-    if type(node) == "nil" then
-      unavailable[scopeName] = "SettingsKit ("
-        .. name
-        .. ") db."
-        .. scopeName
-        .. " is not declared; pass schema."
-        .. scopeName
-        .. " to SettingsKit:Open"
-    else
-      -- Sealing a sealed schema returns a new one with its own failure
-      -- table, so a consumer checking with the same schema can never see
-      -- its failure overwritten by a write here.
-      local sealed = sealSchema(SchemaKit, node)
-      local description = sealed:Describe()
-      if description.kind ~= "table" then
-        error("SettingsKit:Open schema." .. scopeName .. " must be a SchemaKit.table schema", level)
-      end
-      local plan, refusal = compilePlan(description, 1, "schema." .. scopeName, readMaxDepth())
-      if plan == nil then
-        error("SettingsKit:Open " .. tostring(refusal), level)
-      end
+    if type(node) ~= "nil" then
+      local sealed, plan = compileScope(node, scopeName, maxDepth, level + 1)
 
       ---@type string|false
       local sectionKey = false
@@ -2874,15 +3384,6 @@ local function buildScopes(schema, keys, name, level)
       if scopeName ~= "global" and scopeName ~= "profile" then
         sectionKey = keys[scopeName]
         available = sectionKey ~= false
-      end
-      if not available then
-        unavailable[scopeName] = "SettingsKit ("
-          .. name
-          .. ") db."
-          .. scopeName
-          .. " is unavailable: "
-          .. UNAVAILABLE_REASONS[scopeName]
-          .. " when the database was opened"
       end
 
       scopes[scopeName] = {
@@ -2892,11 +3393,12 @@ local function buildScopes(schema, keys, name, level)
         sectionName = SCOPE_SECTIONS[scopeName],
         sectionKey = sectionKey,
         available = available,
-        signal = available and SignalKit:New() or false,
+        -- `OnChange` creates the signal on first use.
+        signal = false,
       }
     end
   end
-  return scopes, unavailable
+  return scopes
 end
 
 ---Open the database over the saved variable `savedVariable`.
@@ -2950,7 +3452,7 @@ local function open(_, savedVariable, schema, options)
   -- Scope keys are read once, before anything is written, so a schema or
   -- layout refusal leaves the saved variable untouched.
   local keys = readScopeKeys()
-  local scopes, unavailable = buildScopes(schema, keys, savedVariable, 3)
+  local scopes = buildScopes(schema, keys, 3)
 
   if type(raw) == "nil" then
     raw = {}
@@ -2990,7 +3492,6 @@ local function open(_, savedVariable, schema, options)
     _raw = raw,
     _schemaSource = schema,
     _scopes = scopes,
-    _unavailable = unavailable,
     _charKey = charKey,
     _defaultProfile = resolvedDefault,
     _profile = profileName,
@@ -3002,12 +3503,8 @@ local function open(_, savedVariable, schema, options)
     _readOnly = readOnly,
     -- `math.huge` when opened with `maxScannedEntries = SettingsKit.UNBOUNDED`.
     _maxScannedEntries = maxScannedEntries,
-    _signals = {
-      profileChanged = SignalKit:New(),
-      profileCopied = SignalKit:New(),
-      profileReset = SignalKit:New(),
-      profileDeleted = SignalKit:New(),
-    },
+    -- The four profile signals, each created by its first `OnProfile*`.
+    _signals = {},
   }, DATABASE_METATABLE)
 
   for index = 1, #SCOPE_NAMES do
@@ -3109,24 +3606,9 @@ local function getLimits(self)
 end
 
 -- Upgrades -------------------------------------------------------------------
-
----Recompute the defaults of `node`, after those of every node above it, once
----each. A scope root always read its plan's own field defaults, so the walk
----stops there.
----@param node table
----@param repaired table<table, boolean> nodes already recomputed
-local function repairNodeDefaults(node, repaired)
-  if repaired[node] then
-    return
-  end
-  repaired[node] = true
-  local parent = node.parent
-  if parent == false then
-    return
-  end
-  repairNodeDefaults(parent, repaired)
-  node.defaults = viewDefaults(parent.defaults, node.key, node.plan)
-end
+--
+-- Each repair declares its helpers inside its own block: they run once, at
+-- load, and Lua 5.1 allows the main chunk only 200 locals.
 
 -- Revision 1 gave an entry view of a keyed section declared without a default
 -- `false` for its defaults, and passed that `false` on to the record views
@@ -3135,46 +3617,176 @@ end
 -- node's defaults the way `viewDefaults` builds them now. A node revision 1
 -- built correctly gets the same table back.
 if previousRevision ~= nil and previousRevision < 2 then
+  ---Recompute the defaults of `node`, after those of every node above it, once
+  ---each. A scope root always read its plan's own field defaults, so the walk
+  ---stops there.
+  ---@param node table
+  ---@param repaired table<table, boolean> nodes already recomputed
+  local function repairNodeDefaults(node, repaired)
+    if repaired[node] then
+      return
+    end
+    repaired[node] = true
+    local parent = node.parent
+    if parent == false then
+      return
+    end
+    repairNodeDefaults(parent, repaired)
+    node.defaults = viewDefaults(parent.defaults, node.key, node.plan)
+  end
+
   local repaired = {}
   for _, node in next, views do
     repairNodeDefaults(node, repaired)
   end
 end
 
----Bring a layout 1 database (revisions 1 to 4) to layout 2 by adding the
----fields revision 5 reads. The database was opened writable under the older
----contract and stays writable: turning it read-only in the middle of a
----session would break an addon that already writes through it. Its
----`_newerVersion` is still recorded from the saved table, so `ResetDatabase`
----never lowers a newer stored version.
----@param db table
-local function upgradeDatabaseLayout(db)
-  local newerVersion = false
-  local version = rawget(db, "_version")
-  local stored = rawget(rawget(db, "_raw"), "version")
-  if
-    version ~= false
-    and type(stored) == "number"
-    and not isSecret(stored)
-    and isIntegerAtLeast(stored, 0)
-    and stored > version
-  then
-    newerVersion = stored
-  end
-  rawset(db, "_newerVersion", newerVersion)
-  rawset(db, "_readOnly", false)
-  rawset(db, "_layout", DATABASE_SCHEMA)
-end
-
 -- Revision 5 records on every database whether it is read-only and which
 -- newer stored version it was opened over. Databases an older revision opened
 -- lack both fields; they get them once, here.
 if previousRevision ~= nil and previousRevision < 5 then
+  ---Bring a layout 1 database (revisions 1 to 4) to layout 2 by adding the
+  ---fields revision 5 reads. The database was opened writable under the older
+  ---contract and stays writable: turning it read-only in the middle of a
+  ---session would break an addon that already writes through it. Its
+  ---`_newerVersion` is still recorded from the saved table, so `ResetDatabase`
+  ---never lowers a newer stored version.
+  ---@param db table
+  local function upgradeDatabaseLayout(db)
+    local newerVersion = false
+    local version = rawget(db, "_version")
+    local stored = rawget(rawget(db, "_raw"), "version")
+    if
+      version ~= false
+      and type(stored) == "number"
+      and not isSecret(stored)
+      and isIntegerAtLeast(stored, 0)
+      and stored > version
+    then
+      newerVersion = stored
+    end
+    rawset(db, "_newerVersion", newerVersion)
+    rawset(db, "_readOnly", false)
+    rawset(db, "_layout", 2)
+  end
+
   for _, db in next, databases do
     if rawget(db, "_layout") == 1 then
       upgradeDatabaseLayout(db)
     end
   end
+end
+
+-- Revision 6 reads through `kinds`, `pathKeys` and the plans' `ownKinds` and
+-- `defaultKind`, and writes through `fastChecks` and `verified`. Nodes and
+-- plans an older revision built lack them; every live node gets them here,
+-- and so does the plan of every scope, including scopes whose views are not
+-- built yet. This runs after the revision 2 repair of `defaults` above, which
+-- the read kinds are derived from, and for every node, since a repaired node
+-- may already carry kinds derived from its old defaults.
+if previousRevision ~= nil and previousRevision < 6 then
+  ---Bring a plan revision 5 compiled (layout 1) to layout 2, children first.
+  ---Revision 5 kept no description, so such a plan gets no fast checks: every
+  ---write through it runs SchemaKit's check, as it did.
+  ---@param plan SettingsKit.Plan
+  local function upgradePlan(plan)
+    if plan.layout == PLAN_SCHEMA then
+      return
+    end
+    if plan.proxied == KIND_RECORD then
+      local fieldNames = plan.fieldNames --[[@as string[] ]]
+      for index = 1, #fieldNames do
+        upgradePlan(plan.fields[fieldNames[index]])
+      end
+      plan.ownKinds = buildReadKinds(plan, plan.ownDefaults)
+      plan.fastChecks = {}
+    elseif plan.proxied == KIND_MAP then
+      upgradePlan(plan.values --[[@as SettingsKit.Plan]])
+    end
+    plan.defaultKind = defaultKindOf(plan)
+    plan.layout = PLAN_SCHEMA
+  end
+
+  ---Bring `node` to layout 2, after its parent, once each: add what the read
+  ---and write paths use, and drop what moved. Everything is derived from what
+  ---every revision keeps (`parent`, `key`, `plan`, `defaults`), so a node that
+  ---is already in layout 2 gets the same values back, except `verified`,
+  ---which starts over: the next full check through the node sets it again.
+  ---Old nodes keep their 32-slot tables; only nodes built from now on are
+  ---smaller.
+  ---@param node table
+  ---@param upgraded table<table, boolean> nodes already brought to layout 2
+  local function upgradeNodeLayout(node, upgraded)
+    if upgraded[node] then
+      return
+    end
+    upgraded[node] = true
+    local parent = node.parent
+    local plan = node.plan
+    upgradePlan(plan)
+
+    if parent == false then
+      -- A root keeps `db`, `scope`, `dead` and `sectionKey`; the section
+      -- name is read from its scope.
+      node.sectionName = nil
+      node.verified = true
+    else
+      upgradeNodeLayout(parent, upgraded)
+      node.depth = (parent.depth or 1) + 1
+      node.pathKeys = extendPathKeys(parent, node.key)
+      node.verified = false
+      node.db = nil
+      node.scope = nil
+      node.dead = nil
+      node.sectionName = nil
+      node.sectionKey = nil
+    end
+    -- Messages derive the display path from `path` now.
+    node.displayPath = nil
+    -- Layout 1 said whether a probe key is set in `probeSet`; layout 2
+    -- keeps the key, or `NO_PROBE_KEY` when none is set.
+    if node.probeSet == false then
+      node.probeKey = NO_PROBE_KEY
+    end
+    node.probeSet = nil
+
+    if node.kind == KIND_RECORD then
+      node.kinds = readKindsOf(plan, node.defaults)
+      if parent ~= false then
+        ensureDepthProbe(node.depth)
+      end
+      node.entries = nil
+    else
+      -- Layout 1 kept a keyed section's entry cache in `entries`.
+      if type(node.entries) == "table" then
+        node.children = node.entries
+      end
+      node.entries = nil
+      node.ownEntries = ownEntriesOf(node.defaults)
+      node.valuesProxied = plan.values.proxied ~= false
+    end
+    node.layout = NODE_SCHEMA
+  end
+
+  ---Bring every database to layout 3, and every scope plan and live node to
+  ---layout 2. A function of its own so its loop variables do not count
+  ---against the main chunk's 200 locals.
+  local function upgradeLayouts()
+    for _, db in next, databases do
+      -- `databaseIndex` builds the missing-scope messages from `_scopes`
+      -- now, in the same words.
+      rawset(db, "_unavailable", nil)
+      rawset(db, "_layout", DATABASE_SCHEMA)
+      for _, scope in next, rawget(db, "_scopes") do
+        upgradePlan(scope.plan)
+      end
+    end
+    local upgraded = {}
+    for _, node in next, views do
+      upgradeNodeLayout(node, upgraded)
+    end
+  end
+  upgradeLayouts()
 end
 
 -- Commit ---------------------------------------------------------------------
@@ -3213,6 +3825,7 @@ rawset(SettingsKit, "SetLimits", setLimits)
 rawset(SettingsKit, "GetLimits", getLimits)
 
 rawset(dispatch, "compactOnLogout", compactOnLogout)
+rawset(dispatch, "compactAllOnLogout", compactAllOnLogout)
 rawset(state, "runtimeRevision", IMPLEMENTATION_REVISION)
 
 if not validatePublicSurface(SettingsKit) or not validateCurrentState(SettingsKit) then

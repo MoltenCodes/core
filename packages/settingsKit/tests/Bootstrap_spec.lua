@@ -113,10 +113,16 @@ describe("SettingsKit bootstrap", function()
     local glow = entry.glow
 
     -- Leave the two nodes as revision 1 built them: `false` handed down
-    -- from the section, which was declared without a default.
+    -- from the section, which was declared without a default. Revision 6
+    -- decides each field's read from the defaults when a view is built, so
+    -- those read kinds are emptied too: every field then reads `nil`, as
+    -- revision 1 read it.
     local views = rawget(previous, "_state").views
-    rawget(views, entry).defaults = false
-    rawget(views, glow).defaults = false
+    for _, view in ipairs({ entry, glow }) do
+      local node = rawget(views, view)
+      node.defaults = false
+      node.kinds = {}
+    end
     assert.is_nil(entry.shown)
     assert.is_nil(glow.alpha)
 
@@ -247,12 +253,12 @@ describe("SettingsKit bootstrap", function()
 
     local upgraded = TestEnv.ReloadPackage()
     assert.are.equal(previous, upgraded)
-    assert.are.equal(5, upgraded.REVISION)
+    assert.is_true(upgraded.REVISION > 4)
     assert.are.equal(state, rawget(upgraded, "_state"))
     assert.are.equal(newer, upgraded:Open("NewerDB"))
     assert.are.equal(profile, newer.profile)
     for _, db in ipairs({ current, newer }) do
-      assert.are.equal(2, rawget(db, "_layout"))
+      assert.are.equal(3, rawget(db, "_layout"))
       assert.is_false(db:IsReadOnly())
     end
     assert.is_false(rawget(current, "_newerVersion"))
@@ -270,6 +276,173 @@ describe("SettingsKit bootstrap", function()
     -- A database opened after the upgrade follows the new contract.
     TestEnv.SavedVariable("LaterDB", { version = 9 })
     assert.is_true(upgraded:Open("LaterDB", schemaFor(S), { version = 2 }):IsReadOnly())
+  end)
+
+  it("upgrades revision 5 in place: its views, plans, signals and logout keep working", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    local SignalKit = require("SignalKit")
+    local S = require("SchemaKit")
+    -- Loaded without EventKit, so the copy connects no logout listener; the
+    -- one revision 5 connected per database is added by hand below.
+    local previous = TestEnv.LoadRevision(5)
+    TestEnv.SetPlayer()
+    local state = rawget(previous, "_state")
+    local views = state.views
+    local db = previous:Open("MyAddonDB", {
+      profile = S.table({
+        fields = {
+          scale = S.optional(S.number({ max = 2 }), 1),
+          frame = S.optional(S.table({ fields = { x = S.optional(S.number(), 0) } }), {}),
+          auras = S.optional(
+            S.map({
+              keys = S.number(),
+              values = S.optional(
+                S.table({ fields = { shown = S.optional(S.boolean(), true) } }),
+                {}
+              ),
+              max = 8,
+            }),
+            {}
+          ),
+        },
+      }),
+    })
+    local profile, frame, aura = db.profile, db.profile.frame, db.profile.auras[5]
+    local EventKit = require("EventKit")
+    EventKit:Connect("PLAYER_LOGOUT", function()
+      rawget(state.dispatch, "compactOnLogout")(db)
+    end)
+
+    ---Put a plan back in the shape revision 5 compiled: no layout, read kinds,
+    ---fast checks or default kind.
+    local function toPlanLayout1(plan)
+      plan.layout, plan.ownKinds, plan.fastChecks, plan.defaultKind = nil, nil, nil, nil
+      for _, field in pairs(plan.fields or {}) do
+        toPlanLayout1(field)
+      end
+      if plan.values then
+        toPlanLayout1(plan.values)
+      end
+    end
+    toPlanLayout1(rawget(db, "_scopes").profile.plan)
+
+    -- Every node as revision 5 built it: layout 1 with `db`, `scope`,
+    -- `displayPath`, `sectionName`, `probeSet` and `entries` on every node,
+    -- and none of what revision 6 added. The display path is left wrong on
+    -- purpose: revision 6 must derive it, never read it.
+    for _, node in pairs(views) do
+      local root = node.root
+      node.layout = 1
+      node.db, node.scope = root.db, root.scope
+      node.displayPath = "legacy"
+      node.sectionName = root.scope.sectionName
+      node.dead = node.dead or false
+      node.sectionKey = node.sectionKey or false
+      node.probeSet, node.probeKey = false, false
+      if node.kind == "map" then
+        node.entries, node.children = node.children, false
+      else
+        node.entries = false
+      end
+      node.depth, node.pathKeys, node.kinds = nil, nil, nil
+      node.ownEntries, node.valuesProxied, node.verified = nil, nil, nil
+    end
+    -- An interrupted write left a key in the frame's probe.
+    local frameNode = rawget(views, frame)
+    frameNode.probe.stale = 1
+    frameNode.probeSet, frameNode.probeKey = true, "stale"
+    -- The database, its scopes and the package state as revision 5 left them.
+    rawset(db, "_layout", 2)
+    rawset(db, "_unavailable", {
+      char = "SettingsKit (MyAddonDB) db.char is not declared; pass schema.char to SettingsKit:Open",
+    })
+    rawget(db, "_scopes").profile.signal = SignalKit:New()
+    rawset(db, "_signals", {
+      profileChanged = SignalKit:New(),
+      profileCopied = SignalKit:New(),
+      profileReset = SignalKit:New(),
+      profileDeleted = SignalKit:New(),
+    })
+    state.logoutDatabases, state.logoutConnected = nil, nil
+    local changes, switched = {}, 0
+    rawget(db, "_scopes").profile.signal:Connect(function(_, _, key, value, path)
+      changes[#changes + 1] = { key, value, path }
+    end)
+    rawget(db, "_signals").profileChanged:Connect(function()
+      switched = switched + 1
+    end)
+
+    local upgraded = TestEnv.ReloadPackage()
+    assert.are.equal(previous, upgraded)
+    assert.is_true(upgraded.REVISION > 5)
+    assert.are.equal(state, rawget(upgraded, "_state"))
+    assert.are.equal(db, upgraded:Open("MyAddonDB"))
+    assert.are.equal(3, rawget(db, "_layout"))
+    assert.is_nil(rawget(db, "_unavailable"))
+    assert.are.equal(profile, db.profile)
+    assert.are.equal(frame, profile.frame)
+    assert.are.equal(aura, profile.auras[5])
+    for _, node in pairs(views) do
+      assert.are.equal(2, node.layout)
+      assert.is_nil(node.displayPath)
+      assert.is_nil(node.probeSet)
+      assert.is_nil(node.entries)
+    end
+
+    -- Reads, on the paths revision 6 answers from its read kinds.
+    assert.are.equal(1, profile.scale)
+    assert.are.equal(0, frame.x)
+    assert.is_true(aura.shown)
+    assert.is_true(profile.auras[6].shown)
+
+    -- Writes, through the full check and then the fast path, with the
+    -- listener connected before the upgrade.
+    for _, value in ipairs({ 1.5, 2 }) do
+      profile.scale = value
+      frame.x = value
+    end
+    aura.shown = false
+    assert.are.same({ x = 2 }, TestEnv.GetGlobal("MyAddonDB").profiles.Default.frame)
+    assert.is_nil(frameNode.probe.stale)
+    assert.are.same({
+      { "scale", 1.5, "" },
+      { "x", 1.5, "frame" },
+      { "scale", 2, "" },
+      { "x", 2, "frame" },
+      { "shown", false, "auras[5]" },
+    }, changes)
+    TestEnv.expectErrorContaining(
+      "SettingsKit (MyAddonDB) profile.frame.x: expected number, found string",
+      function()
+        frame.x = "far"
+      end
+    )
+    assert.are.same({ true, nil }, { db:Validate("profile", { "frame", "x" }, 3) })
+    TestEnv.expectErrorContaining(
+      "SettingsKit (MyAddonDB) db.char is not declared; pass schema.char to SettingsKit:Open",
+      function()
+        return db.char
+      end
+    )
+    db:SetProfile("Other")
+    db:SetProfile("Default")
+    assert.are.equal(2, switched)
+
+    -- A database opened after the upgrade joins the one shared listener; the
+    -- older one keeps its own. Each is compacted once: the raising probe
+    -- reports one failure per compaction.
+    local later = upgraded:Open("LaterDB", {
+      profile = S.table({ fields = { scale = S.optional(S.number(), 1) } }),
+    })
+    later.profile.scale = 1
+    TestEnv.TakeReportedErrors()
+    TestEnv.SetGlobal("issecretvalue", function()
+      error("probe failed", 0)
+    end)
+    TestEnv.Logout()
+    assert.are.equal(2, #TestEnv.TakeReportedErrors())
   end)
 
   it("loads without EventKit", function()

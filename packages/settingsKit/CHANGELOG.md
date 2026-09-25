@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.1 — 2026-09-25
+
+Internal speed-ups after the host benchmark against AceDB-3.0 (`docs/BENCHMARKS.md`). No documented behaviour changes: every check, refusal, message, error level, default, signal and limit is as in 0.2.0.
+
+Measured with `python3 -m tooling.bench.run --workload settings --rounds 3`, host Lua 5.1 on a shared machine with other benchmarks running (load average about 6 during the before run, 2 to 3 during the after run), so compare the ratios and bytes. The absolute times of the three rows AceDB has no counterpart for come from running both revisions back to back in one sitting, the same operation on the same schema:
+
+| Case | 0.2.0 (revision 5) | 0.2.1 (revision 6) |
+|---|---|---|
+| `open-empty` | 23.7× AceDB, 35,434 B | 4.4× AceDB, 7,235 B |
+| `open-populated` | 12.1× AceDB, 34,842 B | 2.4× AceDB, 6,640 B |
+| held per open database | 25,538 B | 6,168 B (AceDB 3,872 B) |
+| `switch-profile` | 0.37× AceDB, 0 B | 0.28× AceDB, 0 B |
+| `read-default` | 84× AceDB | 58× AceDB |
+| `read-saved` | 78× AceDB | 58× AceDB |
+| `read-nested` | 110× AceDB | 69× AceDB |
+| `read-entry-default` | 108× AceDB | 71× AceDB |
+| `write-scalar` (not compared) | 1,601 ns | 466 ns |
+| `write-nested` (not compared) | 2,199 ns | 1,051 ns |
+| `validate` (SettingsKit only) | 2,553 ns | 1,377 ns |
+
+- **Open.** The seal, description and plan of a scope schema are compiled once per schema node and reused by every later `Open` with it, while SchemaKit's `maxDepth` and revision stay the same. The change and profile signals are created by the first listener, the messages for undeclared and unavailable scopes when such a scope is read, and every database shares one `PLAYER_LOGOUT` listener instead of connecting its own (compaction order and failure isolation unchanged). View nodes hold at most 16 fields, so each takes a 16-slot table instead of a 32-slot one.
+- **Reads.** A record read is answered inside the view's `__index` from read kinds worked out when the view was built, so it tests the type of no default; the saved table is still resolved on every read, one `rawget` and one `type` per level, now without a call per level. What remains against AceDB's plain table read is what the contract requires: the metamethod call of an empty proxy (validated writes need one), the `issecretvalue` probe of the key, and the resolution that keeps views valid over emptied or replaced saved tables.
+- **Writes and `Validate`.** A value that is not a table, written to a declared `string`, `number`, `boolean` or `enum` field through a view that already passed a full check, is checked by SettingsKit against the field's rules as `schema:Describe()` states them, and below the top level against SchemaKit's current `maxDepth` through one small SchemaKit check, instead of a SchemaKit check of the whole probe chain. Anything else, and every refusal, still runs SchemaKit's check, so verdicts and messages are SchemaKit's. A write nobody listens to fires no signal.
+- Implementation revision 6: node layout 2, plan layout 2, database layout 3 (no `_unavailable`) and the shared logout list in the package state. An in-place upgrade over revisions 1 to 5 brings every database, scope plan and live view to these layouts; a database an older revision opened keeps its own logout listener and is compacted once. API generation 1 is unchanged.
+- API.md: the performance table (measured costs, when a write takes the fast path, the compiled schema reused), the shared seal, the shared logout listener, revision 6 under *Embedded copies and upgrades*. INTERNALS.md: package state, databases, plans (the compiled-schema and read-kind caches), nodes, resolution, a read, a write (the fast path and the depth probes), the logout listener and the revision 6 upgrade.
+- 197 specs (173 before): `FastPaths_spec.lua` (every candidate value against every kind of scalar field, before and after verification, at three depths, with SchemaKit's verdict and message each time; a lowered `maxDepth`; refused keys, full sections, detached views and secrets after verification; read kinds; shared compiled schemas; signals created on demand; the shared logout compaction), four allocation guards, and the upgrade over revision 5 in `Bootstrap_spec.lua`.
+
 ## 0.2.0 — 2026-09-25
 
 A contract change inside API generation 1 (nothing was released yet): migrations are transactional, data a newer version saved opens read-only, and two ways corrupted saved data could lock an addon out are closed.

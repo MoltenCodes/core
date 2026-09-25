@@ -2,7 +2,7 @@
 
 SettingsKit API generation **1** opens a database over an addon's saved variable: scoped views whose reads fall back to schema defaults and whose writes are validated at the writer's line, profiles, change signals, versioned migrations and compaction.
 
-Implementation revision: **5**.
+Implementation revision: **6**.
 
 ## Loading
 
@@ -175,7 +175,7 @@ profile.anchor = "LEFT"          -- raises at this line:
 
 `savedVariable` is the global name from the TOC's `## SavedVariables` line, an identifier. When the global is `nil`, `Open` creates it as `{}`; when it holds anything but a table, `Open` refuses at your line. **Call `Open` in the addon's loaded phase** (`lifecycle:OnLoaded`, or your own `ADDON_LOADED` for your addon): before it, the client has not loaded the saved table yet, and it will replace the one `Open` created.
 
-`schema` maps scope names to SchemaKit `table` nodes or sealed schemas. Each scope is optional, at least one is required, and an unknown scope name is refused. SettingsKit seals its own copy of each (sealing a sealed schema gives a new one with its own failure table), so a write never overwrites the failure of a check you run with the same schema. Two rules apply:
+`schema` maps scope names to SchemaKit `table` nodes or sealed schemas. Each scope is optional, at least one is required, and an unknown scope name is refused. SettingsKit seals its own copy of each (sealing a sealed schema gives a new one with its own failure table), so a write never overwrites the failure of a check you run with the same schema. Databases opened with the same schema node or sealed schema share that seal and its compiled plan, which is built by the first of them and reused while SchemaKit's `maxDepth` and revision stay the same (revision 6). Two rules apply:
 
 - a scope schema must be a `SchemaKit.table`;
 - **every field of every record read through a view is `optional`** — the scope's own fields, the fields of nested `table` fields, and the fields of records that are the values of a `map`. A saved variable starts empty and fills in one write at a time, so a required field could never be satisfied. `Open` refuses one with its path: `SettingsKit:Open schema.profile.frame.x must be optional: a saved variable starts empty`.
@@ -196,13 +196,13 @@ Opening a name that is already open returns the same database. `schema` may then
 
 ### What `Open` does, in order
 
-1. Validates every argument and compiles the schemas, before anything is written.
+1. Validates every argument and compiles the schemas (or reuses what an earlier `Open` compiled from the same schema), before anything is written.
 2. Reads the scope keys.
 3. Creates the global when it is missing.
 4. Runs migrations (below). A stored version newer than `options.version` makes the database read-only unless `allowNewerData` is set.
 5. Checks the layout (see [`INTERNALS.md`](INTERNALS.md#the-saved-table)): a section that is present but not a table is refused with `SettingsKit:Open MyAddonDB.global must be a table`. The check runs before anything else is written — before the version is stamped when no migration is pending, and on the last migration's result before that result is committed — so a refused table is never half-changed. A writable database then gets every missing section; a read-only one gets none.
 6. Picks the profile: the character's recorded choice when it names a usable profile, otherwise the default profile. In a writable database the profile gets an empty table when it has none.
-7. Builds the views and, when EventKit is registered, connects the logout compaction.
+7. Builds the views and, when EventKit is registered, joins the logout compaction.
 
 ## Migrations
 
@@ -361,7 +361,7 @@ Walks every declared scope — every stored character, realm, class and faction 
 - each record or keyed-section table left empty, when it has a default to fall back to. A table without a default stays, because removing it would turn its view into `nil`;
 - each empty character, realm, class or faction entry. Empty profiles stay: they are still profiles.
 
-Returns how many values and tables it removed. With EventKit registered, every database compacts itself on `PLAYER_LOGOUT`; a compaction that raises there is reported through `geterrorhandler()` rather than raised into EventKit's dispatch. Values written after that compaction are saved as they are. A read-only database refuses `Compact` and is skipped at logout.
+Returns how many values and tables it removed. With EventKit registered, every database compacts itself on `PLAYER_LOGOUT`, through one listener SettingsKit connects once and shares between all databases, in the order they were opened; a compaction that raises there is reported through `geterrorhandler()` rather than raised into EventKit's dispatch, and the other databases are still compacted. Values written after that compaction are saved as they are. A read-only database refuses `Compact` and is skipped at logout.
 
 ## Limits
 
@@ -415,10 +415,10 @@ A secret stored `version` in the saved table is refused as `SettingsKit:Open MyA
 
 | Operation | Cost |
 |---|---|
-| Reading a field through a view | One table lookup per nesting level to find the saved table, then one read or one default lookup. No allocation. |
+| Reading a field through a view | One call of the view's `__index`, one `issecretvalue` probe of the key, one table lookup and one type test per nesting level to find the saved table, then one read or one default lookup. No allocation. On host Lua 5.1 (2026-09-25) about 0.2 µs for `db.profile.scale` and 0.45 µs for `db.profile.frame.x`, against 3 to 7 ns for a plain table: an empty proxy needs the metamethod call, the secret-key refusal needs the probe, and resolving the saved table on every read keeps views valid (see [`INTERNALS.md`](INTERNALS.md#a-read)). |
 | Reading a keyed-section entry the first time | Builds that entry's view (cached while referenced). |
-| A validated write | One schema check of a probe holding only the written path, one table write, one signal dispatch. No allocation when the key already exists and the value is not a table; a table value adds the scan of its contents and the one table `SchemaKit:GetLimits()` returns. |
-| `Open`, `SetProfile` to a new profile | Build the views of the scope: one proxy and node per record and keyed section in the schema. |
+| A validated write | The same checks and messages in every case. A value that is not a table, written to a declared `string`, `number`, `boolean` or `enum` field through a view that already took one valid write, is checked against the field's rules by SettingsKit, plus one small SchemaKit depth check below the scope's top level; any other write, and every refused one, runs one SchemaKit check of a probe holding only the written path. Then one table write and, once a listener was connected to the scope, one signal dispatch. No allocation when the key already exists and the value is not a table; a table value adds the scan of its contents and the one table `SchemaKit:GetLimits()` returns. On host Lua 5.1 (2026-09-25) about 0.45 µs for `db.profile.scale = 1.5` and 1 µs for `db.profile.frame.x = 3`. |
+| `Open`, `SetProfile` to a new profile | Build the views of the scope: one proxy and node per record and keyed section in the schema. The first `Open` of a schema also seals, describes and compiles it; later ones with the same schema reuse that. Signals are created when a listener first connects. On host Lua 5.1 (2026-09-25) an `Open` of the benchmark schema (two scopes, a nested record and a keyed section) takes about 9 µs and allocates about 7 KB; an open database holds about 6 KB beyond its saved variable. |
 | `GetProfiles`, `CopyProfile`, `Compact` | Allocate or walk by design; not for hot paths. |
 | A pending migration step | One deep copy of the saved table and one walk of the result, once per step with a function, only while the stored version is behind (see [Migrations](#migrations)). |
 
@@ -443,5 +443,7 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 Several addons may embed SettingsKit; Registry selects the newest compatible revision and every copy shares one facade. Package state holds one database per saved-variable name, the shared limits and the `UNBOUNDED` sentinel, and an upgrade keeps them: databases, views, their listeners and the logout connection keep working and run the newer implementation, because the database and view metatables and the logout listener's dispatch table are rewritten in place.
 
 Revision 5 gives every database opened by an older revision the fields it reads (database layout 2). Such a database stays writable, as it was opened, even over newer data — turning it read-only in the middle of a session would break an addon already writing through it — but it records the newer stored version, so `ResetDatabase` never lowers it. `IsReadOnly` answers `false` for it. Databases opened after the upgrade follow the read-only rule.
+
+Revision 6 changes no documented behaviour. An in-place upgrade brings the views, plans and databases an older revision built to its own layouts, so they keep working and gain the faster reads and writes; a database an older revision opened keeps the logout listener it connected, and is compacted by it once.
 
 Nothing survives `/reload` except the saved variable itself: open the database again in the loaded phase.
