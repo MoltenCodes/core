@@ -72,7 +72,7 @@
 
 local PACKAGE_NAME = "commKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 6
+local IMPLEMENTATION_REVISION = 7
 
 -- The API generation of every package CommKit uses: required (Registry,
 -- SignalKit, EventKit, TimerKit, SchedulerKit, PoolKit) and optional
@@ -270,6 +270,9 @@ local POLICY = {
   zoningFactor = 0.1,
   zoningCapacitySeconds = 0.5,
   frameRateSampleSeconds = 1,
+  -- Until HookKit is found, a wake from idle looks it up at most once per
+  -- this many seconds (revision 7): `Registry:Find` is not free.
+  hookLookupSeconds = 1,
   modeNormal = "normal",
   modeLowFrameRate = "lowFrameRate",
   modeZoning = "zoning",
@@ -1015,6 +1018,9 @@ local function newState()
     sendingOwnTraffic = false,
     -- The HookKit scope holding the outside-traffic hooks, once installed.
     outsideHooks = false,
+    -- When HookKit was last looked up while `outsideHooks` was `false`, or
+    -- `false` before the first lookup (revision 7).
+    outsideLookupAt = false,
     -- Incomplete received messages: key to stream, in opening order, and
     -- sender to { streams, bytes }.
     streams = {},
@@ -1164,6 +1170,11 @@ if rawget(budget, "sampledAt") == nil then
 end
 if rawget(state, "deferred") == nil then
   rawset(state, "deferred", { count = 0, cursor = 0, flushing = 0 })
+end
+-- Revision 7 rate-limits the HookKit lookup. An older state never looked it up
+-- under this rule, so the next wake does.
+if rawget(state, "outsideLookupAt") == nil then
+  rawset(state, "outsideLookupAt", false)
 end
 local deferred = rawget(state, "deferred")
 for _, addonScope in next, addonScopes do
@@ -1566,7 +1577,10 @@ end
 ---not free. `onWake` is true for a wake from idle, which samples only when no
 ---ticker runs and the last sample is at least a ticker interval old, so sends
 ---that each leave inside `Send` sample at most once a second between them.
+---Returns the time it read, so a wake checks its other once-a-second work
+---(`installOutsideHooks`) against the same clock reading.
 ---@param onWake boolean?
+---@return number currentTime
 local function sampleFrameRate(onWake)
   local currentTime = now()
   if onWake == true then
@@ -1575,21 +1589,22 @@ local function sampleFrameRate(onWake)
       driver.sampler ~= false
       or (sampledAt ~= false and currentTime - sampledAt < POLICY.frameRateSampleSeconds)
     then
-      return
+      return currentTime
     end
   end
   budget.sampledAt = currentTime
   local getFramerate = readHostFunction("GetFramerate")
   if getFramerate == nil then
     rawset(budget, "framesPerSecond", false)
-    return
+    return currentTime
   end
   local framesPerSecond = getFramerate()
   if type(framesPerSecond) ~= "number" or isSecret(framesPerSecond) then
     rawset(budget, "framesPerSecond", false)
-    return
+    return currentTime
   end
   rawset(budget, "framesPerSecond", framesPerSecond)
+  return currentTime
 end
 
 ---Start the frame-rate ticker if it is not running. Called when a driver run
@@ -2527,11 +2542,20 @@ do
   end
 
   ---Install the outside-traffic hooks once, when HookKit is present. Tried again
-  ---every time the driver wakes from idle until HookKit is found.
-  function installOutsideHooks()
+  ---when the driver wakes from idle until HookKit is found, but at most once per
+  ---`POLICY.hookLookupSeconds`: a `Registry:Find` on every short send was about
+  ---a tenth of its time. A HookKit that loads later is found by the first wake
+  ---at least that long after the previous lookup.
+  ---@param currentTime number the clock reading of this wake
+  function installOutsideHooks(currentTime)
     if rawget(state, "outsideHooks") ~= false then
       return
     end
+    local lookedUpAt = rawget(state, "outsideLookupAt")
+    if lookedUpAt ~= false and currentTime - lookedUpAt < POLICY.hookLookupSeconds then
+      return
+    end
+    rawset(state, "outsideLookupAt", currentTime)
     local HookKit = findOptional("hookKit", DEPENDENCY_API.hookKit)
     if HookKit == nil or type(rawget(HookKit, "CreateScope")) ~= "function" then
       return
@@ -2564,8 +2588,7 @@ local function wakeDriver()
   driver.delayed = false
   -- Waking from idle samples once; the ticker, once a run left work behind,
   -- samples from then on (`startSampler`).
-  sampleFrameRate(true)
-  installOutsideHooks()
+  installOutsideHooks(sampleFrameRate(true))
 end
 
 ---Send from `Send` itself when the driver is idle: one driver run on the
@@ -2588,8 +2611,7 @@ local function runInline()
     return false
   end
   -- What waking from idle does (`wakeDriver`).
-  sampleFrameRate(true)
-  installOutsideHooks()
+  installOutsideHooks(sampleFrameRate(true))
 
   driver.running = true
   driver.inline = true

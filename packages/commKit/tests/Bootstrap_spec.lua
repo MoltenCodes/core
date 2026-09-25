@@ -322,6 +322,44 @@ describe("CommKit bootstrap", function()
     assert.are.equal(1, #olderState.spares.records)
   end)
 
+  it("upgrades a revision 6 state in place and keeps looking for HookKit", function()
+    local older, loaded = TestEnv.Load({ commKitRevision = 6 })
+    assert.are.equal(6, older.REVISION)
+    local olderState = rawget(older, "_state")
+    local scope = older:CreateScope()
+    older:SetLimits({ burst = 400, maxCps = 100 })
+    local handle = scope:Send({ prefix = PREFIX, text = TestEnv.Text(700), distribution = "PARTY" })
+    assert.are.equal("sending", handle:GetState())
+    -- Revision 6 had no lookup time.
+    olderState.outsideLookupAt = nil
+
+    package.loaded["CommKit"] = nil
+    local CommKit = require("CommKit")
+    assert.are.equal(older, CommKit)
+    assert.is_true(CommKit.REVISION > 6)
+    assert.are.equal(olderState, rawget(CommKit, "_state"))
+    assert.is_false(olderState.outsideLookupAt)
+
+    -- The inherited send finishes; a HookKit loaded meanwhile is found by
+    -- the next wake from idle, because no lookup was made under the new rule.
+    TestEnv.Advance(10)
+    assert.are.equal("sent", handle:GetState())
+    TestEnv.TakeOutbox()
+    TestEnv.LoadHookKitLater()
+    local lookups = 0
+    local find = rawget(loaded.Registry, "Find")
+    rawset(loaded.Registry, "Find", function(self, packageName, api)
+      if packageName == "hookKit" then
+        lookups = lookups + 1
+      end
+      return find(self, packageName, api)
+    end)
+    scope:Send({ prefix = PREFIX, text = "after", distribution = "PARTY" })
+    rawset(loaded.Registry, "Find", find)
+    assert.are.equal(1, lookups)
+    assert.are_not.equal(false, olderState.outsideHooks)
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

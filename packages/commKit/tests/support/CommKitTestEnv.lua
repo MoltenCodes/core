@@ -342,6 +342,15 @@ function CommKitTestEnv.SetClosesAddonScopes(LifecycleKit, closesAddonScopes)
   rawset(LifecycleKit, "CLOSES_ADDON_SCOPES", value)
 end
 
+---Load HookKit, and the `hooksecurefunc` stub it binds at load, on top of a
+---chain `Load` built without it: HookKit arriving after CommKit, as an addon
+---that embeds it and loads later brings it.
+---@return table HookKit
+function CommKitTestEnv.LoadHookKitLater()
+  setGlobal("hooksecurefunc", hookSecureFunction)
+  return require("HookKit")
+end
+
 ---The default chain: everything but HookKit and SchemaKit. The package under
 ---test first, then Registry, as `FrameworkTestEnv` environments return them.
 ---@return table CommKit

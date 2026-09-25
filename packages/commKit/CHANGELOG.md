@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.0 — 2026-09-25
+
+Documented-behaviour change, approved by the owner: **until HookKit is found, CommKit looks it up at most once a second**, not on every wake of the driver from idle. The wire protocol, API generation 1 and every bound are unchanged.
+
+- **The HookKit lookup is rate-limited.** Revision 6 called `Registry:Find("hookKit", 1)` on every wake from idle until HookKit was found, which on a session without HookKit (or before it loaded) meant once per short send that left inside `Send`. `installOutsideHooks` now looks it up only when no lookup was made yet or the last one is at least a second old (`POLICY.hookLookupSeconds`), using the clock reading the wake's frame-rate check already made, so the gate costs no extra clock call. Once HookKit is found the hooks are installed and it is never looked up again, as before. `docs/API.md` ("Traffic CommKit did not send") promised the hooks "the first time the driver wakes after HookKit is found" and now says they are installed on the first wake from idle at least one second after the previous lookup (the session's first wake always looks); a HookKit that loads after CommKit is found by the first such wake after it loaded, and traffic other code sends before then is not charged. The cost section states the bound.
+- Host benchmark, `python3 -m tooling.bench.run --workload comm --rounds 3` on an Apple M5 Pro, before and after this change in the same session, with other agents' benchmarks and specs running (load average 1.8 before, 3.2 after; the sides are interleaved, so the ratios are the comparable figures). Ratios are CommKit time over AceComm time; allocation is deterministic and unchanged.
+
+  | Case | Before | After | Allocation (Ace3) |
+  |---|---:|---:|---|
+  | `send-200` | 7.80× (5,679 ns) | 7.11× (5,385 ns) | 834 B (104 B) |
+  | `send-1000` | 5.66× (16.0 µs) | 5.73× (16.1 µs) | 2,493 B (2,086 B) |
+  | `send-8000` | 4.61× (104 µs) | 4.50× (103 µs) | 19,276 B (21,679 B) |
+  | `receive-200` | 3.12× | 3.10× | 225 B (0 B) |
+
+  The gain is one `Registry:Find` per short send (about 0.3–0.5 µs); longer messages spend their time in chunking and the driver, so their ratios move within the noise.
+- Implementation revision 7. The state gains `outsideLookupAt` (the time of the last lookup, or `false`), added as `false` by an upgrade over revision 6, so the next wake looks HookKit up. `docs/INTERNALS.md` describes the field and the gate; the local-variable budget is unchanged (no file-scope local added).
+- 233 specs (was 227): new `HookLookup_spec.lua` pins one lookup on the session's first wake, none more often than once a second across many sends, none while the driver is busy, a HookKit loaded later found by the first wake a second after the previous lookup and its outside traffic charged from then on, and no lookup at all once the hooks are installed; `Bootstrap_spec.lua` upgrades a revision 6 state in place with a send in flight and finds a HookKit loaded meanwhile on the next wake. The allocation guard of a send the bucket pays for at once passes unchanged.
+- Real-client suite (`tests/client/MoltenCodesTest_CommKit`): no expectation changes, because HookKit loads at login with the other Kits and the first wake of the session finds it; the comment on the outside-traffic test and the "What this test touches" note in `EXPECTED.md` say so.
+
 ## 0.3.0 — 2026-09-25
 
 Contract change, approved by the owner: **a send made while the driver is idle leaves inside `Send`**, as ChatThrottleLib sends at once while bandwidth is left. The wire protocol and API generation 1 are unchanged; peers on revision 5 and earlier interoperate.

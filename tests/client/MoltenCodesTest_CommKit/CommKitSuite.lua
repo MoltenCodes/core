@@ -1398,8 +1398,10 @@ roundTrip:Test(
     local scope = newCommScope()
     local deliveries = collectDeliveries(ctx, scope, PREFIX.raw)
 
-    -- One CommKit send first: CommKit installs its outside-traffic hooks the
-    -- first time its driver wakes with HookKit loaded.
+    -- One CommKit send first: CommKit installs its outside-traffic hooks when
+    -- its driver wakes from idle and finds HookKit. Until found, it looks at
+    -- most once a second (revision 7); HookKit loads at login with the other
+    -- Kits, before any send, so the first wake of the session finds it.
     local warm = send(ctx, scope, whisperToSelf(PREFIX.raw, "warm", fullName))
     awaitSent(ctx, warm)
 

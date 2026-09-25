@@ -258,7 +258,9 @@ queued. What stays in the session until `/reload`:
   on. No such addon exists;
 - CommKit's counters (`GetStatistics`), which count since load, and, when
   HookKit is loaded, the secure hooks CommKit puts on the client's send
-  functions the first time it sends. Secure hooks cannot be removed; CommKit
+  functions the first time it sends (HookKit loads at login with the other
+  Kits, so the first wake of CommKit's driver finds it; until found, CommKit
+  looks it up at most once a second). Secure hooks cannot be removed; CommKit
   documents them as session-long (docs/API.md, "Bandwidth").
 
 Nothing is written to a global or a saved variable besides the harness's own
