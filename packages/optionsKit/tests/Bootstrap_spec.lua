@@ -211,6 +211,27 @@ describe("OptionsKit bootstrap", function()
     assert.is_true(store.enabled)
   end)
 
+  it("upgrades a revision 5 state in place and keeps its trees", function()
+    TestEnv.Reset()
+    TestEnv.InstallWowApi()
+    require("Registry")
+    require("SignalKit")
+    require("SchemaKit")
+    local OptionsKit = TestEnv.LoadRevision(5)
+    local state = rawget(OptionsKit, "_state")
+    local store = { enabled = false }
+    local tree = OptionsKit:Define("Addon", toggleTree(store))
+
+    -- The shipped file, at its own revision, loads over revision 5.
+    local upgraded = require("OptionsKit")
+    assert.are.equal(OptionsKit, upgraded)
+    assert.is_true(upgraded.REVISION > 5)
+    assert.are.equal(state, rawget(upgraded, "_state"))
+    assert.are.equal(tree, upgraded:Get("Addon"))
+    assert.is_true(tree:Set("enabled", true))
+    assert.is_true(store.enabled)
+  end)
+
   it("requires Registry", function()
     TestEnv.Reset()
     TestEnv.InstallWowApi()

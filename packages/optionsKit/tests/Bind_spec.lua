@@ -48,6 +48,30 @@ describe("OptionsKit bind to a SettingsKit database", function()
   end)
   after_each(TestEnv.Reset)
 
+  it("counts a database without IsReadOnly, or with a secret answer, as writable", function()
+    -- The stand-in has no `IsReadOnly`, as an older SettingsKit has none.
+    assert.is_false(tree:IsDisabled("scale"))
+    assert.is_false(tree:Describe().children[1].disabled)
+
+    local answer = {}
+    db.IsReadOnly = function()
+      return answer
+    end
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", function(value)
+      return rawequal(value, answer)
+    end)
+    assert.is_false(tree:IsDisabled("scale"))
+    -- selene: allow(global_usage)
+    rawset(_G, "issecretvalue", nil)
+
+    db.IsReadOnly = function()
+      return true
+    end
+    assert.is_true(tree:IsDisabled("scale"))
+    assert.is_true(tree:IsDisabled("verbose"))
+  end)
+
   it("reads defaults through the database", function()
     assert.are.equal(1, tree:Get("scale"))
     assert.are.equal("CENTER", tree:Get("anchor"))

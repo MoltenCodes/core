@@ -2,7 +2,7 @@
 
 OptionsKit API generation **1** provides a typed, validated, introspectable options tree with no renderer: what an addon exposes as configurable, how each option is read and written, and what a dialog or a command line needs to present it.
 
-Implementation revision: **5**.
+Implementation revision: **6**.
 
 ## Loading
 
@@ -343,7 +343,7 @@ Calls the `execute` option's `func(info)`. `confirm` is a renderer's concern; `E
 
 ### `tree:IsDisabled(path)` and `tree:IsHidden(path)`
 
-The option's own flag or predicate, then each ancestor's, up to the root: `true` as soon as one says so. Predicates run on every call, with their own option's `info`. Any option path is accepted, groups included.
+The option's own flag or predicate, then each ancestor's, up to the root: `true` as soon as one says so. Predicates run on every call, with their own option's `info`. Any option path is accepted, groups included. An option bound to a database path is also disabled while the database is read-only (see [Bound options](#bound-options)); `IsHidden` is unaffected.
 
 ### Bound options
 
@@ -360,6 +360,8 @@ SettingsKit reads a record that has no default and no saved data as `nil`. Optio
 Give the record a default (`S.optional(S.table{...}, {})`) when its leaf defaults should be visible before the first write.
 
 If the walk meets something that is not a table, the call raises at your line: `OptionsKit.Tree:Get bind path "profile.frame.anchor" does not lead to a table`. A scope the database no longer provides raises `OptionsKit.Tree:Get bind scope "profile" is not an available scope of the database`.
+
+**A read-only database disables its bound options.** SettingsKit opens data a newer version of the addon saved read-only (`db:IsReadOnly()`, SettingsKit revision 5 and later). While `db:IsReadOnly()` answers `true`, `IsDisabled` and `Describe` report every bound option as disabled, so a renderer greys it out; options with `get`/`set`, and groups, are unaffected. `Get` and `Describe` still read the value. As for any `disabled` option, `Set` and `Reset` still run and SettingsKit then refuses the write: `Validate` answers `false` with SettingsKit's read-only message and `Set` raises `OptionsKit.Tree:Set scale refused by the database: SettingsKit (MyAddonDB) profile is read-only: ...` at your line. A database without `IsReadOnly` (an older SettingsKit, or a stand-in) or answering with a secret counts as writable.
 
 OptionsKit does not listen to the database for bound values. A value changed by SettingsKit directly fires SettingsKit's `OnChange`, not the tree's, so a renderer that shows bound options listens to `db:OnChange` as well. A profile switch, copy, reset or deletion reaches the tree's `OnChange` only while the tree holds a [profile group](#refresh) over that database; otherwise listen to `db:OnProfileChanged` too.
 
@@ -387,7 +389,7 @@ A fresh plain table describing the whole tree, built on every call and safe to e
 | `depth` | every node | `0` for the root. |
 | `name`, `order` | every node | As defined; the root's `name` defaults to the addon name, `order` to `100`. |
 | `desc` | when defined | A `desc` function's result; `Describe` raises at your line when it returns no string. |
-| `disabled`, `hidden` | every node | Effective booleans, evaluated now (`IsDisabled` / `IsHidden`). |
+| `disabled`, `hidden` | every node | Effective booleans, evaluated now (`IsDisabled` / `IsHidden`); a bound option is also disabled while its database is read-only. |
 | `addonName` | the root | |
 | `children` | `group` | Child nodes, sorted as `Walk` visits them. |
 | `inline` | `group` | When defined. |
@@ -439,6 +441,8 @@ The returned table is a `group` to place in a tree's `args` (or to pass as the r
 | `reset` | `execute`, `confirm` | `db:ResetProfile()`: every setting of the current profile reads its default again. |
 | `deleteTarget` | `select` | Every profile but the current one. Remembers the choice for `delete`, with the same `nil` rule. |
 | `delete` | `execute`, `confirm` | Forgets the choice, then `db:DeleteProfile(deleteTarget)`, so a target chosen while the deletion is announced is kept. Disabled until `deleteTarget` names a profile that exists and is not current. |
+
+**A read-only database** (SettingsKit opens data a newer version of the addon saved read-only; `db:IsReadOnly()`, SettingsKit revision 5 and later) disables every option of the group but `intro`: `current`, `new`, `copySource`, `copy`, `reset`, `deleteTarget` and `delete` answer `disabled` with `true` while `db:IsReadOnly()` does, and are enabled again as the rules above say otherwise. The group still reads: `current` shows the profile in use and the selects list the profiles. As for any `disabled` option, `Set` and `Execute` still run, and SettingsKit then refuses the change at the caller with its read-only message. A database without `IsReadOnly` (an older SettingsKit) counts as writable.
 
 The `select` options take their choices from a values function, so `Describe` and every check see the profiles as they are now; the group's `desc` and those of `current`, `copySource`, `copy`, `reset` and `deleteTarget` are `desc` functions that name the current profile (`Return every setting of "Raid" to its default.`). Both are read when `Describe` runs: a renderer that redraws from `Describe` shows the current names, one that caches its last description shows them as of that call.
 
@@ -550,6 +554,6 @@ The nine-point plan in `docs/ROADMAP.md` is followed except where recorded here:
 
 ## Embedded copies and upgrades
 
-Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 5 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads.
+Several addons may embed OptionsKit; Registry selects the newest compatible revision and every copy shares one facade. An upgrade happens in place: trees defined under an older copy stay registered, keep their records, `info` tables, schemas and `OnChange` listeners, and gain the newer copy's methods through the shared `OptionsKit.Tree` prototype. Revision 2 added the profile group map to the package state and a link list to every tree; a tree built by revision 1 gets an empty one when a later revision loads over it. Revisions 3 to 6 changed no layout; a predicate recorded by an older revision is answered secret-aware as soon as revision 5 loads. A profile group defined before an upgrade keeps its database connections and the callbacks of the revision that built it: `ProfileOptions` builds them as closures, so a newer copy's fixes reach the groups built after it loads.
 
 Nothing survives `/reload`: trees are defined again when the addon loads.

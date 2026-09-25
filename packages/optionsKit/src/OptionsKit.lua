@@ -43,7 +43,7 @@
 
 local PACKAGE_NAME = "optionsKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 5
+local IMPLEMENTATION_REVISION = 6
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SCHEMAKIT_API = 1
 local REQUIRED_SIGNALKIT_API = 1
@@ -476,7 +476,7 @@ end
 -- Revision 1 had no profile groups and built tree layout 1. The group map is
 -- added, and every tree gains the (empty) list of profile links `Undefine`
 -- detaches: a revision 1 tree cannot contain a profile group. Revisions 3
--- and 4 changed no layout, so a revision 2 or 3 state needs nothing here.
+-- to 6 changed no layout, so a revision 2 or later state needs nothing here.
 if rawget(state, "profileGroups") == nil then
   rawset(state, "profileGroups", setmetatable({}, { __mode = "k" }))
 end
@@ -1413,6 +1413,39 @@ local function effectiveFlag(record, field)
   return false
 end
 
+---Whether a SettingsKit database refuses every write: SettingsKit opens data
+---a newer version of the addon saved read-only (SettingsKit revision 5 and
+---later). A database without `IsReadOnly` (an older SettingsKit revision, or
+---a stand-in) is writable. The answer is asked about secrecy before it is
+---compared, as every answer from outside OptionsKit is, and a secret answer
+---counts as writable.
+---@param db table
+---@return boolean
+local function isDatabaseReadOnly(db)
+  local method = db.IsReadOnly
+  if type(method) ~= "function" then
+    return false
+  end
+  local answer = method(db)
+  return not isSecret(answer) and answer == true
+end
+
+---Whether `record` is disabled: its own `disabled` or a group's above it, or,
+---for an option bound to a database path, a read-only database, so a
+---renderer greys out a value SettingsKit would refuse to write.
+---@param tree OptionsKit.Tree
+---@param record table
+---@return boolean
+local function isRecordDisabled(tree, record)
+  if effectiveFlag(record, "_disabled") then
+    return true
+  end
+  if rawget(record, "_bindScope") then
+    return isDatabaseReadOnly(rawget(tree, "_db"))
+  end
+  return false
+end
+
 -- Tree methods ---------------------------------------------------------------
 
 ---Read the value of the option at `path`: the getter's result, or the bound
@@ -1510,13 +1543,14 @@ local function treeExecute(self, path)
   rawget(record, "_func")(rawget(record, "_info"))
 end
 
----Whether the option at `path`, or a group above it, is disabled.
+---Whether the option at `path`, or a group above it, is disabled; a bound
+---option also while its database is read-only.
 ---@param self OptionsKit.Tree
 ---@param path string
 ---@return boolean
 local function treeIsDisabled(self, path)
   validateTree(self, "OptionsKit.Tree:IsDisabled", 3)
-  return effectiveFlag(findRecord(self, path, "OptionsKit.Tree:IsDisabled", 3), "_disabled")
+  return isRecordDisabled(self, findRecord(self, path, "OptionsKit.Tree:IsDisabled", 3))
 end
 
 ---Whether the option at `path`, or a group above it, is hidden.
@@ -1649,7 +1683,7 @@ local function describeRecord(tree, record, level)
     depth = rawget(record, "_depth"),
     name = rawget(record, "_name"),
     order = rawget(record, "_order"),
-    disabled = effectiveFlag(record, "_disabled"),
+    disabled = isRecordDisabled(tree, record),
     hidden = effectiveFlag(record, "_hidden"),
   }
   local key = rawget(record, "_key")
@@ -2000,6 +2034,25 @@ local function isOtherProfile(link, name)
   return false
 end
 
+---Whether the group's database refuses every profile change
+---(`isDatabaseReadOnly`).
+---@param link table
+---@return boolean
+local function isReadOnly(link)
+  return isDatabaseReadOnly(link.db)
+end
+
+---The `disabled` predicate of every option that changes the database: a
+---renderer greys them out while the database is read-only instead of offering
+---a change SettingsKit would refuse.
+---@param link table
+---@return fun(): boolean
+local function disabledWhileReadOnly(link)
+  return function()
+    return isReadOnly(link)
+  end
+end
+
 ---Switch the database to `name` without the link's own listener firing the
 ---tree: `Set` fires `OnChange` for this write itself. The flag is restored to
 ---what it was, not cleared, so a switch made from a listener of an outer
@@ -2070,6 +2123,7 @@ local function buildProfileArgs(link)
         return withCurrentProfile(link, "current.desc")
       end,
       order = 2,
+      disabled = disabledWhileReadOnly(link),
       values = function()
         return currentChoices(link)
       end,
@@ -2086,6 +2140,7 @@ local function buildProfileArgs(link)
       desc = translate(link, "new.desc"),
       usage = translate(link, "new.usage"),
       order = 3,
+      disabled = disabledWhileReadOnly(link),
       get = function()
         return ""
       end,
@@ -2105,6 +2160,7 @@ local function buildProfileArgs(link)
         return withCurrentProfile(link, "copySource.desc")
       end,
       order = 4,
+      disabled = disabledWhileReadOnly(link),
       values = function()
         return otherChoices(link)
       end,
@@ -2124,7 +2180,7 @@ local function buildProfileArgs(link)
       confirm = translate(link, "copy.confirm"),
       order = 5,
       disabled = function()
-        return not isOtherProfile(link, link.copySource)
+        return isReadOnly(link) or not isOtherProfile(link, link.copySource)
       end,
       func = function(info)
         local source = link.copySource
@@ -2142,6 +2198,7 @@ local function buildProfileArgs(link)
       end,
       confirm = translate(link, "reset.confirm"),
       order = 6,
+      disabled = disabledWhileReadOnly(link),
       func = function()
         db:ResetProfile()
       end,
@@ -2153,6 +2210,7 @@ local function buildProfileArgs(link)
         return withCurrentProfile(link, "deleteTarget.desc")
       end,
       order = 7,
+      disabled = disabledWhileReadOnly(link),
       values = function()
         return otherChoices(link)
       end,
@@ -2170,7 +2228,7 @@ local function buildProfileArgs(link)
       confirm = translate(link, "delete.confirm"),
       order = 8,
       disabled = function()
-        return not isOtherProfile(link, link.deleteTarget)
+        return isReadOnly(link) or not isOtherProfile(link, link.deleteTarget)
       end,
       func = function(info)
         local target = link.deleteTarget

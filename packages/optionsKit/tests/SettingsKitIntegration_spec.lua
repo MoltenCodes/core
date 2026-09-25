@@ -264,6 +264,114 @@ describe("OptionsKit with the real SettingsKit", function()
     assert.are.equal(1, db.profile.tint.r)
   end)
 
+  it("works over a record stored as a scalar: reads the default, then repairs on Set", function()
+    local OptionsKit = TestEnv.NewPackage()
+    local SettingsKit = require("SettingsKit")
+    local S = require("SchemaKit")
+    -- Hand-edited or corrupted data: `frame` is declared as a record.
+    -- selene: allow(global_usage)
+    rawset(_G, SAVED_VARIABLE, { profiles = { Default = { frame = 5 } } })
+    local db = SettingsKit:Open(SAVED_VARIABLE, {
+      profile = S.table({
+        fields = {
+          frame = S.optional(
+            S.table({ fields = { x = S.optional(S.number({ min = 0, max = 3 }), 2) } }),
+            {}
+          ),
+        },
+      }),
+    })
+    local tree = OptionsKit:Define("Addon", {
+      type = "group",
+      args = {
+        x = { type = "range", name = "X", min = 0, max = 3, bind = "profile.frame.x" },
+      },
+    }, { db = db })
+
+    assert.are.equal(2, tree:Get("x"))
+    assert.are.equal(2, tree:Describe().children[1].value)
+    assert.are.equal(2, tree:Reset("x"))
+    assert.is_true(tree:Set("x", 1))
+    -- selene: allow(global_usage)
+    assert.are.same({ x = 1 }, rawget(_G, SAVED_VARIABLE).profiles.Default.frame)
+  end)
+
+  ---Open a database over data a newer addon version saved (stored version 9,
+  ---opened with version 2), and define a tree with one bound and one unbound
+  ---option over it.
+  ---@param allowNewerData boolean?
+  ---@return table tree
+  ---@return table db
+  local function defineOverNewerData(allowNewerData)
+    local OptionsKit = TestEnv.NewPackage()
+    local SettingsKit = require("SettingsKit")
+    local S = require("SchemaKit")
+    -- selene: allow(global_usage)
+    rawset(_G, SAVED_VARIABLE, { version = 9, profiles = { Default = { scale = 1.5 } } })
+    local db = SettingsKit:Open(SAVED_VARIABLE, {
+      profile = S.table({
+        fields = { scale = S.optional(S.number({ min = 0.5, max = 2 }), 1) },
+      }),
+    }, { version = 2, allowNewerData = allowNewerData })
+    local store = { verbose = false }
+    local tree = OptionsKit:Define("Addon", {
+      type = "group",
+      args = {
+        scale = { type = "range", name = "Scale", min = 0.5, max = 2, bind = "profile.scale" },
+        verbose = {
+          type = "toggle",
+          name = "Verbose",
+          get = function()
+            return store.verbose
+          end,
+          set = function(_, value)
+            store.verbose = value
+          end,
+        },
+      },
+    }, { db = db })
+    return tree, db
+  end
+
+  it(
+    "renders a bound option disabled while the database is read-only, and still reads it",
+    function()
+      local tree, db = defineOverNewerData()
+      assert.is_true(db:IsReadOnly())
+      assert.is_true(tree:IsDisabled("scale"))
+      assert.is_false(tree:IsDisabled("verbose"))
+      assert.is_false(tree:Describe().disabled)
+      local described = tree:Describe().children
+      assert.is_true(described[1].disabled)
+      assert.are.equal(1.5, described[1].value)
+      assert.is_false(described[2].disabled)
+      assert.are.equal(1.5, tree:Get("scale"))
+
+      -- `disabled` is for renderers: Set still asks the database, which refuses.
+      local valid, reason = tree:Validate("scale", 1)
+      assert.is_false(valid)
+      assert.are.equal(
+        "SettingsKit ("
+          .. SAVED_VARIABLE
+          .. ") profile is read-only: the saved table has version 9, newer than options.version 2; "
+          .. "pass options.allowNewerData = true to SettingsKit:Open to write it",
+        reason
+      )
+      TestEnv.expectErrorContaining("refused by the database: " .. reason, function()
+        tree:Set("scale", 1)
+      end)
+      assert.are.equal(1.5, db.profile.scale)
+    end
+  )
+
+  it("keeps a bound option enabled over newer data opened with allowNewerData", function()
+    local tree, db = defineOverNewerData(true)
+    assert.is_false(db:IsReadOnly())
+    assert.is_false(tree:IsDisabled("scale"))
+    assert.is_true(tree:Set("scale", 1))
+    assert.are.equal(1, db.profile.scale)
+  end)
+
   it("allocates nothing on Validate of a bound option once the path exists #allocation", function()
     local OptionsKit, db = openFrameDatabase()
     local tree = OptionsKit:Define("Addon", {

@@ -801,6 +801,91 @@ describe("OptionsKit ProfileOptions", function()
     )
   end)
 
+  ---Load the chain with SettingsKit and open a database over data a newer
+  ---version saved (stored version 9, opened with version 2).
+  ---@param allowNewerData boolean?
+  ---@return table OptionsKit
+  ---@return table db
+  local function openNewerDatabase(allowNewerData)
+    local OptionsKit = TestEnv.NewPackage()
+    installIdentity()
+    local SettingsKit = require("SettingsKit")
+    local S = require("SchemaKit")
+    setGlobal(SAVED_VARIABLE, {
+      version = 9,
+      profiles = { Default = { scale = 2 }, Alt = { scale = 0.5 } },
+    })
+    local db = SettingsKit:Open(SAVED_VARIABLE, {
+      profile = S.table({
+        fields = { scale = S.optional(S.number({ min = 0.5, max = 2 }), 1) },
+      }),
+    }, { version = 2, allowNewerData = allowNewerData })
+    return OptionsKit, db
+  end
+
+  local CHANGING_KEYS =
+    { "current", "new", "copySource", "copy", "reset", "deleteTarget", "delete" }
+
+  it("disables every option that changes a read-only database and still reads it", function()
+    local OptionsKit, db = openNewerDatabase()
+    assert.is_true(db:IsReadOnly())
+    local tree, group = defineProfiles(OptionsKit, db)
+    group.args.copySource.set(nil, "Alt")
+    group.args.deleteTarget.set(nil, "Alt")
+
+    for index = 1, #CHANGING_KEYS do
+      local key = CHANGING_KEYS[index]
+      assert.is_true(tree:IsDisabled("profiles." .. key), key)
+      assert.is_true(describeChild(tree, key).disabled, key)
+    end
+    assert.is_false(tree:IsDisabled("profiles.intro"))
+    assert.are.equal("Default", tree:Get("profiles.current"))
+    assert.are.same({ Alt = "Alt" }, describeChild(tree, "copySource").values)
+
+    -- `disabled` is for renderers: a Set still reaches SettingsKit, which refuses it.
+    TestEnv.expectErrorContaining(
+      "SettingsKit.Database:SetProfile cannot change " .. SAVED_VARIABLE .. ", which is read-only",
+      function()
+        tree:Set("profiles.current", "Alt")
+      end
+    )
+    assert.are.equal("Default", db:GetProfile())
+  end)
+
+  it("keeps the options enabled for newer data opened with allowNewerData", function()
+    local OptionsKit, db = openNewerDatabase(true)
+    assert.is_false(db:IsReadOnly())
+    local tree, group = defineProfiles(OptionsKit, db)
+    group.args.copySource.set(nil, "Alt")
+    group.args.deleteTarget.set(nil, "Alt")
+
+    for index = 1, #CHANGING_KEYS do
+      assert.is_false(tree:IsDisabled("profiles." .. CHANGING_KEYS[index]), CHANGING_KEYS[index])
+    end
+    assert.is_true(tree:Set("profiles.current", "Alt"))
+    assert.are.equal("Alt", db:GetProfile())
+  end)
+
+  it("counts a database without IsReadOnly, or with a secret answer, as writable", function()
+    local OptionsKit, db = openDatabase()
+    -- Stand-ins over the real database: an older SettingsKit without the
+    -- method, and one whose answer the host reports as secret. The group's
+    -- predicates are asked directly; the stand-ins cannot connect signals.
+    local legacy = setmetatable({ IsReadOnly = false }, { __index = db })
+    assert.is_false(OptionsKit:ProfileOptions(legacy).args.reset.disabled())
+
+    local answer = {}
+    local secretive = setmetatable({
+      IsReadOnly = function()
+        return answer
+      end,
+    }, { __index = db })
+    setGlobal("issecretvalue", function(value)
+      return rawequal(value, answer)
+    end)
+    assert.is_false(OptionsKit:ProfileOptions(secretive).args.reset.disabled())
+  end)
+
   it("refuses to build without SettingsKit, at the caller", function()
     local OptionsKit = TestEnv.NewPackage()
     assertReportedAtCaller(
