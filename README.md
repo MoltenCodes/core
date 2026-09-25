@@ -87,6 +87,8 @@ end)
 - [`examples/`](examples/) is a complete example addon that a spec loads from
   login to logout and the language server type-checks on every run, so it
   cannot drift from the framework.
+- [`docs/MIGRATING_FROM_ACE3.md`](docs/MIGRATING_FROM_ACE3.md) moves an existing
+  Ace3 addon over, one Ace3 library at a time.
 
 Build the bundle you embed or install:
 
@@ -174,6 +176,8 @@ and why it is there.
 Start with [`docs/README.md`](docs/README.md), the documentation map.
 
 - [`docs/EMBEDDING.md`](docs/EMBEDDING.md) — how an addon embeds and loads the framework.
+- [`docs/MIGRATING_FROM_ACE3.md`](docs/MIGRATING_FROM_ACE3.md) — moving an addon from Ace3 to the Kits, library by library.
+- [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) — performance against Ace3, measured on host Lua, with regressions listed.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — package boundaries, dependency direction and runtime architecture.
 - [`docs/DESIGN_CONSTITUTION.md`](docs/DESIGN_CONSTITUTION.md) — the design principles every change preserves.
 - [`docs/PACKAGE_MANIFEST.md`](docs/PACKAGE_MANIFEST.md) — package metadata, layout and versioning contracts.

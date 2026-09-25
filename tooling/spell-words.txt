@@ -13,6 +13,7 @@
 # "behaviour" and "licence" are not listed.
 
 # World of Warcraft client API names, written as one lowercase word.
+ambiguate
 debugprofilestart
 debugprofilestop
 debugstack
@@ -26,6 +27,7 @@ secretwrap
 securecallfunction
 seterrorhandler
 soundkit
+strlenutf
 
 # World of Warcraft terms, and fragments of event and variable names
 # (`PLAYER_REGEN_ENABLED`, `CURSEFORGE_PROJECT_ID`, `WOWI_ID`).
@@ -58,6 +60,12 @@ UIDROPDOWNMENU
 Wago
 WOWGUID
 WOWI
+
+# Ace3 names the migration guide and the bridgeKit design cite
+# (`AddToBlizOptions`, AceDB's `factionrealm` and `factionrealmregion` scopes).
+bliz
+factionrealm
+factionrealmregion
 
 # Lua 5.1 standard library and language terms.
 collectgarbage
@@ -99,11 +107,14 @@ shellcheck
 stylua
 
 # Terms of art the documentation uses deliberately.
+deserialise
 entrancy
 indegree
 introspectable
 memoises
+oneshot
 resetless
 serialiser
 unregistration
 versionable
+worklist

@@ -1217,6 +1217,10 @@ because the owner wants the developer-facing core finished first. Each step
 ends with the gates green and a read-only review; capabilities are checkboxes
 under their Kit, new Kits carry nine points.
 
+On 2026-09-25 the owner set the user-interface phase aside for now and moved
+the Ace3 migration tools ahead of it: package N, bridgeKit, recorded after
+package M below.
+
 #### Package I — capabilities for existing Kits
 
 - [x] **signalKit** (W10, done 2026-09-24) — `SignalKit:New({ onFirst, onLast })` hooks that fire
@@ -1372,6 +1376,108 @@ under their Kit, new Kits carry nine points.
       launcher for brokerKit, timerKit's engine-driven ticker (W15),
       bindingKit. Recorded when their turn comes.
 
+#### Package N — bridgeKit, migrating from Ace3
+
+Decided 2026-09-25 with the project owner, from the external review that
+compared the framework with Ace3 and asked for migration from Ace3 as a
+product feature (worklist items 15 to 18). The owner named the package
+`bridgeKit` (not `aceBridge`, not a part of interopKit) and moved it ahead of
+the user-interface phase. Package letter N is the next free letter after M.
+The canonical design is [`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md), which
+cites Ace3 file and line at commit `5e2e0d3b` for every format and behaviour it
+reproduces; the recipes that need no BridgeKit code (item 17) are
+[`MIGRATING_FROM_ACE3.md`](MIGRATING_FROM_ACE3.md), written in this step.
+
+Nothing in this package is ticked until its acceptance review closes. Code
+starts only after the owner has answered the design's open questions (section
+16) and said go.
+
+**bridgeKit** — facade `BridgeKit`
+
+1. Package `bridgeKit`, facade `BridgeKit`, API generation 1.
+2. Purpose: the three migration tools an Ace3 addon cannot write safely by
+   hand. (a) An AceConfig-3.0 options table (or table function) converted into
+   an OptionsKit tree for a documented subset, the addon's Ace
+   `get`/`set`/`func`/`validate` handlers kept and called with an Ace-shaped
+   `info`, inheritance resolved at conversion, and a per-field report of every
+   field dropped, renamed or changed in meaning. (b) An AceDB-3.0 saved
+   variable imported into the SettingsKit layout: profiles, profile choices,
+   every AceDB scope (`char`, `realm`, `class`, `race`, `faction`,
+   `factionrealm`, `factionrealmregion`, `locale`, `global`, `profile`) and
+   namespaces, validated against the SettingsKit schema, with AceDB defaults
+   that differ from SettingsKit's written as values so every field reads what
+   it read before; copy-based (the source is never mutated), previewed, backed
+   up. (c) A wire adapter that writes and reads AceComm-3.0's multipart format
+   and AceSerializer-3.0's text format byte for byte, bounded where Ace3 is
+   not, versioned, so an addon can move to CommKit and CodecKit while its peers
+   still run the Ace3 version. Non-goals: running or embedding Ace3 code,
+   emulating Ace3 method calls, rendering (WidgetKit, CommandKit), AceGUI and
+   AceConfigDialog layouts and the Blizzard settings panel (the
+   user-interface phase), keeping two databases in sync, ChatThrottleLib.
+3. Dependencies: registry API 2, nothing else required. Optional through
+   `Registry:Find`: optionsKit API 1 (`DefineAceConfig`), schemaKit API 1
+   (the importer's probe checks), commKit API 1 in a revision with raw addon
+   messages (`OpenAceComm`), timerKit API 1 (stream expiry). The serializer
+   and the plain AceConfig conversion embed two files. Two prerequisites in
+   other Kits, not made in this step: CommKit gains `RegisterRaw` and
+   `SendRaw` (P1), and SettingsKit's saved-table layout becomes a documented
+   contract (P2, documentation only).
+4. Surface: `BridgeKit:ConvertAceConfig(appName, source, options?)` →
+   conversion `{ tree, report, paths, maxDepth, optionCount }`;
+   `BridgeKit:DefineAceConfig(addonName, source, options?)` → tree, report;
+   `BridgeKit:PreviewAceDB(source, plan)` → report;
+   `BridgeKit:ImportAceDB(source, targetName, plan)` → report or `nil,
+   reason`; `BridgeKit:AceDBMigration(plan)` → a SettingsKit migration step;
+   `BridgeKit:AceSerialize(...)` → `true, text` or `false, reason`;
+   `BridgeKit:AceDeserialize(text)` → `true, ...` or `false, reason`, never
+   raising on malformed text; `BridgeKit:OpenAceComm(scope, prefix, callback,
+   options?)` → channel (`Send`, `Close`, `IsClosed`, `GetPrefix`,
+   `GetPriority`, `GetWireVersion`) or `nil, reason`;
+   `BridgeKit:FormatReport(report, maxLines?)`; `GetStatistics()`;
+   `SetLimits{ maxReportEntries, maxImportEntries, maxDepth, maxValues,
+   maxStringLength, maxTextBytes, maxListValues, maxAceStreams,
+   maxAceStreamsPerSender, maxAceStreamBytes, maxAceSpoolBytes,
+   aceStreamTimeout, maxDropReportSenders }`, `GetLimits()`, `UNBOUNDED`,
+   `ACE_WIRE_VERSION`, `ACE_BASELINE`, `API`, `REVISION`. Programming errors
+   raise at the caller's line; data problems are report entries or returned
+   reasons.
+5. Ownership: conversions, reports and previews are plain tables the caller
+   owns. The importer writes only the target global and the backup global the
+   caller names, and refuses either when it already holds data. A wire channel
+   lives in the CommKit scope the caller passes and closes with it; AceComm
+   reassembly belongs to the prefix, shared by every channel on it, and is
+   dropped when the last channel of the prefix closes. BridgeKit owns no
+   per-addon scope and needs no logout close.
+6. Performance: conversion and import are one-time walks that allocate by
+   design; a wrapped Ace accessor adds one call and allocates nothing, except
+   the `color` and `multiselect` getters (one table per `Get`, an options
+   screen being no hot path); the serializer reuses its fragment array and
+   allocates only its result and the values it decodes; a single-part AceComm
+   message costs one table read beyond CommKit's raw delivery; reassembly
+   holds at most `maxAceSpoolBytes` (1 MB) with no polling (expiry through one
+   TimerKit timer). Costs are measured and recorded before the first release,
+   and the benchmark compares them with Ace3 fetched at run time, never
+   redistributed.
+7. Tests: Busted specs for every row of the design's field, scope, defaults
+   and format tables, inheritance resolution, report vocabularies, `strict`,
+   limits, secrets, error levels, upgrade and manifest; a source table
+   snapshot equal before and after every import; hostile serializer input
+   truncated at every byte never raising; AceSerializer and AceComm fixtures
+   recorded from Ace3 over the project's own inputs, with provenance, and no
+   Ace3 source or tests copied; a client suite proving wire compatibility
+   with real Ace3 over whisper-to-self, what bytes the client's addon channel
+   carries, the AceDB import across `/reload` in both modes, a converted tree
+   rendered by WidgetKit and CommandKit, and the secret refusals.
+8. Docs: README (the three parts, footprint per part, when to stop embedding
+   it), `docs/API.md` (the contract, every reason with its Ace3 citation,
+   costs, deviations), CHANGELOG; `docs/MIGRATING_FROM_ACE3.md` updated from
+   planned to current API; EMBEDDING footprint and host-requirements rows;
+   ARCHITECTURE, `docs/README.md` and `README.md` list the package; the design
+   document kept current.
+9. Status: planned (2026-09-25). Design and migration guide written; open
+   questions with the owner. Delivery sequence N0 (prerequisites P1, P2) to
+   N5 in the design, section 15.
+
 ### Standing obligations
 
 These apply to every phase rather than being completed once.
@@ -1432,8 +1538,9 @@ duplicating those specifications.
 
 ---
 
-Last roadmap baseline update: 2026-09-24 (phases 0 through 4 and packages F,
+Last roadmap baseline update: 2026-09-25 (phases 0 through 4 and packages F,
 G and H complete; phase 5 packages I, J, K and L complete: 28 packages, 27 of them
-release packages, every gate green; the repository audit of phase 3 done; the
-user-interface phase (package M) is what remains; the standing obligations
-continue).
+release packages, every gate green; the repository audit of phase 3 done;
+package N, bridgeKit, planned with its design and the Ace3 migration guide and
+taken before the user-interface phase (package M) by the owner's decision; the
+standing obligations continue).

@@ -10,6 +10,9 @@ This directory is the entry point for repository-wide documentation.
   order produces.
 - [`../examples/`](../examples/) contains a complete example addon that is loaded
   and type-checked on every test run.
+- [`MIGRATING_FROM_ACE3.md`](MIGRATING_FROM_ACE3.md) moves an addon from Ace3 to the
+  Kits library by library: the Ace3 code, the same thing with the Kits, and what
+  behaves differently; the data, options and wire tools are BridgeKit's (planned).
 
 ## Architecture and contracts
 
@@ -18,6 +21,8 @@ This directory is the entry point for repository-wide documentation.
 - [`PACKAGE_MANIFEST.md`](PACKAGE_MANIFEST.md) defines the canonical machine-readable package metadata contract.
 - [`ROADMAP.md`](ROADMAP.md) records what was decided and delivered in each phase, the nine-point record of every planned Kit, and the standing obligations.
 - [`API_KIT_DESIGN.md`](API_KIT_DESIGN.md) is the design of `apiKit`, the flavour-aware wrapper over the WoW addon API (package H, implemented 2026-09-24): namespaces, naming rules, metadata pipeline, outputs and definition of done.
+- [`BRIDGE_KIT_DESIGN.md`](BRIDGE_KIT_DESIGN.md) is the design of `bridgeKit`, the Ace3 migration tools (package N, planned 2026-09-25): the AceConfig adapter, the AceDB importer and the AceComm/AceSerializer wire adapter, with the Ace3 formats they reproduce.
+- [`BENCHMARKS.md`](BENCHMARKS.md) compares Kits with the Ace3 libraries that do the same work: the methodology, the in-client plan and the measured host results, regressions included.
 
 ## Development workflow
 
