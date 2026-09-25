@@ -27,8 +27,8 @@ MoltenCodes Test: PASS mediaKit.facade: the client's GetLocale answers a locale 
 MoltenCodes Test: PASS mediaKit.builtins: every built-in entry of docs/API.md's table holds its documented data for this client's locale, and each type's Get fallback is one of them
 MoltenCodes Test: PASS mediaKit.builtins: the four built-in fonts load into a hidden FontString: SetFont(path, 12) returns true for each and GetFont names the file; a missing font file is logged as the control
 MoltenCodes Test: PASS mediaKit.builtins: the nine texture-backed built-ins (backgrounds, borders but 'None', the icon, the status bars and the texture) load into a hidden Texture: SetTexture returns true, GetTexture answers and GetTextureFileID equals GetFileIDFromPath
-MoltenCodes Test: PASS mediaKit.builtins: GetFileIDFromPath resolves every built-in font and texture path to a FileDataID; the 'None' border and the 'None' sound are placeholders whose answers are logged, and nothing is played
-MoltenCodes Test: PASS mediaKit.builtins: a sound registered by the FileDataID GetFileIDFromPath gives for a shipped interface sound is a FileDataID to IsFileDataID, and Fetch hands back that number; nothing is played
+MoltenCodes Test: PASS mediaKit.builtins: GetFileIDFromPath resolves every texture-backed built-in path to a FileDataID; the font paths and the 'None' border and sound placeholders are logged, not asserted, and nothing is played
+MoltenCodes Test: SKIP mediaKit.builtins: a sound registered by a FileDataID of a shipped interface sound is a FileDataID to IsFileDataID, and Fetch hands back that number; nothing is played -- GetFileIDFromPath answered nil for Sound\Interface\RaidWarning.ogg, ReadyCheck.ogg and LevelUp.ogg on Retail 12.1.0 b69933, and SOUNDKIT holds SoundKit ids, not FileDataIDs; the Busted specs cover a sound FileDataID
 MoltenCodes Test: PASS mediaKit.scripts: GetLocale() maps to the documented script, and a font declaring that script is fetched, listed and Has true while a font declaring only greek is hidden unless anyScript
 MoltenCodes Test: PASS mediaKit.scripts: a font registered without scripts is Latin only: offered on a Latin client, hidden on any other, and always reachable with anyScript
 MoltenCodes Test: PASS mediaKit.scripts: the built-in fonts are offered without anyScript on a Latin or ruRU client and hidden on a CJK or Korean one, as docs/API.md's built-in table says
@@ -55,13 +55,22 @@ MoltenCodes Test: PASS mediaKit.secrets: Fetch, Has and List refuse a secret nam
 MoltenCodes Test: PASS mediaKit.secrets: Defaults refuses a secret consumer name, defaults:Set a secret name and defaults:Get a secret type, at the calling line
 MoltenCodes Test: PASS mediaKit.secrets: SetLimits refuses a secret maxConsumers at the calling line and the limits stay as they were, and IsFileDataID answers false for a secret FileDataID
 MoltenCodes Test: PASS mediaKit.secrets: with a stand-in LibSharedMedia, a secret entry is not adopted, a callback with a secret type and name raises nothing, a secret LOCALE_BIT_western gives way to 128 and a secret Register answer is not counted as mirrored
-MoltenCodes Test: mediaKit: 33 passed, 0 failed, 1 skipped, 0 timed out (34 tests)
+MoltenCodes Test: mediaKit: 32 passed, 0 failed, 2 skipped, 0 timed out (34 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
-The one `SKIP` is expected: the comparison with a real LibSharedMedia-3.0 runs
-only when another addon has loaded one, and the stand-in tests cover the
-bridge otherwise.
+The two `SKIP` lines are expected. The comparison with a real
+LibSharedMedia-3.0 runs only when another addon has loaded one, and the
+stand-in tests cover the bridge otherwise. The sound FileDataID test is
+registered as skipped: a sound's FileDataID can only be proven to name a
+shipped file through `GetFileIDFromPath`, and the run of 2026-09-25 on Retail
+12.1.0 b69933 measured that it answers `nil` for three shipped interface
+sounds (`Sound\Interface\RaidWarning.ogg`, `ReadyCheck.ogg`, `LevelUp.ogg`)
+and for the one font path it was asked about (`Fonts\ARIALN.TTF`), while it
+resolves every texture path. The client's `SOUNDKIT` constants are SoundKit
+ids for `PlaySound`, not FileDataIDs, and no client function maps one to the
+other without playing the sound. The Busted specs register and fetch sound
+FileDataIDs.
 
 Running it again in the same session prints the same lines: every test
 registers new names (each ends with a number that grows for the session), and
@@ -77,12 +86,12 @@ These lines replace their counterparts above:
 ```text
 MoltenCodes Test: SKIP mediaKit.libSharedMedia: without LibSharedMedia-3.0 AdoptLibSharedMedia and MirrorToLibSharedMedia both answer false and 'absent' and change nothing -- a real LibSharedMedia-3.0 is loaded, so the absent path cannot be reached
 MoltenCodes Test: PASS mediaKit.libSharedMedia: a real LibSharedMedia-3.0 holds MediaKit's built-in names with the same files (read only; nothing is adopted or mirrored)
-MoltenCodes Test: SKIP mediaKit.libSharedMedia: a real LibSharedMedia-3.0 holds MediaKit's built-in names with the same files (read only; nothing is adopted or mirrored) -- no real LibSharedMedia-3.0 is loaded; the stand-in tests cover the bridge -- a real LibSharedMedia-3.0 is loaded; the stand-in is installed only when none exists
 MoltenCodes Test: SKIP mediaKit.libSharedMedia: AdoptLibSharedMedia adopts a stand-in LibSharedMedia's entries read-only in sorted name order, skips invalid and clashing ones, follows its later registrations and subscribes once -- a real LibSharedMedia-3.0 is loaded; the stand-in is installed only when none exists
 MoltenCodes Test: SKIP mediaKit.libSharedMedia: MirrorToLibSharedMedia registers MediaKit's entries into a stand-in LibSharedMedia with the documented langmask, mirrors a later Register before OnRegistered fires, and nothing echoes with both directions on -- a real LibSharedMedia-3.0 is loaded; the stand-in is installed only when none exists
+MoltenCodes Test: SKIP mediaKit.secrets: with a stand-in LibSharedMedia, a secret entry is not adopted, a callback with a secret type and name raises nothing, a secret LOCALE_BIT_western gives way to 128 and a secret Register answer is not counted as mirrored -- a real LibSharedMedia-3.0 is loaded; the stand-in is installed only when none exists
 ```
 
-and the totals line reads `30 passed, 0 failed, 4 skipped, 0 timed out (34 tests)`.
+and the totals line reads `29 passed, 0 failed, 5 skipped, 0 timed out (34 tests)`.
 MediaKit never adopts from nor mirrors into the real library during the run.
 
 ### On a client without secret values
@@ -103,14 +112,14 @@ MoltenCodes Test: SKIP mediaKit.secrets: SetLimits refuses a secret maxConsumers
 MoltenCodes Test: SKIP mediaKit.secrets: with a stand-in LibSharedMedia, a secret entry is not adopted, a callback with a secret type and name raises nothing, a secret LOCALE_BIT_western gives way to 128 and a secret Register answer is not counted as mirrored -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 ```
 
-and the totals line reads `28 passed, 0 failed, 6 skipped, 0 timed out (34 tests)`.
-On Retail 12.1 any `SKIP` other than the real-LibSharedMedia comparison is
-unexpected.
+and the totals line reads `27 passed, 0 failed, 7 skipped, 0 timed out (34 tests)`.
+On Retail 12.1 any `SKIP` other than the real-LibSharedMedia comparison and
+the sound FileDataID test is unexpected.
 
 ### On a client with another locale
 
 The tests read `GetLocale()` and expect what docs/API.md states for it, so the
-same 33 lines pass on every locale; only the logs differ. On `ruRU` the
+same 32 lines pass on every locale; only the logs differ. On `ruRU` the
 built-in fonts are the `_CYR` files; on `zhCN`, `zhTW` and `koKR` no built-in
 font is offered without `anyScript`, and a consumer's font default is the first
 font that client can render.
@@ -119,9 +128,9 @@ font that client can render.
 
 None. Nothing is drawn: the probe Frame is created hidden, at alpha 0, with no
 size and no anchor, and its Texture and FontString are never shown. No sound
-plays: the sound tests only resolve paths to FileDataIDs with
-`GetFileIDFromPath` and never call `PlaySound`, `PlaySoundFile` or any other
-sound function. No chat line other than the harness's appears, and no client
+plays: the suite only logs what `GetFileIDFromPath` answers for the `None`
+sound's path and never calls `PlaySound`, `PlaySoundFile` or any other sound
+function. No chat line other than the harness's appears, and no client
 setting (CVar) changes. The only thing a player can notice is a short stutter
 while the allocation tests collect garbage.
 
@@ -129,10 +138,10 @@ while the allocation tests collect garbage.
 
 - **Test entries.** MediaKit never removes an entry, so every entry the tests
   register stays in MediaKit until `/reload` or logout, named
-  `MoltenCodesTest <label> <n>` (about 35 per run: status bars, backgrounds,
-  fonts and one sound). Each names a file the client ships
+  `MoltenCodesTest <label> <n>` (about 35 per run: status bars, backgrounds
+  and fonts). Each names a file the client ships
   (`Interface\Buttons\WHITE8X8`, `Interface\TargetingFrame\UI-StatusBar`,
-  `Fonts\FRIZQT__.TTF`) or, for the sound, a shipped sound's FileDataID. An
+  `Fonts\FRIZQT__.TTF`). An
   addon listing MediaKit media in this session would show them. Entries the
   stand-in LibSharedMedia handed over (adopted) stay the same way.
 - **Two defaults objects**, `MoltenCodesTest_MediaKit A` and
@@ -168,10 +177,10 @@ What does not stay:
 | `the installed MediaKit carries the revision ...` | Registry's selected revision and the facade's `REVISION` are both the committed manifest's, not an older or newer embedded copy. |
 | `the client's GetLocale answers a locale string ...` | `GetLocale()` is a function answering a string, the one host fact MediaKit filters fonts by. The log gives the locale and the script docs/API.md maps it to, whether `issecretvalue` and `secretwrap` exist, whether `LibStub` and LibSharedMedia-3.0 are loaded (with its minor), and whether `GetFileIDFromPath` and `CreateFrame` exist. |
 | `every built-in entry of docs/API.md's table holds its documented data ...` | All fifteen built-ins are registered with the exact data of docs/API.md's table (the `_CYR` fonts on `ruRU`, the Western ones elsewhere), and each type's `defaults:Get` fallback is a built-in (`origin` `builtin`). |
-| `the four built-in fonts load into a hidden FontString ...` | Each built-in font path is a font the client really has: `SetFont(path, 12)` on a hidden FontString answers `true`. The log gives `SetFont` and `GetFont` for each, the answer for the `ruRU` file of each font on a non-`ruRU` client (not asserted: those files are not this client's entries), and the answer for a font file the client does not ship, the control. |
+| `the four built-in fonts load into a hidden FontString ...` | Each built-in font path is a font the client really has: `SetFont(path, 12)` on a hidden FontString answers `true`, while the control, a missing file, raises `Invalid font asset (...): file not found` (Retail 12.1.0 b69933). This is the proof for fonts, because `GetFileIDFromPath` answered `nil` for `Fonts\ARIALN.TTF`. The log gives `SetFont` and `GetFont` for each, the answer for the `ruRU` file of each font on a non-`ruRU` client (not asserted: those files are not this client's entries), and the answer for a font file the client does not ship, the control. |
 | `the nine texture-backed built-ins ...` | Each texture built-in (three backgrounds, two borders, the icon, two status bars, the texture) is a texture the client really has: `SetTexture(path)` on a hidden Texture answers `true`, `GetTexture` answers a string or number, and `GetTextureFileID` equals what `GetFileIDFromPath` answers for the path. The control, a missing file, is logged. |
-| `GetFileIDFromPath resolves every built-in font and texture path ...` | Every built-in path but the two `None` placeholders resolves to a FileDataID through `GetFileIDFromPath`. `Interface\None` (border) and `Interface\Quiet.ogg` (sound) are the names LibSharedMedia uses for "no media"; their answers are logged, not asserted, and nothing is played. |
-| `a sound registered by the FileDataID ...` | The FileDataID `GetFileIDFromPath` gives for a shipped interface sound (`Sound\Interface\RaidWarning.ogg`, else `ReadyCheck.ogg`, else `LevelUp.ogg`) is a FileDataID to `IsFileDataID`, registers, and `Fetch` hands back that same number, not a string. The built-in `None` sound, a path, is not a FileDataID. The sound is never played. |
+| `GetFileIDFromPath resolves every texture-backed built-in path ...` | The nine texture-backed built-ins resolve to a FileDataID through `GetFileIDFromPath`. The font paths and the two `None` placeholders (`Interface\None` for the border, `Interface\Quiet.ogg` for the sound: the names LibSharedMedia uses for "no media", not client files) are logged, not asserted; Retail 12.1.0 b69933 answered `nil` for both placeholders and for `Fonts\ARIALN.TTF` (the first font; that run stopped there), and this run logs the other fonts' answers. Nothing is played. |
+| `a sound registered by a FileDataID of a shipped interface sound ...` | Registered as skipped, with the measured reason: no sound FileDataID can be proven to name a shipped file without playing it (see above). The Busted specs cover registering, fetching and `IsFileDataID` of a sound FileDataID. |
 | `GetLocale() maps to the documented script, and a font declaring that script ...` | The filter uses the client's own `GetLocale()`: a test font declaring this client's script is fetched, listed and `Has` true; one declaring only `greek` (no client writes it) is `nil`, `false` and unlisted, and reachable only with `anyScript`. |
 | `a font registered without scripts is Latin only ...` | An undeclared font is offered on a Latin client and hidden on any other, and always reachable with `anyScript`. |
 | `the built-in fonts are offered without anyScript on a Latin or ruRU client ...` | The built-in fonts' scripts on this client match docs/API.md. The log gives how many fonts this client is offered and how many exist. |
@@ -213,11 +222,10 @@ What does not stay:
   answers. That means docs/API.md's built-in table names a file this client
   does not have, and must be reported rather than retried.
 - `the four built-in fonts ...` passing while its log says the control
-  `SetFont` also answered `true`: the probe cannot tell a missing file, and the
-  existence rests on `GetFileIDFromPath` alone. Send the log.
+  `SetFont` answered `true` instead of raising: the probe cannot tell a missing
+  file, and nothing else proves the fonts (`GetFileIDFromPath` answered `nil`
+  for `Fonts\ARIALN.TTF`). Send the log.
 - A `GetTextureFileID` mismatch: the log gives both numbers.
-- The sound test failing with "none of the interface sounds resolved": send the
-  log; the three paths are the client's own interface sounds.
 - An allocation test failing: its log gives the measured deltas. Say which
   other addons are enabled.
 - `the installed MediaKit carries the revision ...` failing: another enabled
@@ -235,7 +243,7 @@ What does not stay:
    It holds the full report, each test's logs (the locale and its script,
    whether LibStub and LibSharedMedia-3.0 are loaded, every `SetFont`,
    `SetTexture`, `GetTexture`, `GetTextureFileID` and `GetFileIDFromPath`
-   answer, the two placeholders' answers, the controls, the memory deltas, the
+   answer, the fonts' and the two placeholders' `GetFileIDFromPath` answers, the controls, the memory deltas, the
    client's own error messages with their paths) and the client facts. Lua
    shortens a long file path from the left, so a logged message may start with
    `...`; the tests compare only the `MediaKitSuite.lua:<line>` part.

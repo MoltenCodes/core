@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 — 2026-09-25
+
+- Documentation: `docs/API.md` (formatting, step 3) no longer gives "a `%d` given a string" as a sure format failure. What fails is the host `string.format`'s decision: LogKit reports whatever it raises and delivers whatever it formats. Lua 5.1 refuses `%d` given a string that is not a number, but in the Retail 12.1.0 (build 69933) run of 2026-09-25 LogKit reported nothing for `Warn("%d frames", "many")` or for a secret given to `%d` (its placeholder is such a string). The same client refuses a width over two digits (`%100s`). Documentation only: the implementation revision is unchanged.
+- Real-client suite: the format-failure test uses `%100s`, which the client refuses, and expects the report to carry the client's own message. A new test logs what the client's `string.format` does with `%d` and `'many'` and expects LogKit to follow it, and the secret `%d` test compares LogKit's outcome with the client's answer for `'<secret>'`. `EXPECTED.md` expects 38 passed.
+
 ## 0.1.3 — 2026-09-24
 
 - Secret values: API.md (argument errors) and the source comment on the facade check no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

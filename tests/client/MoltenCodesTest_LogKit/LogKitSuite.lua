@@ -1344,26 +1344,103 @@ reportedSuite:Test(
   end
 )
 
-reportedSuite:Test(
-  "a %d given a string is reported through the client's error handler as a format failure for this addon, and the message reaches neither the journal nor any sink",
-  function(ctx)
-    mainLogger:SetLevel("warn")
-    local capture = addCapture(ctx)
-    local generation = currentJournal():GetGeneration()
+--- The start of every format failure LogKit reports for this addon's Warn.
+local FORMAT_FAILURE_START = "LogKit.Logger:Warn could not format a message for addon "
+  .. addonName
+  .. ": "
 
-    local reported, observed = collectReportedErrors(ctx, function()
-      mainLogger:Warn("%d frames", "many")
-    end)
-    requireObservedHandler(ctx, observed)
+---What the client's own `string.format` does with `template` and `argument`,
+---the only authority on what counts as a format failure: LogKit hands the
+---staged arguments to it inside `pcall` and reports whatever it refuses.
+---@param template string
+---@param argument any
+---@return boolean refused
+---@return any result the formatted text, or the client's message
+---@return string description for the log
+local function clientFormat(template, argument)
+  local formatted, result = pcall(string.format, template, argument)
+  local description
+  if isSecret(result) then
+    description = (formatted and "accepted, a secret " or "refused, a secret ") .. type(result)
+  elseif formatted then
+    description = "accepted: " .. tostring(result)
+  else
+    description = "refused: " .. tostring(result)
+  end
+  return not formatted, result, description
+end
+
+---Expect what LogKit did with a Warn to match what the client's
+---`string.format` did with the same staged arguments: a refusal is reported
+---once as this addon's format failure (a string that is not secret) and
+---nothing is delivered; an accepted format is delivered as the client's text
+---and nothing is reported.
+---@param ctx TestKit.Context
+---@param outcome { reported: any[], capture: MoltenCodesTest.LogKit.Capture, generation: integer }
+---@param clientRefused boolean
+---@param clientResult any
+local function expectFormatOutcome(ctx, outcome, clientRefused, clientResult)
+  local reported = outcome.reported
+  if clientRefused then
     ctx:Expect(#reported):ToBe(1)
-    ctx:Log("reported: " .. tostring(reported[1]))
-    local expectedStart = "LogKit.Logger:Warn could not format a message for addon "
-      .. addonName
-      .. ": "
+    ctx:Expect(isSecret(reported[1])):ToBe(false)
     ctx:Expect(type(reported[1])):ToBe("string")
-    ctx:Expect(tostring(reported[1]):sub(1, #expectedStart)):ToBe(expectedStart)
-    ctx:Expect(#capture.records):ToBe(0)
-    ctx:Expect(currentJournal():GetGeneration()):ToBe(generation)
+    ctx:Log("reported: " .. tostring(reported[1]))
+    ctx:Expect(tostring(reported[1]):sub(1, #FORMAT_FAILURE_START)):ToBe(FORMAT_FAILURE_START)
+    ctx:Expect(#outcome.capture.records):ToBe(0)
+    ctx:Expect(currentJournal():GetGeneration()):ToBe(outcome.generation)
+  else
+    ctx:Expect(#reported):ToBe(0)
+    ctx:Expect(#outcome.capture.records):ToBe(1)
+    local message = outcome.capture.records[1] and outcome.capture.records[1].message
+    ctx:Expect(isSecret(message)):ToBe(false)
+    ctx:Log("delivered: " .. tostring(message))
+    ctx:Expect(message):ToBe(clientResult)
+  end
+end
+
+---Call `mainLogger:Warn(template, argument)` at warn with a capture sink and
+---the error handler swapped for a collector, and return what happened.
+---@param ctx TestKit.Context
+---@param template string
+---@param argument any
+---@return { reported: any[], capture: MoltenCodesTest.LogKit.Capture, generation: integer, called: boolean }
+local function warnWithOneArgument(ctx, template, argument)
+  mainLogger:SetLevel("warn")
+  local capture = addCapture(ctx)
+  local generation = currentJournal():GetGeneration()
+  local called = false
+  local reported, observed = collectReportedErrors(ctx, function()
+    called = pcall(mainLogger.Warn, mainLogger, template, argument)
+  end)
+  requireObservedHandler(ctx, observed)
+  return { reported = reported, capture = capture, generation = generation, called = called }
+end
+
+reportedSuite:Test(
+  "a format the client's string.format refuses ('%100s', a width over two digits) is reported through the client's error handler as a format failure for this addon, and the message reaches neither the journal nor any sink",
+  function(ctx)
+    local clientRefused, clientResult, clientDescription = clientFormat("%100s", "bars")
+    ctx:Log("client string.format('%100s', 'bars'): " .. clientDescription)
+    if not clientRefused then
+      ctx:Fail("the client's string.format accepted '%100s', so it is no format failure here")
+      return
+    end
+    local outcome = warnWithOneArgument(ctx, "%100s", "bars")
+    ctx:Expect(outcome.called):ToBe(true)
+    expectFormatOutcome(ctx, outcome, true, clientResult)
+    ctx:Expect(outcome.reported[1]):ToBe(FORMAT_FAILURE_START .. tostring(clientResult))
+  end
+)
+
+reportedSuite:Test(
+  "a %d given the string 'many' ends as the client's own string.format decides: reported once through the error handler when it refuses, delivered as its text when it accepts; the client's answer is logged",
+  function(ctx)
+    local clientRefused, clientResult, clientDescription = clientFormat("%d frames", "many")
+    ctx:Log("client string.format('%d frames', 'many'): " .. clientDescription)
+    local outcome = warnWithOneArgument(ctx, "%d frames", "many")
+    ctx:Expect(outcome.called):ToBe(true)
+    expectFormatOutcome(ctx, outcome, clientRefused, clientResult)
   end
 )
 
@@ -1961,29 +2038,15 @@ secretTest(
 )
 
 secretTest(
-  "a secret number given to %d is replaced before string.format, so the format failure is reported through the error handler instead of a client error, and nothing is delivered",
+  "a secret number given to %d is replaced by '<secret>' before string.format, so no secret reaches it and the call raises nothing: LogKit reports or delivers exactly as the client's string.format decides for '<secret>'",
   function(ctx)
     local secretNumber = makeSecret(ctx, 42)
-    mainLogger:SetLevel("warn")
-    local capture = addCapture(ctx)
-    local generation = currentJournal():GetGeneration()
-
-    local called = nil
-    local reported, observed = collectReportedErrors(ctx, function()
-      called = pcall(mainLogger.Warn, mainLogger, "health %d", secretNumber)
-    end)
-    requireObservedHandler(ctx, observed)
-    ctx:Expect(called):ToBe(true)
-    ctx:Expect(#reported):ToBe(1)
-    ctx:Expect(isSecretValue(reported[1])):ToBe(false)
-    ctx:Expect(type(reported[1])):ToBe("string")
-    ctx:Log("reported: " .. tostring(reported[1]))
-    local expectedStart = "LogKit.Logger:Warn could not format a message for addon "
-      .. addonName
-      .. ": "
-    ctx:Expect(tostring(reported[1]):sub(1, #expectedStart)):ToBe(expectedStart)
-    ctx:Expect(#capture.records):ToBe(0)
-    ctx:Expect(currentJournal():GetGeneration()):ToBe(generation)
+    local clientRefused, clientResult, clientDescription =
+      clientFormat("health %d", LogKit.SECRET_PLACEHOLDER)
+    ctx:Log("client string.format('health %d', '<secret>'): " .. clientDescription)
+    local outcome = warnWithOneArgument(ctx, "health %d", secretNumber)
+    ctx:Expect(outcome.called):ToBe(true)
+    expectFormatOutcome(ctx, outcome, clientRefused, clientResult)
   end
 )
 

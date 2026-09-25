@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4 — 2026-09-25
+
+- Documentation: `docs/API.md`'s public surface table gives `API`, `REVISION` as `1`, `2`, matching the manifest (it still read `1`, `1`). The *The context* section records what the CompatKit client suite measured on Retail 12.1.0 (build 69933, 2026-09-25). `hasApi` checks identity, so a legacy global aliasing a bound function could answer `true` for a name ApiKit does not bind. No such alias turned up: the legacy `GetAddOnMetadata` global is absent, and `hasApi` answered `false` for it, for `InterfaceOptionsFrame_OpenToCategory` and for the undocumented `hooksecurefunc`. Documentation only: the implementation revision is unchanged.
+
 ## 0.1.3 — 2026-09-24
 
 - Secret values: API.md (*Secret values*) and the source comment on the facade check no longer claim that comparing a secret with anything, `nil` included, raises, or that a raw identity test is safe whatever the other side. They state what was measured on Retail 12.1.0 b69933 (2026-09-24): a secret compared with a value of its own type raises (`==`, `~=`, `<`, `<=` and `rawequal` alike) and a secret used as a table key raises, while a comparison with `nil` or with a value of another type answers without raising. The `type(value) == "nil"` rule stays, as the repository's uniform rule that never compares anything. Comments and documentation only: `luac -s -l` gives the same instruction listing before and after, so the implementation revision is unchanged.

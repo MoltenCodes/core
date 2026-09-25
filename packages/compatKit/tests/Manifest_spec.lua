@@ -24,7 +24,7 @@ describe("CompatKit manifest", function()
     local optional = text:match('"optionalDependencies"%s*:%s*(%b{})')
     assert.is_truthy(optional:find('"clientKit"%s*:%s*{%s*"api"%s*:%s*1%s*}'))
     assert.is_truthy(optional:find('"apiKit"%s*:%s*{%s*"api"%s*:%s*1%s*}'))
-    assert.is_truthy(text:find('"version"%s*:%s*"0%.1%.3"'))
+    assert.is_truthy(text:find('"version"%s*:%s*"0%.1%.4"'))
     assert.is_truthy(text:find('"license"%s*:%s*"MIT"'))
   end)
 

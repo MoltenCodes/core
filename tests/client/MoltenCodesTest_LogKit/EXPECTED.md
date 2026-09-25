@@ -40,7 +40,8 @@ MoltenCodes Test: PASS logKit.sinks: ChatSink() without a frame reads DEFAULT_CH
 MoltenCodes Test: PASS logKit.sinks: sinks run in registration order with one shared record, a table sink's Write is looked up at every message, and RemoveSink stops delivery at once and answers false for an unknown handle
 MoltenCodes Test: PASS logKit.reported: a sink that raises is reported once through the client's error handler naming LogKitSuite.lua at the raising line, the next sink still runs and the logging caller continues
 MoltenCodes Test: PASS logKit.reported: a table a sink raises reaches the client's error handler as that same table
-MoltenCodes Test: PASS logKit.reported: a %d given a string is reported through the client's error handler as a format failure for this addon, and the message reaches neither the journal nor any sink
+MoltenCodes Test: PASS logKit.reported: a format the client's string.format refuses ('%100s', a width over two digits) is reported through the client's error handler as a format failure for this addon, and the message reaches neither the journal nor any sink
+MoltenCodes Test: PASS logKit.reported: a %d given the string 'many' ends as the client's own string.format decides: reported once through the error handler when it refuses, delivered as its text when it accepts; the client's answer is logged
 MoltenCodes Test: PASS logKit.command: RegisterCommand registers /log through CommandKit in the client's SlashCmdList, and a second call answers true without registering again
 MoltenCodes Test: PASS logKit.command: SlashCmdList /log '<addon> Debug' and '<addon> default' set and clear this addon's override, the level read without case, and print the level to LogKit's command sink
 MoltenCodes Test: PASS logKit.command: /log * info and /log * DEFAULT set and clear the global level; an unknown level, a missing level and an empty /log print their refusal or the usage and change nothing
@@ -58,11 +59,11 @@ MoltenCodes Test: PASS logKit.errors: an enabled Warn with a number as message, 
 MoltenCodes Test: PASS logKit.errors: a logger method called on UIParent, AddSink and ChatSink given UIParent, and a write to LEVELS are each refused at the calling line
 MoltenCodes Test: PASS logKit.errors: SetLimits with UNBOUNDED for journalCapacity, a capacity above SignalKit's maxJournalCapacity and maxMessageLength 8 is refused at the calling line and the limits stay as they were
 MoltenCodes Test: PASS logKit.secrets: a secret number and a secret string as %s arguments reach a table sink, the journal and a hidden ChatSink as '<secret>', and neither the call nor the error handler sees a client error
-MoltenCodes Test: PASS logKit.secrets: a secret number given to %d is replaced before string.format, so the format failure is reported through the error handler instead of a client error, and nothing is delivered
+MoltenCodes Test: PASS logKit.secrets: a secret number given to %d is replaced by '<secret>' before string.format, so no secret reaches it and the call raises nothing: LogKit reports or delivers exactly as the client's string.format decides for '<secret>'
 MoltenCodes Test: PASS logKit.secrets: a secret message raises at the calling line when the level is enabled and is not read at all when it is disabled
 MoltenCodes Test: PASS logKit.secrets: a secret level, addon name, History filter, sink, chat frame and SetLimits value are refused at the calling line, RemoveSink answers false for a secret, and nothing changes
 MoltenCodes Test: PASS logKit.secrets: a secret string a sink raises reaches the client's error handler still secret, and the next sink still runs
-MoltenCodes Test: logKit: 37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)
+MoltenCodes Test: logKit: 38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)
 MoltenCodes Test: results saved in MoltenCodesTestResults; /reload or log out to write them to disk.
 ```
 
@@ -110,11 +111,11 @@ out of combat without side effects: the client's own API documentation
 `packages/apiKit/metadata/retail/namespaces.json`) lists it with no
 restriction, and it only converts the values handed to it. Retail 12.1 has
 both. A client without them prints these five lines instead, and the totals
-line reads `32 passed, 0 failed, 5 skipped, 0 timed out (37 tests)`:
+line reads `33 passed, 0 failed, 5 skipped, 0 timed out (38 tests)`:
 
 ```text
 MoltenCodes Test: SKIP logKit.secrets: a secret number and a secret string as %s arguments reach a table sink, the journal and a hidden ChatSink as '<secret>', and neither the call nor the error handler sees a client error -- the client has no issecretvalue and secretwrap; the secret path was not exercised
-MoltenCodes Test: SKIP logKit.secrets: a secret number given to %d is replaced before string.format, so the format failure is reported through the error handler instead of a client error, and nothing is delivered -- the client has no issecretvalue and secretwrap; the secret path was not exercised
+MoltenCodes Test: SKIP logKit.secrets: a secret number given to %d is replaced by '<secret>' before string.format, so no secret reaches it and the call raises nothing: LogKit reports or delivers exactly as the client's string.format decides for '<secret>' -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP logKit.secrets: a secret message raises at the calling line when the level is enabled and is not read at all when it is disabled -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP logKit.secrets: a secret level, addon name, History filter, sink, chat frame and SetLimits value are refused at the calling line, RemoveSink answers false for a secret, and nothing changes -- the client has no issecretvalue and secretwrap; the secret path was not exercised
 MoltenCodes Test: SKIP logKit.secrets: a secret string a sink raises reaches the client's error handler still secret, and the next sink still runs -- the client has no issecretvalue and secretwrap; the secret path was not exercised
@@ -155,7 +156,8 @@ With only the MoltenCodes addons enabled any `SKIP` is unexpected on Retail
 | `sinks run in registration order with one shared record ...` | A function sink and a table sink run in registration order and receive the same record table; replacing the table sink's `Write` after `AddSink` takes effect at the next message; `RemoveSink` stops delivery at once and answers `false` for a removed handle, an unknown table and `nil`. |
 | `a sink that raises is reported once through the client's error handler ...` | With the handler swapped by `seterrorhandler` for the call, the failure reaches it once, naming `LogKitSuite.lua` at the raising line; the next sink still receives the message, the journal records it, and the logging caller runs on. |
 | `a table a sink raises reaches the client's error handler as that same table` | The error value is passed on unchanged. |
-| `a %d given a string is reported ...` | A format failure is reported as `LogKit.Logger:Warn could not format a message for addon MoltenCodesTest_LogKit: <the client's message>` and the message reaches neither the journal nor any sink. The log gives the client's own wording. |
+| `a format the client's string.format refuses ('%100s', ...` | A format failure is reported once as `LogKit.Logger:Warn could not format a message for addon MoltenCodesTest_LogKit: <the client's message>`, exactly the message the client's own `string.format('%100s', 'bars')` raises (logged first; Retail 12.1.0 b69933 refuses it with `invalid format (width or precision too long)`, as the LocaleKit suite measured), and the message reaches neither the journal nor any sink. The test fails early, naming why, if the client accepts that format. |
+| `a %d given the string 'many' ends as the client's own string.format decides ...` | What counts as a format failure is the client's `string.format`'s decision, and LogKit follows it. The log gives the client's answer for `string.format('%d frames', 'many')`; when it refuses, LogKit reports one format failure and delivers nothing, and when it accepts, LogKit delivers the client's text and reports nothing. On 2026-09-25 (Retail 12.1.0 b69933) the previous version of this test, which assumed a refusal, saw no report: the client's `string.format` accepted `%d` with that string (LogKit's report path is proven by the other `reported` tests, and an enabled `Warn` with arguments always reaches `string.format`). This run logs what it produced. |
 | `RegisterCommand registers /log through CommandKit ...` | `/log` is a function in the client's `SlashCmdList` under the key whose `SLASH_<key>1` is `/log` (the log gives the key, normally `MOLTENCODES_LOG`), a second `RegisterCommand` answers `true` and leaves the entry as it was, and LogKit's scope reports `log` registered. |
 | `SlashCmdList /log '<addon> Debug' and '<addon> default' ...` | Calling the client's `SlashCmdList` entry, as the chat box does, sets and clears an addon override, reads the level word without case, ignores trailing tokens, and prints `<addon>: <level> (<source>)` to the scope's sink. |
 | `/log * info and /log * DEFAULT set and clear the global level ...` | The global level through `*`, the refusal line of an unknown level, and the usage (first line `Usage: /log <addon\|*> <level\|default>`) for a missing level and for an empty `/log`, none of which changes a level. |
@@ -173,7 +175,7 @@ With only the MoltenCodes addons enabled any `SKIP` is unexpected on Retail
 | `a logger method called on UIParent, AddSink and ChatSink given UIParent ...` | The receiver check, both sink shapes and the read-only `LEVELS` at the calling line, with a real client frame as the wrong argument. |
 | `SetLimits with UNBOUNDED for journalCapacity ...` | Each refusal names its reason at the calling line, the SignalKit ceiling is the session's own `maxJournalCapacity`, and a refused call with one valid entry changes nothing. |
 | `a secret number and a secret string as %s arguments ...` | A `secretwrap(42)` and a `secretwrap("Thrall")` given as `%s` arguments come out as `health <secret>, name <secret>` in a table sink, the journal and a hidden chat sink; the call returns normally and the error handler receives nothing, so no client compare or concatenation error escaped. The log records what the client itself does with `string.format` and concatenation of a secret. |
-| `a secret number given to %d is replaced ...` | The placeholder is a string, so `%d` fails inside LogKit's `pcall`: the failure is reported as a LogKit format failure that is not itself secret, the call returns normally and nothing is delivered. |
+| `a secret number given to %d is replaced by '<secret>' ...` | The secret never reaches `string.format`: the call returns normally, and LogKit's outcome is the client's own for `string.format('health %d', '<secret>')` (logged): a refusal is reported once as a LogKit format failure that is not itself secret and nothing is delivered; an accepted format is delivered as the client's text, not secret. On 2026-09-25 (Retail 12.1.0 b69933) no report arrived, the same client behaviour as the `%d`-given-a-string test. |
 | `a secret message raises at the calling line ...` | An enabled `Warn` and `Log` refuse a secret message with `... message must not be a secret value` at the calling line; a disabled `Debug` does not read it. |
 | `a secret level, addon name, History filter, sink, chat frame and SetLimits value ...` | Every secret argument is refused at the calling line before it is compared or used as a key, `RemoveSink` answers `false`, and the levels, limits and sinks are as they were. |
 | `a secret string a sink raises ...` | The error value of a sink is handed to the error handler untouched, still secret, and the next sink still runs. |
@@ -182,7 +184,7 @@ With only the MoltenCodes addons enabled any `SKIP` is unexpected on Retail
 
 - Any `FAIL` or `TIMEOUT` line, a `SKIP` line with only the MoltenCodes addons
   enabled on Retail 12.1, or a totals line other than
-  `37 passed, 0 failed, 0 skipped, 0 timed out (37 tests)`.
+  `38 passed, 0 failed, 0 skipped, 0 timed out (38 tests)`.
 - No login line, or `Expected.lua is missing`: the harness or the installer
   did not run as intended.
 - A Lua error window or a BugSack entry naming `MoltenCodes`,

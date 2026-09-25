@@ -24,6 +24,7 @@ issecurevariable
 secretwrap
 securecallfunction
 seterrorhandler
+soundkit
 
 # World of Warcraft terms, and fragments of event and variable names
 # (`PLAYER_REGEN_ENABLED`, `CURSEFORGE_PROJECT_ID`, `WOWI_ID`).

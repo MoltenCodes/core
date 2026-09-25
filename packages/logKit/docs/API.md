@@ -148,11 +148,20 @@ When the level is **enabled**:
    booleans and tables format, and a table's `__tostring` runs here, on the
    enabled call only), and the message is formatted once with
    `string.format`.
-3. A format failure (a bad specifier, a `%d` given a string) is **reported
-   through `geterrorhandler()`** as `LogKit.Logger:Warn could not format a
-   message for addon MyAddon: <string.format's message>`, and the message is
-   dropped: nothing reaches the journal or the sinks, and nothing raises into
-   the caller. A log call must not break the code that is reporting something.
+3. A format failure is **reported through `geterrorhandler()`** as
+   `LogKit.Logger:Warn could not format a message for addon MyAddon:
+   <string.format's message>`, and the message is dropped: nothing reaches
+   the journal or the sinks, and nothing raises into the caller. A log call
+   must not break the code that is reporting something. What is a failure is
+   the host `string.format`'s decision, not LogKit's: whatever it raises for
+   is reported, whatever it formats is delivered. A width or precision over
+   two digits (`%100s`) is refused by Lua 5.1 and by the Retail client
+   (measured on 12.1.0 build 69933). A `%d` given a string that is not a
+   number, which includes the placeholder of a secret argument, is refused by
+   Lua 5.1, but in the Retail 12.1.0 (build 69933) run of 2026-09-25 LogKit
+   reported no failure for `Warn("%d frames", "many")` or for a secret given
+   to `%d`, so that client's `string.format` did not refuse it. Do not rely on
+   either outcome for such a call.
 4. The text is cut to `maxMessageLength` bytes (1024 by default) and marked
    with `...`, never inside a UTF-8 sequence.
 5. The message is recorded in the journal and handed to every sink.

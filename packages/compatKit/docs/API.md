@@ -49,7 +49,7 @@ globals at call time; it works without any of them.
 | `GetLimits()` | A fresh table of the three limits; allocates. |
 | `CATALOGUE`, `CATALOGUE_COUNT` | The read-only catalogue and how many rows it has. |
 | `UNBOUNDED` | Sentinel that lifts any limit; the same table for every revision. |
-| `API`, `REVISION` | `1`, `1`. |
+| `API`, `REVISION` | `1`, `2`. |
 
 Every method checks its receiver: `CompatKit.Shim(...)` raises
 `CompatKit:Shim must be called on the CompatKit facade; use CompatKit:Shim(...)`.
@@ -145,6 +145,19 @@ writer's line):
 `hasApi` builds its index of the installed surface once per `Apply`, on its
 first call, so a flavour file that loads between two `Apply` calls is seen by
 the second. Both helpers refuse a secret or empty name at the shim's line.
+
+Because the check is identity, a name that ApiKit does not bind answers `true`
+if the host global under that name is the very function ApiKit binds under
+another name (a legacy alias of a `C_` function). On Retail 12.1.0 (build
+69933, measured on 2026-09-25 by `tests/client/MoltenCodesTest_CompatKit`) no
+such alias turned up among the names checked: the legacy global
+`GetAddOnMetadata` is absent from the client (`nil`), so it cannot alias
+`C_AddOns.GetAddOnMetadata`, and `hasApi` answered `false` for it, for the removed `InterfaceOptionsFrame_OpenToCategory` (absent too) and
+for `hooksecurefunc`, which the client has but the Retail metadata does not
+document. The documented names checked (`C_Timer.NewTicker`, `C_Timer.After`,
+`GetMouseFoci`, `C_AddOns.GetAddOnMetadata`, `C_TooltipInfo.GetUnit`,
+`C_SettingsUtil.OpenSettingsPanel`, `C_UnitAuras.GetAuraDataByIndex`) answered
+`true`, and a name on no client (`C_Timer.MoltenCodesNoSuchFunction`) `false`.
 
 ### `CompatKit:GetShims()`
 

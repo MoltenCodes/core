@@ -872,13 +872,19 @@ bindings:Test(
       ctx:Fail("MoltenCodes.wow.retail.api is not a table")
       return
     end
+    -- Each pair is a `wrapper` and `binding` of the Retail metadata
+    -- (packages/apiKit/metadata/retail/namespaces.json). InCombatLockdown is
+    -- left out: its metadata binding is C_RestrictedActions.InCombatLockdown
+    -- with the attribute `Namespace = ""`, and Retail 12.1.0 b69933 has no such
+    -- member (the function is the global InCombatLockdown), so
+    -- api.restrictedActions.inCombatLockdown is nil there; it is logged below.
     local samples = {
       { "timer", "newTicker", "C_Timer", "NewTicker" },
       { "timer", "after", "C_Timer", "After" },
       { "addOns", "getNumAddOns", "C_AddOns", "GetNumAddOns" },
       { "cvar", "getCVar", "C_CVar", "GetCVar" },
       { "eventUtils", "isEventValid", "C_EventUtils", "IsEventValid" },
-      { "restrictedActions", "inCombatLockdown", "C_RestrictedActions", "InCombatLockdown" },
+      { "map", "getBestMapForUnit", "C_Map", "GetBestMapForUnit" },
       { "unit", "name", nil, "UnitName" },
       { "unit", "class", nil, "UnitClass" },
       { "build", "getBuildInfo", nil, "GetBuildInfo" },
@@ -912,6 +918,17 @@ bindings:Test(
     end
     ctx:Expect(type(api.profiler)):ToBe("table")
     ctx:Expect(api.profiler):ToBe(api.addOnProfiler)
+    local restrictedActions = api.restrictedActions
+    local hostRestrictedActions = readHost("C_RestrictedActions")
+    ctx:Log(
+      ("not asserted: api.restrictedActions.inCombatLockdown %s, C_RestrictedActions.InCombatLockdown %s, global InCombatLockdown %s"):format(
+        type(type(restrictedActions) == "table" and restrictedActions.inCombatLockdown or nil),
+        type(
+          type(hostRestrictedActions) == "table" and hostRestrictedActions.InCombatLockdown or nil
+        ),
+        type(readHost("InCombatLockdown"))
+      )
+    )
   end
 )
 
@@ -1198,7 +1215,7 @@ local function compareResults(wrapperResults, hostResults, logValues)
 end
 
 calls:Test(
-  "read-only getters called through the wrapper answer exactly what the raw calls answer: GetBuildInfo, the build probes, GetLocale, UnitName, UnitClass, C_AddOns, C_CVar.GetCVar, C_EventUtils.IsEventValid, InCombatLockdown and others",
+  "read-only getters called through the wrapper answer exactly what the raw calls answer: GetBuildInfo, the build probes, GetLocale, UnitName, UnitClass, C_AddOns, C_CVar.GetCVar, C_EventUtils.IsEventValid, C_Map.GetBestMapForUnit and others",
   function(ctx)
     local api = retailApi()
     if type(api) == "nil" then
@@ -1207,7 +1224,11 @@ calls:Test(
     end
     -- wrapper namespace, wrapper function, host namespace (nil for a global),
     -- host function, arguments, whether the values may be logged (a player's
-    -- name, realm and GUID are not).
+    -- name, realm and GUID are not). Each is a `wrapper` and `binding` of the
+    -- Retail metadata that Retail 12.1.0 b69933 binds. InCombatLockdown is not
+    -- here: the capture binds it as C_RestrictedActions.InCombatLockdown, which
+    -- that client lacks, so the wrapper is nil (see the named-samples test).
+    -- Both calls of a pair run in the same frame with the same arguments.
     local getters = {
       { "build", "getBuildInfo", nil, "GetBuildInfo", {}, true },
       { "build", "isTestBuild", nil, "IsTestBuild", {}, true },
@@ -1237,14 +1258,6 @@ calls:Test(
       },
       { "cvar", "getCVar", "C_CVar", "GetCVar", { "scriptErrors" }, true },
       { "eventUtils", "isEventValid", "C_EventUtils", "IsEventValid", { "PLAYER_LOGIN" }, true },
-      {
-        "restrictedActions",
-        "inCombatLockdown",
-        "C_RestrictedActions",
-        "InCombatLockdown",
-        {},
-        true,
-      },
       { "map", "getBestMapForUnit", "C_Map", "GetBestMapForUnit", { "player" }, true },
     }
     local disagreements = 0

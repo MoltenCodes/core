@@ -10,11 +10,14 @@
 --     MediaKit reads: `GetLocale` (the one it filters fonts by), `issecretvalue`
 --     and `LibStub` with LibSharedMedia-3.0 (logged);
 --   * that the built-in media are real client files: every built-in font loads
---     into a hidden FontString (`SetFont(path, 12)` answers true), every
---     texture-backed built-in loads into a hidden Texture (`SetTexture` answers
---     true and `GetTextureFileID` equals `GetFileIDFromPath`), every path
---     resolves through `GetFileIDFromPath`, and a sound is checked only through
---     its FileDataID, never played;
+--     into a hidden FontString (`SetFont(path, 12)` answers true, while a
+--     missing file raises), every texture-backed built-in loads into a hidden
+--     Texture (`SetTexture` answers true and `GetTextureFileID` equals
+--     `GetFileIDFromPath`), and every texture path resolves through
+--     `GetFileIDFromPath`. Font and sound paths are only logged there: on
+--     Retail 12.1.0 b69933 the client's `GetFileIDFromPath` answered nil for
+--     `Fonts\ARIALN.TTF` and for three shipped interface sounds, while it
+--     resolved every texture path. No sound is ever played;
 --   * the font script filter against the client's own `GetLocale()`;
 --   * sorted, cached lists, registration results and `OnRegistered`;
 --   * per-consumer defaults and their built-in fallbacks on this client;
@@ -39,10 +42,9 @@
 -- that starts with "MoltenCodesTest " and ends with a sequence number, so a
 -- second run in the same session registers new names instead of meeting its
 -- own; each one names a file the client ships (`Interface\Buttons\WHITE8X8`,
--- `Interface\TargetingFrame\UI-StatusBar`, `Fonts\FRIZQT__.TTF`) or, for the
--- sound test, a shipped sound's FileDataID. An addon listing MediaKit media in
--- this session shows them. Entries adopted from the stand-in LibSharedMedia
--- stay the same way. The two defaults objects `MoltenCodesTest_MediaKit A` and
+-- `Interface\TargetingFrame\UI-StatusBar`, `Fonts\FRIZQT__.TTF`). An addon
+-- listing MediaKit media in this session shows them. Entries adopted from the
+-- stand-in LibSharedMedia stay the same way. The two defaults objects `MoltenCodesTest_MediaKit A` and
 -- `MoltenCodesTest_MediaKit B` stay (MediaKit keeps a consumer for the
 -- session); the After hook of every suite clears their choices. The After hook
 -- also disconnects every `OnRegistered` connection a test made. The stand-in
@@ -178,13 +180,15 @@ local SOLID_TEXTURE = [[Interface\Buttons\WHITE8X8]]
 local BAR_TEXTURE = [[Interface\TargetingFrame\UI-StatusBar]]
 local TEST_FONT = [[Fonts\FRIZQT__.TTF]]
 
---- Interface sounds the sound test resolves to a FileDataID, first found wins.
---- Only their FileDataIDs are read; nothing is ever played.
-local SHIPPED_SOUND_PATHS = {
-  [[Sound\Interface\RaidWarning.ogg]],
-  [[Sound\Interface\ReadyCheck.ogg]],
-  [[Sound\Interface\LevelUp.ogg]],
-}
+--- Why the sound FileDataID test is registered as skipped. A sound's
+--- FileDataID can only be proven to name a shipped file through
+--- `GetFileIDFromPath`, and on Retail 12.1.0 b69933 (run of 2026-09-25) it
+--- answered nil for `Sound\Interface\RaidWarning.ogg`, `ReadyCheck.ogg` and
+--- `LevelUp.ogg`. The `SOUNDKIT` constants are SoundKit ids for `PlaySound`,
+--- not FileDataIDs, and no client function maps one to the other without
+--- playing it.
+local SOUND_FILE_DATA_ID_SKIP_REASON =
+  "GetFileIDFromPath answered nil for Sound\\Interface\\RaidWarning.ogg, ReadyCheck.ogg and LevelUp.ogg on Retail 12.1.0 b69933, and SOUNDKIT holds SoundKit ids, not FileDataIDs; the Busted specs cover a sound FileDataID"
 
 --- Files the client does not ship: the controls of the file probes.
 local MISSING_FONT = [[Interface\AddOns\MoltenCodesTest_MediaKit\Missing.ttf]]
@@ -940,7 +944,9 @@ builtins:Test(
       ("control, a file the client does not ship (%s): %s"):format(MISSING_FONT, controlDescription)
     )
     if controlLoaded then
-      ctx:Log("SetFont accepted a missing file, so only GetFileIDFromPath proves the files exist")
+      ctx:Log(
+        "SetFont accepted a missing file, so this probe cannot tell a missing font; GetFileIDFromPath answered nil for Fonts\\ARIALN.TTF on Retail 12.1"
+      )
     end
     -- Leave the probe on a shipped font rather than on the control's answer.
     probeFont(TEST_FONT)
@@ -987,48 +993,33 @@ builtins:Test(
 )
 
 builtins:Test(
-  "GetFileIDFromPath resolves every built-in font and texture path to a FileDataID; the 'None' border and the 'None' sound are placeholders whose answers are logged, and nothing is played",
+  "GetFileIDFromPath resolves every texture-backed built-in path to a FileDataID; the font paths and the 'None' border and sound placeholders are logged, not asserted, and nothing is played",
   function(ctx)
+    local resolved = 0
     for _, builtin in ipairs(BUILTIN_MEDIA) do
       local fileID, answer = fileIDFromPath(builtin.data)
       ctx:Log(("%s %s (%s): %s"):format(builtin.mediaType, builtin.name, builtin.data, answer))
-      if builtin.placeholder ~= true then
+      if builtin.mediaType ~= "sound" and builtin.placeholder ~= true then
+        resolved = resolved + 1
         ctx:Expect(type(fileID)):ToBe("number")
       end
     end
+    ctx:Expect(resolved):ToBe(9)
+    -- Retail 12.1.0 b69933 answered nil for Fonts\ARIALN.TTF; the font test
+    -- above proves the files through SetFont instead, so these are logged.
     for _, font in ipairs(BUILTIN_FONTS) do
       local path = expectedFontPath(font)
-      local fileID, answer = fileIDFromPath(path)
-      ctx:Log(("font %s (%s): %s"):format(font.name, path, answer))
-      ctx:Expect(type(fileID)):ToBe("number")
+      local _, answer = fileIDFromPath(path)
+      ctx:Log(("font %s (%s): %s (not asserted)"):format(font.name, path, answer))
     end
     local _, controlAnswer = fileIDFromPath(MISSING_TEXTURE)
     ctx:Log("control, a file the client does not ship: " .. controlAnswer)
   end
 )
 
-builtins:Test(
-  "a sound registered by the FileDataID GetFileIDFromPath gives for a shipped interface sound is a FileDataID to IsFileDataID, and Fetch hands back that number; nothing is played",
-  function(ctx)
-    local soundFileID = nil
-    for _, path in ipairs(SHIPPED_SOUND_PATHS) do
-      local fileID, answer = fileIDFromPath(path)
-      ctx:Log(("%s: %s"):format(path, answer))
-      if type(soundFileID) == "nil" and type(fileID) == "number" then
-        soundFileID = fileID
-      end
-    end
-    if type(soundFileID) == "nil" then
-      ctx:Fail("none of the interface sounds resolved to a FileDataID")
-      return
-    end
-    local name = uniqueName("Sound")
-    ctx:Expect(MediaKit:IsFileDataID(soundFileID)):ToBe(true)
-    ctx:Expect(MediaKit:Register("sound", name, soundFileID)):ToBe(true)
-    ctx:Expect(MediaKit:Fetch("sound", name)):ToBe(soundFileID)
-    ctx:Expect(type(MediaKit:Fetch("sound", name))):ToBe("number")
-    ctx:Expect(MediaKit:IsFileDataID(MediaKit:Fetch("sound", "None"))):ToBe(false)
-  end
+builtins:Skip(
+  "a sound registered by a FileDataID of a shipped interface sound is a FileDataID to IsFileDataID, and Fetch hands back that number; nothing is played",
+  SOUND_FILE_DATA_ID_SKIP_REASON
 )
 
 -- mediaKit.scripts ----------------------------------------------------------------------------

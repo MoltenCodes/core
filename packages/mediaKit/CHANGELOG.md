@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 — 2026-09-25
+
+- Documentation: `docs/API.md` "Built-in media" no longer calls every built-in a client file. The `border` `None` (`Interface\None`) and the `sound` `None` (`Interface\Quiet.ogg`) are LibSharedMedia's placeholders for "no media", and MediaKit makes no claim that the client ships either. The section records what the client's `GetFileIDFromPath` answered on Retail 12.1.0 (build 69933, 2026-09-25): every texture path resolves, while `Fonts\ARIALN.TTF`, three shipped interface sounds and both placeholders answer `nil`, so a `nil` there does not mean a font or sound is missing. The public surface table's `API`, `REVISION` row now reads `1`, `4`, matching the manifest. Documentation only: the implementation revision is unchanged.
+- Real-client suite: the `GetFileIDFromPath` test asserts only the nine texture-backed built-ins and logs the font paths and the two placeholders. The fonts are proven by the `SetFont` test, whose control (a missing file) raises. The sound FileDataID test is registered as skipped with the measured reason: no sound FileDataID can be proven to name a shipped file without `GetFileIDFromPath` or playing it, and `SOUNDKIT` holds SoundKit ids, not FileDataIDs. `EXPECTED.md` expects 32 passed and 2 skipped.
+
 ## 0.1.3 — 2026-09-24
 
 - Fixed: a secret `options.anyScript` on `Fetch`, `Has` or `List` is refused at the caller's line (`MediaKit:Fetch anyScript must not be a secret value`) before it is compared. A secret boolean passes the type check, and on Retail 12.1.0 (build 69933) any comparison or boolean test of a secret raises inside the Kit.

@@ -51,7 +51,7 @@ MediaKit reads three host globals, each at call time rather than at load (the bu
 | `GetLimits()` | A fresh table of both limits; allocates. |
 | `MAX_ENTRIES_PER_TYPE` | `1024`, the default of `maxEntriesPerType`. |
 | `UNBOUNDED` | Sentinel that lifts `maxConsumers`; the same table for every revision. |
-| `API`, `REVISION` | `1`, `3`. |
+| `API`, `REVISION` | `1`, `4`. |
 
 ## Media types
 
@@ -182,7 +182,9 @@ Because `Get` checks at every call, a choice from a pack that loads later is ans
 
 ### Built-in media
 
-These are **the client's own files**, shipped with the game on every flavour; MediaKit ships no media. They are registered once, at load, with the names LibSharedMedia-3.0 uses for the same files, so a name saved by an addon that used LibSharedMedia keeps working.
+These are **the client's own files**, shipped with the game on every flavour, apart from the two `None` entries; MediaKit ships no media. They are registered once, at load, with the names LibSharedMedia-3.0 uses for the same data, so a name saved by an addon that used LibSharedMedia keeps working.
+
+The `border` `None` (`Interface\None`) and the `sound` `None` (`Interface\Quiet.ogg`) are **placeholders, not client files**: they are the paths LibSharedMedia registers for "no media", kept so a saved `None` still resolves. MediaKit makes no claim that the client ships a file at either path, and the real-client suite logs them without asserting anything about them. A consumer that gets `None` is being asked for no border or no sound.
 
 | Type | Name | Data | Fallback of `Get` |
 |---|---|---|---|
@@ -201,6 +203,8 @@ These are **the client's own files**, shipped with the game on every flavour; Me
 | `statusbar` | `Blizzard` | `Interface\TargetingFrame\UI-StatusBar` | yes |
 | `statusbar` | `Solid` | `Interface\Buttons\WHITE8X8` | |
 | `texture` | `Solid` | `Interface\Buttons\WHITE8X8` | yes |
+
+What the client's `GetFileIDFromPath` answers for these paths was measured on Retail 12.1.0 (build 69933, 2026-09-25): it resolves every texture path above to a FileDataID (and `GetTextureFileID` on a Texture given the path answers the same number), but answers `nil` for the built-in font path it was asked about (`Fonts\ARIALN.TTF`, the first; that run stopped there), for three shipped sound paths (`Sound\Interface\RaidWarning.ogg`, `ReadyCheck.ogg`, `LevelUp.ogg`) and for both placeholders. `nil` from `GetFileIDFromPath` therefore does not mean a font or sound is missing; the built-in fonts are proven by `FontString:SetFont(path, 12)` answering `true`, which raises `Invalid font asset (...): file not found` for a file the client lacks.
 
 The built-in fonts render `latin` on every client, and `latin` and `cyrillic` on a `ruRU` client, which ships the Cyrillic files above. No built-in font renders a CJK or Korean script, because those clients' font files differ by locale and are not part of this contract; on such a client `List("font")` holds only pack fonts that declare the script, and `defaults:Get("font")` answers the first of them (or `nil` when there is none). LibSharedMedia registers those clients' own fonts, so `AdoptLibSharedMedia` makes them available.
 
