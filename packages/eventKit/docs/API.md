@@ -477,23 +477,30 @@ answer cannot be tested as a boolean, so it is never read as "equal"
 
 `scope:Coalesce` and `scope:Derive` put the handle into the scope. The handle
 counts as **one** member in `GetActiveCount()`; `DisconnectAll()` and `Close()`
-release it with everything it owns — its event registrations and the
-SchedulerKit scope holding its timing handle — and closing a scope during a
+release it with everything it owns — its event registrations and its
+SchedulerKit timing handle — and closing a scope during a
 dispatch defers that, as for any connection. The handle's own event
 connections are internal and belong to no scope. A `Derive` whose `compute`
 closes the scope it is being created in is refused with `EventKit.Scope:Derive
 cannot connect in a closed scope` and leaves nothing registered.
 
-Each handle creates its own SchedulerKit scope, so closing the package-level
-SchedulerKit scope from elsewhere cannot silently stop it; a `Derive` whose
-timing handle is closed anyway falls back to recomputing synchronously.
+The timing handles of `Coalesce` handles live in one SchedulerKit scope private
+to EventKit (since revision 18; before, each handle created a scope of its
+own), and each `Derive` handle creates its own. Neither is SchedulerKit's
+package-level scope, so closing that from elsewhere cannot silently stop a
+handle; a `Derive` whose timing handle is closed anyway falls back to
+recomputing synchronously.
 
 ### Cost
 
 The per-event path is one isolated listener call and one table write into a
 reused set: a spec guards that steady-state events allocate nothing. Creating a
-handle allocates its tables, one closure, one SchedulerKit scope and the event
-connections.
+`Coalesce` handle allocates its record, its event list, one closure, the
+SchedulerKit timing handle and the event connections: about 2 KB for two events
+on Lua 5.1 (3.7 KB before revision 18, when each handle also had a SchedulerKit
+scope, and a TimerKit scope once its timer first armed). SchedulerKit is looked
+up through `Registry:Find` until it is found and not again afterwards. Creating
+a `Derive` handle also allocates its own SchedulerKit scope.
 
 ## Connection API
 
@@ -702,6 +709,11 @@ promises.
 ## Embedded copies and upgrades
 
 Registry owns one stable EventKit table for `(eventKit, API 1)`. Compatible higher implementation revisions update that table in place. Existing connection handles resolve methods through a stable shared `Connection` method table; Frames created since revision 2 resolve their dispatcher through `_state`, and revision-1 Frames through the reserved facade fields described under *Reserved fields*. Scopes and `Coalesce`/`Derive` handles are validated by metatables kept in `_state`, and handle listeners resolve their behaviour through it, so handles created by an older copy run the newer code.
+
+Revision 18 keeps `_state` at schema 9. `Coalesce` handles it builds share
+one SchedulerKit scope, created in `_state` on first use, instead of one each;
+a handle an older copy built keeps its own scope, which its `Close` still
+closes.
 
 Revision 17 moves `_state` to schema 9. Channels and combat-log routes keep
 their connections in a `listeners` array of their own, with a `tombstones`

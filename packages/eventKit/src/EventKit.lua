@@ -67,7 +67,7 @@
 
 local PACKAGE_NAME = "eventKit"
 local API_GENERATION = 1
-local IMPLEMENTATION_REVISION = 17
+local IMPLEMENTATION_REVISION = 18
 local REQUIRED_REGISTRY_API = 2
 local REQUIRED_SIGNAL_API = 1
 local STATE_SCHEMA = 9
@@ -103,6 +103,9 @@ local ANY_COMBAT_LOG_SUB_EVENT = "*"
 -- `Close`. Real composites merge a handful of related events, so a longer list
 -- is refused at the caller as a generated or mistaken argument.
 local MAXIMUM_COMPOSITE_EVENTS = 32
+
+-- The option fields `Coalesce` accepts, built once rather than per call.
+local COALESCE_OPTION_FIELDS = { byEvent = true, units = true, maxKeys = true, lane = true }
 
 -- `Frame:RegisterUnitEvent(event, unit1, unit2)` has exactly two filter slots.
 local MAXIMUM_UNIT_TOKENS = 2
@@ -2369,10 +2372,20 @@ end
 -- sweep releases everything in one step. Listener closures resolve behaviour
 -- through `state.composites`, so a later compatible revision upgrades them.
 
+-- The SchedulerKit facade once a lookup found one with coalescing. Registry
+-- hands every compatible revision the same facade table and a later revision
+-- only replaces the methods on it, so a found facade stays the right one;
+-- a failed lookup is not remembered, so a SchedulerKit loaded later is found.
+---@type table|false
+local foundSchedulerKit = false
+
 ---Silent optional lookup of a SchedulerKit revision that has coalescing.
 ---@return table|nil SchedulerKit
 ---@return string|nil reason why it is unavailable
 local function findSchedulerKit()
+  if foundSchedulerKit ~= false then
+    return foundSchedulerKit, nil
+  end
   local find = rawget(Registry, "Find")
   if type(find) ~= "function" then
     return nil, "Registry:Find is unavailable"
@@ -2390,7 +2403,27 @@ local function findSchedulerKit()
   then
     return nil, "the loaded SchedulerKit predates coalescing, added in its revision 7"
   end
+  foundSchedulerKit = SchedulerKit
   return SchedulerKit, nil
+end
+
+---Return the one SchedulerKit scope every Coalesce handle's timing handle
+---lives in, creating it on first use or when it was closed.
+---
+---Sharing one scope, instead of one per handle, is what keeps a bucket cheap:
+---a scope is a table, and the first timer armed in it creates a TimerKit scope
+---as well. A handle releases its timing handle with the handle's own `Close`,
+---which also cancels its timer, so nothing needs the scope closed. The scope
+---lives in shared state, so every EventKit revision uses the same one.
+---@param SchedulerKit table
+---@return table schedulerScope
+local function sharedCoalesceScope(SchedulerKit)
+  local scope = rawget(state, "coalesceSchedulerScope")
+  if type(scope) ~= "table" or scope:IsClosed() then
+    scope = SchedulerKit:CreateScope()
+    rawset(state, "coalesceSchedulerScope", scope)
+  end
+  return scope
 end
 
 ---Drop a Lua error position prefix, so a SchedulerKit refusal can be raised
@@ -2417,19 +2450,33 @@ local function readEventList(events, label, level)
     error(label .. " events must be an event name or a non-empty array of them", level)
   end
 
-  local list, seen = {}, {}
+  -- Duplicates are dropped by a scan of the names already kept rather than
+  -- a lookup set: a list is short (a longer one is refused just below), so
+  -- the scan is cheaper than building and discarding a second table.
+  local list, count = {}, 0
   for index = 1, #events do
     local eventName = events[index]
-    refuseSecret(eventName, label .. " events entry", level + 1)
+    if isSecret(eventName) then
+      refuseSecret(eventName, label .. " events entry", level + 1)
+    end
     if type(eventName) ~= "string" or eventName == "" then
       error(label .. " events must contain only non-empty strings", level)
     end
-    if not seen[eventName] then
-      seen[eventName] = true
-      list[#list + 1] = eventName
+    local duplicate = false
+    for kept = 1, count do
+      if list[kept] == eventName then
+        duplicate = true
+        break
+      end
+    end
+    -- Past the bound the list is refused below whatever follows, so the
+    -- scan stops growing and every entry is still checked above.
+    if not duplicate and count <= MAXIMUM_COMPOSITE_EVENTS then
+      count = count + 1
+      list[count] = eventName
     end
   end
-  if #list > MAXIMUM_COMPOSITE_EVENTS then
+  if count > MAXIMUM_COMPOSITE_EVENTS then
     error(label .. " accepts at most " .. MAXIMUM_COMPOSITE_EVENTS .. " distinct events", level)
   end
   -- The client is asked only once the list is known to be bounded, and once
@@ -2523,14 +2570,14 @@ end
 ---@param handle table
 ---@return boolean closed `false` when it was already closed.
 local function closeCompositeHandle(handle)
-  if rawget(handle, "_closed") == true then
+  if handle._closed == true then
     return false
   end
-  rawset(handle, "_closed", true)
+  handle._closed = true
   unlinkFromScope(handle)
 
   local firstError = nil
-  local connections = rawget(handle, "_connections")
+  local connections = handle._connections
   for index = 1, #connections do
     local ok, value = pcall(disconnectEventConnection, connections[index])
     if not ok and firstError == nil then
@@ -2539,22 +2586,32 @@ local function closeCompositeHandle(handle)
     connections[index] = nil
   end
 
-  -- Closing the SchedulerKit scope closes the timing handle in it. The
-  -- closed timing handle is kept, so a closed Coalesce handle still answers
-  -- `IsPending` and `GetStats`.
-  local schedulerScope = rawget(handle, "_schedulerScope")
-  rawset(handle, "_schedulerScope", false)
+  -- A handle with a SchedulerKit scope of its own (a Derive handle, or a
+  -- Coalesce handle an older revision built) closes that scope, which closes
+  -- the timing handle in it; a Coalesce handle in the shared scope closes its
+  -- timing handle directly. The closed timing handle is kept, so a closed
+  -- Coalesce handle still answers `IsPending` and `GetStats`.
+  -- A Coalesce handle this revision built carries neither `_schedulerScope`
+  -- nor `_signal`, so an absent field reads as `false`.
+  local schedulerScope = handle._schedulerScope or false
   if schedulerScope ~= false then
+    handle._schedulerScope = false
     local ok, value = pcall(schedulerScope.Close, schedulerScope)
+    if not ok and firstError == nil then
+      firstError = { value = value }
+    end
+  elseif handle._kind == "coalesce" then
+    local timing = handle._timing
+    local ok, value = pcall(timing.Close, timing)
     if not ok and firstError == nil then
       firstError = { value = value }
     end
   end
   -- Disconnect the `OnChange` listeners rather than only dropping the
   -- signal, so the connections their owners hold stop reporting connected.
-  local signal = rawget(handle, "_signal")
-  rawset(handle, "_signal", false)
+  local signal = handle._signal or false
   if signal ~= false then
+    handle._signal = false
     local ok, value = pcall(signal.DisconnectAll, signal)
     if not ok and firstError == nil then
       firstError = { value = value }
@@ -2572,7 +2629,7 @@ end
 ---@return EventKit.Listener
 local function newCompositeListener(handle)
   return function(eventName, first)
-    return rawget(rawget(state, "composites"), "onEvent")(handle, eventName, first)
+    return state.composites.onEvent(handle, eventName, first)
   end
 end
 
@@ -2607,20 +2664,6 @@ local function attachCompositeHandle(handle, scope, list, units, key, label, lev
   if scope ~= false then
     linkToScope(scope, handle)
   end
-end
-
----Record one event on a Coalesce handle.
----@param handle EventKit.CoalesceHandle
----@param eventName string
----@param first any the event's first payload argument
-local function recordCoalescedEvent(handle, eventName, first)
-  local key = first
-  -- A secret payload cannot be compared or used as a key, so it coalesces
-  -- under the event name, like a missing one.
-  if rawget(handle, "_byEvent") == true or type(key) == "nil" or isSecret(key) or key ~= key then
-    key = eventName
-  end
-  rawget(handle, "_timing")(key)
 end
 
 ---Recompute a Derive handle's value and announce a change.
@@ -2687,11 +2730,18 @@ end
 ---@param eventName string
 ---@param first any
 local function onCompositeEvent(handle, eventName, first)
-  if rawget(handle, "_closed") == true then
+  if handle._closed == true then
     return
   end
-  if rawget(handle, "_kind") == "coalesce" then
-    recordCoalescedEvent(handle, eventName, first)
+  if handle._kind == "coalesce" then
+    -- Record the event, inline because this runs for every event a bucket
+    -- hears. A secret payload cannot be compared or used as a key, so it
+    -- coalesces under the event name, like a missing one.
+    local key = first
+    if handle._byEvent == true or type(key) == "nil" or isSecret(key) or key ~= key then
+      key = eventName
+    end
+    handle._timing(key)
     return
   end
   invalidateDerived(handle)
@@ -2706,12 +2756,7 @@ local function createCoalesceHandle(scope, label, level, events, interval, callb
   local list = readEventList(events, label, level + 1)
   validateDelay(interval, label .. " intervalSeconds", level + 1)
   validateCallback(callback, label, level + 1)
-  validateOptionTable(
-    options,
-    { byEvent = true, units = true, maxKeys = true, lane = true },
-    label,
-    level + 1
-  )
+  validateOptionTable(options, COALESCE_OPTION_FIELDS, label, level + 1)
 
   local byEvent, units, key, timingOptions = false, nil, nil, nil
   if type(options) ~= "nil" then
@@ -2730,22 +2775,22 @@ local function createCoalesceHandle(scope, label, level, events, interval, callb
     error(label .. " requires SchedulerKit API 1, which is not available (" .. reason .. ")", level)
   end
 
-  local schedulerScope = SchedulerKit:CreateScope()
+  local schedulerScope = sharedCoalesceScope(SchedulerKit)
   local ok, timing =
     pcall(schedulerScope.Coalesce, schedulerScope, callback, interval, timingOptions)
   if not ok then
-    pcall(schedulerScope.Close, schedulerScope)
     error(label .. ": " .. withoutPosition(timing), level)
   end
 
+  -- Eight fields, so the hash part is 8 slots: a Coalesce handle has no
+  -- SchedulerKit scope of its own and no `OnChange` signal, so it carries
+  -- neither `_schedulerScope` nor `_signal` (see `closeCompositeHandle`).
   local handle = setmetatable({
     _kind = "coalesce",
     _closed = false,
     _byEvent = byEvent,
     _connections = {},
-    _schedulerScope = schedulerScope,
     _timing = timing,
-    _signal = false,
     _scope = false,
     _scopePrevious = false,
     _scopeNext = false,

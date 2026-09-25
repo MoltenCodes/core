@@ -86,7 +86,7 @@ It also covers:
 | `EventValidity_spec.lua` | Unknown event names refused through `C_EventUtils.IsEventValid`, with the function present and absent. |
 | `LogoutCoverage_spec.lua` | The logout routes, subscription release, scoped `PLAYER_LOGOUT` listeners around the close, re-examination, routes across an upgrade. |
 | `Scope_spec.lua` | Manual and addon scopes, deferred close, `CloseAddonScopes`. |
-| `Coalesce_spec.lua` | `Coalesce`, with and without SchedulerKit. |
+| `Coalesce_spec.lua` | `Coalesce`, with and without SchedulerKit, and with SchedulerKit loaded after a refused call; the shared SchedulerKit scope, one lookup, the handle cost and the revision-17 upgrade. |
 | `Derive_spec.lua` | `Derive`, with and without SchedulerKit. |
 | `Limits_spec.lua` | `SetLimits`, `GetLimits`, `EventKit.UNBOUNDED` and the `maxUnitFrames` limit. |
 | `ListenerStorage_spec.lua` | Listener arrays in and out of a dispatch, the channel pool, handle-only allocation guards. |

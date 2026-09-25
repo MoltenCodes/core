@@ -237,3 +237,191 @@ describe("EventKit Coalesce without SchedulerKit", function()
     assert.are.equal(0, scope:GetActiveCount())
   end)
 end)
+
+describe("EventKit Coalesce handle cost", function()
+  local EventKit, SchedulerKit
+  before_each(function()
+    EventKit, SchedulerKit = Scheduled.NewEventKit()
+  end)
+  after_each(Scheduled.Reset)
+
+  it("keeps every handle's timing in one shared SchedulerKit scope", function()
+    local first = EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end)
+    local second = EventKit:CreateScope():Coalesce("UNIT_AURA", 0.5, function() end)
+
+    local shared = rawget(EventKit._state, "coalesceSchedulerScope")
+    assert.are.equal("table", type(shared))
+    assert.is_false(shared:IsClosed())
+    assert.is_nil(rawget(first, "_schedulerScope"))
+    assert.is_nil(rawget(second, "_schedulerScope"))
+    assert.are.equal(shared, rawget(rawget(first, "_timing"), "_scope"))
+    assert.are.equal(shared, rawget(rawget(second, "_timing"), "_scope"))
+  end)
+
+  it("closes only its own timing handle and cancels its pending delivery", function()
+    local closedDeliveries, openDeliveries = 0, 0
+    local closing = EventKit:Coalesce("UNIT_HEALTH", 0.5, function()
+      closedDeliveries = closedDeliveries + 1
+    end)
+    local open = EventKit:Coalesce("UNIT_HEALTH", 0.5, function()
+      openDeliveries = openDeliveries + 1
+    end)
+    Scheduled.Emit("UNIT_HEALTH", "player")
+
+    assert.is_true(closing:Close())
+    assert.is_true(rawget(closing, "_timing"):IsClosed())
+    assert.is_false(closing:IsPending())
+    assert.is_true(open:IsPending())
+    for index = 1, #Scheduled.NativeTimers() do
+      Scheduled.FireNative(index)
+    end
+    assert.are.equal(0, closedDeliveries)
+    assert.are.equal(1, openDeliveries)
+    assert.is_false(closing:Close())
+  end)
+
+  it("replaces a shared scope that was closed", function()
+    EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end)
+    local shared = rawget(EventKit._state, "coalesceSchedulerScope")
+    shared:Close()
+
+    local deliveries = 0
+    local handle = EventKit:Coalesce("UNIT_AURA", 0.5, function()
+      deliveries = deliveries + 1
+    end)
+    local replacement = rawget(EventKit._state, "coalesceSchedulerScope")
+    assert.are_not.equal(shared, replacement)
+    Scheduled.Emit("UNIT_AURA", "player")
+    fireLatest()
+    assert.are.equal(1, deliveries)
+    assert.is_true(handle:Close())
+  end)
+
+  it("still closes the SchedulerKit scope of a handle an older revision built", function()
+    local handle = EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end)
+    -- Revisions before 18 gave each handle a SchedulerKit scope of its own.
+    local ownScope = SchedulerKit:CreateScope()
+    rawset(handle, "_schedulerScope", ownScope)
+    rawset(handle, "_signal", false)
+
+    assert.is_true(handle:Close())
+    assert.is_true(ownScope:IsClosed())
+    assert.is_false(rawget(handle, "_schedulerScope"))
+  end)
+
+  it("looks SchedulerKit up once and reuses what it found", function()
+    EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end):Close()
+    local Registry = require("Registry")
+    local find = Registry.Find
+    local lookups = 0
+    Registry.Find = function(...)
+      lookups = lookups + 1
+      return find(...)
+    end
+    local ok, failure = pcall(function()
+      EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end):Close()
+    end)
+    Registry.Find = find
+    assert.is_true(ok, tostring(failure))
+    assert.are.equal(0, lookups)
+  end)
+
+  it("drops duplicate event names and still bounds the distinct ones", function()
+    local deliveries = {}
+    local handle = EventKit:Coalesce(
+      { "UNIT_HEALTH", "UNIT_AURA", "UNIT_HEALTH" },
+      0.5,
+      function(set)
+        deliveries[#deliveries + 1] = copy(set)
+      end,
+      { byEvent = true }
+    )
+    assert.are.equal(2, #rawget(handle, "_connections"))
+
+    local tooMany, mixed = {}, {}
+    for index = 1, 33 do
+      tooMany[index] = "EVENT_" .. index
+      mixed[index] = "EVENT_" .. index
+    end
+    mixed[34] = 7
+    expectErrorAtThisSpec("EventKit:Coalesce accepts at most 32 distinct events", function()
+      EventKit:Coalesce(tooMany, 0.5, function() end)
+    end)
+    -- Every entry is still checked, so a bad one after the bound names itself.
+    expectErrorAtThisSpec("EventKit:Coalesce events must contain only non-empty strings", function()
+      EventKit:Coalesce(mixed, 0.5, function() end)
+    end)
+  end)
+
+  it("creates and closes a handle in under 2.5 KiB #allocation", function()
+    local function callback() end
+    EventKit:Coalesce({ "UNIT_HEALTH", "UNIT_AURA" }, 0.5, callback):Close()
+
+    local handles = 100
+    local allocated = allocatedKilobytes(function()
+      for _ = 1, handles do
+        EventKit:Coalesce({ "UNIT_HEALTH", "UNIT_AURA" }, 0.5, callback):Close()
+      end
+    end)
+    assert.is_true(
+      allocated / handles < 2.5,
+      "one handle allocated " .. allocated / handles .. " KiB"
+    )
+  end)
+end)
+
+describe("EventKit Coalesce with SchedulerKit loaded later", function()
+  after_each(Scheduled.Reset)
+
+  it("finds SchedulerKit once it loads after a refused call", function()
+    Scheduled.Reset()
+    Scheduled.InstallWowApi()
+    require("Registry")
+    require("SignalKit")
+    local EventKit = require("EventKit")
+    local ok = pcall(EventKit.Coalesce, EventKit, "UNIT_HEALTH", 0.5, function() end)
+    assert.is_false(ok)
+
+    require("TimerKit")
+    require("SchedulerKit")
+    local handle = EventKit:Coalesce("UNIT_HEALTH", 0.5, function() end)
+    assert.is_false(handle:IsClosed())
+    assert.is_true(handle:Close())
+  end)
+end)
+
+describe("EventKit Coalesce across an upgrade", function()
+  after_each(Scheduled.Reset)
+
+  it("keeps a handle from revision 17 delivering and closing under this revision", function()
+    Scheduled.Reset()
+    Scheduled.InstallWowApi()
+    require("Registry")
+    require("SignalKit")
+    local legacy = TestEnv.LoadSourceAtRevision(17)
+    require("TimerKit")
+    local SchedulerKit = require("SchedulerKit")
+    local deliveries = 0
+    local handle = legacy:Coalesce("UNIT_HEALTH", 0.5, function()
+      deliveries = deliveries + 1
+    end)
+    -- Revision 17 gave each handle a SchedulerKit scope of its own.
+    local ownScope = SchedulerKit:CreateScope()
+    rawset(handle, "_schedulerScope", ownScope)
+
+    package.loaded["EventKit"] = nil
+    local EventKit = require("EventKit")
+    assert.are.equal(legacy, EventKit)
+    assert.are.equal(18, EventKit.REVISION)
+
+    Scheduled.Emit("UNIT_HEALTH", "player")
+    fireLatest()
+    assert.are.equal(1, deliveries)
+    assert.is_true(handle:Close())
+    assert.is_true(ownScope:IsClosed())
+
+    local fresh = EventKit:Coalesce("UNIT_AURA", 0.5, function() end)
+    assert.is_nil(rawget(fresh, "_schedulerScope"))
+    assert.is_true(fresh:Close())
+  end)
+end)

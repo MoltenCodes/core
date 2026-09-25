@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.5 — 2026-09-25
+
+Performance round 2: cheaper `Coalesce` handles. Implementation revision 18; API generation 1 is unchanged.
+
+- Where the cost was: creating a `Coalesce` handle looked SchedulerKit up through `Registry:Find`, built its allowed-option table, a duplicate-lookup table and a 10-field record, and created a SchedulerKit scope of its own, which created a TimerKit scope when its timer first armed; closing it closed that scope. Every event crossed a helper call on its way to the timing handle.
+- Every `Coalesce` handle's timing handle now lives in one SchedulerKit scope private to EventKit (`_state.coalesceSchedulerScope`, created on first use and again if closed); a handle's `Close` closes its timing handle, which cancels its timer. The handle record has eight fields (no `_schedulerScope`, no `_signal`). SchedulerKit is looked up until it is found and not again afterwards; a failed lookup is not remembered. The option table is a constant, duplicates in the event list are dropped by a scan bounded by the 32-event limit (every entry is still checked), and the per-event path records the key without a helper call.
+- Numbers (host, Lua 5.1, measured while other agents ran benchmarks and suites on the same machine; ratios within one run), with SchedulerKit 0.8.6: AceBucket `register-remove` 4.04× → 2.38× and 3664 → 1952 B; `burst` 2.43× → 1.88× (752 B, one TimerKit timer per interval, unchanged); `record-event` 2.38× → 1.88×, allocation-free as before. `Coalesce` create and close alone 5.94 → 3.58 µs.
+- Guarantees are unchanged: SchedulerKit's package-level scope still cannot stop a handle, closing a scope during a dispatch still defers, and a closed handle still answers `IsPending` and `GetStats`. `Derive` handles keep their own SchedulerKit scope.
+- No state schema change: an in-place upgrade from revision 17 keeps its handles, and a handle an older revision built keeps its own SchedulerKit scope, which its `Close` still closes.
+- Specs: `Coalesce_spec.lua` covers the shared scope, closing one handle's timing only, replacing a closed shared scope, closing an older handle's own scope, a single SchedulerKit lookup, SchedulerKit loaded after a refused call, duplicate names and the 32-event bound with a bad later entry, a handle under 2.5 KiB, and a revision-17 handle across the upgrade. 241 specs (232 before).
+- Docs: `docs/API.md` updates the Coalesce ownership and cost statements and the upgrade notes; `docs/INTERNALS.md` gains "Coalesce handles".
+
 ## 0.9.4 — 2026-09-25
 
 - Performance round against AceEvent-3.0 (host benchmark, `docs/BENCHMARKS.md`). Before, a connection was three allocations (the EventKit handle, a wrapper closure that isolated the callback, and a SignalKit connection on the channel's signal), a disconnect could allocate a compacted listener array, releasing an event's last listener dropped its channel record and signal, and an event crossed four call layers before reaching a listener.

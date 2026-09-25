@@ -100,7 +100,37 @@ The combat-log router is an ordinary connection on the
 `COMBAT_LOG_EVENT_UNFILTERED` channel whose callback reads the client once and
 walks the matching route, then the wildcard route, with `deliverListeners`.
 
+## Coalesce handles
+
+A `Coalesce` handle is written with eight fields (`_kind`, `_closed`,
+`_byEvent`, `_connections`, `_timing` and the three scope links), so its hash
+part has eight slots. It carries neither `_schedulerScope` nor `_signal`:
+its SchedulerKit timing handle lives in one SchedulerKit scope that every
+`Coalesce` handle shares, kept in `_state.coalesceSchedulerScope` and created
+on first use (again if something closed it), and a `Coalesce` handle never has
+an `OnChange` signal. `closeCompositeHandle` reads both fields as `false` when
+absent, writes them only when present (writing even `nil` to a missing key
+could grow the full hash part), and closes a `Coalesce` handle's timing handle
+directly with `Close`, which also cancels its timer. Sharing the scope saves a
+SchedulerKit scope per handle and the TimerKit scope SchedulerKit creates for a
+scope's first timer; the handle's own `Close` is what releases its timing, so
+nothing needed that scope to be the handle's own. A `Derive` handle keeps its
+own SchedulerKit scope.
+
+`findSchedulerKit` remembers the facade the first successful lookup returned
+(Registry hands every compatible revision the same facade table) and does not
+remember a failure, so a SchedulerKit loaded after a refused call is found.
+The per-event path (`onCompositeEvent`) records the key itself instead of
+calling a helper, and `readEventList` drops duplicate names by scanning the
+names kept so far, which the 32-event bound keeps short, instead of building a
+second lookup table.
+
 ## Upgrades
+
+Revision 18 changes no state schema. `_state.coalesceSchedulerScope` is
+created on first use, and a `Coalesce` handle an older revision built keeps its
+own SchedulerKit scope in `_schedulerScope`, which `closeCompositeHandle` still
+closes (closing the scope closes the timing handle in it).
 
 Revision 17 moved `_state` to schema 9 (the `listeners` arrays, `tombstones`
 counts and `channelPool`). Revisions before it fanned every channel and route

@@ -2,7 +2,7 @@ local TestEnv = require("EventKitTestEnv")
 
 ---The implementation revision `src/EventKit.lua` carries; `Manifest_spec.lua`
 ---pins the same number against `package.manifest.json`.
-local CURRENT_REVISION = 17
+local CURRENT_REVISION = 18
 
 local function expectErrorContaining(expected, callback)
   local ok, message = pcall(callback)
